@@ -1,214 +1,284 @@
-# Feature Research
+# Feature Research: v2.0 Closed-Loop Download Tracking
 
-**Domain:** *arr search automation tool (Radarr + Sonarr)
-**Researched:** 2026-02-23
-**Confidence:** HIGH (core search mechanics verified against pyarr docs + Servarr wiki + Huntarr source analysis; differentiator/anti-feature rationale is MEDIUM — informed by ecosystem analysis but no single canonical source)
+**Domain:** *arr search automation tool -- download verification and lifetime stats
+**Researched:** 2026-02-24
+**Confidence:** HIGH for API mechanics (verified against Radarr/Sonarr source code + Go/Python SDK docs + pyarr docs); MEDIUM for UX patterns (informed by ecosystem analysis, no canonical reference for "search effectiveness" dashboards)
 
-## Feature Landscape
+## Context
 
-### Table Stakes (Users Expect These)
+Fetcharr v1.2 is fire-and-forget: it triggers searches in Radarr/Sonarr and records "searched" or "failed" outcomes. v2.0 closes the loop by polling *arr history APIs to detect whether triggered searches actually resulted in grabs, then displays per-item and aggregate effectiveness metrics on the dashboard.
 
-Features users assume exist. Missing these = product feels incomplete.
+This research focuses exclusively on the NEW v2.0 features. v1.x table stakes (search triggering, round-robin, config editor, search history) are already shipped and documented in the v1.0 research.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Connect to Radarr via URL + API key | Every *arr tool does this; it's the only integration point | LOW | POST to `/api/v3/command`, GET from `/api/v3/wanted/missing` and `/api/v3/wanted/cutoff` |
-| Connect to Sonarr via URL + API key | Same as Radarr — baseline requirement | LOW | Same API pattern; separate endpoints |
-| Fetch wanted (missing) items from Radarr | Users run this tool because their media is missing | LOW | `GET /api/v3/wanted/missing` with `page`/`pageSize` pagination |
-| Fetch cutoff unmet items from Radarr | Quality upgrades are the second core use case | LOW | `GET /api/v3/wanted/cutoff` with same pagination pattern |
-| Fetch wanted (missing) items from Sonarr | Same as Radarr — symmetry is expected | LOW | `GET /api/v3/wanted/missing` |
-| Fetch cutoff unmet items from Sonarr | Same as Radarr | LOW | `GET /api/v3/wanted/cutoff` |
-| Trigger search command for individual Radarr items | Core action — without this, the tool does nothing | LOW | `POST /api/v3/command` with `{name: "MoviesSearch", movieIds: [id]}` |
-| Trigger search command for Sonarr at season level | Season-level is the right granularity — episode-by-episode hammers indexers; full-show search is too coarse | LOW | `POST /api/v3/command` with `{name: "SeasonSearch", seriesId: id, seasonNumber: n}` |
-| Configurable items-per-cycle per app | Without this users can't tune for their indexer limits | LOW | Simple integer config; separate for Radarr and Sonarr |
-| Configurable search interval per app | Users have different indexer rate limits and download speeds | LOW | Schedule-driven; separate interval per app |
-| Round-robin sequential cycling through items | Ensures every item gets searched eventually (vs random, which leaves some items perpetually skipped) | LOW | Persist cursor/position across cycles; wrap at end of list |
-| Web UI: last run time + next scheduled run | Users need confidence the tool is running | LOW | Two timestamps on the main page |
-| Web UI: recent search history log | Users need to see what was searched and when | LOW | Append-only log; show item name, type (missing/cutoff), timestamp |
-| Web UI: current queue position (round-robin cursor) | Users need to see progress through the list | LOW | Show "position X of Y" for each app |
-| Web UI: wanted/cutoff item counts | Users want to know how much work remains | LOW | Show count per list type per app; fetch live from *arr |
-| Config editor in the web UI | Users need to change settings without editing files or restarting the container | MEDIUM | Form-based; persist to config file on disk |
-| API keys stored server-side only, never returned by any HTTP endpoint | This is the entire reason the project exists; Huntarr's failure was exposing these via unauthenticated endpoints | LOW | Server renders config forms; no endpoint returns raw key values |
-| Docker container + docker-compose | Self-hosters expect Docker-first deployment | LOW | Standard Dockerfile + compose file; single service |
-| Persistent state across container restarts | Round-robin position must survive restarts | LOW | Persist cursor to a file or SQLite; don't reset on every start |
+---
 
-### Differentiators (Competitive Advantage)
+## Table Stakes (v2.0 Scope)
 
-Features that set the product apart. Not required, but valued.
+Features that make closed-loop tracking feel complete. Missing any of these = the feature feels half-built.
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Explicit security model documented in README | Users burned by Huntarr actively want assurance that keys are safe; this is a trust-building differentiator | LOW | Document exactly what is/isn't returned by any endpoint; no implementation cost |
-| Separation of missing vs cutoff unmet queues with independent round-robins | Prevents cutoff upgrades from starving missing-content searches and vice versa; gives user control over ratio | MEDIUM | Maintain two cursors per app; config controls how many of each type per cycle |
-| Graceful degradation when *arr is unreachable | Other tools fail silently or crash; showing "Radarr unreachable since [time]" is table stakes for reliability | LOW | Catch connection errors; display status on UI; retry on next cycle |
-| Human-readable log format with item names (not just IDs) | Huntarr logs raw IDs; users want to see "Searched: Breaking Bad S03 (missing)" | LOW | Resolve ID to name before logging; requires one extra API call |
-| Configurable skip of future-air-date items | Prevents pointless searches for unaired episodes; Sonarr has this data in the API response | LOW | Filter items where `airDateUtc` is in the future before adding to queue |
-| Configurable monitored-only filter | Searching unmonitored items wastes indexer quota; users almost always want this | LOW | Filter items where `monitored == false` before adding to queue |
-| Hard limit on max items queued per cycle (safety ceiling) | Prevents accidental hammering if misconfigured; "items per cycle" + hard ceiling = belt and suspenders | LOW | Add a configurable max ceiling enforced before triggering any searches |
+| Feature | Why Expected | Complexity | Dependencies |
+|---------|--------------|------------|--------------|
+| Poll Radarr history for grab events after search | Without this, "closed-loop" is meaningless -- users need to see that searches found something | MEDIUM | Radarr client + existing search history DB |
+| Poll Sonarr history for grab events after search | Symmetry with Radarr -- both apps must be tracked | MEDIUM | Sonarr client + existing search history DB |
+| Correlate grabs to fetcharr-triggered searches | Must distinguish fetcharr-triggered grabs from organic Radarr/Sonarr activity (RSS grabs, manual searches) | HIGH | Timestamp-windowed queries + item ID matching |
+| Update search history entries with grabbed outcome | Users need to see which "searched" entries resolved to actual downloads | LOW | DB schema migration to support outcome updates |
+| "Grabbed" badge on search history entries | Visual confirmation that a search produced a result | LOW | Existing outcome badge system (searched/failed badges already exist) |
+| "Partial" badge for Sonarr season searches | Season search may grab some but not all missing episodes -- users need to know | MEDIUM | Sonarr episode-level history analysis per season |
+| "Unresolved" state for searches that found nothing | Implicit state: searched entries that never get updated to grabbed/partial within the tracking window | LOW | Timeout-based resolution (configurable window) |
+| Aggregate search effectiveness on dashboard | "X of Y searches resulted in grabs" -- the headline metric for whether fetcharr is working | LOW | COUNT query on search_history grouped by outcome |
+| Lifetime stats: movies found, movies updated | Radarr-specific counters: "found" = missing item grabbed, "updated" = cutoff item grabbed | LOW | Aggregation queries on tracked grab events |
+| Lifetime stats: episodes found, episodes updated | Sonarr-specific counters: same distinction as Radarr | LOW | Same pattern as Radarr stats |
+| Lifetime stats count only fetcharr-triggered grabs | Must not inflate stats with organic *arr activity | LOW | Already enforced by the correlation logic |
 
-### Anti-Features (Commonly Requested, Often Problematic)
+## Differentiators (v2.0 Scope)
 
-Features that seem good but create problems.
+Features that go beyond "it works" to "it works well." Not expected, but valued.
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| User accounts / authentication | "What if someone accesses my UI?" | No auth = no passwords to store = no credential attack surface. This tool is for local network / Tailscale use. Adding auth reintroduces the exact class of vulnerability that killed Huntarr (password storage, session management, 2FA bypass). | Run on Tailscale or behind a VPN. Trust your network perimeter. |
-| Multi-instance support (multiple Radarr/Sonarr) | Power users have multiple instances | Multiplies configuration complexity significantly; cursor management per-instance is non-trivial; the user's setup is single-instance. | Document how to run two containers if someone needs this. |
-| Lidarr / Readarr / Whisparr support | "While you're at it..." | Scope creep. Radarr + Sonarr cover the primary use case. Each new *arr app requires understanding its own API nuances. | Explicitly out of scope; document in README. |
-| Notifications (Discord, Telegram, Apprise) | Users want to be notified of searches | Adds a third-party library dependency (Apprise) and configuration surface area. The web UI log already provides this information. | Web UI log is sufficient; users can tail container logs if they want alerts. |
-| Prowlarr integration / indexer stats | "Show me which indexers are working" | Indexer management is out of scope; Prowlarr has its own UI. Adding it blurs the tool's purpose. | Use Prowlarr's own UI. |
-| Download queue management (pause when full) | "Don't search if downloads are backed up" | The *arr apps themselves manage download queues. Adding queue logic means Fetcharr must now poll qBitTorrent/SABnzbd too. | Trust *arr to handle its own queue; searches that find nothing just time out. |
-| "Swaparr"-style stalled download detection | Huntarr added this to pad features | Completely outside the search automation scope; requires download client integration. | Use decluttarr for this purpose. |
-| Media discovery / TMDB browsing ("Requestarr") | Huntarr added a media request UI | This is Overseerr's job, not a search automation tool's job. | Use Overseerr or Jellyseerr. |
-| Storage monitoring / pause when disk full | "Don't search if disk is nearly full" | Adds system-level dependency; complicates the Docker container (needs volume mounts for disk checks); edge case optimization. | *arr apps refuse to import when disk is full anyway. |
-| RSS feed monitoring | "Check new releases in real-time" | Duplicates what *arr already does via RSS sync. The value of this tool is backlog filling, not new-release monitoring. | Sonarr/Radarr already do RSS monitoring natively. |
-| Web UI authentication (login form) | "Secure the UI" | Same problem as user accounts above. If the network is trusted, auth is overhead. If it isn't, the tool shouldn't be exposed at all. | Tailscale ACLs or nginx basic auth at the reverse proxy layer. |
+| Feature | Value Proposition | Complexity | Dependencies |
+|---------|-------------------|------------|--------------|
+| Configurable tracking window | Let users control how long to wait for grabs after a search (default: ~60 min). Different indexers/download clients have different speeds | LOW | Config setting, used in polling scheduler |
+| Configurable poll interval for history checks | Separate from search interval -- polling history every 5 min is reasonable even if searches run every 30 min | LOW | Config setting for tracking poll frequency |
+| Per-app effectiveness breakdown | "Radarr: 72% grab rate, Sonarr: 45% grab rate" helps users tune their setup | LOW | Group-by-app aggregation on existing data |
+| Grab source metadata (quality, indexer) | Show what quality was grabbed and from which indexer -- helps users understand their profile effectiveness | MEDIUM | Parse the `data` field from history records (contains indexer, quality, size) |
+| Time-to-grab metric | "Average time from search to grab: 12 min" -- helps users understand download pipeline speed | LOW | Timestamp arithmetic between search entry and grab detection |
+| Dashboard sparkline or mini-chart for grab rate trend | Visual trend of effectiveness over time (last 7 days) | MEDIUM | Time-bucketed aggregation + minimal JS chart (or htmx-compatible SVG) |
 
-## Feature Dependencies
+## Anti-Features (v2.0 Scope)
+
+Features to explicitly NOT build for download tracking.
+
+| Anti-Feature | Why Tempting | Why Problematic | What to Do Instead |
+|--------------|-------------|-----------------|-------------------|
+| Download client integration (qBit/SAB polling) | "Track actual download progress" | Massively expands scope: new credentials, new APIs, new failure modes. The *arr apps already manage download clients. Fetcharr should only ask *arr "did you grab this?" not track the actual download pipeline. | Poll *arr history only. The "grabbed" event in history is sufficient proof. |
+| Webhook receiver for *arr grab notifications | "Real-time grab detection instead of polling" | Requires fetcharr to expose a callback endpoint, which means *arr must be configured to POST to fetcharr. Adds bidirectional coupling, network config complexity, and a new attack surface (unauthenticated webhook ingestion). | Poll-based approach is simpler, requires zero *arr configuration changes, and runs on the same timer loop already used for searches. |
+| Full import tracking (downloadFolderImported) | "Track when the file actually arrives in the library" | Two-phase tracking (grab + import) adds significant complexity for marginal user value. Users care about "did my search find something?" not "did qBittorrent finish downloading it?" The latter is visible in *arr's own Activity tab. | Track grabs only. Import is *arr's concern. If needed later, it is a natural extension of the grab tracking table. |
+| Per-indexer effectiveness stats | "Which indexer grabs the most?" | Requires parsing the indexer field from history data and maintaining per-indexer aggregations. This is Prowlarr's job. | Show indexer name in grab detail metadata (differentiator above) but do not aggregate per-indexer stats. |
+| Automated re-search of unresolved items | "If a search didn't grab, try again" | The round-robin already handles this -- the item stays in the wanted list and will be searched again on the next pass. Adding explicit retry logic creates duplicate search risk and indexer abuse. | Trust the round-robin. Unresolved items will naturally be re-searched. |
+| Historical backfill of pre-fetcharr grabs | "Show lifetime stats including grabs from before fetcharr was installed" | Impossible to attribute grabs to fetcharr if fetcharr wasn't running when they happened. Mixing organic grabs with triggered grabs defeats the purpose of the metric. | Start counting from first fetcharr-triggered search. Document this clearly. |
+
+## Feature Dependencies (v2.0)
 
 ```
-[Radarr API connection]
-    └──required by──> [Fetch wanted/missing items]
-    └──required by──> [Fetch cutoff unmet items]
-    └──required by──> [Trigger search command]
+[Existing: search_history table with outcome column]
+    required by --> [Grab tracking: update outcome to "grabbed"/"partial"]
 
-[Sonarr API connection]
-    └──required by──> [Fetch wanted/missing items (Sonarr)]
-    └──required by──> [Fetch cutoff unmet items (Sonarr)]
-    └──required by──> [Trigger season search command]
+[Existing: RadarrClient + SonarrClient]
+    required by --> [New: get_movie_history() method on RadarrClient]
+    required by --> [New: get_series_history() / get_history_since() on SonarrClient]
 
-[Fetch items from *arr]
-    └──required by──> [Round-robin queue population]
+[New: history polling scheduler (separate from search scheduler)]
+    required by --> [Correlate grabs to fetcharr searches]
+    required by --> [Aggregate stats calculation]
 
-[Round-robin queue population]
-    └──required by──> [Trigger search commands]
-    └──required by──> [Web UI: queue position display]
-    └──required by──> [Web UI: item counts]
+[New: grab correlation logic]
+    required by --> [Update search_history outcome to grabbed/partial]
+    required by --> [Lifetime stats counters]
+    required by --> [Dashboard effectiveness display]
 
-[Trigger search commands]
-    └──required by──> [Web UI: search history log]
+[New: search_history schema changes]
+    - Add: item_id (INT) -- Radarr movieId or Sonarr seriesId for correlation
+    - Add: season_number (INT, nullable) -- for Sonarr season-level correlation
+    - Add: tracked_until (TEXT, nullable) -- when to stop polling for this entry
+    required by --> [Grab correlation logic]
 
-[Persistent state]
-    └──enhances──> [Round-robin queue population] (cursor survives restarts)
+[New: lifetime_stats table or aggregation queries]
+    required by --> [Dashboard stats cards]
 
-[Config editor in web UI]
-    └──enhances──> [All configurable settings] (no file editing required)
-
-[Configurable monitored-only filter]
-    └──modifies──> [Fetch items from *arr] (filters before queue population)
-
-[Configurable skip future air dates]
-    └──modifies──> [Fetch items from Sonarr] (filter Sonarr wanted list only)
+[Existing: dashboard htmx polling]
+    required by --> [Stats cards display]
+    required by --> [Effectiveness percentage display]
 ```
 
-### Dependency Notes
+### Critical Dependency Chain
 
-- **Fetch items requires API connection:** Without a working connection to Radarr/Sonarr, nothing else works. Connection validation must be the first thing that runs on startup.
-- **Round-robin requires fetched items:** The queue is populated from *arr API responses. The cursor position tracks progress through that list.
-- **Search history requires search execution:** Logging is a side effect of search trigger calls; can't log what hasn't been triggered.
-- **Persistent state enhances round-robin:** Without persistence, the cursor resets on every container restart and the first N items get searched repeatedly while later items are never reached.
-- **Monitored-only and skip-future filters modify fetch, not search:** Apply filters at fetch time (before populating the round-robin queue), not at search time. This keeps the queue clean.
+The most important dependency is **storing item IDs at search time**. Currently, `insert_search_entry()` stores `app`, `queue_type`, `item_name`, `outcome`, and `detail` -- but NOT the Radarr `movieId` or Sonarr `seriesId`/`seasonNumber`. Without these IDs, there is no way to correlate history events back to specific searches.
 
-## MVP Definition
+**This schema migration must happen first**, before any tracking logic can be built.
 
-### Launch With (v1)
+---
 
-Minimum viable product — what's needed to validate the concept.
+## How *arr History APIs Work (Research Findings)
 
-- [ ] Connect to Radarr (URL + API key, validated on startup) — without this nothing works
-- [ ] Connect to Sonarr (URL + API key, validated on startup) — same
-- [ ] Fetch wanted/missing and cutoff unmet items from both apps — the data source for all searching
-- [ ] Populate round-robin queues (separate queues for missing and cutoff per app) — the core scheduling mechanism
-- [ ] Trigger searches: `MoviesSearch` for Radarr, `SeasonSearch` for Sonarr — the core action
-- [ ] Configurable items-per-cycle per app (missing count, cutoff count) — prevents indexer abuse
-- [ ] Configurable interval per app — allows tuning for different rate limits
-- [ ] Persist round-robin cursor across restarts — without this, same first N items are searched on every restart
-- [ ] API keys never returned by any HTTP endpoint — the entire security rationale for this project
-- [ ] Minimal web UI: last run, next run, item counts, queue position, recent log — confirms the tool is working
-- [ ] Web UI config editor — users must be able to change settings without editing files
-- [ ] Docker container + docker-compose — standard deployment
+### Radarr History API
 
-### Add After Validation (v1.x)
+**Endpoint:** `GET /api/v3/history/movie?movieId={id}&eventType=grabbed`
 
-Features to add once core is working.
+**HistoryResource fields** (HIGH confidence -- verified from Radarr source + Go SDK + pyarr):
 
-- [ ] Monitored-only filter — add when users report searching unmonitored items wastes quota (high probability trigger)
-- [ ] Skip future air dates filter — add when users report pointless searches for unaired Sonarr episodes
-- [ ] Graceful degradation display — add when users report confusion about silent failures
-- [ ] Human-readable log format (item names, not IDs) — add when users complain logs are opaque
+```
+id              INT       -- history record ID
+movieId         INT       -- the movie this event is about
+sourceTitle     STRING    -- release name that was grabbed
+quality         OBJECT    -- quality profile of the grabbed release
+qualityCutoffNotMet  BOOL -- whether this grab meets the cutoff
+date            DATETIME  -- when the event occurred (ISO 8601)
+eventType       STRING    -- one of the enum values below
+downloadId      STRING    -- correlates grab to download client entry
+data            OBJECT    -- extra metadata (indexer, size, protocol, etc.)
+movie           OBJECT    -- full movie resource (if includeMovie=true)
+```
 
-### Future Consideration (v2+)
+**MovieHistoryEventType enum values** (HIGH confidence -- from pyarr docs):
+- `unknown` (0)
+- `grabbed` (1)
+- `downloadFolderImported` (2)
+- `downloadFailed` (3)
+- `movieFileDeleted` (4)
+- `movieFolderImported` (5)
+- `movieFileRenamed` (6)
+- `downloadIgnored` (7)
 
-Features to defer until product-market fit is established.
+**Key endpoint:** `/api/v3/history/movie?movieId={id}&eventType=grabbed` returns all grab events for a specific movie. This is the primary endpoint for correlation.
 
-- [ ] Per-app enable/disable toggle — allows users to temporarily disable one app without changing config; low demand at v1 scale
-- [ ] Manual "search now" button in UI — bypasses scheduler for one-off searches; useful but not needed for the automation use case
-- [ ] Search history persistence beyond in-memory log — SQLite storage for longer history; v1 in-memory log is sufficient
+**Alternative:** `/api/v3/history/since?date={iso8601}` returns all history events since a given date. Useful for batch polling but returns ALL event types for ALL movies -- requires client-side filtering.
 
-## Feature Prioritization Matrix
+### Sonarr History API
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Radarr + Sonarr API connections | HIGH | LOW | P1 |
-| Fetch wanted/cutoff items | HIGH | LOW | P1 |
-| Round-robin search triggering | HIGH | LOW | P1 |
-| Season-level Sonarr search | HIGH | LOW | P1 |
-| Configurable items/cycle + interval | HIGH | LOW | P1 |
-| Persistent cursor state | HIGH | LOW | P1 |
-| API key security (never returned) | HIGH | LOW | P1 |
-| Web UI: run times + item counts + log | HIGH | LOW | P1 |
-| Web UI config editor | HIGH | MEDIUM | P1 |
-| Docker + docker-compose | HIGH | LOW | P1 |
-| Monitored-only filter | MEDIUM | LOW | P2 |
-| Skip future air dates filter | MEDIUM | LOW | P2 |
-| Graceful degradation display | MEDIUM | LOW | P2 |
-| Human-readable log (names not IDs) | MEDIUM | LOW | P2 |
-| Per-app enable/disable toggle | LOW | LOW | P3 |
-| Manual "search now" button | LOW | LOW | P3 |
-| Persistent search history (SQLite) | LOW | MEDIUM | P3 |
+**Endpoint:** `GET /api/v3/history/series?seriesId={id}&eventType=1`
+
+**HistoryRecord fields** (HIGH confidence -- verified from Sonarr source code EpisodeHistory.cs):
+
+```
+id                    INT       -- history record ID
+episodeId             INT       -- specific episode this event is about
+seriesId              INT       -- the series this event is about
+sourceTitle           STRING    -- release name that was grabbed
+quality               OBJECT    -- quality profile of the grabbed release
+qualityCutoffNotMet   BOOL     -- whether this grab meets the cutoff
+languageCutoffNotMet  BOOL     -- language cutoff check (v4+)
+date                  DATETIME  -- when the event occurred (ISO 8601)
+eventType             ENUM      -- one of the enum values below
+downloadId            STRING    -- correlates grab to download client entry
+data                  MAP       -- extra metadata (indexer, size, protocol, etc.)
+episode               OBJECT    -- full episode resource (if includeEpisode=true)
+series                OBJECT    -- full series resource (if includeSeries=true)
+language              OBJECT    -- language info
+```
+
+**EpisodeHistoryEventType enum values** (HIGH confidence -- from Sonarr source code):
+- `Unknown` = 0
+- `Grabbed` = 1
+- `SeriesFolderImported` = 2
+- `DownloadFolderImported` = 3
+- `DownloadFailed` = 4
+- `EpisodeFileDeleted` = 5
+- `EpisodeFileRenamed` = 6
+- `DownloadIgnored` = 7
+
+**Key endpoint:** `/api/v3/history/series?seriesId={id}&eventType=1&includeSeries=true&includeEpisode=true` returns grab events for a specific series. The `eventType` parameter uses the numeric enum value (1 = Grabbed).
+
+**Sonarr nuance:** The `/history/series` endpoint's `includeSeries` and `includeEpisode` parameters were broken in older versions but fixed (GitHub issue #4727, closed as completed).
+
+### Correlation Strategy
+
+The *arr APIs do NOT provide a way to attribute a grab to a specific command invocation. The search command (MoviesSearch, SeasonSearch) is fire-and-forget -- it returns a command ID, but that command ID is not referenced in subsequent grab history events. There is no `commandId` field on history records.
+
+**Recommended correlation approach: timestamp + item ID window matching.**
+
+1. When fetcharr triggers a search, record `(item_id, search_timestamp)` in search_history
+2. After a configurable delay (e.g., 5-15 minutes), poll `/api/v3/history/movie?movieId={id}&eventType=grabbed` or `/api/v3/history/series?seriesId={id}&eventType=1`
+3. If any grab event exists with `date > search_timestamp`, attribute it to fetcharr
+4. Mark the search_history entry as "grabbed" (or "partial" for Sonarr if not all episodes were resolved)
+5. Stop polling for this entry after the tracking window expires (e.g., 60 minutes)
+
+**Why this works:** Fetcharr is typically the only automation triggering searches at the time. Organic RSS grabs happen on their own schedule and are unlikely to coincide with fetcharr's search window for the same item. The timestamp window makes false attribution rare in practice.
+
+**Where this can fail:** If a user manually searches in Radarr/Sonarr UI at the same moment fetcharr searches the same item, the manual grab would be attributed to fetcharr. This is an acceptable edge case -- the stats will be slightly inflated but not meaningfully wrong.
+
+### Sonarr "Partial" Detection
+
+For Sonarr season-level searches, "partial" means some but not all missing episodes in the season were grabbed. Detection approach:
+
+1. At search time, query the wanted/missing endpoint to count how many episodes are missing for that (seriesId, seasonNumber)
+2. Store the expected missing count alongside the search entry
+3. At tracking time, count grab events for episodes in that season within the tracking window
+4. If grabs > 0 but grabs < expected_missing, outcome = "partial"
+5. If grabs >= expected_missing, outcome = "grabbed"
+
+**Complexity note:** This requires storing `expected_missing_count` per search entry for Sonarr season searches. For Radarr movies, it is binary -- either the movie was grabbed or it was not.
+
+---
+
+## Tech Debt Features (v2.0 Scope)
+
+These are the 8 deferred items from the v1.2 deep review. They are not features users will see on the dashboard, but they are required for production hardening.
+
+| Feature | Why Needed | Complexity | Notes |
+|---------|-----------|------------|-------|
+| Rate limiting on search-now endpoint | Prevents users (or scripts) from hammering the manual search button and flooding indexers | LOW | Simple in-memory rate limiter (e.g., 1 request per 30 seconds per app) |
+| CSRF protection on settings POST | The settings endpoint currently lacks CSRF protection -- existing Origin/Referer middleware may not cover all cases | LOW | Apply same Origin/Referer check already used elsewhere, or add a CSRF meta tag |
+| Bounded search history table growth | Currently auto-prunes at 500 rows; needs to be configurable | LOW | Add config setting for max rows; update DELETE query |
+| Connection pooling for aiosqlite | Current connection-per-operation pattern opens/closes DB on every call | MEDIUM | Shared connection or connection pool; must handle async context correctly |
+| Health check endpoint | Container orchestrators (Docker, Kubernetes) need a /health endpoint | LOW | Return 200 if app is running and DB is accessible |
+| Graceful shutdown handler | Clean up APScheduler, close httpx clients, flush logs on SIGTERM | LOW | Signal handler + cleanup function |
+| Request timeout on outbound HTTP calls | Already partially handled by httpx timeout param, but needs explicit configuration | LOW | Make timeout configurable via settings |
+| Configurable pageSize defaults | Currently hardcoded at 50; large libraries may benefit from larger page sizes | LOW | Add config setting, pass to get_paginated() |
+
+---
+
+## v2.0 Feature Prioritization
+
+| Feature | User Value | Complexity | Priority | Phase Suggestion |
+|---------|------------|------------|----------|-----------------|
+| Schema migration (add item_id, season_number, tracked_until) | Prerequisite | LOW | P0 | First |
+| Store item IDs at search time in engine.py | Prerequisite | LOW | P0 | First |
+| RadarrClient.get_movie_history() | Prerequisite | LOW | P0 | First |
+| SonarrClient.get_series_history() | Prerequisite | LOW | P0 | First |
+| History polling scheduler (separate from search scheduler) | HIGH | MEDIUM | P1 | After client methods |
+| Grab correlation logic (timestamp + item ID matching) | HIGH | HIGH | P1 | Core tracking phase |
+| Update search_history outcome to grabbed/partial/unresolved | HIGH | LOW | P1 | Core tracking phase |
+| Grabbed/partial/unresolved badges in search history UI | HIGH | LOW | P1 | After correlation logic |
+| Aggregate effectiveness stats on dashboard | HIGH | LOW | P1 | After tracking works |
+| Lifetime stats cards (movies/episodes found/updated) | MEDIUM | LOW | P2 | After aggregate stats |
+| Configurable tracking window + poll interval | MEDIUM | LOW | P2 | After core tracking |
+| Per-app effectiveness breakdown | LOW | LOW | P2 | After aggregate stats |
+| Grab source metadata display | LOW | MEDIUM | P3 | Defer unless easy |
+| Time-to-grab metric | LOW | LOW | P3 | Defer unless easy |
+| Rate limiting on search-now | MEDIUM | LOW | P1 | Tech debt phase |
+| CSRF on settings POST | MEDIUM | LOW | P1 | Tech debt phase |
+| Bounded history (configurable max) | LOW | LOW | P2 | Tech debt phase |
+| Connection pooling aiosqlite | LOW | MEDIUM | P2 | Tech debt phase |
+| Health check endpoint | MEDIUM | LOW | P1 | Tech debt phase |
+| Graceful shutdown handler | MEDIUM | LOW | P1 | Tech debt phase |
+| Request timeout (configurable) | LOW | LOW | P2 | Tech debt phase |
+| Configurable pageSize | LOW | LOW | P2 | Tech debt phase |
 
 **Priority key:**
-- P1: Must have for launch
-- P2: Should have, add when possible
-- P3: Nice to have, future consideration
+- P0: Must be done first (prerequisites for everything else)
+- P1: Core value -- without these, v2.0 is not a release
+- P2: Should have -- complete the feature but not blocking
+- P3: Nice to have -- defer to v2.1 if needed
 
-## Competitor Feature Analysis
+## Recommended Phase Structure
 
-| Feature | Huntarr | Missarr (l3uddz) | Fetcharr (our approach) |
-|---------|---------|-----------------|------------------------|
-| Core search automation | Yes — over-engineered with many *arr apps | Yes — minimal CLI, Go binary | Yes — Python/FastAPI, Radarr + Sonarr only |
-| User accounts + 2FA | Yes — critical vulnerability surface | No | No — deliberate; local network tool |
-| API key exposure risk | CRITICAL (unauthenticated endpoint returns all keys) | Low (CLI tool, no web server) | Zero — keys never returned by any endpoint |
-| Web UI | Yes — glassmorphism design, complex dashboard | No | Yes — minimal htmx/Jinja2 status + config |
-| Season-level Sonarr search | Yes (Season Packs mode) | Yes | Yes — season level only, not episode or full show |
-| Configurable batch size | Yes | Yes (config file) | Yes |
-| Configurable interval | Yes | Yes | Yes |
-| Round-robin / sequential | Yes | Yes | Yes |
-| Persistent cursor | Yes | Unknown | Yes |
-| Monitored-only filter | Yes | Unknown | Yes (P2) |
-| Download queue management | Yes (Swaparr) | No | No — deliberately out of scope |
-| Multi-*arr app support | Yes (5+ apps) | Radarr + Sonarr | Radarr + Sonarr only |
-| Notifications (Apprise) | Yes | No | No — out of scope |
-| Docker support | Yes | No (binary only) | Yes |
-| Security posture | FAILED | Good (no web server) | Good (server-side config only) |
+1. **Schema + Client Methods** (prerequisites) -- DB migration, store item IDs, add history client methods
+2. **Core Tracking** -- polling scheduler, grab correlation logic, outcome updates
+3. **Dashboard + Badges** -- grabbed/partial/unresolved badges, aggregate stats, lifetime stats cards
+4. **Tech Debt** -- rate limiting, CSRF, health check, graceful shutdown, remaining items
+5. **Polish** -- configurable tracking window, per-app breakdown, optional metadata display
+
+---
 
 ## Sources
 
-- [Huntarr — plexguide/Huntarr.io GitHub](https://github.com/plexguide/Huntarr.io) — competitor feature baseline (MEDIUM confidence; repo was deleted/restored post-security incident)
-- [Huntarr DeepWiki — Introduction](https://deepwiki.com/plexguide/Huntarr.io/1-introduction-to-huntarr) — comprehensive feature list from code analysis (MEDIUM confidence)
-- [Huntarr Grokipedia page](https://grokipedia.com/page/Huntarr) — configuration options and UI features (MEDIUM confidence)
-- [Huntarr security review — rfsbraz/huntarr-security-review](https://github.com/rfsbraz/huntarr-security-review/blob/main/Huntarr.io_SECURITY_REVIEW.md) — documented API key exposure via unauthenticated endpoint (HIGH confidence; independently verified)
-- [Huntarr Hacker News discussion](https://news.ycombinator.com/item?id=47128452) — community reaction to security disclosure (MEDIUM confidence)
-- [ProxmoxVE community discussion #12225](https://github.com/community-scripts/ProxmoxVE/discussions/12225) — "Remove Huntarr script — critical authentication bypass" (HIGH confidence)
-- [missarr — l3uddz/missarr GitHub](https://github.com/l3uddz/missarr) — minimal alternative; confirms CLI-only approach is viable (MEDIUM confidence)
-- [seasonarr — d3v1l1989/seasonarr GitHub](https://github.com/d3v1l1989/seasonarr) — confirms SeasonSearch API command exists and works (HIGH confidence)
-- [pyarr Sonarr API docs](https://docs.totaldebug.uk/pyarr/modules/sonarr.html) — SeasonSearch, missingEpisodeSearch, EpisodeSearch command names (HIGH confidence)
-- [pyarr Radarr models docs](https://docs.totaldebug.uk/pyarr/models/radarr.html) — MoviesSearch, MissingMoviesSearch, CutOffUnmetMoviesSearch command names (HIGH confidence)
-- [Sonarr GitHub issue #4950 — /api/v3/wanted/missing sort key](https://github.com/Sonarr/Sonarr/issues/4950) — confirms pagination API shape (MEDIUM confidence)
-- [Radarr API:Command wiki](https://github.com/Radarr/Radarr/wiki/API:Command) — command endpoint structure confirmed (MEDIUM confidence)
-- [Servarr Wiki — Sonarr Wanted](https://wiki.servarr.com/sonarr/wanted) — UI-level description of missing and cutoff unmet sections (MEDIUM confidence)
-- [ElfHosted — Feaar the Huntarr](https://store.elfhosted.com/blog/2025/04/09/feaar-the-huntarr-and-the-shim/) — community-level feature usage context (LOW confidence; single managed-hosting perspective)
+### HIGH Confidence
+- [Sonarr EpisodeHistory.cs source](https://github.com/Sonarr/Sonarr/blob/0cb8d93069d6310abd39ee2fe73219e17aa83fe6/src/NzbDrone.Core/History/EpisodeHistory.cs) -- definitive enum values and field definitions
+- [pyarr RadarrAPI docs](https://docs.totaldebug.uk/pyarr/modules/radarr.html) -- get_movie_history() parameters and event types
+- [golift/starr Sonarr package](https://pkg.go.dev/golift.io/starr/sonarr) -- HistoryRecord struct and filter constants
+- [Go Radarr SDK (SkYNewZ)](https://pkg.go.dev/github.com/SkYNewZ/radarr) -- Record struct with full field definitions including Data type
+- [Sonarr GitHub issue #3587](https://github.com/Sonarr/Sonarr/issues/3587) -- eventType filter confirmed working on /api/v3/ with numeric values
+- [Sonarr GitHub issue #4727](https://github.com/Sonarr/Sonarr/issues/4727) -- includeSeries/includeEpisode params fixed on /history/series
+
+### MEDIUM Confidence
+- [arr-tracker-source-tagger](https://github.com/Procuria/arr-tracker-source-tagger) -- downloadId correlation approach for grab-to-import matching
+- [Sonarr GitHub issue #4759](https://github.com/Sonarr/Sonarr/issues/4759) -- command API does not return actual job results, confirming poll-based approach needed
+- [Radarr GitHub issue #7874](https://github.com/Radarr/Radarr/issues/7874) -- history/since endpoint fix cherry-picked from Sonarr
+- [DeepWiki Radarr REST API](https://deepwiki.com/radarr/radarr/4.1-rest-api) -- history endpoint overview and downloadId correlation description
+- [Huntarr fork (zephyrnux)](https://github.com/zephyrnux/huntarr) -- confirmed no grab tracking in competitor; monitors command completion only
+
+### LOW Confidence
+- [Huntarr security incident coverage](https://piunikaweb.com/2026/02/24/huntarr-security-vulnerability-arr-api-keys-exposed/) -- competitor context; main repo deleted
 
 ---
-*Feature research for: *arr search automation (Radarr + Sonarr)*
-*Researched: 2026-02-23*
+*Feature research for: Fetcharr v2.0 closed-loop download tracking*
+*Researched: 2026-02-24*
