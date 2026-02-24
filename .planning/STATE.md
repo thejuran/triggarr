@@ -5,16 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Planning next milestone
+**Current focus:** v2.0 Closed-Loop Tracking
 
 ## Current Position
 
-Phase: None (between milestones)
-Plan: N/A
-Status: v1.2 milestone complete, ready for next milestone
-Last activity: 2026-02-24 -- Completed v1.2 milestone archival
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-24 — Milestone v2.0 started
 
 ## Performance Metrics
 
@@ -34,10 +32,10 @@ None.
 
 ### Blockers/Concerns
 
-8 medium-severity tech debt items deferred from v1.2 deep code review (see MILESTONES.md).
+None.
 
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed v1.2 milestone archival. Ready for /gsd:new-milestone.
+Stopped at: Starting v2.0 milestone — defining requirements.
 Resume file: None

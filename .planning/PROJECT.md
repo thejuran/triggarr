@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A lightweight Docker-based tool that automates searches in Radarr and Sonarr for wanted and cutoff unmet items. Configurable round-robin searches at configurable intervals with a dark theme web UI featuring dashboard observability (position progress, outcome badges, live log viewer), browsable search history with filtering/pagination, and config editing. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
+A lightweight Docker-based tool that automates searches in Radarr and Sonarr for wanted and cutoff unmet items. Configurable round-robin searches at configurable intervals with closed-loop download tracking — polls app history to detect grabs and updates search outcomes with grabbed/partial badges. Dark theme web UI with dashboard observability (position progress, outcome badges, lifetime stats, live log viewer), browsable search history with filtering/pagination, and config editing. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
 
 ## Core Value
 
@@ -45,7 +45,21 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ### Active
 
-(None — define in next milestone)
+- [ ] Poll Radarr/Sonarr history endpoints after searches to detect grabs
+- [ ] Update search history entries with grabbed/partial/unresolved outcome badges
+- [ ] "Partial" = only some missing episodes grabbed, or quality still below cutoff
+- [ ] "Grabbed" = all missing items from the search resolved (relative to what was wanted)
+- [ ] Aggregate stats on dashboard showing search effectiveness (searched → grabbed rate)
+- [ ] Lifetime stats cards on dashboard: movies found, movies updated, episodes found, episodes updated
+- [ ] Lifetime stats only count fetcharr-triggered grabs, not organic Sonarr/Radarr activity
+- [ ] Rate limiting on search-now endpoint
+- [ ] CSRF protection on settings POST
+- [ ] Bounded search history table growth (configurable max rows)
+- [ ] Connection pooling for aiosqlite
+- [ ] Health check endpoint
+- [ ] Graceful shutdown handler
+- [ ] Request timeout on outbound HTTP calls
+- [ ] Configurable pageSize defaults
 
 ### Out of Scope
 
@@ -59,9 +73,20 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 - OAuth / SSO — no accounts means no auth flows
 - Mobile app — web UI sufficient
 
+## Current Milestone: v2.0 Closed-Loop Tracking
+
+**Goal:** Evolve fetcharr from fire-and-forget to closed-loop: detect when searched items are actually grabbed, show per-item and aggregate feedback on the dashboard, track lifetime effectiveness stats, and resolve all deferred tech debt.
+
+**Target features:**
+- Closed-loop download tracking via Radarr/Sonarr history endpoint polling
+- Per-item outcome badges (grabbed/partial/unresolved) in search history
+- Aggregate search effectiveness stats on dashboard
+- Lifetime stats cards (movies found/updated, episodes found/updated — fetcharr-triggered only)
+- All 8 deferred tech debt items from v1.2 deep review
+
 ## Context
 
-Shipped v1.2 with ~5,225 Python LOC. 174 tests passing.
+Shipped v1.2 with ~5,225 Python LOC. 174 tests passing. Building on feat/cursor-wrap-logging branch (2 commits ahead of v1.2).
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
@@ -69,7 +94,7 @@ Registry: ghcr.io/thejuran/fetcharr
 
 Replaces Huntarr's core search functionality without the security liabilities (plaintext passwords, unauthenticated API key exposure, 2FA bypass). Deliberately minimal attack surface.
 
-Known tech debt (from v1.2 deep code review, deferred to next milestone):
+v1.2 tech debt (all included in v2.0 scope):
 - No rate limiting on search-now endpoint
 - No CSRF protection on settings POST
 - Unbounded search history table growth
@@ -118,4 +143,4 @@ Known tech debt (from v1.2 deep code review, deferred to next milestone):
 | Episode fallback dropped (SRCH-17) | Sonarr SeasonSearch natively handles both season packs and episodes | ✓ Good — avoided unnecessary complexity |
 
 ---
-*Last updated: 2026-02-24 after v1.2 milestone*
+*Last updated: 2026-02-24 after v2.0 milestone start*
