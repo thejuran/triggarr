@@ -67,8 +67,8 @@ def filter_monitored(items: list[dict]) -> list[dict]:
 def slice_batch(items: list, cursor: int, batch_size: int) -> tuple[list, int]:
     """Slice a batch starting at cursor position with wrap-around.
 
-    If cursor is past the end of the list, wraps to 0 silently
-    (no log entry for wrap events, per user decision).
+    If cursor is past the end of the list, wraps to 0.
+    Callers are responsible for logging wrap-around events.
 
     Args:
         items: Full list of items to batch from.
@@ -243,6 +243,8 @@ async def run_radarr_cycle(
             )
             skipped_count += 1
     state["radarr"]["missing_cursor"] = new_cursor
+    if new_cursor == 0 and batch:
+        logger.info("Radarr: Missing queue wrapped around — starting next pass")
 
     # --- Cutoff queue ---
     cutoff = filter_monitored(cutoff)
@@ -269,6 +271,8 @@ async def run_radarr_cycle(
             )
             skipped_count += 1
     state["radarr"]["cutoff_cursor"] = new_cursor
+    if new_cursor == 0 and batch:
+        logger.info("Radarr: Cutoff queue wrapped around — starting next pass")
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
@@ -376,6 +380,8 @@ async def run_sonarr_cycle(
             )
             skipped_count += 1
     state["sonarr"]["missing_cursor"] = new_cursor
+    if new_cursor == 0 and batch:
+        logger.info("Sonarr: Missing queue wrapped around — starting next pass")
 
     # --- Cutoff queue ---
     cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
@@ -403,6 +409,8 @@ async def run_sonarr_cycle(
             )
             skipped_count += 1
     state["sonarr"]["cutoff_cursor"] = new_cursor
+    if new_cursor == 0 and batch:
+        logger.info("Sonarr: Cutoff queue wrapped around — starting next pass")
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
