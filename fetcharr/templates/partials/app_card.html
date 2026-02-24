@@ -32,12 +32,24 @@
     <div>
       <span class="text-xs uppercase tracking-wide text-fetcharr-muted">Missing</span>
       <p class="text-sm font-medium">{{ app.missing_count if app.missing_count is not none else '&mdash;' }} items</p>
-      <p class="text-xs text-fetcharr-muted">{{ app.missing_cursor }} of {{ app.missing_count if app.missing_count is not none else '?' }}</p>
+      <p class="text-xs text-fetcharr-muted">
+        {{ app.missing_cursor }} of {{ app.missing_count if app.missing_count is not none else '?' }}
+        {%- if app.missing_pass is defined and app.missing_pass > 1 %}
+          {%- set p = app.missing_pass %}
+          ({{ p }}{{ 'st' if p % 10 == 1 and p % 100 != 11 else 'nd' if p % 10 == 2 and p % 100 != 12 else 'rd' if p % 10 == 3 and p % 100 != 13 else 'th' }} pass)
+        {%- endif %}
+      </p>
     </div>
     <div>
       <span class="text-xs uppercase tracking-wide text-fetcharr-muted">Cutoff</span>
       <p class="text-sm font-medium">{{ app.cutoff_count if app.cutoff_count is not none else '&mdash;' }} items</p>
-      <p class="text-xs text-fetcharr-muted">{{ app.cutoff_cursor }} of {{ app.cutoff_count if app.cutoff_count is not none else '?' }}</p>
+      <p class="text-xs text-fetcharr-muted">
+        {{ app.cutoff_cursor }} of {{ app.cutoff_count if app.cutoff_count is not none else '?' }}
+        {%- if app.cutoff_pass is defined and app.cutoff_pass > 1 %}
+          {%- set p = app.cutoff_pass %}
+          ({{ p }}{{ 'st' if p % 10 == 1 and p % 100 != 11 else 'nd' if p % 10 == 2 and p % 100 != 12 else 'rd' if p % 10 == 3 and p % 100 != 13 else 'th' }} pass)
+        {%- endif %}
+      </p>
     </div>
   </div>
 
