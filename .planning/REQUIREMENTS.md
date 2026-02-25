@@ -16,7 +16,7 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 - [ ] **TRACK-05**: Search history entries update to "partial" when some but not all missing episodes are grabbed (Sonarr), or quality still below cutoff
 - [ ] **TRACK-06**: Search history entries resolve to "unresolved" when tracking window expires with no grabs detected
 - [x] **TRACK-07**: User can configure tracking window duration and poll interval via settings
-- [ ] **TRACK-08**: System stores item IDs and expected missing counts at search time for correlation
+- [x] **TRACK-08**: System stores item IDs and expected missing counts at search time for correlation
 
 ### Dashboard Stats
 
@@ -31,7 +31,7 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 - [ ] **DEBT-01**: Rate limiting on search-now endpoint
 - [ ] **DEBT-02**: CSRF protection on settings POST verified/hardened
 - [x] **DEBT-03**: Configurable max rows for search history table (bounded growth)
-- [ ] **DEBT-04**: Persistent SQLite connection with WAL mode (replaces connection-per-operation)
+- [x] **DEBT-04**: Persistent SQLite connection with WAL mode (replaces connection-per-operation)
 - [ ] **DEBT-05**: Health check endpoint for container orchestrators
 - [ ] **DEBT-06**: Graceful shutdown handler (close scheduler, clients, DB, flush logs)
 - [x] **DEBT-07**: Configurable request timeout on outbound HTTP calls
@@ -75,7 +75,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRACK-05 | Phase 20 | Pending |
 | TRACK-06 | Phase 20 | Pending |
 | TRACK-07 | Phase 17 | Complete |
-| TRACK-08 | Phase 17 | Pending |
+| TRACK-08 | Phase 17 | Complete |
 | STATS-01 | Phase 21 | Pending |
 | STATS-02 | Phase 21 | Pending |
 | STATS-03 | Phase 21 | Pending |
@@ -84,7 +84,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEBT-01 | Phase 18 | Pending |
 | DEBT-02 | Phase 18 | Pending |
 | DEBT-03 | Phase 17 | Complete |
-| DEBT-04 | Phase 17 | Pending |
+| DEBT-04 | Phase 17 | Complete |
 | DEBT-05 | Phase 18 | Pending |
 | DEBT-06 | Phase 18 | Pending |
 | DEBT-07 | Phase 17 | Complete |

@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 17 of 21 (Foundation & DB Preparation)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-02-24 -- Completed 17-01 (Config Fields)
+Last activity: 2026-02-24 -- Completed 17-02 (DB Migration System)
 
-Progress: [███░░░░░░░] 33%
+Progress: [██████░░░░] 67%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 32 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 1)
+- Total plans completed: 33 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 2)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -27,6 +27,7 @@ Progress: [███░░░░░░░] 33%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | Phase 17 P01 | 1min | 2 tasks | 3 files |
+| Phase 17 P02 | 3min | 2 tasks | 2 files |
 
 *Updated after each plan completion*
 
@@ -44,6 +45,9 @@ Recent decisions affecting current work:
 - [v2.0 research]: Grab attribution is probabilistic (timestamp window), not deterministic (no commandId link)
 - [Phase 17-01]: No validators on new GeneralConfig fields -- Pydantic type coercion sufficient
 - [Phase 17-01]: New TOML entries commented out to match existing convention
+- [Phase 17-02]: Backup file uses Path.with_suffix() replacing .db extension
+- [Phase 17-02]: MIGRATIONS dict declared empty at top, reassigned after function definitions
+- [Phase 17-02]: Row factory set/reset around queries to avoid shared connection side effects
 
 ### Pending Todos
 
@@ -58,5 +62,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 17-01-PLAN.md
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
