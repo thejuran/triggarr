@@ -8,7 +8,7 @@ integration -- reading from DB and writing outcome updates.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fetcharr.models.arr import GrabEvent
 
@@ -67,4 +67,46 @@ def correlate_grabs(
     Returns:
         One CorrelationResult per search record, with grab_count and matched grabs.
     """
-    raise NotImplementedError
+    if not searches:
+        return []
+
+    # Parse grab dates once up front.
+    parsed_grabs: list[tuple[GrabEvent, datetime]] = [
+        (grab, _parse_iso(grab.date)) for grab in grabs
+    ]
+
+    # Process searches most-recent-first so the newest search "claims" grabs
+    # before older searches can.  This implements the user decision that the
+    # most recent search gets credit for overlapping windows.
+    sorted_searches = sorted(searches, key=lambda s: s.searched_at, reverse=True)
+    claimed: set[int] = set()
+    results_by_id: dict[int, CorrelationResult] = {}
+
+    window = timedelta(minutes=tracking_window_minutes)
+
+    for search in sorted_searches:
+        window_start = search.searched_at
+        window_end = search.searched_at + window
+        matched: list[GrabEvent] = []
+
+        for grab, grab_time in parsed_grabs:
+            if grab.id in claimed:
+                continue
+            if grab_time >= window_start and grab_time <= window_end:
+                matched.append(grab)
+                claimed.add(grab.id)
+
+        results_by_id[search.history_id] = CorrelationResult(
+            history_id=search.history_id,
+            grab_count=len(matched),
+            matched_grabs=matched,
+        )
+
+    # Return results in the original input order (not the reversed processing order).
+    return [results_by_id[s.history_id] for s in searches]
+
+
+def _parse_iso(date_str: str) -> datetime:
+    """Parse an ISO 8601 date string to a timezone-aware datetime."""
+    # *arr APIs return "Z" suffix; fromisoformat needs "+00:00"
+    return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
