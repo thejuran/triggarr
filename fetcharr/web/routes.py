@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -37,6 +38,8 @@ STATIC_DIR = _PKG_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 router = APIRouter()
+
+SEARCH_RATE_LIMIT_SECONDS = 10
 
 
 def _build_app_context(request: Request, app_name: str) -> dict | None:
@@ -335,6 +338,14 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
     client = getattr(request.app.state, f"{app_name}_client", None)
     if client is None:
         return HTMLResponse("App not enabled", status_code=400)
+
+    # DEBT-01: Rate limit check — before acquiring search lock to fail fast
+    now = time.monotonic()
+    last = request.app.state.last_search_time.get(app_name, 0.0)
+    if now - last < SEARCH_RATE_LIMIT_SECONDS:
+        logger.info("{name}: Manual search rate-limited", name=app_name.title())
+        return HTMLResponse("Rate limited — try again shortly", status_code=429)
+    request.app.state.last_search_time[app_name] = now
 
     cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle
     async with request.app.state.search_lock:

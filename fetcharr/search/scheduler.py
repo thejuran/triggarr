@@ -139,6 +139,7 @@ def create_lifespan(
         app.state.config_path = config_path
         app.state.state_path = state_path
         app.state.search_lock = asyncio.Lock()
+        app.state.last_search_time: dict[str, float] = {}
 
         # --- Schedule jobs for enabled apps using make_search_job ---
         for name in ("radarr", "sonarr"):
@@ -163,15 +164,26 @@ def create_lifespan(
         try:
             yield
         finally:
+            # 1. Stop scheduler from scheduling new jobs (does NOT wait for async jobs)
             scheduler.shutdown(wait=False)
 
-            # Close clients from app.state (may have been replaced by config editor)
+            # 2. Drain any in-flight search cycle before closing resources (DEBT-06)
+            # AsyncIOScheduler.shutdown(wait=True) only waits on ThreadPoolExecutor,
+            # not async jobs.  search_lock is the correct synchronization primitive
+            # for this codebase's async cycles.
+            try:
+                await asyncio.wait_for(app.state.search_lock.acquire(), timeout=35.0)
+                app.state.search_lock.release()
+            except asyncio.TimeoutError:
+                logger.warning("Shutdown: search cycle did not finish in 35s — forcing close")
+
+            # 3. Close HTTP clients (app.state versions — may have been replaced by config editor)
             for name in ("radarr", "sonarr"):
                 client = getattr(app.state, f"{name}_client", None)
                 if client:
                     await client.close()
 
-            # Close shared database connection
+            # 4. Close shared database connection (all writes complete per step 2)
             await app.state.db.close()
 
             logger.info("Search engine stopped")

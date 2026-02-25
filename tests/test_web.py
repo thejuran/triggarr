@@ -103,6 +103,9 @@ async def test_app(tmp_path):
     # Search lock (needed by search_now endpoint)
     app.state.search_lock = asyncio.Lock()
 
+    # Rate limit state (needed by search_now rate limiter — DEBT-01)
+    app.state.last_search_time = {}
+
     return app
 
 
