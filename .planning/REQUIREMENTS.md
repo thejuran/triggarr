@@ -15,7 +15,7 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 - [ ] **TRACK-04**: Search history entries update from "searched" to "grabbed" when all wanted items are resolved
 - [ ] **TRACK-05**: Search history entries update to "partial" when some but not all missing episodes are grabbed (Sonarr), or quality still below cutoff
 - [ ] **TRACK-06**: Search history entries resolve to "unresolved" when tracking window expires with no grabs detected
-- [ ] **TRACK-07**: User can configure tracking window duration and poll interval via settings
+- [x] **TRACK-07**: User can configure tracking window duration and poll interval via settings
 - [ ] **TRACK-08**: System stores item IDs and expected missing counts at search time for correlation
 
 ### Dashboard Stats
@@ -30,12 +30,12 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 
 - [ ] **DEBT-01**: Rate limiting on search-now endpoint
 - [ ] **DEBT-02**: CSRF protection on settings POST verified/hardened
-- [ ] **DEBT-03**: Configurable max rows for search history table (bounded growth)
+- [x] **DEBT-03**: Configurable max rows for search history table (bounded growth)
 - [ ] **DEBT-04**: Persistent SQLite connection with WAL mode (replaces connection-per-operation)
 - [ ] **DEBT-05**: Health check endpoint for container orchestrators
 - [ ] **DEBT-06**: Graceful shutdown handler (close scheduler, clients, DB, flush logs)
-- [ ] **DEBT-07**: Configurable request timeout on outbound HTTP calls
-- [ ] **DEBT-08**: Configurable pageSize for *arr API pagination
+- [x] **DEBT-07**: Configurable request timeout on outbound HTTP calls
+- [x] **DEBT-08**: Configurable pageSize for *arr API pagination
 
 ## Future Requirements
 
@@ -74,7 +74,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRACK-04 | Phase 20 | Pending |
 | TRACK-05 | Phase 20 | Pending |
 | TRACK-06 | Phase 20 | Pending |
-| TRACK-07 | Phase 17 | Pending |
+| TRACK-07 | Phase 17 | Complete |
 | TRACK-08 | Phase 17 | Pending |
 | STATS-01 | Phase 21 | Pending |
 | STATS-02 | Phase 21 | Pending |
@@ -83,12 +83,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STATS-05 | Phase 21 | Pending |
 | DEBT-01 | Phase 18 | Pending |
 | DEBT-02 | Phase 18 | Pending |
-| DEBT-03 | Phase 17 | Pending |
+| DEBT-03 | Phase 17 | Complete |
 | DEBT-04 | Phase 17 | Pending |
 | DEBT-05 | Phase 18 | Pending |
 | DEBT-06 | Phase 18 | Pending |
-| DEBT-07 | Phase 17 | Pending |
-| DEBT-08 | Phase 17 | Pending |
+| DEBT-07 | Phase 17 | Complete |
+| DEBT-08 | Phase 17 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 21 total

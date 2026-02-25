@@ -10,23 +10,23 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 17 of 21 (Foundation & DB Preparation)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-02-24 -- Roadmap created for v2.0 Closed-Loop Tracking
+Plan: 1 of 3 in current phase
+Status: Executing
+Last activity: 2026-02-24 -- Completed 17-01 (Config Fields)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 31 (v1.0: 18, v1.1: 5, v1.2: 8)
+- Total plans completed: 32 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 1)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 17 P01 | 1min | 2 tasks | 3 files |
 
 *Updated after each plan completion*
 
@@ -42,6 +42,8 @@ Recent decisions affecting current work:
 - [v2.0 research]: Post-search tracking integrates inside cycle functions, not as separate scheduler job
 - [v2.0 research]: Zero new PyPI dependencies -- all features achievable with existing stack + stdlib
 - [v2.0 research]: Grab attribution is probabilistic (timestamp window), not deterministic (no commandId link)
+- [Phase 17-01]: No validators on new GeneralConfig fields -- Pydantic type coercion sufficient
+- [Phase 17-01]: New TOML entries commented out to match existing convention
 
 ### Pending Todos
 
@@ -56,5 +58,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Roadmap created for v2.0 milestone
+Stopped at: Completed 17-01-PLAN.md
 Resume file: None
