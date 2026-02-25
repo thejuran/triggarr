@@ -9,6 +9,7 @@ import pydantic
 from loguru import logger
 
 from fetcharr.clients.base import ArrClient
+from fetcharr.models.arr import GrabEvent
 
 
 class SonarrClient(ArrClient):
@@ -70,6 +71,22 @@ class SonarrClient(ArrClient):
             "/api/v3/wanted/cutoff",
             extra_params={"includeSeries": "true"},
         )
+
+    async def get_grab_history(self, series_id: int) -> list[GrabEvent]:
+        """Fetch grab history for a specific series from Sonarr.
+
+        Queries /api/v3/history filtered to grabbed events (eventType=1)
+        for the given series ID.  Returns parsed GrabEvent models.
+        """
+        records = await self.get_paginated(
+            "/api/v3/history",
+            extra_params={
+                "seriesId": series_id,
+                "eventType": 1,
+                "sortDirection": "descending",
+            },
+        )
+        return [GrabEvent.model_validate(r) for r in records]
 
     async def search_season(self, series_id: int, season_number: int) -> httpx.Response:
         """Trigger a SeasonSearch command for a specific season."""

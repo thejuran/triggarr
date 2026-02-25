@@ -21,6 +21,21 @@ class PaginatedResponse(BaseModel):
     records: list[dict[str, Any]]
 
 
+class GrabEvent(BaseModel):
+    """A single grab event from *arr history API.
+
+    Represents a 'grabbed' event where the *arr app sent a release
+    to a download client.  Extra fields from the API are ignored.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    date: str
+    eventType: str
+    sourceTitle: str
+
+
 class SystemStatus(BaseModel):
     """Minimal system status from /api/v3/system/status.
 

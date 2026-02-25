@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from fetcharr.clients.base import ArrClient
+from fetcharr.models.arr import GrabEvent
 
 
 class RadarrClient(ArrClient):
@@ -27,6 +28,22 @@ class RadarrClient(ArrClient):
     async def get_wanted_cutoff(self) -> list[dict[str, Any]]:
         """Fetch all movies that don't meet their quality cutoff."""
         return await self.get_paginated("/api/v3/wanted/cutoff")
+
+    async def get_grab_history(self, movie_id: int) -> list[GrabEvent]:
+        """Fetch grab history for a specific movie from Radarr.
+
+        Queries /api/v3/history filtered to grabbed events (eventType=1)
+        for the given movie ID.  Returns parsed GrabEvent models.
+        """
+        records = await self.get_paginated(
+            "/api/v3/history",
+            extra_params={
+                "movieId": movie_id,
+                "eventType": 1,
+                "sortDirection": "descending",
+            },
+        )
+        return [GrabEvent.model_validate(r) for r in records]
 
     async def search_movies(self, movie_ids: list[int]) -> httpx.Response:
         """Trigger a MoviesSearch command for the given movie IDs."""
