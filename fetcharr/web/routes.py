@@ -16,7 +16,7 @@ from pathlib import Path
 import pydantic
 import tomli_w
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -40,6 +40,34 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
+
+
+@router.get("/health")
+async def health(request: Request) -> JSONResponse:
+    """Health probe for container orchestrators.
+
+    Returns 200 when all enabled apps are reachable (connected=True),
+    503 when any enabled app is unreachable or not yet verified.
+    If no apps are enabled, returns 200 (valid configuration, waiting for setup).
+    """
+    settings = request.app.state.settings
+    state = request.app.state.fetcharr_state
+    problems: list[str] = []
+
+    for app_name in ("radarr", "sonarr"):
+        cfg = getattr(settings, app_name)
+        if not cfg.enabled:
+            continue
+        connected = state.get(app_name, {}).get("connected")
+        if connected is not True:  # None (never run) or False (unreachable) -> unhealthy
+            problems.append(app_name)
+
+    if problems:
+        return JSONResponse(
+            {"status": "unhealthy", "unreachable": problems},
+            status_code=503,
+        )
+    return JSONResponse({"status": "ok"})
 
 
 def _build_app_context(request: Request, app_name: str) -> dict | None:
