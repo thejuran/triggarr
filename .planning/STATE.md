@@ -18,21 +18,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Phase 19 - Tracking Infrastructure
+**Current focus:** Phase 20 - Tracking Integration
 
 ## Current Position
 
-Phase: 19 of 21 (Tracking Infrastructure)
-Plan: 2 of 2 in current phase (PHASE COMPLETE)
+Phase: 20 of 21 (Tracking Integration)
+Plan: 1 of 3 in current phase
 Status: In Progress
-Last activity: 2026-02-25 -- Completed 19-02 (Grab Correlation Logic)
+Last activity: 2026-02-25 -- Completed 20-01 (Tracking DB Queries)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 38 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 7)
+- Total plans completed: 39 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 8)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -46,6 +46,7 @@ Progress: [██████████] 100%
 | Phase 18 P02 | 4min | 3 tasks | 3 files |
 | Phase 19 P01 | 2min | 2 tasks | 4 files |
 | Phase 19 P02 | 2min | 2 tasks | 2 files |
+| Phase 20 P01 | 2min | 2 tasks | 2 files |
 
 *Updated after each plan completion*
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 19-02]: Most recent search claims grabs first via reverse-chronological processing order
 - [Phase 19-02]: Inclusive boundary: grabs at exactly search_time + window are matched
 - [Phase 19-02]: Claimed-set prevents double-attribution when multiple search windows overlap
+- [Phase 20-01]: frozenset allowlist for stat column names prevents SQL injection in dynamic SET clause
+- [Phase 20-01]: Single db.commit() after both UPDATE statements ensures atomic outcome+stats update
 
 ### Pending Todos
 
@@ -94,5 +97,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 19-02-PLAN.md (Phase 19 complete)
+Stopped at: Completed 20-01-PLAN.md
 Resume file: None
