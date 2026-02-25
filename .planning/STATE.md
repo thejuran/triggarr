@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Phase 17 - Foundation & DB Preparation
+**Current focus:** Phase 18 - Security & Operations
 
 ## Current Position
 
-Phase: 17 of 21 (Foundation & DB Preparation)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-02-24 -- Completed 17-03 (Caller Wiring)
+Phase: 18 of 21 (Security & Operations)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-25 -- Completed 18-01 (Rate Limiter & Health Endpoint)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 50%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 34 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 3)
+- Total plans completed: 35 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 4)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -29,6 +29,7 @@ Progress: [██████████] 100%
 | Phase 17 P01 | 1min | 2 tasks | 3 files |
 | Phase 17 P02 | 3min | 2 tasks | 2 files |
 | Phase 17 P03 | 9min | 3 tasks | 9 files |
+| Phase 18 P01 | 2min | 3 tasks | 4 files |
 
 *Updated after each plan completion*
 
@@ -52,6 +53,9 @@ Recent decisions affecting current work:
 - [Phase 17-03]: Lifespan sets WAL mode + synchronous=NORMAL on shared connection
 - [Phase 17-03]: Settings save preserves new config values from current_settings (form UI deferred)
 - [Phase 17-03]: RadarrClient/SonarrClient updated to pass through page_size parameter
+- [Phase 18-01]: Rate limit state on app.state (not module-level) for test isolation
+- [Phase 18-01]: Health endpoint returns 200 when no apps enabled (valid awaiting-setup state)
+- [Phase 18-01]: Dockerfile start-period increased to 30s for first search cycle latency
 
 ### Pending Todos
 
@@ -65,6 +69,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-24
-Stopped at: Completed 17-03-PLAN.md (Phase 17 complete)
+Last session: 2026-02-25
+Stopped at: Completed 18-01-PLAN.md
 Resume file: None
