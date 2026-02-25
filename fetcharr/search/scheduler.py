@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
@@ -57,7 +58,7 @@ def make_search_job(
                     client,
                     app.state.fetcharr_state,
                     app.state.settings,
-                    app.state.db_path,
+                    app.state.db,
                 )
                 save_state(app.state.fetcharr_state, state_path)
             except Exception as exc:
@@ -94,13 +95,16 @@ def create_lifespan(
         state: FetcharrState = load_state(state_path)
         scheduler = AsyncIOScheduler()
 
-        # Initialize search history database (SRCH-13)
+        # Initialize search history database with shared WAL connection
         db_path = state_path.parent / "fetcharr.db"
-        await init_db(db_path)
+        db = await aiosqlite.connect(db_path)
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
+        await init_db(db, db_path)
 
         # Migrate existing search_log from state.json to SQLite (one-time)
         if state.get("search_log"):
-            migrated = await migrate_from_state(db_path, state["search_log"])
+            migrated = await migrate_from_state(db, state["search_log"])
             if migrated > 0:
                 state["search_log"] = []
                 save_state(state, state_path)
@@ -113,18 +117,22 @@ def create_lifespan(
             radarr_client = RadarrClient(
                 base_url=settings.radarr.url,
                 api_key=settings.radarr.api_key.get_secret_value(),
+                timeout=settings.general.request_timeout,
+                page_size=settings.general.page_size,
             )
 
         if settings.sonarr.enabled:
             sonarr_client = SonarrClient(
                 base_url=settings.sonarr.url,
                 api_key=settings.sonarr.api_key.get_secret_value(),
+                timeout=settings.general.request_timeout,
+                page_size=settings.general.page_size,
             )
 
         # --- Expose all shared state on app.state ---
         app.state.fetcharr_state = state
         app.state.settings = settings
-        app.state.db_path = db_path
+        app.state.db = db
         app.state.scheduler = scheduler
         app.state.radarr_client = radarr_client
         app.state.sonarr_client = sonarr_client
@@ -162,6 +170,9 @@ def create_lifespan(
                 client = getattr(app.state, f"{name}_client", None)
                 if client:
                     await client.close()
+
+            # Close shared database connection
+            await app.state.db.close()
 
             logger.info("Search engine stopped")
 

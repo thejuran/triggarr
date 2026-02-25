@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 
+import aiosqlite
 import httpx
 import pydantic
 from loguru import logger
@@ -94,7 +94,7 @@ def deduplicate_to_seasons(episodes: list[dict]) -> list[dict]:
     """Deduplicate Sonarr episode records to unique (seriesId, seasonNumber) pairs.
 
     Order is preserved (first occurrence wins). Returns dicts with
-    ``seriesId``, ``seasonNumber``, and ``display_name`` keys.
+    ``seriesId``, ``seasonNumber``, ``display_name``, and ``episode_count`` keys.
 
     Args:
         episodes: List of episode dicts from Sonarr API.
@@ -102,7 +102,7 @@ def deduplicate_to_seasons(episodes: list[dict]) -> list[dict]:
     Returns:
         List of season-level dicts for search commands.
     """
-    seen: set[tuple[int, int]] = set()
+    seen: dict[tuple[int, int], dict] = {}
     seasons: list[dict] = []
     for ep in episodes:
         series_id = ep.get("seriesId")
@@ -111,15 +111,17 @@ def deduplicate_to_seasons(episodes: list[dict]) -> list[dict]:
             continue
         key = (series_id, season_number)
         if key not in seen:
-            seen.add(key)
             title = ep.get("series", {}).get("title", f"Series {series_id}")
-            seasons.append(
-                {
-                    "seriesId": series_id,
-                    "seasonNumber": season_number,
-                    "display_name": f"{title} - Season {season_number}",
-                }
-            )
+            entry = {
+                "seriesId": series_id,
+                "seasonNumber": season_number,
+                "display_name": f"{title} - Season {season_number}",
+                "episode_count": 1,
+            }
+            seen[key] = entry
+            seasons.append(entry)
+        else:
+            seen[key]["episode_count"] += 1
     return seasons
 
 
@@ -158,7 +160,7 @@ async def run_radarr_cycle(
     client: RadarrClient,
     state: FetcharrState,
     settings: Settings,
-    db_path: Path,
+    db: aiosqlite.Connection,
 ) -> FetcharrState:
     """Run one complete Radarr search cycle: missing batch then cutoff batch.
 
@@ -174,7 +176,7 @@ async def run_radarr_cycle(
         client: Connected Radarr API client.
         state: Mutable application state (modified in place).
         settings: Application settings with batch size configuration.
-        db_path: Path to the SQLite database file for search history.
+        db: Open aiosqlite connection for search history persistence.
 
     Returns:
         Updated state with new cursor positions and last_run timestamp.
@@ -226,8 +228,10 @@ async def run_radarr_cycle(
         try:
             await client.search_movies([movie["id"]])
             await insert_search_entry(
-                db_path, "Radarr", "missing", movie["title"],
+                db, "Radarr", "missing", movie["title"],
                 outcome="searched", detail="search triggered",
+                item_id=movie["id"],
+                max_rows=settings.general.max_history_rows,
             )
             logger.info("Radarr: Searched {title} (missing)", title=movie["title"])
             searched_count += 1
@@ -238,8 +242,10 @@ async def run_radarr_cycle(
                 exc=exc,
             )
             await insert_search_entry(
-                db_path, "Radarr", "missing", movie.get("title", "unknown"),
+                db, "Radarr", "missing", movie.get("title", "unknown"),
                 outcome="failed", detail=str(exc)[:200],
+                item_id=movie.get("id"),
+                max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
     state["radarr"]["missing_cursor"] = new_cursor
@@ -255,8 +261,10 @@ async def run_radarr_cycle(
         try:
             await client.search_movies([movie["id"]])
             await insert_search_entry(
-                db_path, "Radarr", "cutoff", movie["title"],
+                db, "Radarr", "cutoff", movie["title"],
                 outcome="searched", detail="search triggered",
+                item_id=movie["id"],
+                max_rows=settings.general.max_history_rows,
             )
             logger.info("Radarr: Searched {title} (cutoff)", title=movie["title"])
             searched_count += 1
@@ -267,8 +275,10 @@ async def run_radarr_cycle(
                 exc=exc,
             )
             await insert_search_entry(
-                db_path, "Radarr", "cutoff", movie.get("title", "unknown"),
+                db, "Radarr", "cutoff", movie.get("title", "unknown"),
                 outcome="failed", detail=str(exc)[:200],
+                item_id=movie.get("id"),
+                max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
     state["radarr"]["cutoff_cursor"] = new_cursor
@@ -295,7 +305,7 @@ async def run_sonarr_cycle(
     client: SonarrClient,
     state: FetcharrState,
     settings: Settings,
-    db_path: Path,
+    db: aiosqlite.Connection,
 ) -> FetcharrState:
     """Run one complete Sonarr search cycle: missing batch then cutoff batch.
 
@@ -312,7 +322,7 @@ async def run_sonarr_cycle(
         client: Connected Sonarr API client.
         state: Mutable application state (modified in place).
         settings: Application settings with batch size configuration.
-        db_path: Path to the SQLite database file for search history.
+        db: Open aiosqlite connection for search history persistence.
 
     Returns:
         Updated state with new cursor positions and last_run timestamp.
@@ -365,8 +375,12 @@ async def run_sonarr_cycle(
         try:
             await client.search_season(season["seriesId"], season["seasonNumber"])
             await insert_search_entry(
-                db_path, "Sonarr", "missing", season["display_name"],
+                db, "Sonarr", "missing", season["display_name"],
                 outcome="searched", detail="search triggered",
+                item_id=season["seriesId"],
+                season_number=season["seasonNumber"],
+                missing_count=season["episode_count"],
+                max_rows=settings.general.max_history_rows,
             )
             logger.info("Sonarr: Searched {name} (missing)", name=season["display_name"])
             searched_count += 1
@@ -377,8 +391,12 @@ async def run_sonarr_cycle(
                 exc=exc,
             )
             await insert_search_entry(
-                db_path, "Sonarr", "missing", season.get("display_name", "unknown"),
+                db, "Sonarr", "missing", season.get("display_name", "unknown"),
                 outcome="failed", detail=str(exc)[:200],
+                item_id=season.get("seriesId"),
+                season_number=season.get("seasonNumber"),
+                missing_count=season.get("episode_count"),
+                max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
     state["sonarr"]["missing_cursor"] = new_cursor
@@ -395,8 +413,12 @@ async def run_sonarr_cycle(
         try:
             await client.search_season(season["seriesId"], season["seasonNumber"])
             await insert_search_entry(
-                db_path, "Sonarr", "cutoff", season["display_name"],
+                db, "Sonarr", "cutoff", season["display_name"],
                 outcome="searched", detail="search triggered",
+                item_id=season["seriesId"],
+                season_number=season["seasonNumber"],
+                missing_count=season["episode_count"],
+                max_rows=settings.general.max_history_rows,
             )
             logger.info("Sonarr: Searched {name} (cutoff)", name=season["display_name"])
             searched_count += 1
@@ -407,8 +429,12 @@ async def run_sonarr_cycle(
                 exc=exc,
             )
             await insert_search_entry(
-                db_path, "Sonarr", "cutoff", season.get("display_name", "unknown"),
+                db, "Sonarr", "cutoff", season.get("display_name", "unknown"),
                 outcome="failed", detail=str(exc)[:200],
+                item_id=season.get("seriesId"),
+                season_number=season.get("seasonNumber"),
+                missing_count=season.get("episode_count"),
+                max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
     state["sonarr"]["cutoff_cursor"] = new_cursor
