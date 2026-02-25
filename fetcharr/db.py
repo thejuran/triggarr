@@ -338,6 +338,106 @@ async def get_search_history(
     }
 
 
+async def get_trackable_entries(db: aiosqlite.Connection) -> list[dict]:
+    """Return search history entries eligible for tracking resolution.
+
+    Finds rows with outcome ``'searched'`` or ``'partial'`` that have a
+    non-null ``item_id`` (entries without an item_id cannot be correlated
+    with grab events).
+
+    Returns:
+        List of dicts ordered by ``id ASC`` (oldest first) with keys:
+        id, app, queue_type, item_id, season_number, missing_count, timestamp.
+    """
+    db.row_factory = aiosqlite.Row
+    async with db.execute(
+        "SELECT id, app, queue_type, item_id, season_number, missing_count, timestamp "
+        "FROM search_history "
+        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
+        "ORDER BY id ASC",
+    ) as cursor:
+        rows = await cursor.fetchall()
+    db.row_factory = None
+    result = [
+        {
+            "id": row["id"],
+            "app": row["app"],
+            "queue_type": row["queue_type"],
+            "item_id": row["item_id"],
+            "season_number": row["season_number"],
+            "missing_count": row["missing_count"],
+            "timestamp": row["timestamp"],
+        }
+        for row in rows
+    ]
+    logger.debug("Found {count} trackable entries", count=len(result))
+    return result
+
+
+_ALLOWED_STAT_COLUMNS = frozenset({"movies_found", "movies_updated", "episodes_found", "episodes_updated"})
+
+
+async def update_outcome_and_stats(
+    db: aiosqlite.Connection,
+    history_id: int,
+    outcome: str,
+    detail: str,
+    *,
+    app: str,
+    queue_type: str,
+    stat_increments: dict[str, int] | None = None,
+) -> None:
+    """Atomically update a search entry's outcome and increment lifetime stats.
+
+    Performs both updates in a single transaction so that a crash between the
+    outcome write and the stats write cannot leave the database inconsistent.
+
+    Args:
+        db: Open aiosqlite connection.
+        history_id: Primary key of the search_history row to update.
+        outcome: New outcome value (e.g. "grabbed", "partial", "unresolved").
+        detail: Human-readable detail string.
+        app: Application name for lifetime_stats lookup.
+        queue_type: Queue type (unused in SQL, kept for caller convenience/logging).
+        stat_increments: Optional mapping of column name to increment value,
+            e.g. ``{"movies_found": 1}``.  Only columns in lifetime_stats are
+            allowed; a ``ValueError`` is raised for unknown column names.
+
+    Raises:
+        ValueError: If *stat_increments* contains a column name not in
+            ``{movies_found, movies_updated, episodes_found, episodes_updated}``.
+    """
+    if stat_increments:
+        unknown = set(stat_increments.keys()) - _ALLOWED_STAT_COLUMNS
+        if unknown:
+            msg = f"Unknown stat column(s): {', '.join(sorted(unknown))}"
+            raise ValueError(msg)
+
+    # 1. Update outcome
+    await db.execute(
+        "UPDATE search_history SET outcome = ?, detail = ? WHERE id = ?",
+        (outcome, detail, history_id),
+    )
+
+    # 2. Increment lifetime stats (if any)
+    if stat_increments:
+        set_parts = [f"{col} = {col} + ?" for col in stat_increments]
+        values = [*stat_increments.values(), app]
+        await db.execute(
+            f"UPDATE lifetime_stats SET {', '.join(set_parts)} WHERE app = ?",  # noqa: S608
+            values,
+        )
+
+    # 3. Single commit for the whole transaction
+    await db.commit()
+    logger.debug(
+        "Updated history_id={hid} outcome={out} stats={stats}",
+        hid=history_id,
+        out=outcome,
+        stats=stat_increments or {},
+    )
+
+
 async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -> int:
     """Migrate search_log entries from state.json into SQLite.
 
