@@ -9,13 +9,17 @@ from __future__ import annotations
 
 import aiosqlite
 
+import pytest
+
 from fetcharr.db import (
     get_recent_searches,
     get_schema_version,
     get_search_history,
+    get_trackable_entries,
     init_db,
     insert_search_entry,
     migrate_from_state,
+    update_outcome_and_stats,
 )
 
 
@@ -442,4 +446,192 @@ async def test_backfill_sets_unresolved(tmp_path):
     async with db.execute("SELECT outcome FROM search_history WHERE item_name = 'Old Movie'") as cursor:
         row = await cursor.fetchone()
     assert row[0] == "unresolved"
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Tracking query and outcome update tests (Phase 20)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_trackable_entries_returns_searched_and_partial(tmp_path):
+    """Only entries with outcome 'searched' or 'partial' and non-null item_id are returned."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    # Trackable: searched + item_id
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1)
+    # Trackable: partial + item_id
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="partial", item_id=2)
+    # Not trackable: grabbed
+    await insert_search_entry(db, "Radarr", "missing", "Movie C", outcome="grabbed", item_id=3)
+    # Not trackable: unresolved
+    await insert_search_entry(db, "Radarr", "missing", "Movie D", outcome="unresolved", item_id=4)
+    # Not trackable: failed
+    await insert_search_entry(db, "Radarr", "missing", "Movie E", outcome="failed", item_id=5)
+    # Not trackable: searched but item_id is None
+    await insert_search_entry(db, "Radarr", "missing", "Movie F", outcome="searched")
+
+    results = await get_trackable_entries(db)
+    assert len(results) == 2
+    names = {r["app"] + ":" + str(r["item_id"]) for r in results}
+    assert names == {"Radarr:1", "Sonarr:2"}
+    await db.close()
+
+
+async def test_get_trackable_entries_returns_correct_fields(tmp_path):
+    """Returned dicts have all expected keys with correct values."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Show X",
+        outcome="searched", item_id=42, season_number=3, missing_count=5,
+    )
+
+    results = await get_trackable_entries(db)
+    assert len(results) == 1
+    entry = results[0]
+    assert "id" in entry
+    assert entry["app"] == "Sonarr"
+    assert entry["queue_type"] == "missing"
+    assert entry["item_id"] == 42
+    assert entry["season_number"] == 3
+    assert entry["missing_count"] == 5
+    assert entry["timestamp"] is not None
+    await db.close()
+
+
+async def test_get_trackable_entries_empty_table(tmp_path):
+    """Returns empty list on fresh database with no search entries."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    results = await get_trackable_entries(db)
+    assert results == []
+    await db.close()
+
+
+async def test_get_trackable_entries_ordered_by_id(tmp_path):
+    """Returned entries are ordered by id ASC (oldest first)."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    await insert_search_entry(db, "Radarr", "missing", "Movie First", outcome="searched", item_id=10)
+    await insert_search_entry(db, "Radarr", "missing", "Movie Second", outcome="searched", item_id=20)
+    await insert_search_entry(db, "Radarr", "missing", "Movie Third", outcome="searched", item_id=30)
+
+    results = await get_trackable_entries(db)
+    assert len(results) == 3
+    assert results[0]["item_id"] == 10
+    assert results[1]["item_id"] == 20
+    assert results[2]["item_id"] == 30
+    await db.close()
+
+
+async def test_update_outcome_changes_search_history_row(tmp_path):
+    """update_outcome_and_stats changes the outcome and detail on the search_history row."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1)
+    entries = await get_trackable_entries(db)
+    hid = entries[0]["id"]
+
+    await update_outcome_and_stats(db, hid, "grabbed", "Found 1 grab", app="Radarr", queue_type="missing")
+
+    async with db.execute("SELECT outcome, detail FROM search_history WHERE id = ?", (hid,)) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "grabbed"
+    assert row[1] == "Found 1 grab"
+    await db.close()
+
+
+async def test_update_outcome_with_stat_increments(tmp_path):
+    """update_outcome_and_stats increments lifetime_stats atomically with outcome change."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1)
+    entries = await get_trackable_entries(db)
+    hid = entries[0]["id"]
+
+    await update_outcome_and_stats(
+        db, hid, "grabbed", "1 grab",
+        app="Radarr", queue_type="missing",
+        stat_increments={"movies_found": 1},
+    )
+
+    # Verify outcome updated
+    async with db.execute("SELECT outcome FROM search_history WHERE id = ?", (hid,)) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "grabbed"
+
+    # Verify stats incremented
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT movies_found FROM lifetime_stats WHERE app = 'Radarr'") as cursor:
+        stats_row = await cursor.fetchone()
+    db.row_factory = None
+    assert stats_row["movies_found"] == 1
+    await db.close()
+
+
+async def test_update_outcome_with_multiple_stat_increments(tmp_path):
+    """Multiple stat columns can be incremented in a single call."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="searched", item_id=1)
+    entries = await get_trackable_entries(db)
+    hid = entries[0]["id"]
+
+    await update_outcome_and_stats(
+        db, hid, "partial", "3 of 5 episodes grabbed",
+        app="Sonarr", queue_type="missing",
+        stat_increments={"episodes_found": 3},
+    )
+
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr'") as cursor:
+        stats_row = await cursor.fetchone()
+    db.row_factory = None
+    assert stats_row["episodes_found"] == 3
+    await db.close()
+
+
+async def test_update_outcome_no_stats(tmp_path):
+    """update_outcome_and_stats without stat_increments only changes outcome."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1)
+    entries = await get_trackable_entries(db)
+    hid = entries[0]["id"]
+
+    await update_outcome_and_stats(
+        db, hid, "unresolved", "No grabs found",
+        app="Radarr", queue_type="missing",
+    )
+
+    # Verify outcome changed
+    async with db.execute("SELECT outcome FROM search_history WHERE id = ?", (hid,)) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "unresolved"
+
+    # Verify stats unchanged (still 0)
+    db.row_factory = aiosqlite.Row
+    async with db.execute("SELECT movies_found, movies_updated FROM lifetime_stats WHERE app = 'Radarr'") as cursor:
+        stats_row = await cursor.fetchone()
+    db.row_factory = None
+    assert stats_row["movies_found"] == 0
+    assert stats_row["movies_updated"] == 0
+    await db.close()
+
+
+async def test_update_outcome_rejects_unknown_stat_column(tmp_path):
+    """update_outcome_and_stats raises ValueError for unknown stat column names."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1)
+    entries = await get_trackable_entries(db)
+    hid = entries[0]["id"]
+
+    with pytest.raises(ValueError, match="Unknown stat column"):
+        await update_outcome_and_stats(
+            db, hid, "grabbed", "test",
+            app="Radarr", queue_type="missing",
+            stat_increments={"bogus_col": 1},
+        )
     await db.close()
