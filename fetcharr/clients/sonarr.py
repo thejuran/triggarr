@@ -20,8 +20,8 @@ class SonarrClient(ArrClient):
     messages and season-level deduplication in the search engine.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0) -> None:
-        super().__init__(base_url, api_key, timeout)
+    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
+        super().__init__(base_url, api_key, timeout, page_size)
         self._app_name = "Sonarr"
 
     async def detect_api_version(self) -> str:

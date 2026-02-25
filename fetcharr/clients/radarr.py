@@ -16,8 +16,8 @@ class RadarrClient(ArrClient):
     endpoint paths for wanted/missing and wanted/cutoff movie lists.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0) -> None:
-        super().__init__(base_url, api_key, timeout)
+    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
+        super().__init__(base_url, api_key, timeout, page_size)
         self._app_name = "Radarr"
 
     async def get_wanted_missing(self) -> list[dict[str, Any]]:

@@ -301,3 +301,20 @@ async def test_validate_connection_timeout() -> None:
         assert result is False
     finally:
         await client.close()
+
+
+# ---------------------------------------------------------------------------
+# page_size configuration (Phase 17)
+# ---------------------------------------------------------------------------
+
+
+def test_client_default_page_size() -> None:
+    """ArrClient defaults to page_size=50."""
+    client = ArrClient(base_url="http://test:7878", api_key="key")
+    assert client._page_size == 50
+
+
+def test_client_accepts_page_size() -> None:
+    """ArrClient stores custom page_size."""
+    client = ArrClient(base_url="http://test:7878", api_key="key", page_size=100)
+    assert client._page_size == 100

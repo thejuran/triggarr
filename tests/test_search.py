@@ -14,6 +14,7 @@ import io
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
+import aiosqlite
 import httpx
 from loguru import logger
 
@@ -105,7 +106,9 @@ def test_deduplicate_to_seasons_removes_duplicates():
     result = deduplicate_to_seasons(episodes)
     assert len(result) == 2
     assert result[0]["seasonNumber"] == 2
+    assert result[0]["episode_count"] == 2  # Two episodes in season 2
     assert result[1]["seasonNumber"] == 3
+    assert result[1]["episode_count"] == 1  # One episode in season 3
 
 
 def test_deduplicate_to_seasons_preserves_order():
@@ -134,6 +137,7 @@ def test_deduplicate_to_seasons_missing_series_data():
     ]
     result = deduplicate_to_seasons(episodes)
     assert result[0]["display_name"] == "Series 42 - Season 1"
+    assert result[0]["episode_count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +201,8 @@ def _cycle_settings(missing_count: int = 2, cutoff_count: int = 2):
 
 async def test_run_radarr_cycle_happy_path(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
@@ -212,7 +217,7 @@ async def test_run_radarr_cycle_happy_path(tmp_path):
     state = _default_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
 
-    result = await run_radarr_cycle(client, state, settings, db_path)
+    result = await run_radarr_cycle(client, state, settings, db)
 
     # Both movies searched (batch_size=2 covers both)
     assert client.search_movies.call_count == 2
@@ -223,11 +228,13 @@ async def test_run_radarr_cycle_happy_path(tmp_path):
     assert result["radarr"]["connected"] is True
     # 2 items, batch 2, cursor wraps to 0
     assert result["radarr"]["missing_cursor"] == 0
+    await db.close()
 
 
 async def test_run_radarr_cycle_network_failure(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
@@ -238,17 +245,19 @@ async def test_run_radarr_cycle_network_failure(tmp_path):
     state["radarr"]["missing_cursor"] = 5
     settings = _cycle_settings()
 
-    result = await run_radarr_cycle(client, state, settings, db_path)
+    result = await run_radarr_cycle(client, state, settings, db)
 
     assert result["radarr"]["connected"] is False
     assert result["radarr"]["unreachable_since"] is not None
     # Cursor unchanged on abort
     assert result["radarr"]["missing_cursor"] == 5
+    await db.close()
 
 
 async def test_run_radarr_cycle_per_item_skip(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
@@ -266,25 +275,27 @@ async def test_run_radarr_cycle_per_item_skip(tmp_path):
     state = _default_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
 
-    await run_radarr_cycle(client, state, settings, db_path)
+    await run_radarr_cycle(client, state, settings, db)
 
     # Did not abort after first failure -- called twice
     assert client.search_movies.call_count == 2
     # Both searches logged to SQLite (failed + succeeded)
     from fetcharr.db import get_recent_searches
 
-    searches = await get_recent_searches(db_path)
+    searches = await get_recent_searches(db)
     assert len(searches) == 2
     # Newest first: Movie B (searched), Movie A (failed)
     assert searches[0]["name"] == "Movie B"
     assert searches[0]["outcome"] == "searched"
     assert searches[1]["name"] == "Movie A"
     assert searches[1]["outcome"] == "failed"
+    await db.close()
 
 
 async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     movies = [
         {"id": i, "title": f"Movie {i}", "monitored": True}
@@ -302,7 +313,7 @@ async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     state = _default_state()
     state["radarr"]["missing_cursor"] = 0
 
-    result = await run_radarr_cycle(client, state, settings, db_path)
+    result = await run_radarr_cycle(client, state, settings, db)
     assert result["radarr"]["missing_cursor"] == 2
 
     # --- Run 2: cursor 2 -> 4 ---
@@ -310,7 +321,7 @@ async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    result = await run_radarr_cycle(client, result, settings, db_path)
+    result = await run_radarr_cycle(client, result, settings, db)
     assert result["radarr"]["missing_cursor"] == 4
 
     # --- Run 3: cursor 4 -> wraps to 0 (only 1 item left, then wraps) ---
@@ -318,8 +329,9 @@ async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    result = await run_radarr_cycle(client, result, settings, db_path)
+    result = await run_radarr_cycle(client, result, settings, db)
     assert result["radarr"]["missing_cursor"] == 0
+    await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +358,8 @@ def _make_sonarr_episode(
 
 async def test_run_sonarr_cycle_happy_path(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     episodes = [
         _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
@@ -361,7 +374,7 @@ async def test_run_sonarr_cycle_happy_path(tmp_path):
     state = _default_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
 
-    result = await run_sonarr_cycle(client, state, settings, db_path)
+    result = await run_sonarr_cycle(client, state, settings, db)
 
     # Two unique seasons from same series searched
     assert client.search_season.call_count == 2
@@ -369,11 +382,13 @@ async def test_run_sonarr_cycle_happy_path(tmp_path):
     client.search_season.assert_any_call(10, 2)
     assert result["sonarr"]["connected"] is True
     assert result["sonarr"]["last_run"] is not None
+    await db.close()
 
 
 async def test_run_sonarr_cycle_network_failure(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
@@ -384,16 +399,18 @@ async def test_run_sonarr_cycle_network_failure(tmp_path):
     state["sonarr"]["missing_cursor"] = 3
     settings = _cycle_settings()
 
-    result = await run_sonarr_cycle(client, state, settings, db_path)
+    result = await run_sonarr_cycle(client, state, settings, db)
 
     assert result["sonarr"]["connected"] is False
     assert result["sonarr"]["unreachable_since"] is not None
     assert result["sonarr"]["missing_cursor"] == 3
+    await db.close()
 
 
 async def test_run_sonarr_cycle_per_item_skip(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     # Two episodes from different series -> 2 unique seasons after dedup
     episodes = [
@@ -412,24 +429,26 @@ async def test_run_sonarr_cycle_per_item_skip(tmp_path):
     state = _default_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
 
-    await run_sonarr_cycle(client, state, settings, db_path)
+    await run_sonarr_cycle(client, state, settings, db)
 
     assert client.search_season.call_count == 2
     # Both searches logged to SQLite (failed + succeeded)
     from fetcharr.db import get_recent_searches
 
-    searches = await get_recent_searches(db_path)
+    searches = await get_recent_searches(db)
     assert len(searches) == 2
     # Newest first: Show B (searched), Show A (failed)
     assert "Show B" in searches[0]["name"]
     assert searches[0]["outcome"] == "searched"
     assert "Show A" in searches[1]["name"]
     assert searches[1]["outcome"] == "failed"
+    await db.close()
 
 
 async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     # 4 episodes that deduplicate to 3 seasons
     episodes = [
@@ -450,7 +469,7 @@ async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
     state = _default_state()
     state["sonarr"]["missing_cursor"] = 0
 
-    result = await run_sonarr_cycle(client, state, settings, db_path)
+    result = await run_sonarr_cycle(client, state, settings, db)
     assert result["sonarr"]["missing_cursor"] == 2
 
     # --- Run 2: cursor 2 -> wraps to 0 (only 1 season left) ---
@@ -458,8 +477,9 @@ async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    result = await run_sonarr_cycle(client, result, settings, db_path)
+    result = await run_sonarr_cycle(client, result, settings, db)
     assert result["sonarr"]["missing_cursor"] == 0
+    await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +535,8 @@ def test_cap_batch_sizes_very_small_max():
 async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
     """Radarr cycle logs a summary with fetched/searched/skipped counts."""
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
@@ -539,7 +560,7 @@ async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_radarr_cycle(client, state, settings, db_path)
+        await run_radarr_cycle(client, state, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -548,12 +569,14 @@ async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
     assert "5 fetched" in output
     assert "5 searched" in output
     assert "0 skipped" in output
+    await db.close()
 
 
 async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
     """Sonarr cycle logs a summary with fetched/searched/skipped counts."""
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     episodes = [
         _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
@@ -572,7 +595,7 @@ async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_sonarr_cycle(client, state, settings, db_path)
+        await run_sonarr_cycle(client, state, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -582,12 +605,14 @@ async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
     assert "3 fetched" in output
     assert "searched" in output
     assert "skipped" in output
+    await db.close()
 
 
 async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
     """Radarr cycle diagnostic summary correctly counts skipped items."""
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
@@ -609,7 +634,7 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_radarr_cycle(client, state, settings, db_path)
+        await run_radarr_cycle(client, state, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -618,6 +643,7 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
     assert "3 fetched" in output
     assert "2 searched" in output
     assert "1 skipped" in output
+    await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -628,7 +654,8 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
 async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
     """Radarr cycle records failed searches in DB with outcome and detail."""
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
@@ -642,21 +669,23 @@ async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
     state = _default_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
 
-    await run_radarr_cycle(client, state, settings, db_path)
+    await run_radarr_cycle(client, state, settings, db)
 
     from fetcharr.db import get_recent_searches
 
-    searches = await get_recent_searches(db_path)
+    searches = await get_recent_searches(db)
     assert len(searches) == 1
     assert searches[0]["name"] == "Movie Fail"
     assert searches[0]["outcome"] == "failed"
     assert "API timeout" in searches[0]["detail"]
+    await db.close()
 
 
 async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     """Sonarr cycle records failed searches in DB with outcome and detail."""
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
 
     episodes = [
         _make_sonarr_episode(series_id=10, season_number=1, series_title="Show Fail", episode_id=100),
@@ -670,12 +699,13 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     state = _default_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
 
-    await run_sonarr_cycle(client, state, settings, db_path)
+    await run_sonarr_cycle(client, state, settings, db)
 
     from fetcharr.db import get_recent_searches
 
-    searches = await get_recent_searches(db_path)
+    searches = await get_recent_searches(db)
     assert len(searches) == 1
     assert "Show Fail" in searches[0]["name"]
     assert searches[0]["outcome"] == "failed"
     assert "Connection refused" in searches[0]["detail"]
+    await db.close()

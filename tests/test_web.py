@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiosqlite
 import pytest
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -27,11 +28,12 @@ async def test_app(tmp_path):
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)
 
-    # Initialize SQLite search history database for tests
+    # Initialize SQLite search history database with shared connection
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
-    await insert_search_entry(db_path, "Radarr", "missing", "Test Movie")
-    app.state.db_path = db_path
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    await insert_search_entry(db, "Radarr", "missing", "Test Movie")
+    app.state.db = db
 
     # Mock fetcharr state
     app.state.fetcharr_state = {
@@ -71,6 +73,12 @@ async def test_app(tmp_path):
     mock_settings.sonarr.search_missing_count = 5
     mock_settings.sonarr.search_cutoff_count = 5
     mock_settings.general.log_level = "info"
+    mock_settings.general.hard_max_per_cycle = 0
+    mock_settings.general.max_history_rows = 1000
+    mock_settings.general.request_timeout = 30.0
+    mock_settings.general.page_size = 50
+    mock_settings.general.tracking_window_minutes = 60
+    mock_settings.general.tracking_poll_seconds = 90
     app.state.settings = mock_settings
 
     # Mock scheduler
@@ -282,9 +290,9 @@ def test_dashboard_shows_position_x_of_y(client):
 async def test_search_log_shows_outcome_badge(test_app, tmp_path):
     """Search log partial shows outcome badge for entries (WEBU-11)."""
     # Insert a failed search entry
-    db_path = test_app.state.db_path
+    db = test_app.state.db
     await insert_search_entry(
-        db_path, "Radarr", "missing", "Failed Movie",
+        db, "Radarr", "missing", "Failed Movie",
         outcome="failed", detail="Connection refused",
     )
 
@@ -377,9 +385,9 @@ def test_history_results_partial_with_app_filter(client):
 
 async def test_history_results_partial_pagination(test_app):
     """GET /partials/history-results?page=2 shows pagination markup after inserting 60+ entries."""
-    db_path = test_app.state.db_path
+    db = test_app.state.db
     for i in range(60):
-        await insert_search_entry(db_path, "Radarr", "missing", f"Bulk Movie {i}")
+        await insert_search_entry(db, "Radarr", "missing", f"Bulk Movie {i}")
 
     with TestClient(test_app) as tc:
         response = tc.get("/partials/history-results?page=2")
@@ -391,9 +399,10 @@ async def test_history_results_partial_pagination(test_app):
 async def test_history_page_empty_state(test_app, tmp_path):
     """GET /history with empty DB shows 'No search history yet' message."""
     # Create a fresh empty DB at a different tmp_path
-    empty_db = tmp_path / "empty.db"
-    await init_db(empty_db)
-    test_app.state.db_path = empty_db
+    empty_db_path = tmp_path / "empty.db"
+    empty_db = await aiosqlite.connect(empty_db_path)
+    await init_db(empty_db, empty_db_path)
+    test_app.state.db = empty_db
 
     with TestClient(test_app) as tc:
         response = tc.get("/history")
