@@ -91,7 +91,7 @@ async def dashboard(request: Request) -> HTMLResponse:
         if ctx is not None:
             apps.append(ctx)
 
-    search_log = await get_recent_searches(request.app.state.db_path)
+    search_log = await get_recent_searches(request.app.state.db)
     log_entries = log_buffer.get_recent(30)
 
     return templates.TemplateResponse(
@@ -123,6 +123,11 @@ async def settings_page(request: Request) -> HTMLResponse:
             "apps": apps,
             "log_level": settings.general.log_level,
             "hard_max_per_cycle": settings.general.hard_max_per_cycle,
+            "max_history_rows": settings.general.max_history_rows,
+            "request_timeout": settings.general.request_timeout,
+            "page_size": settings.general.page_size,
+            "tracking_window_minutes": settings.general.tracking_window_minutes,
+            "tracking_poll_seconds": settings.general.tracking_poll_seconds,
         },
     )
 
@@ -130,7 +135,7 @@ async def settings_page(request: Request) -> HTMLResponse:
 @router.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request) -> HTMLResponse:
     """Render the search history page with full filtering and pagination."""
-    result = await get_search_history(request.app.state.db_path)
+    result = await get_search_history(request.app.state.db)
     return templates.TemplateResponse(
         request=request,
         name="history.html",
@@ -170,7 +175,7 @@ async def partial_history_results(request: Request) -> HTMLResponse:
     search_text = params.get("search", "")
 
     result = await get_search_history(
-        request.app.state.db_path,
+        request.app.state.db,
         page=page,
         app_filter=app_filter,
         queue_filter=queue_filter,
@@ -205,6 +210,12 @@ async def save_settings(request: Request) -> RedirectResponse:
         "general": {
             "log_level": safe_log_level(form.get("log_level")),
             "hard_max_per_cycle": safe_int(form.get("hard_max_per_cycle"), 0, 0, 1000),
+            # Preserve values not yet in settings UI (Phase 17 adds config, UI deferred)
+            "max_history_rows": current_settings.general.max_history_rows,
+            "request_timeout": current_settings.general.request_timeout,
+            "page_size": current_settings.general.page_size,
+            "tracking_window_minutes": current_settings.general.tracking_window_minutes,
+            "tracking_poll_seconds": current_settings.general.tracking_poll_seconds,
         },
     }
 
@@ -284,6 +295,8 @@ async def save_settings(request: Request) -> RedirectResponse:
                 new_client = ClientClass(
                     base_url=new_cfg.url,
                     api_key=new_cfg.api_key.get_secret_value(),
+                    timeout=new_settings.general.request_timeout,
+                    page_size=new_settings.general.page_size,
                 )
                 setattr(request.app.state, f"{name}_client", new_client)
 
@@ -330,7 +343,7 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
                 client,
                 request.app.state.fetcharr_state,
                 request.app.state.settings,
-                request.app.state.db_path,
+                request.app.state.db,
             )
             save_state(
                 request.app.state.fetcharr_state,
@@ -370,7 +383,7 @@ async def partial_app_card(request: Request, app_name: str) -> HTMLResponse:
 @router.get("/partials/search-log", response_class=HTMLResponse)
 async def partial_search_log(request: Request) -> HTMLResponse:
     """Return an HTML fragment for the search log (htmx partial)."""
-    search_log = await get_recent_searches(request.app.state.db_path)
+    search_log = await get_recent_searches(request.app.state.db)
 
     return templates.TemplateResponse(
         request=request,
