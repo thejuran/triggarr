@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 17 of 21 (Foundation & DB Preparation)
-Plan: 2 of 3 in current phase
-Status: Executing
-Last activity: 2026-02-24 -- Completed 17-02 (DB Migration System)
+Plan: 3 of 3 in current phase
+Status: Phase Complete
+Last activity: 2026-02-24 -- Completed 17-03 (Caller Wiring)
 
-Progress: [██████░░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 33 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 2)
+- Total plans completed: 34 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 3)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -28,6 +28,7 @@ Progress: [██████░░░░] 67%
 |-------|-------|-------|----------|
 | Phase 17 P01 | 1min | 2 tasks | 3 files |
 | Phase 17 P02 | 3min | 2 tasks | 2 files |
+| Phase 17 P03 | 9min | 3 tasks | 9 files |
 
 *Updated after each plan completion*
 
@@ -48,6 +49,9 @@ Recent decisions affecting current work:
 - [Phase 17-02]: Backup file uses Path.with_suffix() replacing .db extension
 - [Phase 17-02]: MIGRATIONS dict declared empty at top, reassigned after function definitions
 - [Phase 17-02]: Row factory set/reset around queries to avoid shared connection side effects
+- [Phase 17-03]: Lifespan sets WAL mode + synchronous=NORMAL on shared connection
+- [Phase 17-03]: Settings save preserves new config values from current_settings (form UI deferred)
+- [Phase 17-03]: RadarrClient/SonarrClient updated to pass through page_size parameter
 
 ### Pending Todos
 
@@ -62,5 +66,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 17-02-PLAN.md
+Stopped at: Completed 17-03-PLAN.md (Phase 17 complete)
 Resume file: None
