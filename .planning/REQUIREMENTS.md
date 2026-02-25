@@ -9,8 +9,8 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 
 ### Download Tracking
 
-- [ ] **TRACK-01**: System polls Radarr history endpoint after searches to detect grab events for searched items
-- [ ] **TRACK-02**: System polls Sonarr history endpoint after searches to detect grab events for searched items
+- [x] **TRACK-01**: System polls Radarr history endpoint after searches to detect grab events for searched items
+- [x] **TRACK-02**: System polls Sonarr history endpoint after searches to detect grab events for searched items
 - [ ] **TRACK-03**: System correlates grabs to fetcharr-triggered searches via timestamp + item ID window matching
 - [ ] **TRACK-04**: Search history entries update from "searched" to "grabbed" when all wanted items are resolved
 - [ ] **TRACK-05**: Search history entries update to "partial" when some but not all missing episodes are grabbed (Sonarr), or quality still below cutoff
@@ -68,8 +68,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TRACK-01 | Phase 19 | Pending |
-| TRACK-02 | Phase 19 | Pending |
+| TRACK-01 | Phase 19 | Complete |
+| TRACK-02 | Phase 19 | Complete |
 | TRACK-03 | Phase 19 | Pending |
 | TRACK-04 | Phase 20 | Pending |
 | TRACK-05 | Phase 20 | Pending |

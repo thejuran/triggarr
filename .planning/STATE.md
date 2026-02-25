@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Closed-Loop Tracking
-status: unknown
-last_updated: "2026-02-25T18:27:11.157Z"
+status: in-progress
+last_updated: "2026-02-25T18:46:55.356Z"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 6
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 15
+  completed_plans: 14
 ---
 
 # Project State
@@ -18,21 +18,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Phase 18 - Security & Operations
+**Current focus:** Phase 19 - Tracking Infrastructure
 
 ## Current Position
 
-Phase: 18 of 21 (Security & Operations)
-Plan: 2 of 2 in current phase
-Status: Phase Complete
-Last activity: 2026-02-25 -- Completed 18-02 (Graceful Shutdown & CSRF Integration)
+Phase: 19 of 21 (Tracking Infrastructure)
+Plan: 1 of 2 in current phase
+Status: In Progress
+Last activity: 2026-02-25 -- Completed 19-01 (Grab History Polling)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 36 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 5)
+- Total plans completed: 37 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 6)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -44,6 +44,7 @@ Progress: [██████████] 100%
 | Phase 17 P03 | 9min | 3 tasks | 9 files |
 | Phase 18 P01 | 2min | 3 tasks | 4 files |
 | Phase 18 P02 | 4min | 3 tasks | 3 files |
+| Phase 19 P01 | 2min | 2 tasks | 4 files |
 
 *Updated after each plan completion*
 
@@ -73,6 +74,8 @@ Recent decisions affecting current work:
 - [Phase 18-02]: Task 1 scheduler changes already committed in 18-01 -- no duplicate commit needed
 - [Phase 18-02]: Used builtin TimeoutError instead of asyncio.TimeoutError per ruff UP041
 - [Phase 18-02]: CSRF integration split into cross-origin rejected and same-origin passes tests
+- [Phase 19-01]: GrabEvent uses extra=ignore to safely handle extra fields from *arr API responses
+- [Phase 19-01]: eventType=1 integer enum passed in extra_params (serialized as string in URL)
 
 ### Pending Todos
 
@@ -87,5 +90,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 18-02-PLAN.md (Phase 18 complete)
+Stopped at: Completed 19-01-PLAN.md
 Resume file: None
