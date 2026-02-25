@@ -54,7 +54,7 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 17: Foundation & DB Preparation** - Schema migration, WAL mode, and config model additions required before tracking or tech debt work (completed 2026-02-25)
 - [x] **Phase 18: Security & Operations** - Rate limiting, CSRF hardening, health check, and graceful shutdown (completed 2026-02-25)
 - [x] **Phase 19: Tracking Infrastructure** - History polling clients and pure correlation functions for both apps (completed 2026-02-25)
-- [ ] **Phase 20: Tracking Integration** - Wire tracking into search cycles with outcome updates and lifetime stat increments
+- [x] **Phase 20: Tracking Integration** - Wire tracking into search cycles with outcome updates and lifetime stat increments (completed 2026-02-25)
 - [ ] **Phase 21: Dashboard & Stats** - Outcome badges, effectiveness rates, lifetime stats cards, and time-to-grab metric
 
 ## Phase Details
@@ -160,5 +160,5 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 21
 | 17. Foundation & DB Preparation | 3/3 | Complete    | 2026-02-25 | - |
 | 18. Security & Operations | 2/2 | Complete    | 2026-02-25 | - |
 | 19. Tracking Infrastructure | 2/2 | Complete    | 2026-02-25 | - |
-| 20. Tracking Integration | 2/3 | In Progress|  | - |
+| 20. Tracking Integration | 3/3 | Complete   | 2026-02-25 | - |
 | 21. Dashboard & Stats | v2.0 | 0/? | Not started | - |

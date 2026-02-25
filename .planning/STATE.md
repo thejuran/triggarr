@@ -8,7 +8,7 @@ progress:
   total_phases: 7
   completed_phases: 7
   total_plans: 15
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -23,16 +23,16 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 20 of 21 (Tracking Integration)
-Plan: 2 of 3 in current phase
-Status: In Progress
-Last activity: 2026-02-25 -- Completed 20-02 (Tracking Orchestrator)
+Plan: 3 of 3 in current phase
+Status: Phase Complete
+Last activity: 2026-02-25 -- Completed 20-03 (Scheduler Integration)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 40 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 9)
+- Total plans completed: 41 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 10)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -48,6 +48,7 @@ Progress: [██████████] 100%
 | Phase 19 P02 | 2min | 2 tasks | 2 files |
 | Phase 20 P01 | 2min | 2 tasks | 2 files |
 | Phase 20 P02 | 2min | 2 tasks | 3 files |
+| Phase 20 P03 | 2min | 2 tasks | 2 files |
 
 *Updated after each plan completion*
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 20-02]: Added outcome column to get_trackable_entries for Sonarr searched vs partial distinction
 - [Phase 20-02]: missing_count=None treated as 0 expected -- any grab resolves to grabbed
 - [Phase 20-02]: Partial entries only get stat increments at terminal state (window expiry or upgrade to grabbed)
+- [Phase 20-03]: Tracking runs inside search_lock to prevent concurrent DB writes
+- [Phase 20-03]: Tracking failure isolated with nested try/except -- does not affect state save
+- [Phase 20-03]: Tracking checks ALL pending entries per cycle, not just current app
 
 ### Pending Todos
 
@@ -101,5 +105,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 20-02-PLAN.md
+Stopped at: Completed 20-03-PLAN.md
 Resume file: None
