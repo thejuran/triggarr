@@ -8,7 +8,7 @@ progress:
   total_phases: 7
   completed_phases: 7
   total_plans: 15
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -23,16 +23,16 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 20 of 21 (Tracking Integration)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In Progress
-Last activity: 2026-02-25 -- Completed 20-01 (Tracking DB Queries)
+Last activity: 2026-02-25 -- Completed 20-02 (Tracking Orchestrator)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 39 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 8)
+- Total plans completed: 40 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 9)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -47,6 +47,7 @@ Progress: [██████████] 100%
 | Phase 19 P01 | 2min | 2 tasks | 4 files |
 | Phase 19 P02 | 2min | 2 tasks | 2 files |
 | Phase 20 P01 | 2min | 2 tasks | 2 files |
+| Phase 20 P02 | 2min | 2 tasks | 3 files |
 
 *Updated after each plan completion*
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 19-02]: Claimed-set prevents double-attribution when multiple search windows overlap
 - [Phase 20-01]: frozenset allowlist for stat column names prevents SQL injection in dynamic SET clause
 - [Phase 20-01]: Single db.commit() after both UPDATE statements ensures atomic outcome+stats update
+- [Phase 20-02]: Added outcome column to get_trackable_entries for Sonarr searched vs partial distinction
+- [Phase 20-02]: missing_count=None treated as 0 expected -- any grab resolves to grabbed
+- [Phase 20-02]: Partial entries only get stat increments at terminal state (window expiry or upgrade to grabbed)
 
 ### Pending Todos
 
@@ -97,5 +101,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 20-01-PLAN.md
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None
