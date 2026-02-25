@@ -85,10 +85,11 @@ Plans:
   2. Settings POST requests without valid Origin/Referer headers are rejected
   3. Container orchestrators can probe /health and receive 200 when both apps are reachable, or 503 when either is unreachable
   4. Stopping the container with SIGTERM cleanly closes the database connection, HTTP clients, and scheduler without data loss
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 18-01: TBD
+- [ ] 18-01-PLAN.md — Rate limiter on search-now + GET /health endpoint + Dockerfile HEALTHCHECK update (DEBT-01, DEBT-05)
+- [ ] 18-02-PLAN.md — Graceful shutdown lock-drain + CSRF /settings integration test (DEBT-02, DEBT-06)
 
 ### Phase 19: Tracking Infrastructure
 **Goal**: Isolated, testable components exist for polling grab history and classifying outcomes for both Radarr and Sonarr
