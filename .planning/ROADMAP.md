@@ -69,11 +69,12 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
   3. User can configure tracking window duration, request timeout, pageSize, and max history rows via settings
   4. Pruning logic preserves rows with pending tracking status (outcome = "searched") to prevent correlation data loss
   5. A lifetime_stats table exists in SQLite and persists across container restarts
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 17-01: TBD
-- [ ] 17-02: TBD
+- [ ] 17-01-PLAN.md — Config model additions (GeneralConfig fields + TOML template)
+- [ ] 17-02-PLAN.md — Schema migration system + db.py refactor (shared connection, new tables/columns, tracking-aware pruning)
+- [ ] 17-03-PLAN.md — Wire shared connection + configurable settings through all callers
 
 ### Phase 18: Security & Operations
 **Goal**: Production safety hardening is complete before the tracking feature ships
