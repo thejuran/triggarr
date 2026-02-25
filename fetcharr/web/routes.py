@@ -367,16 +367,23 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
     if client is None:
         return HTMLResponse("App not enabled", status_code=400)
 
-    # DEBT-01: Rate limit check — before acquiring search lock to fail fast
+    # Optimistic rate limit check BEFORE lock (fast-fail for obvious cases)
     now = time.monotonic()
     last = request.app.state.last_search_time.get(app_name, 0.0)
     if now - last < SEARCH_RATE_LIMIT_SECONDS:
         logger.info("{name}: Manual search rate-limited", name=app_name.title())
         return HTMLResponse("Rate limited — try again shortly", status_code=429)
-    request.app.state.last_search_time[app_name] = now
 
     cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle
     async with request.app.state.search_lock:
+        # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
+        now = time.monotonic()
+        last = request.app.state.last_search_time.get(app_name, 0.0)
+        if now - last < SEARCH_RATE_LIMIT_SECONDS:
+            logger.info("{name}: Manual search rate-limited (after lock)", name=app_name.title())
+            return HTMLResponse("Rate limited — try again shortly", status_code=429)
+        request.app.state.last_search_time[app_name] = now
+
         try:
             request.app.state.fetcharr_state = await cycle_fn(
                 client,

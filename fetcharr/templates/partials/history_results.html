@@ -16,7 +16,7 @@
             {# Currently inactive -- click adds it #}
             {% set new_apps = (active_apps + [app_val]) | join(',') %}
           {% endif %}
-          <a hx-get="/partials/history-results?page=1&app={{ new_apps }}&queue={{ active_queues | join(',') }}&outcome={{ active_outcomes | join(',') }}&search={{ search_text }}"
+          <a hx-get="/partials/history-results?page=1&app={{ new_apps | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -39,7 +39,7 @@
           {% else %}
             {% set new_queues = (active_queues + [q_val]) | join(',') %}
           {% endif %}
-          <a hx-get="/partials/history-results?page=1&app={{ active_apps | join(',') }}&queue={{ new_queues }}&outcome={{ active_outcomes | join(',') }}&search={{ search_text }}"
+          <a hx-get="/partials/history-results?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ new_queues | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -62,7 +62,7 @@
           {% else %}
             {% set new_outcomes = (active_outcomes + [o_val]) | join(',') %}
           {% endif %}
-          <a hx-get="/partials/history-results?page=1&app={{ active_apps | join(',') }}&queue={{ active_queues | join(',') }}&outcome={{ new_outcomes }}&search={{ search_text }}"
+          <a hx-get="/partials/history-results?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ new_outcomes | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -126,7 +126,7 @@
 
   {# --- Pagination --- #}
   {% if result.total_pages > 1 %}
-    {% set base_qs = "app=" ~ active_apps | join(',') ~ "&queue=" ~ active_queues | join(',') ~ "&outcome=" ~ active_outcomes | join(',') ~ "&search=" ~ search_text %}
+    {% set base_qs = "app=" ~ (active_apps | join(',') | urlencode) ~ "&queue=" ~ (active_queues | join(',') | urlencode) ~ "&outcome=" ~ (active_outcomes | join(',') | urlencode) ~ "&search=" ~ (search_text | urlencode) %}
     <div class="flex items-center justify-center gap-2 mt-4">
 
       {# Previous #}
