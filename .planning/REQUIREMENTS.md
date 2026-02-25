@@ -29,11 +29,11 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 ### Tech Debt
 
 - [x] **DEBT-01**: Rate limiting on search-now endpoint
-- [ ] **DEBT-02**: CSRF protection on settings POST verified/hardened
+- [x] **DEBT-02**: CSRF protection on settings POST verified/hardened
 - [x] **DEBT-03**: Configurable max rows for search history table (bounded growth)
 - [x] **DEBT-04**: Persistent SQLite connection with WAL mode (replaces connection-per-operation)
 - [x] **DEBT-05**: Health check endpoint for container orchestrators
-- [ ] **DEBT-06**: Graceful shutdown handler (close scheduler, clients, DB, flush logs)
+- [x] **DEBT-06**: Graceful shutdown handler (close scheduler, clients, DB, flush logs)
 - [x] **DEBT-07**: Configurable request timeout on outbound HTTP calls
 - [x] **DEBT-08**: Configurable pageSize for *arr API pagination
 
@@ -82,11 +82,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STATS-04 | Phase 21 | Pending |
 | STATS-05 | Phase 21 | Pending |
 | DEBT-01 | Phase 18 | Complete |
-| DEBT-02 | Phase 18 | Pending |
+| DEBT-02 | Phase 18 | Complete |
 | DEBT-03 | Phase 17 | Complete |
 | DEBT-04 | Phase 17 | Complete |
 | DEBT-05 | Phase 18 | Complete |
-| DEBT-06 | Phase 18 | Pending |
+| DEBT-06 | Phase 18 | Complete |
 | DEBT-07 | Phase 17 | Complete |
 | DEBT-08 | Phase 17 | Complete |
 
