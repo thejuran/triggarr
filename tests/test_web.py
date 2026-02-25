@@ -441,3 +441,89 @@ def test_history_results_hx_vals_no_single_quote_breakout(client):
     hx_vals_content = hx_vals_match.group(1)
     # Inside the hx-vals JSON, the payload must not break out as a raw attribute
     assert "onmouseover" not in hx_vals_content, "XSS payload should not appear in hx-vals JSON"
+
+
+# ---------------------------------------------------------------------------
+# DEBT-01: Rate limiter on search-now endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_search_now_rate_limited(client, test_app):
+    """Second POST /api/search-now/radarr within rate limit window returns 429."""
+    import time
+
+    test_app.state.last_search_time["radarr"] = time.monotonic()
+
+    response = client.post("/api/search-now/radarr")
+    assert response.status_code == 429, f"Expected 429 rate limit, got {response.status_code}"
+    assert "Rate limited" in response.text
+
+
+def test_search_now_not_rate_limited_after_window(client, test_app):
+    """POST /api/search-now/radarr after window expires is not rate-limited."""
+    import time
+
+    from fetcharr.web.routes import SEARCH_RATE_LIMIT_SECONDS
+
+    # Set last_search_time to well before the window
+    test_app.state.last_search_time["radarr"] = time.monotonic() - (SEARCH_RATE_LIMIT_SECONDS + 1)
+
+    with patch(
+        "fetcharr.web.routes.run_radarr_cycle",
+        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+    ), patch("fetcharr.web.routes.save_state"):
+        response = client.post("/api/search-now/radarr")
+    assert response.status_code == 200, f"Expected 200 after window expired, got {response.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# DEBT-05: /health endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_health_all_connected_returns_200(client, test_app):
+    """GET /health returns 200 when all enabled apps have connected=True."""
+    test_app.state.fetcharr_state = {
+        "radarr": {"connected": True},
+        "sonarr": {"connected": True},
+    }
+    response = client.get("/health")
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+    data = response.json()
+    assert data["status"] == "ok"
+
+
+def test_health_unreachable_app_returns_503(client, test_app):
+    """GET /health returns 503 when an enabled app has connected=False."""
+    test_app.state.fetcharr_state = {
+        "radarr": {"connected": False},
+        "sonarr": {"connected": True},
+    }
+    response = client.get("/health")
+    assert response.status_code == 503, f"Expected 503, got {response.status_code}"
+    data = response.json()
+    assert data["status"] == "unhealthy"
+    assert "radarr" in data["unreachable"]
+
+
+def test_health_not_yet_verified_returns_503(client, test_app):
+    """GET /health returns 503 when an enabled app has connected=None (never run)."""
+    test_app.state.fetcharr_state = {
+        "radarr": {"connected": True},
+        "sonarr": {"connected": None},
+    }
+    response = client.get("/health")
+    assert response.status_code == 503, f"Expected 503, got {response.status_code}"
+    data = response.json()
+    assert "sonarr" in data["unreachable"]
+
+
+def test_health_no_apps_enabled_returns_200(client, test_app):
+    """GET /health returns 200 when no apps are enabled (valid awaiting-setup state)."""
+    test_app.state.settings.radarr.enabled = False
+    test_app.state.settings.sonarr.enabled = False
+    test_app.state.fetcharr_state = {}
+    response = client.get("/health")
+    assert response.status_code == 200, f"Expected 200 for no-apps-configured, got {response.status_code}"
+    data = response.json()
+    assert data["status"] == "ok"
