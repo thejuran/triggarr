@@ -28,6 +28,12 @@ class GeneralConfig(BaseModel):
 
     log_level: str = "info"
     hard_max_per_cycle: int = 0  # 0 = unlimited; caps total items per app per cycle
+    # v2.0 additions
+    max_history_rows: int = 1000  # DEBT-03: max resolved rows kept in search_history
+    request_timeout: float = 30.0  # DEBT-07: outbound HTTP timeout in seconds
+    page_size: int = 50  # DEBT-08: *arr API pagination size
+    tracking_window_minutes: int = 60  # TRACK-07: how long to wait for grabs after search
+    tracking_poll_seconds: int = 90  # TRACK-07: interval between grab detection polls
 
 
 class Settings(BaseSettings):
