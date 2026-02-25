@@ -26,6 +26,7 @@ from fetcharr.db import init_db, migrate_from_state
 from fetcharr.models.config import Settings
 from fetcharr.search.engine import run_radarr_cycle, run_sonarr_cycle
 from fetcharr.state import FetcharrState, load_state, save_state
+from fetcharr.tracking import run_tracking_check
 
 
 def make_search_job(
@@ -61,6 +62,33 @@ def make_search_job(
                     app.state.db,
                 )
                 save_state(app.state.fetcharr_state, state_path)
+                # --- Tracking check: resolve pending search outcomes ---
+                try:
+                    tracking_result = await run_tracking_check(
+                        app.state.db,
+                        getattr(app.state, "radarr_client", None),
+                        getattr(app.state, "sonarr_client", None),
+                        app.state.settings.general.tracking_window_minutes,
+                    )
+                    resolved = (
+                        tracking_result["grabbed"]
+                        + tracking_result["partial"]
+                        + tracking_result["unresolved"]
+                    )
+                    if resolved > 0 or tracking_result["errors"] > 0:
+                        logger.info(
+                            "Tracking: {grabbed} grabbed, {partial} partial, "
+                            "{unresolved} unresolved, {errors} errors",
+                            grabbed=tracking_result["grabbed"],
+                            partial=tracking_result["partial"],
+                            unresolved=tracking_result["unresolved"],
+                            errors=tracking_result["errors"],
+                        )
+                except Exception as tracking_exc:
+                    logger.warning(
+                        "Tracking: check failed -- {exc}",
+                        exc=tracking_exc,
+                    )
             except Exception as exc:
                 logger.error(
                     "{app}: Unhandled error in search cycle -- {exc}",
