@@ -174,7 +174,7 @@ def create_lifespan(
             try:
                 await asyncio.wait_for(app.state.search_lock.acquire(), timeout=35.0)
                 app.state.search_lock.release()
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Shutdown: search cycle did not finish in 35s — forcing close")
 
             # 3. Close HTTP clients (app.state versions — may have been replaced by config editor)

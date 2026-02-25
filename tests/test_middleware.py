@@ -101,7 +101,8 @@ def _make_settings_app() -> FastAPI:
 
     from fastapi.staticfiles import StaticFiles
 
-    from fetcharr.web.routes import STATIC_DIR, router as fetcharr_router
+    from fetcharr.web.routes import STATIC_DIR
+    from fetcharr.web.routes import router as fetcharr_router
 
     app = FastAPI()
     app.add_middleware(OriginCheckMiddleware)
