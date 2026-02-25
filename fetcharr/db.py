@@ -351,7 +351,7 @@ async def get_trackable_entries(db: aiosqlite.Connection) -> list[dict]:
     """
     db.row_factory = aiosqlite.Row
     async with db.execute(
-        "SELECT id, app, queue_type, item_id, season_number, missing_count, timestamp "
+        "SELECT id, app, queue_type, item_id, season_number, missing_count, timestamp, outcome "
         "FROM search_history "
         "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
         "ORDER BY id ASC",
@@ -367,6 +367,7 @@ async def get_trackable_entries(db: aiosqlite.Connection) -> list[dict]:
             "season_number": row["season_number"],
             "missing_count": row["missing_count"],
             "timestamp": row["timestamp"],
+            "outcome": row["outcome"],
         }
         for row in rows
     ]
