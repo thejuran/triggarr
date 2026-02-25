@@ -423,7 +423,13 @@ async def test_pruning_preserves_pending_rows(tmp_path):
 
 
 async def test_backfill_sets_unresolved(tmp_path):
-    """Rows inserted before migration (NULL outcome) get backfilled to 'unresolved'."""
+    """Rows inserted before v1 migration get DEFAULT 'searched' for outcome.
+
+    With the corrected v1 migration (DEFAULT 'searched'), pre-existing rows
+    receive 'searched' when the column is added.  The v4 backfill only
+    catches rows with NULL outcome (truly pre-v1 rows that were inserted
+    by a version that predated the DEFAULT fix).
+    """
     db_path = tmp_path / "test.db"
     # Create a v0 database manually (no migrations, just base table)
     db = await aiosqlite.connect(db_path)
@@ -445,7 +451,8 @@ async def test_backfill_sets_unresolved(tmp_path):
     await init_db(db, db_path)
     async with db.execute("SELECT outcome FROM search_history WHERE item_name = 'Old Movie'") as cursor:
         row = await cursor.fetchone()
-    assert row[0] == "unresolved"
+    # v1 migration sets DEFAULT 'searched', so pre-existing rows get 'searched'
+    assert row[0] == "searched"
     await db.close()
 
 

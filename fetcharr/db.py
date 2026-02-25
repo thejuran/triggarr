@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import math
 import shutil
+import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,8 +58,9 @@ async def run_migrations(db: aiosqlite.Connection, db_path: Path) -> None:
         return
     # Backup before first migration (user decision: backup-before-migrate)
     backup_path = db_path.with_suffix(f".v{current}-backup")
-    shutil.copy2(db_path, backup_path)
-    logger.info("Database backed up to {path}", path=backup_path)
+    if db_path.exists():
+        shutil.copy2(db_path, backup_path)
+        logger.info("Database backed up to {path}", path=backup_path)
     for version in range(current + 1, target + 1):
         desc, fn = MIGRATIONS[version]
         logger.info("Migrating schema v{old} -> v{new}: {desc}", old=version - 1, new=version, desc=desc)
@@ -74,8 +76,8 @@ async def run_migrations(db: aiosqlite.Connection, db_path: Path) -> None:
 
 async def _migrate_v1(db: aiosqlite.Connection) -> None:
     """Add outcome and detail columns to search_history."""
-    for col, default in (("outcome", "NULL"), ("detail", "NULL")):
-        with contextlib.suppress(Exception):
+    for col, default in (("outcome", "'searched'"), ("detail", "NULL")):
+        with contextlib.suppress(sqlite3.OperationalError):
             await db.execute(f"ALTER TABLE search_history ADD COLUMN {col} TEXT DEFAULT {default}")
     await db.commit()
 
@@ -83,7 +85,7 @@ async def _migrate_v1(db: aiosqlite.Connection) -> None:
 async def _migrate_v2(db: aiosqlite.Connection) -> None:
     """Add item_id, season_number, missing_count columns for tracking correlation."""
     for col, col_type in (("item_id", "INTEGER"), ("season_number", "INTEGER"), ("missing_count", "INTEGER")):
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(sqlite3.OperationalError):
             await db.execute(f"ALTER TABLE search_history ADD COLUMN {col} {col_type} DEFAULT NULL")
     await db.commit()
 
@@ -222,13 +224,15 @@ async def get_recent_searches(db: aiosqlite.Connection, limit: int = 50) -> list
         Ordered newest-first (by id DESC).
     """
     db.row_factory = aiosqlite.Row
-    async with db.execute(
-        "SELECT timestamp, app, queue_type, item_name, outcome, detail "
-        "FROM search_history ORDER BY id DESC LIMIT ?",
-        (limit,),
-    ) as cursor:
-        rows = await cursor.fetchall()
-    db.row_factory = None
+    try:
+        async with db.execute(
+            "SELECT timestamp, app, queue_type, item_name, outcome, detail "
+            "FROM search_history ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    finally:
+        db.row_factory = None
     return [
         {
             "name": row["item_name"],
@@ -296,25 +300,25 @@ async def get_search_history(
     where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
     db.row_factory = aiosqlite.Row
+    try:
+        # Total count
+        async with db.execute(
+            f"SELECT COUNT(*) AS cnt FROM search_history{where_clause}",
+            params,
+        ) as cursor:
+            row = await cursor.fetchone()
+            total_count: int = row["cnt"]
 
-    # Total count
-    async with db.execute(
-        f"SELECT COUNT(*) AS cnt FROM search_history{where_clause}",
-        params,
-    ) as cursor:
-        row = await cursor.fetchone()
-        total_count: int = row["cnt"]
-
-    # Paginated results
-    offset = (page - 1) * per_page
-    async with db.execute(
-        f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail "
-        f"FROM search_history{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
-        [*params, per_page, offset],
-    ) as cursor:
-        rows = await cursor.fetchall()
-
-    db.row_factory = None
+        # Paginated results
+        offset = (page - 1) * per_page
+        async with db.execute(
+            f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail "
+            f"FROM search_history{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, per_page, offset],
+        ) as cursor:
+            rows = await cursor.fetchall()
+    finally:
+        db.row_factory = None
 
     entries = [
         {
@@ -350,14 +354,16 @@ async def get_trackable_entries(db: aiosqlite.Connection) -> list[dict]:
         id, app, queue_type, item_id, season_number, missing_count, timestamp.
     """
     db.row_factory = aiosqlite.Row
-    async with db.execute(
-        "SELECT id, app, queue_type, item_id, season_number, missing_count, timestamp, outcome "
-        "FROM search_history "
-        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
-        "ORDER BY id ASC",
-    ) as cursor:
-        rows = await cursor.fetchall()
-    db.row_factory = None
+    try:
+        async with db.execute(
+            "SELECT id, app, queue_type, item_id, season_number, missing_count, timestamp, outcome "
+            "FROM search_history "
+            "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
+            "ORDER BY id ASC",
+        ) as cursor:
+            rows = await cursor.fetchall()
+    finally:
+        db.row_factory = None
     result = [
         {
             "id": row["id"],
