@@ -459,6 +459,23 @@ def test_search_now_rate_limited(client, test_app):
     assert "Rate limited" in response.text
 
 
+def test_search_now_rate_limit_concurrent_protection(client, test_app):
+    """Two rapid POST /api/search-now/radarr calls: second returns 429 (DRSEC-03).
+
+    Validates that the re-check inside search_lock prevents concurrent bypass.
+    """
+    with patch(
+        "fetcharr.web.routes.run_radarr_cycle",
+        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+    ), patch("fetcharr.web.routes.save_state"):
+        resp1 = client.post("/api/search-now/radarr")
+        assert resp1.status_code == 200, f"First request should succeed, got {resp1.status_code}"
+
+        resp2 = client.post("/api/search-now/radarr")
+        assert resp2.status_code == 429, f"Second request within rate window should be 429, got {resp2.status_code}"
+        assert "Rate limited" in resp2.text
+
+
 def test_search_now_not_rate_limited_after_window(client, test_app):
     """POST /api/search-now/radarr after window expires is not rate-limited."""
     import time

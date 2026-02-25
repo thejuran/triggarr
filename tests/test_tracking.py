@@ -2,19 +2,21 @@
 
 Covers: Radarr grabbed/unresolved, Sonarr grabbed/partial/unresolved,
 partial->grabbed upgrade, window-expired terminal, error handling,
-empty DB, cutoff queue stat counters.
+empty DB, cutoff queue stat counters, exception sanitization (DRSEC-07).
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import httpx
+import pytest
 
 from fetcharr.db import init_db, insert_search_entry
 from fetcharr.models.arr import GrabEvent
+from fetcharr.search.engine import _sanitize_exc
 from fetcharr.tracking import run_tracking_check
 
 
@@ -340,3 +342,36 @@ async def test_cutoff_queue_uses_updated_counter(tmp_path):
     assert await _get_stat(db, "Radarr", "movies_found") == 0
     assert counts["grabbed"] == 1
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# DRSEC-07: Exception sanitization tests
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_exc_http_status_error():
+    """HTTPStatusError produces 'HTTP {status_code}' without leaking URL."""
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_request = MagicMock()
+    exc = httpx.HTTPStatusError("Not found", request=mock_request, response=mock_response)
+    result = _sanitize_exc(exc)
+    assert result == "HTTP 404"
+    assert "Not found" not in result  # raw message excluded
+
+
+def test_sanitize_exc_timeout():
+    """TimeoutException produces 'request timeout' without leaking URL."""
+    exc = httpx.ReadTimeout("Timed out reading http://internal:7878/api/v3/command")
+    result = _sanitize_exc(exc)
+    assert result == "request timeout"
+    assert "internal" not in result  # URL not leaked
+
+
+def test_sanitize_exc_generic():
+    """Unknown exception produces only the type name, not str(exc)."""
+    exc = RuntimeError("/var/lib/fetcharr/data/secret.db: permission denied")
+    result = _sanitize_exc(exc)
+    assert result == "RuntimeError"
+    assert "secret" not in result  # path not leaked
+    assert "permission" not in result

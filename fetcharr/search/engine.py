@@ -23,6 +23,23 @@ from fetcharr.models.config import Settings
 from fetcharr.state import FetcharrState
 
 
+def _sanitize_exc(exc: Exception) -> str:
+    """Return a safe, type-based summary of an exception for storage.
+
+    Avoids storing raw str(exc) which may contain internal paths, URLs,
+    or API keys that bypass the loguru redacting sink.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    if isinstance(exc, httpx.TimeoutException):
+        return "request timeout"
+    if isinstance(exc, httpx.HTTPError):
+        return f"HTTP error: {type(exc).__name__}"
+    if isinstance(exc, pydantic.ValidationError):
+        return f"validation error ({exc.error_count()} issues)"
+    return type(exc).__name__
+
+
 def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tuple[int, int]:
     """Cap total batch sizes to a hard maximum, splitting proportionally.
 
@@ -243,7 +260,7 @@ async def run_radarr_cycle(
             )
             await insert_search_entry(
                 db, "Radarr", "missing", movie.get("title", "unknown"),
-                outcome="failed", detail=str(exc)[:200],
+                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=movie.get("id"),
                 max_rows=settings.general.max_history_rows,
             )
@@ -277,7 +294,7 @@ async def run_radarr_cycle(
             )
             await insert_search_entry(
                 db, "Radarr", "cutoff", movie.get("title", "unknown"),
-                outcome="failed", detail=str(exc)[:200],
+                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=movie.get("id"),
                 max_rows=settings.general.max_history_rows,
             )
@@ -394,7 +411,7 @@ async def run_sonarr_cycle(
             )
             await insert_search_entry(
                 db, "Sonarr", "missing", season.get("display_name", "unknown"),
-                outcome="failed", detail=str(exc)[:200],
+                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
@@ -433,7 +450,7 @@ async def run_sonarr_cycle(
             )
             await insert_search_entry(
                 db, "Sonarr", "cutoff", season.get("display_name", "unknown"),
-                outcome="failed", detail=str(exc)[:200],
+                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),

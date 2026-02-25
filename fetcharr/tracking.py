@@ -165,7 +165,7 @@ def _radarr_outcome(
 ) -> tuple[str | None, str, dict[str, int] | None]:
     """Radarr outcome logic -- binary: grabbed or unresolved."""
     if grab_count > 0:
-        source = matched_grabs[0].sourceTitle if matched_grabs else "unknown"
+        source = (matched_grabs[0].sourceTitle or "unknown")[:200]
         detail = f"grabbed: {source}"
         stat_key = "movies_found" if queue_type == "missing" else "movies_updated"
         return "grabbed", detail, {stat_key: 1}
