@@ -18,6 +18,11 @@ DEFAULT_CONFIG = """\
 # Log level: debug, info, warning, error
 log_level = "info"
 # hard_max_per_cycle = 0   # 0 = unlimited; caps total items searched per app per cycle
+# max_history_rows = 1000   # Maximum resolved rows kept in search history (pending rows always preserved)
+# request_timeout = 30.0    # Seconds before outbound HTTP requests time out
+# page_size = 50            # Page size for Radarr/Sonarr API pagination
+# tracking_window_minutes = 60  # Minutes to wait for grabs after a search
+# tracking_poll_seconds = 90    # Seconds between grab detection polls
 
 [radarr]
 # Radarr connection settings

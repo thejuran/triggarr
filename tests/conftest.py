@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fetcharr.models.config import ArrConfig, Settings
+from fetcharr.models.config import ArrConfig, GeneralConfig, Settings
 from fetcharr.state import _default_state
 
 
@@ -16,6 +16,7 @@ def make_settings(
     search_missing_count: int = 5,
     search_cutoff_count: int = 5,
     search_interval: int = 30,
+    general: GeneralConfig | None = None,
 ) -> Settings:
     """Build a Settings instance with sensible test defaults.
 
@@ -23,6 +24,7 @@ def make_settings(
     with service-name URLs and dummy API keys.
     """
     return Settings(
+        general=general or GeneralConfig(),
         radarr=ArrConfig(
             url=radarr_url,
             api_key=radarr_api_key,
