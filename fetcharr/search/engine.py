@@ -251,7 +251,8 @@ async def run_radarr_cycle(
     state["radarr"]["missing_cursor"] = new_cursor
     if new_cursor == 0 and batch:
         state["radarr"]["missing_pass"] = state["radarr"].get("missing_pass", 1) + 1
-        logger.info("Radarr: Missing queue wrapped around — starting pass {pass_num}", pass_num=state["radarr"]["missing_pass"])
+        pass_num = state["radarr"]["missing_pass"]
+        logger.info("Radarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Cutoff queue ---
     cutoff = filter_monitored(cutoff)
@@ -284,7 +285,8 @@ async def run_radarr_cycle(
     state["radarr"]["cutoff_cursor"] = new_cursor
     if new_cursor == 0 and batch:
         state["radarr"]["cutoff_pass"] = state["radarr"].get("cutoff_pass", 1) + 1
-        logger.info("Radarr: Cutoff queue wrapped around — starting pass {pass_num}", pass_num=state["radarr"]["cutoff_pass"])
+        pass_num = state["radarr"]["cutoff_pass"]
+        logger.info("Radarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
@@ -402,7 +404,8 @@ async def run_sonarr_cycle(
     state["sonarr"]["missing_cursor"] = new_cursor
     if new_cursor == 0 and batch:
         state["sonarr"]["missing_pass"] = state["sonarr"].get("missing_pass", 1) + 1
-        logger.info("Sonarr: Missing queue wrapped around — starting pass {pass_num}", pass_num=state["sonarr"]["missing_pass"])
+        pass_num = state["sonarr"]["missing_pass"]
+        logger.info("Sonarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Cutoff queue ---
     cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
@@ -440,7 +443,8 @@ async def run_sonarr_cycle(
     state["sonarr"]["cutoff_cursor"] = new_cursor
     if new_cursor == 0 and batch:
         state["sonarr"]["cutoff_pass"] = state["sonarr"].get("cutoff_pass", 1) + 1
-        logger.info("Sonarr: Cutoff queue wrapped around — starting pass {pass_num}", pass_num=state["sonarr"]["cutoff_pass"])
+        pass_num = state["sonarr"]["cutoff_pass"]
+        logger.info("Sonarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
