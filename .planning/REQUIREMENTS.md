@@ -68,33 +68,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TRACK-01 | — | Pending |
-| TRACK-02 | — | Pending |
-| TRACK-03 | — | Pending |
-| TRACK-04 | — | Pending |
-| TRACK-05 | — | Pending |
-| TRACK-06 | — | Pending |
-| TRACK-07 | — | Pending |
-| TRACK-08 | — | Pending |
-| STATS-01 | — | Pending |
-| STATS-02 | — | Pending |
-| STATS-03 | — | Pending |
-| STATS-04 | — | Pending |
-| STATS-05 | — | Pending |
-| DEBT-01 | — | Pending |
-| DEBT-02 | — | Pending |
-| DEBT-03 | — | Pending |
-| DEBT-04 | — | Pending |
-| DEBT-05 | — | Pending |
-| DEBT-06 | — | Pending |
-| DEBT-07 | — | Pending |
-| DEBT-08 | — | Pending |
+| TRACK-01 | Phase 19 | Pending |
+| TRACK-02 | Phase 19 | Pending |
+| TRACK-03 | Phase 19 | Pending |
+| TRACK-04 | Phase 20 | Pending |
+| TRACK-05 | Phase 20 | Pending |
+| TRACK-06 | Phase 20 | Pending |
+| TRACK-07 | Phase 17 | Pending |
+| TRACK-08 | Phase 17 | Pending |
+| STATS-01 | Phase 21 | Pending |
+| STATS-02 | Phase 21 | Pending |
+| STATS-03 | Phase 21 | Pending |
+| STATS-04 | Phase 21 | Pending |
+| STATS-05 | Phase 21 | Pending |
+| DEBT-01 | Phase 18 | Pending |
+| DEBT-02 | Phase 18 | Pending |
+| DEBT-03 | Phase 17 | Pending |
+| DEBT-04 | Phase 17 | Pending |
+| DEBT-05 | Phase 18 | Pending |
+| DEBT-06 | Phase 18 | Pending |
+| DEBT-07 | Phase 17 | Pending |
+| DEBT-08 | Phase 17 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 21 total
-- Mapped to phases: 0
-- Unmapped: 21
+- Mapped to phases: 21
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-24*
-*Last updated: 2026-02-24 after initial definition*
+*Last updated: 2026-02-24 after roadmap creation*
