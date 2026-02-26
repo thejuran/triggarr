@@ -32,8 +32,8 @@ MIGRATIONS: dict[int, tuple[str, Callable]] = {}
 async def get_schema_version(db: aiosqlite.Connection) -> int:
     """Read current schema version from schema_version table."""
     await db.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL DEFAULT 0)")
-    cursor = await db.execute("SELECT version FROM schema_version")
-    row = await cursor.fetchone()
+    async with db.execute("SELECT version FROM schema_version") as cursor:
+        row = await cursor.fetchone()
     if row is None:
         await db.execute("INSERT INTO schema_version (version) VALUES (0)")
         await db.commit()
@@ -61,7 +61,9 @@ async def run_migrations(db: aiosqlite.Connection, db_path: Path) -> None:
     if db_path.exists():
         shutil.copy2(db_path, backup_path)
         logger.info("Database backed up to {path}", path=backup_path)
-    for version in range(current + 1, target + 1):
+    for version in sorted(MIGRATIONS.keys()):
+        if version <= current:
+            continue
         desc, fn = MIGRATIONS[version]
         logger.info("Migrating schema v{old} -> v{new}: {desc}", old=version - 1, new=version, desc=desc)
         await fn(db)

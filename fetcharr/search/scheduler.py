@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
+import httpx
+import pydantic
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
@@ -84,7 +86,7 @@ def make_search_job(
                             unresolved=tracking_result["unresolved"],
                             errors=tracking_result["errors"],
                         )
-                except Exception as tracking_exc:
+                except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as tracking_exc:
                     logger.warning(
                         "Tracking: check failed -- {exc}",
                         exc=tracking_exc,
