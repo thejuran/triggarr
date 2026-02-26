@@ -50,14 +50,14 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 
 ### Deep Review — Code Quality
 
-- [ ] **DRQUAL-01**: run_tracking_check and helpers have full type annotations (db, clients, matched_grabs)
-- [ ] **DRQUAL-02**: Pass counter default changed from 1 to 0 so first wrap-around logs "pass 1" not "pass 2"
+- [x] **DRQUAL-01**: run_tracking_check and helpers have full type annotations (db, clients, matched_grabs)
+- [x] **DRQUAL-02**: Pass counter default changed from 1 to 0 so first wrap-around logs "pass 1" not "pass 2"
 - [ ] **DRQUAL-03**: Tracking exception handler in scheduler uses specific types instead of bare except Exception
-- [ ] **DRQUAL-04**: Duplicate tracking log removed — single log point in scheduler or tracking, not both
-- [ ] **DRQUAL-05**: SearchRecord enforces timezone-aware datetime via __post_init__ validation
-- [ ] **DRQUAL-06**: `missing_count or 0` replaced with explicit None check to avoid conflating 0 and None
+- [x] **DRQUAL-04**: Duplicate tracking log removed — single log point in scheduler or tracking, not both
+- [x] **DRQUAL-05**: SearchRecord enforces timezone-aware datetime via __post_init__ validation
+- [x] **DRQUAL-06**: `missing_count or 0` replaced with explicit None check to avoid conflating 0 and None
 - [ ] **DRQUAL-07**: Migration loop uses sorted(MIGRATIONS.keys()) to prevent KeyError on version gaps
-- [ ] **DRQUAL-08**: _sonarr_outcome restructured to handle expected==0 at top, eliminating dead branch
+- [x] **DRQUAL-08**: _sonarr_outcome restructured to handle expected==0 at top, eliminating dead branch
 - [ ] **DRQUAL-09**: get_schema_version uses async with for cursor (consistent with rest of db.py)
 - [ ] **DRQUAL-10**: Ruff I001 import sort violation fixed in tests/test_db.py
 - [ ] **DRQUAL-11**: tracking_poll_seconds config renamed or removed (currently has no effect)
@@ -123,14 +123,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DRSEC-06 | Phase 20.1 | Complete |
 | DRSEC-07 | Phase 20.1 | Complete |
 | DRSEC-08 | Phase 20.1 | Complete |
-| DRQUAL-01 | Phase 20.2 | Pending |
-| DRQUAL-02 | Phase 20.2 | Pending |
+| DRQUAL-01 | Phase 20.2 | Complete |
+| DRQUAL-02 | Phase 20.2 | Complete |
 | DRQUAL-03 | Phase 20.2 | Pending |
-| DRQUAL-04 | Phase 20.2 | Pending |
-| DRQUAL-05 | Phase 20.2 | Pending |
-| DRQUAL-06 | Phase 20.2 | Pending |
+| DRQUAL-04 | Phase 20.2 | Complete |
+| DRQUAL-05 | Phase 20.2 | Complete |
+| DRQUAL-06 | Phase 20.2 | Complete |
 | DRQUAL-07 | Phase 20.2 | Pending |
-| DRQUAL-08 | Phase 20.2 | Pending |
+| DRQUAL-08 | Phase 20.2 | Complete |
 | DRQUAL-09 | Phase 20.2 | Pending |
 | DRQUAL-10 | Phase 20.2 | Pending |
 | DRQUAL-11 | Phase 20.2 | Pending |

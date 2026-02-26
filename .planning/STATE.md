@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Closed-Loop Tracking
-status: unknown
-last_updated: "2026-02-26T00:45:57.934Z"
+status: in-progress
+last_updated: "2026-02-26T01:08:49Z"
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 9
-  total_plans: 20
-  completed_plans: 20
+  total_plans: 22
+  completed_plans: 21
 ---
 
 # Project State
@@ -18,21 +18,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Phase 20.1 - Deep Review — Security & Safety
+**Current focus:** Phase 20.2 - Deep Review — Code Quality
 
 ## Current Position
 
-Phase: 20.1 of 21 (Deep Review — Security & Safety)
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-25 -- Completed 20.1-02 security fixes (XSS, rate limiter race, exception sanitization, sourceTitle truncation)
+Phase: 20.2 of 21 (Deep Review — Code Quality)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-25 -- Completed 20.2-01 type annotations, pass counter fix, None/0 fix, dead branch removal
 
-Progress: [██████████] 100%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 41 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 10)
+- Total plans completed: 42 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 11)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -51,6 +51,7 @@ Progress: [██████████] 100%
 | Phase 20 P03 | 2min | 2 tasks | 2 files |
 | Phase 20.1 P01 | 4min | 2 tasks | 2 files |
 | Phase 20.1 P02 | 1min | 2 tasks | 6 files |
+| Phase 20.2 P01 | 12min | 2 tasks | 7 files |
 
 *Updated after each plan completion*
 
@@ -97,6 +98,8 @@ Recent decisions affecting current work:
 - [Phase 20.1-02]: urlencode applied to ALL dynamic values in hx-get attributes for defense-in-depth
 - [Phase 20.1-02]: _sanitize_exc dispatches on exception type to avoid leaking internal details
 - [Phase 20.1-02]: Rate limiter uses optimistic pre-lock check plus authoritative re-check inside lock
+- [Phase 20.2-01]: 0-based pass counter: default=0, first wrap sets to 1, template shows badge at > 0
+- [Phase 20.2-01]: Restructured _sonarr_outcome: expected==0 handled at top as first branch, eliminating dead inner block
 
 ### Pending Todos
 
@@ -111,5 +114,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 20.1-01-PLAN.md (tests fixed and committed after prior partial execution)
+Stopped at: Completed 20.2-01-PLAN.md
 Resume file: None
