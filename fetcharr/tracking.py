@@ -8,18 +8,22 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import aiosqlite
 import httpx
 import pydantic
 from loguru import logger
 
+from fetcharr.clients.radarr import RadarrClient
+from fetcharr.clients.sonarr import SonarrClient
 from fetcharr.correlation import SearchRecord, correlate_grabs
 from fetcharr.db import get_trackable_entries, update_outcome_and_stats
+from fetcharr.models.arr import GrabEvent
 
 
 async def run_tracking_check(
-    db,
-    radarr_client,
-    sonarr_client,
+    db: aiosqlite.Connection,
+    radarr_client: RadarrClient | None,
+    sonarr_client: SonarrClient | None,
     tracking_window_minutes: int,
 ) -> dict[str, int]:
     """Poll *arr grab history and resolve pending search outcomes.
@@ -110,17 +114,12 @@ async def run_tracking_check(
             )
             counts[outcome] = counts.get(outcome, 0) + 1
 
-    logger.info(
-        "Tracking: {grabbed} grabbed, {partial} partial, {unresolved} unresolved, {errors} errors",
-        grabbed=counts["grabbed"],
-        partial=counts["partial"],
-        unresolved=counts["unresolved"],
-        errors=counts["errors"],
-    )
     return counts
 
 
-def _get_client(app: str, radarr_client, sonarr_client):
+def _get_client(
+    app: str, radarr_client: RadarrClient | None, sonarr_client: SonarrClient | None,
+) -> RadarrClient | SonarrClient | None:
     """Return the appropriate client for the given app name, or None."""
     if app == "Radarr":
         return radarr_client
@@ -141,7 +140,7 @@ def _determine_outcome(
     current_outcome: str,
     missing_count: int | None,
     grab_count: int,
-    matched_grabs: list,
+    matched_grabs: list[GrabEvent],
     window_expired: bool,
 ) -> tuple[str | None, str, dict[str, int] | None]:
     """Determine the new outcome for a single search entry.
@@ -160,7 +159,7 @@ def _determine_outcome(
 def _radarr_outcome(
     queue_type: str,
     grab_count: int,
-    matched_grabs: list,
+    matched_grabs: list[GrabEvent],
     window_expired: bool,
 ) -> tuple[str | None, str, dict[str, int] | None]:
     """Radarr outcome logic -- binary: grabbed or unresolved."""
@@ -182,27 +181,30 @@ def _sonarr_outcome(
     current_outcome: str,
     missing_count: int | None,
     grab_count: int,
-    matched_grabs: list,
+    matched_grabs: list[GrabEvent],
     window_expired: bool,
 ) -> tuple[str | None, str, dict[str, int] | None]:
     """Sonarr outcome logic -- three-state: grabbed, partial, or unresolved."""
-    # Treat None missing_count as 0 (any grab = grabbed).
-    expected = missing_count or 0
+    expected = missing_count if missing_count is not None else 0
 
     stat_key = "episodes_found" if queue_type == "missing" else "episodes_updated"
 
+    # missing_count was None -- any grab means fully resolved.
+    if expected == 0:
+        if grab_count > 0:
+            detail = f"grabbed: {grab_count} episodes"
+            return "grabbed", detail, {stat_key: grab_count}
+        if window_expired:
+            return "unresolved", "no grabs detected within tracking window", None
+        return None, "", None
+
     # All episodes resolved.
-    if expected > 0 and grab_count >= expected:
+    if grab_count >= expected:
         detail = f"grabbed: {grab_count}/{expected} episodes"
         return "grabbed", detail, {stat_key: grab_count}
 
     # Some but not all episodes grabbed.
-    if grab_count > 0 and (expected == 0 or grab_count < expected):
-        # If expected is 0, any grab means grabbed (missing_count was None).
-        if expected == 0:
-            detail = f"grabbed: {grab_count} episodes"
-            return "grabbed", detail, {stat_key: grab_count}
-
+    if grab_count > 0 and grab_count < expected:
         # Partial grabs exist.
         if window_expired:
             # Terminal state: partial at window expiry -> increment stats.

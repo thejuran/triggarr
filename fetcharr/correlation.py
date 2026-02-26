@@ -29,6 +29,11 @@ class SearchRecord:
     searched_at: datetime
     missing_count: int | None = None
 
+    def __post_init__(self) -> None:
+        if self.searched_at.tzinfo is None:
+            msg = "searched_at must be timezone-aware, got naive datetime"
+            raise ValueError(msg)
+
 
 @dataclass
 class CorrelationResult:
