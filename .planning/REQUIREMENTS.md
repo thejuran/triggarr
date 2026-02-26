@@ -39,12 +39,12 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 
 ### Deep Review — Security & Safety
 
-- [ ] **DRSEC-01**: row_factory mutation on shared DB connection uses try/finally or cursor-level scoping to prevent async race
+- [x] **DRSEC-01**: row_factory mutation on shared DB connection uses try/finally or cursor-level scoping to prevent async race
 - [x] **DRSEC-02**: Template URL attributes use urlencode filter to prevent reflected XSS via search_text
 - [x] **DRSEC-03**: Rate limiter re-checks timestamp inside search_lock to prevent check-then-act race
-- [ ] **DRSEC-04**: Migration backup guarded with path.exists() to prevent FileNotFoundError on fresh installs
-- [ ] **DRSEC-05**: Migration v1 DEFAULT changed from NULL to 'searched' so v4 backfill only catches truly pre-v1 rows
-- [ ] **DRSEC-06**: contextlib.suppress(Exception) narrowed to sqlite3.OperationalError in migration functions
+- [x] **DRSEC-04**: Migration backup guarded with path.exists() to prevent FileNotFoundError on fresh installs
+- [x] **DRSEC-05**: Migration v1 DEFAULT changed from NULL to 'searched' so v4 backfill only catches truly pre-v1 rows
+- [x] **DRSEC-06**: contextlib.suppress(Exception) narrowed to sqlite3.OperationalError in migration functions
 - [x] **DRSEC-07**: Exception details in search history sanitized (type-based summary instead of raw str(exc))
 - [x] **DRSEC-08**: sourceTitle in tracking detail field truncated to 200 chars (defense-in-depth)
 
@@ -115,12 +115,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEBT-06 | Phase 18 | Complete |
 | DEBT-07 | Phase 17 | Complete |
 | DEBT-08 | Phase 17 | Complete |
-| DRSEC-01 | Phase 20.1 | Pending |
+| DRSEC-01 | Phase 20.1 | Complete |
 | DRSEC-02 | Phase 20.1 | Complete |
 | DRSEC-03 | Phase 20.1 | Complete |
-| DRSEC-04 | Phase 20.1 | Pending |
-| DRSEC-05 | Phase 20.1 | Pending |
-| DRSEC-06 | Phase 20.1 | Pending |
+| DRSEC-04 | Phase 20.1 | Complete |
+| DRSEC-05 | Phase 20.1 | Complete |
+| DRSEC-06 | Phase 20.1 | Complete |
 | DRSEC-07 | Phase 20.1 | Complete |
 | DRSEC-08 | Phase 20.1 | Complete |
 | DRQUAL-01 | Phase 20.2 | Pending |
