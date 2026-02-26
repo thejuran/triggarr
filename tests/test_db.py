@@ -7,11 +7,13 @@ signatures.
 
 from __future__ import annotations
 
-import aiosqlite
+from pathlib import Path
 
+import aiosqlite
 import pytest
 
 from fetcharr.db import (
+    _migrate_v1,
     get_recent_searches,
     get_schema_version,
     get_search_history,
@@ -641,4 +643,106 @@ async def test_update_outcome_rejects_unknown_stat_column(tmp_path):
             app="Radarr", queue_type="missing",
             stat_increments={"bogus_col": 1},
         )
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Deep-review safety fixes (Phase 20.1)
+# ---------------------------------------------------------------------------
+
+
+async def test_row_factory_restored_after_successful_calls(tmp_path):
+    """row_factory is None after successful calls to all three row_factory-using functions."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    # Insert a trackable entry so all three functions have data to query
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1)
+
+    # get_recent_searches
+    await get_recent_searches(db)
+    assert db.row_factory is None, "row_factory not reset after get_recent_searches"
+
+    # get_search_history
+    await get_search_history(db)
+    assert db.row_factory is None, "row_factory not reset after get_search_history"
+
+    # get_trackable_entries
+    await get_trackable_entries(db)
+    assert db.row_factory is None, "row_factory not reset after get_trackable_entries"
+    await db.close()
+
+
+async def test_row_factory_restored_on_exception(tmp_path, monkeypatch):
+    """row_factory is reset to None even when query execution raises an exception."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    class _FailingContextManager:
+        """Mimics aiosqlite's execute() return: async context manager that raises on __aenter__."""
+
+        async def __aenter__(self):
+            raise aiosqlite.OperationalError("simulated query failure")
+
+        async def __aexit__(self, *args):
+            pass
+
+    def _failing_execute(*args, **kwargs):
+        return _FailingContextManager()
+
+    monkeypatch.setattr(db, "execute", _failing_execute)
+
+    with pytest.raises(aiosqlite.OperationalError, match="simulated query failure"):
+        await get_recent_searches(db)
+    assert db.row_factory is None, "row_factory not reset after exception in get_recent_searches"
+
+    with pytest.raises(aiosqlite.OperationalError, match="simulated query failure"):
+        await get_search_history(db)
+    assert db.row_factory is None, "row_factory not reset after exception in get_search_history"
+
+    with pytest.raises(aiosqlite.OperationalError, match="simulated query failure"):
+        await get_trackable_entries(db)
+    assert db.row_factory is None, "row_factory not reset after exception in get_trackable_entries"
+
+    await db.close()
+
+
+async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
+    """Fresh install: run_migrations skips backup when db_path.exists() is False."""
+    db_path = tmp_path / "fresh.db"
+
+    # Connect and initialise via init_db, but patch Path.exists on the
+    # db_path so that the backup guard in run_migrations sees it as missing.
+    # This simulates the edge case where the file does not yet exist on disk.
+    original_exists = Path.exists
+
+    def _patched_exists(self):
+        if self == db_path:
+            return False
+        return original_exists(self)
+
+    monkeypatch.setattr(Path, "exists", _patched_exists)
+
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    # Verify migrations ran to completion (no FileNotFoundError)
+    version = await get_schema_version(db)
+    assert version == 4
+
+    # Verify no backup file was created (guard skipped the copy)
+    backup = db_path.with_suffix(".v0-backup")
+    assert not backup.exists(), "No backup should be created when db_path.exists() is False"
+    await db.close()
+
+
+async def test_migration_suppresses_only_operational_error(tmp_path):
+    """Re-running _migrate_v1 is idempotent -- OperationalError is suppressed."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    # Columns already exist from init_db, so ALTER TABLE should raise
+    # sqlite3.OperationalError ("duplicate column") but it is suppressed
+    await _migrate_v1(db)  # should not raise
+
+    # Verify the table still works correctly
+    results = await get_recent_searches(db)
+    assert isinstance(results, list)
     await db.close()
