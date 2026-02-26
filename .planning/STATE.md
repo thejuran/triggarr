@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Phase 20 - Tracking Integration
+**Current focus:** Phase 20.1 - Deep Review — Security & Safety
 
 ## Current Position
 
-Phase: 20 of 21 (Tracking Integration)
-Plan: 3 of 3 in current phase
-Status: Phase Complete
-Last activity: 2026-02-25 -- Completed 20-03 (Scheduler Integration)
+Phase: 20.1 of 21 (Deep Review — Security & Safety)
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-25 -- Completed 20.1-02 security fixes (XSS, rate limiter race, exception sanitization, sourceTitle truncation)
 
 Progress: [██████████] 100%
 
@@ -49,6 +49,8 @@ Progress: [██████████] 100%
 | Phase 20 P01 | 2min | 2 tasks | 2 files |
 | Phase 20 P02 | 2min | 2 tasks | 3 files |
 | Phase 20 P03 | 2min | 2 tasks | 2 files |
+| Phase 20.1 P01 | 2min | 2 tasks | 2 files |
+| Phase 20.1 P02 | 1min | 2 tasks | 6 files |
 
 *Updated after each plan completion*
 
@@ -91,6 +93,9 @@ Recent decisions affecting current work:
 - [Phase 20-03]: Tracking runs inside search_lock to prevent concurrent DB writes
 - [Phase 20-03]: Tracking failure isolated with nested try/except -- does not affect state save
 - [Phase 20-03]: Tracking checks ALL pending entries per cycle, not just current app
+- [Phase 20.1-02]: urlencode applied to ALL dynamic values in hx-get attributes for defense-in-depth
+- [Phase 20.1-02]: _sanitize_exc dispatches on exception type to avoid leaking internal details
+- [Phase 20.1-02]: Rate limiter uses optimistic pre-lock check plus authoritative re-check inside lock
 
 ### Pending Todos
 
@@ -105,5 +110,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 20-03-PLAN.md
+Stopped at: Completed 20.1-02-PLAN.md
 Resume file: None

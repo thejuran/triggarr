@@ -9,7 +9,7 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v1.0 MVP -- Phases 1-8 (shipped 2026-02-24) -- [archive](milestones/v1.0-ROADMAP.md)
 - ✅ v1.1 Ship & Document -- Phases 9-12 (shipped 2026-02-24) -- [archive](milestones/v1.1-ROADMAP.md)
 - ✅ v1.2 Polish & Harden -- Phases 13-16 (shipped 2026-02-24) -- [archive](milestones/v1.2-ROADMAP.md)
-- 🚧 v2.0 Closed-Loop Tracking -- Phases 17-21 (in progress)
+- 🚧 v2.0 Closed-Loop Tracking -- Phases 17-21 (incl. 20.1, 20.2) (in progress)
 
 ## Phases
 
@@ -55,6 +55,8 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 18: Security & Operations** - Rate limiting, CSRF hardening, health check, and graceful shutdown (completed 2026-02-25)
 - [x] **Phase 19: Tracking Infrastructure** - History polling clients and pure correlation functions for both apps (completed 2026-02-25)
 - [x] **Phase 20: Tracking Integration** - Wire tracking into search cycles with outcome updates and lifetime stat increments (completed 2026-02-25)
+- [ ] **Phase 20.1: Deep Review — Security & Safety** - Fix async race conditions, XSS, migration correctness, and exception sanitization
+- [ ] **Phase 20.2: Deep Review — Code Quality** - Type annotations, off-by-one fixes, dead code cleanup, and config consistency
 - [ ] **Phase 21: Dashboard & Stats** - Outcome badges, effectiveness rates, lifetime stats cards, and time-to-grab metric
 
 ## Phase Details
@@ -118,6 +120,48 @@ Plans:
 Plans:
 - [ ] 20-01: TBD
 
+### Phase 20.1: Deep Review — Security & Safety
+**Goal**: All security vulnerabilities and data-correctness bugs identified by deep code review are resolved before shipping
+**Depends on**: Phase 20
+**Requirements**: DRSEC-01, DRSEC-02, DRSEC-03, DRSEC-04, DRSEC-05, DRSEC-06, DRSEC-07, DRSEC-08
+**Success Criteria** (what must be TRUE):
+  1. `db.row_factory` is never mutated on the shared connection without a `try/finally` guard (or is set on cursor instead)
+  2. All dynamic values in `hx-get` URL attributes use `| urlencode` filter
+  3. Rate limiter timestamp is written inside `search_lock`, preventing concurrent bypass
+  4. `run_migrations` handles a non-existent database file gracefully on fresh install
+  5. Migration v1 sets `DEFAULT 'searched'` so v4 backfill only catches truly pre-v1 rows
+  6. Migration functions suppress only `sqlite3.OperationalError`, not all exceptions
+  7. Exception details stored in `detail` field use sanitized type-based summaries, not raw `str(exc)`
+  8. `sourceTitle` from external APIs is truncated before storage in `detail` field
+**Plans**: 2 plans
+
+Plans:
+- [ ] 20.1-01-PLAN.md — DB safety fixes (row_factory, migration backup, suppress scope, v4 backfill, cursor cleanup)
+- [ ] 20.1-02-PLAN.md — Security fixes (XSS urlencode, rate limiter race, str(exc) sanitization, sourceTitle truncation)
+
+### Phase 20.2: Deep Review — Code Quality
+**Goal**: All code quality issues from deep review are resolved: type safety, correctness, and consistency
+**Depends on**: Phase 20.1
+**Requirements**: DRQUAL-01 through DRQUAL-12
+**Success Criteria** (what must be TRUE):
+  1. `run_tracking_check` and all helpers have full type annotations (`aiosqlite.Connection`, `RadarrClient | None`, `list[GrabEvent]`)
+  2. Pass counter starts at 0 so first wrap-around correctly logs "pass 1"
+  3. Tracking exception handler in scheduler catches specific types, not bare `except Exception`
+  4. Tracking summary logged from exactly one location per cycle (not duplicated)
+  5. `SearchRecord` rejects naive datetimes via `__post_init__` validation
+  6. `missing_count or 0` replaced with explicit `None` check
+  7. Migration loop tolerates version gaps via `sorted(MIGRATIONS.keys())`
+  8. `_sonarr_outcome` handles `expected == 0` case at top without dead branch
+  9. All cursors use `async with` consistently
+  10. Zero ruff violations across `fetcharr/` and `tests/`
+  11. `tracking_poll_seconds` config renamed or removed to match actual behavior
+  12. `at_least_one_search_count` model validator reinstated on `ArrConfig`
+**Plans**: 2 plans
+
+Plans:
+- [ ] 20.2-01-PLAN.md — Tracking & correlation cleanup (types, naive datetime guard, or-0, dead branch, duplicate log)
+- [ ] 20.2-02-PLAN.md — Engine, scheduler & config fixes (pass counter, except scope, tracking_poll_seconds, model validator, ruff, cursor)
+
 ### Phase 21: Dashboard & Stats
 **Goal**: Users can see at a glance how effective their search automation is, with per-item outcomes and aggregate lifetime stats
 **Depends on**: Phase 20
@@ -136,7 +180,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 17 > 18 > 19 > 20 > 21
+Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21
 (Phase 19 can execute in parallel with Phase 18 -- both depend only on Phase 17)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -161,4 +205,6 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 21
 | 18. Security & Operations | 2/2 | Complete    | 2026-02-25 | - |
 | 19. Tracking Infrastructure | 2/2 | Complete    | 2026-02-25 | - |
 | 20. Tracking Integration | 3/3 | Complete    | 2026-02-25 | - |
+| 20.1 Deep Review — Security & Safety | 1/2 | In Progress|  | - |
+| 20.2 Deep Review — Code Quality | v2.0 | 0/2 | Not started | - |
 | 21. Dashboard & Stats | v2.0 | 0/? | Not started | - |
