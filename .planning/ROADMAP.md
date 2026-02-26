@@ -56,7 +56,7 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 19: Tracking Infrastructure** - History polling clients and pure correlation functions for both apps (completed 2026-02-25)
 - [x] **Phase 20: Tracking Integration** - Wire tracking into search cycles with outcome updates and lifetime stat increments (completed 2026-02-25)
 - [x] **Phase 20.1: Deep Review — Security & Safety** - Fix async race conditions, XSS, migration correctness, and exception sanitization (completed 2026-02-26)
-- [ ] **Phase 20.2: Deep Review — Code Quality** - Type annotations, off-by-one fixes, dead code cleanup, and config consistency
+- [x] **Phase 20.2: Deep Review — Code Quality** - Type annotations, off-by-one fixes, dead code cleanup, and config consistency (completed 2026-02-26)
 - [ ] **Phase 21: Dashboard & Stats** - Outcome badges, effectiveness rates, lifetime stats cards, and time-to-grab metric
 
 ## Phase Details
@@ -206,5 +206,5 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21
 | 19. Tracking Infrastructure | 2/2 | Complete    | 2026-02-25 | - |
 | 20. Tracking Integration | 3/3 | Complete    | 2026-02-25 | - |
 | 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
-| 20.2 Deep Review — Code Quality | 1/2 | In Progress|  | - |
+| 20.2 Deep Review — Code Quality | 2/2 | Complete   | 2026-02-26 | - |
 | 21. Dashboard & Stats | v2.0 | 0/? | Not started | - |

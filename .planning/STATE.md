@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Closed-Loop Tracking
-status: in-progress
-last_updated: "2026-02-26T01:08:49Z"
+status: phase-complete
+last_updated: "2026-02-26T01:10:00Z"
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State
@@ -18,21 +18,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Phase 20.2 - Deep Review — Code Quality
+**Current focus:** Phase 20.2 - Deep Review — Code Quality (complete)
 
 ## Current Position
 
 Phase: 20.2 of 21 (Deep Review — Code Quality)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-25 -- Completed 20.2-01 type annotations, pass counter fix, None/0 fix, dead branch removal
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-25 -- Completed 20.2-02 scheduler/db/config fixes (exception scope, migration gaps, cursor, rename, validator)
 
-Progress: [█████████░] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 42 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 11)
+- Total plans completed: 43 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 12)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -52,6 +52,7 @@ Progress: [█████████░] 95%
 | Phase 20.1 P01 | 4min | 2 tasks | 2 files |
 | Phase 20.1 P02 | 1min | 2 tasks | 6 files |
 | Phase 20.2 P01 | 12min | 2 tasks | 7 files |
+| Phase 20.2 P02 | 13min | 2 tasks | 10 files |
 
 *Updated after each plan completion*
 
@@ -100,6 +101,8 @@ Recent decisions affecting current work:
 - [Phase 20.1-02]: Rate limiter uses optimistic pre-lock check plus authoritative re-check inside lock
 - [Phase 20.2-01]: 0-based pass counter: default=0, first wrap sets to 1, template shows badge at > 0
 - [Phase 20.2-01]: Restructured _sonarr_outcome: expected==0 handled at top as first branch, eliminating dead inner block
+- [Phase 20.2-02]: OSError included in tracking exception tuple for filesystem error coverage
+- [Phase 20.2-02]: model_validator raises ValueError wrapped in Pydantic ValidationError -- tests match accordingly
 
 ### Pending Todos
 
@@ -114,5 +117,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 20.2-01-PLAN.md
+Stopped at: Completed 20.2-02-PLAN.md (phase 20.2 complete)
 Resume file: None
