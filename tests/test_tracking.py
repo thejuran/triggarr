@@ -375,3 +375,39 @@ def test_sanitize_exc_generic():
     assert result == "RuntimeError"
     assert "secret" not in result  # path not leaked
     assert "permission" not in result
+
+
+# ---------------------------------------------------------------------------
+# DRQUAL-05: SearchRecord rejects naive datetimes
+# ---------------------------------------------------------------------------
+
+
+def test_search_record_rejects_naive_datetime():
+    """SearchRecord raises ValueError when searched_at lacks timezone info."""
+    from fetcharr.correlation import SearchRecord
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        SearchRecord(history_id=1, item_id=1, searched_at=datetime(2024, 1, 1, 12, 0))
+
+
+# ---------------------------------------------------------------------------
+# DRQUAL-06: missing_count=0 is not conflated with None
+# ---------------------------------------------------------------------------
+
+
+async def test_sonarr_missing_count_zero_vs_none(tmp_path):
+    """missing_count=0 is treated as 0 (not conflated with None)."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=30)
+    # Insert with explicit missing_count=0
+    row_id = await _insert_entry(
+        db, app="Sonarr", item_id=200, missing_count=0, timestamp=searched_at,
+    )
+    sonarr = AsyncMock()
+    grab_time = searched_at + timedelta(minutes=5)
+    sonarr.get_grab_history.return_value = [_grab(50, grab_time)]
+    counts = await run_tracking_check(db, None, sonarr, tracking_window_minutes=60)
+    # With expected=0, any grab means grabbed
+    assert await _get_outcome(db, row_id) == "grabbed"
+    assert counts["grabbed"] == 1
+    await db.close()

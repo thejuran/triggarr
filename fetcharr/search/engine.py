@@ -267,7 +267,7 @@ async def run_radarr_cycle(
             skipped_count += 1
     state["radarr"]["missing_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["radarr"]["missing_pass"] = state["radarr"].get("missing_pass", 1) + 1
+        state["radarr"]["missing_pass"] = state["radarr"].get("missing_pass", 0) + 1
         pass_num = state["radarr"]["missing_pass"]
         logger.info("Radarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
 
@@ -301,7 +301,7 @@ async def run_radarr_cycle(
             skipped_count += 1
     state["radarr"]["cutoff_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["radarr"]["cutoff_pass"] = state["radarr"].get("cutoff_pass", 1) + 1
+        state["radarr"]["cutoff_pass"] = state["radarr"].get("cutoff_pass", 0) + 1
         pass_num = state["radarr"]["cutoff_pass"]
         logger.info("Radarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
 
@@ -420,7 +420,7 @@ async def run_sonarr_cycle(
             skipped_count += 1
     state["sonarr"]["missing_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["sonarr"]["missing_pass"] = state["sonarr"].get("missing_pass", 1) + 1
+        state["sonarr"]["missing_pass"] = state["sonarr"].get("missing_pass", 0) + 1
         pass_num = state["sonarr"]["missing_pass"]
         logger.info("Sonarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
 
@@ -459,7 +459,7 @@ async def run_sonarr_cycle(
             skipped_count += 1
     state["sonarr"]["cutoff_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["sonarr"]["cutoff_pass"] = state["sonarr"].get("cutoff_pass", 1) + 1
+        state["sonarr"]["cutoff_pass"] = state["sonarr"].get("cutoff_pass", 0) + 1
         pass_num = state["sonarr"]["cutoff_pass"]
         logger.info("Sonarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
 

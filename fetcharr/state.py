@@ -24,8 +24,8 @@ class AppState(TypedDict, total=False):
 
     missing_cursor: int
     cutoff_cursor: int
-    missing_pass: int  # How many times missing queue has wrapped around (1-based)
-    cutoff_pass: int  # How many times cutoff queue has wrapped around (1-based)
+    missing_pass: int  # How many times missing queue has wrapped around (0-based, first wrap sets to 1)
+    cutoff_pass: int  # How many times cutoff queue has wrapped around (0-based, first wrap sets to 1)
     last_run: str | None  # ISO timestamp
     connected: bool | None  # True after successful fetch, False after failure
     unreachable_since: str | None  # ISO timestamp of first failure, None when healthy
