@@ -159,8 +159,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 20.2-01-PLAN.md — Tracking & correlation cleanup (types, naive datetime guard, or-0, dead branch, duplicate log)
-- [ ] 20.2-02-PLAN.md — Engine, scheduler & config fixes (pass counter, except scope, tracking_poll_seconds, model validator, ruff, cursor)
+- [ ] 20.2-01-PLAN.md — Tracking, correlation & engine cleanup (types, pass counter, naive datetime guard, or-0, dead branch, duplicate log)
+- [ ] 20.2-02-PLAN.md — Scheduler, DB & config fixes (except scope, migration gaps, cursor consistency, tracking_poll_seconds rename, model validator, ruff)
 
 ### Phase 21: Dashboard & Stats
 **Goal**: Users can see at a glance how effective their search automation is, with per-item outcomes and aggregate lifetime stats
