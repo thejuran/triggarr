@@ -205,6 +205,6 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21
 | 18. Security & Operations | 2/2 | Complete    | 2026-02-25 | - |
 | 19. Tracking Infrastructure | 2/2 | Complete    | 2026-02-25 | - |
 | 20. Tracking Integration | 3/3 | Complete    | 2026-02-25 | - |
-| 20.1 Deep Review — Security & Safety | 2/2 | Complete   | 2026-02-26 | - |
+| 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
 | 20.2 Deep Review — Code Quality | v2.0 | 0/2 | Not started | - |
 | 21. Dashboard & Stats | v2.0 | 0/? | Not started | - |
