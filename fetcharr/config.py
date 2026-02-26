@@ -22,7 +22,7 @@ log_level = "info"
 # request_timeout = 30.0    # Seconds before outbound HTTP requests time out
 # page_size = 50            # Page size for Radarr/Sonarr API pagination
 # tracking_window_minutes = 60  # Minutes to wait for grabs after a search
-# tracking_poll_seconds = 90    # Seconds between grab detection polls
+# tracking_delay_seconds = 90   # Delay before tracking check
 
 [radarr]
 # Radarr connection settings

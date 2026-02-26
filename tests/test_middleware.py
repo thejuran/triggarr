@@ -129,7 +129,7 @@ def _make_settings_app() -> FastAPI:
     mock_settings.general.request_timeout = 30.0
     mock_settings.general.page_size = 50
     mock_settings.general.tracking_window_minutes = 60
-    mock_settings.general.tracking_poll_seconds = 90
+    mock_settings.general.tracking_delay_seconds = 90
     app.state.settings = mock_settings
     app.state.scheduler = MagicMock()
     app.state.search_lock = asyncio.Lock()

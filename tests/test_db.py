@@ -734,6 +734,30 @@ async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
     await db.close()
 
 
+async def test_migration_loop_tolerates_gaps(tmp_path):
+    """Migration loop skips missing version numbers without KeyError."""
+    from fetcharr.db import MIGRATIONS, run_migrations
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS search_history "
+        "(id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, "
+        "app TEXT NOT NULL, queue_type TEXT NOT NULL, "
+        "item_name TEXT NOT NULL)"
+    )
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS schema_version "
+        "(version INTEGER NOT NULL DEFAULT 0)"
+    )
+    await db.execute("INSERT INTO schema_version (version) VALUES (0)")
+    await db.commit()
+    await run_migrations(db, db_path)
+    version = await get_schema_version(db)
+    assert version == max(MIGRATIONS.keys())
+    await db.close()
+
+
 async def test_migration_suppresses_only_operational_error(tmp_path):
     """Re-running _migrate_v1 is idempotent -- OperationalError is suppressed."""
     db, db_path = await _init_test_db(tmp_path)

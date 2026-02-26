@@ -158,7 +158,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "request_timeout": settings.general.request_timeout,
             "page_size": settings.general.page_size,
             "tracking_window_minutes": settings.general.tracking_window_minutes,
-            "tracking_poll_seconds": settings.general.tracking_poll_seconds,
+            "tracking_delay_seconds": settings.general.tracking_delay_seconds,
         },
     )
 
@@ -246,7 +246,7 @@ async def save_settings(request: Request) -> RedirectResponse:
             "request_timeout": current_settings.general.request_timeout,
             "page_size": current_settings.general.page_size,
             "tracking_window_minutes": current_settings.general.tracking_window_minutes,
-            "tracking_poll_seconds": current_settings.general.tracking_poll_seconds,
+            "tracking_delay_seconds": current_settings.general.tracking_delay_seconds,
         },
     }
 

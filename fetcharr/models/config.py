@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 CONFIG_PATH = Path("/config/fetcharr.toml")
@@ -22,6 +22,14 @@ class ArrConfig(BaseModel):
     search_missing_count: int = 5  # Missing items to search per cycle
     search_cutoff_count: int = 5  # Cutoff items to search per cycle
 
+    @model_validator(mode="after")
+    def at_least_one_search_count(self) -> ArrConfig:
+        """Ensure at least one search count is positive when app is enabled."""
+        if self.enabled and self.search_missing_count <= 0 and self.search_cutoff_count <= 0:
+            msg = "At least one of search_missing_count or search_cutoff_count must be > 0 when enabled"
+            raise ValueError(msg)
+        return self
+
 
 class GeneralConfig(BaseModel):
     """Global application settings."""
@@ -33,7 +41,7 @@ class GeneralConfig(BaseModel):
     request_timeout: float = 30.0  # DEBT-07: outbound HTTP timeout in seconds
     page_size: int = 50  # DEBT-08: *arr API pagination size
     tracking_window_minutes: int = 60  # TRACK-07: how long to wait for grabs after search
-    tracking_poll_seconds: int = 90  # TRACK-07: interval between grab detection polls
+    tracking_delay_seconds: int = 90  # Delay before tracking check (unused)
 
 
 class Settings(BaseSettings):
