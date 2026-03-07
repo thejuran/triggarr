@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Closed-Loop Tracking
-status: completed
-stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-03-07T02:40:54.551Z"
-last_activity: 2026-03-06 -- Completed 21-02 dashboard stats UI (outcome badges, filter pills, settings form)
+status: in-progress
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-03-07T03:00:47Z"
+last_activity: 2026-03-07 -- Completed 22-01 rename Python package to triggarr
 progress:
   total_phases: 8
   completed_phases: 5
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-24)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
-**Current focus:** Phase 20.2 - Deep Review — Code Quality (complete)
+**Current focus:** Phase 22 - Rename to Triggarr
 
 ## Current Position
 
-Phase: 21 of 21 (Dashboard & Stats)
-Plan: 2 of 2 in current phase
-Status: Plan 21-02 complete
-Last activity: 2026-03-06 -- Completed 21-02 dashboard stats UI (outcome badges, filter pills, settings form)
+Phase: 22 of 22 (Rename to Triggarr)
+Plan: 1 of 2 in current phase
+Status: Plan 22-01 complete
+Last activity: 2026-03-07 -- Completed 22-01 rename Python package to triggarr
 
-Progress: [██████████] 100%
+Progress: [█████████░] 50%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [██████████] 100%
 | Phase 20.2 P02 | 13min | 2 tasks | 10 files |
 | Phase 21 P01 | 7min | 2 tasks | 6 files |
 | Phase 21 P02 | 11min | 2 tasks | 5 files |
+| Phase 22 P01 | 9min | 2 tasks | 55 files |
 
 *Updated after each plan completion*
 
@@ -111,6 +112,8 @@ Recent decisions affecting current work:
 - [Phase 21-01]: SUM(CASE WHEN) for SQLite FILTER clause compatibility; resolved_at in update_outcome_and_stats
 - [Phase 21-02]: request_timeout uses safe_int (int) -- Pydantic coerces to float for GeneralConfig
 - [Phase 21-02]: tracking_delay_seconds remains preserved (not user-editable) per CONTEXT.md
+- [Phase 22-01]: FetcharrState class name, fetcharr_state attribute, fetcharr.toml, fetcharr.db kept as-is (deferred to Plan 02)
+- [Phase 22-01]: 2 pre-existing test failures in test_search.py (_sanitize_exc returns type name not message)
 
 ### Pending Todos
 
@@ -124,6 +127,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T02:35:43Z
-Stopped at: Completed 21-02-PLAN.md
-Resume file: .planning/phases/21-dashboard-stats/21-02-SUMMARY.md
+Last session: 2026-03-07T03:00:47Z
+Stopped at: Completed 22-01-PLAN.md
+Resume file: .planning/phases/22-rename-to-triggarr/22-01-SUMMARY.md

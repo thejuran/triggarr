@@ -227,4 +227,4 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21 > 22
 | 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
 | 20.2 Deep Review — Code Quality | 2/2 | Complete    | 2026-02-26 | - |
 | 21. Dashboard & Stats | 2/2 | Complete    | 2026-03-07 | - |
-| 22. Rename to Triggarr | v2.0 | 0/2 | Not started | - |
+| 22. Rename to Triggarr | v2.0 | 1/2 | In progress | - |
