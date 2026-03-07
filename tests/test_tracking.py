@@ -370,7 +370,7 @@ def test_sanitize_exc_timeout():
 
 def test_sanitize_exc_generic():
     """Unknown exception produces only the type name, not str(exc)."""
-    exc = RuntimeError("/var/lib/fetcharr/data/secret.db: permission denied")
+    exc = RuntimeError("/var/lib/triggarr/data/secret.db: permission denied")
     result = _sanitize_exc(exc)
     assert result == "RuntimeError"
     assert "secret" not in result  # path not leaked

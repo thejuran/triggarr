@@ -35,8 +35,8 @@ async def test_app(tmp_path):
     await insert_search_entry(db, "Radarr", "missing", "Test Movie")
     app.state.db = db
 
-    # Mock fetcharr state
-    app.state.fetcharr_state = {
+    # Mock triggarr state
+    app.state.triggarr_state = {
         "radarr": {
             "missing_cursor": 3,
             "cutoff_cursor": 1,
@@ -266,7 +266,7 @@ def test_search_now_happy_path(client, test_app):
     """POST /api/search-now/radarr triggers cycle and returns 200 with updated card."""
     with patch(
         "triggarr.web.routes.run_radarr_cycle",
-        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch(
         "triggarr.web.routes.save_state",
     ):
@@ -466,7 +466,7 @@ def test_search_now_rate_limit_concurrent_protection(client, test_app):
     """
     with patch(
         "triggarr.web.routes.run_radarr_cycle",
-        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch("triggarr.web.routes.save_state"):
         resp1 = client.post("/api/search-now/radarr")
         assert resp1.status_code == 200, f"First request should succeed, got {resp1.status_code}"
@@ -487,7 +487,7 @@ def test_search_now_not_rate_limited_after_window(client, test_app):
 
     with patch(
         "triggarr.web.routes.run_radarr_cycle",
-        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch("triggarr.web.routes.save_state"):
         response = client.post("/api/search-now/radarr")
     assert response.status_code == 200, f"Expected 200 after window expired, got {response.status_code}"
@@ -500,7 +500,7 @@ def test_search_now_not_rate_limited_after_window(client, test_app):
 
 def test_health_all_connected_returns_200(client, test_app):
     """GET /health returns 200 when all enabled apps have connected=True."""
-    test_app.state.fetcharr_state = {
+    test_app.state.triggarr_state = {
         "radarr": {"connected": True},
         "sonarr": {"connected": True},
     }
@@ -512,7 +512,7 @@ def test_health_all_connected_returns_200(client, test_app):
 
 def test_health_unreachable_app_returns_503(client, test_app):
     """GET /health returns 503 when an enabled app has connected=False."""
-    test_app.state.fetcharr_state = {
+    test_app.state.triggarr_state = {
         "radarr": {"connected": False},
         "sonarr": {"connected": True},
     }
@@ -525,7 +525,7 @@ def test_health_unreachable_app_returns_503(client, test_app):
 
 def test_health_not_yet_verified_returns_503(client, test_app):
     """GET /health returns 503 when an enabled app has connected=None (never run)."""
-    test_app.state.fetcharr_state = {
+    test_app.state.triggarr_state = {
         "radarr": {"connected": True},
         "sonarr": {"connected": None},
     }
@@ -539,7 +539,7 @@ def test_health_no_apps_enabled_returns_200(client, test_app):
     """GET /health returns 200 when no apps are enabled (valid awaiting-setup state)."""
     test_app.state.settings.radarr.enabled = False
     test_app.state.settings.sonarr.enabled = False
-    test_app.state.fetcharr_state = {}
+    test_app.state.triggarr_state = {}
     response = client.get("/health")
     assert response.status_code == 200, f"Expected 200 for no-apps-configured, got {response.status_code}"
     data = response.json()

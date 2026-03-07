@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, SecretStr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
-CONFIG_PATH = Path("/config/fetcharr.toml")
+CONFIG_PATH = Path("/config/triggarr.toml")
 
 
 class ArrConfig(BaseModel):

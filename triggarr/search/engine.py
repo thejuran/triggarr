@@ -20,7 +20,7 @@ from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import insert_search_entry
 from triggarr.models.config import Settings
-from triggarr.state import FetcharrState
+from triggarr.state import TriggarrState
 
 
 def _sanitize_exc(exc: Exception) -> str:
@@ -175,10 +175,10 @@ def filter_sonarr_episodes(episodes: list[dict]) -> list[dict]:
 
 async def run_radarr_cycle(
     client: RadarrClient,
-    state: FetcharrState,
+    state: TriggarrState,
     settings: Settings,
     db: aiosqlite.Connection,
-) -> FetcharrState:
+) -> TriggarrState:
     """Run one complete Radarr search cycle: missing batch then cutoff batch.
 
     Fetches the current wanted-missing and wanted-cutoff lists, filters
@@ -322,10 +322,10 @@ async def run_radarr_cycle(
 
 async def run_sonarr_cycle(
     client: SonarrClient,
-    state: FetcharrState,
+    state: TriggarrState,
     settings: Settings,
     db: aiosqlite.Connection,
-) -> FetcharrState:
+) -> TriggarrState:
     """Run one complete Sonarr search cycle: missing batch then cutoff batch.
 
     Fetches the current wanted-missing and wanted-cutoff episode lists,

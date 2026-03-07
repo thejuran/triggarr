@@ -33,7 +33,7 @@ class AppState(TypedDict, total=False):
     cutoff_count: int | None  # Total cutoff-unmet items (before filtering)
 
 
-class FetcharrState(TypedDict, total=False):
+class TriggarrState(TypedDict, total=False):
     """Top-level application state."""
 
     radarr: AppState
@@ -41,16 +41,16 @@ class FetcharrState(TypedDict, total=False):
     search_log: list[dict]  # deprecated: migrated to SQLite (SRCH-13), kept for migration compat
 
 
-def _default_state() -> FetcharrState:
+def _default_state() -> TriggarrState:
     """Return a fresh default state with both apps at cursor 0."""
-    return FetcharrState(
+    return TriggarrState(
         radarr=AppState(missing_cursor=0, cutoff_cursor=0, last_run=None),
         sonarr=AppState(missing_cursor=0, cutoff_cursor=0, last_run=None),
         search_log=[],
     )
 
 
-def _merge_defaults(loaded: dict) -> FetcharrState:
+def _merge_defaults(loaded: dict) -> TriggarrState:
     """Merge loaded state over defaults so missing keys get default values.
 
     Performs a shallow merge per app key. Only merges if the loaded value
@@ -68,7 +68,7 @@ def _merge_defaults(loaded: dict) -> FetcharrState:
     return defaults
 
 
-def load_state(state_path: Path = STATE_PATH) -> FetcharrState:
+def load_state(state_path: Path = STATE_PATH) -> TriggarrState:
     """Load state from a JSON file.
 
     If the file does not exist, returns a default empty state
@@ -93,7 +93,7 @@ def load_state(state_path: Path = STATE_PATH) -> FetcharrState:
     return _merge_defaults(data)
 
 
-def save_state(state: FetcharrState, state_path: Path = STATE_PATH) -> None:
+def save_state(state: TriggarrState, state_path: Path = STATE_PATH) -> None:
     """Atomically write state to disk.
 
     Uses write-to-temp-file then ``os.replace()`` to ensure the state

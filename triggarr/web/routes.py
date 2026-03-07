@@ -72,7 +72,7 @@ async def health(request: Request) -> JSONResponse:
     If no apps are enabled, returns 200 (valid configuration, waiting for setup).
     """
     settings = request.app.state.settings
-    state = request.app.state.fetcharr_state
+    state = request.app.state.triggarr_state
     problems: list[str] = []
 
     for app_name in ("radarr", "sonarr"):
@@ -109,7 +109,7 @@ def _build_app_context(request: Request, app_name: str) -> dict | None:
     if app_config is None or not app_config.enabled:
         return None
 
-    state = request.app.state.fetcharr_state
+    state = request.app.state.triggarr_state
     app_state = state.get(app_name, {})
 
     # Determine next_run from scheduler job
@@ -413,14 +413,14 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
         request.app.state.last_search_time[app_name] = now
 
         try:
-            request.app.state.fetcharr_state = await cycle_fn(
+            request.app.state.triggarr_state = await cycle_fn(
                 client,
-                request.app.state.fetcharr_state,
+                request.app.state.triggarr_state,
                 request.app.state.settings,
                 request.app.state.db,
             )
             save_state(
-                request.app.state.fetcharr_state,
+                request.app.state.triggarr_state,
                 request.app.state.state_path,
             )
             logger.info("{name}: Manual search triggered", name=app_name.title())

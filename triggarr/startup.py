@@ -147,7 +147,7 @@ async def startup(config_path: Path | None = None) -> Settings:
 
     Args:
         config_path: Optional path to config file.  Defaults to
-            ``/config/fetcharr.toml`` in production; tests pass a
+            ``/config/triggarr.toml`` in production; tests pass a
             temp directory path for isolation.
 
     Returns:

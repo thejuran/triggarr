@@ -37,7 +37,7 @@ async def test_make_search_job_exception_swallowed():
     app = FastAPI()
     app.state.radarr_client = AsyncMock()
     app.state.search_lock = asyncio.Lock()
-    app.state.fetcharr_state = _default_state()
+    app.state.triggarr_state = _default_state()
     app.state.settings = make_settings()
 
     with (
@@ -130,7 +130,7 @@ async def _make_app_with_db(tmp_path, *, radarr_client=None, sonarr_client=None)
     app = FastAPI()
     app.state.db = db
     app.state.search_lock = asyncio.Lock()
-    app.state.fetcharr_state = state
+    app.state.triggarr_state = state
     app.state.settings = make_settings()
     app.state.radarr_client = radarr_client
     app.state.sonarr_client = sonarr_client
@@ -174,7 +174,7 @@ async def test_search_job_runs_tracking_after_cycle(tmp_path):
         with (
             patch(
                 "triggarr.search.scheduler.run_radarr_cycle",
-                new=AsyncMock(return_value=app.state.fetcharr_state),
+                new=AsyncMock(return_value=app.state.triggarr_state),
             ),
             patch(
                 "triggarr.search.scheduler.save_state",
@@ -202,7 +202,7 @@ async def test_search_job_tracking_failure_nonfatal(tmp_path):
         with (
             patch(
                 "triggarr.search.scheduler.run_radarr_cycle",
-                new=AsyncMock(return_value=app.state.fetcharr_state),
+                new=AsyncMock(return_value=app.state.triggarr_state),
             ),
             patch(
                 "triggarr.search.scheduler.save_state",
@@ -242,7 +242,7 @@ async def test_search_job_logs_tracking_results(tmp_path, capsys):
         with (
             patch(
                 "triggarr.search.scheduler.run_radarr_cycle",
-                new=AsyncMock(return_value=app.state.fetcharr_state),
+                new=AsyncMock(return_value=app.state.triggarr_state),
             ),
             patch(
                 "triggarr.search.scheduler.save_state",

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Settings - Fetcharr{% endblock %}
+{% block title %}Settings - Triggarr{% endblock %}
 
-{% block nav_dashboard_class %}text-fetcharr-muted{% endblock %}
+{% block nav_dashboard_class %}text-triggarr-muted{% endblock %}
 {% block nav_settings_class %}text-white{% endblock %}
 
 {% block content %}
@@ -10,13 +10,13 @@
 
 <form method="post" action="{{ url_for('save_settings') }}" class="space-y-8">
     <!-- General section -->
-    <section class="bg-fetcharr-card rounded-lg border border-fetcharr-border p-5">
+    <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
         <h2 class="text-lg font-semibold mb-4">General</h2>
         <div class="grid grid-cols-1 gap-4 max-w-md">
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Log Level</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Log Level</label>
                 <select name="log_level"
-                        class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
+                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                     {% for level in ['debug', 'info', 'warning', 'error'] %}
                     <option value="{{ level }}" {% if log_level == level %}selected{% endif %}>
                         {{ level | capitalize }}
@@ -25,83 +25,83 @@
                 </select>
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Hard Max Items Per Cycle</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Hard Max Items Per Cycle</label>
                 <input type="number" name="hard_max_per_cycle" value="{{ hard_max_per_cycle }}"
                        min="0" max="1000"
-                       class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
-                <p class="text-xs text-fetcharr-muted mt-1">0 = unlimited. Caps total items per app per cycle.</p>
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">0 = unlimited. Caps total items per app per cycle.</p>
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Max History Rows</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Max History Rows</label>
                 <input type="number" name="max_history_rows" value="{{ max_history_rows }}"
                        min="0" max="100000"
-                       class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
-                <p class="text-xs text-fetcharr-muted mt-1">0 = unlimited. Max resolved rows kept in search history.</p>
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">0 = unlimited. Max resolved rows kept in search history.</p>
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Request Timeout (seconds)</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Request Timeout (seconds)</label>
                 <input type="number" name="request_timeout" value="{{ request_timeout }}"
                        min="5" max="300" step="1"
-                       class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
-                <p class="text-xs text-fetcharr-muted mt-1">Timeout for outbound HTTP requests to *arr apps.</p>
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">Timeout for outbound HTTP requests to *arr apps.</p>
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Page Size</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Page Size</label>
                 <input type="number" name="page_size" value="{{ page_size }}"
                        min="10" max="500"
-                       class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
-                <p class="text-xs text-fetcharr-muted mt-1">Items per page when querying *arr APIs.</p>
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">Items per page when querying *arr APIs.</p>
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Tracking Window (minutes)</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Tracking Window (minutes)</label>
                 <input type="number" name="tracking_window_minutes" value="{{ tracking_window_minutes }}"
                        min="5" max="1440"
-                       class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
-                <p class="text-xs text-fetcharr-muted mt-1">How long to wait for grabs after a search before marking unresolved.</p>
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">How long to wait for grabs after a search before marking unresolved.</p>
             </div>
         </div>
     </section>
 
     <!-- Per-app sections: Radarr, Sonarr -->
     {% for name, app in apps.items() %}
-    <section class="bg-fetcharr-card rounded-lg border border-fetcharr-border p-5">
+    <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold capitalize">{{ name }}</h2>
             <label class="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="{{ name }}_enabled"
                        {% if app.enabled %}checked{% endif %}
-                       class="accent-fetcharr-green w-4 h-4">
+                       class="accent-triggarr-green w-4 h-4">
                 <span class="text-sm">Enabled</span>
             </label>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">URL</label>
+                <label class="block text-sm text-triggarr-muted mb-1">URL</label>
                 <input type="text" name="{{ name }}_url" value="{{ app.url }}"
                        placeholder="http://{{ name }}:{% if name == 'radarr' %}7878{% else %}8989{% endif %}"
-                       class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">API Key</label>
+                <label class="block text-sm text-triggarr-muted mb-1">API Key</label>
                 <input type="password" name="{{ name }}_api_key" value=""
                        placeholder="{{ '********' if app.has_api_key else 'Paste API key' }}"
-                       class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Search Interval (minutes)</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Search Interval (minutes)</label>
                 <input type="number" name="{{ name }}_search_interval" value="{{ app.search_interval }}"
-                       min="1" class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
+                       min="1" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Missing Items Per Cycle</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Missing Items Per Cycle</label>
                 <input type="number" name="{{ name }}_search_missing_count" value="{{ app.search_missing_count }}"
-                       min="1" class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
+                       min="1" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
             </div>
             <div>
-                <label class="block text-sm text-fetcharr-muted mb-1">Cutoff Items Per Cycle</label>
+                <label class="block text-sm text-triggarr-muted mb-1">Cutoff Items Per Cycle</label>
                 <input type="number" name="{{ name }}_search_cutoff_count" value="{{ app.search_cutoff_count }}"
-                       min="1" class="w-full bg-fetcharr-bg border border-fetcharr-border rounded px-3 py-2 text-sm">
+                       min="1" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
             </div>
         </div>
     </section>
@@ -109,7 +109,7 @@
 
     <div class="flex justify-end">
         <button type="submit"
-                class="bg-fetcharr-green hover:bg-fetcharr-green-dark text-white font-medium px-6 py-2 rounded transition-colors">
+                class="bg-triggarr-green hover:bg-triggarr-green-dark text-white font-medium px-6 py-2 rounded transition-colors">
             Save Settings
         </button>
     </div>

@@ -27,7 +27,7 @@ from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
 from triggarr.models.config import Settings
 from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
-from triggarr.state import FetcharrState, load_state, save_state
+from triggarr.state import TriggarrState, load_state, save_state
 from triggarr.tracking import run_tracking_check
 
 
@@ -57,13 +57,13 @@ def make_search_job(
             return
         async with app.state.search_lock:
             try:
-                app.state.fetcharr_state = await cycle_fn(
+                app.state.triggarr_state = await cycle_fn(
                     client,
-                    app.state.fetcharr_state,
+                    app.state.triggarr_state,
                     app.state.settings,
                     app.state.db,
                 )
-                save_state(app.state.fetcharr_state, state_path)
+                save_state(app.state.triggarr_state, state_path)
                 # --- Tracking check: resolve pending search outcomes ---
                 try:
                     tracking_result = await run_tracking_check(
@@ -122,11 +122,11 @@ def create_lifespan(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        state: FetcharrState = load_state(state_path)
+        state: TriggarrState = load_state(state_path)
         scheduler = AsyncIOScheduler()
 
         # Initialize search history database with shared WAL connection
-        db_path = state_path.parent / "fetcharr.db"
+        db_path = state_path.parent / "triggarr.db"
         db = await aiosqlite.connect(db_path)
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")
@@ -160,7 +160,7 @@ def create_lifespan(
             )
 
         # --- Expose all shared state on app.state ---
-        app.state.fetcharr_state = state
+        app.state.triggarr_state = state
         app.state.settings = settings
         app.state.db = db
         app.state.scheduler = scheduler

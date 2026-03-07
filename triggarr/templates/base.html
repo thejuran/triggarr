@@ -3,25 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Fetcharr{% endblock %}</title>
+  <title>{% block title %}Triggarr{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='css/output.css') }}">
   <script src="{{ url_for('static', path='js/htmx.min.js') }}"></script>
 </head>
-<body class="bg-fetcharr-bg text-fetcharr-text min-h-screen">
-  <nav class="bg-fetcharr-card border-b border-fetcharr-border">
+<body class="bg-triggarr-bg text-triggarr-text min-h-screen">
+  <nav class="bg-triggarr-card border-b border-triggarr-border">
     <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-      <span class="text-fetcharr-green font-bold text-xl">Fetcharr</span>
+      <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
       <div class="flex items-center gap-6">
         <a href="/"
            class="{% block nav_dashboard_class %}text-white{% endblock %} hover:text-white text-sm">
           Dashboard
         </a>
         <a href="/history"
-           class="{% block nav_history_class %}text-fetcharr-muted{% endblock %} hover:text-white text-sm">
+           class="{% block nav_history_class %}text-triggarr-muted{% endblock %} hover:text-white text-sm">
           History
         </a>
         <a href="/settings"
-           class="{% block nav_settings_class %}text-fetcharr-muted{% endblock %} hover:text-white text-sm">
+           class="{% block nav_settings_class %}text-triggarr-muted{% endblock %} hover:text-white text-sm">
           Settings
         </a>
       </div>

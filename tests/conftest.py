@@ -1,4 +1,4 @@
-"""Shared test fixtures and factory functions for Fetcharr tests."""
+"""Shared test fixtures and factory functions for Triggarr tests."""
 
 from __future__ import annotations
 
