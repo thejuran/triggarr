@@ -15,10 +15,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiosqlite
 from fastapi import FastAPI
 
-from fetcharr.db import init_db, insert_search_entry
-from fetcharr.search.scheduler import make_search_job
-from fetcharr.state import _default_state, save_state
 from tests.conftest import make_settings
+from triggarr.db import init_db, insert_search_entry
+from triggarr.search.scheduler import make_search_job
+from triggarr.state import _default_state, save_state
 
 
 async def test_make_search_job_client_none_returns_early():
@@ -42,11 +42,11 @@ async def test_make_search_job_exception_swallowed():
 
     with (
         patch(
-            "fetcharr.search.scheduler.run_radarr_cycle",
+            "triggarr.search.scheduler.run_radarr_cycle",
             new=AsyncMock(side_effect=RuntimeError("boom")),
         ),
         patch(
-            "fetcharr.search.scheduler.save_state",
+            "triggarr.search.scheduler.save_state",
             new=MagicMock(),
         ),
     ):
@@ -67,12 +67,12 @@ async def test_shutdown_drains_search_lock(tmp_path):
     uncontested (normal path).  The lock-drain logic runs in the finally
     block via asyncio.wait_for, proving it executes before DB close.
     """
-    from fetcharr.search.scheduler import create_lifespan
+    from triggarr.search.scheduler import create_lifespan
 
     settings = make_settings(radarr_enabled=False, sonarr_enabled=False)
 
     state_path = tmp_path / "state.json"
-    config_path = tmp_path / "fetcharr.toml"
+    config_path = tmp_path / "triggarr.toml"
 
     lifespan_fn = create_lifespan(settings, state_path, config_path)
 
@@ -91,12 +91,12 @@ async def test_shutdown_drains_search_lock(tmp_path):
 
 async def test_shutdown_proceeds_after_lock_released(tmp_path):
     """Shutdown waits for held lock then proceeds (simulates in-flight cycle ending)."""
-    from fetcharr.search.scheduler import create_lifespan
+    from triggarr.search.scheduler import create_lifespan
 
     settings = make_settings(radarr_enabled=False, sonarr_enabled=False)
 
     state_path = tmp_path / "state.json"
-    config_path = tmp_path / "fetcharr.toml"
+    config_path = tmp_path / "triggarr.toml"
 
     lifespan_fn = create_lifespan(settings, state_path, config_path)
 
@@ -140,7 +140,7 @@ async def _make_app_with_db(tmp_path, *, radarr_client=None, sonarr_client=None)
 
 async def test_search_job_runs_tracking_after_cycle(tmp_path):
     """After a search cycle, tracking resolves a pending 'searched' entry to 'grabbed'."""
-    from fetcharr.models.arr import GrabEvent
+    from triggarr.models.arr import GrabEvent
 
     radarr_client = AsyncMock()
     # get_wanted_missing and get_cutoff_unmet return empty pages (no new searches needed)
@@ -173,11 +173,11 @@ async def test_search_job_runs_tracking_after_cycle(tmp_path):
         # Patch the cycle function to be a no-op (we only care about tracking)
         with (
             patch(
-                "fetcharr.search.scheduler.run_radarr_cycle",
+                "triggarr.search.scheduler.run_radarr_cycle",
                 new=AsyncMock(return_value=app.state.fetcharr_state),
             ),
             patch(
-                "fetcharr.search.scheduler.save_state",
+                "triggarr.search.scheduler.save_state",
                 new=MagicMock(),
             ),
         ):
@@ -201,15 +201,15 @@ async def test_search_job_tracking_failure_nonfatal(tmp_path):
     try:
         with (
             patch(
-                "fetcharr.search.scheduler.run_radarr_cycle",
+                "triggarr.search.scheduler.run_radarr_cycle",
                 new=AsyncMock(return_value=app.state.fetcharr_state),
             ),
             patch(
-                "fetcharr.search.scheduler.save_state",
+                "triggarr.search.scheduler.save_state",
                 new=MagicMock(),
             ) as mock_save,
             patch(
-                "fetcharr.search.scheduler.run_tracking_check",
+                "triggarr.search.scheduler.run_tracking_check",
                 new=AsyncMock(side_effect=RuntimeError("tracking exploded")),
             ),
         ):
@@ -241,15 +241,15 @@ async def test_search_job_logs_tracking_results(tmp_path, capsys):
 
         with (
             patch(
-                "fetcharr.search.scheduler.run_radarr_cycle",
+                "triggarr.search.scheduler.run_radarr_cycle",
                 new=AsyncMock(return_value=app.state.fetcharr_state),
             ),
             patch(
-                "fetcharr.search.scheduler.save_state",
+                "triggarr.search.scheduler.save_state",
                 new=MagicMock(),
             ),
             patch(
-                "fetcharr.search.scheduler.run_tracking_check",
+                "triggarr.search.scheduler.run_tracking_check",
                 new=AsyncMock(return_value=tracking_result),
             ),
         ):

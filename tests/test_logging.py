@@ -6,7 +6,7 @@ import io
 
 from loguru import logger
 
-from fetcharr.logging import create_redacting_sink, setup_logging
+from triggarr.logging import create_redacting_sink, setup_logging
 
 
 def test_redaction_filter_removes_secret() -> None:

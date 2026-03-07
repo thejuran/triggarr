@@ -1,11 +1,11 @@
-"""Tests for fetcharr.correlation -- pure grab-to-search correlation logic."""
+"""Tests for triggarr.correlation -- pure grab-to-search correlation logic."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from fetcharr.correlation import SearchRecord, correlate_grabs
-from fetcharr.models.arr import GrabEvent
+from triggarr.correlation import SearchRecord, correlate_grabs
+from triggarr.models.arr import GrabEvent
 
 
 def _search(history_id: int, item_id: int, searched_at: datetime, missing_count: int | None = None) -> SearchRecord:

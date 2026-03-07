@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from fetcharr.state import AppState, FetcharrState, load_state, save_state
+from triggarr.state import AppState, FetcharrState, load_state, save_state
 
 
 def test_state_round_trip(tmp_path: Path) -> None:
@@ -158,7 +158,7 @@ def test_save_state_cleans_temp_on_replace_failure(tmp_path: Path) -> None:
     )
 
     with (
-        patch("fetcharr.state.os.replace", side_effect=OSError("mock failure")),
+        patch("triggarr.state.os.replace", side_effect=OSError("mock failure")),
         pytest.raises(OSError, match="mock failure"),
     ):
         save_state(state, state_file)

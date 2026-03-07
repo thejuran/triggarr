@@ -18,8 +18,9 @@ import aiosqlite
 import httpx
 from loguru import logger
 
-from fetcharr.db import init_db
-from fetcharr.search.engine import (
+from tests.conftest import make_settings
+from triggarr.db import init_db
+from triggarr.search.engine import (
     cap_batch_sizes,
     deduplicate_to_seasons,
     filter_monitored,
@@ -28,8 +29,7 @@ from fetcharr.search.engine import (
     run_sonarr_cycle,
     slice_batch,
 )
-from fetcharr.state import _default_state
-from tests.conftest import make_settings
+from triggarr.state import _default_state
 
 # ---------------------------------------------------------------------------
 # filter_monitored
@@ -280,7 +280,7 @@ async def test_run_radarr_cycle_per_item_skip(tmp_path):
     # Did not abort after first failure -- called twice
     assert client.search_movies.call_count == 2
     # Both searches logged to SQLite (failed + succeeded)
-    from fetcharr.db import get_recent_searches
+    from triggarr.db import get_recent_searches
 
     searches = await get_recent_searches(db)
     assert len(searches) == 2
@@ -433,7 +433,7 @@ async def test_run_sonarr_cycle_per_item_skip(tmp_path):
 
     assert client.search_season.call_count == 2
     # Both searches logged to SQLite (failed + succeeded)
-    from fetcharr.db import get_recent_searches
+    from triggarr.db import get_recent_searches
 
     searches = await get_recent_searches(db)
     assert len(searches) == 2
@@ -671,7 +671,7 @@ async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
 
     await run_radarr_cycle(client, state, settings, db)
 
-    from fetcharr.db import get_recent_searches
+    from triggarr.db import get_recent_searches
 
     searches = await get_recent_searches(db)
     assert len(searches) == 1
@@ -701,7 +701,7 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
 
     await run_sonarr_cycle(client, state, settings, db)
 
-    from fetcharr.db import get_recent_searches
+    from triggarr.db import get_recent_searches
 
     searches = await get_recent_searches(db)
     assert len(searches) == 1

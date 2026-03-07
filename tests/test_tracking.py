@@ -1,4 +1,4 @@
-"""Tests for fetcharr.tracking -- tracking orchestrator that resolves search outcomes.
+"""Tests for triggarr.tracking -- tracking orchestrator that resolves search outcomes.
 
 Covers: Radarr grabbed/unresolved, Sonarr grabbed/partial/unresolved,
 partial->grabbed upgrade, window-expired terminal, error handling,
@@ -14,10 +14,10 @@ import aiosqlite
 import httpx
 import pytest
 
-from fetcharr.db import init_db, insert_search_entry
-from fetcharr.models.arr import GrabEvent
-from fetcharr.search.engine import _sanitize_exc
-from fetcharr.tracking import run_tracking_check
+from triggarr.db import init_db, insert_search_entry
+from triggarr.models.arr import GrabEvent
+from triggarr.search.engine import _sanitize_exc
+from triggarr.tracking import run_tracking_check
 
 
 def _grab(grab_id: int, date: datetime, source: str = "Release.1080p") -> GrabEvent:
@@ -384,7 +384,7 @@ def test_sanitize_exc_generic():
 
 def test_search_record_rejects_naive_datetime():
     """SearchRecord raises ValueError when searched_at lacks timezone info."""
-    from fetcharr.correlation import SearchRecord
+    from triggarr.correlation import SearchRecord
 
     with pytest.raises(ValueError, match="timezone-aware"):
         SearchRecord(history_id=1, item_id=1, searched_at=datetime(2024, 1, 1, 12, 0))

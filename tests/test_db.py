@@ -12,7 +12,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from fetcharr.db import (
+from triggarr.db import (
     _migrate_v1,
     get_recent_searches,
     get_schema_version,
@@ -736,7 +736,7 @@ async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
 
 async def test_migration_loop_tolerates_gaps(tmp_path):
     """Migration loop skips missing version numbers without KeyError."""
-    from fetcharr.db import MIGRATIONS, run_migrations
+    from triggarr.db import MIGRATIONS, run_migrations
 
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)

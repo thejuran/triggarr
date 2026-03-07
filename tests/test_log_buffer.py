@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import threading
 
-from fetcharr.log_buffer import LogBuffer, LogEntry
+from triggarr.log_buffer import LogBuffer, LogEntry
 
 
 def _make_entry(n: int, level: str = "INFO") -> LogEntry:

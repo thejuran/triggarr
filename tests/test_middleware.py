@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from fetcharr.web.middleware import OriginCheckMiddleware
+from triggarr.web.middleware import OriginCheckMiddleware
 
 
 def _make_app() -> FastAPI:
@@ -90,7 +90,7 @@ def test_get_with_mismatched_origin_passes():
 def _make_settings_app() -> FastAPI:
     """Build a FastAPI app with router + OriginCheckMiddleware, mimicking real app wiring.
 
-    This mirrors the registration order in fetcharr/__main__.py:
+    This mirrors the registration order in triggarr/__main__.py:
       app.add_middleware(OriginCheckMiddleware)
       app.include_router(router)
     """
@@ -101,13 +101,13 @@ def _make_settings_app() -> FastAPI:
 
     from fastapi.staticfiles import StaticFiles
 
-    from fetcharr.web.routes import STATIC_DIR
-    from fetcharr.web.routes import router as fetcharr_router
+    from triggarr.web.routes import STATIC_DIR
+    from triggarr.web.routes import router as triggarr_router
 
     app = FastAPI()
     app.add_middleware(OriginCheckMiddleware)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    app.include_router(fetcharr_router)
+    app.include_router(triggarr_router)
 
     # Minimal app.state needed by the settings route handler
     mock_settings = MagicMock()

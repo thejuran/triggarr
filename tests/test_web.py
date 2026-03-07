@@ -15,9 +15,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 
-from fetcharr.db import init_db, insert_search_entry
-from fetcharr.log_buffer import LogEntry, log_buffer
-from fetcharr.web.routes import STATIC_DIR, router
+from triggarr.db import init_db, insert_search_entry
+from triggarr.log_buffer import LogEntry, log_buffer
+from triggarr.web.routes import STATIC_DIR, router
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ async def test_app(tmp_path):
     app.state.sonarr_client = sonarr_client
 
     # Paths
-    app.state.config_path = tmp_path / "fetcharr.toml"
+    app.state.config_path = tmp_path / "triggarr.toml"
     app.state.state_path = tmp_path / "state.json"
 
     # Search lock (needed by search_now endpoint)
@@ -265,10 +265,10 @@ def test_search_now_invalid_app(client):
 def test_search_now_happy_path(client, test_app):
     """POST /api/search-now/radarr triggers cycle and returns 200 with updated card."""
     with patch(
-        "fetcharr.web.routes.run_radarr_cycle",
+        "triggarr.web.routes.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.fetcharr_state),
     ), patch(
-        "fetcharr.web.routes.save_state",
+        "triggarr.web.routes.save_state",
     ):
         response = client.post("/api/search-now/radarr")
         assert response.status_code == 200
@@ -465,9 +465,9 @@ def test_search_now_rate_limit_concurrent_protection(client, test_app):
     Validates that the re-check inside search_lock prevents concurrent bypass.
     """
     with patch(
-        "fetcharr.web.routes.run_radarr_cycle",
+        "triggarr.web.routes.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.fetcharr_state),
-    ), patch("fetcharr.web.routes.save_state"):
+    ), patch("triggarr.web.routes.save_state"):
         resp1 = client.post("/api/search-now/radarr")
         assert resp1.status_code == 200, f"First request should succeed, got {resp1.status_code}"
 
@@ -480,15 +480,15 @@ def test_search_now_not_rate_limited_after_window(client, test_app):
     """POST /api/search-now/radarr after window expires is not rate-limited."""
     import time
 
-    from fetcharr.web.routes import SEARCH_RATE_LIMIT_SECONDS
+    from triggarr.web.routes import SEARCH_RATE_LIMIT_SECONDS
 
     # Set last_search_time to well before the window
     test_app.state.last_search_time["radarr"] = time.monotonic() - (SEARCH_RATE_LIMIT_SECONDS + 1)
 
     with patch(
-        "fetcharr.web.routes.run_radarr_cycle",
+        "triggarr.web.routes.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.fetcharr_state),
-    ), patch("fetcharr.web.routes.save_state"):
+    ), patch("triggarr.web.routes.save_state"):
         response = client.post("/api/search-now/radarr")
     assert response.status_code == 200, f"Expected 200 after window expired, got {response.status_code}"
 
@@ -652,27 +652,27 @@ async def test_history_outcome_badge_colors(test_app):
 
 def test_format_duration_none():
     """_format_duration(None) returns '---' (STATS-04)."""
-    from fetcharr.web.routes import _format_duration
+    from triggarr.web.routes import _format_duration
 
     assert _format_duration(None) == "---"
 
 
 def test_format_duration_under_60():
     """_format_duration(30) returns '< 1m' (STATS-04)."""
-    from fetcharr.web.routes import _format_duration
+    from triggarr.web.routes import _format_duration
 
     assert _format_duration(30) == "< 1m"
 
 
 def test_format_duration_minutes():
     """_format_duration(300) returns '5m' (STATS-04)."""
-    from fetcharr.web.routes import _format_duration
+    from triggarr.web.routes import _format_duration
 
     assert _format_duration(300) == "5m"
 
 
 def test_format_duration_hours():
     """_format_duration(7500) returns '2h 5m' (STATS-04)."""
-    from fetcharr.web.routes import _format_duration
+    from triggarr.web.routes import _format_duration
 
     assert _format_duration(7500) == "2h 5m"

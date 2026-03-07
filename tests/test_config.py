@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from fetcharr.config import ensure_config, generate_default_config, load_settings
-from fetcharr.models.config import ArrConfig
+from triggarr.config import ensure_config, generate_default_config, load_settings
+from triggarr.models.config import ArrConfig
 
 VALID_TOML = """\
 [general]
@@ -52,7 +52,7 @@ enabled = false
 
 def test_settings_loads_from_toml(tmp_path: Path) -> None:
     """Valid TOML config loads all sections correctly."""
-    config_file = tmp_path / "fetcharr.toml"
+    config_file = tmp_path / "triggarr.toml"
     config_file.write_text(VALID_TOML)
 
     settings = load_settings(config_file)
@@ -68,7 +68,7 @@ def test_settings_loads_from_toml(tmp_path: Path) -> None:
 
 def test_settings_allows_no_enabled_apps(tmp_path: Path) -> None:
     """Config with no enabled apps loads successfully (first-run scenario)."""
-    config_file = tmp_path / "fetcharr.toml"
+    config_file = tmp_path / "triggarr.toml"
     config_file.write_text(NO_APPS_TOML)
 
     settings = load_settings(config_file)
@@ -80,7 +80,7 @@ def test_settings_allows_no_enabled_apps(tmp_path: Path) -> None:
 
 def test_settings_allows_single_app(tmp_path: Path) -> None:
     """Config with only radarr enabled loads successfully."""
-    config_file = tmp_path / "fetcharr.toml"
+    config_file = tmp_path / "triggarr.toml"
     config_file.write_text(RADARR_ONLY_TOML)
 
     settings = load_settings(config_file)
@@ -93,7 +93,7 @@ def test_settings_allows_single_app(tmp_path: Path) -> None:
 
 def test_default_config_generation(tmp_path: Path) -> None:
     """generate_default_config creates a file with [radarr] and [sonarr] sections."""
-    config_file = tmp_path / "fetcharr.toml"
+    config_file = tmp_path / "triggarr.toml"
 
     generate_default_config(config_file)
 
@@ -141,7 +141,7 @@ def test_arr_config_allows_both_counts_zero_when_disabled() -> None:
 
 def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
     """ensure_config generates default config and exits when file is missing."""
-    config_file = tmp_path / "fetcharr.toml"
+    config_file = tmp_path / "triggarr.toml"
 
     with pytest.raises(SystemExit) as exc_info:
         ensure_config(config_file)

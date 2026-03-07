@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from loguru import logger
 
-from fetcharr.clients.sonarr import SonarrClient
-from fetcharr.models.config import ArrConfig, Settings
-from fetcharr.startup import check_localhost_urls, collect_secrets, validate_connections
+from triggarr.clients.sonarr import SonarrClient
+from triggarr.models.config import ArrConfig, Settings
+from triggarr.startup import check_localhost_urls, collect_secrets, validate_connections
 
 
 def _make_settings(
@@ -213,7 +213,7 @@ async def test_sonarr_version_detection_v3() -> None:
     """Startup logs 'Detected API v3' after successful Sonarr connection."""
     settings = _make_settings(sonarr_enabled=True, radarr_enabled=False)
 
-    with patch("fetcharr.startup.SonarrClient") as MockSonarrCls:
+    with patch("triggarr.startup.SonarrClient") as MockSonarrCls:
         mock_client = AsyncMock()
         mock_client.validate_connection = AsyncMock(return_value=True)
         mock_client.detect_api_version = AsyncMock(return_value="v3")
@@ -235,7 +235,7 @@ async def test_sonarr_version_detection_v4() -> None:
     """Startup logs 'Detected API v4' after successful Sonarr connection."""
     settings = _make_settings(sonarr_enabled=True, radarr_enabled=False)
 
-    with patch("fetcharr.startup.SonarrClient") as MockSonarrCls:
+    with patch("triggarr.startup.SonarrClient") as MockSonarrCls:
         mock_client = AsyncMock()
         mock_client.validate_connection = AsyncMock(return_value=True)
         mock_client.detect_api_version = AsyncMock(return_value="v4")
@@ -257,7 +257,7 @@ async def test_sonarr_version_detection_failure() -> None:
     """When detect_api_version raises, startup still completes (fallback to v3)."""
     settings = _make_settings(sonarr_enabled=True, radarr_enabled=False)
 
-    with patch("fetcharr.startup.SonarrClient") as MockSonarrCls:
+    with patch("triggarr.startup.SonarrClient") as MockSonarrCls:
         mock_client = AsyncMock()
         mock_client.validate_connection = AsyncMock(return_value=True)
         mock_client.detect_api_version = AsyncMock(
