@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Closed-Loop Tracking
 status: in-progress
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-03-07T02:22:22Z"
-last_activity: 2026-03-06 -- Completed 21-01 dashboard stats cards (grab rate, movies, episodes, time-to-grab)
+stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-03-07T02:35:43Z"
+last_activity: 2026-03-06 -- Completed 21-02 dashboard stats UI (outcome badges, filter pills, settings form)
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 9
-  completed_plans: 14
+  completed_plans: 15
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 21 of 21 (Dashboard & Stats)
-Plan: 1 of 1 in current phase
-Status: Plan 21-01 complete
-Last activity: 2026-03-06 -- Completed 21-01 dashboard stats cards (grab rate, movies, episodes, time-to-grab)
+Plan: 2 of 2 in current phase
+Status: Plan 21-02 complete
+Last activity: 2026-03-06 -- Completed 21-02 dashboard stats UI (outcome badges, filter pills, settings form)
 
 Progress: [██████████] 100%
 
@@ -57,6 +57,7 @@ Progress: [██████████] 100%
 | Phase 20.2 P01 | 12min | 2 tasks | 7 files |
 | Phase 20.2 P02 | 13min | 2 tasks | 10 files |
 | Phase 21 P01 | 7min | 2 tasks | 6 files |
+| Phase 21 P02 | 11min | 2 tasks | 5 files |
 
 *Updated after each plan completion*
 
@@ -108,6 +109,8 @@ Recent decisions affecting current work:
 - [Phase 20.2-02]: OSError included in tracking exception tuple for filesystem error coverage
 - [Phase 20.2-02]: model_validator raises ValueError wrapped in Pydantic ValidationError -- tests match accordingly
 - [Phase 21-01]: SUM(CASE WHEN) for SQLite FILTER clause compatibility; resolved_at in update_outcome_and_stats
+- [Phase 21-02]: request_timeout uses safe_int (int) -- Pydantic coerces to float for GeneralConfig
+- [Phase 21-02]: tracking_delay_seconds remains preserved (not user-editable) per CONTEXT.md
 
 ### Pending Todos
 
@@ -121,6 +124,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T02:22:22Z
-Stopped at: Completed 21-01-PLAN.md
-Resume file: .planning/phases/21-dashboard-stats/21-01-SUMMARY.md
+Last session: 2026-03-07T02:35:43Z
+Stopped at: Completed 21-02-PLAN.md
+Resume file: .planning/phases/21-dashboard-stats/21-02-SUMMARY.md
