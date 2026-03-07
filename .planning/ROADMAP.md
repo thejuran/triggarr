@@ -190,10 +190,11 @@ Plans:
   4. Dockerfile, docker-compose.yml, entrypoint.sh, and CLAUDE.md reference triggarr
   5. README, docs, and all user-facing strings say Triggarr
   6. Tests directory imports updated and all tests pass
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 22-01: TBD
+- [ ] 22-01-PLAN.md — Rename package directory, update all Python imports and pyproject.toml (on branch)
+- [ ] 22-02-PLAN.md — Update Docker/CI/CD config, docs, templates, and user-facing strings
 
 ## Progress
 
@@ -226,4 +227,4 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21 > 22
 | 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
 | 20.2 Deep Review — Code Quality | 2/2 | Complete    | 2026-02-26 | - |
 | 21. Dashboard & Stats | 2/2 | Complete    | 2026-03-07 | - |
-| 22. Rename to Triggarr | v2.0 | 0/? | Not started | - |
+| 22. Rename to Triggarr | v2.0 | 0/2 | Not started | - |
