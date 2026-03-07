@@ -29,9 +29,9 @@ Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a 
 
 ![Dashboard showing connection status, item counts, and search history](docs/screenshots/dashboard.png)
 
-![Config editor with inline validation](docs/screenshots/config-editor.png)
+![Search history with filtering by app, queue, and outcome](docs/screenshots/history.png)
 
-Screenshots show the dark-themed web UI running on port 8080.
+![Settings page with per-app configuration](docs/screenshots/settings.png)
 
 ## Install
 
