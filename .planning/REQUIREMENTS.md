@@ -20,11 +20,11 @@ Requirements for v2.0 Closed-Loop Tracking milestone. Each maps to roadmap phase
 
 ### Dashboard Stats
 
-- [ ] **STATS-01**: Dashboard shows aggregate search effectiveness (searched-to-grabbed rate)
-- [ ] **STATS-02**: Dashboard shows per-app effectiveness breakdown (Radarr vs Sonarr grab rates)
-- [ ] **STATS-03**: Dashboard shows lifetime stats: movies found, movies updated (fetcharr-triggered only)
-- [ ] **STATS-04**: Dashboard shows lifetime stats: episodes found, episodes updated (fetcharr-triggered only)
-- [ ] **STATS-05**: Dashboard shows time-to-grab metric (average time from search to grab)
+- [x] **STATS-01**: Dashboard shows aggregate search effectiveness (searched-to-grabbed rate)
+- [x] **STATS-02**: Dashboard shows per-app effectiveness breakdown (Radarr vs Sonarr grab rates)
+- [x] **STATS-03**: Dashboard shows lifetime stats: movies found, movies updated (fetcharr-triggered only)
+- [x] **STATS-04**: Dashboard shows lifetime stats: episodes found, episodes updated (fetcharr-triggered only)
+- [x] **STATS-05**: Dashboard shows time-to-grab metric (average time from search to grab)
 
 ### Tech Debt
 
@@ -102,11 +102,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRACK-06 | Phase 20 | Complete |
 | TRACK-07 | Phase 17 | Complete |
 | TRACK-08 | Phase 17 | Complete |
-| STATS-01 | Phase 21 | Pending |
-| STATS-02 | Phase 21 | Pending |
-| STATS-03 | Phase 21 | Pending |
-| STATS-04 | Phase 21 | Pending |
-| STATS-05 | Phase 21 | Pending |
+| STATS-01 | Phase 21 | Complete |
+| STATS-02 | Phase 21 | Complete |
+| STATS-03 | Phase 21 | Complete |
+| STATS-04 | Phase 21 | Complete |
+| STATS-05 | Phase 21 | Complete |
 | DEBT-01 | Phase 18 | Complete |
 | DEBT-02 | Phase 18 | Complete |
 | DEBT-03 | Phase 17 | Complete |

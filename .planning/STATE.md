@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Closed-Loop Tracking
-status: completed
-stopped_at: Phase 21 context gathered
-last_updated: "2026-03-07T01:16:44.571Z"
-last_activity: 2026-02-25 -- Completed 20.2-02 scheduler/db/config fixes (exception scope, migration gaps, cursor, rename, validator)
+status: in-progress
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-03-07T02:22:22Z"
+last_activity: 2026-03-06 -- Completed 21-01 dashboard stats cards (grab rate, movies, episodes, time-to-grab)
 progress:
   total_phases: 8
   completed_phases: 4
@@ -25,17 +25,17 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 
 ## Current Position
 
-Phase: 20.2 of 21 (Deep Review — Code Quality)
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-25 -- Completed 20.2-02 scheduler/db/config fixes (exception scope, migration gaps, cursor, rename, validator)
+Phase: 21 of 21 (Dashboard & Stats)
+Plan: 1 of 1 in current phase
+Status: Plan 21-01 complete
+Last activity: 2026-03-06 -- Completed 21-01 dashboard stats cards (grab rate, movies, episodes, time-to-grab)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 43 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 12)
+- Total plans completed: 44 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 13)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 20.1 P02 | 1min | 2 tasks | 6 files |
 | Phase 20.2 P01 | 12min | 2 tasks | 7 files |
 | Phase 20.2 P02 | 13min | 2 tasks | 10 files |
+| Phase 21 P01 | 7min | 2 tasks | 6 files |
 
 *Updated after each plan completion*
 
@@ -106,6 +107,7 @@ Recent decisions affecting current work:
 - [Phase 20.2-01]: Restructured _sonarr_outcome: expected==0 handled at top as first branch, eliminating dead inner block
 - [Phase 20.2-02]: OSError included in tracking exception tuple for filesystem error coverage
 - [Phase 20.2-02]: model_validator raises ValueError wrapped in Pydantic ValidationError -- tests match accordingly
+- [Phase 21-01]: SUM(CASE WHEN) for SQLite FILTER clause compatibility; resolved_at in update_outcome_and_stats
 
 ### Pending Todos
 
@@ -119,6 +121,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:16:44.565Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-dashboard-stats/21-CONTEXT.md
+Last session: 2026-03-07T02:22:22Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: .planning/phases/21-dashboard-stats/21-01-SUMMARY.md

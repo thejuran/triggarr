@@ -225,5 +225,5 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21 > 22
 | 20. Tracking Integration | 3/3 | Complete    | 2026-02-25 | - |
 | 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
 | 20.2 Deep Review — Code Quality | 2/2 | Complete    | 2026-02-26 | - |
-| 21. Dashboard & Stats | v2.0 | 0/2 | Not started | - |
+| 21. Dashboard & Stats | 1/2 | In Progress|  | - |
 | 22. Rename to Triggarr | v2.0 | 0/? | Not started | - |
