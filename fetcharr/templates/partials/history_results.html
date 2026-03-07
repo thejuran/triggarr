@@ -56,7 +56,7 @@
       {# Outcome filter #}
       <div class="flex items-center gap-2">
         <span class="text-xs text-fetcharr-muted">Outcome:</span>
-        {% for o_val in ['searched', 'failed'] %}
+        {% for o_val in ['searched', 'grabbed', 'partial', 'unresolved', 'failed'] %}
           {% if o_val in active_outcomes %}
             {% set new_outcomes = active_outcomes | reject('equalto', o_val) | list | join(',') %}
           {% else %}
@@ -67,7 +67,11 @@
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
                     {% if o_val in active_outcomes %}
-                      {% if o_val == 'failed' %}bg-red-500/20 text-red-400{% else %}bg-fetcharr-green/20 text-fetcharr-green{% endif %}
+                      {% if o_val == 'grabbed' %}bg-green-500/20 text-green-400
+                      {% elif o_val == 'partial' %}bg-amber-500/20 text-amber-400
+                      {% elif o_val == 'unresolved' %}bg-gray-500/20 text-gray-400
+                      {% elif o_val == 'failed' %}bg-red-500/20 text-red-400
+                      {% else %}bg-blue-500/20 text-blue-400{% endif %}
                     {% else %}
                       bg-fetcharr-card text-fetcharr-muted border border-fetcharr-border hover:text-white
                     {% endif %}">
@@ -110,8 +114,15 @@
           <span class="text-sm flex-1 truncate" {% if entry.detail %}title="{{ entry.detail }}"{% endif %}>{{ entry.name }}</span>
           <span class="text-xs text-fetcharr-muted">{{ entry.queue_type }}</span>
           <span class="text-xs px-1.5 py-0.5 rounded
-                 {% if entry.outcome == 'failed' %}bg-red-500/20 text-red-400
-                 {% else %}bg-fetcharr-green/20 text-fetcharr-green{% endif %}">
+                 {% if entry.outcome == 'grabbed' %}bg-green-500/20 text-green-400
+                 {% elif entry.outcome == 'partial' %}bg-amber-500/20 text-amber-400
+                 {% elif entry.outcome == 'unresolved' %}bg-gray-500/20 text-gray-400
+                 {% elif entry.outcome == 'failed' %}bg-red-500/20 text-red-400
+                 {% else %}bg-blue-500/20 text-blue-400{% endif %}"
+                 {% if entry.outcome == 'grabbed' %}title="Download detected within tracking window"
+                 {% elif entry.outcome == 'partial' %}title="Some episodes grabbed, not all"
+                 {% elif entry.outcome == 'unresolved' %}title="No grabs detected before window expired"
+                 {% endif %}>
             {{ entry.outcome or 'searched' }}
           </span>
           <span class="text-xs text-fetcharr-muted">{{ entry.timestamp[:19] | replace('T', ' ') }}</span>
