@@ -9,7 +9,7 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v1.0 MVP -- Phases 1-8 (shipped 2026-02-24) -- [archive](milestones/v1.0-ROADMAP.md)
 - ✅ v1.1 Ship & Document -- Phases 9-12 (shipped 2026-02-24) -- [archive](milestones/v1.1-ROADMAP.md)
 - ✅ v1.2 Polish & Harden -- Phases 13-16 (shipped 2026-02-24) -- [archive](milestones/v1.2-ROADMAP.md)
-- 🚧 v2.0 Closed-Loop Tracking -- Phases 17-21 (incl. 20.1, 20.2) (in progress)
+- 🚧 v2.0 Closed-Loop Tracking -- Phases 17-22 (incl. 20.1, 20.2) (in progress)
 
 ## Phases
 
@@ -58,6 +58,7 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 20.1: Deep Review — Security & Safety** - Fix async race conditions, XSS, migration correctness, and exception sanitization (completed 2026-02-26)
 - [x] **Phase 20.2: Deep Review — Code Quality** - Type annotations, off-by-one fixes, dead code cleanup, and config consistency (completed 2026-02-26)
 - [ ] **Phase 21: Dashboard & Stats** - Outcome badges, effectiveness rates, lifetime stats cards, and time-to-grab metric
+- [ ] **Phase 22: Rename to Triggarr** - Rename package, Docker image, docs, and all references from fetcharr to triggarr
 
 ## Phase Details
 
@@ -177,10 +178,26 @@ Plans:
 Plans:
 - [ ] 21-01: TBD
 
+### Phase 22: Rename to Triggarr
+**Goal**: All code, config, Docker image, docs, and references reflect the new project name "Triggarr"
+**Depends on**: Phase 21
+**Requirements**: Repo already renamed on GitHub (thejuran/triggarr). Local directory renamed to ~/triggarr.
+**Success Criteria** (what must be TRUE):
+  1. Python package directory renamed from `fetcharr/` to `triggarr/`
+  2. All imports, module references, and pyproject.toml updated to triggarr
+  3. Docker image publishes to `ghcr.io/thejuran/triggarr` (release.yml updated)
+  4. Dockerfile, docker-compose.yml, entrypoint.sh, and CLAUDE.md reference triggarr
+  5. README, docs, and all user-facing strings say Triggarr
+  6. Tests directory imports updated and all tests pass
+**Plans**: TBD
+
+Plans:
+- [ ] 22-01: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21
+Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21 > 22
 (Phase 19 can execute in parallel with Phase 18 -- both depend only on Phase 17)
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -208,3 +225,4 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21
 | 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
 | 20.2 Deep Review — Code Quality | 2/2 | Complete    | 2026-02-26 | - |
 | 21. Dashboard & Stats | v2.0 | 0/? | Not started | - |
+| 22. Rename to Triggarr | v2.0 | 0/? | Not started | - |
