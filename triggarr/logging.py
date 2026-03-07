@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 from loguru import logger
 
-from fetcharr.log_buffer import LogEntry, log_buffer
+from triggarr.log_buffer import LogEntry, log_buffer
 
 
 def create_redacting_sink(secrets: list[str], stream=sys.stderr) -> Callable:

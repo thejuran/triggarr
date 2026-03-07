@@ -8,8 +8,8 @@ import httpx
 import pydantic
 from loguru import logger
 
-from fetcharr.clients.base import ArrClient
-from fetcharr.models.arr import GrabEvent
+from triggarr.clients.base import ArrClient
+from triggarr.models.arr import GrabEvent
 
 
 class SonarrClient(ArrClient):

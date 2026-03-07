@@ -7,12 +7,12 @@ import sys
 import tomllib
 from pathlib import Path
 
-from fetcharr.models.config import Settings
+from triggarr.models.config import Settings
 
 # Default commented config template written on first run.
 DEFAULT_CONFIG = """\
-# Fetcharr Configuration
-# Edit this file and restart Fetcharr.
+# Triggarr Configuration
+# Edit this file and restart Triggarr.
 
 [general]
 # Log level: debug, info, warning, error
@@ -88,7 +88,7 @@ def ensure_config(config_path: Path) -> Settings:
         generate_default_config(config_path)
         print(
             f"Default config written to {config_path}\n"
-            "Edit the config file and restart Fetcharr.",
+            "Edit the config file and restart Triggarr.",
             file=sys.stderr,
         )
         sys.exit(1)

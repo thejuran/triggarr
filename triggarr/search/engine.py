@@ -3,7 +3,7 @@
 Pure functions for filtering, batching, and deduplication, plus async
 cycle functions that compose them with API client calls to drive the
 automated search behaviour for Radarr and Sonarr.  Search history is
-persisted to SQLite via the ``fetcharr.db`` module.
+persisted to SQLite via the ``triggarr.db`` module.
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ import httpx
 import pydantic
 from loguru import logger
 
-from fetcharr.clients.radarr import RadarrClient
-from fetcharr.clients.sonarr import SonarrClient
-from fetcharr.db import insert_search_entry
-from fetcharr.models.config import Settings
-from fetcharr.state import FetcharrState
+from triggarr.clients.radarr import RadarrClient
+from triggarr.clients.sonarr import SonarrClient
+from triggarr.db import insert_search_entry
+from triggarr.models.config import Settings
+from triggarr.state import FetcharrState
 
 
 def _sanitize_exc(exc: Exception) -> str:

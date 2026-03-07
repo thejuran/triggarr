@@ -1,4 +1,4 @@
-"""Web UI routes for Fetcharr dashboard and settings.
+"""Web UI routes for Triggarr dashboard and settings.
 
 Provides the main dashboard page with htmx-polling app cards and search log,
 a config editor with masked API keys and hot-reload, a search-now trigger,
@@ -20,17 +20,17 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from fetcharr.clients.radarr import RadarrClient
-from fetcharr.clients.sonarr import SonarrClient
-from fetcharr.db import get_dashboard_stats, get_recent_searches, get_search_history
-from fetcharr.log_buffer import log_buffer
-from fetcharr.logging import setup_logging
-from fetcharr.models.config import Settings as SettingsModel
-from fetcharr.search.engine import run_radarr_cycle, run_sonarr_cycle
-from fetcharr.search.scheduler import make_search_job
-from fetcharr.startup import collect_secrets
-from fetcharr.state import save_state
-from fetcharr.web.validation import safe_int, safe_log_level, validate_arr_url
+from triggarr.clients.radarr import RadarrClient
+from triggarr.clients.sonarr import SonarrClient
+from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
+from triggarr.log_buffer import log_buffer
+from triggarr.logging import setup_logging
+from triggarr.models.config import Settings as SettingsModel
+from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
+from triggarr.search.scheduler import make_search_job
+from triggarr.startup import collect_secrets
+from triggarr.state import save_state
+from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url
 
 _PKG_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = _PKG_DIR / "templates"

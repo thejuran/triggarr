@@ -1,4 +1,4 @@
-"""Atomic JSON state persistence for Fetcharr.
+"""Atomic JSON state persistence for Triggarr.
 
 State tracks round-robin cursor positions and search history
 across container restarts. All writes use atomic write-then-rename

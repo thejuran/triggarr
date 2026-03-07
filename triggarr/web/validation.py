@@ -1,4 +1,4 @@
-"""Input validation helpers for the Fetcharr web UI.
+"""Input validation helpers for the Triggarr web UI.
 
 Provides URL scheme + SSRF validation, integer clamping with safe bounds,
 and log level allowlisting for the settings form.

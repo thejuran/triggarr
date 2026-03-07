@@ -1,4 +1,4 @@
-"""Entry point for ``python -m fetcharr``."""
+"""Entry point for ``python -m triggarr``."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from fetcharr.models.config import CONFIG_PATH
-from fetcharr.search.scheduler import create_lifespan
-from fetcharr.state import STATE_PATH
-from fetcharr.web.middleware import OriginCheckMiddleware
-from fetcharr.web.routes import STATIC_DIR, router
+from triggarr.models.config import CONFIG_PATH
+from triggarr.search.scheduler import create_lifespan
+from triggarr.state import STATE_PATH
+from triggarr.web.middleware import OriginCheckMiddleware
+from triggarr.web.routes import STATIC_DIR, router
 
 
 def main() -> None:
-    """Run Fetcharr: startup, scheduler, and HTTP server.
+    """Run Triggarr: startup, scheduler, and HTTP server.
 
     Calls the async entry point which handles configuration loading,
     connection validation, and uvicorn serving with APScheduler-driven
@@ -26,12 +26,12 @@ def main() -> None:
     try:
         asyncio.run(_run())
     except KeyboardInterrupt:
-        logger.info("Fetcharr stopped by user")
+        logger.info("Triggarr stopped by user")
 
 
 async def _run() -> None:
     """Async entry point: startup then serve with lifespan-managed scheduler."""
-    from fetcharr.startup import startup
+    from triggarr.startup import startup
 
     settings = await startup()
 

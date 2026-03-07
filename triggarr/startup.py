@@ -1,4 +1,4 @@
-"""Startup orchestration for Fetcharr.
+"""Startup orchestration for Triggarr.
 
 Coordinates config loading, logging setup with secret redaction,
 connection validation, and startup banner display.
@@ -11,12 +11,12 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
-from fetcharr import __version__
-from fetcharr.clients.radarr import RadarrClient
-from fetcharr.clients.sonarr import SonarrClient
-from fetcharr.config import ensure_config
-from fetcharr.logging import setup_logging
-from fetcharr.models.config import CONFIG_PATH, Settings
+from triggarr import __version__
+from triggarr.clients.radarr import RadarrClient
+from triggarr.clients.sonarr import SonarrClient
+from triggarr.config import ensure_config
+from triggarr.logging import setup_logging
+from triggarr.models.config import CONFIG_PATH, Settings
 
 LOCALHOST_PATTERNS = {"localhost", "127.0.0.1", "::1"}
 
@@ -71,14 +71,14 @@ def collect_secrets(settings: Settings) -> list[str]:
 def print_banner(settings: Settings) -> None:
     """Log the startup banner showing version and configured apps.
 
-    Displays the Fetcharr version, log level, and connection status
+    Displays the Triggarr version, log level, and connection status
     for each *arr application (URL or "disabled").
     """
     radarr_status = settings.radarr.url if settings.radarr.enabled else "disabled"
     sonarr_status = settings.sonarr.url if settings.sonarr.enabled else "disabled"
 
     logger.info("==================================================")
-    logger.info("Fetcharr v{version}", version=__version__)
+    logger.info("Triggarr v{version}", version=__version__)
     logger.info("Log level: {level}", level=settings.general.log_level)
     logger.info("Radarr: {status}", status=radarr_status)
     logger.info("Sonarr: {status}", status=sonarr_status)
@@ -136,7 +136,7 @@ async def validate_connections(settings: Settings) -> dict[str, bool]:
 
 
 async def startup(config_path: Path | None = None) -> Settings:
-    """Run the full Fetcharr startup sequence.
+    """Run the full Triggarr startup sequence.
 
     1. Load (or generate) configuration from TOML
     2. Collect API key secrets for log redaction

@@ -1,6 +1,6 @@
 """Tracking orchestrator -- polls *arr history APIs to detect grabs and resolve search outcomes.
 
-Bridges the correlation engine (fetcharr.correlation) with the DB layer (fetcharr.db)
+Bridges the correlation engine (triggarr.correlation) with the DB layer (triggarr.db)
 to close the loop: searched -> grabbed / partial / unresolved.
 """
 
@@ -13,11 +13,11 @@ import httpx
 import pydantic
 from loguru import logger
 
-from fetcharr.clients.radarr import RadarrClient
-from fetcharr.clients.sonarr import SonarrClient
-from fetcharr.correlation import SearchRecord, correlate_grabs
-from fetcharr.db import get_trackable_entries, update_outcome_and_stats
-from fetcharr.models.arr import GrabEvent
+from triggarr.clients.radarr import RadarrClient
+from triggarr.clients.sonarr import SonarrClient
+from triggarr.correlation import SearchRecord, correlate_grabs
+from triggarr.db import get_trackable_entries, update_outcome_and_stats
+from triggarr.models.arr import GrabEvent
 
 
 async def run_tracking_check(

@@ -9,7 +9,7 @@ import httpx
 import pydantic
 from loguru import logger
 
-from fetcharr.models.arr import PaginatedResponse, SystemStatus
+from triggarr.models.arr import PaginatedResponse, SystemStatus
 
 
 class ArrClient:

@@ -22,13 +22,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
 
-from fetcharr.clients.radarr import RadarrClient
-from fetcharr.clients.sonarr import SonarrClient
-from fetcharr.db import init_db, migrate_from_state
-from fetcharr.models.config import Settings
-from fetcharr.search.engine import run_radarr_cycle, run_sonarr_cycle
-from fetcharr.state import FetcharrState, load_state, save_state
-from fetcharr.tracking import run_tracking_check
+from triggarr.clients.radarr import RadarrClient
+from triggarr.clients.sonarr import SonarrClient
+from triggarr.db import init_db, migrate_from_state
+from triggarr.models.config import Settings
+from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
+from triggarr.state import FetcharrState, load_state, save_state
+from triggarr.tracking import run_tracking_check
 
 
 def make_search_job(

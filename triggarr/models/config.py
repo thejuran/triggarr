@@ -1,4 +1,4 @@
-"""Pydantic models for Fetcharr TOML configuration."""
+"""Pydantic models for Triggarr TOML configuration."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Security middleware for Fetcharr web server."""
+"""Security middleware for Triggarr web server."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Pure correlation functions for matching *arr grabs to fetcharr searches.
+"""Pure correlation functions for matching *arr grabs to triggarr searches.
 
 All functions are pure (no I/O, no DB access). They accept search records
 and grab events as inputs and return correlation results. Phase 20 handles
@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from fetcharr.models.arr import GrabEvent
+from triggarr.models.arr import GrabEvent
 
 
 @dataclass
@@ -55,7 +55,7 @@ def correlate_grabs(
     grabs: list[GrabEvent],
     tracking_window_minutes: int,
 ) -> list[CorrelationResult]:
-    """Correlate grab events to fetcharr-triggered searches.
+    """Correlate grab events to triggarr-triggered searches.
 
     For each search record, find grab events that:
     1. Occurred AFTER the search time
