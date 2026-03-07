@@ -47,7 +47,7 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 
 </details>
 
-### 🚧 v2.0 Closed-Loop Tracking (In Progress)
+### v2.0 Closed-Loop Tracking (In Progress)
 
 **Milestone Goal:** Evolve fetcharr from fire-and-forget to closed-loop: detect when searched items are actually grabbed, show per-item and aggregate feedback on the dashboard, track lifetime effectiveness stats, and resolve all deferred tech debt.
 
@@ -173,10 +173,11 @@ Plans:
   3. Dashboard shows average time-to-grab metric (mean duration from search to grab detection)
   4. Search history entries display color-coded outcome badges (grabbed/partial/unresolved) with tooltips explaining each state
   5. New config options (tracking window, timeout, pageSize, max rows) are editable in the settings UI
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 21-01: TBD
+- [ ] 21-01-PLAN.md — Stats cards with DB queries, stats partial endpoint, and dashboard integration (STATS-01 through STATS-05)
+- [ ] 21-02-PLAN.md — Outcome badges in history/log templates, settings form for new config fields
 
 ### Phase 22: Rename to Triggarr
 **Goal**: All code, config, Docker image, docs, and references reflect the new project name "Triggarr"
@@ -224,5 +225,5 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21 > 22
 | 20. Tracking Integration | 3/3 | Complete    | 2026-02-25 | - |
 | 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
 | 20.2 Deep Review — Code Quality | 2/2 | Complete    | 2026-02-26 | - |
-| 21. Dashboard & Stats | v2.0 | 0/? | Not started | - |
+| 21. Dashboard & Stats | v2.0 | 0/2 | Not started | - |
 | 22. Rename to Triggarr | v2.0 | 0/? | Not started | - |
