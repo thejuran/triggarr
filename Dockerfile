@@ -11,11 +11,11 @@ ENV TAILWINDCSS_VERSION=v4.2.1
 WORKDIR /build
 
 COPY pyproject.toml .
-COPY fetcharr/ fetcharr/
+COPY triggarr/ triggarr/
 
 RUN pip install --no-cache-dir pytailwindcss \
     && tailwindcss_install \
-    && tailwindcss -i fetcharr/static/css/input.css -o fetcharr/static/css/output.css --minify
+    && tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --minify
 
 
 # ---- Stage 2: Production image ----
@@ -27,11 +27,11 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 COPY pyproject.toml .
-COPY fetcharr/ fetcharr/
+COPY triggarr/ triggarr/
 RUN pip install --no-cache-dir .
 
 # Pull compiled CSS from the builder stage
-COPY --from=builder /build/fetcharr/static/css/output.css fetcharr/static/css/output.css
+COPY --from=builder /build/triggarr/static/css/output.css triggarr/static/css/output.css
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
