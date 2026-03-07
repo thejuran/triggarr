@@ -270,11 +270,10 @@ async def save_settings(request: Request) -> RedirectResponse:
         "general": {
             "log_level": safe_log_level(form.get("log_level")),
             "hard_max_per_cycle": safe_int(form.get("hard_max_per_cycle"), 0, 0, 1000),
-            # Preserve values not yet in settings UI (Phase 17 adds config, UI deferred)
-            "max_history_rows": current_settings.general.max_history_rows,
-            "request_timeout": current_settings.general.request_timeout,
-            "page_size": current_settings.general.page_size,
-            "tracking_window_minutes": current_settings.general.tracking_window_minutes,
+            "max_history_rows": safe_int(form.get("max_history_rows"), 1000, 0, 100_000),
+            "request_timeout": safe_int(form.get("request_timeout"), 30, 5, 300),
+            "page_size": safe_int(form.get("page_size"), 50, 10, 500),
+            "tracking_window_minutes": safe_int(form.get("tracking_window_minutes"), 60, 5, 1440),
             "tracking_delay_seconds": current_settings.general.tracking_delay_seconds,
         },
     }
