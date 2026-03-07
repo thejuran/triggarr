@@ -20,8 +20,8 @@ re_verification: false
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
 | 1 | Pushing a commit to main triggers CI that runs all 115+ pytest tests and they pass | VERIFIED | `test` job in ci.yml runs `uv run pytest tests/ -x -q`; 115 tests pass locally in 0.32s |
-| 2 | Opening a PR triggers CI that runs ruff linting and fails the build on violations | VERIFIED | `lint` job in ci.yml runs `uv run ruff check fetcharr/ tests/`; `ruff check` exits 0 locally — zero violations |
-| 3 | Every PR CI run validates that the Docker image builds successfully | VERIFIED | `docker` job in ci.yml runs `docker build -t fetcharr:ci-test .`; Dockerfile confirmed present; no `docker push` step |
+| 2 | Opening a PR triggers CI that runs ruff linting and fails the build on violations | VERIFIED | `lint` job in ci.yml runs `uv run ruff check triggarr/ tests/`; `ruff check` exits 0 locally — zero violations |
+| 3 | Every PR CI run validates that the Docker image builds successfully | VERIFIED | `docker` job in ci.yml runs `docker build -t triggarr:ci-test .`; Dockerfile confirmed present; no `docker push` step |
 
 **Score:** 3/3 truths verified
 
@@ -36,16 +36,16 @@ re_verification: false
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `.github/workflows/ci.yml` | `pyproject.toml` | `uv run ruff check` reads ruff config from pyproject.toml | WIRED | `lint` job runs `uv run ruff check fetcharr/ tests/`; ruff automatically discovers `[tool.ruff]` section in pyproject.toml; zero violations confirmed locally |
-| `.github/workflows/ci.yml` | `Dockerfile` | `docker build -t fetcharr:ci-test .` | WIRED | `docker` job issues `docker build -t fetcharr:ci-test .`; Dockerfile exists at repo root; no push step present |
+| `.github/workflows/ci.yml` | `pyproject.toml` | `uv run ruff check` reads ruff config from pyproject.toml | WIRED | `lint` job runs `uv run ruff check triggarr/ tests/`; ruff automatically discovers `[tool.ruff]` section in pyproject.toml; zero violations confirmed locally |
+| `.github/workflows/ci.yml` | `Dockerfile` | `docker build -t triggarr:ci-test .` | WIRED | `docker` job issues `docker build -t triggarr:ci-test .`; Dockerfile exists at repo root; no push step present |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|------------|-------------|--------|----------|
 | CICD-01 | 09-01-PLAN.md | GitHub Actions runs pytest on every PR and push to main | SATISFIED | `test` job triggers on `push` (branches: [main]) and `pull_request` (branches: [main]); runs `uv run pytest tests/ -x -q` |
-| CICD-02 | 09-01-PLAN.md | GitHub Actions runs linting (ruff) on every PR and push to main | SATISFIED | `lint` job with same triggers runs `uv run ruff check fetcharr/ tests/`; ruff exits 0 — zero violations in codebase |
-| CICD-03 | 09-01-PLAN.md | GitHub Actions validates Docker build on every PR | SATISFIED | `docker` job runs `docker build -t fetcharr:ci-test .` on both push and PR; no image push (build validation only) |
+| CICD-02 | 09-01-PLAN.md | GitHub Actions runs linting (ruff) on every PR and push to main | SATISFIED | `lint` job with same triggers runs `uv run ruff check triggarr/ tests/`; ruff exits 0 — zero violations in codebase |
+| CICD-03 | 09-01-PLAN.md | GitHub Actions validates Docker build on every PR | SATISFIED | `docker` job runs `docker build -t triggarr:ci-test .` on both push and PR; no image push (build validation only) |
 
 All three requirement IDs declared in the PLAN frontmatter (`CICD-01`, `CICD-02`, `CICD-03`) are accounted for. No orphaned requirements for Phase 9 in REQUIREMENTS.md.
 

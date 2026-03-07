@@ -24,11 +24,11 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/models/config.py
-    - fetcharr/config.py
-    - fetcharr/search/engine.py
-    - fetcharr/web/routes.py
-    - fetcharr/templates/settings.html
+    - triggarr/models/config.py
+    - triggarr/config.py
+    - triggarr/search/engine.py
+    - triggarr/web/routes.py
+    - triggarr/templates/settings.html
     - tests/test_search.py
 
 key-decisions:
@@ -71,11 +71,11 @@ Each task was committed atomically:
 2. **Task 2: Add hard max to settings UI and write tests** - `2fad66a` (feat)
 
 ## Files Created/Modified
-- `fetcharr/models/config.py` - Added hard_max_per_cycle field to GeneralConfig
-- `fetcharr/config.py` - Added commented hard_max_per_cycle to DEFAULT_CONFIG template
-- `fetcharr/search/engine.py` - Added cap_batch_sizes function, integrated into both cycle functions
-- `fetcharr/web/routes.py` - Added hard_max_per_cycle to settings GET context and POST handler
-- `fetcharr/templates/settings.html` - Added Hard Max Items Per Cycle input in General section
+- `triggarr/models/config.py` - Added hard_max_per_cycle field to GeneralConfig
+- `triggarr/config.py` - Added commented hard_max_per_cycle to DEFAULT_CONFIG template
+- `triggarr/search/engine.py` - Added cap_batch_sizes function, integrated into both cycle functions
+- `triggarr/web/routes.py` - Added hard_max_per_cycle to settings GET context and POST handler
+- `triggarr/templates/settings.html` - Added Hard Max Items Per Cycle input in General section
 - `tests/test_search.py` - Added 5 tests for cap_batch_sizes
 
 ## Decisions Made
@@ -90,7 +90,7 @@ Each task was committed atomically:
 - **Found during:** Task 2 (verification)
 - **Issue:** Two lines in engine.py exceeded 120 character limit due to long settings attribute comparisons
 - **Fix:** Stored original values in local variables before cap, compared against locals instead of full settings paths
-- **Files modified:** fetcharr/search/engine.py
+- **Files modified:** triggarr/search/engine.py
 - **Verification:** ruff check passes cleanly
 - **Committed in:** 2fad66a (Task 2 commit)
 

@@ -133,7 +133,7 @@ Use `SeasonSearch` with explicit `seasonNumber` — not `SeriesSearch`. When fet
 ### Pitfall 7: Docker Networking — Using `localhost` for Container-to-Container URLs
 
 **What goes wrong:**
-The tool's container cannot reach Radarr or Sonarr via `http://localhost:7878` because each container has its own network namespace. `localhost` inside the Fetcharr container refers to Fetcharr itself, not the host. Users copy their Radarr URL from their browser (which points to `localhost` from the host machine) and paste it into Fetcharr config, then get connection refused errors that look like Radarr is broken.
+The tool's container cannot reach Radarr or Sonarr via `http://localhost:7878` because each container has its own network namespace. `localhost` inside the Triggarr container refers to Triggarr itself, not the host. Users copy their Radarr URL from their browser (which points to `localhost` from the host machine) and paste it into Triggarr config, then get connection refused errors that look like Radarr is broken.
 
 **Why it happens:**
 In a homelab context, users naturally think of their URLs as "the address I use in my browser." The Docker networking distinction between host network and container bridge network is non-obvious to casual users.

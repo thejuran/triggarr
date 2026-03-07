@@ -95,7 +95,7 @@ Or add `"apscheduler>=3.11,<4"` to `pyproject.toml` dependencies.
 
 ### Recommended Project Structure
 ```
-fetcharr/
+triggarr/
 ├── __init__.py
 ├── __main__.py           # Entry point (modify for lifespan)
 ├── config.py             # TOML loading (add search config fields)
@@ -122,9 +122,9 @@ fetcharr/
 ```python
 async def run_radarr_cycle(
     client: RadarrClient,
-    state: FetcharrState,
+    state: TriggarrState,
     settings: Settings,
-) -> FetcharrState:
+) -> TriggarrState:
     """Run one Radarr search cycle: missing batch then cutoff batch."""
     # 1. Fetch current wanted lists
     missing = await client.get_wanted_missing()
@@ -228,7 +228,7 @@ app = FastAPI(lifespan=lifespan)
 SEARCH_LOG_MAX = 50
 
 def append_search_log(
-    state: FetcharrState,
+    state: TriggarrState,
     app: str,
     queue_type: str,
     item_name: str,

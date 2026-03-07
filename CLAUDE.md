@@ -1,16 +1,16 @@
-# Fetcharr
+# Triggarr
 
 Python automation daemon that triggers searches in Radarr and Sonarr on a schedule.
-FastAPI + htmx + Tailwind CSS v4 dark UI. Docker-first deployment to ghcr.io/thejuran/fetcharr.
+FastAPI + htmx + Tailwind CSS v4 dark UI. Docker-first deployment to ghcr.io/thejuran/triggarr.
 
 ## Development Commands
 
 ```bash
 uv sync --extra dev                    # install dependencies
 uv run pytest tests/ -x -q             # run tests
-uv run ruff check fetcharr/ tests/     # lint
-uv run tailwindcss -i fetcharr/static/css/input.css -o fetcharr/static/css/output.css --watch  # dev CSS
-docker build -t fetcharr:local .       # local Docker build
+uv run ruff check triggarr/ tests/     # lint
+uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch  # dev CSS
+docker build -t triggarr:local .       # local Docker build
 ```
 
 ## Code Conventions

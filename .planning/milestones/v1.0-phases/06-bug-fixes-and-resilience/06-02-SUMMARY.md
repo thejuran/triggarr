@@ -24,7 +24,7 @@ tech-stack:
 
 key-files:
   created: []
-  modified: ["fetcharr/clients/base.py", "fetcharr/search/engine.py"]
+  modified: ["triggarr/clients/base.py", "triggarr/search/engine.py"]
 
 key-decisions:
   - "TransportError replaces ConnectError+TimeoutException (covers RemoteProtocolError, ReadError, etc.)"
@@ -69,8 +69,8 @@ Each task was committed atomically:
 2. **Task 2: Fix deduplicate_to_seasons missing fields and simplify cycle abort catches** - `c04b81f` (fix)
 
 ## Files Created/Modified
-- `fetcharr/clients/base.py` - Broadened retry catch, added pydantic import and ValidationError catch in validate_connection
-- `fetcharr/search/engine.py` - Safe .get() in deduplicate_to_seasons, simplified cycle abort catches, added pydantic import
+- `triggarr/clients/base.py` - Broadened retry catch, added pydantic import and ValidationError catch in validate_connection
+- `triggarr/search/engine.py` - Safe .get() in deduplicate_to_seasons, simplified cycle abort catches, added pydantic import
 
 ## Decisions Made
 - Used `httpx.TransportError` (not `httpx.HTTPError`) for retry catch because HTTPStatusError is not a TransportError subclass and needs separate handling for retry logic
@@ -93,8 +93,8 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: fetcharr/clients/base.py (TransportError in retry, ValidationError in validate_connection)
-- FOUND: fetcharr/search/engine.py (ep.get() in deduplicate, HTTPError+ValidationError in cycles)
+- FOUND: triggarr/clients/base.py (TransportError in retry, ValidationError in validate_connection)
+- FOUND: triggarr/search/engine.py (ep.get() in deduplicate, HTTPError+ValidationError in cycles)
 - FOUND: commit b8125c8 (Task 1)
 - FOUND: commit c04b81f (Task 2)
 - VERIFIED: 27/27 tests pass (8 client + 19 search)

@@ -32,12 +32,12 @@ re_verification: false
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `fetcharr/state.py` | _merge_defaults helper, corrupt recovery, temp cleanup | VERIFIED | Contains `_merge_defaults` (line 50), JSONDecodeError/OSError catch (line 86), os.unlink cleanup (line 118) |
-| `fetcharr/clients/base.py` | Broadened retry (TransportError), ValidationError in validate_connection | VERIFIED | `httpx.TransportError` at lines 50, 61. `pydantic.ValidationError` at line 179. |
-| `fetcharr/search/engine.py` | Safe .get() in deduplicate, simplified cycle abort catches | VERIFIED | `ep.get("seriesId")` at line 102, `ep.get("seasonNumber")` at line 103. `(httpx.HTTPError, pydantic.ValidationError)` at lines 177, 260. |
-| `fetcharr/logging.py` | create_redacting_sink custom sink, setup_logging with colorize=False | VERIFIED | `create_redacting_sink` (line 17), `colorize=False` (line 64), no filter-based approach remains. |
-| `fetcharr/search/scheduler.py` | asyncio.Lock on app.state, lock in make_search_job | VERIFIED | `asyncio.Lock()` at line 119, `async with app.state.search_lock` at line 53. |
-| `fetcharr/web/routes.py` | Lock in search_now, validate-before-write, redaction refresh | VERIFIED | Lock at line 251, `SettingsModel(**new_config)` at line 162, `setup_logging` at line 174. |
+| `triggarr/state.py` | _merge_defaults helper, corrupt recovery, temp cleanup | VERIFIED | Contains `_merge_defaults` (line 50), JSONDecodeError/OSError catch (line 86), os.unlink cleanup (line 118) |
+| `triggarr/clients/base.py` | Broadened retry (TransportError), ValidationError in validate_connection | VERIFIED | `httpx.TransportError` at lines 50, 61. `pydantic.ValidationError` at line 179. |
+| `triggarr/search/engine.py` | Safe .get() in deduplicate, simplified cycle abort catches | VERIFIED | `ep.get("seriesId")` at line 102, `ep.get("seasonNumber")` at line 103. `(httpx.HTTPError, pydantic.ValidationError)` at lines 177, 260. |
+| `triggarr/logging.py` | create_redacting_sink custom sink, setup_logging with colorize=False | VERIFIED | `create_redacting_sink` (line 17), `colorize=False` (line 64), no filter-based approach remains. |
+| `triggarr/search/scheduler.py` | asyncio.Lock on app.state, lock in make_search_job | VERIFIED | `asyncio.Lock()` at line 119, `async with app.state.search_lock` at line 53. |
+| `triggarr/web/routes.py` | Lock in search_now, validate-before-write, redaction refresh | VERIFIED | Lock at line 251, `SettingsModel(**new_config)` at line 162, `setup_logging` at line 174. |
 | `tests/test_state.py` | Tests for corrupt recovery, schema migration, temp cleanup | VERIFIED | 8 tests total (4 existing + 4 new). All pass. |
 | `tests/test_logging.py` | Test for traceback redaction via custom sink | VERIFIED | `test_redaction_covers_tracebacks` at line 46. 4 tests total. All pass. |
 
@@ -45,16 +45,16 @@ re_verification: false
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `fetcharr/state.py` | `json.JSONDecodeError` | try/except in load_state | WIRED | Line 86: `except (json.JSONDecodeError, OSError)` |
-| `fetcharr/state.py` | `os.unlink` | cleanup in save_state except block | WIRED | Line 118: `os.unlink(tmp.name)` inside except OSError |
-| `fetcharr/clients/base.py` | `httpx.TransportError` | retry except clause | WIRED | Lines 50, 61: both attempt and retry catch TransportError |
-| `fetcharr/clients/base.py` | `pydantic.ValidationError` | validate_connection except | WIRED | Line 179: `except pydantic.ValidationError as exc` returns False |
-| `fetcharr/search/engine.py` | deduplicate_to_seasons | .get() with None check | WIRED | Lines 102-105: `ep.get()` + None check + `continue` |
-| `fetcharr/search/scheduler.py` | `app.state.search_lock` | Lock created in lifespan, acquired in job | WIRED | Created at line 119, acquired at line 53 |
-| `fetcharr/web/routes.py` | `app.state.search_lock` | async with in search_now | WIRED | Line 251: `async with request.app.state.search_lock` |
-| `fetcharr/web/routes.py` | `Settings(**new_config)` | validate before write | WIRED | Line 162: `SettingsModel(**new_config)` before line 168 write |
-| `fetcharr/web/routes.py` | `collect_secrets` + `setup_logging` | redaction refresh | WIRED | Lines 173-174: called after `request.app.state.settings = new_settings` |
-| `fetcharr/logging.py` | `create_redacting_sink` | sink receives full formatted output | WIRED | Line 61: `logger.add(create_redacting_sink(secrets), ...)` |
+| `triggarr/state.py` | `json.JSONDecodeError` | try/except in load_state | WIRED | Line 86: `except (json.JSONDecodeError, OSError)` |
+| `triggarr/state.py` | `os.unlink` | cleanup in save_state except block | WIRED | Line 118: `os.unlink(tmp.name)` inside except OSError |
+| `triggarr/clients/base.py` | `httpx.TransportError` | retry except clause | WIRED | Lines 50, 61: both attempt and retry catch TransportError |
+| `triggarr/clients/base.py` | `pydantic.ValidationError` | validate_connection except | WIRED | Line 179: `except pydantic.ValidationError as exc` returns False |
+| `triggarr/search/engine.py` | deduplicate_to_seasons | .get() with None check | WIRED | Lines 102-105: `ep.get()` + None check + `continue` |
+| `triggarr/search/scheduler.py` | `app.state.search_lock` | Lock created in lifespan, acquired in job | WIRED | Created at line 119, acquired at line 53 |
+| `triggarr/web/routes.py` | `app.state.search_lock` | async with in search_now | WIRED | Line 251: `async with request.app.state.search_lock` |
+| `triggarr/web/routes.py` | `Settings(**new_config)` | validate before write | WIRED | Line 162: `SettingsModel(**new_config)` before line 168 write |
+| `triggarr/web/routes.py` | `collect_secrets` + `setup_logging` | redaction refresh | WIRED | Lines 173-174: called after `request.app.state.settings = new_settings` |
+| `triggarr/logging.py` | `create_redacting_sink` | sink receives full formatted output | WIRED | Line 61: `logger.add(create_redacting_sink(secrets), ...)` |
 
 ### Requirements Coverage
 
@@ -81,7 +81,7 @@ No TODO/FIXME/XXX/HACK/PLACEHOLDER comments found. No empty implementations. No 
 
 ### 1. Concurrent Search-Now During Scheduled Cycle
 
-**Test:** Start Fetcharr with a short search interval (1 min). While a scheduled cycle is running, click "Search Now" for the same app. Verify the manual search waits for the scheduled cycle to complete (no overlapping state writes).
+**Test:** Start Triggarr with a short search interval (1 min). While a scheduled cycle is running, click "Search Now" for the same app. Verify the manual search waits for the scheduled cycle to complete (no overlapping state writes).
 **Expected:** Manual search queues behind the scheduled cycle, state file is consistent, no errors in logs.
 **Why human:** Lock contention timing is hard to simulate in unit tests; requires real async concurrency.
 

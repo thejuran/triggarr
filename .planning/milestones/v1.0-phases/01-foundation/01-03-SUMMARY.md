@@ -12,7 +12,7 @@ requires:
     provides: "ArrClient base class, RadarrClient, SonarrClient with validate_connection"
 provides:
   - Startup orchestration: config load -> secret collection -> logging setup -> banner -> connection validation
-  - Entry point for python -m fetcharr with KeyboardInterrupt handling
+  - Entry point for python -m triggarr with KeyboardInterrupt handling
   - Test suite: 21 tests covering config, state, clients, and logging modules
 affects: [02-search-engine, 03-web-ui]
 
@@ -23,8 +23,8 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/startup.py
-    - fetcharr/__main__.py
+    - triggarr/startup.py
+    - triggarr/__main__.py
     - tests/__init__.py
     - tests/test_config.py
     - tests/test_state.py
@@ -34,7 +34,7 @@ key-files:
     - pyproject.toml
 
 key-decisions:
-  - "Startup accepts optional config_path parameter for testability (defaults to /config/fetcharr.toml)"
+  - "Startup accepts optional config_path parameter for testability (defaults to /config/triggarr.toml)"
   - "Clients created and closed during validation -- not kept open (search engine creates its own in Phase 2)"
   - "pytest-asyncio asyncio_mode=auto for seamless async test support"
 
@@ -64,7 +64,7 @@ completed: 2026-02-23
 
 ## Accomplishments
 - Startup orchestration module wiring config loading, secret collection, loguru setup with redaction, startup banner, and connection validation
-- Entry point for `python -m fetcharr` with clean KeyboardInterrupt handling
+- Entry point for `python -m triggarr` with clean KeyboardInterrupt handling
 - 21 tests covering config TOML loading/validation/default generation, state atomic write/round-trip, client header auth/timeout/subclass structure, and log redaction filter
 
 ## Task Commits
@@ -75,8 +75,8 @@ Each task was committed atomically:
 2. **Task 2: Create test suite for config, state, clients, and security invariants** - `76dddb7` (test)
 
 ## Files Created/Modified
-- `fetcharr/startup.py` - Startup orchestration: collect_secrets, print_banner, validate_connections, startup
-- `fetcharr/__main__.py` - Entry point for python -m fetcharr with asyncio.run and KeyboardInterrupt handling
+- `triggarr/startup.py` - Startup orchestration: collect_secrets, print_banner, validate_connections, startup
+- `triggarr/__main__.py` - Entry point for python -m triggarr with asyncio.run and KeyboardInterrupt handling
 - `pyproject.toml` - Added pytest/pytest-asyncio dev deps and pytest.ini_options with asyncio_mode=auto
 - `tests/__init__.py` - Test package marker
 - `tests/test_config.py` - 6 tests: TOML loading, validation, default generation, SecretStr security, ensure_config exit
@@ -85,7 +85,7 @@ Each task was committed atomically:
 - `tests/test_logging.py` - 3 tests: redaction removes secrets, empty secrets safe, format matches spec
 
 ## Decisions Made
-- Startup function accepts optional config_path parameter so tests can pass temp directory paths instead of the production /config/fetcharr.toml path
+- Startup function accepts optional config_path parameter so tests can pass temp directory paths instead of the production /config/triggarr.toml path
 - Clients created during validate_connections are closed immediately after validation -- the search engine will create its own long-lived clients in Phase 2
 - pytest-asyncio configured with asyncio_mode=auto so async tests don't need individual markers
 
@@ -100,7 +100,7 @@ None.
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Startup flow fully wired: `python -m fetcharr` loads config, sets up logging, validates connections, prints banner
+- Startup flow fully wired: `python -m triggarr` loads config, sets up logging, validates connections, prints banner
 - 21 tests prove all Phase 1 modules work: config models, state persistence, API clients, log redaction
 - Ready for Phase 2: search engine can import startup(), RadarrClient, SonarrClient, load_state/save_state
 

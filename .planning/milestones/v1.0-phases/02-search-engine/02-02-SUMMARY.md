@@ -29,7 +29,7 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - "fetcharr/search/engine.py"
+    - "triggarr/search/engine.py"
 
 key-decisions:
   - "Top-level abort catches httpx.HTTPError (and subclasses) to cover all network/HTTP failure modes"
@@ -71,7 +71,7 @@ Each task was committed atomically:
 2. **Task 2: Implement run_sonarr_cycle function** - `aaea54f` (feat)
 
 ## Files Created/Modified
-- `fetcharr/search/engine.py` - Added run_radarr_cycle and run_sonarr_cycle async cycle functions alongside existing utility functions
+- `triggarr/search/engine.py` - Added run_radarr_cycle and run_sonarr_cycle async cycle functions alongside existing utility functions
 
 ## Decisions Made
 - Top-level abort catches `httpx.HTTPError` and its subclasses (`HTTPStatusError`, `ConnectError`, `TimeoutException`) to handle all network and HTTP failure modes while letting other exceptions propagate
@@ -94,7 +94,7 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: fetcharr/search/engine.py
+- FOUND: triggarr/search/engine.py
 - FOUND: c749822 (Task 1 commit)
 - FOUND: aaea54f (Task 2 commit)
 

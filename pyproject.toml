@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "fetcharr"
+name = "triggarr"
 version = "1.0.0"
 description = "Automated search triggering for Radarr and Sonarr"
 requires-python = ">=3.11"
@@ -30,7 +30,7 @@ dev = [
 ]
 
 [project.scripts]
-fetcharr = "fetcharr.__main__:main"
+triggarr = "triggarr.__main__:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

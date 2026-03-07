@@ -10,7 +10,7 @@ Phase 3 adds a status dashboard and config editor to the existing FastAPI applic
 
 The existing codebase already has FastAPI, uvicorn, APScheduler, and the state/config infrastructure. The main integration work is: (1) exposing state, settings, and scheduler to route handlers via `app.state`, (2) adding Jinja2 template rendering with htmx partial responses, (3) implementing config save with TOML serialization, and (4) wiring the "search now" button to trigger immediate scheduler jobs.
 
-**Primary recommendation:** Use `app.state` to share the mutable `FetcharrState` dict, `Settings` object, and `AsyncIOScheduler` instance from the lifespan context to route handlers. Return HTML fragments (partials) for htmx polling requests, full pages for initial loads.
+**Primary recommendation:** Use `app.state` to share the mutable `TriggarrState` dict, `Settings` object, and `AsyncIOScheduler` instance from the lifespan context to route handlers. Return HTML fragments (partials) for htmx polling requests, full pages for initial loads.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -20,7 +20,7 @@ The existing codebase already has FastAPI, uvicorn, APScheduler, and the state/c
 - Each card shows: connection status, last run, next run, queue position, wanted/cutoff counts, enable/disable toggle, "Search Now" button
 - Shared chronological search log below the cards, with app label per entry
 - Separate settings page at /settings (dashboard is read-only status)
-- Minimal top bar navigation: "Fetcharr" brand + Dashboard / Settings links
+- Minimal top bar navigation: "Triggarr" brand + Dashboard / Settings links
 - Dark mode only -- fits the *arr ecosystem
 - Visual reference: Radarr/Sonarr style (dark backgrounds, colored accent bars, functional and dense)
 - Green accent color for active states, buttons, highlights -- distinct from Radarr (orange) and Sonarr (blue)
@@ -107,7 +107,7 @@ Add to dev dependencies:
 
 ### Recommended Project Structure
 ```
-fetcharr/
+triggarr/
 ├── __main__.py             # Entry point (existing)
 ├── config.py               # TOML config loading (existing)
 ├── state.py                # State persistence (existing)
@@ -148,7 +148,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     state = load_state(state_path)
     scheduler = AsyncIOScheduler()
     # ... setup ...
-    app.state.fetcharr_state = state
+    app.state.triggarr_state = state
     app.state.settings = settings
     app.state.scheduler = scheduler
     app.state.connection_health = {"radarr": None, "sonarr": None}
@@ -157,7 +157,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 # In routes.py:
 @router.get("/")
 async def dashboard(request: Request):
-    state = request.app.state.fetcharr_state
+    state = request.app.state.triggarr_state
     settings = request.app.state.settings
     scheduler = request.app.state.scheduler
     # ... render template ...
@@ -245,7 +245,7 @@ async def search_now(request: Request, app_name: str):
     if app_name == "radarr" and request.app.state.radarr_client:
         state = await run_radarr_cycle(
             request.app.state.radarr_client,
-            request.app.state.fetcharr_state,
+            request.app.state.triggarr_state,
             request.app.state.settings,
         )
         save_state(state, STATE_PATH)
@@ -289,7 +289,7 @@ async def search_now(request: Request, app_name: str):
 ### Pitfall 3: Tailwind CSS Not Compiling New Classes
 **What goes wrong:** Adding new Tailwind utility classes in templates but the compiled CSS doesn't include them.
 **Why it happens:** Tailwind CSS v4 uses automatic content detection, scanning template files. If the templates directory isn't in the scan path, new classes are missed.
-**How to avoid:** Ensure the Tailwind CSS input file has `@import "tailwindcss"` and the CLI is run with the correct source paths. For development: `tailwindcss -i fetcharr/static/css/input.css -o fetcharr/static/css/output.css --watch`. The `--watch` flag recompiles on template changes.
+**How to avoid:** Ensure the Tailwind CSS input file has `@import "tailwindcss"` and the CLI is run with the correct source paths. For development: `tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch`. The `--watch` flag recompiles on template changes.
 **Warning signs:** Elements missing expected styling despite correct class names.
 
 ### Pitfall 4: API Key Leaking via Form Value Attribute
@@ -299,7 +299,7 @@ async def search_now(request: Request, app_name: str):
 **Warning signs:** View page source shows actual API key in input element.
 
 ### Pitfall 5: tomli_w Losing Config Comments
-**What goes wrong:** User's manually-added comments in `fetcharr.toml` are stripped after saving via the config editor.
+**What goes wrong:** User's manually-added comments in `triggarr.toml` are stripped after saving via the config editor.
 **Why it happens:** `tomli_w.dumps()` serializes a Python dict to TOML. Comments are not part of the data model.
 **How to avoid:** Accept this limitation. The config editor saves a clean, machine-generated TOML file. Document in the UI that saving via the editor replaces the file content. The default template with comments is only used for first-run generation (before the user ever opens the editor).
 **Warning signs:** User complains about lost comments after using config editor.
@@ -323,15 +323,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="fetcharr/static"), name="static")
-templates = Jinja2Templates(directory="fetcharr/templates")
+app.mount("/static", StaticFiles(directory="triggarr/static"), name="static")
+templates = Jinja2Templates(directory="triggarr/templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"title": "Fetcharr"},
+        context={"title": "Triggarr"},
     )
 ```
 
@@ -398,25 +398,25 @@ if job:
 
 ### Tailwind CSS v4 Input File
 ```css
-/* fetcharr/static/css/input.css */
+/* triggarr/static/css/input.css */
 @import "tailwindcss";
 
-/* Custom theme overrides for Fetcharr dark mode */
+/* Custom theme overrides for Triggarr dark mode */
 @theme {
-  --color-fetcharr-green: #22c55e;
-  --color-fetcharr-bg: #0f172a;
-  --color-fetcharr-card: #1e293b;
-  --color-fetcharr-border: #334155;
+  --color-triggarr-green: #22c55e;
+  --color-triggarr-bg: #0f172a;
+  --color-triggarr-card: #1e293b;
+  --color-triggarr-border: #334155;
 }
 ```
 
 ### Tailwind CSS Build Command
 ```bash
 # Development (watch mode):
-tailwindcss -i fetcharr/static/css/input.css -o fetcharr/static/css/output.css --watch
+tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch
 
 # Production (minified):
-tailwindcss -i fetcharr/static/css/input.css -o fetcharr/static/css/output.css --minify
+tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --minify
 ```
 
 ## State of the Art

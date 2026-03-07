@@ -8,13 +8,13 @@ from unittest.mock import patch
 
 import pytest
 
-from fetcharr.state import AppState, FetcharrState, load_state, save_state
+from triggarr.state import AppState, TriggarrState, load_state, save_state
 
 
 def test_state_round_trip(tmp_path: Path) -> None:
     """State saved and loaded back retains all cursor values."""
     state_file = tmp_path / "state.json"
-    state = FetcharrState(
+    state = TriggarrState(
         radarr=AppState(missing_cursor=42, cutoff_cursor=7, last_run="2026-01-15T10:00:00Z"),
         sonarr=AppState(missing_cursor=100, cutoff_cursor=25, last_run="2026-01-15T10:05:00Z"),
         search_log=[{"action": "search", "count": 5}],
@@ -49,7 +49,7 @@ def test_state_default_on_missing_file(tmp_path: Path) -> None:
 def test_state_atomic_write(tmp_path: Path) -> None:
     """After save, state file exists and no .tmp files remain."""
     state_file = tmp_path / "state.json"
-    state = FetcharrState(
+    state = TriggarrState(
         radarr=AppState(missing_cursor=1, cutoff_cursor=2, last_run=None),
         sonarr=AppState(missing_cursor=3, cutoff_cursor=4, last_run=None),
         search_log=[],
@@ -66,7 +66,7 @@ def test_state_atomic_write(tmp_path: Path) -> None:
 def test_state_creates_parent_dirs(tmp_path: Path) -> None:
     """Saving to a path with non-existent parents creates them."""
     state_file = tmp_path / "deep" / "nested" / "state.json"
-    state = FetcharrState(
+    state = TriggarrState(
         radarr=AppState(missing_cursor=0, cutoff_cursor=0, last_run=None),
         sonarr=AppState(missing_cursor=0, cutoff_cursor=0, last_run=None),
         search_log=[],
@@ -151,14 +151,14 @@ def test_state_schema_migration_preserves_all_existing(tmp_path: Path) -> None:
 def test_save_state_cleans_temp_on_replace_failure(tmp_path: Path) -> None:
     """Temp files from failed os.replace calls are cleaned up, not left as orphans."""
     state_file = tmp_path / "state.json"
-    state = FetcharrState(
+    state = TriggarrState(
         radarr=AppState(missing_cursor=1, cutoff_cursor=2, last_run=None),
         sonarr=AppState(missing_cursor=3, cutoff_cursor=4, last_run=None),
         search_log=[],
     )
 
     with (
-        patch("fetcharr.state.os.replace", side_effect=OSError("mock failure")),
+        patch("triggarr.state.os.replace", side_effect=OSError("mock failure")),
         pytest.raises(OSError, match="mock failure"),
     ):
         save_state(state, state_file)

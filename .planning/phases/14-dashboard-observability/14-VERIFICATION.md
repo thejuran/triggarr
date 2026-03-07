@@ -33,23 +33,23 @@ re_verification: false
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `fetcharr/templates/partials/app_card.html` | X of Y position format | VERIFIED | Lines 35, 40 contain `of {{ app.missing_count ... }}` and `of {{ app.cutoff_count ... }}`; substantive (54 lines, full card implementation) |
-| `fetcharr/db.py` | Search history with outcome/detail columns | VERIFIED | `_migrate_add_outcome_columns` adds `outcome` and `detail` via ALTER TABLE; `insert_search_entry` accepts `outcome`/`detail` params; `get_recent_searches` returns both fields; Note: plan's `contains: "outcome TEXT"` pattern was imprecise — column is added via migration ALTER, not CREATE TABLE, but implementation is fully correct |
-| `fetcharr/search/engine.py` | Outcome/detail passed to insert_search_entry | VERIFIED | All 8 `insert_search_entry` calls include `outcome=` and `detail=` (4 success paths: `outcome="searched"`, 4 failure paths: `outcome="failed"`) |
-| `fetcharr/templates/partials/search_log.html` | Outcome display in search log entries | VERIFIED | Lines 21-25 render colored outcome badge; `entry.outcome` used; `entry.detail` used as tooltip title attribute |
-| `fetcharr/log_buffer.py` | In-memory ring buffer loguru sink | VERIFIED | 53 lines (exceeds min_lines: 30); `LogBuffer` class with `add()`, `get_recent()`, `clear()`; `LogEntry` frozen dataclass; module-level `log_buffer = LogBuffer(maxlen=200)` singleton |
-| `fetcharr/templates/partials/log_viewer.html` | htmx-polled log viewer partial template | VERIFIED | Contains `hx-get="/partials/log-viewer"`, `hx-trigger="every 5s"`, `hx-swap="outerHTML"`; color-coded levels (ERROR=red, WARNING=yellow, DEBUG=muted, INFO=green); timestamp + level + message per entry |
-| `fetcharr/web/routes.py` | Log viewer partial endpoint | VERIFIED | `@router.get("/partials/log-viewer", ...)` at line 309; `log_buffer.get_recent(30)` called and passed to template; `log_buffer` imported at line 23; `log_entries` also passed in dashboard context at line 91 |
+| `triggarr/templates/partials/app_card.html` | X of Y position format | VERIFIED | Lines 35, 40 contain `of {{ app.missing_count ... }}` and `of {{ app.cutoff_count ... }}`; substantive (54 lines, full card implementation) |
+| `triggarr/db.py` | Search history with outcome/detail columns | VERIFIED | `_migrate_add_outcome_columns` adds `outcome` and `detail` via ALTER TABLE; `insert_search_entry` accepts `outcome`/`detail` params; `get_recent_searches` returns both fields; Note: plan's `contains: "outcome TEXT"` pattern was imprecise — column is added via migration ALTER, not CREATE TABLE, but implementation is fully correct |
+| `triggarr/search/engine.py` | Outcome/detail passed to insert_search_entry | VERIFIED | All 8 `insert_search_entry` calls include `outcome=` and `detail=` (4 success paths: `outcome="searched"`, 4 failure paths: `outcome="failed"`) |
+| `triggarr/templates/partials/search_log.html` | Outcome display in search log entries | VERIFIED | Lines 21-25 render colored outcome badge; `entry.outcome` used; `entry.detail` used as tooltip title attribute |
+| `triggarr/log_buffer.py` | In-memory ring buffer loguru sink | VERIFIED | 53 lines (exceeds min_lines: 30); `LogBuffer` class with `add()`, `get_recent()`, `clear()`; `LogEntry` frozen dataclass; module-level `log_buffer = LogBuffer(maxlen=200)` singleton |
+| `triggarr/templates/partials/log_viewer.html` | htmx-polled log viewer partial template | VERIFIED | Contains `hx-get="/partials/log-viewer"`, `hx-trigger="every 5s"`, `hx-swap="outerHTML"`; color-coded levels (ERROR=red, WARNING=yellow, DEBUG=muted, INFO=green); timestamp + level + message per entry |
+| `triggarr/web/routes.py` | Log viewer partial endpoint | VERIFIED | `@router.get("/partials/log-viewer", ...)` at line 309; `log_buffer.get_recent(30)` called and passed to template; `log_buffer` imported at line 23; `log_entries` also passed in dashboard context at line 91 |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `fetcharr/search/engine.py` | `fetcharr/db.py` | `insert_search_entry` with `outcome=`/`detail=` params | WIRED | `from fetcharr.db import insert_search_entry` at line 21; all 8 calls include `outcome=` and `detail=`; confirmed at engine.py lines 229-242, 254-268, 361-375, 388-402 |
-| `fetcharr/templates/partials/search_log.html` | `fetcharr/db.py` | `get_recent_searches` returns `outcome`/`detail` fields rendered via `entry.outcome` | WIRED | `get_recent_searches` returns `{"outcome": row["outcome"] or "searched", "detail": row["detail"] or ""}` (db.py lines 129-130); template uses `entry.outcome` at line 24 |
-| `fetcharr/logging.py` | `fetcharr/log_buffer.py` | `setup_logging` adds buffer sink via `buffer_sink` closure | WIRED | `from fetcharr.log_buffer import LogEntry, log_buffer` at logging.py line 16; `buffer_sink` closure at lines 71-81 creates `LogEntry` and calls `log_buffer.add(entry)`; `logger.add(buffer_sink, ...)` at line 83 |
-| `fetcharr/web/routes.py` | `fetcharr/log_buffer.py` | Route reads from log buffer via `log_buffer.get_recent(30)` | WIRED | `from fetcharr.log_buffer import log_buffer` at routes.py line 23; `log_buffer.get_recent(30)` called at lines 91 and 312 |
-| `fetcharr/templates/dashboard.html` | `fetcharr/templates/partials/log_viewer.html` | Jinja2 include | WIRED | `{% include "partials/log_viewer.html" %}` at dashboard.html line 17; wrapped in `<div class="mt-4">` after search log include |
+| `triggarr/search/engine.py` | `triggarr/db.py` | `insert_search_entry` with `outcome=`/`detail=` params | WIRED | `from triggarr.db import insert_search_entry` at line 21; all 8 calls include `outcome=` and `detail=`; confirmed at engine.py lines 229-242, 254-268, 361-375, 388-402 |
+| `triggarr/templates/partials/search_log.html` | `triggarr/db.py` | `get_recent_searches` returns `outcome`/`detail` fields rendered via `entry.outcome` | WIRED | `get_recent_searches` returns `{"outcome": row["outcome"] or "searched", "detail": row["detail"] or ""}` (db.py lines 129-130); template uses `entry.outcome` at line 24 |
+| `triggarr/logging.py` | `triggarr/log_buffer.py` | `setup_logging` adds buffer sink via `buffer_sink` closure | WIRED | `from triggarr.log_buffer import LogEntry, log_buffer` at logging.py line 16; `buffer_sink` closure at lines 71-81 creates `LogEntry` and calls `log_buffer.add(entry)`; `logger.add(buffer_sink, ...)` at line 83 |
+| `triggarr/web/routes.py` | `triggarr/log_buffer.py` | Route reads from log buffer via `log_buffer.get_recent(30)` | WIRED | `from triggarr.log_buffer import log_buffer` at routes.py line 23; `log_buffer.get_recent(30)` called at lines 91 and 312 |
+| `triggarr/templates/dashboard.html` | `triggarr/templates/partials/log_viewer.html` | Jinja2 include | WIRED | `{% include "partials/log_viewer.html" %}` at dashboard.html line 17; wrapped in `<div class="mt-4">` after search log include |
 
 ### Requirements Coverage
 

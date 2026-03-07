@@ -22,12 +22,12 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/templates/history.html
-    - fetcharr/templates/partials/history_results.html
+    - triggarr/templates/history.html
+    - triggarr/templates/partials/history_results.html
   modified:
-    - fetcharr/db.py
-    - fetcharr/web/routes.py
-    - fetcharr/templates/base.html
+    - triggarr/db.py
+    - triggarr/web/routes.py
+    - triggarr/templates/base.html
 
 key-decisions:
   - "Used COALESCE(outcome, 'searched') in SQL filter to handle pre-migration NULL outcome rows"
@@ -74,11 +74,11 @@ Each task was committed atomically:
 2. **Task 2: Templates -- history page, results partial, nav update** - `7eb1af1` (feat)
 
 ## Files Created/Modified
-- `fetcharr/db.py` - Added `get_search_history()` with filtering, pagination, and total count
-- `fetcharr/web/routes.py` - Added `/history` page route, `/partials/history-results` partial route, and `_split_filter_param` helper
-- `fetcharr/templates/base.html` - Added History nav link with active state block
-- `fetcharr/templates/history.html` - Full page template extending base with correct nav highlighting
-- `fetcharr/templates/partials/history_results.html` - Filter bar, results table, pagination partial
+- `triggarr/db.py` - Added `get_search_history()` with filtering, pagination, and total count
+- `triggarr/web/routes.py` - Added `/history` page route, `/partials/history-results` partial route, and `_split_filter_param` helper
+- `triggarr/templates/base.html` - Added History nav link with active state block
+- `triggarr/templates/history.html` - Full page template extending base with correct nav highlighting
+- `triggarr/templates/partials/history_results.html` - Filter bar, results table, pagination partial
 
 ## Decisions Made
 - Used `COALESCE(outcome, 'searched')` in SQL filter to correctly handle pre-migration rows with NULL outcome

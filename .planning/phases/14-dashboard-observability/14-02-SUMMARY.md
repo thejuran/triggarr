@@ -11,7 +11,7 @@ requires:
   - phase: 04-logging-hardening
     provides: "Loguru setup with redacting sink and SecretStr discipline"
 provides:
-  - "In-memory log buffer module (fetcharr/log_buffer.py) with LogBuffer and LogEntry"
+  - "In-memory log buffer module (triggarr/log_buffer.py) with LogBuffer and LogEntry"
   - "Application Log viewer section on dashboard with htmx 5s polling"
   - "/partials/log-viewer endpoint for htmx fragment updates"
   - "Secret-redacting buffer sink integrated into setup_logging"
@@ -24,13 +24,13 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/log_buffer.py
-    - fetcharr/templates/partials/log_viewer.html
+    - triggarr/log_buffer.py
+    - triggarr/templates/partials/log_viewer.html
     - tests/test_log_buffer.py
   modified:
-    - fetcharr/logging.py
-    - fetcharr/web/routes.py
-    - fetcharr/templates/dashboard.html
+    - triggarr/logging.py
+    - triggarr/web/routes.py
+    - triggarr/templates/dashboard.html
     - tests/test_web.py
 
 key-decisions:
@@ -78,11 +78,11 @@ Each task was committed atomically:
 **Plan metadata:** [pending] (docs: complete plan)
 
 ## Files Created/Modified
-- `fetcharr/log_buffer.py` - LogBuffer ring buffer class and LogEntry dataclass (module-level singleton)
-- `fetcharr/logging.py` - Added log_buffer import and redacting buffer sink in setup_logging
-- `fetcharr/templates/partials/log_viewer.html` - htmx-polled log viewer partial with color-coded levels
-- `fetcharr/templates/dashboard.html` - Included log_viewer.html after search log section
-- `fetcharr/web/routes.py` - Added log_buffer import, log_entries in dashboard context, /partials/log-viewer endpoint
+- `triggarr/log_buffer.py` - LogBuffer ring buffer class and LogEntry dataclass (module-level singleton)
+- `triggarr/logging.py` - Added log_buffer import and redacting buffer sink in setup_logging
+- `triggarr/templates/partials/log_viewer.html` - htmx-polled log viewer partial with color-coded levels
+- `triggarr/templates/dashboard.html` - Included log_viewer.html after search log section
+- `triggarr/web/routes.py` - Added log_buffer import, log_entries in dashboard context, /partials/log-viewer endpoint
 - `tests/test_log_buffer.py` - 7 tests for LogBuffer (add, eviction, clear, limit, threading, frozen, empty)
 - `tests/test_web.py` - 3 new tests for log viewer (section visible, partial 200, entries with colors)
 

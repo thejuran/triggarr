@@ -55,7 +55,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run ruff
-        run: uv run ruff check fetcharr/ tests/
+        run: uv run ruff check triggarr/ tests/
 
   docker:
     runs-on: ubuntu-latest
@@ -70,6 +70,6 @@ jobs:
         with:
           context: .
           load: true
-          tags: fetcharr:ci-test
+          tags: triggarr:ci-test
           cache-from: type=gha
           cache-to: type=gha,mode=max

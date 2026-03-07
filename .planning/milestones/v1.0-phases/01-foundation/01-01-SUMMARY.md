@@ -12,7 +12,7 @@ provides:
   - TOML config loader with load_settings, generate_default_config, ensure_config
   - Loguru logging with human-readable format and API key redaction filter
   - Atomic JSON state persistence with write-then-rename pattern
-  - Package scaffolding (fetcharr/, models/, clients/)
+  - Package scaffolding (triggarr/, models/, clients/)
 affects: [01-02, 01-03, 02-search-engine, 03-web-ui]
 
 # Tech tracking
@@ -23,13 +23,13 @@ tech-stack:
 key-files:
   created:
     - pyproject.toml
-    - fetcharr/__init__.py
-    - fetcharr/models/config.py
-    - fetcharr/config.py
-    - fetcharr/logging.py
-    - fetcharr/state.py
-    - fetcharr/models/__init__.py
-    - fetcharr/clients/__init__.py
+    - triggarr/__init__.py
+    - triggarr/models/config.py
+    - triggarr/config.py
+    - triggarr/logging.py
+    - triggarr/state.py
+    - triggarr/models/__init__.py
+    - triggarr/clients/__init__.py
   modified: []
 
 key-decisions:
@@ -77,13 +77,13 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 - `pyproject.toml` - Project metadata with pydantic-settings, httpx, loguru, fastapi dependencies
-- `fetcharr/__init__.py` - Package root with __version__
-- `fetcharr/models/__init__.py` - Models subpackage
-- `fetcharr/models/config.py` - ArrConfig, GeneralConfig, Settings Pydantic models with SecretStr
-- `fetcharr/config.py` - TOML config loading, default config generation, ensure_config
-- `fetcharr/logging.py` - Loguru setup with redaction filter for API key protection
-- `fetcharr/state.py` - Atomic JSON state persistence with TypedDict structures
-- `fetcharr/clients/__init__.py` - Clients subpackage (empty, ready for Plan 02)
+- `triggarr/__init__.py` - Package root with __version__
+- `triggarr/models/__init__.py` - Models subpackage
+- `triggarr/models/config.py` - ArrConfig, GeneralConfig, Settings Pydantic models with SecretStr
+- `triggarr/config.py` - TOML config loading, default config generation, ensure_config
+- `triggarr/logging.py` - Loguru setup with redaction filter for API key protection
+- `triggarr/state.py` - Atomic JSON state persistence with TypedDict structures
+- `triggarr/clients/__init__.py` - Clients subpackage (empty, ready for Plan 02)
 - `.gitignore` - Python/venv/IDE exclusions
 
 ## Decisions Made
@@ -99,7 +99,7 @@ Each task was committed atomically:
 - **Found during:** Task 1 (Config models and TOML loading)
 - **Issue:** Plan specified `_toml_file=config_path` as init kwarg to Settings, but pydantic-settings does not accept `_toml_file` as a runtime parameter. The `settings_customise_sources` initially excluded init_settings, so init kwargs were silently ignored.
 - **Fix:** Added `init_settings` as first source in `settings_customise_sources` and changed `load_settings` to read TOML via `tomllib.load()` then pass parsed dict as `**kwargs` to Settings.
-- **Files modified:** `fetcharr/models/config.py`, `fetcharr/config.py`
+- **Files modified:** `triggarr/models/config.py`, `triggarr/config.py`
 - **Verification:** `load_settings(Path(tmp))` correctly loads from arbitrary TOML paths; validator correctly rejects config with no enabled apps
 - **Committed in:** `e56ced3` (Task 1 commit)
 

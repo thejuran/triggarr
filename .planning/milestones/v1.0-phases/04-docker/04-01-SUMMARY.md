@@ -23,7 +23,7 @@ tech-stack:
 
 key-files:
   created: [Dockerfile, entrypoint.sh, .dockerignore, docker-compose.yml, tests/test_startup.py]
-  modified: [fetcharr/startup.py]
+  modified: [triggarr/startup.py]
 
 key-decisions:
   - "pytailwindcss in builder stage only -- not installed in production image"
@@ -58,7 +58,7 @@ completed: 2026-02-24
 ## Accomplishments
 - Multi-stage Dockerfile: builder compiles Tailwind CSS, production runs python:3.13-slim with HEALTHCHECK
 - entrypoint.sh validates and creates PUID/PGID user, drops privileges via setpriv, exec replaces shell
-- docker-compose.yml with named volume (fetcharr_config:/config), port 8080, unless-stopped restart
+- docker-compose.yml with named volume (triggarr_config:/config), port 8080, unless-stopped restart
 - Localhost URL detection warns before connection validation with actionable Docker networking advice
 - 5 new tests covering localhost, 127.0.0.1, IPv6 loopback, non-localhost, and disabled app scenarios
 
@@ -76,14 +76,14 @@ Each task was committed atomically:
 - `entrypoint.sh` - PUID/PGID user creation, numeric validation, setpriv privilege dropping
 - `.dockerignore` - Build context exclusions for .venv, .git, tests, .planning, __pycache__
 - `docker-compose.yml` - Service definition with named volume, port 8080, PUID/PGID env
-- `fetcharr/startup.py` - Added check_localhost_urls function and LOCALHOST_PATTERNS constant
+- `triggarr/startup.py` - Added check_localhost_urls function and LOCALHOST_PATTERNS constant
 - `tests/test_startup.py` - 5 tests for localhost URL detection (all patterns + edge cases)
 
 ## Decisions Made
 - pytailwindcss installed only in builder stage -- keeps production image slim
 - HEALTHCHECK uses python3 urllib.request (no curl needed in slim image)
 - exec setpriv replaces shell process so Python becomes PID 1 for clean SIGTERM handling
-- docker-compose.yml references ghcr.io/thejuran/fetcharr:latest with comment about build: . alternative
+- docker-compose.yml references ghcr.io/thejuran/triggarr:latest with comment about build: . alternative
 - Localhost detection uses urlparse hostname against set of known loopback patterns (localhost, 127.0.0.1, ::1)
 
 ## Deviations from Plan

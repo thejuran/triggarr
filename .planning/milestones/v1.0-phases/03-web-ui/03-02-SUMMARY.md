@@ -25,12 +25,12 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/state.py
-    - fetcharr/search/engine.py
-    - fetcharr/web/routes.py
-    - fetcharr/templates/partials/app_card.html
-    - fetcharr/templates/partials/search_log.html
-    - fetcharr/static/css/output.css
+    - triggarr/state.py
+    - triggarr/search/engine.py
+    - triggarr/web/routes.py
+    - triggarr/templates/partials/app_card.html
+    - triggarr/templates/partials/search_log.html
+    - triggarr/static/css/output.css
 
 key-decisions:
   - "Raw item counts cached before filtering so dashboard shows total wanted/cutoff items"
@@ -75,17 +75,17 @@ Each task was committed atomically:
 2. **Task 2: Update dashboard templates and routes with complete data** - `777d7fd` (feat)
 
 ## Files Created/Modified
-- `fetcharr/state.py` - Added connected, unreachable_since, missing_count, cutoff_count to AppState TypedDict
-- `fetcharr/search/engine.py` - Health tracking and count caching in run_radarr_cycle and run_sonarr_cycle
-- `fetcharr/web/routes.py` - Extended _build_app_context to pass new fields to templates
-- `fetcharr/templates/partials/app_card.html` - Complete card with connection indicator, item counts, queue positions
-- `fetcharr/templates/partials/search_log.html` - Redesigned with color-coded app badges and compact list layout
-- `fetcharr/static/css/output.css` - Recompiled with new Tailwind utility classes
+- `triggarr/state.py` - Added connected, unreachable_since, missing_count, cutoff_count to AppState TypedDict
+- `triggarr/search/engine.py` - Health tracking and count caching in run_radarr_cycle and run_sonarr_cycle
+- `triggarr/web/routes.py` - Extended _build_app_context to pass new fields to templates
+- `triggarr/templates/partials/app_card.html` - Complete card with connection indicator, item counts, queue positions
+- `triggarr/templates/partials/search_log.html` - Redesigned with color-coded app badges and compact list layout
+- `triggarr/static/css/output.css` - Recompiled with new Tailwind utility classes
 
 ## Decisions Made
 - Raw item counts are cached before filtering/deduplication so the dashboard shows the total number of wanted/cutoff items as reported by the *arr API
 - Connection health uses first-failure timestamp for unreachable_since -- subsequent failures do not update the timestamp
-- Search log app badges use Radarr's orange and Sonarr's blue ecosystem branding colors while the overall Fetcharr theme remains green
+- Search log app badges use Radarr's orange and Sonarr's blue ecosystem branding colors while the overall Triggarr theme remains green
 
 ## Deviations from Plan
 

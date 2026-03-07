@@ -1,0 +1,26 @@
+<div id="log-viewer"
+     hx-get="/partials/log-viewer"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML"
+     class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
+  <h2 class="text-lg font-semibold mb-4">Application Log</h2>
+  {% if not log_entries %}
+  <p class="text-triggarr-muted text-sm">No log messages yet.</p>
+  {% else %}
+  <div class="space-y-0 max-h-64 overflow-y-auto font-mono text-xs">
+    {% for entry in log_entries[:30] %}
+    <div class="flex items-start gap-2 py-1 {% if not loop.last %}border-b border-triggarr-border/30{% endif %}">
+        <span class="text-triggarr-muted whitespace-nowrap">{{ entry.timestamp }}</span>
+        <span class="font-medium whitespace-nowrap
+               {% if entry.level == 'ERROR' %}text-red-400
+               {% elif entry.level == 'WARNING' %}text-yellow-400
+               {% elif entry.level == 'DEBUG' %}text-triggarr-muted
+               {% else %}text-triggarr-green{% endif %}">
+            {{ entry.level }}
+        </span>
+        <span class="text-triggarr-text break-all">{{ entry.message }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

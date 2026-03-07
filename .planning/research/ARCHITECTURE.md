@@ -68,7 +68,7 @@
 ## Recommended Project Structure
 
 ```
-fetcharr/
+triggarr/
 ├── app/
 │   ├── main.py               # FastAPI app factory, lifespan, scheduler startup
 │   ├── config.py             # Settings model (Pydantic), load/save config file
@@ -209,7 +209,7 @@ async def run_sonarr_missing_cycle(settings, state, client):
 
 **What:** API keys are loaded from config file into a Pydantic Settings object at startup. They are stored only in the in-process settings object. No route, template, or API response ever serializes or echoes the settings object back to the client.
 
-**When to use:** Always, without exception. This is the core security invariant that justifies building Fetcharr instead of using Huntarr.
+**When to use:** Always, without exception. This is the core security invariant that justifies building Triggarr instead of using Huntarr.
 
 **Trade-offs:** Config file must be readable by the container user. The config UI form must accept new values and write them back without exposing the current values in an HTML `value=""` attribute. Use placeholder text ("configured" or "••••••••") instead.
 
@@ -363,7 +363,7 @@ The dependency graph dictates a clear bottom-up build order:
 
 **What people do:** Return the full settings object from a `/api/config` endpoint, or pre-fill the config form `<input value="{{ settings.radarr_api_key }}">`.
 
-**Why it's wrong:** This is exactly what Huntarr did — API keys were returned from unauthenticated API endpoints, visible to anyone on the network. Fetcharr exists specifically because of this failure.
+**Why it's wrong:** This is exactly what Huntarr did — API keys were returned from unauthenticated API endpoints, visible to anyone on the network. Triggarr exists specifically because of this failure.
 
 **Do this instead:** Config form shows placeholder text ("configured" or masked "••••••••"). Only write new key to file if the form field is non-empty. `/api/config` endpoint returns config without the `api_key` fields.
 
@@ -420,5 +420,5 @@ This tool is explicitly single-instance, single-user, local network. Scaling is 
 - httpx async client: [httpx official docs](https://www.python-httpx.org/async/) (HIGH confidence — official docs)
 
 ---
-*Architecture research for: Fetcharr — Radarr/Sonarr search automation daemon*
+*Architecture research for: Triggarr — Radarr/Sonarr search automation daemon*
 *Researched: 2026-02-23*

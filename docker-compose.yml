@@ -1,16 +1,16 @@
-# Fetcharr Docker Compose
+# Triggarr Docker Compose
 # To build locally instead of pulling the image, replace the `image:` line
 # with `build: .` and run `docker compose up --build`.
 
 services:
-  fetcharr:
-    image: ghcr.io/thejuran/fetcharr:latest
-    container_name: fetcharr
+  triggarr:
+    image: ghcr.io/thejuran/triggarr:latest
+    container_name: triggarr
     environment:
       - PUID=1000
       - PGID=1000
     volumes:
-      - fetcharr_config:/config
+      - triggarr_config:/config
     ports:
       - "127.0.0.1:8080:8080"
     cap_drop:
@@ -24,4 +24,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  fetcharr_config:
+  triggarr_config:

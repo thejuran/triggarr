@@ -57,7 +57,7 @@ Features that seem good but create problems.
 | Lidarr / Readarr / Whisparr support | "While you're at it..." | Scope creep. Radarr + Sonarr cover the primary use case. Each new *arr app requires understanding its own API nuances. | Explicitly out of scope; document in README. |
 | Notifications (Discord, Telegram, Apprise) | Users want to be notified of searches | Adds a third-party library dependency (Apprise) and configuration surface area. The web UI log already provides this information. | Web UI log is sufficient; users can tail container logs if they want alerts. |
 | Prowlarr integration / indexer stats | "Show me which indexers are working" | Indexer management is out of scope; Prowlarr has its own UI. Adding it blurs the tool's purpose. | Use Prowlarr's own UI. |
-| Download queue management (pause when full) | "Don't search if downloads are backed up" | The *arr apps themselves manage download queues. Adding queue logic means Fetcharr must now poll qBitTorrent/SABnzbd too. | Trust *arr to handle its own queue; searches that find nothing just time out. |
+| Download queue management (pause when full) | "Don't search if downloads are backed up" | The *arr apps themselves manage download queues. Adding queue logic means Triggarr must now poll qBitTorrent/SABnzbd too. | Trust *arr to handle its own queue; searches that find nothing just time out. |
 | "Swaparr"-style stalled download detection | Huntarr added this to pad features | Completely outside the search automation scope; requires download client integration. | Use decluttarr for this purpose. |
 | Media discovery / TMDB browsing ("Requestarr") | Huntarr added a media request UI | This is Overseerr's job, not a search automation tool's job. | Use Overseerr or Jellyseerr. |
 | Storage monitoring / pause when disk full | "Don't search if disk is nearly full" | Adds system-level dependency; complicates the Docker container (needs volume mounts for disk checks); edge case optimization. | *arr apps refuse to import when disk is full anyway. |
@@ -174,7 +174,7 @@ Features to defer until product-market fit is established.
 
 ## Competitor Feature Analysis
 
-| Feature | Huntarr | Missarr (l3uddz) | Fetcharr (our approach) |
+| Feature | Huntarr | Missarr (l3uddz) | Triggarr (our approach) |
 |---------|---------|-----------------|------------------------|
 | Core search automation | Yes — over-engineered with many *arr apps | Yes — minimal CLI, Go binary | Yes — Python/FastAPI, Radarr + Sonarr only |
 | User accounts + 2FA | Yes — critical vulnerability surface | No | No — deliberate; local network tool |

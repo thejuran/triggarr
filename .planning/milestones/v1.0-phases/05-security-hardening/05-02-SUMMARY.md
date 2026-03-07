@@ -24,11 +24,11 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/web/validation.py
+    - triggarr/web/validation.py
     - tests/test_validation.py
   modified:
-    - fetcharr/web/routes.py
-    - fetcharr/config.py
+    - triggarr/web/routes.py
+    - triggarr/config.py
 
 key-decisions:
   - "Empty URL is valid (app disabled state) -- not rejected by validation"
@@ -73,10 +73,10 @@ Each task was committed atomically:
 2. **Task 2: Integrate validation into save_settings and secure config writes** - `da01924` (feat)
 
 ## Files Created/Modified
-- `fetcharr/web/validation.py` - URL, integer, and log level validation helpers
+- `triggarr/web/validation.py` - URL, integer, and log level validation helpers
 - `tests/test_validation.py` - 24 tests for all validation edge cases
-- `fetcharr/web/routes.py` - save_settings now uses validation helpers + os.chmod 0o600
-- `fetcharr/config.py` - generate_default_config now sets os.chmod 0o600
+- `triggarr/web/routes.py` - save_settings now uses validation helpers + os.chmod 0o600
+- `triggarr/config.py` - generate_default_config now sets os.chmod 0o600
 
 ## Decisions Made
 - Empty URL treated as valid (app is disabled, empty is the expected state)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import aiosqlite
 
-from fetcharr.db import get_recent_searches, get_search_history, init_db, insert_search_entry, migrate_from_state
+from triggarr.db import get_recent_searches, get_search_history, init_db, insert_search_entry, migrate_from_state
 
 
 async def test_init_db_creates_table(tmp_path):

@@ -54,7 +54,7 @@ No new libraries needed. All fixes use existing dependencies.
 
 ### Current File Structure (files to modify)
 ```
-fetcharr/
+triggarr/
 ├── logging.py           # QUAL-05: traceback redaction via custom sink
 ├── state.py             # QUAL-03, QUAL-04: temp cleanup + schema migration
 ├── config.py            # (no changes needed)
@@ -71,9 +71,9 @@ fetcharr/
 
 **What:** A single `asyncio.Lock` stored on `app.state` protects all search cycle execution. Both the scheduler job closure and the manual search-now route acquire the lock before running a cycle.
 
-**When to use:** Whenever two async code paths can concurrently mutate `app.state.fetcharr_state`.
+**When to use:** Whenever two async code paths can concurrently mutate `app.state.triggarr_state`.
 
-**Current bug:** `make_search_job` (scheduler) and `search_now` (route handler) both read/write `app.state.fetcharr_state` and call `save_state`. If APScheduler fires while a manual search is in progress, both coroutines race on the same state dict and state file.
+**Current bug:** `make_search_job` (scheduler) and `search_now` (route handler) both read/write `app.state.triggarr_state` and call `save_state`. If APScheduler fires while a manual search is in progress, both coroutines race on the same state dict and state file.
 
 **Fix location:** `scheduler.py` (create lock in `create_lifespan`, pass to `make_search_job`) and `routes.py` (acquire lock in `search_now`).
 
@@ -92,7 +92,7 @@ async def job() -> None:
 
 # In routes.py search_now:
 async with request.app.state.search_lock:
-    request.app.state.fetcharr_state = await cycle_fn(...)
+    request.app.state.triggarr_state = await cycle_fn(...)
     save_state(...)
 ```
 
@@ -132,7 +132,7 @@ request.app.state.settings = new_settings
 
 **Fix:**
 ```python
-def save_state(state: FetcharrState, state_path: Path = STATE_PATH) -> None:
+def save_state(state: TriggarrState, state_path: Path = STATE_PATH) -> None:
     parent = state_path.parent
     parent.mkdir(parents=True, exist_ok=True)
 
@@ -164,7 +164,7 @@ def save_state(state: FetcharrState, state_path: Path = STATE_PATH) -> None:
 
 **Fix:**
 ```python
-def _merge_defaults(loaded: dict) -> FetcharrState:
+def _merge_defaults(loaded: dict) -> TriggarrState:
     """Merge loaded state over defaults so missing keys get default values."""
     defaults = _default_state()
     for app_name in ("radarr", "sonarr"):
@@ -175,7 +175,7 @@ def _merge_defaults(loaded: dict) -> FetcharrState:
     return defaults
 
 
-def load_state(state_path: Path = STATE_PATH) -> FetcharrState:
+def load_state(state_path: Path = STATE_PATH) -> TriggarrState:
     if not state_path.exists():
         return _default_state()
     try:
@@ -228,8 +228,8 @@ def setup_logging(level: str, secrets: list[str]) -> int:
 **Example in routes.py save_settings:**
 ```python
 # After updating settings, refresh redaction if keys changed
-from fetcharr.startup import collect_secrets
-from fetcharr.logging import setup_logging
+from triggarr.startup import collect_secrets
+from triggarr.logging import setup_logging
 
 secrets = collect_secrets(new_settings)
 setup_logging(new_settings.general.log_level, secrets)
@@ -370,26 +370,26 @@ async def job() -> None:
         if client is None:
             return
         try:
-            app.state.fetcharr_state = await cycle_fn(
-                client, app.state.fetcharr_state, app.state.settings,
+            app.state.triggarr_state = await cycle_fn(
+                client, app.state.triggarr_state, app.state.settings,
             )
-            save_state(app.state.fetcharr_state, state_path)
+            save_state(app.state.triggarr_state, state_path)
         except Exception as exc:
             logger.error("{app}: Unhandled error in search cycle -- {exc}",
                          app=app_name.title(), exc=exc)
 
 # routes.py — search_now
 async with request.app.state.search_lock:
-    request.app.state.fetcharr_state = await cycle_fn(
-        client, request.app.state.fetcharr_state, request.app.state.settings,
+    request.app.state.triggarr_state = await cycle_fn(
+        client, request.app.state.triggarr_state, request.app.state.settings,
     )
-    save_state(request.app.state.fetcharr_state, request.app.state.state_path)
+    save_state(request.app.state.triggarr_state, request.app.state.state_path)
 ```
 
 ### Complete State Recovery with Schema Migration
 ```python
 # state.py
-def _merge_defaults(loaded: dict) -> FetcharrState:
+def _merge_defaults(loaded: dict) -> TriggarrState:
     defaults = _default_state()
     for app_name in ("radarr", "sonarr"):
         if app_name in loaded and isinstance(loaded[app_name], dict):
@@ -398,7 +398,7 @@ def _merge_defaults(loaded: dict) -> FetcharrState:
         defaults["search_log"] = loaded["search_log"]
     return defaults
 
-def load_state(state_path: Path = STATE_PATH) -> FetcharrState:
+def load_state(state_path: Path = STATE_PATH) -> TriggarrState:
     if not state_path.exists():
         return _default_state()
     try:

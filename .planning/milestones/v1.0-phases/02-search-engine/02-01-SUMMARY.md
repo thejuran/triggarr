@@ -22,13 +22,13 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/search/__init__.py
-    - fetcharr/search/engine.py
+    - triggarr/search/__init__.py
+    - triggarr/search/engine.py
   modified:
-    - fetcharr/models/config.py
-    - fetcharr/config.py
-    - fetcharr/clients/radarr.py
-    - fetcharr/clients/sonarr.py
+    - triggarr/models/config.py
+    - triggarr/config.py
+    - triggarr/clients/radarr.py
+    - triggarr/clients/sonarr.py
 
 key-decisions:
   - "Search fields use Field defaults (not Field(default=...)) matching existing ArrConfig pattern"
@@ -70,12 +70,12 @@ Each task was committed atomically:
 2. **Task 2: Create search engine module with core utility functions** - `64115f5` (feat)
 
 ## Files Created/Modified
-- `fetcharr/models/config.py` - ArrConfig with search_interval, search_missing_count, search_cutoff_count fields
-- `fetcharr/config.py` - Default config template with commented-out search fields for both apps
-- `fetcharr/clients/radarr.py` - search_movies method posting MoviesSearch command with movieIds array
-- `fetcharr/clients/sonarr.py` - search_season method posting SeasonSearch command with seriesId/seasonNumber
-- `fetcharr/search/__init__.py` - Search subpackage marker
-- `fetcharr/search/engine.py` - Core search engine with filter_monitored, slice_batch, append_search_log, deduplicate_to_seasons, filter_sonarr_episodes
+- `triggarr/models/config.py` - ArrConfig with search_interval, search_missing_count, search_cutoff_count fields
+- `triggarr/config.py` - Default config template with commented-out search fields for both apps
+- `triggarr/clients/radarr.py` - search_movies method posting MoviesSearch command with movieIds array
+- `triggarr/clients/sonarr.py` - search_season method posting SeasonSearch command with seriesId/seasonNumber
+- `triggarr/search/__init__.py` - Search subpackage marker
+- `triggarr/search/engine.py` - Core search engine with filter_monitored, slice_batch, append_search_log, deduplicate_to_seasons, filter_sonarr_episodes
 
 ## Decisions Made
 - Search fields use simple attribute defaults matching existing ArrConfig pattern (no Field() wrapper needed)

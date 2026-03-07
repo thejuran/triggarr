@@ -26,7 +26,7 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/web/routes.py
+    - triggarr/web/routes.py
     - .planning/phases/16-deep-code-review/16-REVIEW.md
 
 key-decisions:
@@ -70,7 +70,7 @@ Each task was committed atomically:
 2. **Task 2: Update 16-REVIEW.md with resolution status for all findings** - `1b31f35` (docs)
 
 ## Files Created/Modified
-- `fetcharr/web/routes.py` - Added tempfile + pydantic imports; atomic config write; safe_int for page; narrow ValidationError catch
+- `triggarr/web/routes.py` - Added tempfile + pydantic imports; atomic config write; safe_int for page; narrow ValidationError catch
 - `.planning/phases/16-deep-code-review/16-REVIEW.md` - Resolution status on all 16 issues + summary table
 
 ## Decisions Made

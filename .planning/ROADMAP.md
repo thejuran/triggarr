@@ -1,8 +1,8 @@
-# Roadmap: Fetcharr
+# Roadmap: Triggarr
 
 ## Overview
 
-Fetcharr is a single-process automation daemon that cycles through Radarr and Sonarr's wanted/cutoff-unmet lists on a configurable schedule. Security invariants (no API key in any HTTP response) are established from day one and never relaxed.
+Triggarr is a single-process automation daemon that cycles through Radarr and Sonarr's wanted/cutoff-unmet lists on a configurable schedule. Security invariants (no API key in any HTTP response) are established from day one and never relaxed.
 
 ## Milestones
 

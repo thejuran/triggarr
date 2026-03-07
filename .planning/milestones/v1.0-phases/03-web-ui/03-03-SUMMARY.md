@@ -26,10 +26,10 @@ key-files:
   created:
     - tests/test_web.py
   modified:
-    - fetcharr/web/routes.py
-    - fetcharr/templates/settings.html
-    - fetcharr/templates/partials/app_card.html
-    - fetcharr/static/css/output.css
+    - triggarr/web/routes.py
+    - triggarr/templates/settings.html
+    - triggarr/templates/partials/app_card.html
+    - triggarr/static/css/output.css
     - pyproject.toml
 
 key-decisions:
@@ -77,10 +77,10 @@ Each task was committed atomically:
 **Plan metadata:** TBD (docs: complete plan)
 
 ## Files Created/Modified
-- `fetcharr/web/routes.py` - Added GET/POST /settings, POST /api/search-now/{app_name} with full scheduler management
-- `fetcharr/templates/settings.html` - Config editor form with masked API keys, per-app sections, enable toggles
-- `fetcharr/templates/partials/app_card.html` - Added Search Now button with htmx POST
-- `fetcharr/static/css/output.css` - Recompiled Tailwind CSS for new template classes
+- `triggarr/web/routes.py` - Added GET/POST /settings, POST /api/search-now/{app_name} with full scheduler management
+- `triggarr/templates/settings.html` - Config editor form with masked API keys, per-app sections, enable toggles
+- `triggarr/templates/partials/app_card.html` - Added Search Now button with htmx POST
+- `triggarr/static/css/output.css` - Recompiled Tailwind CSS for new template classes
 - `tests/test_web.py` - 12 tests: dashboard, settings masking, TOML write/preserve/replace, htmx, search-now
 - `pyproject.toml` - Added python-multipart dependency for form parsing
 

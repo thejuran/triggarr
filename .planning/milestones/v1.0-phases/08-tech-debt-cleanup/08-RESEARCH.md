@@ -39,12 +39,12 @@ No installation needed. All dependencies already present.
 ## Architecture Patterns
 
 ### Pattern 1: Dead Import Removal
-**What:** Remove unused `from fetcharr.config import load_settings` from `routes.py` (line 22) and corresponding dead `@patch("fetcharr.web.routes.load_settings")` decorators from 3 test functions in `test_web.py` (lines 153, 197, 238).
+**What:** Remove unused `from triggarr.config import load_settings` from `routes.py` (line 22) and corresponding dead `@patch("triggarr.web.routes.load_settings")` decorators from 3 test functions in `test_web.py` (lines 153, 197, 238).
 **When to use:** When a refactor (Phase 6 replaced `load_settings` call with `SettingsModel(**new_config)`) made an import and its test patches obsolete.
 **How:**
 ```python
 # routes.py: DELETE this line (line 22)
-from fetcharr.config import load_settings
+from triggarr.config import load_settings
 
 # test_web.py: REMOVE @patch decorator AND mock_load parameter from these 3 functions:
 # - test_save_settings_writes_toml (line 153-154)
@@ -84,19 +84,19 @@ def test_search_now_happy_path(client, test_app):
     test_app.state.search_lock = asyncio.Lock()
 
     with patch(
-        "fetcharr.web.routes.run_radarr_cycle",
-        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+        "triggarr.web.routes.run_radarr_cycle",
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch(
-        "fetcharr.web.routes.save_state",
+        "triggarr.web.routes.save_state",
     ):
         response = client.post("/api/search-now/radarr")
         assert response.status_code == 200
 ```
 
-**Fixture gap detail:** The existing `test_app` fixture (lines 19-92 in `test_web.py`) sets up `app.state.settings`, `app.state.scheduler`, `app.state.radarr_client`, `app.state.sonarr_client`, and `app.state.fetcharr_state`, but does NOT set `app.state.search_lock`. The search_now route accesses `request.app.state.search_lock` on line 251, so any happy-path test using the current fixture would crash. The fix is to either add `search_lock` to the fixture itself, or set it in the individual test. Adding it to the fixture is cleaner since it avoids breaking other tests.
+**Fixture gap detail:** The existing `test_app` fixture (lines 19-92 in `test_web.py`) sets up `app.state.settings`, `app.state.scheduler`, `app.state.radarr_client`, `app.state.sonarr_client`, and `app.state.triggarr_state`, but does NOT set `app.state.search_lock`. The search_now route accesses `request.app.state.search_lock` on line 251, so any happy-path test using the current fixture would crash. The fix is to either add `search_lock` to the fixture itself, or set it in the individual test. Adding it to the fixture is cleaner since it avoids breaking other tests.
 
 ### Anti-Patterns to Avoid
-- **Patching things that aren't called:** The existing `@patch("fetcharr.web.routes.load_settings")` decorators are a textbook example -- they give false confidence that something is being tested when the patched function is never invoked.
+- **Patching things that aren't called:** The existing `@patch("triggarr.web.routes.load_settings")` decorators are a textbook example -- they give false confidence that something is being tested when the patched function is never invoked.
 - **Hardcoded URLs in templates:** The `action="/settings"` is fragile -- if the route path changes, the template silently breaks. Always use `url_for()` to reference routes by name.
 
 ## Don't Hand-Roll
@@ -140,13 +140,13 @@ def test_search_now_happy_path(client, test_app):
 
 Current state (line 22):
 ```python
-from fetcharr.config import load_settings
+from triggarr.config import load_settings
 ```
 Action: Delete this line entirely. No other code in `routes.py` references `load_settings`.
 
 Verification:
 ```bash
-grep -n 'load_settings' fetcharr/web/routes.py
+grep -n 'load_settings' triggarr/web/routes.py
 # Should return 0 matches after fix
 ```
 
@@ -155,21 +155,21 @@ grep -n 'load_settings' fetcharr/web/routes.py
 Current state -- 3 affected test functions:
 ```python
 # Test 1 (lines 153-194): test_save_settings_writes_toml
-@patch("fetcharr.web.routes.load_settings")           # DELETE
+@patch("triggarr.web.routes.load_settings")           # DELETE
 def test_save_settings_writes_toml(mock_load, ...):    # Remove mock_load param
     mock_new_settings = MagicMock()                    # DELETE block
     ...
     mock_load.return_value = mock_new_settings         # DELETE
 
 # Test 2 (lines 197-235): test_save_settings_preserves_existing_api_key
-@patch("fetcharr.web.routes.load_settings")           # DELETE
+@patch("triggarr.web.routes.load_settings")           # DELETE
 def test_save_settings_preserves_existing_api_key(mock_load, ...):  # Remove mock_load param
     mock_new_settings = MagicMock()                    # DELETE block
     ...
     mock_load.return_value = mock_new_settings         # DELETE
 
 # Test 3 (lines 238-275): test_save_settings_replaces_api_key_when_provided
-@patch("fetcharr.web.routes.load_settings")           # DELETE
+@patch("triggarr.web.routes.load_settings")           # DELETE
 def test_save_settings_replaces_api_key_when_provided(mock_load, ...):  # Remove mock_load param
     mock_new_settings = MagicMock()                    # DELETE block
     ...
@@ -198,10 +198,10 @@ def test_search_now_happy_path(client, test_app):
     test_app.state.search_lock = asyncio.Lock()
 
     with patch(
-        "fetcharr.web.routes.run_radarr_cycle",
-        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+        "triggarr.web.routes.run_radarr_cycle",
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch(
-        "fetcharr.web.routes.save_state",
+        "triggarr.web.routes.save_state",
     ):
         response = client.post("/api/search-now/radarr")
         assert response.status_code == 200
@@ -248,9 +248,9 @@ The v1.0 audit identified 7 tech debt items. Current status:
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct code inspection of `fetcharr/web/routes.py` (lines 22, 124-237, 240-276)
+- Direct code inspection of `triggarr/web/routes.py` (lines 22, 124-237, 240-276)
 - Direct code inspection of `tests/test_web.py` (lines 153-275, 278-282)
-- Direct code inspection of `fetcharr/templates/settings.html` (line 10)
+- Direct code inspection of `triggarr/templates/settings.html` (line 10)
 - Direct code inspection of `tests/test_scheduler.py` (lines 23, 34 -- `search_lock` pattern)
 - Direct code inspection of `tests/conftest.py` (fixture factory pattern)
 - `.planning/v1.0-MILESTONE-AUDIT.md` (full audit report with 7 tech debt items)

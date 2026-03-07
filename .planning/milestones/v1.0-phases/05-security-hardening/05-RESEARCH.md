@@ -6,7 +6,7 @@
 
 ## Summary
 
-Phase 5 hardens six distinct attack surfaces in Fetcharr: cross-origin request forgery on POST endpoints, server-side request forgery via user-supplied URLs, integer input abuse on form fields, log-level injection, Docker privilege escalation, config file permission leaks, and external CDN dependency. All six areas are well-understood security domains with clear, standard mitigations that use Python stdlib or minimal code changes -- no new dependencies are needed.
+Phase 5 hardens six distinct attack surfaces in Triggarr: cross-origin request forgery on POST endpoints, server-side request forgery via user-supplied URLs, integer input abuse on form fields, log-level injection, Docker privilege escalation, config file permission leaks, and external CDN dependency. All six areas are well-understood security domains with clear, standard mitigations that use Python stdlib or minimal code changes -- no new dependencies are needed.
 
 The project has no authentication or session cookies, which simplifies CSRF defense. The requirement specifies Origin/Referer header validation (not token-based CSRF), which is the right fit: a lightweight FastAPI middleware checks that the `Origin` or `Referer` header on POST requests matches the server's own host, rejecting cross-origin requests with 403. For SSRF, Python's `urllib.parse` + `ipaddress` stdlib modules provide scheme validation and metadata endpoint blocking. Integer clamping and log-level allowlisting are pure Python. Docker hardening is docker-compose.yml and entrypoint.sh edits. htmx bundling is downloading the pinned .min.js file into static/.
 
@@ -63,9 +63,9 @@ None. All work is stdlib + existing dependencies.
 **When to use:** On every state-changing endpoint (`POST /settings`, `POST /api/search-now/{app}`)
 
 **Why Origin/Referer and not CSRF tokens:**
-- Fetcharr has NO authentication and NO session cookies
+- Triggarr has NO authentication and NO session cookies
 - Without cookies, the browser has no credentials to silently attach
-- The threat model is: a malicious page making cross-origin POST requests to Fetcharr running on the local network
+- The threat model is: a malicious page making cross-origin POST requests to Triggarr running on the local network
 - Origin header check blocks this because browsers always send the Origin header on cross-origin POSTs
 - Same-origin requests either have a matching Origin or no Origin header (some older browsers omit it on same-origin, which is safe to allow)
 
@@ -195,14 +195,14 @@ def safe_int(value: str | None, default: int, minimum: int, maximum: int) -> int
 **docker-compose.yml changes:**
 ```yaml
 services:
-  fetcharr:
-    image: ghcr.io/thejuran/fetcharr:latest
-    container_name: fetcharr
+  triggarr:
+    image: ghcr.io/thejuran/triggarr:latest
+    container_name: triggarr
     environment:
       - PUID=1000
       - PGID=1000
     volumes:
-      - fetcharr_config:/config
+      - triggarr_config:/config
     ports:
       - "127.0.0.1:8080:8080"  # Bind to localhost only
     cap_drop:
@@ -214,7 +214,7 @@ services:
 
 **entrypoint.sh change:** Add `--no-new-privileges` flag to `setpriv`:
 ```bash
-exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups --no-new-privileges python -m fetcharr
+exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups --no-new-privileges python -m triggarr
 ```
 
 **Note on `cap_drop: ALL`:** The entrypoint.sh uses `setpriv` (not `su`/`sudo`) which does NOT need `SETUID`/`SETGID` capabilities. `setpriv` works at the syscall level before dropping privileges. The `chown` command in the entrypoint runs as root BEFORE `exec setpriv`, and `groupadd`/`useradd` also run as root before the privilege drop. Since docker-compose `cap_drop` affects the container process itself (PID 1 after `exec`), and by that point we are already the unprivileged user, `cap_drop: ALL` is correct.
@@ -259,7 +259,7 @@ def write_config_secure(config_path: Path, content: str) -> None:
 
 **Steps:**
 1. Download `htmx.min.js` from `https://unpkg.com/htmx.org@2.0.8/dist/htmx.min.js`
-2. Save to `fetcharr/static/js/htmx.min.js`
+2. Save to `triggarr/static/js/htmx.min.js`
 3. Update `base.html` to reference the local file:
    ```html
    <script src="{{ url_for('static', path='js/htmx.min.js') }}"></script>
@@ -304,7 +304,7 @@ log_level = raw_level if raw_level in ALLOWED_LOG_LEVELS else "info"
 ### Pitfall 1: Blocking Private IPs Breaks *arr Connectivity
 
 **What goes wrong:** SSRF protection blocks connections to 192.168.x.x, 10.x.x.x, 172.16.x.x where Radarr/Sonarr actually live.
-**Why it happens:** Generic SSRF guidance says "block all private IPs" but Fetcharr is a self-hosted tool that ONLY connects to private network services.
+**Why it happens:** Generic SSRF guidance says "block all private IPs" but Triggarr is a self-hosted tool that ONLY connects to private network services.
 **How to avoid:** Only block link-local (169.254.0.0/16) for metadata endpoints, and explicitly block `metadata.google.internal` hostname. Allow all other private ranges.
 **Warning signs:** Users report "URL blocked" when entering their actual Radarr/Sonarr URLs.
 

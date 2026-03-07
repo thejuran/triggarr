@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Create a README.md that lets a new user install and configure Fetcharr from the README alone. Covers install guide, config reference, security model, and screenshots. No new features or code changes — documentation only.
+Create a README.md that lets a new user install and configure Triggarr from the README alone. Covers install guide, config reference, security model, and screenshots. No new features or code changes — documentation only.
 
 </domain>
 
@@ -33,7 +33,7 @@ Create a README.md that lets a new user install and configure Fetcharr from the 
 ### Tone & audience
 - Primary audience: arr power users already running Radarr/Sonarr in Docker
 - Concise & practical tone — short sentences, code-first, minimal prose (like Traefik/Caddy docs)
-- Brief motivation paragraph: "Radarr/Sonarr don't auto-search on a schedule. Fetcharr does." Then move on.
+- Brief motivation paragraph: "Radarr/Sonarr don't auto-search on a schedule. Triggarr does." Then move on.
 - Short feature bullet list (5-6 items): scheduled searches, web dashboard, config editor, search history, hard max limit, Docker-first
 
 ### Screenshots

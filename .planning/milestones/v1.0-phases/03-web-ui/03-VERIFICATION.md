@@ -40,27 +40,27 @@ re_verification: false
 
 | Artifact | Provides | Status | Details |
 |----------|----------|--------|---------|
-| `fetcharr/web/routes.py` | FastAPI router with dashboard, settings, and partial routes | VERIFIED | Contains `APIRouter`, 6 route handlers: `dashboard`, `settings_page`, `save_settings`, `search_now`, `partial_app_card`, `partial_search_log` |
-| `fetcharr/templates/base.html` | Base HTML layout with nav, htmx CDN, Tailwind CSS | VERIFIED | Contains `https://unpkg.com/htmx.org@2.0.8`, `output.css` link, nav with Dashboard/Settings links, `bg-fetcharr-bg text-fetcharr-text` body |
-| `fetcharr/templates/dashboard.html` | Dashboard page extending base with htmx polling containers | VERIFIED | Extends `base.html`, includes `app_card.html` partial in loop, includes `search_log.html` partial |
-| `fetcharr/search/scheduler.py` | Lifespan with app.state exposure and make_search_job factory | VERIFIED | `create_lifespan` accepts `config_path` parameter; sets `app.state.fetcharr_state`, `.settings`, `.scheduler`, `.radarr_client`, `.sonarr_client`, `.config_path`, `.state_path`; `make_search_job` reads all from `app.state` at runtime |
-| `fetcharr/static/css/input.css` | Tailwind CSS source with custom dark theme | VERIFIED | `@import "tailwindcss"` + `@theme` block with all 7 custom color variables |
+| `triggarr/web/routes.py` | FastAPI router with dashboard, settings, and partial routes | VERIFIED | Contains `APIRouter`, 6 route handlers: `dashboard`, `settings_page`, `save_settings`, `search_now`, `partial_app_card`, `partial_search_log` |
+| `triggarr/templates/base.html` | Base HTML layout with nav, htmx CDN, Tailwind CSS | VERIFIED | Contains `https://unpkg.com/htmx.org@2.0.8`, `output.css` link, nav with Dashboard/Settings links, `bg-triggarr-bg text-triggarr-text` body |
+| `triggarr/templates/dashboard.html` | Dashboard page extending base with htmx polling containers | VERIFIED | Extends `base.html`, includes `app_card.html` partial in loop, includes `search_log.html` partial |
+| `triggarr/search/scheduler.py` | Lifespan with app.state exposure and make_search_job factory | VERIFIED | `create_lifespan` accepts `config_path` parameter; sets `app.state.triggarr_state`, `.settings`, `.scheduler`, `.radarr_client`, `.sonarr_client`, `.config_path`, `.state_path`; `make_search_job` reads all from `app.state` at runtime |
+| `triggarr/static/css/input.css` | Tailwind CSS source with custom dark theme | VERIFIED | `@import "tailwindcss"` + `@theme` block with all 7 custom color variables |
 
 #### Plan 03-02 Artifacts
 
 | Artifact | Provides | Status | Details |
 |----------|----------|--------|---------|
-| `fetcharr/state.py` | Extended AppState with health and count fields | VERIFIED | `AppState` TypedDict includes `connected: bool | None`, `unreachable_since: str | None`, `missing_count: int | None`, `cutoff_count: int | None` |
-| `fetcharr/search/engine.py` | Cycle functions with connection health and item count tracking | VERIFIED | Both `run_radarr_cycle` and `run_sonarr_cycle` set `connected`, `unreachable_since` on failure; set `connected=True`, `unreachable_since=None`, `missing_count`, `cutoff_count` on success |
-| `fetcharr/templates/partials/app_card.html` | Complete dashboard card with all data points | VERIFIED | Contains `connected`, `unreachable_since` display logic; `missing_count`, `cutoff_count`, cursor positions, last/next run, Search Now htmx button |
+| `triggarr/state.py` | Extended AppState with health and count fields | VERIFIED | `AppState` TypedDict includes `connected: bool | None`, `unreachable_since: str | None`, `missing_count: int | None`, `cutoff_count: int | None` |
+| `triggarr/search/engine.py` | Cycle functions with connection health and item count tracking | VERIFIED | Both `run_radarr_cycle` and `run_sonarr_cycle` set `connected`, `unreachable_since` on failure; set `connected=True`, `unreachable_since=None`, `missing_count`, `cutoff_count` on success |
+| `triggarr/templates/partials/app_card.html` | Complete dashboard card with all data points | VERIFIED | Contains `connected`, `unreachable_since` display logic; `missing_count`, `cutoff_count`, cursor positions, last/next run, Search Now htmx button |
 
 #### Plan 03-03 Artifacts
 
 | Artifact | Provides | Status | Details |
 |----------|----------|--------|---------|
-| `fetcharr/web/routes.py` | Settings GET/POST routes and search-now API endpoint | VERIFIED | Contains `save_settings` with `tomli_w`, `load_settings`, `reschedule_job`, 303 redirect; `search_now` with cycle dispatch; `settings_page` with `has_api_key` masking |
-| `fetcharr/templates/settings.html` | Config editor form with masked API keys | VERIFIED | Full form with `type="password"` API key inputs, `value=""`, `'********' if app.has_api_key` placeholder, per-app enable/disable checkboxes, all numeric settings |
-| `fetcharr/templates/partials/app_card.html` | Dashboard card with Search Now button | VERIFIED | `hx-post="/api/search-now/{{ app.name }}"`, `hx-target="#{{ app.name }}-card"`, `hx-swap="outerHTML"` |
+| `triggarr/web/routes.py` | Settings GET/POST routes and search-now API endpoint | VERIFIED | Contains `save_settings` with `tomli_w`, `load_settings`, `reschedule_job`, 303 redirect; `search_now` with cycle dispatch; `settings_page` with `has_api_key` masking |
+| `triggarr/templates/settings.html` | Config editor form with masked API keys | VERIFIED | Full form with `type="password"` API key inputs, `value=""`, `'********' if app.has_api_key` placeholder, per-app enable/disable checkboxes, all numeric settings |
+| `triggarr/templates/partials/app_card.html` | Dashboard card with Search Now button | VERIFIED | `hx-post="/api/search-now/{{ app.name }}"`, `hx-target="#{{ app.name }}-card"`, `hx-swap="outerHTML"` |
 | `tests/test_web.py` | Web route test suite | VERIFIED | 12 tests covering dashboard, settings form security, htmx attributes, TOML write, key preservation/replacement, PRG redirect, search-now validation |
 
 ---
@@ -69,13 +69,13 @@ re_verification: false
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `fetcharr/web/routes.py` | `fetcharr/search/scheduler.py` | Routes access state via `request.app.state` set by lifespan | VERIFIED | `_build_app_context` reads `request.app.state.fetcharr_state`, `.settings`, `.scheduler`; `save_settings` calls imported `make_search_job` |
-| `fetcharr/__main__.py` | `fetcharr/web/routes.py` | App includes web router and mounts static files | VERIFIED | `app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")` + `app.include_router(router)` |
-| `fetcharr/search/scheduler.py` | `fetcharr/search/engine.py` | `make_search_job` delegates to `run_radarr_cycle`/`run_sonarr_cycle` | VERIFIED | `cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle` inside `make_search_job` |
-| `fetcharr/search/engine.py` | `fetcharr/state.py` | Cycle functions write `connected`, `unreachable_since`, `missing_count`, `cutoff_count` to state | VERIFIED | Both cycle functions write all four fields to `state["radarr"]` / `state["sonarr"]` |
-| `fetcharr/web/routes.py` | `fetcharr/state.py` | Partial routes read health and count fields from state for template context | VERIFIED | `_build_app_context` reads `connected`, `unreachable_since`, `missing_count`, `cutoff_count` from `app_state` |
-| `fetcharr/web/routes.py` | `fetcharr/config.py` | POST /settings reloads config via `load_settings` | VERIFIED | `new_settings = load_settings(config_path)` in `save_settings` |
-| `fetcharr/web/routes.py` | `fetcharr/search/engine.py` | Search-now endpoint calls `run_radarr_cycle`/`run_sonarr_cycle` directly | VERIFIED | `cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle` in `search_now` |
+| `triggarr/web/routes.py` | `triggarr/search/scheduler.py` | Routes access state via `request.app.state` set by lifespan | VERIFIED | `_build_app_context` reads `request.app.state.triggarr_state`, `.settings`, `.scheduler`; `save_settings` calls imported `make_search_job` |
+| `triggarr/__main__.py` | `triggarr/web/routes.py` | App includes web router and mounts static files | VERIFIED | `app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")` + `app.include_router(router)` |
+| `triggarr/search/scheduler.py` | `triggarr/search/engine.py` | `make_search_job` delegates to `run_radarr_cycle`/`run_sonarr_cycle` | VERIFIED | `cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle` inside `make_search_job` |
+| `triggarr/search/engine.py` | `triggarr/state.py` | Cycle functions write `connected`, `unreachable_since`, `missing_count`, `cutoff_count` to state | VERIFIED | Both cycle functions write all four fields to `state["radarr"]` / `state["sonarr"]` |
+| `triggarr/web/routes.py` | `triggarr/state.py` | Partial routes read health and count fields from state for template context | VERIFIED | `_build_app_context` reads `connected`, `unreachable_since`, `missing_count`, `cutoff_count` from `app_state` |
+| `triggarr/web/routes.py` | `triggarr/config.py` | POST /settings reloads config via `load_settings` | VERIFIED | `new_settings = load_settings(config_path)` in `save_settings` |
+| `triggarr/web/routes.py` | `triggarr/search/engine.py` | Search-now endpoint calls `run_radarr_cycle`/`run_sonarr_cycle` directly | VERIFIED | `cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle` in `search_now` |
 
 ---
 
@@ -104,11 +104,11 @@ No anti-patterns detected.
 
 | File | Pattern Checked | Result |
 |------|----------------|--------|
-| `fetcharr/web/routes.py` | TODO/stub/placeholder comments, empty returns | Clean — all routes substantively implemented |
-| `fetcharr/templates/settings.html` | Placeholder content | Clean — full form, was "coming soon" in Plan 01, replaced in Plan 03 |
-| `fetcharr/templates/partials/app_card.html` | Empty controls section | Clean — Search Now button is wired with htmx POST |
-| `fetcharr/search/engine.py` | Health/count tracking no-ops | Clean — tracking writes are real assignments, not logs-only |
-| `fetcharr/static/css/output.css` | Minimal/fallback CSS | Clean — full Tailwind v4.2.1 compiled output with all custom fetcharr color classes present |
+| `triggarr/web/routes.py` | TODO/stub/placeholder comments, empty returns | Clean — all routes substantively implemented |
+| `triggarr/templates/settings.html` | Placeholder content | Clean — full form, was "coming soon" in Plan 01, replaced in Plan 03 |
+| `triggarr/templates/partials/app_card.html` | Empty controls section | Clean — Search Now button is wired with htmx POST |
+| `triggarr/search/engine.py` | Health/count tracking no-ops | Clean — tracking writes are real assignments, not logs-only |
+| `triggarr/static/css/output.css` | Minimal/fallback CSS | Clean — full Tailwind v4.2.1 compiled output with all custom triggarr color classes present |
 
 ---
 
@@ -118,8 +118,8 @@ The following items cannot be verified programmatically:
 
 #### 1. Dashboard Visual Appearance
 
-**Test:** Run `python -m fetcharr` (or simulate state) and open `http://localhost:8080` in a browser.
-**Expected:** Dark background (`#0f172a`), card panels in dark slate (`#1e293b`), green accent on app card left border, "Fetcharr" brand in green, white nav links, muted secondary text.
+**Test:** Run `python -m triggarr` (or simulate state) and open `http://localhost:8080` in a browser.
+**Expected:** Dark background (`#0f172a`), card panels in dark slate (`#1e293b`), green accent on app card left border, "Triggarr" brand in green, white nav links, muted secondary text.
 **Why human:** CSS rendering, responsive grid layout, and visual hierarchy require a browser.
 
 #### 2. htmx 5-Second Polling Live Behavior

@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 
-from fetcharr.search.scheduler import make_search_job
-from fetcharr.state import _default_state
 from tests.conftest import make_settings
+from triggarr.search.scheduler import make_search_job
+from triggarr.state import _default_state
 
 
 async def test_make_search_job_client_none_returns_early():
@@ -32,16 +32,16 @@ async def test_make_search_job_exception_swallowed():
     app = FastAPI()
     app.state.radarr_client = AsyncMock()
     app.state.search_lock = asyncio.Lock()
-    app.state.fetcharr_state = _default_state()
+    app.state.triggarr_state = _default_state()
     app.state.settings = make_settings()
 
     with (
         patch(
-            "fetcharr.search.scheduler.run_radarr_cycle",
+            "triggarr.search.scheduler.run_radarr_cycle",
             new=AsyncMock(side_effect=RuntimeError("boom")),
         ),
         patch(
-            "fetcharr.search.scheduler.save_state",
+            "triggarr.search.scheduler.save_state",
             new=MagicMock(),
         ),
     ):
