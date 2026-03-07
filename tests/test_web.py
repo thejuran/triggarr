@@ -544,3 +544,68 @@ def test_health_no_apps_enabled_returns_200(client, test_app):
     assert response.status_code == 200, f"Expected 200 for no-apps-configured, got {response.status_code}"
     data = response.json()
     assert data["status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# STATS-01..05: Dashboard stats cards
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_renders_stats_cards(client):
+    """GET / renders all 4 stat card labels (STATS-01)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Grab Rate" in response.text, "Dashboard should show Grab Rate card"
+    assert "Movies" in response.text, "Dashboard should show Movies card"
+    assert "Episodes" in response.text, "Dashboard should show Episodes card"
+    assert "Time to Grab" in response.text, "Dashboard should show Time to Grab card"
+
+
+def test_stats_row_partial_returns_200(client):
+    """GET /partials/stats-row returns 200 with stat card HTML (STATS-02)."""
+    response = client.get("/partials/stats-row")
+    assert response.status_code == 200
+    assert "Grab Rate" in response.text
+    assert 'hx-get="/partials/stats-row"' in response.text
+    assert "every 30s" in response.text
+
+
+async def test_stats_empty_db_shows_dashes(test_app, tmp_path):
+    """Stats cards show dash values when no tracking data exists (STATS-03)."""
+    empty_db_path = tmp_path / "empty_stats.db"
+    empty_db = await aiosqlite.connect(empty_db_path)
+    await init_db(empty_db, empty_db_path)
+    test_app.state.db = empty_db
+
+    with TestClient(test_app) as tc:
+        response = tc.get("/partials/stats-row")
+    assert response.status_code == 200
+    assert "---" in response.text, "Empty state should show dash values for time-to-grab"
+
+
+def test_format_duration_none():
+    """_format_duration(None) returns '---' (STATS-04)."""
+    from fetcharr.web.routes import _format_duration
+
+    assert _format_duration(None) == "---"
+
+
+def test_format_duration_under_60():
+    """_format_duration(30) returns '< 1m' (STATS-04)."""
+    from fetcharr.web.routes import _format_duration
+
+    assert _format_duration(30) == "< 1m"
+
+
+def test_format_duration_minutes():
+    """_format_duration(300) returns '5m' (STATS-04)."""
+    from fetcharr.web.routes import _format_duration
+
+    assert _format_duration(300) == "5m"
+
+
+def test_format_duration_hours():
+    """_format_duration(7500) returns '2h 5m' (STATS-04)."""
+    from fetcharr.web.routes import _format_duration
+
+    assert _format_duration(7500) == "2h 5m"

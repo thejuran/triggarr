@@ -1,0 +1,42 @@
+<div id="stats-row"
+     hx-get="/partials/stats-row"
+     hx-trigger="every 30s"
+     hx-swap="outerHTML"
+     class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+
+  <!-- Grab Rate card -->
+  <div class="bg-fetcharr-card rounded-lg border border-fetcharr-border p-4">
+    <span class="text-xs uppercase tracking-wide text-fetcharr-muted">Grab Rate</span>
+    <p class="text-lg font-bold mt-1">
+      {% if stats.overall_rate is not none %}{{ "%.0f" | format(stats.overall_rate) }}%{% else %}&mdash;{% endif %}
+    </p>
+    <p class="text-xs text-fetcharr-muted mt-1">
+      {% if stats.radarr_rate is not none or stats.sonarr_rate is not none %}
+        R: {{ "%.0f" | format(stats.radarr_rate) if stats.radarr_rate is not none else "---" }}%
+        S: {{ "%.0f" | format(stats.sonarr_rate) if stats.sonarr_rate is not none else "---" }}%
+      {% else %}&mdash;{% endif %}
+    </p>
+  </div>
+
+  <!-- Movies card -->
+  <div class="bg-fetcharr-card rounded-lg border border-fetcharr-border p-4">
+    <span class="text-xs uppercase tracking-wide text-fetcharr-muted">Movies</span>
+    <p class="text-lg font-bold mt-1">{{ stats.movies_found + stats.movies_updated }}</p>
+    <p class="text-xs text-fetcharr-muted mt-1">{{ stats.movies_found }} found &middot; {{ stats.movies_updated }} upgraded</p>
+  </div>
+
+  <!-- Episodes card -->
+  <div class="bg-fetcharr-card rounded-lg border border-fetcharr-border p-4">
+    <span class="text-xs uppercase tracking-wide text-fetcharr-muted">Episodes</span>
+    <p class="text-lg font-bold mt-1">{{ stats.episodes_found + stats.episodes_updated }}</p>
+    <p class="text-xs text-fetcharr-muted mt-1">{{ stats.episodes_found }} found &middot; {{ stats.episodes_updated }} upgraded</p>
+  </div>
+
+  <!-- Time to Grab card -->
+  <div class="bg-fetcharr-card rounded-lg border border-fetcharr-border p-4">
+    <span class="text-xs uppercase tracking-wide text-fetcharr-muted">Time to Grab</span>
+    <p class="text-lg font-bold mt-1">{{ time_to_grab }}</p>
+    <p class="text-xs text-fetcharr-muted mt-1">avg search &rarr; grab</p>
+  </div>
+
+</div>

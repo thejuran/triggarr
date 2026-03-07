@@ -366,7 +366,7 @@ async def test_schema_version_tracked(tmp_path):
     """Schema version is tracked and reaches the expected final version."""
     db, db_path = await _init_test_db(tmp_path)
     version = await get_schema_version(db)
-    assert version == 4
+    assert version == 5
     await db.close()
 
 
@@ -726,7 +726,7 @@ async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
 
     # Verify migrations ran to completion (no FileNotFoundError)
     version = await get_schema_version(db)
-    assert version == 4
+    assert version == 5
 
     # Verify no backup file was created (guard skipped the copy)
     backup = db_path.with_suffix(".v0-backup")
