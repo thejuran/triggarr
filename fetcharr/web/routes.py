@@ -22,7 +22,7 @@ from loguru import logger
 
 from fetcharr.clients.radarr import RadarrClient
 from fetcharr.clients.sonarr import SonarrClient
-from fetcharr.db import get_recent_searches, get_search_history
+from fetcharr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from fetcharr.log_buffer import log_buffer
 from fetcharr.logging import setup_logging
 from fetcharr.models.config import Settings as SettingsModel
@@ -40,6 +40,27 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
+
+
+def _format_duration(seconds: float | None) -> str:
+    """Format a duration in seconds as a human-readable string.
+
+    Args:
+        seconds: Duration in seconds, or None if no data.
+
+    Returns:
+        "---" if None, "< 1m" if < 60, "{X}m" if < 3600, "{X}h {Y}m" otherwise.
+    """
+    if seconds is None:
+        return "---"
+    if seconds < 60:
+        return "< 1m"
+    minutes = int(seconds // 60)
+    if seconds < 3600:
+        return f"{minutes}m"
+    hours = minutes // 60
+    remaining_minutes = minutes % 60
+    return f"{hours}h {remaining_minutes}m"
 
 
 @router.get("/health")
@@ -124,11 +145,19 @@ async def dashboard(request: Request) -> HTMLResponse:
 
     search_log = await get_recent_searches(request.app.state.db)
     log_entries = log_buffer.get_recent(30)
+    stats = await get_dashboard_stats(request.app.state.db)
+    time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"apps": apps, "search_log": search_log, "log_entries": log_entries},
+        context={
+            "apps": apps,
+            "search_log": search_log,
+            "log_entries": log_entries,
+            "stats": stats,
+            "time_to_grab": time_to_grab,
+        },
     )
 
 
@@ -435,6 +464,18 @@ async def partial_search_log(request: Request) -> HTMLResponse:
         request=request,
         name="partials/search_log.html",
         context={"search_log": search_log},
+    )
+
+
+@router.get("/partials/stats-row", response_class=HTMLResponse)
+async def partial_stats_row(request: Request) -> HTMLResponse:
+    """Return an HTML fragment for the dashboard stats row (htmx partial)."""
+    stats = await get_dashboard_stats(request.app.state.db)
+    time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/stats_row.html",
+        context={"stats": stats, "time_to_grab": time_to_grab},
     )
 
 

@@ -120,12 +120,20 @@ async def _migrate_v4(db: aiosqlite.Connection) -> None:
     logger.info("Backfilled {count} rows with outcome='unresolved'", count=cursor.rowcount)
 
 
+async def _migrate_v5(db: aiosqlite.Connection) -> None:
+    """Add resolved_at column for time-to-grab calculation."""
+    with contextlib.suppress(sqlite3.OperationalError):
+        await db.execute("ALTER TABLE search_history ADD COLUMN resolved_at TEXT DEFAULT NULL")
+    await db.commit()
+
+
 # Register migrations after functions are defined
 MIGRATIONS = {
     1: ("add outcome and detail columns", _migrate_v1),
     2: ("add item_id, season_number, missing_count columns", _migrate_v2),
     3: ("create lifetime_stats table", _migrate_v3),
     4: ("backfill existing rows as unresolved", _migrate_v4),
+    5: ("add resolved_at column for time-to-grab", _migrate_v5),
 }
 
 
@@ -422,10 +430,11 @@ async def update_outcome_and_stats(
             msg = f"Unknown stat column(s): {', '.join(sorted(unknown))}"
             raise ValueError(msg)
 
-    # 1. Update outcome
+    # 1. Update outcome and resolved_at timestamp
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     await db.execute(
-        "UPDATE search_history SET outcome = ?, detail = ? WHERE id = ?",
-        (outcome, detail, history_id),
+        "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? WHERE id = ?",
+        (outcome, detail, now, history_id),
     )
 
     # 2. Increment lifetime stats (if any)
@@ -478,3 +487,89 @@ async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -
         count=count,
     )
     return count
+
+
+async def get_dashboard_stats(db: aiosqlite.Connection) -> dict:
+    """Compute aggregate dashboard statistics from search_history and lifetime_stats.
+
+    Returns:
+        Dict with keys: overall_rate, radarr_rate, sonarr_rate, movies_found,
+        movies_updated, episodes_found, episodes_updated, avg_time_to_grab_seconds.
+        Rate values are percentages (0-100) or None if no data.
+    """
+    # 1. Effectiveness: grab rate per app
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute(
+            "SELECT app, "
+            "SUM(CASE WHEN outcome IN ('grabbed', 'partial') THEN 1 ELSE 0 END) AS grabbed_count, "
+            "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
+            "FROM search_history "
+            "WHERE outcome IS NOT NULL "
+            "GROUP BY app",
+        ) as cursor:
+            effectiveness_rows = await cursor.fetchall()
+    finally:
+        db.row_factory = None
+
+    total_grabbed = 0
+    total_count = 0
+    radarr_rate: float | None = None
+    sonarr_rate: float | None = None
+
+    for row in effectiveness_rows:
+        app_name = row["app"]
+        grabbed = row["grabbed_count"]
+        count = row["total_count"]
+        total_grabbed += grabbed
+        total_count += count
+        if count > 0:
+            rate = (grabbed / count) * 100
+            if app_name.lower() == "radarr":
+                radarr_rate = rate
+            elif app_name.lower() == "sonarr":
+                sonarr_rate = rate
+
+    overall_rate: float | None = (total_grabbed / total_count * 100) if total_count > 0 else None
+
+    # 2. Lifetime stats
+    movies_found = 0
+    movies_updated = 0
+    episodes_found = 0
+    episodes_updated = 0
+
+    db.row_factory = aiosqlite.Row
+    try:
+        async with db.execute(
+            "SELECT movies_found, movies_updated, episodes_found, episodes_updated FROM lifetime_stats",
+        ) as cursor:
+            stats_rows = await cursor.fetchall()
+    finally:
+        db.row_factory = None
+
+    for row in stats_rows:
+        movies_found += row["movies_found"]
+        movies_updated += row["movies_updated"]
+        episodes_found += row["episodes_found"]
+        episodes_updated += row["episodes_updated"]
+
+    # 3. Time-to-grab average
+    async with db.execute(
+        "SELECT AVG((julianday(resolved_at) - julianday(timestamp)) * 86400) AS avg_seconds "
+        "FROM search_history "
+        "WHERE outcome = 'grabbed' AND resolved_at IS NOT NULL",
+    ) as cursor:
+        ttg_row = await cursor.fetchone()
+
+    avg_seconds: float | None = ttg_row[0] if ttg_row and ttg_row[0] is not None else None
+
+    return {
+        "overall_rate": overall_rate,
+        "radarr_rate": radarr_rate,
+        "sonarr_rate": sonarr_rate,
+        "movies_found": movies_found,
+        "movies_updated": movies_updated,
+        "episodes_found": episodes_found,
+        "episodes_updated": episodes_updated,
+        "avg_time_to_grab_seconds": avg_seconds,
+    }
