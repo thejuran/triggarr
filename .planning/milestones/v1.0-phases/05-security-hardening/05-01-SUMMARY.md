@@ -21,14 +21,14 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/web/middleware.py
-    - fetcharr/static/js/htmx.min.js
+    - triggarr/web/middleware.py
+    - triggarr/static/js/htmx.min.js
     - tests/test_middleware.py
   modified:
-    - fetcharr/__main__.py
+    - triggarr/__main__.py
     - docker-compose.yml
     - entrypoint.sh
-    - fetcharr/templates/base.html
+    - triggarr/templates/base.html
 
 key-decisions:
   - "Origin/Referer header check over CSRF tokens -- no auth/sessions means no cookies to protect"
@@ -38,7 +38,7 @@ key-decisions:
 patterns-established:
   - "CSRF middleware: OriginCheckMiddleware on all POST endpoints via app.add_middleware"
   - "Docker hardening: cap_drop ALL + minimal cap_add + no-new-privileges in both compose and entrypoint"
-  - "Static asset vendoring: download pinned JS into fetcharr/static/js/, reference via url_for"
+  - "Static asset vendoring: download pinned JS into triggarr/static/js/, reference via url_for"
 
 requirements-completed: [SECR-02, SECR-05, SECR-07]
 
@@ -73,16 +73,16 @@ Each task was committed atomically:
 2. **Task 2: Docker hardening and htmx vendoring** - `30ce005` (feat)
 
 ## Files Created/Modified
-- `fetcharr/web/middleware.py` - OriginCheckMiddleware class for CSRF defense
+- `triggarr/web/middleware.py` - OriginCheckMiddleware class for CSRF defense
 - `tests/test_middleware.py` - Six tests for middleware validation logic
-- `fetcharr/__main__.py` - Register OriginCheckMiddleware before router
+- `triggarr/__main__.py` - Register OriginCheckMiddleware before router
 - `docker-compose.yml` - Localhost binding, cap_drop/cap_add, no-new-privileges
 - `entrypoint.sh` - --no-new-privileges flag on setpriv exec
-- `fetcharr/static/js/htmx.min.js` - Vendored htmx 2.0.8 (51KB)
-- `fetcharr/templates/base.html` - Local static file reference replacing CDN script tag
+- `triggarr/static/js/htmx.min.js` - Vendored htmx 2.0.8 (51KB)
+- `triggarr/templates/base.html` - Local static file reference replacing CDN script tag
 
 ## Decisions Made
-- Origin/Referer header validation chosen over CSRF tokens because Fetcharr has no auth/sessions/cookies -- tokens would add complexity for zero benefit
+- Origin/Referer header validation chosen over CSRF tokens because Triggarr has no auth/sessions/cookies -- tokens would add complexity for zero benefit
 - cap_drop ALL + cap_add CHOWN/SETUID/SETGID chosen because Docker applies cap_drop before the entrypoint runs; groupadd/useradd/chown need these capabilities
 - htmx.min.js committed to repo rather than downloaded during Docker build for reproducible, network-independent builds
 

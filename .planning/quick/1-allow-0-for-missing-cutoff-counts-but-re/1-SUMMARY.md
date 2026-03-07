@@ -20,9 +20,9 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/models/config.py
-    - fetcharr/web/routes.py
-    - fetcharr/templates/settings.html
+    - triggarr/models/config.py
+    - triggarr/web/routes.py
+    - triggarr/templates/settings.html
     - tests/test_validation.py
     - tests/test_web.py
 
@@ -66,9 +66,9 @@ Each task was committed atomically:
 2. **Task 2: Update tests for new 0-minimum behavior** - `c1ed0f5` (test)
 
 ## Files Created/Modified
-- `fetcharr/models/config.py` - Added model_validator import and cross-field at_least_one_search_count validator
-- `fetcharr/web/routes.py` - Changed safe_int minimum from 1 to 0 for search_missing_count and search_cutoff_count
-- `fetcharr/templates/settings.html` - Changed min="1" to min="0" on missing and cutoff count inputs
+- `triggarr/models/config.py` - Added model_validator import and cross-field at_least_one_search_count validator
+- `triggarr/web/routes.py` - Changed safe_int minimum from 1 to 0 for search_missing_count and search_cutoff_count
+- `triggarr/templates/settings.html` - Changed min="1" to min="0" on missing and cutoff count inputs
 - `tests/test_validation.py` - Updated test_below_minimum_clamped for 0-minimum, added test_negative_clamped_to_zero
 - `tests/test_web.py` - Added test_save_settings_rejects_both_zero_counts and test_save_settings_accepts_zero_missing_with_positive_cutoff
 

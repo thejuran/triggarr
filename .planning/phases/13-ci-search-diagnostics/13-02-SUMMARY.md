@@ -21,9 +21,9 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/clients/sonarr.py
-    - fetcharr/startup.py
-    - fetcharr/search/engine.py
+    - triggarr/clients/sonarr.py
+    - triggarr/startup.py
+    - triggarr/search/engine.py
     - tests/test_startup.py
     - tests/test_search.py
 
@@ -70,9 +70,9 @@ Each task was committed atomically:
 3. **Task 3: Add tests for diagnostic cycle logging** - `569353d` (test)
 
 ## Files Created/Modified
-- `fetcharr/clients/sonarr.py` - Added detect_api_version method (v3/v4 from version string)
-- `fetcharr/startup.py` - Call version detection after Sonarr connection validation, log result
-- `fetcharr/search/engine.py` - Added time import, cycle_start timing, searched/skipped counters, summary log for both run_radarr_cycle and run_sonarr_cycle
+- `triggarr/clients/sonarr.py` - Added detect_api_version method (v3/v4 from version string)
+- `triggarr/startup.py` - Call version detection after Sonarr connection validation, log result
+- `triggarr/search/engine.py` - Added time import, cycle_start timing, searched/skipped counters, summary log for both run_radarr_cycle and run_sonarr_cycle
 - `tests/test_startup.py` - 6 new tests for version detection (unit + integration)
 - `tests/test_search.py` - 3 new tests for diagnostic cycle summary logging
 
@@ -89,7 +89,7 @@ Each task was committed atomically:
 - **Found during:** Task 1 (Sonarr API version detection)
 - **Issue:** If detect_api_version raised an unexpected exception (despite its internal try/except), it would propagate up through validate_connections and potentially break startup
 - **Fix:** Wrapped the detect_api_version call in validate_connections with try/except that logs a warning and falls back to v3
-- **Files modified:** fetcharr/startup.py
+- **Files modified:** triggarr/startup.py
 - **Verification:** test_sonarr_version_detection_failure passes
 - **Committed in:** d11c167 (Task 1 commit)
 

@@ -58,19 +58,19 @@ All truths drawn from phase PLAN frontmatter `must_haves` sections (plans 07-01 
 | Artifact | Expected | Level 1: Exists | Level 2: Substantive | Level 3: Wired | Status |
 |----------|----------|-----------------|----------------------|----------------|--------|
 | `tests/conftest.py` | Shared fixtures: `make_settings`, `default_state` | Yes (52 lines) | Yes — both factory functions fully implemented | Imported in `test_search.py` and `test_scheduler.py` via `from tests.conftest import make_settings` | VERIFIED |
-| `tests/test_clients.py` | 11 new async tests covering `_request_with_retry`, `get_paginated`, `validate_connection` via MockTransport | Yes (307 lines) | Yes — 19 test functions total (8 sync + 11 async), all substantive | Imports `fetcharr.clients.base.ArrClient`, injects `httpx.MockTransport` into `client._client` | VERIFIED |
-| `tests/test_search.py` | 8 new async cycle tests for `run_radarr_cycle` (4) and `run_sonarr_cycle` (4) | Yes (459 lines) | Yes — 27 test functions total; cycle tests use `AsyncMock` throughout | Imports `run_radarr_cycle`, `run_sonarr_cycle` from `fetcharr.search.engine`; imports `make_settings` from `tests.conftest` | VERIFIED |
-| `tests/test_scheduler.py` | 2 tests for `make_search_job` (client-None + exception swallowing) | Yes (51 lines) | Yes — 2 substantive async tests | Imports `make_search_job` from `fetcharr.search.scheduler`; patches `fetcharr.search.scheduler.run_radarr_cycle` and `save_state` | VERIFIED |
-| `tests/test_startup.py` | 1 new test for `collect_secrets` (existing file updated) | Yes (145 lines) | Yes — 6 test functions total (5 existing + 1 new `collect_secrets` test) | Imports `collect_secrets` from `fetcharr.startup` at line 10; calls `collect_secrets(settings)` directly | VERIFIED |
+| `tests/test_clients.py` | 11 new async tests covering `_request_with_retry`, `get_paginated`, `validate_connection` via MockTransport | Yes (307 lines) | Yes — 19 test functions total (8 sync + 11 async), all substantive | Imports `triggarr.clients.base.ArrClient`, injects `httpx.MockTransport` into `client._client` | VERIFIED |
+| `tests/test_search.py` | 8 new async cycle tests for `run_radarr_cycle` (4) and `run_sonarr_cycle` (4) | Yes (459 lines) | Yes — 27 test functions total; cycle tests use `AsyncMock` throughout | Imports `run_radarr_cycle`, `run_sonarr_cycle` from `triggarr.search.engine`; imports `make_settings` from `tests.conftest` | VERIFIED |
+| `tests/test_scheduler.py` | 2 tests for `make_search_job` (client-None + exception swallowing) | Yes (51 lines) | Yes — 2 substantive async tests | Imports `make_search_job` from `triggarr.search.scheduler`; patches `triggarr.search.scheduler.run_radarr_cycle` and `save_state` | VERIFIED |
+| `tests/test_startup.py` | 1 new test for `collect_secrets` (existing file updated) | Yes (145 lines) | Yes — 6 test functions total (5 existing + 1 new `collect_secrets` test) | Imports `collect_secrets` from `triggarr.startup` at line 10; calls `collect_secrets(settings)` directly | VERIFIED |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `tests/test_clients.py` | `fetcharr/clients/base.py` | `httpx.MockTransport` injected into `ArrClient._client` | WIRED | Line 82: `client._client = httpx.AsyncClient(transport=transport, base_url="http://test")`; all 11 async tests use this pattern |
-| `tests/test_search.py` | `fetcharr/search/engine.py` | `AsyncMock` patching of client methods | WIRED | Line 29: `from tests.conftest import make_settings`; cycle functions called directly with mock clients; `run_radarr_cycle` and `run_sonarr_cycle` imported at line 24-26 |
-| `tests/test_scheduler.py` | `fetcharr/search/scheduler.py` | `FastAPI` `app.state` mocking with `AsyncMock` clients + `patch()` of cycle function | WIRED | Line 14: `from fetcharr.search.scheduler import make_search_job`; scheduler internals exercised via closure invocation |
-| `tests/test_startup.py` | `fetcharr/startup.py` | Direct function call with `Settings` instance | WIRED | Line 10: `from fetcharr.startup import check_localhost_urls, collect_secrets`; `collect_secrets(settings)` called at line 141 |
+| `tests/test_clients.py` | `triggarr/clients/base.py` | `httpx.MockTransport` injected into `ArrClient._client` | WIRED | Line 82: `client._client = httpx.AsyncClient(transport=transport, base_url="http://test")`; all 11 async tests use this pattern |
+| `tests/test_search.py` | `triggarr/search/engine.py` | `AsyncMock` patching of client methods | WIRED | Line 29: `from tests.conftest import make_settings`; cycle functions called directly with mock clients; `run_radarr_cycle` and `run_sonarr_cycle` imported at line 24-26 |
+| `tests/test_scheduler.py` | `triggarr/search/scheduler.py` | `FastAPI` `app.state` mocking with `AsyncMock` clients + `patch()` of cycle function | WIRED | Line 14: `from triggarr.search.scheduler import make_search_job`; scheduler internals exercised via closure invocation |
+| `tests/test_startup.py` | `triggarr/startup.py` | Direct function call with `Settings` instance | WIRED | Line 10: `from triggarr.startup import check_localhost_urls, collect_secrets`; `collect_secrets(settings)` called at line 141 |
 
 ### Requirements Coverage
 
@@ -94,7 +94,7 @@ Scanned all five files created/modified in this phase. No blockers or meaningful
 
 All test functions have real assertions (not just `pass` or `print` stubs). Retry tests patch `asyncio.sleep` correctly. Cycle tests create fresh `_default_state()` per test (no shared mutable state).
 
-One notable design decision verified: `validate_connection` in `fetcharr/clients/base.py` calls `self._client.get()` directly (not through `_request_with_retry`), and the tests correctly account for this — MockTransport responses are injected into `_client` and `raise_for_status()` triggers correctly when the request is routed through the AsyncClient.
+One notable design decision verified: `validate_connection` in `triggarr/clients/base.py` calls `self._client.get()` directly (not through `_request_with_retry`), and the tests correctly account for this — MockTransport responses are injected into `_client` and `raise_for_status()` triggers correctly when the request is routed through the AsyncClient.
 
 ### Human Verification Required
 

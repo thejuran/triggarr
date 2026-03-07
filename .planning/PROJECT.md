@@ -1,4 +1,4 @@
-# Fetcharr
+# Triggarr
 
 ## What This Is
 
@@ -65,7 +65,7 @@ Shipped v1.2 with ~5,225 Python LOC. 174 tests passing.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
-Registry: ghcr.io/thejuran/fetcharr
+Registry: ghcr.io/thejuran/triggarr
 
 Replaces Huntarr's core search functionality without the security liabilities (plaintext passwords, unauthenticated API key exposure, 2FA bypass). Deliberately minimal attack surface.
 

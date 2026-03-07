@@ -11,7 +11,7 @@ human_verification:
 
 # Phase 12: Documentation Verification Report
 
-**Phase Goal:** A new user can install and configure Fetcharr from the README alone
+**Phase Goal:** A new user can install and configure Triggarr from the README alone
 **Verified:** 2026-02-24T19:10:00Z
 **Status:** human_needed
 **Re-verification:** No — initial verification
@@ -22,8 +22,8 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | A new user can copy the docker-compose.yml from the README and run Fetcharr | VERIFIED | README lines 40-65: complete, copy-paste-ready `docker-compose.yml` block matching actual `docker-compose.yml` exactly (image, volumes, ports, cap_drop/add, security_opt, restart) |
-| 2 | Every TOML config field is documented with its default, valid range, and description | VERIFIED | README lines 75-108: all 8 fields from `fetcharr/models/config.py` present (`log_level`, `hard_max_per_cycle`, `url`, `api_key`, `enabled`, `search_interval`, `search_missing_count`, `search_cutoff_count`) with defaults and ranges inline |
+| 1 | A new user can copy the docker-compose.yml from the README and run Triggarr | VERIFIED | README lines 40-65: complete, copy-paste-ready `docker-compose.yml` block matching actual `docker-compose.yml` exactly (image, volumes, ports, cap_drop/add, security_opt, restart) |
+| 2 | Every TOML config field is documented with its default, valid range, and description | VERIFIED | README lines 75-108: all 8 fields from `triggarr/models/config.py` present (`log_level`, `hard_max_per_cycle`, `url`, `api_key`, `enabled`, `search_interval`, `search_missing_count`, `search_cutoff_count`) with defaults and ranges inline |
 | 3 | The security model explains why there is no authentication and what is protected | VERIFIED | README lines 109-133: 7 protected items listed (SecretStr, log redaction, 0600 permissions, cap_drop, CSRF, SSRF, no-new-privileges), explicit "no authentication is intentional" explanation, Tailscale/reverse proxy recommendation |
 | 4 | Screenshots section references dashboard and config editor images with placeholder paths | VERIFIED | README lines 30-34: `![...](docs/screenshots/dashboard.png)` and `![...](docs/screenshots/config-editor.png)` present; `docs/screenshots/` directory exists with `.gitkeep` |
 | 5 | README follows the locked section order: hero → TOC → features → screenshots → install → config reference → security model → development | VERIFIED | Confirmed by position analysis: Features@715, Screenshots@1073, Install@1334, Configuration Reference@2310, Security Model@4190, Development@5330 — strict ascending order |
@@ -43,7 +43,7 @@ human_verification:
 |------|----|-----|--------|---------|
 | `README.md` | `docs/screenshots/dashboard.png` | markdown image reference | WIRED | Line 30: `![Dashboard showing connection status, item counts, and search history](docs/screenshots/dashboard.png)` |
 | `README.md` | `docs/screenshots/config-editor.png` | markdown image reference | WIRED | Line 32: `![Config editor with inline validation](docs/screenshots/config-editor.png)` |
-| `README.md` | `docker-compose.yml` | inline docker-compose example matching actual compose file | WIRED | `ghcr.io/thejuran/fetcharr:latest` confirmed at README line 44; all 11 structural elements match actual `docker-compose.yml` |
+| `README.md` | `docker-compose.yml` | inline docker-compose example matching actual compose file | WIRED | `ghcr.io/thejuran/triggarr:latest` confirmed at README line 44; all 11 structural elements match actual `docker-compose.yml` |
 
 ### Requirements Coverage
 
@@ -68,7 +68,7 @@ No anti-patterns detected in `README.md`.
 
 #### 1. Add screenshot images
 
-**Test:** Take screenshots of the running Fetcharr application and save them at:
+**Test:** Take screenshots of the running Triggarr application and save them at:
 - `docs/screenshots/dashboard.png`
 - `docs/screenshots/config-editor.png`
 
@@ -78,7 +78,7 @@ No anti-patterns detected in `README.md`.
 
 ### Gaps Summary
 
-No blocking gaps. The README is substantive, accurate, and complete for enabling a new user to install and configure Fetcharr from the README alone.
+No blocking gaps. The README is substantive, accurate, and complete for enabling a new user to install and configure Triggarr from the README alone.
 
 The only outstanding item is screenshot images (DOCS-04 partial): the README references `docs/screenshots/dashboard.png` and `docs/screenshots/config-editor.png`, the directory structure is in place, but the actual PNG files are not yet present. The plan explicitly scoped this as "placeholder paths — user adds actual images manually." This does not block installation or configuration and is not a blocker for the phase goal.
 
@@ -89,8 +89,8 @@ The only outstanding item is screenshot images (DOCS-04 partial): the README ref
 ### Docker Compose Alignment (README vs actual `docker-compose.yml`)
 
 The README example matches the actual `docker-compose.yml` on all structural elements:
-- `image: ghcr.io/thejuran/fetcharr:latest` — match
-- Named volume `fetcharr_config:/config` — match
+- `image: ghcr.io/thejuran/triggarr:latest` — match
+- Named volume `triggarr_config:/config` — match
 - Port `127.0.0.1:8080:8080` — match
 - `cap_drop: [ALL]` — match
 - `cap_add: [CHOWN, SETUID, SETGID]` — match
@@ -100,7 +100,7 @@ The README example matches the actual `docker-compose.yml` on all structural ele
 
 The README adds helpful inline comments (e.g., "Your user ID (run \`id -u\` to find)") that improve user experience without deviating from the actual config.
 
-### Config Fields vs `fetcharr/models/config.py`
+### Config Fields vs `triggarr/models/config.py`
 
 All fields from `ArrConfig` and `GeneralConfig` are documented:
 

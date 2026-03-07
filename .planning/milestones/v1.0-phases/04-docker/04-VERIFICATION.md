@@ -8,7 +8,7 @@ re_verification: false
 
 # Phase 4: Docker Verification Report
 
-**Phase Goal:** Fetcharr runs as a Docker container that any self-hoster can pull and run with docker-compose, with config and state on a volume and no credentials baked into the image
+**Phase Goal:** Triggarr runs as a Docker container that any self-hoster can pull and run with docker-compose, with config and state on a volume and no credentials baked into the image
 **Verified:** 2026-02-24T13:00:41Z
 **Status:** passed
 **Re-verification:** No — initial verification
@@ -19,11 +19,11 @@ re_verification: false
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | `docker compose up` starts Fetcharr and the web UI is reachable in a browser | ? HUMAN | docker-compose.yml valid, image reference present, HEALTHCHECK defined — needs live container test |
-| 2 | Config and state files live on a named Docker volume at /config and survive container recreation | VERIFIED | `docker-compose.yml` line 13: `fetcharr_config:/config`; `Dockerfile` line 41: `VOLUME /config` |
+| 1 | `docker compose up` starts Triggarr and the web UI is reachable in a browser | ? HUMAN | docker-compose.yml valid, image reference present, HEALTHCHECK defined — needs live container test |
+| 2 | Config and state files live on a named Docker volume at /config and survive container recreation | VERIFIED | `docker-compose.yml` line 13: `triggarr_config:/config`; `Dockerfile` line 41: `VOLUME /config` |
 | 3 | No API keys or config values are baked into the Docker image layers | VERIFIED | `grep -r "api_key\|API_KEY" Dockerfile docker-compose.yml entrypoint.sh` returned nothing |
-| 4 | Startup emits a clear warning (not a silent hang) if an enabled *arr URL contains localhost/127.0.0.1 | VERIFIED | `check_localhost_urls()` in `fetcharr/startup.py` lines 25-48; called at step 4.5 in `startup()`; all 5 tests pass |
-| 5 | Container runs as non-root user via PUID/PGID environment variables | VERIFIED | `entrypoint.sh`: numeric validation, groupadd/useradd, `exec setpriv --reuid=$PUID --regid=$PGID --init-groups python -m fetcharr` |
+| 4 | Startup emits a clear warning (not a silent hang) if an enabled *arr URL contains localhost/127.0.0.1 | VERIFIED | `check_localhost_urls()` in `triggarr/startup.py` lines 25-48; called at step 4.5 in `startup()`; all 5 tests pass |
+| 5 | Container runs as non-root user via PUID/PGID environment variables | VERIFIED | `entrypoint.sh`: numeric validation, groupadd/useradd, `exec setpriv --reuid=$PUID --regid=$PGID --init-groups python -m triggarr` |
 | 6 | Docker HEALTHCHECK hits the web UI endpoint and reports health status | VERIFIED | `Dockerfile` lines 43-44: `HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/')" \|\| exit 1` |
 
 **Score:** 5/6 truths verified programmatically (1 requires live container — automated checks all pass)
@@ -35,30 +35,30 @@ re_verification: false
 | `Dockerfile` | Multi-stage build: pytailwindcss builder + python:3.13-slim production | VERIFIED | 47 lines, two stages: `FROM python:3.13-slim AS builder` (line 4) and `FROM python:3.13-slim` (line 22); `ENV TAILWINDCSS_VERSION=v4.2.1`; HEALTHCHECK, VOLUME /config, EXPOSE 8080, ENTRYPOINT all present |
 | `entrypoint.sh` | PUID/PGID user creation and privilege dropping via setpriv | VERIFIED | 37 lines; numeric validation, `groupadd`, `useradd`, `chown -R`, `exec setpriv --reuid=...`; `set -e` at top |
 | `.dockerignore` | Build context exclusions for .venv, .git, tests, .planning | VERIFIED | 16 lines; excludes `.venv/`, `.git/`, `tests/`, `.planning/`, `__pycache__/`, `*.py[cod]`, `.DS_Store`, `.vscode/`, `.idea/` |
-| `docker-compose.yml` | Service definition with named volume, port 8080, PUID/PGID env, unless-stopped | VERIFIED | 20 lines; `fetcharr_config:/config`, `"8080:8080"`, `PUID=1000`/`PGID=1000`, `restart: unless-stopped`, top-level `volumes:` block |
-| `fetcharr/startup.py` | Localhost URL detection warning before connection validation | VERIFIED | `LOCALHOST_PATTERNS = {"localhost", "127.0.0.1", "::1"}` (line 22); `check_localhost_urls()` function (lines 25-48); called at step 4.5 before `validate_connections()` (line 165) |
+| `docker-compose.yml` | Service definition with named volume, port 8080, PUID/PGID env, unless-stopped | VERIFIED | 20 lines; `triggarr_config:/config`, `"8080:8080"`, `PUID=1000`/`PGID=1000`, `restart: unless-stopped`, top-level `volumes:` block |
+| `triggarr/startup.py` | Localhost URL detection warning before connection validation | VERIFIED | `LOCALHOST_PATTERNS = {"localhost", "127.0.0.1", "::1"}` (line 22); `check_localhost_urls()` function (lines 25-48); called at step 4.5 before `validate_connections()` (line 165) |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
 | `Dockerfile` | `entrypoint.sh` | COPY and ENTRYPOINT directive | VERIFIED | Line 36: `COPY entrypoint.sh /entrypoint.sh`; Line 46: `ENTRYPOINT ["/entrypoint.sh"]` |
-| `Dockerfile` | `fetcharr/static/css/output.css` | COPY --from=builder compiled CSS into production stage | VERIFIED | Line 34: `COPY --from=builder /build/fetcharr/static/css/output.css fetcharr/static/css/output.css` |
-| `docker-compose.yml` | `Dockerfile` | build context reference or image name | VERIFIED | Line 7: `image: ghcr.io/thejuran/fetcharr:latest`; comment on line 3 explains `build: .` alternative |
-| `entrypoint.sh` | `fetcharr/__main__.py` | exec setpriv ... python -m fetcharr | VERIFIED | Line 36: `exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups python -m fetcharr` |
-| `fetcharr/startup.py` | `fetcharr/models/config.py` | Reads settings.radarr.url and settings.sonarr.url for localhost check | VERIFIED | Line 10: `from urllib.parse import urlparse`; Line 37: `hostname = urlparse(cfg.url).hostname`; iterates over `settings.radarr`/`settings.sonarr` |
+| `Dockerfile` | `triggarr/static/css/output.css` | COPY --from=builder compiled CSS into production stage | VERIFIED | Line 34: `COPY --from=builder /build/triggarr/static/css/output.css triggarr/static/css/output.css` |
+| `docker-compose.yml` | `Dockerfile` | build context reference or image name | VERIFIED | Line 7: `image: ghcr.io/thejuran/triggarr:latest`; comment on line 3 explains `build: .` alternative |
+| `entrypoint.sh` | `triggarr/__main__.py` | exec setpriv ... python -m triggarr | VERIFIED | Line 36: `exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups python -m triggarr` |
+| `triggarr/startup.py` | `triggarr/models/config.py` | Reads settings.radarr.url and settings.sonarr.url for localhost check | VERIFIED | Line 10: `from urllib.parse import urlparse`; Line 37: `hostname = urlparse(cfg.url).hostname`; iterates over `settings.radarr`/`settings.sonarr` |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|------------|-------------|--------|----------|
-| DEPL-01 | 04-01-PLAN.md | Fetcharr runs as a Docker container with docker-compose support | SATISFIED | Dockerfile, entrypoint.sh, .dockerignore, docker-compose.yml all exist and are substantive; `docker compose config` validates without errors; tests pass |
+| DEPL-01 | 04-01-PLAN.md | Triggarr runs as a Docker container with docker-compose support | SATISFIED | Dockerfile, entrypoint.sh, .dockerignore, docker-compose.yml all exist and are substantive; `docker compose config` validates without errors; tests pass |
 
 No orphaned requirements found. REQUIREMENTS.md traceability table maps DEPL-01 only to Phase 4.
 
 ### Anti-Patterns Found
 
-No anti-patterns found. Scan of Dockerfile, entrypoint.sh, docker-compose.yml, and fetcharr/startup.py returned no TODO/FIXME/HACK/PLACEHOLDER markers, no empty implementations, no static return stubs.
+No anti-patterns found. Scan of Dockerfile, entrypoint.sh, docker-compose.yml, and triggarr/startup.py returned no TODO/FIXME/HACK/PLACEHOLDER markers, no empty implementations, no static return stubs.
 
 ### Test Results
 
@@ -76,7 +76,7 @@ No anti-patterns found. Scan of Dockerfile, entrypoint.sh, docker-compose.yml, a
 
 #### 2. Volume Persistence Across Recreation
 
-**Test:** Start container, let config file be created at `/config/fetcharr.toml`, run `docker compose down && docker compose up`
+**Test:** Start container, let config file be created at `/config/triggarr.toml`, run `docker compose down && docker compose up`
 **Expected:** Config file and state survive — not reset to defaults
 **Why human:** Requires live Docker volume and container lifecycle test
 

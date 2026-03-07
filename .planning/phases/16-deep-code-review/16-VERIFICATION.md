@@ -39,10 +39,10 @@ re_verification: false
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `fetcharr/templates/partials/history_results.html` | XSS-safe hx-vals via tojson | VERIFIED | `tojson` present on line 89, double-quoted, no single-quoted hx-vals anywhere |
-| `fetcharr/db.py` | Cursor cleanup via async with, per_page/page guard | VERIFIED | 3x `async with db.execute`, guards at lines 161-164 |
-| `fetcharr/web/validation.py` | Expanded SSRF blocklist with loopback check | VERIFIED | `is_loopback` + `is_unspecified` on line 51; Azure + Alibaba in BLOCKED_HOSTS |
-| `fetcharr/web/routes.py` | Atomic config write, safe page parsing, narrow validation catch | VERIFIED | `os.replace` line 242, `safe_int` line 164, `pydantic.ValidationError` line 232 |
+| `triggarr/templates/partials/history_results.html` | XSS-safe hx-vals via tojson | VERIFIED | `tojson` present on line 89, double-quoted, no single-quoted hx-vals anywhere |
+| `triggarr/db.py` | Cursor cleanup via async with, per_page/page guard | VERIFIED | 3x `async with db.execute`, guards at lines 161-164 |
+| `triggarr/web/validation.py` | Expanded SSRF blocklist with loopback check | VERIFIED | `is_loopback` + `is_unspecified` on line 51; Azure + Alibaba in BLOCKED_HOSTS |
+| `triggarr/web/routes.py` | Atomic config write, safe page parsing, narrow validation catch | VERIFIED | `os.replace` line 242, `safe_int` line 164, `pydantic.ValidationError` line 232 |
 | `tests/test_web.py` | XSS regression test for hx-vals | VERIFIED | `test_history_results_hx_vals_no_single_quote_breakout` at line 416 |
 | `tests/test_validation.py` | SSRF blocklist regression tests | VERIFIED | 5 W7 tests: IPv6 loopback, IPv4 loopback, 0.0.0.0, Azure, Alibaba (lines 69-89) |
 | `tests/test_db.py` | W5 zero-division regression test | VERIFIED | `test_get_search_history_zero_per_page_defaults` at line 319 |
@@ -55,9 +55,9 @@ re_verification: false
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
 | `history_results.html` | Jinja2 tojson filter | double-quoted hx-vals attribute | WIRED | Pattern `hx-vals="{{ {...} \| tojson }}"` confirmed at line 89 |
-| `fetcharr/web/routes.py` | `fetcharr/web/validation.py` | `safe_int` import for page param | WIRED | Line 32 imports `safe_int`, used at line 164 for page |
-| `fetcharr/web/routes.py` | `pydantic.ValidationError` | narrow except clause in save_settings | WIRED | `import pydantic` line 15, `except pydantic.ValidationError` line 232 |
-| `fetcharr/web/validation.py` | `ipaddress.ip_address` | `is_loopback or is_unspecified` check | WIRED | Line 51 checks both; 0.0.0.0 blocked via `is_unspecified` (correct: Python classifies it as unspecified, not loopback) |
+| `triggarr/web/routes.py` | `triggarr/web/validation.py` | `safe_int` import for page param | WIRED | Line 32 imports `safe_int`, used at line 164 for page |
+| `triggarr/web/routes.py` | `pydantic.ValidationError` | narrow except clause in save_settings | WIRED | `import pydantic` line 15, `except pydantic.ValidationError` line 232 |
+| `triggarr/web/validation.py` | `ipaddress.ip_address` | `is_loopback or is_unspecified` check | WIRED | Line 51 checks both; 0.0.0.0 blocked via `is_unspecified` (correct: Python classifies it as unspecified, not loopback) |
 
 ---
 

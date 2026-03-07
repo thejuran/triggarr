@@ -44,11 +44,11 @@ human_verification:
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `fetcharr/db.py` | `get_search_history` query with filter and pagination | VERIFIED | Lines 137-224: full async function with dynamic WHERE clause, parameterized queries, COUNT + SELECT + OFFSET, returns dict with entries/total/page/per_page/total_pages |
-| `fetcharr/web/routes.py` | `/history` page route and `/partials/history-results` partial route | VERIFIED | Lines 126-140: `history_page`; lines 158-187: `partial_history_results` with `_split_filter_param` helper; both import `get_search_history` |
-| `fetcharr/templates/base.html` | History nav link between Dashboard and Settings | VERIFIED | Lines 19-22: `<a href="/history">` with `nav_history_class` block; positioned between Dashboard and Settings links |
-| `fetcharr/templates/history.html` | Search History full page template | VERIFIED | Extends base, sets title "Search History - Fetcharr", sets nav blocks (dashboard=muted, history=white, settings=muted), includes partial via Jinja2 `{% include %}` |
-| `fetcharr/templates/partials/history_results.html` | Filter bar, results table, and pagination partial | VERIFIED | 183 lines: `id="history-results"` wrapper, three filter groups, text input, results rows, empty state, pagination with ellipsis |
+| `triggarr/db.py` | `get_search_history` query with filter and pagination | VERIFIED | Lines 137-224: full async function with dynamic WHERE clause, parameterized queries, COUNT + SELECT + OFFSET, returns dict with entries/total/page/per_page/total_pages |
+| `triggarr/web/routes.py` | `/history` page route and `/partials/history-results` partial route | VERIFIED | Lines 126-140: `history_page`; lines 158-187: `partial_history_results` with `_split_filter_param` helper; both import `get_search_history` |
+| `triggarr/templates/base.html` | History nav link between Dashboard and Settings | VERIFIED | Lines 19-22: `<a href="/history">` with `nav_history_class` block; positioned between Dashboard and Settings links |
+| `triggarr/templates/history.html` | Search History full page template | VERIFIED | Extends base, sets title "Search History - Triggarr", sets nav blocks (dashboard=muted, history=white, settings=muted), includes partial via Jinja2 `{% include %}` |
+| `triggarr/templates/partials/history_results.html` | Filter bar, results table, and pagination partial | VERIFIED | 183 lines: `id="history-results"` wrapper, three filter groups, text input, results rows, empty state, pagination with ellipsis |
 | `tests/test_db.py` | Tests for get_search_history filtering and pagination | VERIFIED | Lines 174-312: 9 test functions (default, app filter, queue filter, outcome filter, text search, combined, pagination, empty DB, entry id key) |
 | `tests/test_web.py` | Tests for /history and /partials/history-results routes | VERIFIED | Lines 330-409: 8 test functions (200 status, nav link active class, entry display, partial swap target, app filter, pagination, empty state, dashboard nav link) |
 
@@ -56,11 +56,11 @@ human_verification:
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `fetcharr/templates/history.html` | `partials/history_results.html` | Jinja2 `{% include %}` on page load | VERIFIED | Line 12: `{% include "partials/history_results.html" %}` — server-side include rather than client-side hx-get; functionally equivalent (no round-trip needed for initial load) |
-| `fetcharr/templates/partials/history_results.html` | `/partials/history-results` | htmx filter pill clicks and pagination links | VERIFIED | 7 occurrences of `hx-get="/partials/history-results"` across filter pills, text search input, and all pagination links; all use `hx-target="#history-results"` + `hx-swap="outerHTML"` |
-| `fetcharr/web/routes.py` | `fetcharr/db.py` | `partial_history_results` calls `get_search_history` | VERIFIED | Line 22: `from fetcharr.db import get_recent_searches, get_search_history`; line 129: `history_page` calls it; lines 168-175: `partial_history_results` calls it with all filter params |
-| `tests/test_db.py` | `fetcharr/db.py` | imports and calls get_search_history | VERIFIED | Line 11: `from fetcharr.db import get_recent_searches, get_search_history, ...`; 9 test functions call it directly |
-| `tests/test_web.py` | `fetcharr/web/routes.py` | TestClient HTTP requests to /history and /partials/history-results | VERIFIED | Tests `client.get("/history")`, `client.get("/partials/history-results")`, `client.get("/partials/history-results?app=Radarr")`, `tc.get("/partials/history-results?page=2")` all verified |
+| `triggarr/templates/history.html` | `partials/history_results.html` | Jinja2 `{% include %}` on page load | VERIFIED | Line 12: `{% include "partials/history_results.html" %}` — server-side include rather than client-side hx-get; functionally equivalent (no round-trip needed for initial load) |
+| `triggarr/templates/partials/history_results.html` | `/partials/history-results` | htmx filter pill clicks and pagination links | VERIFIED | 7 occurrences of `hx-get="/partials/history-results"` across filter pills, text search input, and all pagination links; all use `hx-target="#history-results"` + `hx-swap="outerHTML"` |
+| `triggarr/web/routes.py` | `triggarr/db.py` | `partial_history_results` calls `get_search_history` | VERIFIED | Line 22: `from triggarr.db import get_recent_searches, get_search_history`; line 129: `history_page` calls it; lines 168-175: `partial_history_results` calls it with all filter params |
+| `tests/test_db.py` | `triggarr/db.py` | imports and calls get_search_history | VERIFIED | Line 11: `from triggarr.db import get_recent_searches, get_search_history, ...`; 9 test functions call it directly |
+| `tests/test_web.py` | `triggarr/web/routes.py` | TestClient HTTP requests to /history and /partials/history-results | VERIFIED | Tests `client.get("/history")`, `client.get("/partials/history-results")`, `client.get("/partials/history-results?app=Radarr")`, `tc.get("/partials/history-results?page=2")` all verified |
 
 ### Requirements Coverage
 

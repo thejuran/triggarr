@@ -6,7 +6,7 @@
 
 ## Summary
 
-Fetcharr is a Python/FastAPI application with pytailwindcss-compiled CSS, TOML config at `/config/fetcharr.toml`, and JSON state at `/config/state.json`. Dockerizing it requires a two-stage Dockerfile: a builder stage that installs pytailwindcss to download the Linux-native Tailwind CSS binary and compile `output.css`, and a slim production stage that installs only runtime dependencies and copies the compiled CSS. The `/config` directory serves as the single volume mount point, following the *arr ecosystem convention that Radarr/Sonarr users already know.
+Triggarr is a Python/FastAPI application with pytailwindcss-compiled CSS, TOML config at `/config/triggarr.toml`, and JSON state at `/config/state.json`. Dockerizing it requires a two-stage Dockerfile: a builder stage that installs pytailwindcss to download the Linux-native Tailwind CSS binary and compile `output.css`, and a slim production stage that installs only runtime dependencies and copies the compiled CSS. The `/config` directory serves as the single volume mount point, following the *arr ecosystem convention that Radarr/Sonarr users already know.
 
 The PUID/PGID pattern from LinuxServer.io images provides non-root execution with configurable file ownership. An entrypoint script creates a user with the specified UID/GID, chowns `/config`, and uses `setpriv` (available in Debian slim images) to drop to that user before executing the application. The healthcheck uses Python's stdlib `urllib.request` since `python:3.13-slim` does not include `curl` or `wget`.
 
@@ -16,7 +16,7 @@ The PUID/PGID pattern from LinuxServer.io images provides non-root execution wit
 ## User Constraints (from CONTEXT.md)
 
 ### Locked Decisions
-- Publish to GHCR: ghcr.io/thejuran/fetcharr
+- Publish to GHCR: ghcr.io/thejuran/triggarr
 - Base image: python:3.13-slim for production stage
 - Tag strategy: `:latest` only when a semver tag is present, otherwise `:dev`
 - Dockerfile only for now -- no CI/GitHub Actions workflow in this phase
@@ -30,7 +30,7 @@ The PUID/PGID pattern from LinuxServer.io images provides non-root execution wit
 - Log to stdout only -- `docker logs` is the interface, no file-based logging
 - Default host port: 8080 (avoids conflict with Radarr 7878 / Sonarr 8989)
 - Restart policy: unless-stopped
-- Fetcharr service only -- no example *arr services (users already have their stack)
+- Triggarr service only -- no example *arr services (users already have their stack)
 - Named Docker volume for /config (not bind mount)
 
 ### Claude's Discretion
@@ -48,7 +48,7 @@ None -- discussion stayed within phase scope
 
 | ID | Description | Research Support |
 |----|-------------|-----------------|
-| DEPL-01 | Fetcharr runs as a Docker container with docker-compose support | Multi-stage Dockerfile, docker-compose.yml with named volume, PUID/PGID support, HEALTHCHECK, localhost detection |
+| DEPL-01 | Triggarr runs as a Docker container with docker-compose support | Multi-stage Dockerfile, docker-compose.yml with named volume, PUID/PGID support, HEALTHCHECK, localhost detection |
 </phase_requirements>
 
 ## Standard Stack
@@ -106,10 +106,10 @@ Stage 2: production (python:3.13-slim)
 FROM python:3.13-slim AS builder
 WORKDIR /build
 COPY pyproject.toml .
-COPY fetcharr/ fetcharr/
+COPY triggarr/ triggarr/
 RUN pip install --no-cache-dir pytailwindcss && \
     tailwindcss_install && \
-    tailwindcss -i fetcharr/static/css/input.css -o fetcharr/static/css/output.css --minify
+    tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --minify
 ```
 
 ### Pattern 2: PUID/PGID Entrypoint with setpriv
@@ -126,12 +126,12 @@ PGID=${PGID:-1000}
 
 # Create group if it doesn't exist
 if ! getent group "$PGID" > /dev/null 2>&1; then
-    groupadd -g "$PGID" fetcharr
+    groupadd -g "$PGID" triggarr
 fi
 
 # Create user if it doesn't exist
 if ! getent passwd "$PUID" > /dev/null 2>&1; then
-    useradd -u "$PUID" -g "$PGID" -d /config -s /bin/bash fetcharr
+    useradd -u "$PUID" -g "$PGID" -d /config -s /bin/bash triggarr
 fi
 
 # Ensure /config ownership
@@ -139,7 +139,7 @@ chown -R "$PUID:$PGID" /config
 
 # Drop to non-root user and exec the app
 exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups \
-    python -m fetcharr
+    python -m triggarr
 ```
 
 ### Pattern 3: Python stdlib HEALTHCHECK
@@ -184,7 +184,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 ### Pitfall 2: /config Volume Permissions After Container Recreation
 **What goes wrong:** If PUID/PGID changes between container runs, files on the volume may be owned by the old UID/GID, causing permission denied errors.
 **Why it happens:** Docker named volumes persist data across container recreations. The entrypoint `chown -R` on every start handles this.
-**How to avoid:** The entrypoint script runs `chown -R "$PUID:$PGID" /config` on every startup. For large config directories (not an issue here with just 2 files) this could be slow, but Fetcharr's /config is tiny.
+**How to avoid:** The entrypoint script runs `chown -R "$PUID:$PGID" /config` on every startup. For large config directories (not an issue here with just 2 files) this could be slow, but Triggarr's /config is tiny.
 **Warning signs:** `PermissionError` when writing config.toml or state.json.
 
 ### Pitfall 3: Localhost URLs in Docker
@@ -194,10 +194,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 **Warning signs:** Connection timeout or "connection refused" errors when validating *arr connections.
 
 ### Pitfall 4: Config File Missing on First Run Causes Immediate Exit
-**What goes wrong:** Container starts, no config.toml exists, Fetcharr generates default config and exits with code 1. Docker restarts it (unless-stopped), same thing happens, infinite restart loop.
+**What goes wrong:** Container starts, no config.toml exists, Triggarr generates default config and exits with code 1. Docker restarts it (unless-stopped), same thing happens, infinite restart loop.
 **Why it happens:** The existing `ensure_config()` calls `sys.exit(1)` when config is missing. With `restart: unless-stopped`, Docker keeps restarting it.
 **How to avoid:** This behavior is actually correct and desired. The default config has `enabled = false` for both apps, so even if we changed the exit behavior, pydantic validation would fail with "at least one app must be configured." The user sees the message in `docker logs`, edits the config on the volume, and the next restart works. The restart loop generates clear log messages each time.
-**Warning signs:** Container in restart loop showing "Default config written to /config/fetcharr.toml" in logs.
+**Warning signs:** Container in restart loop showing "Default config written to /config/triggarr.toml" in logs.
 
 ### Pitfall 5: Build Context Too Large
 **What goes wrong:** Docker sends the entire project directory including .venv (~300MB), .git, __pycache__, and tests to the daemon.
@@ -216,12 +216,12 @@ WORKDIR /build
 ENV TAILWINDCSS_VERSION=v4.2.1
 
 COPY pyproject.toml .
-COPY fetcharr/ fetcharr/
+COPY triggarr/ triggarr/
 
 RUN pip install --no-cache-dir pytailwindcss && \
     tailwindcss_install && \
-    tailwindcss -i fetcharr/static/css/input.css \
-                -o fetcharr/static/css/output.css \
+    tailwindcss -i triggarr/static/css/input.css \
+                -o triggarr/static/css/output.css \
                 --minify
 
 # Stage 2: Production
@@ -234,12 +234,12 @@ WORKDIR /app
 
 # Install runtime dependencies only
 COPY pyproject.toml .
-COPY fetcharr/ fetcharr/
+COPY triggarr/ triggarr/
 RUN pip install --no-cache-dir .
 
 # Copy compiled CSS from builder (overwrite the dev version)
-COPY --from=builder /build/fetcharr/static/css/output.css \
-     fetcharr/static/css/output.css
+COPY --from=builder /build/triggarr/static/css/output.css \
+     triggarr/static/css/output.css
 
 # Entrypoint for PUID/PGID support
 COPY entrypoint.sh /entrypoint.sh
@@ -257,20 +257,20 @@ ENTRYPOINT ["/entrypoint.sh"]
 ### Complete docker-compose.yml
 ```yaml
 services:
-  fetcharr:
-    image: ghcr.io/thejuran/fetcharr:latest
-    container_name: fetcharr
+  triggarr:
+    image: ghcr.io/thejuran/triggarr:latest
+    container_name: triggarr
     environment:
       - PUID=1000
       - PGID=1000
     volumes:
-      - fetcharr_config:/config
+      - triggarr_config:/config
     ports:
       - "8080:8080"
     restart: unless-stopped
 
 volumes:
-  fetcharr_config:
+  triggarr_config:
 ```
 
 ### Complete entrypoint.sh
@@ -293,20 +293,20 @@ fi
 
 # Create group if GID doesn't exist
 if ! getent group "$PGID" > /dev/null 2>&1; then
-    groupadd -g "$PGID" fetcharr
+    groupadd -g "$PGID" triggarr
 fi
 
 # Create user if UID doesn't exist
 if ! getent passwd "$PUID" > /dev/null 2>&1; then
-    useradd -u "$PUID" -g "$PGID" -d /config -s /sbin/nologin fetcharr
+    useradd -u "$PUID" -g "$PGID" -d /config -s /sbin/nologin triggarr
 fi
 
 # Ensure /config ownership
 chown -R "$PUID:$PGID" /config
 
-# Drop privileges and run Fetcharr
+# Drop privileges and run Triggarr
 exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups \
-    python -m fetcharr
+    python -m triggarr
 ```
 
 ### Localhost Detection (Python)
@@ -385,7 +385,7 @@ tests/
 - Docker official docs (https://docs.docker.com/build/building/multi-stage/) - multi-stage build patterns
 - LinuxServer.io docs (https://docs.linuxserver.io/general/understanding-puid-and-pgid/) - PUID/PGID pattern and rationale
 - Servarr Wiki (https://wiki.servarr.com/docker-guide) - *arr ecosystem Docker conventions
-- Fetcharr source code (inspected locally) - CONFIG_PATH=/config/fetcharr.toml, STATE_PATH=/config/state.json, port 8080, ensure_config exit behavior
+- Triggarr source code (inspected locally) - CONFIG_PATH=/config/triggarr.toml, STATE_PATH=/config/state.json, port 8080, ensure_config exit behavior
 
 ### Secondary (MEDIUM confidence)
 - NiceGUI entrypoint.sh (https://github.com/zauberzeug/nicegui/blob/main/docker-entrypoint.sh) - setpriv implementation reference with PUID/PGID validation

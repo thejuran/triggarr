@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Status dashboard and config editor for Fetcharr. Users can view automation status (last/next run, queue positions, item counts, connection health, search history) and edit all settings via a web UI. Built with FastAPI + Jinja2 + htmx. No auth (runs behind Tailscale/VPN).
+Status dashboard and config editor for Triggarr. Users can view automation status (last/next run, queue positions, item counts, connection health, search history) and edit all settings via a web UI. Built with FastAPI + Jinja2 + htmx. No auth (runs behind Tailscale/VPN).
 
 </domain>
 
@@ -18,7 +18,7 @@ Status dashboard and config editor for Fetcharr. Users can view automation statu
 - Each card shows: connection status, last run, next run, queue position, wanted/cutoff counts, enable/disable toggle, "Search Now" button
 - Shared chronological search log below the cards, with app label per entry
 - Separate settings page at /settings (dashboard is read-only status)
-- Minimal top bar navigation: "Fetcharr" brand + Dashboard / Settings links
+- Minimal top bar navigation: "Triggarr" brand + Dashboard / Settings links
 
 ### Visual style & theme
 - Dark mode only — fits the *arr ecosystem
@@ -54,7 +54,7 @@ Status dashboard and config editor for Fetcharr. Users can view automation statu
 ## Specific Ideas
 
 - Style should feel like Radarr/Sonarr — functional, dense, dark. Not trying to be flashy, just informative.
-- Green accent differentiates Fetcharr from Radarr (orange) and Sonarr (blue) in the user's tab bar.
+- Green accent differentiates Triggarr from Radarr (orange) and Sonarr (blue) in the user's tab bar.
 - Dashboard is the "glance" page — you open it, see everything is running, close it. Settings is only visited when something needs changing.
 
 </specifics>

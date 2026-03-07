@@ -7,7 +7,7 @@ tags: [json, state-persistence, error-recovery, schema-migration]
 # Dependency graph
 requires:
   - phase: 01-foundation
-    provides: "state.py with atomic JSON write and FetcharrState/AppState types"
+    provides: "state.py with atomic JSON write and TriggarrState/AppState types"
 provides:
   - "Corrupt state file recovery (returns defaults instead of crashing)"
   - "Schema migration via _merge_defaults (fills missing keys from defaults)"
@@ -21,7 +21,7 @@ tech-stack:
 
 key-files:
   created: []
-  modified: ["fetcharr/state.py", "tests/test_state.py"]
+  modified: ["triggarr/state.py", "tests/test_state.py"]
 
 key-decisions:
   - "Shallow merge per app key preserves loaded values while filling missing keys from defaults"
@@ -64,7 +64,7 @@ Each task was committed atomically:
 2. **Task 2: Add tests for corrupt state recovery, schema migration, and temp cleanup** - `d830e75` (test)
 
 ## Files Created/Modified
-- `fetcharr/state.py` - Added loguru import, _merge_defaults helper, corrupt file recovery in load_state, temp cleanup in save_state
+- `triggarr/state.py` - Added loguru import, _merge_defaults helper, corrupt file recovery in load_state, temp cleanup in save_state
 - `tests/test_state.py` - Added 4 new tests: corrupt recovery, schema migration fill, schema migration preserve, temp file cleanup
 
 ## Decisions Made
@@ -89,7 +89,7 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: fetcharr/state.py
+- FOUND: triggarr/state.py
 - FOUND: tests/test_state.py
 - FOUND: b145d61 (Task 1 commit)
 - FOUND: d830e75 (Task 2 commit)

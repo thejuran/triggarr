@@ -11,7 +11,7 @@ requires:
   - phase: 11-search-enhancements
     provides: hard_max_per_cycle cap (plan 01)
 provides:
-  - SQLite-backed persistent search history at /config/fetcharr.db
+  - SQLite-backed persistent search history at /config/triggarr.db
   - init_db, insert_search_entry, get_recent_searches, migrate_from_state functions
   - Automatic migration of state.json search_log entries to SQLite on first boot
   - Auto-pruning at 500 entries to keep DB bounded
@@ -24,15 +24,15 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/db.py
+    - triggarr/db.py
     - tests/test_db.py
   modified:
     - pyproject.toml
-    - fetcharr/search/engine.py
-    - fetcharr/search/scheduler.py
-    - fetcharr/web/routes.py
-    - fetcharr/state.py
-    - fetcharr/templates/partials/search_log.html
+    - triggarr/search/engine.py
+    - triggarr/search/scheduler.py
+    - triggarr/web/routes.py
+    - triggarr/state.py
+    - triggarr/templates/partials/search_log.html
     - tests/test_search.py
     - tests/test_web.py
 
@@ -65,7 +65,7 @@ completed: 2026-02-24
 - **Files modified:** 10
 
 ## Accomplishments
-- Created fetcharr/db.py with init_db, insert_search_entry, get_recent_searches, and migrate_from_state functions using aiosqlite
+- Created triggarr/db.py with init_db, insert_search_entry, get_recent_searches, and migrate_from_state functions using aiosqlite
 - Replaced in-memory append_search_log with SQLite writes throughout engine, scheduler, and web routes
 - Added automatic migration from state.json search_log to SQLite on first boot with cleanup
 - Added 7 new SQLite tests and updated all cycle/web tests for the new db_path parameter
@@ -79,13 +79,13 @@ Each task was committed atomically:
 3. **Task 3: Add tests for SQLite module and update existing tests** - `3e484db` (test)
 
 ## Files Created/Modified
-- `fetcharr/db.py` - SQLite database module with init, insert, query, and migration functions
+- `triggarr/db.py` - SQLite database module with init, insert, query, and migration functions
 - `pyproject.toml` - Added aiosqlite dependency
-- `fetcharr/search/engine.py` - Removed append_search_log, added db_path parameter to cycle functions, uses insert_search_entry
-- `fetcharr/search/scheduler.py` - Initializes DB, migrates state.json entries, exposes db_path on app.state
-- `fetcharr/web/routes.py` - Reads search history from SQLite via get_recent_searches, passes db_path to cycles
-- `fetcharr/state.py` - Deprecated search_log field comment (kept for migration compat)
-- `fetcharr/templates/partials/search_log.html` - Removed [::-1] reversal since SQLite returns newest-first
+- `triggarr/search/engine.py` - Removed append_search_log, added db_path parameter to cycle functions, uses insert_search_entry
+- `triggarr/search/scheduler.py` - Initializes DB, migrates state.json entries, exposes db_path on app.state
+- `triggarr/web/routes.py` - Reads search history from SQLite via get_recent_searches, passes db_path to cycles
+- `triggarr/state.py` - Deprecated search_log field comment (kept for migration compat)
+- `triggarr/templates/partials/search_log.html` - Removed [::-1] reversal since SQLite returns newest-first
 - `tests/test_db.py` - 7 tests for SQLite module (init, insert/retrieve, limit, prune, migrate, empty)
 - `tests/test_search.py` - Updated cycle tests with db_path, removed append_search_log tests
 - `tests/test_web.py` - Updated test_app fixture with async db init and db_path
@@ -103,7 +103,7 @@ Each task was committed atomically:
 - **Found during:** Task 2 (wiring web routes)
 - **Issue:** Template had `search_log[::-1][:20]` which reversed the list. With in-memory list, entries were appended (oldest-first). SQLite returns newest-first via ORDER BY id DESC, so the reversal would show oldest-first instead.
 - **Fix:** Changed template to `search_log[:20]` since SQLite already returns newest-first
-- **Files modified:** fetcharr/templates/partials/search_log.html
+- **Files modified:** triggarr/templates/partials/search_log.html
 - **Verification:** Visual inspection of template logic + all tests pass
 - **Committed in:** d5aeb15 (Task 2 commit)
 

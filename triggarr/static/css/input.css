@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme {
+  --color-triggarr-green: #22c55e;
+  --color-triggarr-green-dark: #16a34a;
+  --color-triggarr-bg: #0f172a;
+  --color-triggarr-card: #1e293b;
+  --color-triggarr-border: #334155;
+  --color-triggarr-text: #e2e8f0;
+  --color-triggarr-muted: #94a3b8;
+}

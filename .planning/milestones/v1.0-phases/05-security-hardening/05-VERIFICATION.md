@@ -21,13 +21,13 @@ re_verification: false
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | All state-changing POST endpoints reject cross-origin requests via Origin/Referer validation | VERIFIED | `OriginCheckMiddleware` active in `fetcharr/web/middleware.py`; registered via `app.add_middleware(OriginCheckMiddleware)` in `__main__.py` before router; 6 tests passing |
-| 2 | ArrConfig URL field validates scheme (http/https only) and blocks cloud metadata endpoints (169.254.169.254) | VERIFIED | `validate_arr_url` in `fetcharr/web/validation.py` blocks non-http/https schemes, `169.254.169.254`, `metadata.google.internal`, and link-local /16; called in `save_settings` before accepting any URL |
+| 1 | All state-changing POST endpoints reject cross-origin requests via Origin/Referer validation | VERIFIED | `OriginCheckMiddleware` active in `triggarr/web/middleware.py`; registered via `app.add_middleware(OriginCheckMiddleware)` in `__main__.py` before router; 6 tests passing |
+| 2 | ArrConfig URL field validates scheme (http/https only) and blocks cloud metadata endpoints (169.254.169.254) | VERIFIED | `validate_arr_url` in `triggarr/web/validation.py` blocks non-http/https schemes, `169.254.169.254`, `metadata.google.internal`, and link-local /16; called in `save_settings` before accepting any URL |
 | 3 | Integer form fields clamped to safe bounds and never crash on non-integer input | VERIFIED | `safe_int(value, default, min, max)` used for all three integer fields in `save_settings` (lines 152-154); 7 clamping/default tests passing |
 | 4 | log_level accepts only debug/info/warning/error -- anything else defaults to info | VERIFIED | `safe_log_level` enforces `ALLOWED_LOG_LEVELS` set; called at line 133 of `routes.py`; 6 tests passing |
 | 5 | docker-compose.yml binds port to 127.0.0.1 only, container drops all capabilities, entrypoint sets no-new-privileges | VERIFIED | Port bound as `"127.0.0.1:8080:8080"`; `cap_drop: [ALL]` + `cap_add: [CHOWN, SETUID, SETGID]`; `security_opt: [no-new-privileges:true]`; `entrypoint.sh` passes `--no-new-privileges` to `setpriv` |
 | 6 | Config TOML file is written with 0o600 permissions | VERIFIED | `os.chmod(config_path, 0o600)` at `routes.py:159` (after `save_settings` write) and `config.py:66` (in `generate_default_config`) |
-| 7 | htmx is bundled as a local static file -- no external CDN or unpinned script tag | VERIFIED | `fetcharr/static/js/htmx.min.js` present at 51,250 bytes; `base.html` references it via `url_for('static', path='js/htmx.min.js')`; no unpkg/CDN references in any template |
+| 7 | htmx is bundled as a local static file -- no external CDN or unpinned script tag | VERIFIED | `triggarr/static/js/htmx.min.js` present at 51,250 bytes; `base.html` references it via `url_for('static', path='js/htmx.min.js')`; no unpkg/CDN references in any template |
 
 **Score: 7/7 truths verified**
 
@@ -39,15 +39,15 @@ re_verification: false
 
 | Artifact | Provides | Level 1: Exists | Level 2: Substantive | Level 3: Wired | Status |
 |----------|----------|-----------------|----------------------|----------------|--------|
-| `fetcharr/web/middleware.py` | Origin/Referer CSRF middleware | Yes | Yes — `OriginCheckMiddleware` class, 39 lines, full dispatch logic | Yes — imported and registered in `__main__.py:15,39` | VERIFIED |
-| `fetcharr/static/js/htmx.min.js` | Vendored htmx 2.0.8 | Yes | Yes — 51,250 bytes (non-empty minified JS) | Yes — referenced in `base.html:8` via `url_for` | VERIFIED |
+| `triggarr/web/middleware.py` | Origin/Referer CSRF middleware | Yes | Yes — `OriginCheckMiddleware` class, 39 lines, full dispatch logic | Yes — imported and registered in `__main__.py:15,39` | VERIFIED |
+| `triggarr/static/js/htmx.min.js` | Vendored htmx 2.0.8 | Yes | Yes — 51,250 bytes (non-empty minified JS) | Yes — referenced in `base.html:8` via `url_for` | VERIFIED |
 | `tests/test_middleware.py` | Tests for Origin check middleware | Yes | Yes — 82 lines, 6 test functions | Yes — tests import and exercise `OriginCheckMiddleware` directly | VERIFIED |
 
 ### Plan 02 Artifacts
 
 | Artifact | Provides | Level 1: Exists | Level 2: Substantive | Level 3: Wired | Status |
 |----------|----------|-----------------|----------------------|----------------|--------|
-| `fetcharr/web/validation.py` | URL validation, integer clamping, log level allowlist | Yes | Yes — 100 lines, three concrete helper functions with SSRF logic | Yes — imported and called in `routes.py:26,133,143,152-154` | VERIFIED |
+| `triggarr/web/validation.py` | URL validation, integer clamping, log level allowlist | Yes | Yes — 100 lines, three concrete helper functions with SSRF logic | Yes — imported and called in `routes.py:26,133,143,152-154` | VERIFIED |
 | `tests/test_validation.py` | Tests for all validation helpers | Yes | Yes — 123 lines, 24 test methods across three test classes | Yes — tests import and exercise all three helpers | VERIFIED |
 
 ---
@@ -56,11 +56,11 @@ re_verification: false
 
 | From | To | Via | Status | Evidence |
 |------|----|-----|--------|----------|
-| `fetcharr/__main__.py` | `fetcharr/web/middleware.py` | `app.add_middleware(OriginCheckMiddleware)` | WIRED | Line 15: import; Line 39: `app.add_middleware(OriginCheckMiddleware)` before `app.include_router(router)` |
-| `fetcharr/templates/base.html` | `fetcharr/static/js/htmx.min.js` | `url_for('static', path='js/htmx.min.js')` | WIRED | Line 8: `<script src="{{ url_for('static', path='js/htmx.min.js') }}">` |
-| `fetcharr/web/routes.py` | `fetcharr/web/validation.py` | import and call in `save_settings` | WIRED | Line 26: import; Lines 133, 143, 152-154: all three helpers called in `save_settings` |
-| `fetcharr/config.py` | `os.chmod` (0o600 after write) | `os.chmod(config_path, 0o600)` | WIRED | Line 6: `import os`; Line 66: `os.chmod(config_path, 0o600)` in `generate_default_config` |
-| `fetcharr/web/routes.py` | `os.chmod` (0o600 after write) | `os.chmod(config_path, 0o600)` | WIRED | Line 10: `import os`; Line 159: `os.chmod(config_path, 0o600)` immediately after `write_text` |
+| `triggarr/__main__.py` | `triggarr/web/middleware.py` | `app.add_middleware(OriginCheckMiddleware)` | WIRED | Line 15: import; Line 39: `app.add_middleware(OriginCheckMiddleware)` before `app.include_router(router)` |
+| `triggarr/templates/base.html` | `triggarr/static/js/htmx.min.js` | `url_for('static', path='js/htmx.min.js')` | WIRED | Line 8: `<script src="{{ url_for('static', path='js/htmx.min.js') }}">` |
+| `triggarr/web/routes.py` | `triggarr/web/validation.py` | import and call in `save_settings` | WIRED | Line 26: import; Lines 133, 143, 152-154: all three helpers called in `save_settings` |
+| `triggarr/config.py` | `os.chmod` (0o600 after write) | `os.chmod(config_path, 0o600)` | WIRED | Line 6: `import os`; Line 66: `os.chmod(config_path, 0o600)` in `generate_default_config` |
+| `triggarr/web/routes.py` | `os.chmod` (0o600 after write) | `os.chmod(config_path, 0o600)` | WIRED | Line 10: `import os`; Line 159: `os.chmod(config_path, 0o600)` immediately after `write_text` |
 
 ---
 
@@ -73,7 +73,7 @@ re_verification: false
 | SECR-04 | 05-02-PLAN.md | All form integer fields are bounds-checked and never crash on invalid input | SATISFIED | `safe_int` used for `search_interval` (1-1440), `search_missing_count` (1-100), `search_cutoff_count` (1-100); handles None, empty, and garbage input gracefully |
 | SECR-05 | 05-01-PLAN.md | Docker container drops all capabilities, binds to localhost, and sets no-new-privileges | SATISFIED | `docker-compose.yml`: `127.0.0.1:8080:8080`, `cap_drop: [ALL]`, `cap_add: [CHOWN, SETUID, SETGID]`, `security_opt: [no-new-privileges:true]`; `entrypoint.sh`: `--no-new-privileges` on `setpriv` exec |
 | SECR-06 | 05-02-PLAN.md | Config file written with restrictive permissions (0o600) | SATISFIED | `os.chmod(config_path, 0o600)` in both write paths: `routes.py:159` (save_settings) and `config.py:66` (generate_default_config) |
-| SECR-07 | 05-01-PLAN.md | htmx bundled locally -- no external CDN dependency | SATISFIED | `fetcharr/static/js/htmx.min.js` committed (51,250 bytes); `base.html` uses `url_for` local reference; zero CDN references in any template |
+| SECR-07 | 05-01-PLAN.md | htmx bundled locally -- no external CDN dependency | SATISFIED | `triggarr/static/js/htmx.min.js` committed (51,250 bytes); `base.html` uses `url_for` local reference; zero CDN references in any template |
 
 **All 6 required requirements satisfied. No orphaned requirements found.**
 

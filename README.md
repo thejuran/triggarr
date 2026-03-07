@@ -1,11 +1,11 @@
-# Fetcharr
+# Triggarr
 
-[![CI](https://github.com/thejuran/fetcharr/actions/workflows/ci.yml/badge.svg)](https://github.com/thejuran/fetcharr/actions/workflows/ci.yml)
-[![Docker](https://img.shields.io/badge/ghcr.io-thejuran%2Ffetcharr-blue?logo=docker)](https://ghcr.io/thejuran/fetcharr)
+[![CI](https://github.com/thejuran/triggarr/actions/workflows/ci.yml/badge.svg)](https://github.com/thejuran/triggarr/actions/workflows/ci.yml)
+[![Docker](https://img.shields.io/badge/ghcr.io-thejuran%2Ftriggarr-blue?logo=docker)](https://ghcr.io/thejuran/triggarr)
 
 Python automation daemon that triggers searches in Radarr and Sonarr on a schedule.
 
-Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a timer. Fetcharr does -- set a schedule, walk away.
+Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a timer. Triggarr does -- set a schedule, walk away.
 
 ## Table of Contents
 
@@ -40,14 +40,14 @@ Docker Compose is the recommended (and only supported) installation method.
 ```yaml
 # docker-compose.yml
 services:
-  fetcharr:
-    image: ghcr.io/thejuran/fetcharr:latest
-    container_name: fetcharr
+  triggarr:
+    image: ghcr.io/thejuran/triggarr:latest
+    container_name: triggarr
     environment:
       - PUID=1000    # Your user ID (run `id -u` to find)
       - PGID=1000    # Your group ID (run `id -g` to find)
     volumes:
-      - fetcharr_config:/config
+      - triggarr_config:/config
     ports:
       - "127.0.0.1:8080:8080"  # Localhost only -- use Tailscale or reverse proxy for remote access
     cap_drop:
@@ -61,19 +61,19 @@ services:
     restart: unless-stopped
 
 volumes:
-  fetcharr_config:
+  triggarr_config:
 ```
 
 Run `docker compose up -d`, then visit [http://localhost:8080](http://localhost:8080) to configure your Radarr/Sonarr connection.
 
-On first run, a default config file is auto-generated at `/config/fetcharr.toml`. Use the web UI to configure -- no need to edit the file by hand.
+On first run, a default config file is auto-generated at `/config/triggarr.toml`. Use the web UI to configure -- no need to edit the file by hand.
 
 ## Configuration Reference
 
-All settings live in `/config/fetcharr.toml`. You can also edit everything from the web UI at [http://localhost:8080/settings](http://localhost:8080/settings) -- changes are written to the TOML file and take effect immediately without restart.
+All settings live in `/config/triggarr.toml`. You can also edit everything from the web UI at [http://localhost:8080/settings](http://localhost:8080/settings) -- changes are written to the TOML file and take effect immediately without restart.
 
 ```toml
-# Fetcharr Configuration
+# Triggarr Configuration
 
 [general]
 # Log level: debug, info, warning, error
@@ -108,11 +108,11 @@ Environment variable overrides are supported via pydantic-settings (e.g., `FETCH
 
 ## Security Model
 
-Fetcharr has **no authentication**. This is intentional.
+Triggarr has **no authentication**. This is intentional.
 
 ### Design philosophy
 
-Fetcharr is designed to run on a trusted local network -- behind Tailscale, a VPN, or bound to localhost. No passwords means no credential attack surface.
+Triggarr is designed to run on a trusted local network -- behind Tailscale, a VPN, or bound to localhost. No passwords means no credential attack surface.
 
 ### What IS protected
 
@@ -134,14 +134,14 @@ Bind to localhost (`127.0.0.1:8080:8080` as shown in the docker-compose example)
 
 ### Synology NAS
 
-Synology DSM ships a stripped-down `setpriv` that doesn't support `--no-new-privileges`. Fetcharr detects this automatically and skips the flag — no configuration changes needed. The `security_opt: no-new-privileges:true` in your `docker-compose.yml` still applies at the Docker level regardless.
+Synology DSM ships a stripped-down `setpriv` that doesn't support `--no-new-privileges`. Triggarr detects this automatically and skips the flag — no configuration changes needed. The `security_opt: no-new-privileges:true` in your `docker-compose.yml` still applies at the Docker level regardless.
 
 ## Development
 
 ```bash
 uv sync --extra dev                    # Install dependencies
 uv run pytest tests/ -x -q             # Run tests
-uv run ruff check fetcharr/ tests/     # Lint
-uv run tailwindcss -i fetcharr/static/css/input.css -o fetcharr/static/css/output.css --watch  # CSS dev
-docker build -t fetcharr:local .       # Local Docker build
+uv run ruff check triggarr/ tests/     # Lint
+uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch  # CSS dev
+docker build -t triggarr:local .       # Local Docker build
 ```

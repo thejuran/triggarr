@@ -21,7 +21,7 @@ human_verification: []
 
 | #  | Truth                                                                              | Status     | Evidence                                                                                    |
 |----|------------------------------------------------------------------------------------|------------|---------------------------------------------------------------------------------------------|
-| 1  | `routes.py` does not import `load_settings`                                        | VERIFIED   | `grep 'load_settings' fetcharr/web/routes.py` returns 0 matches                            |
+| 1  | `routes.py` does not import `load_settings`                                        | VERIFIED   | `grep 'load_settings' triggarr/web/routes.py` returns 0 matches                            |
 | 2  | `test_web.py` has no `@patch` for `load_settings` and no `mock_load` parameters   | VERIFIED   | `grep 'mock_load\|mock_new_settings\|@patch.*load_settings' tests/test_web.py` returns 0   |
 | 3  | `settings.html` form action uses `url_for('save_settings')` not hardcoded `/settings` | VERIFIED | Line 11: `action="{{ url_for('save_settings') }}"` — no hardcoded `/settings` form action  |
 | 4  | `POST /api/search-now/radarr` has a happy-path test returning 200                 | VERIFIED   | `test_search_now_happy_path` at line 252 of `tests/test_web.py`; passes in isolation        |
@@ -34,16 +34,16 @@ human_verification: []
 
 | Artifact                             | Expected                                              | Status     | Details                                                                                   |
 |--------------------------------------|-------------------------------------------------------|------------|-------------------------------------------------------------------------------------------|
-| `fetcharr/web/routes.py`             | Clean imports; no dead `load_settings` reference      | VERIFIED   | `grep 'load_settings' routes.py` = 0 matches; `save_settings` route at line 124          |
+| `triggarr/web/routes.py`             | Clean imports; no dead `load_settings` reference      | VERIFIED   | `grep 'load_settings' routes.py` = 0 matches; `save_settings` route at line 124          |
 | `tests/test_web.py`                  | Cleaned patches; new `test_search_now_happy_path`     | VERIFIED   | `test_search_now_happy_path` at line 252; `search_lock` at line 94; 0 dead patches        |
-| `fetcharr/templates/settings.html`   | `url_for('save_settings')` on form action             | VERIFIED   | Line 11 confirmed; no hardcoded `/settings` form action present                           |
+| `triggarr/templates/settings.html`   | `url_for('save_settings')` on form action             | VERIFIED   | Line 11 confirmed; no hardcoded `/settings` form action present                           |
 
 ### Key Link Verification
 
 | From                                         | To                                  | Via                                          | Status   | Details                                                                             |
 |----------------------------------------------|-------------------------------------|----------------------------------------------|----------|-------------------------------------------------------------------------------------|
-| `fetcharr/templates/settings.html`           | `fetcharr/web/routes.py:save_settings` | `url_for('save_settings')` in Jinja2 form | WIRED    | Template line 11 resolves to `@router.post("/settings") async def save_settings()` |
-| `tests/test_web.py:test_search_now_happy_path` | `fetcharr/web/routes.py:search_now` | `client.post("/api/search-now/radarr")`     | WIRED    | Test passes (1 passed in 0.10s); fixture provides `search_lock` via `test_app`     |
+| `triggarr/templates/settings.html`           | `triggarr/web/routes.py:save_settings` | `url_for('save_settings')` in Jinja2 form | WIRED    | Template line 11 resolves to `@router.post("/settings") async def save_settings()` |
+| `tests/test_web.py:test_search_now_happy_path` | `triggarr/web/routes.py:search_now` | `client.post("/api/search-now/radarr")`     | WIRED    | Test passes (1 passed in 0.10s); fixture provides `search_lock` via `test_app`     |
 
 ### Requirements Coverage
 
@@ -53,8 +53,8 @@ Phase 8 carries no functional requirement IDs (`requirements: []` in PLAN frontm
 
 | File                                     | Line | Pattern                  | Severity | Impact                                                                         |
 |------------------------------------------|------|--------------------------|----------|--------------------------------------------------------------------------------|
-| `fetcharr/templates/settings.html`       | 47   | `placeholder=`           | INFO     | HTML `<input placeholder>` attribute — legitimate UI, not a code stub          |
-| `fetcharr/templates/settings.html`       | 53   | `placeholder=`           | INFO     | HTML `<input placeholder>` attribute — legitimate UI, not a code stub          |
+| `triggarr/templates/settings.html`       | 47   | `placeholder=`           | INFO     | HTML `<input placeholder>` attribute — legitimate UI, not a code stub          |
+| `triggarr/templates/settings.html`       | 53   | `placeholder=`           | INFO     | HTML `<input placeholder>` attribute — legitimate UI, not a code stub          |
 | `tests/test_web.py`                      | 132  | `placeholder` in comment | INFO     | Test verifying masked `"********"` placeholder text — legitimate test purpose   |
 
 No blockers. No warnings. All "placeholder" hits are HTML input attributes or test assertions about UI text — none are code stubs.

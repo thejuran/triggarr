@@ -19,18 +19,18 @@ fi
 
 # Create group if GID doesn't already exist
 if ! getent group "$PGID" > /dev/null 2>&1; then
-    groupadd -g "$PGID" fetcharr
+    groupadd -g "$PGID" triggarr
 fi
 
 # Create user if UID doesn't already exist
 if ! getent passwd "$PUID" > /dev/null 2>&1; then
-    useradd -u "$PUID" -g "$PGID" -d /config -s /sbin/nologin fetcharr
+    useradd -u "$PUID" -g "$PGID" -d /config -s /sbin/nologin triggarr
 fi
 
 # Ensure the config volume is owned by the runtime user
 chown -R "$PUID:$PGID" /config
 
-# Drop privileges and exec into Fetcharr.
+# Drop privileges and exec into Triggarr.
 # exec replaces this shell so python becomes PID 1 and receives SIGTERM
 # from `docker stop` directly.
 # Detect --no-new-privileges support (Synology DSM ships a stripped setpriv)
@@ -40,4 +40,4 @@ else
     echo "WARNING: setpriv --no-new-privileges not supported, skipping"
     NO_NEW_PRIVS=""
 fi
-exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups $NO_NEW_PRIVS python -m fetcharr
+exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups $NO_NEW_PRIVS python -m triggarr

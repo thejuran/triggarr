@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from fetcharr.web.middleware import OriginCheckMiddleware
+from triggarr.web.middleware import OriginCheckMiddleware
 
 
 def _make_app() -> FastAPI:

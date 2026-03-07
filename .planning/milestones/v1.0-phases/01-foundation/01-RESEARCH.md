@@ -6,7 +6,7 @@
 
 ## Summary
 
-Phase 1 builds the infrastructure layer for Fetcharr: a TOML configuration file parsed into Pydantic settings, a JSON state file with atomic writes, and httpx-based async API clients for Radarr and Sonarr. The tech choices are well-established Python patterns with mature libraries. The Radarr/Sonarr APIs follow identical conventions (`/api/v3/wanted/missing`, `/api/v3/wanted/cutoff`, `/api/v3/system/status`) with standard pagination, making a shared base client viable.
+Phase 1 builds the infrastructure layer for Triggarr: a TOML configuration file parsed into Pydantic settings, a JSON state file with atomic writes, and httpx-based async API clients for Radarr and Sonarr. The tech choices are well-established Python patterns with mature libraries. The Radarr/Sonarr APIs follow identical conventions (`/api/v3/wanted/missing`, `/api/v3/wanted/cutoff`, `/api/v3/system/status`) with standard pagination, making a shared base client viable.
 
 The main complexity is pagination exhaustion (fetching all pages of potentially large wanted lists) and the security invariant: API keys must live exclusively in the `X-Api-Key` header and never appear in any log line, URL, or HTTP response body. Loguru's filter mechanism and Pydantic's `SecretStr` type together enforce this at the framework level rather than relying on developer discipline.
 
@@ -16,7 +16,7 @@ The main complexity is pagination exhaustion (fetching all pages of potentially 
 ## User Constraints (from CONTEXT.md)
 
 ### Locked Decisions
-- Config lives at `/config/fetcharr.toml` -- single fixed path, Docker-friendly
+- Config lives at `/config/triggarr.toml` -- single fixed path, Docker-friendly
 - Flat TOML structure: `[general]` for global settings, `[radarr]` and `[sonarr]` sections for per-app connection config (url, api_key, enabled)
 - When config file is missing on startup, generate a commented default config file and exit with a message telling the user to edit it
 - Search-related settings (batch sizes, intervals) are not in Phase 1 config -- added in Phase 2 when the search engine is built
@@ -88,9 +88,9 @@ Note: `pydantic-settings[toml]` pulls in `pydantic`, `tomli` (backport, though s
 
 ### Recommended Project Structure
 ```
-fetcharr/
+triggarr/
 ├── __init__.py          # Package root, __version__
-├── __main__.py          # Entry point: python -m fetcharr
+├── __main__.py          # Entry point: python -m triggarr
 ├── config.py            # Pydantic settings model, TOML loading, default generation
 ├── logging.py           # Loguru setup: format, level, redaction filter
 ├── state.py             # JSON state file: load, save (atomic write)
@@ -106,7 +106,7 @@ fetcharr/
 ```
 
 ### Pattern 1: Pydantic Settings with TOML Source
-**What:** Single `Settings` class loads from `/config/fetcharr.toml` with `TomlConfigSettingsSource`
+**What:** Single `Settings` class loads from `/config/triggarr.toml` with `TomlConfigSettingsSource`
 **When to use:** Config loading at startup
 **Example:**
 ```python
@@ -136,7 +136,7 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (TomlConfigSettingsSource(settings_cls, toml_file="/config/fetcharr.toml"),)
+        return (TomlConfigSettingsSource(settings_cls, toml_file="/config/triggarr.toml"),)
 ```
 
 ### Pattern 2: httpx AsyncClient with Base URL and Default Headers
@@ -277,10 +277,10 @@ def save_state(state: dict) -> None:
 **Warning signs:** Users opening GitHub issues saying "it crashed on first run."
 
 ### Pitfall 5: Connection Validation Blocking Startup
-**What goes wrong:** If Radarr/Sonarr is slow to start (common in Docker Compose), Fetcharr hangs or fails on startup validation.
+**What goes wrong:** If Radarr/Sonarr is slow to start (common in Docker Compose), Triggarr hangs or fails on startup validation.
 **Why it happens:** The validation HTTP call blocks with a long timeout.
 **How to avoid:** Use the 30-second timeout for validation calls. On failure, log a warning and continue -- don't exit. The user decided "warn and keep running."
-**Warning signs:** Fetcharr container restarting in a loop because it exits before *arr is ready.
+**Warning signs:** Triggarr container restarting in a loop because it exits before *arr is ready.
 
 ### Pitfall 6: SecretStr Serialization Gotcha
 **What goes wrong:** `SecretStr` renders as `**********` when converted to string, but `.get_secret_value()` is needed to extract the actual key for API calls.
@@ -292,10 +292,10 @@ def save_state(state: dict) -> None:
 
 ### Default Config File Generation
 ```python
-# When /config/fetcharr.toml doesn't exist, write this and exit
+# When /config/triggarr.toml doesn't exist, write this and exit
 DEFAULT_CONFIG = """\
-# Fetcharr Configuration
-# Edit this file and restart Fetcharr.
+# Triggarr Configuration
+# Edit this file and restart Triggarr.
 
 [general]
 # Log level: debug, info, warning, error
@@ -362,7 +362,7 @@ async def validate_connection(client: ArrClient, app_name: str) -> bool:
 ```python
 def print_banner(version: str, settings: Settings):
     logger.info("=" * 50)
-    logger.info(f"Fetcharr v{version}")
+    logger.info(f"Triggarr v{version}")
     logger.info(f"Log level: {settings.general.log_level}")
     if settings.radarr.enabled:
         logger.info(f"Radarr: {settings.radarr.url}")

@@ -1,9 +1,9 @@
-"""Shared test fixtures and factory functions for Fetcharr tests."""
+"""Shared test fixtures and factory functions for Triggarr tests."""
 
 from __future__ import annotations
 
-from fetcharr.models.config import ArrConfig, Settings
-from fetcharr.state import _default_state
+from triggarr.models.config import ArrConfig, Settings
+from triggarr.state import _default_state
 
 
 def make_settings(
@@ -45,7 +45,7 @@ def make_settings(
 def default_state():
     """Return a fresh default application state.
 
-    Re-exports ``_default_state()`` from ``fetcharr.state`` so test files
+    Re-exports ``_default_state()`` from ``triggarr.state`` so test files
     do not need to import internal helpers directly.
     """
     return _default_state()

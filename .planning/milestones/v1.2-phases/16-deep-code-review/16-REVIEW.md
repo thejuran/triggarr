@@ -22,7 +22,7 @@
 
 ### W1. Reflected XSS via single-quoted `hx-vals` attribute
 
-**File:** `fetcharr/templates/partials/history_results.html:89`
+**File:** `triggarr/templates/partials/history_results.html:89`
 **Confidence:** 88 | CWE-79
 **Resolution:** Fixed -- hx-vals switched to double-quoted tojson filter pattern
 
@@ -35,7 +35,7 @@ Jinja2 autoescaping does not escape single quotes. The `hx-vals` attribute uses 
 
 ### W2. Non-atomic config write violates CLAUDE.md
 
-**File:** `fetcharr/web/routes.py:235`
+**File:** `triggarr/web/routes.py:235`
 **Confidence:** 90 | CLAUDE.md violation
 **Resolution:** Fixed -- atomic write-then-rename via tempfile + fsync + os.replace
 
@@ -54,7 +54,7 @@ Jinja2 autoescaping does not escape single quotes. The `hx-vals` attribute uses 
 
 ### W3. Unvalidated `page` parameter causes 500 on bad input
 
-**File:** `fetcharr/web/routes.py:162`
+**File:** `triggarr/web/routes.py:162`
 **Confidence:** 85
 **Resolution:** Fixed -- bare int() replaced with safe_int()
 
@@ -67,7 +67,7 @@ Bare `int()` on the query param raises `ValueError` on non-numeric input. The ex
 
 ### W4. Unclosed aiosqlite cursors (resource leak)
 
-**File:** `fetcharr/db.py:118, 189, 198`
+**File:** `triggarr/db.py:118, 189, 198`
 **Confidence:** 88
 **Resolution:** Fixed -- all cursors wrapped in async with for deterministic cleanup
 
@@ -82,7 +82,7 @@ Cursors from `db.execute()` are never explicitly closed. Use `async with` to ens
 
 ### W5. `ZeroDivisionError` if `per_page=0`
 
-**File:** `fetcharr/db.py:223`
+**File:** `triggarr/db.py:223`
 **Confidence:** 82
 **Resolution:** Fixed -- per_page/page guards added at function top
 
@@ -98,7 +98,7 @@ Not currently exploitable from the web layer (default=50), but the function's pu
 
 ### W6. Redundant `Exception` in except tuple (CLAUDE.md violation)
 
-**File:** `fetcharr/clients/sonarr.py:45`
+**File:** `triggarr/clients/sonarr.py:45`
 **Confidence:** 85
 **Resolution:** Won't Fix -- broad except Exception is intentional safety net in Sonarr client (per user decision)
 
@@ -111,7 +111,7 @@ Not currently exploitable from the web layer (default=50), but the function's pu
 
 ### W7. SSRF blocklist missing IPv6 loopback and cloud metadata addresses
 
-**File:** `fetcharr/web/validation.py:13`
+**File:** `triggarr/web/validation.py:13`
 **Confidence:** 80 | CWE-918
 **Resolution:** Fixed -- added Azure/Alibaba metadata hosts, is_loopback check for IPv6/IPv4 loopback and 0.0.0.0
 
@@ -130,7 +130,7 @@ Only blocks `169.254.169.254` and `metadata.google.internal`. Missing `::1`, `0.
 
 ### W8. `save_settings` catches bare `except Exception` for validation
 
-**File:** `fetcharr/web/routes.py:228-232`
+**File:** `triggarr/web/routes.py:228-232`
 **Confidence:** 80
 **Resolution:** Fixed -- narrowed to pydantic.ValidationError with error detail logging
 
@@ -149,7 +149,7 @@ Only `pydantic.ValidationError` is expected here. The broad catch hides other bu
 
 ### M1. Stored XSS defense-in-depth: `entry.detail` in title attribute
 
-**File:** `fetcharr/templates/partials/search_log.html:19`, `fetcharr/templates/partials/history_results.html:110`
+**File:** `triggarr/templates/partials/search_log.html:19`, `triggarr/templates/partials/history_results.html:110`
 **Confidence:** 72 | CWE-79
 **Resolution:** Deferred -- backlog for next milestone
 
@@ -162,7 +162,7 @@ Relies on Jinja2 autoescaping being enabled. Explicit `| e` filter makes the pro
 
 ### M2. SQL f-string in DDL migration
 
-**File:** `fetcharr/db.py:62-64`
+**File:** `triggarr/db.py:62-64`
 **Confidence:** 75 | CWE-89
 **Resolution:** Deferred -- backlog for next milestone
 
@@ -170,7 +170,7 @@ Column names interpolated via f-string. Values are hardcoded so no active risk, 
 
 ### M3. `contextlib.suppress(Exception)` too broad in migration
 
-**File:** `fetcharr/db.py:61-64`
+**File:** `triggarr/db.py:61-64`
 **Confidence:** 78
 **Resolution:** Deferred -- backlog for next milestone
 
@@ -183,7 +183,7 @@ Only `OperationalError` (duplicate column) should be suppressed.
 
 ### M4. Shared mutable `params` list between COUNT and data queries
 
-**File:** `fetcharr/db.py:189-202`
+**File:** `triggarr/db.py:189-202`
 **Confidence:** 75
 **Resolution:** Deferred -- backlog for next milestone
 
@@ -196,7 +196,7 @@ Not a bug today, but a latent mutation hazard if the function is extended.
 
 ### M5. `print()` used instead of Loguru (CLAUDE.md violation)
 
-**File:** `fetcharr/config.py:84-88`
+**File:** `triggarr/config.py:84-88`
 **Confidence:** 78
 **Resolution:** Deferred -- backlog for next milestone
 
@@ -205,12 +205,12 @@ Pre-bootstrap message uses `print(file=sys.stderr)`. CLAUDE.md says "never print
 ```diff
 - print(f"Default config written to {config_path}\n"..., file=sys.stderr)
 + sys.stderr.write(f"Default config written to {config_path}\n"
-+     "Edit the config file and restart Fetcharr.\n")
++     "Edit the config file and restart Triggarr.\n")
 ```
 
 ### M6. `callable` (lowercase) used as return type annotation (CLAUDE.md violation)
 
-**File:** `fetcharr/search/scheduler.py:75`
+**File:** `triggarr/search/scheduler.py:75`
 **Confidence:** 78
 **Resolution:** Deferred -- backlog for next milestone
 
@@ -223,7 +223,7 @@ Triggers ruff UP006. The `# type: ignore` comment acknowledges but doesn't fix.
 
 ### M7. `validate_connection` and `detect_api_version` bypass `_request_with_retry`
 
-**File:** `fetcharr/clients/base.py:145`, `fetcharr/clients/sonarr.py:38`
+**File:** `triggarr/clients/base.py:145`, `triggarr/clients/sonarr.py:38`
 **Confidence:** 75
 **Resolution:** Deferred -- backlog for next milestone
 
@@ -231,7 +231,7 @@ Every other method goes through the retry wrapper. These two call `self._client.
 
 ### M8. `BaseSettings` / `settings_customise_sources` is dead code
 
-**File:** `fetcharr/models/config.py` + `fetcharr/config.py`
+**File:** `triggarr/models/config.py` + `triggarr/config.py`
 **Confidence:** 72
 **Resolution:** Deferred -- backlog for next milestone
 

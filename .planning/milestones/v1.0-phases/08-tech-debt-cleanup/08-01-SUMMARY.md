@@ -26,9 +26,9 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/web/routes.py
+    - triggarr/web/routes.py
     - tests/test_web.py
-    - fetcharr/templates/settings.html
+    - triggarr/templates/settings.html
 
 key-decisions:
   - "No new decisions -- followed plan as specified"
@@ -72,9 +72,9 @@ Each task was committed atomically:
 3. **Task 3: Verify already-fixed audit items and run full test suite** - (verification only, no commit)
 
 ## Files Created/Modified
-- `fetcharr/web/routes.py` - Removed dead `from fetcharr.config import load_settings` import
+- `triggarr/web/routes.py` - Removed dead `from triggarr.config import load_settings` import
 - `tests/test_web.py` - Removed dead @patch decorators/mock_load/mock_new_settings, added asyncio import, search_lock to fixture, test_search_now_happy_path
-- `fetcharr/templates/settings.html` - Replaced hardcoded form action with `url_for('save_settings')`
+- `triggarr/templates/settings.html` - Replaced hardcoded form action with `url_for('save_settings')`
 
 ## Decisions Made
 None - followed plan as specified.

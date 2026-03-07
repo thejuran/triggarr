@@ -11,7 +11,7 @@ requires:
 provides:
   - "FastAPI web router with dashboard, settings, and partial endpoints"
   - "Jinja2 templates with htmx polling infrastructure (5s interval)"
-  - "Tailwind CSS v4 dark theme with custom fetcharr color palette"
+  - "Tailwind CSS v4 dark theme with custom triggarr color palette"
   - "app.state exposure pattern for route access to shared state"
   - "make_search_job factory for hot-reload-ready job closures"
 affects: [03-web-ui, 04-docker]
@@ -23,19 +23,19 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/web/__init__.py
-    - fetcharr/web/routes.py
-    - fetcharr/templates/base.html
-    - fetcharr/templates/dashboard.html
-    - fetcharr/templates/settings.html
-    - fetcharr/templates/partials/app_card.html
-    - fetcharr/templates/partials/search_log.html
-    - fetcharr/static/css/input.css
-    - fetcharr/static/css/output.css
+    - triggarr/web/__init__.py
+    - triggarr/web/routes.py
+    - triggarr/templates/base.html
+    - triggarr/templates/dashboard.html
+    - triggarr/templates/settings.html
+    - triggarr/templates/partials/app_card.html
+    - triggarr/templates/partials/search_log.html
+    - triggarr/static/css/input.css
+    - triggarr/static/css/output.css
   modified:
     - pyproject.toml
-    - fetcharr/search/scheduler.py
-    - fetcharr/__main__.py
+    - triggarr/search/scheduler.py
+    - triggarr/__main__.py
 
 key-decisions:
   - "Tailwind CSS v4 compiled with pytailwindcss (v4.2.1 binary auto-downloaded)"
@@ -43,7 +43,7 @@ key-decisions:
   - "Active nav link uses block overrides instead of URL comparison"
 
 patterns-established:
-  - "app.state pattern: lifespan exposes fetcharr_state, settings, scheduler, clients, config_path, state_path"
+  - "app.state pattern: lifespan exposes triggarr_state, settings, scheduler, clients, config_path, state_path"
   - "htmx partial pattern: self-contained divs with hx-get, hx-trigger every 5s, hx-swap outerHTML"
   - "make_search_job factory: creates closures that read from app.state instead of capturing variables"
 
@@ -81,17 +81,17 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 - `pyproject.toml` - Added jinja2, aiofiles, pytailwindcss dependencies
-- `fetcharr/web/__init__.py` - Web package marker
-- `fetcharr/web/routes.py` - APIRouter with dashboard, settings, and partial routes
-- `fetcharr/search/scheduler.py` - Rewritten with app.state exposure and make_search_job factory
-- `fetcharr/__main__.py` - Mount /static and include web router
-- `fetcharr/templates/base.html` - Base layout with nav, htmx CDN, Tailwind CSS
-- `fetcharr/templates/dashboard.html` - Dashboard page with htmx polling grid
-- `fetcharr/templates/settings.html` - Placeholder settings page
-- `fetcharr/templates/partials/app_card.html` - App status card with 5s polling
-- `fetcharr/templates/partials/search_log.html` - Search log table with 5s polling
-- `fetcharr/static/css/input.css` - Tailwind CSS v4 source with custom theme
-- `fetcharr/static/css/output.css` - Compiled Tailwind CSS (14KB minified)
+- `triggarr/web/__init__.py` - Web package marker
+- `triggarr/web/routes.py` - APIRouter with dashboard, settings, and partial routes
+- `triggarr/search/scheduler.py` - Rewritten with app.state exposure and make_search_job factory
+- `triggarr/__main__.py` - Mount /static and include web router
+- `triggarr/templates/base.html` - Base layout with nav, htmx CDN, Tailwind CSS
+- `triggarr/templates/dashboard.html` - Dashboard page with htmx polling grid
+- `triggarr/templates/settings.html` - Placeholder settings page
+- `triggarr/templates/partials/app_card.html` - App status card with 5s polling
+- `triggarr/templates/partials/search_log.html` - Search log table with 5s polling
+- `triggarr/static/css/input.css` - Tailwind CSS v4 source with custom theme
+- `triggarr/static/css/output.css` - Compiled Tailwind CSS (14KB minified)
 
 ## Decisions Made
 - Tailwind CSS v4 compiled via pytailwindcss which auto-downloaded the v4.2.1 binary

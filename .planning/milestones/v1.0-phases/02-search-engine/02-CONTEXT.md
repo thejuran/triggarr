@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Automated search cycling through Radarr and Sonarr wanted and cutoff-unmet lists. Fetcharr fetches item lists, cycles through them via round-robin with persisted cursors, triggers search commands, and logs activity. Sonarr searches at season level. Web UI and Docker packaging are separate phases.
+Automated search cycling through Radarr and Sonarr wanted and cutoff-unmet lists. Triggarr fetches item lists, cycles through them via round-robin with persisted cursors, triggers search commands, and logs activity. Sonarr searches at season level. Web UI and Docker packaging are separate phases.
 
 </domain>
 

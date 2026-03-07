@@ -191,5 +191,5 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
 - Tailwind CDN production caveat — https://tailwindcss.com/docs/installation/play-cdn (HIGH confidence — official docs)
 
 ---
-*Stack research for: Fetcharr — Python/FastAPI Radarr/Sonarr search automation tool*
+*Stack research for: Triggarr — Python/FastAPI Radarr/Sonarr search automation tool*
 *Researched: 2026-02-23*

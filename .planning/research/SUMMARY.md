@@ -1,13 +1,13 @@
 # Project Research Summary
 
-**Project:** Fetcharr — Radarr/Sonarr search automation tool
+**Project:** Triggarr — Radarr/Sonarr search automation tool
 **Domain:** *arr ecosystem automation daemon with minimal web UI
 **Researched:** 2026-02-23
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Fetcharr is a focused single-purpose automation daemon: it cycles through Radarr's and Sonarr's wanted/cutoff-unmet lists on a configurable schedule and triggers searches in a controlled, rate-safe, round-robin fashion. The space is well-understood — Huntarr is the dominant tool but suffered a high-profile security failure (API keys returned from unauthenticated endpoints), and Fetcharr's entire reason for existing is to do the same job correctly. The recommended approach is a single Python/FastAPI process with APScheduler v3 running inside the FastAPI lifespan, httpx AsyncClient for all *arr API calls, TOML config on a Docker volume, and SQLite (or JSON file) for persistent round-robin state. The web UI is htmx + Jinja2 server-side rendering — no JS build step, no framework, no auth surface.
+Triggarr is a focused single-purpose automation daemon: it cycles through Radarr's and Sonarr's wanted/cutoff-unmet lists on a configurable schedule and triggers searches in a controlled, rate-safe, round-robin fashion. The space is well-understood — Huntarr is the dominant tool but suffered a high-profile security failure (API keys returned from unauthenticated endpoints), and Triggarr's entire reason for existing is to do the same job correctly. The recommended approach is a single Python/FastAPI process with APScheduler v3 running inside the FastAPI lifespan, httpx AsyncClient for all *arr API calls, TOML config on a Docker volume, and SQLite (or JSON file) for persistent round-robin state. The web UI is htmx + Jinja2 server-side rendering — no JS build step, no framework, no auth surface.
 
 The core business logic is straightforward and well-documented: fetch paginated wanted/cutoff lists from the *arr APIs, advance a persisted cursor through the list, trigger `MoviesSearch` (Radarr) or `SeasonSearch` (Sonarr) for the next N items. The Sonarr variant requires deduplicating episode records into unique (seriesId, seasonNumber) pairs before triggering searches — this is non-obvious but critical both for correctness and indexer health. All API keys must live server-side only and must never appear in any HTTP response, config GET endpoint, or log line. This is the one architectural invariant that cannot be compromised.
 
@@ -223,7 +223,7 @@ No phases require deeper research. All critical API behaviors, pitfalls, and pat
 - seasonarr GitHub — https://github.com/d3v1l1989/seasonarr — confirms SeasonSearch API command works in practice
 
 ### Tertiary (LOW confidence)
-- ElfHosted Fetcharr/Huntarr context — https://store.elfhosted.com/blog/2025/04/09/feaar-the-huntarr-and-the-shim/ — single managed-hosting perspective on feature usage; not used as decision input
+- ElfHosted Triggarr/Huntarr context — https://store.elfhosted.com/blog/2025/04/09/feaar-the-huntarr-and-the-shim/ — single managed-hosting perspective on feature usage; not used as decision input
 
 ---
 *Research completed: 2026-02-23*

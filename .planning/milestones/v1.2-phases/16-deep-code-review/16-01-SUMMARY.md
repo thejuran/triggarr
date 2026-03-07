@@ -27,9 +27,9 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/templates/partials/history_results.html
-    - fetcharr/db.py
-    - fetcharr/web/validation.py
+    - triggarr/templates/partials/history_results.html
+    - triggarr/db.py
+    - triggarr/web/validation.py
     - tests/test_web.py
     - tests/test_validation.py
     - tests/test_db.py
@@ -76,9 +76,9 @@ Each task was committed atomically:
 2. **Task 2: Add regression tests for W1 (XSS), W5 (zero-division), W7 (SSRF blocklist)** - `76acecb` (test)
 
 ## Files Created/Modified
-- `fetcharr/templates/partials/history_results.html` - hx-vals switched from single-quoted JSON to double-quoted tojson filter
-- `fetcharr/db.py` - 3 cursor sites wrapped in async with; per_page/page guards added
-- `fetcharr/web/validation.py` - BLOCKED_HOSTS expanded; is_loopback + is_unspecified checks added
+- `triggarr/templates/partials/history_results.html` - hx-vals switched from single-quoted JSON to double-quoted tojson filter
+- `triggarr/db.py` - 3 cursor sites wrapped in async with; per_page/page guards added
+- `triggarr/web/validation.py` - BLOCKED_HOSTS expanded; is_loopback + is_unspecified checks added
 - `tests/test_web.py` - W1 XSS regression test added
 - `tests/test_validation.py` - 5 W7 SSRF regression tests added; existing assertion updated for new error message
 - `tests/test_db.py` - W5 zero-division regression test added
@@ -95,7 +95,7 @@ Each task was committed atomically:
 - **Found during:** Task 2 (regression test for W7)
 - **Issue:** Plan specified is_loopback to block 0.0.0.0, but Python's ipaddress module classifies 0.0.0.0 as is_unspecified (not is_loopback), so the test failed
 - **Fix:** Added `or addr.is_unspecified` to the condition in validation.py
-- **Files modified:** fetcharr/web/validation.py
+- **Files modified:** triggarr/web/validation.py
 - **Verification:** test_zero_address_blocked passes
 - **Committed in:** 76acecb (Task 2 commit)
 

@@ -8,9 +8,9 @@ import httpx
 import pydantic
 import pytest
 
-from fetcharr.clients.base import ArrClient
-from fetcharr.clients.radarr import RadarrClient
-from fetcharr.clients.sonarr import SonarrClient
+from triggarr.clients.base import ArrClient
+from triggarr.clients.radarr import RadarrClient
+from triggarr.clients.sonarr import SonarrClient
 
 
 def test_arr_client_sets_api_key_header() -> None:

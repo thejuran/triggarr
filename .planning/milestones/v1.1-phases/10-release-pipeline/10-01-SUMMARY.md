@@ -9,7 +9,7 @@ requires:
   - phase: 09-ci-cd-pipeline
     provides: "CI workflow structure and Docker build validation"
 provides:
-  - "Automated Docker image publishing to ghcr.io/thejuran/fetcharr"
+  - "Automated Docker image publishing to ghcr.io/thejuran/triggarr"
   - "CLAUDE.md project conventions and deep code review protocol"
 affects: [11-docs-metadata, 12-release-tag]
 

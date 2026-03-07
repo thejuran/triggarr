@@ -71,7 +71,7 @@ tests/
 **Example:**
 ```python
 import httpx
-from fetcharr.clients.base import ArrClient
+from triggarr.clients.base import ArrClient
 
 async def test_request_with_retry_success():
     """First-attempt success returns response without retry."""
@@ -92,8 +92,8 @@ async def test_request_with_retry_success():
 **Example:**
 ```python
 from unittest.mock import AsyncMock, patch
-from fetcharr.search.engine import run_radarr_cycle
-from fetcharr.state import _default_state
+from triggarr.search.engine import run_radarr_cycle
+from triggarr.state import _default_state
 
 async def test_run_radarr_cycle_happy_path():
     """Happy path: fetches items, searches, advances cursors."""
@@ -145,7 +145,7 @@ async def test_request_with_retry_retries_on_failure():
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
-from fetcharr.search.scheduler import make_search_job
+from triggarr.search.scheduler import make_search_job
 
 async def test_make_search_job_client_none_returns_early():
     """Job returns immediately when client is None on app.state."""
@@ -218,7 +218,7 @@ async def test_make_search_job_client_none_returns_early():
 ### MockTransport for Paginated Response (Multi-Page)
 ```python
 import httpx
-from fetcharr.clients.base import ArrClient
+from triggarr.clients.base import ArrClient
 
 async def test_get_paginated_multi_page():
     """Multi-page response collects all records."""
@@ -319,8 +319,8 @@ async def test_validate_connection_timeout():
 ### Cycle Test with Network Failure
 ```python
 from unittest.mock import AsyncMock
-from fetcharr.search.engine import run_radarr_cycle
-from fetcharr.state import _default_state
+from triggarr.search.engine import run_radarr_cycle
+from triggarr.state import _default_state
 
 async def test_run_radarr_cycle_network_failure():
     """Network failure aborts cycle, sets connected=False, preserves cursors."""
@@ -338,8 +338,8 @@ async def test_run_radarr_cycle_network_failure():
 
 ### collect_secrets Test
 ```python
-from fetcharr.startup import collect_secrets
-from fetcharr.models.config import ArrConfig, Settings
+from triggarr.startup import collect_secrets
+from triggarr.models.config import ArrConfig, Settings
 
 def test_collect_secrets_extracts_all_api_keys():
     """collect_secrets returns all non-empty API key values."""
@@ -358,7 +358,7 @@ def test_collect_secrets_extracts_all_api_keys():
 import asyncio
 from pathlib import Path
 from fastapi import FastAPI
-from fetcharr.search.scheduler import make_search_job
+from triggarr.search.scheduler import make_search_job
 
 async def test_make_search_job_client_none():
     """Job returns early when client is None -- no error, no state access."""
@@ -374,11 +374,11 @@ async def test_make_search_job_exception_swallowed():
     app = FastAPI()
     app.state.radarr_client = AsyncMock()
     app.state.search_lock = asyncio.Lock()
-    app.state.fetcharr_state = _default_state()
+    app.state.triggarr_state = _default_state()
     app.state.settings = _make_settings()
 
-    with patch("fetcharr.search.scheduler.run_radarr_cycle", side_effect=RuntimeError("boom")):
-        with patch("fetcharr.search.scheduler.save_state"):
+    with patch("triggarr.search.scheduler.run_radarr_cycle", side_effect=RuntimeError("boom")):
+        with patch("triggarr.search.scheduler.save_state"):
             job = make_search_job(app, "radarr", Path("/tmp/state.json"))
             await job()  # Should not raise
 ```
@@ -408,7 +408,7 @@ async def test_make_search_job_exception_swallowed():
 - httpx 0.28.1 source code (`httpx.MockTransport`) -- verified locally via `python -c "from httpx._transports.mock import MockTransport"`
 - Python 3.12 stdlib `unittest.mock.AsyncMock` -- verified locally
 - pytest-asyncio 1.3.0 with `asyncio_mode = "auto"` -- verified in pyproject.toml
-- Project source files: `fetcharr/clients/base.py`, `fetcharr/search/engine.py`, `fetcharr/search/scheduler.py`, `fetcharr/startup.py`
+- Project source files: `triggarr/clients/base.py`, `triggarr/search/engine.py`, `triggarr/search/scheduler.py`, `triggarr/startup.py`
 
 ### Secondary (MEDIUM confidence)
 - httpx official docs on MockTransport usage patterns -- consistent with local testing

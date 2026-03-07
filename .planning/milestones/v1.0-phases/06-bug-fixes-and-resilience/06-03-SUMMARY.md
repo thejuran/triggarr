@@ -28,7 +28,7 @@ tech-stack:
 
 key-files:
   created: []
-  modified: ["fetcharr/logging.py", "fetcharr/search/scheduler.py", "fetcharr/web/routes.py", "tests/test_logging.py"]
+  modified: ["triggarr/logging.py", "triggarr/search/scheduler.py", "triggarr/web/routes.py", "tests/test_logging.py"]
 
 key-decisions:
   - "Custom sink replaces filter for traceback redaction (filter only sees record['message'], sink sees full formatted output)"
@@ -78,9 +78,9 @@ Each task was committed atomically:
 3. **Task 3: Add lock in search_now, validate-before-write in save_settings, and redaction refresh** - `1f339c2` (fix)
 
 ## Files Created/Modified
-- `fetcharr/logging.py` - Replaced create_redaction_filter with create_redacting_sink (custom sink, not filter), updated setup_logging to use sink with colorize=False
-- `fetcharr/search/scheduler.py` - Added asyncio import, created asyncio.Lock on app.state.search_lock in lifespan, wrapped job body with lock acquisition
-- `fetcharr/web/routes.py` - Added search_lock acquisition in search_now, validate-before-write via SettingsModel in save_settings, log redaction refresh after settings save
+- `triggarr/logging.py` - Replaced create_redaction_filter with create_redacting_sink (custom sink, not filter), updated setup_logging to use sink with colorize=False
+- `triggarr/search/scheduler.py` - Added asyncio import, created asyncio.Lock on app.state.search_lock in lifespan, wrapped job body with lock acquisition
+- `triggarr/web/routes.py` - Added search_lock acquisition in search_now, validate-before-write via SettingsModel in save_settings, log redaction refresh after settings save
 - `tests/test_logging.py` - Updated existing tests to use sink-based approach, added test_redaction_covers_tracebacks
 
 ## Decisions Made
@@ -108,9 +108,9 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: fetcharr/logging.py
-- FOUND: fetcharr/search/scheduler.py
-- FOUND: fetcharr/web/routes.py
+- FOUND: triggarr/logging.py
+- FOUND: triggarr/search/scheduler.py
+- FOUND: triggarr/web/routes.py
 - FOUND: tests/test_logging.py
 - FOUND: 3957e87 (Task 1 commit)
 - FOUND: 4c3bb70 (Task 2 commit)

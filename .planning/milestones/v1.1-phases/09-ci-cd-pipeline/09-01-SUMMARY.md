@@ -20,7 +20,7 @@ tech-stack:
 
 key-files:
   created: [.github/workflows/ci.yml]
-  modified: [pyproject.toml, fetcharr/state.py, fetcharr/web/middleware.py, fetcharr/search/engine.py, fetcharr/search/scheduler.py, fetcharr/startup.py, fetcharr/web/routes.py, tests/test_clients.py, tests/test_config.py, tests/test_search.py, tests/test_state.py, tests/test_validation.py, uv.lock]
+  modified: [pyproject.toml, triggarr/state.py, triggarr/web/middleware.py, triggarr/search/engine.py, triggarr/search/scheduler.py, triggarr/startup.py, triggarr/web/routes.py, tests/test_clients.py, tests/test_config.py, tests/test_search.py, tests/test_state.py, tests/test_validation.py, uv.lock]
 
 key-decisions:
   - "Selected ruff rule sets E, F, I, UP, B, SIM for comprehensive but non-noisy linting"
@@ -69,12 +69,12 @@ Each task was committed atomically:
 - `.github/workflows/ci.yml` - GitHub Actions CI workflow with test, lint, docker jobs
 - `pyproject.toml` - Added ruff to dev deps, added [tool.ruff] and [tool.ruff.lint] config
 - `uv.lock` - Updated lockfile with ruff dependency
-- `fetcharr/search/engine.py` - Fixed timezone.utc to datetime.UTC (UP017)
-- `fetcharr/search/scheduler.py` - Fixed typing imports to collections.abc (UP035), datetime.UTC (UP017)
-- `fetcharr/startup.py` - Fixed import sorting (I001)
-- `fetcharr/state.py` - Replaced try/except/pass with contextlib.suppress (SIM105)
-- `fetcharr/web/middleware.py` - Combined nested if statements (SIM102)
-- `fetcharr/web/routes.py` - Fixed datetime.UTC (UP017)
+- `triggarr/search/engine.py` - Fixed timezone.utc to datetime.UTC (UP017)
+- `triggarr/search/scheduler.py` - Fixed typing imports to collections.abc (UP035), datetime.UTC (UP017)
+- `triggarr/startup.py` - Fixed import sorting (I001)
+- `triggarr/state.py` - Replaced try/except/pass with contextlib.suppress (SIM105)
+- `triggarr/web/middleware.py` - Combined nested if statements (SIM102)
+- `triggarr/web/routes.py` - Fixed datetime.UTC (UP017)
 - `tests/test_clients.py` - Removed unused imports (F401), combined nested with (SIM117)
 - `tests/test_config.py` - Fixed import sorting (I001), removed unused import (F401)
 - `tests/test_search.py` - Fixed import sorting (I001), datetime.UTC (UP017)
@@ -96,7 +96,7 @@ Each task was committed atomically:
 - **Issue:** Existing code had 32 violations including deprecated timezone.utc usage, unsorted imports, unused imports, and non-idiomatic patterns
 - **Fix:** Auto-fixed 29 with `ruff check --fix`; manually fixed 3 SIM violations (contextlib.suppress, combined if/with statements)
 - **Files modified:** 11 source and test files
-- **Verification:** `ruff check fetcharr/ tests/` passes; all 115 tests pass
+- **Verification:** `ruff check triggarr/ tests/` passes; all 115 tests pass
 - **Committed in:** 73c0d9c (Task 1 commit)
 
 ---

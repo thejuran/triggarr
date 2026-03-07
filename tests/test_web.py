@@ -14,9 +14,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 
-from fetcharr.db import init_db, insert_search_entry
-from fetcharr.log_buffer import LogEntry, log_buffer
-from fetcharr.web.routes import STATIC_DIR, router
+from triggarr.db import init_db, insert_search_entry
+from triggarr.log_buffer import LogEntry, log_buffer
+from triggarr.web.routes import STATIC_DIR, router
 
 
 @pytest.fixture
@@ -33,8 +33,8 @@ async def test_app(tmp_path):
     await insert_search_entry(db_path, "Radarr", "missing", "Test Movie")
     app.state.db_path = db_path
 
-    # Mock fetcharr state
-    app.state.fetcharr_state = {
+    # Mock triggarr state
+    app.state.triggarr_state = {
         "radarr": {
             "missing_cursor": 3,
             "cutoff_cursor": 1,
@@ -89,7 +89,7 @@ async def test_app(tmp_path):
     app.state.sonarr_client = sonarr_client
 
     # Paths
-    app.state.config_path = tmp_path / "fetcharr.toml"
+    app.state.config_path = tmp_path / "triggarr.toml"
     app.state.state_path = tmp_path / "state.json"
 
     # Search lock (needed by search_now endpoint)
@@ -310,10 +310,10 @@ def test_search_now_invalid_app(client):
 def test_search_now_happy_path(client, test_app):
     """POST /api/search-now/radarr triggers cycle and returns 200 with updated card."""
     with patch(
-        "fetcharr.web.routes.run_radarr_cycle",
-        new=AsyncMock(return_value=test_app.state.fetcharr_state),
+        "triggarr.web.routes.run_radarr_cycle",
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch(
-        "fetcharr.web.routes.save_state",
+        "triggarr.web.routes.save_state",
     ):
         response = client.post("/api/search-now/radarr")
         assert response.status_code == 200

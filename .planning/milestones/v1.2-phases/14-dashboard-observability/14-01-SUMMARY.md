@@ -23,10 +23,10 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - fetcharr/templates/partials/app_card.html
-    - fetcharr/templates/partials/search_log.html
-    - fetcharr/db.py
-    - fetcharr/search/engine.py
+    - triggarr/templates/partials/app_card.html
+    - triggarr/templates/partials/search_log.html
+    - triggarr/db.py
+    - triggarr/search/engine.py
     - tests/test_db.py
     - tests/test_search.py
     - tests/test_web.py
@@ -73,10 +73,10 @@ Each task was committed atomically:
 2. **Task 2: Add tests for outcome/detail search history and position labels** - `b1d07be` (test)
 
 ## Files Created/Modified
-- `fetcharr/templates/partials/app_card.html` - X of Y position format for missing/cutoff
-- `fetcharr/templates/partials/search_log.html` - Outcome badge and detail tooltip
-- `fetcharr/db.py` - outcome/detail columns, migration, updated insert/retrieve
-- `fetcharr/search/engine.py` - Passes outcome/detail on all 8 insert_search_entry calls
+- `triggarr/templates/partials/app_card.html` - X of Y position format for missing/cutoff
+- `triggarr/templates/partials/search_log.html` - Outcome badge and detail tooltip
+- `triggarr/db.py` - outcome/detail columns, migration, updated insert/retrieve
+- `triggarr/search/engine.py` - Passes outcome/detail on all 8 insert_search_entry calls
 - `tests/test_db.py` - 3 new tests for outcome/detail insert, defaults, migration compat
 - `tests/test_search.py` - 2 new tests for failed search DB entries + updated per-item skip tests
 - `tests/test_web.py` - 2 new tests for X-of-Y format and outcome badge display

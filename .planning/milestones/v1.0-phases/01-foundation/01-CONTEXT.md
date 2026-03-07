@@ -14,7 +14,7 @@ Config layer (TOML), state persistence (JSON), and httpx async API clients for R
 ## Implementation Decisions
 
 ### Config file experience
-- Config lives at `/config/fetcharr.toml` — single fixed path, Docker-friendly
+- Config lives at `/config/triggarr.toml` — single fixed path, Docker-friendly
 - Flat TOML structure: `[general]` for global settings, `[radarr]` and `[sonarr]` sections for per-app connection config (url, api_key, enabled)
 - When config file is missing on startup, generate a commented default config file and exit with a message telling the user to edit it
 - Search-related settings (batch sizes, intervals) are not in Phase 1 config — added in Phase 2 when the search engine is built
@@ -52,7 +52,7 @@ Config layer (TOML), state persistence (JSON), and httpx async API clients for R
 
 - Config layout should match the flat preview shown: `[general]` with log_level, `[radarr]` with url/api_key/enabled, `[sonarr]` with url/api_key/enabled
 - Log format matches `YYYY-MM-DD HH:MM:SS LEVEL  Message` — similar to how *arr apps log
-- "Warn and keep running" philosophy across the board — Fetcharr should be resilient to transient *arr downtime, not fragile
+- "Warn and keep running" philosophy across the board — Triggarr should be resilient to transient *arr downtime, not fragile
 
 </specifics>
 

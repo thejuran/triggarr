@@ -29,11 +29,11 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/search/scheduler.py
+    - triggarr/search/scheduler.py
     - tests/test_search.py
   modified:
-    - fetcharr/__main__.py
-    - fetcharr/startup.py
+    - triggarr/__main__.py
+    - triggarr/startup.py
     - pyproject.toml
 
 key-decisions:
@@ -78,9 +78,9 @@ Each task was committed atomically:
 2. **Task 2: Create search engine test suite** - `7657b30` (test)
 
 ## Files Created/Modified
-- `fetcharr/search/scheduler.py` - create_lifespan factory: APScheduler with interval jobs, long-lived clients, state persistence, clean shutdown
-- `fetcharr/__main__.py` - FastAPI app with lifespan-managed scheduler served via uvicorn on port 8080
-- `fetcharr/startup.py` - Updated docstring noting temporary vs long-lived client distinction
+- `triggarr/search/scheduler.py` - create_lifespan factory: APScheduler with interval jobs, long-lived clients, state persistence, clean shutdown
+- `triggarr/__main__.py` - FastAPI app with lifespan-managed scheduler served via uvicorn on port 8080
+- `triggarr/startup.py` - Updated docstring noting temporary vs long-lived client distinction
 - `pyproject.toml` - Added apscheduler>=3.11,<4 dependency
 - `tests/test_search.py` - 19 tests: filter_monitored, slice_batch, append_search_log, deduplicate_to_seasons, filter_sonarr_episodes
 
@@ -107,8 +107,8 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: fetcharr/search/scheduler.py
-- FOUND: fetcharr/__main__.py
+- FOUND: triggarr/search/scheduler.py
+- FOUND: triggarr/__main__.py
 - FOUND: tests/test_search.py
 - FOUND: 02-03-SUMMARY.md
 - FOUND: e515c1b (Task 1 commit)

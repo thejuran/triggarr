@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Fetcharr runs as a Docker container that any self-hoster can pull and run with docker-compose, with config and state on a volume and no credentials baked into the image. Multi-stage Dockerfile with pytailwindcss builder stage and slim production image.
+Triggarr runs as a Docker container that any self-hoster can pull and run with docker-compose, with config and state on a volume and no credentials baked into the image. Multi-stage Dockerfile with pytailwindcss builder stage and slim production image.
 
 </domain>
 
@@ -14,7 +14,7 @@ Fetcharr runs as a Docker container that any self-hoster can pull and run with d
 ## Implementation Decisions
 
 ### Image & Registry
-- Publish to GHCR: ghcr.io/thejuran/fetcharr
+- Publish to GHCR: ghcr.io/thejuran/triggarr
 - Base image: python:3.13-slim for production stage
 - Tag strategy: `:latest` only when a semver tag is present, otherwise `:dev`
 - Dockerfile only for now — no CI/GitHub Actions workflow in this phase
@@ -34,7 +34,7 @@ Fetcharr runs as a Docker container that any self-hoster can pull and run with d
 ### Compose Defaults
 - Default host port: 8080 (avoids conflict with Radarr 7878 / Sonarr 8989)
 - Restart policy: unless-stopped
-- Fetcharr service only — no example *arr services (users already have their stack)
+- Triggarr service only — no example *arr services (users already have their stack)
 - Named Docker volume for /config (not bind mount)
 
 ### Claude's Discretion

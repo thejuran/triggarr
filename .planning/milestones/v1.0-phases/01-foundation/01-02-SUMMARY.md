@@ -22,12 +22,12 @@ tech-stack:
 
 key-files:
   created:
-    - fetcharr/models/arr.py
-    - fetcharr/clients/base.py
-    - fetcharr/clients/radarr.py
-    - fetcharr/clients/sonarr.py
+    - triggarr/models/arr.py
+    - triggarr/clients/base.py
+    - triggarr/clients/radarr.py
+    - triggarr/clients/sonarr.py
   modified:
-    - fetcharr/clients/__init__.py
+    - triggarr/clients/__init__.py
 
 key-decisions:
   - "Content-Type: application/json set on all requests for Sonarr v4 strict enforcement compatibility"
@@ -73,11 +73,11 @@ Each task was committed atomically:
 2. **Task 2: Create RadarrClient and SonarrClient subclasses with wanted/cutoff methods** - `175c19d` (feat)
 
 ## Files Created/Modified
-- `fetcharr/models/arr.py` - PaginatedResponse and SystemStatus Pydantic models for *arr API data
-- `fetcharr/clients/base.py` - ArrClient base class with get/post, get_paginated, retry, validate_connection, context manager
-- `fetcharr/clients/radarr.py` - RadarrClient with wanted/missing and wanted/cutoff movie endpoints
-- `fetcharr/clients/sonarr.py` - SonarrClient with wanted/missing and wanted/cutoff episode endpoints (includeSeries=true)
-- `fetcharr/clients/__init__.py` - Package exports for RadarrClient and SonarrClient
+- `triggarr/models/arr.py` - PaginatedResponse and SystemStatus Pydantic models for *arr API data
+- `triggarr/clients/base.py` - ArrClient base class with get/post, get_paginated, retry, validate_connection, context manager
+- `triggarr/clients/radarr.py` - RadarrClient with wanted/missing and wanted/cutoff movie endpoints
+- `triggarr/clients/sonarr.py` - SonarrClient with wanted/missing and wanted/cutoff episode endpoints (includeSeries=true)
+- `triggarr/clients/__init__.py` - Package exports for RadarrClient and SonarrClient
 
 ## Decisions Made
 - Content-Type: application/json header set on all requests (not just POST) for Sonarr v4 strict enforcement compatibility per research pitfall #3
