@@ -9,8 +9,8 @@ Requirements for v2.0 Harden & Fix. Each maps to roadmap phases.
 
 ### Deploy
 
-- [ ] **DEPLOY-01**: User can configure config directory via `TRIGGARR_CONFIG_DIR` env var
-- [ ] **DEPLOY-02**: CSS and static assets load correctly behind a reverse proxy
+- [x] **DEPLOY-01**: User can configure config directory via `TRIGGARR_CONFIG_DIR` env var
+- [x] **DEPLOY-02**: CSS and static assets load correctly behind a reverse proxy
 
 ## Future Requirements
 
@@ -26,8 +26,8 @@ None planned.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DEPLOY-01 | Phase 23 | Pending |
-| DEPLOY-02 | Phase 23 | Pending |
+| DEPLOY-01 | Phase 23 | Complete |
+| DEPLOY-02 | Phase 23 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 2 total

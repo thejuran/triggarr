@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Harden & Fix
-status: active
-stopped_at: null
-last_updated: "2026-03-08T00:00:00.000Z"
-last_activity: 2026-03-08 -- Roadmap created for v2.0 Harden & Fix
+status: planning
+stopped_at: Completed 23-01-PLAN.md
+last_updated: "2026-03-09T03:18:11.999Z"
+last_activity: 2026-03-08 — Roadmap created
 progress:
   total_phases: 1
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
   percent: 0
 ---
 
@@ -43,6 +43,8 @@ Progress: [░░░░░░░░░░] 0%
 ### Decisions
 
 Full decision log in PROJECT.md Key Decisions table.
+- [Phase 23]: Used get_config_dir() function pattern for testable env var reading without module reload
+- [Phase 23]: Used url_for throughout all templates and route redirects for consistent root_path support
 
 ### Pending Todos
 
@@ -54,5 +56,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-08
-Stopped at: Roadmap created for v2.0 Harden & Fix, ready to plan Phase 23
+Last session: 2026-03-09T03:18:11.997Z
+Stopped at: Completed 23-01-PLAN.md
