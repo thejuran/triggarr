@@ -17,10 +17,10 @@ services:
       - ALL
     cap_add:
       - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
       - SETUID
       - SETGID
-    security_opt:
-      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:

@@ -54,10 +54,10 @@ services:
       - ALL
     cap_add:
       - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
       - SETUID
       - SETGID
-    security_opt:
-      - no-new-privileges:true
     restart: unless-stopped
 
 volumes:
@@ -119,10 +119,10 @@ Triggarr is designed to run on a trusted local network -- behind Tailscale, a VP
 - **API keys** are never exposed in HTTP responses or HTML (`SecretStr` discipline throughout)
 - **Log output** redacts all configured secrets automatically
 - **Config file** written with `0600` permissions (owner-read/write only)
-- **Docker container** drops all capabilities except CHOWN, SETUID, SETGID
+- **Docker container** drops all capabilities except CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID
 - **CSRF protection** via Origin header checking on POST requests
 - **URL validation** blocks SSRF attempts (non-HTTP schemes, inappropriate public IPs)
-- **Security hardening** via `no-new-privileges` in Docker
+- **Security hardening** via `no-new-privileges` applied after privilege setup in entrypoint
 
 ### What is NOT protected
 
@@ -134,7 +134,7 @@ Bind to localhost (`127.0.0.1:8080:8080` as shown in the docker-compose example)
 
 ### Synology NAS
 
-Synology DSM ships a stripped-down `setpriv` that doesn't support `--no-new-privileges`. Triggarr detects this automatically and skips the flag — no configuration changes needed. The `security_opt: no-new-privileges:true` in your `docker-compose.yml` still applies at the Docker level regardless.
+Synology DSM ships a stripped-down `setpriv` that doesn't support `--no-new-privileges`. Triggarr detects this automatically and skips the flag — no configuration changes needed.
 
 ## Development
 
