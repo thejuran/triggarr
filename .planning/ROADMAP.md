@@ -116,10 +116,10 @@ Plans:
   1. Dashboard app cards show eligible item count alongside total count (e.g., "X eligible of Y total")
   2. When items are being skipped, a skip-count indicator is visible on the relevant app card
   3. When skip-unreleased is disabled or no items are skipped, no misleading skip indicator appears
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 27-01: TBD
+- [ ] 27-01-PLAN.md -- Eligible-count state tracking, route threading, and app card display with skip badge
 
 ## Progress
 
@@ -154,6 +154,6 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 23. Deploy Fixes | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 24. Hardening | v2.1 | 1/1 | Complete | 2026-03-09 |
-| 25. Filter Foundation | 1/1 | Complete    | 2026-03-09 | - |
-| 26. Settings UI & Engine Integration | 1/1 | Complete    | 2026-03-09 | - |
-| 27. Dashboard Display | v2.2 | 0/? | Not started | - |
+| 25. Filter Foundation | v2.2 | 1/1 | Complete | 2026-03-09 |
+| 26. Settings UI & Engine Integration | v2.2 | 1/1 | Complete | 2026-03-09 |
+| 27. Dashboard Display | v2.2 | 0/1 | Not started | - |
