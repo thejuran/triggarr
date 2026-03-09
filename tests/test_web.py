@@ -859,7 +859,58 @@ def test_build_app_context_eligible_none_when_missing(client, test_app):
     test_app.state.triggarr_state["radarr"].pop("missing_eligible", None)
     response = client.get("/partials/app-card/radarr")
     assert response.status_code == 200
-    # Template should gracefully fall back (no crash)
+    # Template should gracefully fall back -- show total count only
+    assert "42 items" in response.text, "Should fall back to total count when eligible is None"
+
+
+def test_app_card_skip_indicator_shown(client, test_app):
+    """App card shows amber skip badge when skip_unreleased=True and items are skipped (DASH-02)."""
+    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
+    test_app.state.triggarr_state["radarr"]["missing_count"] = 42
+    test_app.state.settings.general.skip_unreleased = True
+    response = client.get("/partials/app-card/radarr")
+    assert response.status_code == 200
+    assert "12 skipped (unreleased)" in response.text, "Should show skip count badge"
+    assert "text-amber-400" in response.text, "Skip badge should use amber styling"
+
+
+def test_app_card_no_skip_when_disabled(client, test_app):
+    """App card does NOT show skip badge when skip_unreleased is False (DASH-02)."""
+    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
+    test_app.state.triggarr_state["radarr"]["missing_count"] = 42
+    test_app.state.settings.general.skip_unreleased = False
+    response = client.get("/partials/app-card/radarr")
+    assert response.status_code == 200
+    assert "skipped (unreleased)" not in response.text, "No skip badge when skip_unreleased is off"
+
+
+def test_app_card_no_skip_when_equal(client, test_app):
+    """App card does NOT show skip badge when eligible equals total (DASH-02)."""
+    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 42
+    test_app.state.triggarr_state["radarr"]["missing_count"] = 42
+    test_app.state.settings.general.skip_unreleased = True
+    response = client.get("/partials/app-card/radarr")
+    assert response.status_code == 200
+    assert "skipped (unreleased)" not in response.text, "No skip badge when nothing is skipped"
+
+
+def test_app_card_eligible_total_display(client, test_app):
+    """App card shows 'X of Y items' format when both eligible and count are set (DASH-01)."""
+    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
+    test_app.state.triggarr_state["radarr"]["missing_count"] = 42
+    response = client.get("/partials/app-card/radarr")
+    assert response.status_code == 200
+    assert "30 of 42 items" in response.text, "Should show eligible of total format"
+
+
+def test_app_card_sonarr_no_skip_badge(client, test_app):
+    """Sonarr card does NOT show skip badge even when eligible < total (DASH-02)."""
+    test_app.state.triggarr_state["sonarr"]["missing_eligible"] = 5
+    test_app.state.triggarr_state["sonarr"]["missing_count"] = 10
+    test_app.state.settings.general.skip_unreleased = True
+    response = client.get("/partials/app-card/sonarr")
+    assert response.status_code == 200
+    assert "skipped (unreleased)" not in response.text, "Sonarr should not show skip badge"
 
 
 def test_save_settings_skip_unreleased_off(client, test_app):

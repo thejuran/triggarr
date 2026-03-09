@@ -31,14 +31,25 @@
     </div>
     <div>
       <span class="text-xs uppercase tracking-wide text-triggarr-muted">Missing</span>
-      <p class="text-sm font-medium">{{ app.missing_count if app.missing_count is not none else '&mdash;' }} items</p>
+      <p class="text-sm font-medium">
+        {%- if app.missing_eligible is not none and app.missing_count is not none -%}
+          {{ app.missing_eligible }} of {{ app.missing_count }} items
+        {%- elif app.missing_count is not none -%}
+          {{ app.missing_count }} items
+        {%- else -%}
+          &mdash;
+        {%- endif -%}
+      </p>
       <p class="text-xs text-triggarr-muted">
-        {{ app.missing_cursor }} of {{ app.missing_count if app.missing_count is not none else '?' }}
+        {{ app.missing_cursor }} of {{ app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?') }}
         {%- if app.missing_pass is defined and app.missing_pass > 0 %}
           {%- set p = app.missing_pass %}
           ({{ p }}{{ 'st' if p % 10 == 1 and p % 100 != 11 else 'nd' if p % 10 == 2 and p % 100 != 12 else 'rd' if p % 10 == 3 and p % 100 != 13 else 'th' }} pass)
         {%- endif %}
       </p>
+      {%- if app.skip_unreleased and app.name == 'radarr' and app.missing_eligible is not none and app.missing_count is not none and app.missing_eligible < app.missing_count %}
+      <p class="text-xs text-amber-400">{{ app.missing_count - app.missing_eligible }} skipped (unreleased)</p>
+      {%- endif %}
     </div>
     <div>
       <span class="text-xs uppercase tracking-wide text-triggarr-muted">Cutoff</span>
