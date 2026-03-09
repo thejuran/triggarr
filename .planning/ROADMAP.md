@@ -2,13 +2,14 @@
 
 ## Overview
 
-Triggarr is a single-process automation daemon that cycles through Radarr and Sonarr's wanted/cutoff-unmet lists on a configurable schedule. Security invariants (no API key in any HTTP response) are established from day one and never relaxed.
+Triggarr is a single-process automation daemon that cycles through Radarr and Sonarr's wanted/cutoff-unmet lists on a configurable schedule, with closed-loop download tracking. Security invariants (no API key in any HTTP response) are established from day one and never relaxed.
 
 ## Milestones
 
-- v1.0 MVP -- Phases 1-8 (shipped 2026-02-24) -- [archive](milestones/v1.0-ROADMAP.md)
-- v1.1 Ship & Document -- Phases 9-12 (shipped 2026-02-24) -- [archive](milestones/v1.1-ROADMAP.md)
-- v1.2 Polish & Harden -- Phases 13-16 (shipped 2026-02-24) -- [archive](milestones/v1.2-ROADMAP.md)
+- ✅ v1.0 MVP -- Phases 1-8 (shipped 2026-02-24) -- [archive](milestones/v1.0-ROADMAP.md)
+- ✅ v1.1 Ship & Document -- Phases 9-12 (shipped 2026-02-24) -- [archive](milestones/v1.1-ROADMAP.md)
+- ✅ v1.2 Polish & Harden -- Phases 13-16 (shipped 2026-02-24) -- [archive](milestones/v1.2-ROADMAP.md)
+- ✅ v2.0 Closed-Loop Tracking -- Phases 17-22 (shipped 2026-03-09) -- [archive](milestones/v2.0-ROADMAP.md)
 
 ## Phases
 
@@ -46,6 +47,20 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 </details>
 
+<details>
+<summary>v2.0 Closed-Loop Tracking (Phases 17-22) -- SHIPPED 2026-03-09</summary>
+
+- [x] Phase 17: Foundation & DB Preparation (3/3 plans) -- completed 2026-02-25
+- [x] Phase 18: Security & Operations (2/2 plans) -- completed 2026-02-25
+- [x] Phase 19: Tracking Infrastructure (2/2 plans) -- completed 2026-02-25
+- [x] Phase 20: Tracking Integration (3/3 plans) -- completed 2026-02-25
+- [x] Phase 20.1: Deep Review — Security & Safety (2/2 plans) -- completed 2026-02-26
+- [x] Phase 20.2: Deep Review — Code Quality (2/2 plans) -- completed 2026-02-26
+- [x] Phase 21: Dashboard & Stats (2/2 plans) -- completed 2026-03-07
+- [x] Phase 22: Rename to Triggarr (2/2 plans) -- completed 2026-03-07
+
+</details>
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -66,3 +81,11 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 | 14. Dashboard Observability | v1.2 | 2/2 | Complete | 2026-02-24 |
 | 15. Search History UI | v1.2 | 2/2 | Complete | 2026-02-24 |
 | 16. Deep Code Review | v1.2 | 2/2 | Complete | 2026-02-24 |
+| 17. Foundation & DB Preparation | v2.0 | 3/3 | Complete | 2026-02-25 |
+| 18. Security & Operations | v2.0 | 2/2 | Complete | 2026-02-25 |
+| 19. Tracking Infrastructure | v2.0 | 2/2 | Complete | 2026-02-25 |
+| 20. Tracking Integration | v2.0 | 3/3 | Complete | 2026-02-25 |
+| 20.1 Deep Review — Security | v2.0 | 2/2 | Complete | 2026-02-26 |
+| 20.2 Deep Review — Quality | v2.0 | 2/2 | Complete | 2026-02-26 |
+| 21. Dashboard & Stats | v2.0 | 2/2 | Complete | 2026-03-07 |
+| 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |

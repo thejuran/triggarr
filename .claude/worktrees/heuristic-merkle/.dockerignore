@@ -1,0 +1,16 @@
+.venv/
+venv/
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+tests/
+.planning/
+.idea/
+.vscode/
+.DS_Store
+*.swp

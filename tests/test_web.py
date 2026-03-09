@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiosqlite
 import pytest
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -27,11 +28,12 @@ async def test_app(tmp_path):
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)
 
-    # Initialize SQLite search history database for tests
+    # Initialize SQLite search history database with shared connection
     db_path = tmp_path / "test.db"
-    await init_db(db_path)
-    await insert_search_entry(db_path, "Radarr", "missing", "Test Movie")
-    app.state.db_path = db_path
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    await insert_search_entry(db, "Radarr", "missing", "Test Movie")
+    app.state.db = db
 
     # Mock triggarr state
     app.state.triggarr_state = {
@@ -71,6 +73,12 @@ async def test_app(tmp_path):
     mock_settings.sonarr.search_missing_count = 5
     mock_settings.sonarr.search_cutoff_count = 5
     mock_settings.general.log_level = "info"
+    mock_settings.general.hard_max_per_cycle = 0
+    mock_settings.general.max_history_rows = 1000
+    mock_settings.general.request_timeout = 30.0
+    mock_settings.general.page_size = 50
+    mock_settings.general.tracking_window_minutes = 60
+    mock_settings.general.tracking_delay_seconds = 90
     app.state.settings = mock_settings
 
     # Mock scheduler
@@ -94,6 +102,9 @@ async def test_app(tmp_path):
 
     # Search lock (needed by search_now endpoint)
     app.state.search_lock = asyncio.Lock()
+
+    # Rate limit state (needed by search_now rate limiter — DEBT-01)
+    app.state.last_search_time = {}
 
     return app
 
@@ -338,9 +349,9 @@ def test_dashboard_shows_position_x_of_y(client):
 async def test_search_log_shows_outcome_badge(test_app, tmp_path):
     """Search log partial shows outcome badge for entries (WEBU-11)."""
     # Insert a failed search entry
-    db_path = test_app.state.db_path
+    db = test_app.state.db
     await insert_search_entry(
-        db_path, "Radarr", "missing", "Failed Movie",
+        db, "Radarr", "missing", "Failed Movie",
         outcome="failed", detail="Connection refused",
     )
 
@@ -433,9 +444,9 @@ def test_history_results_partial_with_app_filter(client):
 
 async def test_history_results_partial_pagination(test_app):
     """GET /partials/history-results?page=2 shows pagination markup after inserting 60+ entries."""
-    db_path = test_app.state.db_path
+    db = test_app.state.db
     for i in range(60):
-        await insert_search_entry(db_path, "Radarr", "missing", f"Bulk Movie {i}")
+        await insert_search_entry(db, "Radarr", "missing", f"Bulk Movie {i}")
 
     with TestClient(test_app) as tc:
         response = tc.get("/partials/history-results?page=2")
@@ -447,9 +458,10 @@ async def test_history_results_partial_pagination(test_app):
 async def test_history_page_empty_state(test_app, tmp_path):
     """GET /history with empty DB shows 'No search history yet' message."""
     # Create a fresh empty DB at a different tmp_path
-    empty_db = tmp_path / "empty.db"
-    await init_db(empty_db)
-    test_app.state.db_path = empty_db
+    empty_db_path = tmp_path / "empty.db"
+    empty_db = await aiosqlite.connect(empty_db_path)
+    await init_db(empty_db, empty_db_path)
+    test_app.state.db = empty_db
 
     with TestClient(test_app) as tc:
         response = tc.get("/history")
@@ -485,3 +497,238 @@ def test_history_results_hx_vals_no_single_quote_breakout(client):
     hx_vals_content = hx_vals_match.group(1)
     # Inside the hx-vals JSON, the payload must not break out as a raw attribute
     assert "onmouseover" not in hx_vals_content, "XSS payload should not appear in hx-vals JSON"
+
+
+# ---------------------------------------------------------------------------
+# DEBT-01: Rate limiter on search-now endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_search_now_rate_limited(client, test_app):
+    """Second POST /api/search-now/radarr within rate limit window returns 429."""
+    import time
+
+    test_app.state.last_search_time["radarr"] = time.monotonic()
+
+    response = client.post("/api/search-now/radarr")
+    assert response.status_code == 429, f"Expected 429 rate limit, got {response.status_code}"
+    assert "Rate limited" in response.text
+
+
+def test_search_now_rate_limit_concurrent_protection(client, test_app):
+    """Two rapid POST /api/search-now/radarr calls: second returns 429 (DRSEC-03).
+
+    Validates that the re-check inside search_lock prevents concurrent bypass.
+    """
+    with patch(
+        "triggarr.web.routes.run_radarr_cycle",
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
+    ), patch("triggarr.web.routes.save_state"):
+        resp1 = client.post("/api/search-now/radarr")
+        assert resp1.status_code == 200, f"First request should succeed, got {resp1.status_code}"
+
+        resp2 = client.post("/api/search-now/radarr")
+        assert resp2.status_code == 429, f"Second request within rate window should be 429, got {resp2.status_code}"
+        assert "Rate limited" in resp2.text
+
+
+def test_search_now_not_rate_limited_after_window(client, test_app):
+    """POST /api/search-now/radarr after window expires is not rate-limited."""
+    import time
+
+    from triggarr.web.routes import SEARCH_RATE_LIMIT_SECONDS
+
+    # Set last_search_time to well before the window
+    test_app.state.last_search_time["radarr"] = time.monotonic() - (SEARCH_RATE_LIMIT_SECONDS + 1)
+
+    with patch(
+        "triggarr.web.routes.run_radarr_cycle",
+        new=AsyncMock(return_value=test_app.state.triggarr_state),
+    ), patch("triggarr.web.routes.save_state"):
+        response = client.post("/api/search-now/radarr")
+    assert response.status_code == 200, f"Expected 200 after window expired, got {response.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# DEBT-05: /health endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_health_all_connected_returns_200(client, test_app):
+    """GET /health returns 200 when all enabled apps have connected=True."""
+    test_app.state.triggarr_state = {
+        "radarr": {"connected": True},
+        "sonarr": {"connected": True},
+    }
+    response = client.get("/health")
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+    data = response.json()
+    assert data["status"] == "ok"
+
+
+def test_health_unreachable_app_returns_503(client, test_app):
+    """GET /health returns 503 when an enabled app has connected=False."""
+    test_app.state.triggarr_state = {
+        "radarr": {"connected": False},
+        "sonarr": {"connected": True},
+    }
+    response = client.get("/health")
+    assert response.status_code == 503, f"Expected 503, got {response.status_code}"
+    data = response.json()
+    assert data["status"] == "unhealthy"
+    assert "radarr" in data["unreachable"]
+
+
+def test_health_not_yet_verified_returns_503(client, test_app):
+    """GET /health returns 503 when an enabled app has connected=None (never run)."""
+    test_app.state.triggarr_state = {
+        "radarr": {"connected": True},
+        "sonarr": {"connected": None},
+    }
+    response = client.get("/health")
+    assert response.status_code == 503, f"Expected 503, got {response.status_code}"
+    data = response.json()
+    assert "sonarr" in data["unreachable"]
+
+
+def test_health_no_apps_enabled_returns_200(client, test_app):
+    """GET /health returns 200 when no apps are enabled (valid awaiting-setup state)."""
+    test_app.state.settings.radarr.enabled = False
+    test_app.state.settings.sonarr.enabled = False
+    test_app.state.triggarr_state = {}
+    response = client.get("/health")
+    assert response.status_code == 200, f"Expected 200 for no-apps-configured, got {response.status_code}"
+    data = response.json()
+    assert data["status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# STATS-01..05: Dashboard stats cards
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_renders_stats_cards(client):
+    """GET / renders all 4 stat card labels (STATS-01)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Grab Rate" in response.text, "Dashboard should show Grab Rate card"
+    assert "Movies" in response.text, "Dashboard should show Movies card"
+    assert "Episodes" in response.text, "Dashboard should show Episodes card"
+    assert "Time to Grab" in response.text, "Dashboard should show Time to Grab card"
+
+
+def test_stats_row_partial_returns_200(client):
+    """GET /partials/stats-row returns 200 with stat card HTML (STATS-02)."""
+    response = client.get("/partials/stats-row")
+    assert response.status_code == 200
+    assert "Grab Rate" in response.text
+    assert 'hx-get="/partials/stats-row"' in response.text
+    assert "every 30s" in response.text
+
+
+async def test_stats_empty_db_shows_dashes(test_app, tmp_path):
+    """Stats cards show dash values when no tracking data exists (STATS-03)."""
+    empty_db_path = tmp_path / "empty_stats.db"
+    empty_db = await aiosqlite.connect(empty_db_path)
+    await init_db(empty_db, empty_db_path)
+    test_app.state.db = empty_db
+
+    with TestClient(test_app) as tc:
+        response = tc.get("/partials/stats-row")
+    assert response.status_code == 200
+    assert "---" in response.text, "Empty state should show dash values for time-to-grab"
+
+
+# ---------------------------------------------------------------------------
+# STATS-01..05: Settings form new config fields and outcome badge tests
+# ---------------------------------------------------------------------------
+
+
+def test_settings_page_renders_new_config_fields(client):
+    """GET /settings renders the 4 new General config inputs (STATS-05)."""
+    response = client.get("/settings")
+    assert response.status_code == 200
+    assert "tracking_window_minutes" in response.text, "Settings should show tracking window input"
+    assert "max_history_rows" in response.text, "Settings should show max history rows input"
+    assert "request_timeout" in response.text, "Settings should show request timeout input"
+    assert "page_size" in response.text, "Settings should show page size input"
+    assert "How long to wait for grabs" in response.text, "Settings should show tracking window hint"
+
+
+def test_save_settings_with_new_fields(client, test_app):
+    """POST /settings with new config fields saves them correctly (STATS-05)."""
+    response = client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "5000",
+            "request_timeout": "60",
+            "page_size": "100",
+            "tracking_window_minutes": "120",
+            "radarr_url": "http://radarr:7878",
+            "radarr_api_key": "",
+            "radarr_enabled": "on",
+            "radarr_search_interval": "30",
+            "radarr_search_missing_count": "5",
+            "radarr_search_cutoff_count": "5",
+            "sonarr_url": "http://sonarr:8989",
+            "sonarr_api_key": "",
+            "sonarr_enabled": "on",
+            "sonarr_search_interval": "30",
+            "sonarr_search_missing_count": "5",
+            "sonarr_search_cutoff_count": "5",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    # Verify new settings were applied
+    new_settings = test_app.state.settings
+    assert new_settings.general.max_history_rows == 5000
+    assert new_settings.general.request_timeout == 60
+    assert new_settings.general.page_size == 100
+    assert new_settings.general.tracking_window_minutes == 120
+
+
+async def test_history_outcome_badge_colors(test_app):
+    """History partial renders correct color classes for grabbed/partial/unresolved outcomes (STATS-05)."""
+    db = test_app.state.db
+    await insert_search_entry(db, "Radarr", "missing", "Grabbed Movie", outcome="grabbed")
+    await insert_search_entry(db, "Sonarr", "missing", "Partial Show", outcome="partial")
+    await insert_search_entry(db, "Radarr", "cutoff", "Unresolved Movie", outcome="unresolved")
+
+    with TestClient(test_app) as tc:
+        response = tc.get("/partials/history-results")
+    assert response.status_code == 200
+    assert "bg-green-500/20" in response.text, "Grabbed outcome should use green badge"
+    assert "bg-amber-500/20" in response.text, "Partial outcome should use amber badge"
+    assert "bg-gray-500/20" in response.text, "Unresolved outcome should use gray badge"
+
+
+def test_format_duration_none():
+    """_format_duration(None) returns '---' (STATS-04)."""
+    from triggarr.web.routes import _format_duration
+
+    assert _format_duration(None) == "---"
+
+
+def test_format_duration_under_60():
+    """_format_duration(30) returns '< 1m' (STATS-04)."""
+    from triggarr.web.routes import _format_duration
+
+    assert _format_duration(30) == "< 1m"
+
+
+def test_format_duration_minutes():
+    """_format_duration(300) returns '5m' (STATS-04)."""
+    from triggarr.web.routes import _format_duration
+
+    assert _format_duration(300) == "5m"
+
+
+def test_format_duration_hours():
+    """_format_duration(7500) returns '2h 5m' (STATS-04)."""
+    from triggarr.web.routes import _format_duration
+
+    assert _format_duration(7500) == "2h 5m"

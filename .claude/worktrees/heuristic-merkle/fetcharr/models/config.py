@@ -1,0 +1,80 @@
+"""Pydantic models for Fetcharr TOML configuration."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic import BaseModel, SecretStr, model_validator
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource
+
+CONFIG_PATH = Path("/config/fetcharr.toml")
+
+
+class ArrConfig(BaseModel):
+    """Connection configuration for a single *arr application."""
+
+    url: str = ""
+    api_key: SecretStr = SecretStr("")
+    enabled: bool = False
+
+    # Search tuning (sensible defaults -- override in config to customize)
+    search_interval: int = 30  # Minutes between search cycles
+    search_missing_count: int = 5  # Missing items to search per cycle
+    search_cutoff_count: int = 5  # Cutoff items to search per cycle
+
+    @model_validator(mode="after")
+    def at_least_one_search_count(self) -> ArrConfig:
+        """Ensure at least one search count is positive when app is enabled."""
+        if self.enabled and self.search_missing_count <= 0 and self.search_cutoff_count <= 0:
+            msg = "At least one of search_missing_count or search_cutoff_count must be > 0 when enabled"
+            raise ValueError(msg)
+        return self
+
+
+class GeneralConfig(BaseModel):
+    """Global application settings."""
+
+    log_level: str = "info"
+    hard_max_per_cycle: int = 0  # 0 = unlimited; caps total items per app per cycle
+    # v2.0 additions
+    max_history_rows: int = 1000  # DEBT-03: max resolved rows kept in search_history
+    request_timeout: float = 30.0  # DEBT-07: outbound HTTP timeout in seconds
+    page_size: int = 50  # DEBT-08: *arr API pagination size
+    tracking_window_minutes: int = 60  # TRACK-07: how long to wait for grabs after search
+    tracking_delay_seconds: int = 90  # Delay before tracking check (unused)
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from TOML config file.
+
+    Sections: [general], [radarr], [sonarr].
+    """
+
+    model_config = {
+        "toml_file": CONFIG_PATH,
+    }
+
+    general: GeneralConfig = GeneralConfig()
+    radarr: ArrConfig = ArrConfig()
+    sonarr: ArrConfig = ArrConfig()
+
+    @property
+    def has_enabled_app(self) -> bool:
+        """Check if at least one app is configured with a URL and enabled."""
+        radarr_ok = self.radarr.enabled and self.radarr.url.strip()
+        sonarr_ok = self.sonarr.enabled and self.sonarr.url.strip()
+        return radarr_ok or sonarr_ok
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            TomlConfigSettingsSource(settings_cls),
+        )

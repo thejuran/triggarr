@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme {
+  --color-fetcharr-green: #22c55e;
+  --color-fetcharr-green-dark: #16a34a;
+  --color-fetcharr-bg: #0f172a;
+  --color-fetcharr-card: #1e293b;
+  --color-fetcharr-border: #334155;
+  --color-fetcharr-text: #e2e8f0;
+  --color-fetcharr-muted: #94a3b8;
+}

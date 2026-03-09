@@ -9,19 +9,20 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pydantic
 import tomli_w
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.db import get_recent_searches, get_search_history
+from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
 from triggarr.models.config import Settings as SettingsModel
@@ -37,6 +38,57 @@ STATIC_DIR = _PKG_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 router = APIRouter()
+
+SEARCH_RATE_LIMIT_SECONDS = 10
+
+
+def _format_duration(seconds: float | None) -> str:
+    """Format a duration in seconds as a human-readable string.
+
+    Args:
+        seconds: Duration in seconds, or None if no data.
+
+    Returns:
+        "---" if None, "< 1m" if < 60, "{X}m" if < 3600, "{X}h {Y}m" otherwise.
+    """
+    if seconds is None:
+        return "---"
+    if seconds < 60:
+        return "< 1m"
+    minutes = int(seconds // 60)
+    if seconds < 3600:
+        return f"{minutes}m"
+    hours = minutes // 60
+    remaining_minutes = minutes % 60
+    return f"{hours}h {remaining_minutes}m"
+
+
+@router.get("/health")
+async def health(request: Request) -> JSONResponse:
+    """Health probe for container orchestrators.
+
+    Returns 200 when all enabled apps are reachable (connected=True),
+    503 when any enabled app is unreachable or not yet verified.
+    If no apps are enabled, returns 200 (valid configuration, waiting for setup).
+    """
+    settings = request.app.state.settings
+    state = request.app.state.triggarr_state
+    problems: list[str] = []
+
+    for app_name in ("radarr", "sonarr"):
+        cfg = getattr(settings, app_name)
+        if not cfg.enabled:
+            continue
+        connected = state.get(app_name, {}).get("connected")
+        if connected is not True:  # None (never run) or False (unreachable) -> unhealthy
+            problems.append(app_name)
+
+    if problems:
+        return JSONResponse(
+            {"status": "unhealthy", "unreachable": problems},
+            status_code=503,
+        )
+    return JSONResponse({"status": "ok"})
 
 
 def _build_app_context(request: Request, app_name: str) -> dict | None:
@@ -73,6 +125,8 @@ def _build_app_context(request: Request, app_name: str) -> dict | None:
         "next_run": next_run,
         "missing_cursor": app_state.get("missing_cursor", 0),
         "cutoff_cursor": app_state.get("cutoff_cursor", 0),
+        "missing_pass": app_state.get("missing_pass", 0),
+        "cutoff_pass": app_state.get("cutoff_pass", 0),
         "connected": app_state.get("connected"),
         "unreachable_since": app_state.get("unreachable_since"),
         "missing_count": app_state.get("missing_count"),
@@ -89,13 +143,21 @@ async def dashboard(request: Request) -> HTMLResponse:
         if ctx is not None:
             apps.append(ctx)
 
-    search_log = await get_recent_searches(request.app.state.db_path)
+    search_log = await get_recent_searches(request.app.state.db)
     log_entries = log_buffer.get_recent(30)
+    stats = await get_dashboard_stats(request.app.state.db)
+    time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"apps": apps, "search_log": search_log, "log_entries": log_entries},
+        context={
+            "apps": apps,
+            "search_log": search_log,
+            "log_entries": log_entries,
+            "stats": stats,
+            "time_to_grab": time_to_grab,
+        },
     )
 
 
@@ -121,6 +183,11 @@ async def settings_page(request: Request) -> HTMLResponse:
             "apps": apps,
             "log_level": settings.general.log_level,
             "hard_max_per_cycle": settings.general.hard_max_per_cycle,
+            "max_history_rows": settings.general.max_history_rows,
+            "request_timeout": settings.general.request_timeout,
+            "page_size": settings.general.page_size,
+            "tracking_window_minutes": settings.general.tracking_window_minutes,
+            "tracking_delay_seconds": settings.general.tracking_delay_seconds,
         },
     )
 
@@ -128,7 +195,7 @@ async def settings_page(request: Request) -> HTMLResponse:
 @router.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request) -> HTMLResponse:
     """Render the search history page with full filtering and pagination."""
-    result = await get_search_history(request.app.state.db_path)
+    result = await get_search_history(request.app.state.db)
     return templates.TemplateResponse(
         request=request,
         name="history.html",
@@ -168,7 +235,7 @@ async def partial_history_results(request: Request) -> HTMLResponse:
     search_text = params.get("search", "")
 
     result = await get_search_history(
-        request.app.state.db_path,
+        request.app.state.db,
         page=page,
         app_filter=app_filter,
         queue_filter=queue_filter,
@@ -203,6 +270,11 @@ async def save_settings(request: Request) -> RedirectResponse:
         "general": {
             "log_level": safe_log_level(form.get("log_level")),
             "hard_max_per_cycle": safe_int(form.get("hard_max_per_cycle"), 0, 0, 1000),
+            "max_history_rows": safe_int(form.get("max_history_rows"), 1000, 0, 100_000),
+            "request_timeout": safe_int(form.get("request_timeout"), 30, 5, 300),
+            "page_size": safe_int(form.get("page_size"), 50, 10, 500),
+            "tracking_window_minutes": safe_int(form.get("tracking_window_minutes"), 60, 5, 1440),
+            "tracking_delay_seconds": current_settings.general.tracking_delay_seconds,
         },
     }
 
@@ -222,8 +294,8 @@ async def save_settings(request: Request) -> RedirectResponse:
             "api_key": submitted_key if submitted_key else current_cfg.api_key.get_secret_value(),
             "enabled": form.get(f"{name}_enabled") == "on",
             "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
-            "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
-            "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
+            "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 1, 100),
+            "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 1, 100),
         }
 
     # Validate BEFORE writing to disk (QUAL-02)
@@ -282,6 +354,8 @@ async def save_settings(request: Request) -> RedirectResponse:
                 new_client = ClientClass(
                     base_url=new_cfg.url,
                     api_key=new_cfg.api_key.get_secret_value(),
+                    timeout=new_settings.general.request_timeout,
+                    page_size=new_settings.general.page_size,
                 )
                 setattr(request.app.state, f"{name}_client", new_client)
 
@@ -321,14 +395,29 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
     if client is None:
         return HTMLResponse("App not enabled", status_code=400)
 
+    # Optimistic rate limit check BEFORE lock (fast-fail for obvious cases)
+    now = time.monotonic()
+    last = request.app.state.last_search_time.get(app_name, 0.0)
+    if now - last < SEARCH_RATE_LIMIT_SECONDS:
+        logger.info("{name}: Manual search rate-limited", name=app_name.title())
+        return HTMLResponse("Rate limited — try again shortly", status_code=429)
+
     cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle
     async with request.app.state.search_lock:
+        # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
+        now = time.monotonic()
+        last = request.app.state.last_search_time.get(app_name, 0.0)
+        if now - last < SEARCH_RATE_LIMIT_SECONDS:
+            logger.info("{name}: Manual search rate-limited (after lock)", name=app_name.title())
+            return HTMLResponse("Rate limited — try again shortly", status_code=429)
+        request.app.state.last_search_time[app_name] = now
+
         try:
             request.app.state.triggarr_state = await cycle_fn(
                 client,
                 request.app.state.triggarr_state,
                 request.app.state.settings,
-                request.app.state.db_path,
+                request.app.state.db,
             )
             save_state(
                 request.app.state.triggarr_state,
@@ -368,12 +457,24 @@ async def partial_app_card(request: Request, app_name: str) -> HTMLResponse:
 @router.get("/partials/search-log", response_class=HTMLResponse)
 async def partial_search_log(request: Request) -> HTMLResponse:
     """Return an HTML fragment for the search log (htmx partial)."""
-    search_log = await get_recent_searches(request.app.state.db_path)
+    search_log = await get_recent_searches(request.app.state.db)
 
     return templates.TemplateResponse(
         request=request,
         name="partials/search_log.html",
         context={"search_log": search_log},
+    )
+
+
+@router.get("/partials/stats-row", response_class=HTMLResponse)
+async def partial_stats_row(request: Request) -> HTMLResponse:
+    """Return an HTML fragment for the dashboard stats row (htmx partial)."""
+    stats = await get_dashboard_stats(request.app.state.db)
+    time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/stats_row.html",
+        context={"stats": stats, "time_to_grab": time_to_grab},
     )
 
 

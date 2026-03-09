@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Search History - Fetcharr{% endblock %}
+
+{% block nav_dashboard_class %}text-fetcharr-muted{% endblock %}
+{% block nav_history_class %}text-white{% endblock %}
+{% block nav_settings_class %}text-fetcharr-muted{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Search History</h1>
+<div>
+  {% include "partials/history_results.html" %}
+</div>
+{% endblock %}

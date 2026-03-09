@@ -19,8 +19,9 @@ class ArrClient:
     Subclasses set ``_app_name`` and define endpoint-specific methods.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
         self._app_name: str = ""
+        self._page_size = page_size
         self._client = httpx.AsyncClient(
             base_url=base_url,
             headers={
@@ -82,22 +83,24 @@ class ArrClient:
     async def get_paginated(
         self,
         path: str,
-        page_size: int = 50,
+        page_size: int | None = None,
         extra_params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch all pages from a paginated *arr endpoint.
 
         Pages are 1-indexed.  Pagination terminates when the response
         contains zero records or when all records have been retrieved.
+        Uses ``self._page_size`` as default when *page_size* is not provided.
         """
         all_records: list[dict[str, Any]] = []
         page = 1
         extra = extra_params or {}
+        effective_page_size = page_size if page_size is not None else self._page_size
 
         while True:
             params: dict[str, Any] = {
                 "page": page,
-                "pageSize": page_size,
+                "pageSize": effective_page_size,
                 "sortKey": "id",
                 **extra,
             }
@@ -117,7 +120,7 @@ class ArrClient:
             all_records.extend(data.records)
 
             # Terminate when we have all records or page came back empty
-            if len(data.records) == 0 or page * page_size >= total_records:
+            if len(data.records) == 0 or page * effective_page_size >= total_records:
                 break
 
             page += 1

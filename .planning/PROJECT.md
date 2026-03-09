@@ -2,11 +2,11 @@
 
 ## What This Is
 
-A lightweight Docker-based tool that automates searches in Radarr and Sonarr for wanted and cutoff unmet items. Configurable round-robin searches at configurable intervals with a dark theme web UI featuring dashboard observability (position progress, outcome badges, live log viewer), browsable search history with filtering/pagination, and config editing. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
+A lightweight Docker-based tool that automates searches in Radarr and Sonarr for wanted and cutoff unmet items, with closed-loop download tracking. Configurable round-robin searches at configurable intervals detect when searched items are actually grabbed, showing per-item outcome badges and aggregate effectiveness stats on a dark theme web UI. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history with tracking correlation, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
 
 ## Core Value
 
-Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
+Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback showing what was actually grabbed — without exposing credentials or expanding attack surface.
 
 ## Requirements
 
@@ -42,10 +42,26 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 - ✓ Application logs visible in web dashboard (live log viewer) — v1.2
 - ✓ Search detail log with outcome/detail info per entry — v1.2
 - ✓ Deep code review: XSS, SSRF, cursor, atomic write, input validation fixes — v1.2
+- ✓ Poll Radarr/Sonarr history endpoints after searches to detect grabs — v2.0
+- ✓ Update search history entries with grabbed/partial/unresolved outcome badges — v2.0
+- ✓ Aggregate stats on dashboard showing search effectiveness (searched-to-grabbed rate) — v2.0
+- ✓ Lifetime stats cards: movies found/updated, episodes found/updated (triggarr-triggered only) — v2.0
+- ✓ Time-to-grab metric on dashboard — v2.0
+- ✓ Rate limiting on search-now endpoint — v2.0
+- ✓ CSRF protection on settings POST verified/hardened — v2.0
+- ✓ Bounded search history table growth (configurable max rows) — v2.0
+- ✓ Persistent WAL-mode SQLite connection (replaces connection-per-op) — v2.0
+- ✓ Health check endpoint for container orchestrators — v2.0
+- ✓ Graceful shutdown handler — v2.0
+- ✓ Request timeout on outbound HTTP calls — v2.0
+- ✓ Configurable pageSize defaults — v2.0
+- ✓ Deep security review: row_factory guards, XSS urlencode, rate limiter race fix, migration safety — v2.0
+- ✓ Deep quality review: type annotations, pass counter, sorted migrations, model validators — v2.0
+- ✓ Project renamed from Fetcharr to Triggarr across package, Docker, CI/CD, and docs — v2.0
 
 ### Active
 
-(None — define in next milestone)
+(None — next milestone requirements TBD)
 
 ### Out of Scope
 
@@ -58,25 +74,27 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 - Media discovery / TMDB browsing — Overseerr's job
 - OAuth / SSO — no accounts means no auth flows
 - Mobile app — web UI sufficient
+- Download client integration (qBit/SAB polling) — *arr apps manage download clients
+- Webhook receiver for *arr grab notifications — adds coupling, network config, and attack surface
+- Full import tracking (downloadFolderImported) — two-phase tracking for marginal value
+- Per-indexer effectiveness stats — Prowlarr's job
+- Automated re-search of unresolved items — round-robin handles naturally
+- Historical backfill of pre-triggarr grabs — impossible to attribute correctly
+- Cookie-based CSRF tokens — sessionless app; Origin/Referer validation is correct approach
+- slowapi/Redis for rate limiting — single-user local tool; in-memory check sufficient
 
 ## Context
 
-Shipped v1.2 with ~5,225 Python LOC. 174 tests passing.
+Shipped v2.0 with ~8,010 Python LOC. 220+ tests passing. 22 phases, 49 plans completed across 4 milestones.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
 Registry: ghcr.io/thejuran/triggarr
+Repo: github.com/thejuran/triggarr
 
-Replaces Huntarr's core search functionality without the security liabilities (plaintext passwords, unauthenticated API key exposure, 2FA bypass). Deliberately minimal attack surface.
-
-Known tech debt (from v1.2 deep code review, deferred to next milestone):
-- No rate limiting on search-now endpoint
-- No CSRF protection on settings POST
-- Unbounded search history table growth
-- No connection pooling for aiosqlite
-- No health check endpoint or graceful shutdown handler
-- No request timeout on outbound HTTP calls
-- Hardcoded pageSize defaults not configurable
+Known tech debt:
+- 2 test assertions in test_search.py need updating for exception sanitization change
+- test_search.py hangs on execution (pre-existing)
 
 ## Constraints
 
@@ -96,26 +114,20 @@ Known tech debt (from v1.2 deep code review, deferred to next milestone):
 | No auth | No user accounts = no passwords to store | ✓ Good — core security decision |
 | Single instance per app | Simpler config, matches user's setup | ✓ Good |
 | APScheduler 3.x over 4.x | 4.x still alpha, 3.x stable with AsyncIOScheduler | ✓ Good |
-| JSON state over SQLite | Simpler for cursor + bounded log | ✓ Good — schema migration added in v1.0 |
 | Origin/Referer CSRF over tokens | No auth/sessions means no cookies to protect | ✓ Good |
 | Vendored htmx over CDN | Reproducible builds, no external dependency | ✓ Good |
 | Custom loguru sink for redaction | Filter only sees message, sink sees full output including tracebacks | ✓ Good |
-| Ruff rule sets E,F,I,UP,B,SIM | Comprehensive but non-noisy linting | ✓ Good — caught 32 violations at adoption |
-| Three parallel CI jobs | No inter-job deps for fastest feedback | ✓ Good |
-| docker/metadata-action for tags | Avoids manual shell scripting for GHCR tags | ✓ Good |
-| BuildKit GHA cache | Faster Docker rebuilds in CI | ✓ Good |
+| Ruff rule sets E,F,I,UP,B,SIM | Comprehensive but non-noisy linting | ✓ Good |
 | Proportional hard max split | floor(missing/total*max) for missing, remainder for cutoff | ✓ Good |
-| Connection-per-op SQLite | aiosqlite context manager per function call | ✓ Good |
-| Auto-prune at 500 rows | DELETE after each insert keeps DB bounded | ✓ Good |
-| Docker Compose only install | No docker run or bare-metal instructions | ✓ Good — simplest path |
-| uv cache + BuildKit GHA cache in CI | Faster remote CI runs without adding complexity | ✓ Good |
-| Sonarr version detection reuses validate_connection endpoint | No extra network call for version check | ✓ Good |
-| Failed searches recorded to DB | Enables outcome tracking and history filtering | ✓ Good |
-| Closure-based redacting buffer sink | Secrets redacted before buffer storage, secret list stays in logging.py | ✓ Good |
 | Toggle-pill filter pattern for history | URL param manipulation in Jinja2, no JS framework needed | ✓ Good |
-| hx-vals tojson for XSS prevention | Double-quoted tojson filter prevents single-quote breakout | ✓ Good |
-| Atomic config write (tempfile + fsync + os.replace) | Matches state.py pattern, prevents partial writes | ✓ Good |
-| Episode fallback dropped (SRCH-17) | Sonarr SeasonSearch natively handles both season packs and episodes | ✓ Good — avoided unnecessary complexity |
+| Atomic config write (tempfile + fsync + os.replace) | Prevents partial writes | ✓ Good |
+| Post-search tracking inside cycle functions | No separate scheduler job; tracks after each search cycle inside search_lock | ✓ Good — v2.0 |
+| Probabilistic grab attribution (timestamp window) | No commandId link available; window matching sufficient | ✓ Good — v2.0 |
+| Zero new dependencies for v2.0 | All features achievable with existing stack + stdlib | ✓ Good — v2.0 |
+| frozenset allowlist for stat column names | Prevents SQL injection in dynamic SET clause | ✓ Good — v2.0 |
+| Double-checked locking for rate limiter | Pre-check optimistic, re-check inside lock authoritative | ✓ Good — v2.0 |
+| _sanitize_exc type-based dispatch | Avoids leaking internal details in exception messages | ✓ Good — v2.0 |
+| SUM(CASE WHEN) for SQLite compatibility | FILTER clause not available in all SQLite versions | ✓ Good — v2.0 |
 
 ---
-*Last updated: 2026-02-24 after v1.2 milestone*
+*Last updated: 2026-03-09 after v2.0 milestone*

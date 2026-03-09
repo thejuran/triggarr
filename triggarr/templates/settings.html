@@ -31,6 +31,34 @@
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">0 = unlimited. Caps total items per app per cycle.</p>
             </div>
+            <div>
+                <label class="block text-sm text-triggarr-muted mb-1">Max History Rows</label>
+                <input type="number" name="max_history_rows" value="{{ max_history_rows }}"
+                       min="0" max="100000"
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">0 = unlimited. Max resolved rows kept in search history.</p>
+            </div>
+            <div>
+                <label class="block text-sm text-triggarr-muted mb-1">Request Timeout (seconds)</label>
+                <input type="number" name="request_timeout" value="{{ request_timeout }}"
+                       min="5" max="300" step="1"
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">Timeout for outbound HTTP requests to *arr apps.</p>
+            </div>
+            <div>
+                <label class="block text-sm text-triggarr-muted mb-1">Page Size</label>
+                <input type="number" name="page_size" value="{{ page_size }}"
+                       min="10" max="500"
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">Items per page when querying *arr APIs.</p>
+            </div>
+            <div>
+                <label class="block text-sm text-triggarr-muted mb-1">Tracking Window (minutes)</label>
+                <input type="number" name="tracking_window_minutes" value="{{ tracking_window_minutes }}"
+                       min="5" max="1440"
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">How long to wait for grabs after a search before marking unresolved.</p>
+            </div>
         </div>
     </section>
 
@@ -68,12 +96,12 @@
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Missing Items Per Cycle</label>
                 <input type="number" name="{{ name }}_search_missing_count" value="{{ app.search_missing_count }}"
-                       min="0" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                       min="1" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
             </div>
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Cutoff Items Per Cycle</label>
                 <input type="number" name="{{ name }}_search_cutoff_count" value="{{ app.search_cutoff_count }}"
-                       min="0" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                       min="1" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
             </div>
         </div>
     </section>

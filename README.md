@@ -104,7 +104,7 @@ search_missing_count = 5            # default: 5 (missing items to search per cy
 search_cutoff_count = 5             # default: 5 (cutoff/upgrade items to search per cycle)
 ```
 
-Environment variable overrides are supported via pydantic-settings (e.g., `FETCHARR_GENERAL__LOG_LEVEL=debug`), but TOML is the primary configuration method.
+Environment variable overrides are supported via pydantic-settings (e.g., `TRIGGARR_GENERAL__LOG_LEVEL=debug`), but TOML is the primary configuration method.
 
 ## Security Model
 

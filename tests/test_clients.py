@@ -11,6 +11,7 @@ import pytest
 from triggarr.clients.base import ArrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
+from triggarr.models.arr import GrabEvent
 
 
 def test_arr_client_sets_api_key_header() -> None:
@@ -299,5 +300,219 @@ async def test_validate_connection_timeout() -> None:
     try:
         result = await client.validate_connection()
         assert result is False
+    finally:
+        await client.close()
+
+
+# ---------------------------------------------------------------------------
+# page_size configuration (Phase 17)
+# ---------------------------------------------------------------------------
+
+
+def test_client_default_page_size() -> None:
+    """ArrClient defaults to page_size=50."""
+    client = ArrClient(base_url="http://test:7878", api_key="key")
+    assert client._page_size == 50
+
+
+def test_client_accepts_page_size() -> None:
+    """ArrClient stores custom page_size."""
+    client = ArrClient(base_url="http://test:7878", api_key="key", page_size=100)
+    assert client._page_size == 100
+
+
+# ---------------------------------------------------------------------------
+# Async tests: get_grab_history (Phase 19)
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_get_grab_history_returns_grab_events() -> None:
+    """RadarrClient.get_grab_history returns parsed GrabEvent instances."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {
+            "page": 1,
+            "pageSize": 50,
+            "sortKey": "date",
+            "totalRecords": 2,
+            "records": [
+                {
+                    "id": 100,
+                    "date": "2026-02-25T10:00:00Z",
+                    "eventType": "grabbed",
+                    "sourceTitle": "Movie.2024.1080p",
+                    "movieId": 42,
+                    "quality": {"quality": {"name": "Bluray-1080p"}},
+                },
+                {
+                    "id": 101,
+                    "date": "2026-02-25T09:30:00Z",
+                    "eventType": "grabbed",
+                    "sourceTitle": "Movie.2024.720p",
+                    "movieId": 42,
+                    "quality": {"quality": {"name": "Bluray-720p"}},
+                },
+            ],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = RadarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(movie_id=42)
+        assert len(result) == 2
+        assert all(isinstance(e, GrabEvent) for e in result)
+        assert result[0].id == 100
+        assert result[0].date == "2026-02-25T10:00:00Z"
+        assert result[0].eventType == "grabbed"
+        assert result[0].sourceTitle == "Movie.2024.1080p"
+        assert result[1].id == 101
+        assert result[1].sourceTitle == "Movie.2024.720p"
+        # Extra fields should be ignored
+        assert not hasattr(result[0], "movieId")
+    finally:
+        await client.close()
+
+
+async def test_radarr_get_grab_history_empty() -> None:
+    """RadarrClient.get_grab_history returns empty list for zero results."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {
+            "page": 1,
+            "pageSize": 50,
+            "sortKey": "date",
+            "totalRecords": 0,
+            "records": [],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = RadarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(movie_id=999)
+        assert result == []
+    finally:
+        await client.close()
+
+
+async def test_radarr_get_grab_history_passes_movie_id_param() -> None:
+    """RadarrClient.get_grab_history passes movieId and eventType=1 in URL params."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["movieId"] == "42"
+        assert request.url.params["eventType"] == "1"
+        body = {
+            "page": 1,
+            "pageSize": 50,
+            "sortKey": "date",
+            "totalRecords": 0,
+            "records": [],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = RadarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        await client.get_grab_history(movie_id=42)
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_grab_history_returns_grab_events() -> None:
+    """SonarrClient.get_grab_history returns parsed GrabEvent instances."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {
+            "page": 1,
+            "pageSize": 50,
+            "sortKey": "date",
+            "totalRecords": 2,
+            "records": [
+                {
+                    "id": 200,
+                    "date": "2026-02-25T11:00:00Z",
+                    "eventType": "grabbed",
+                    "sourceTitle": "Show.S01E01.1080p",
+                    "seriesId": 10,
+                    "episodeId": 55,
+                },
+                {
+                    "id": 201,
+                    "date": "2026-02-25T10:45:00Z",
+                    "eventType": "grabbed",
+                    "sourceTitle": "Show.S01E02.1080p",
+                    "seriesId": 10,
+                    "episodeId": 56,
+                },
+            ],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(series_id=10)
+        assert len(result) == 2
+        assert all(isinstance(e, GrabEvent) for e in result)
+        assert result[0].id == 200
+        assert result[0].date == "2026-02-25T11:00:00Z"
+        assert result[0].eventType == "grabbed"
+        assert result[0].sourceTitle == "Show.S01E01.1080p"
+        assert result[1].id == 201
+        assert result[1].sourceTitle == "Show.S01E02.1080p"
+        # Extra fields should be ignored
+        assert not hasattr(result[0], "seriesId")
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_grab_history_empty() -> None:
+    """SonarrClient.get_grab_history returns empty list for zero results."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {
+            "page": 1,
+            "pageSize": 50,
+            "sortKey": "date",
+            "totalRecords": 0,
+            "records": [],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(series_id=999)
+        assert result == []
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_grab_history_passes_series_id_param() -> None:
+    """SonarrClient.get_grab_history passes seriesId and eventType=1 in URL params."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["seriesId"] == "10"
+        assert request.url.params["eventType"] == "1"
+        body = {
+            "page": 1,
+            "pageSize": 50,
+            "sortKey": "date",
+            "totalRecords": 0,
+            "records": [],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        await client.get_grab_history(series_id=10)
     finally:
         await client.close()

@@ -113,6 +113,32 @@ def test_api_key_never_in_str() -> None:
     assert secret not in config.model_dump_json()
 
 
+def test_arr_config_rejects_both_counts_zero_when_enabled() -> None:
+    """ArrConfig rejects both search counts = 0 when enabled."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="At least one"):
+        ArrConfig(
+            url="http://radarr:7878",
+            api_key="test-key",
+            enabled=True,
+            search_missing_count=0,
+            search_cutoff_count=0,
+        )
+
+
+def test_arr_config_allows_both_counts_zero_when_disabled() -> None:
+    """ArrConfig allows both counts = 0 when disabled (no validation error)."""
+    config = ArrConfig(
+        url="http://radarr:7878",
+        api_key="test-key",
+        enabled=False,
+        search_missing_count=0,
+        search_cutoff_count=0,
+    )
+    assert config.search_missing_count == 0
+
+
 def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
     """ensure_config generates default config and exits when file is missing."""
     config_file = tmp_path / "triggarr.toml"

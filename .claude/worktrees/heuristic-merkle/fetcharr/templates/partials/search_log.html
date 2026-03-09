@@ -1,0 +1,31 @@
+<div id="search-log"
+     hx-get="/partials/search-log"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML"
+     class="bg-fetcharr-card rounded-lg border border-fetcharr-border p-5">
+  <h2 class="text-lg font-semibold mb-4">Search Log</h2>
+  {% set entries = search_log[:20] %}
+  {% if not entries %}
+  <p class="text-fetcharr-muted text-sm">No searches yet.</p>
+  {% else %}
+  <div class="space-y-0">
+    {% for entry in entries %}
+    <div class="flex items-center gap-3 py-1.5 {% if not loop.last %}border-b border-fetcharr-border/50{% endif %}">
+        <span class="text-xs font-medium px-2 py-0.5 rounded
+               {% if entry.app == 'Radarr' %}bg-orange-500/20 text-orange-400
+               {% else %}bg-blue-500/20 text-blue-400{% endif %}">
+            {{ entry.app }}
+        </span>
+        <span class="text-sm flex-1 truncate" {% if entry.detail %}title="{{ entry.detail }}"{% endif %}>{{ entry.name }}</span>
+        <span class="text-xs text-fetcharr-muted">{{ entry.queue_type }}</span>
+        <span class="text-xs px-1.5 py-0.5 rounded
+               {% if entry.outcome == 'failed' %}bg-red-500/20 text-red-400
+               {% else %}bg-fetcharr-green/20 text-fetcharr-green{% endif %}">
+            {{ entry.outcome or 'searched' }}
+        </span>
+        <span class="text-xs text-fetcharr-muted">{{ entry.timestamp[:19] | replace('T', ' ') }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

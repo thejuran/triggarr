@@ -1,46 +1,45 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: unknown
-last_updated: "2026-02-25T18:31:10.666Z"
+milestone: v2.0
+milestone_name: Closed-Loop Tracking
+status: archived
+stopped_at: Milestone v2.0 completed and archived
+last_updated: "2026-03-09T02:00:00.000Z"
+last_activity: 2026-03-09 -- Milestone v2.0 completed, archived, and tagged
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_phases: 8
+  completed_phases: 8
+  total_plans: 18
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-24)
+See: .planning/PROJECT.md (updated 2026-03-09)
 
-**Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, without exposing credentials or expanding attack surface.
+**Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
 **Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: None (between milestones)
-Plan: N/A
-Status: v1.2 milestone complete, ready for next milestone
-Last activity: 2026-02-25 - Completed quick task 1: Allow 0 for missing/cutoff counts but require at least 1 in one of the two
-
-Progress: [██████████] 100%
+Milestone v2.0 Closed-Loop Tracking shipped 2026-03-09.
+All 22 phases across 4 milestones complete (49 plans total).
+Next: /gsd:new-milestone for v2.1 or v3.0.
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 31 (v1.0: 18, v1.1: 5, v1.2: 8)
-- Milestones shipped: 3 (v1.0, v1.1, v1.2)
+- Total plans completed: 49 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18)
+- Milestones shipped: 4 (v1.0, v1.1, v1.2, v2.0)
 
 ## Accumulated Context
 
 ### Decisions
 
 Full decision log in PROJECT.md Key Decisions table.
-- [Phase quick]: Used Pydantic model_validator(mode='after') for cross-field search count validation on ArrConfig
 
 ### Pending Todos
 
@@ -48,16 +47,9 @@ None.
 
 ### Blockers/Concerns
 
-8 medium-severity tech debt items deferred from v1.2 deep code review (see MILESTONES.md).
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 1 | Allow 0 for missing/cutoff counts but require at least 1 in one of the two | 2026-02-25 | b0edabc | [1-allow-0-for-missing-cutoff-counts-but-re](./quick/1-allow-0-for-missing-cutoff-counts-but-re/) |
+None — milestone complete.
 
 ## Session Continuity
 
-Last session: 2026-02-24
-Stopped at: Completed v1.2 milestone archival. Ready for /gsd:new-milestone.
-Resume file: None
+Last session: 2026-03-09
+Stopped at: Milestone v2.0 archived

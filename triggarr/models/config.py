@@ -24,9 +24,9 @@ class ArrConfig(BaseModel):
 
     @model_validator(mode="after")
     def at_least_one_search_count(self) -> ArrConfig:
-        """Enforce that at least one search count is >= 1 when app is enabled."""
-        if self.enabled and self.search_missing_count + self.search_cutoff_count < 1:
-            msg = "At least one of search_missing_count or search_cutoff_count must be >= 1 when enabled"
+        """Ensure at least one search count is positive when app is enabled."""
+        if self.enabled and self.search_missing_count <= 0 and self.search_cutoff_count <= 0:
+            msg = "At least one of search_missing_count or search_cutoff_count must be > 0 when enabled"
             raise ValueError(msg)
         return self
 
@@ -36,6 +36,12 @@ class GeneralConfig(BaseModel):
 
     log_level: str = "info"
     hard_max_per_cycle: int = 0  # 0 = unlimited; caps total items per app per cycle
+    # v2.0 additions
+    max_history_rows: int = 1000  # DEBT-03: max resolved rows kept in search_history
+    request_timeout: float = 30.0  # DEBT-07: outbound HTTP timeout in seconds
+    page_size: int = 50  # DEBT-08: *arr API pagination size
+    tracking_window_minutes: int = 60  # TRACK-07: how long to wait for grabs after search
+    tracking_delay_seconds: int = 90  # Delay before tracking check (unused)
 
 
 class Settings(BaseSettings):

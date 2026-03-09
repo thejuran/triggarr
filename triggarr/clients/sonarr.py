@@ -9,6 +9,7 @@ import pydantic
 from loguru import logger
 
 from triggarr.clients.base import ArrClient
+from triggarr.models.arr import GrabEvent
 
 
 class SonarrClient(ArrClient):
@@ -20,8 +21,8 @@ class SonarrClient(ArrClient):
     messages and season-level deduplication in the search engine.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0) -> None:
-        super().__init__(base_url, api_key, timeout)
+    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
+        super().__init__(base_url, api_key, timeout, page_size)
         self._app_name = "Sonarr"
 
     async def detect_api_version(self) -> str:
@@ -70,6 +71,22 @@ class SonarrClient(ArrClient):
             "/api/v3/wanted/cutoff",
             extra_params={"includeSeries": "true"},
         )
+
+    async def get_grab_history(self, series_id: int) -> list[GrabEvent]:
+        """Fetch grab history for a specific series from Sonarr.
+
+        Queries /api/v3/history filtered to grabbed events (eventType=1)
+        for the given series ID.  Returns parsed GrabEvent models.
+        """
+        records = await self.get_paginated(
+            "/api/v3/history",
+            extra_params={
+                "seriesId": series_id,
+                "eventType": 1,
+                "sortDirection": "descending",
+            },
+        )
+        return [GrabEvent.model_validate(r) for r in records]
 
     async def search_season(self, series_id: int, season_number: int) -> httpx.Response:
         """Trigger a SeasonSearch command for a specific season."""
