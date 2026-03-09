@@ -78,11 +78,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   1. User can set `TRIGGARR_CONFIG_DIR` env var and the container reads/writes config and database from that directory
   2. User can deploy behind a reverse proxy (e.g., Nginx, Caddy, Traefik) and all CSS/static assets load correctly without broken styles
   3. Existing deployments without `TRIGGARR_CONFIG_DIR` set continue to work with the default config path (backward compatible)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 23-01: TBD
-- [ ] 23-02: TBD
+- [ ] 23-01-PLAN.md -- Configurable config directory and reverse proxy static asset support
 
 ## Progress
 
@@ -115,4 +114,4 @@ Phase 23
 | 20.2 Deep Review — Quality | v2.0 | 2/2 | Complete | 2026-02-26 |
 | 21. Dashboard & Stats | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
-| 23. Deploy Fixes | v2.0-harden | 0/TBD | Not started | - |
+| 23. Deploy Fixes | v2.0-harden | 0/1 | Not started | - |
