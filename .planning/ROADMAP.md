@@ -114,4 +114,4 @@ Phase 23
 | 20.2 Deep Review — Quality | v2.0 | 2/2 | Complete | 2026-02-26 |
 | 21. Dashboard & Stats | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
-| 23. Deploy Fixes | 1/1 | Complete   | 2026-03-09 | - |
+| 23. Deploy Fixes | 1/1 | Complete    | 2026-03-09 | - |
