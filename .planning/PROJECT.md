@@ -67,7 +67,15 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ### Active
 
-(None — planning next milestone)
+#### Current Milestone: v2.2 Skip Unreleased Media
+
+**Goal:** Allow users to skip searching for unreleased media to avoid cam recordings and mismarked content.
+
+**Target features:**
+- Configurable toggle to skip unreleased media during search cycles
+- Skip movies until digital or physical release date has passed (whichever comes first)
+- Skip Sonarr episodes that haven't aired yet
+- Default: enabled (skip unreleased)
 
 ### Out of Scope
 
@@ -137,4 +145,4 @@ Known tech debt: None.
 | Absolute-path-only config dir validation | Prevents relative/traversal path misconfiguration | ✓ Good — v2.1 |
 
 ---
-*Last updated: 2026-03-09 after v2.1 milestone*
+*Last updated: 2026-03-09 after v2.2 milestone started*
