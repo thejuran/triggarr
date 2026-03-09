@@ -801,3 +801,101 @@ def test_filter_unreleased_mixed_list():
     assert len(result) == 2
     assert result[0]["title"] == "Released"
     assert result[1]["title"] == "Unknown"
+
+
+# ---------------------------------------------------------------------------
+# CFG-01: Conditional filter_unreleased_movies in run_radarr_cycle
+# ---------------------------------------------------------------------------
+
+
+async def test_run_radarr_cycle_skip_unreleased_enabled(tmp_path):
+    """With skip_unreleased=True, run_radarr_cycle calls filter_unreleased_movies on missing queue."""
+    from unittest.mock import patch
+
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_state()
+    settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+
+    with patch(
+        "triggarr.search.engine.filter_unreleased_movies",
+        wraps=filter_unreleased_movies,
+    ) as spy:
+        await run_radarr_cycle(client, state, settings, db)
+        spy.assert_called_once()
+
+    await db.close()
+
+
+async def test_run_radarr_cycle_skip_unreleased_disabled(tmp_path):
+    """With skip_unreleased=False, run_radarr_cycle does NOT call filter_unreleased_movies."""
+    from unittest.mock import patch
+
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_state()
+    settings = make_settings(general=GeneralConfig(skip_unreleased=False))
+
+    with patch(
+        "triggarr.search.engine.filter_unreleased_movies",
+        wraps=filter_unreleased_movies,
+    ) as spy:
+        await run_radarr_cycle(client, state, settings, db)
+        spy.assert_not_called()
+
+    await db.close()
+
+
+async def test_run_radarr_cycle_skip_unreleased_never_filters_cutoff(tmp_path):
+    """With skip_unreleased=True, filter_unreleased_movies called once (missing only), not cutoff."""
+    from unittest.mock import patch
+
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+    )
+    client.get_wanted_cutoff = AsyncMock(
+        return_value=[{"id": 2, "title": "Movie B", "monitored": True}]
+    )
+    client.search_movies = AsyncMock()
+
+    state = _default_state()
+    settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+
+    with patch(
+        "triggarr.search.engine.filter_unreleased_movies",
+        wraps=filter_unreleased_movies,
+    ) as spy:
+        await run_radarr_cycle(client, state, settings, db)
+        # Called exactly once (missing queue), not for cutoff queue
+        assert spy.call_count == 1
+
+    await db.close()
