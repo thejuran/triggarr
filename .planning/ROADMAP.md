@@ -73,7 +73,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 ### v2.2 Skip Unreleased Media
 
-- [ ] **Phase 25: Filter Foundation** - Config model field and pure filter functions with comprehensive edge-case tests
+- [x] **Phase 25: Filter Foundation** - Config model field and pure filter functions with comprehensive edge-case tests (completed 2026-03-09)
 - [ ] **Phase 26: Settings UI & Engine Integration** - Web UI toggle, form save/load, and conditional filter wiring into search pipeline
 - [ ] **Phase 27: Dashboard Display** - Eligible-count tracking and skip-count indicators on app cards
 
@@ -89,7 +89,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   3. Movies with null/missing release dates pass through the filter and are searched (not silently blackholed)
   4. Sonarr unaired-episode filtering remains unconditional and unchanged (no new Sonarr filter logic added)
   5. Cutoff-unmet items are never passed through the release-date filter
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 25-01-PLAN.md -- Config field, filter function, and comprehensive tests (TDD)
@@ -154,6 +154,6 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 23. Deploy Fixes | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 24. Hardening | v2.1 | 1/1 | Complete | 2026-03-09 |
-| 25. Filter Foundation | v2.2 | 0/1 | Not started | - |
+| 25. Filter Foundation | 1/1 | Complete   | 2026-03-09 | - |
 | 26. Settings UI & Engine Integration | v2.2 | 0/? | Not started | - |
 | 27. Dashboard Display | v2.2 | 0/? | Not started | - |
