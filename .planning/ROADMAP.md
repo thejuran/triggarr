@@ -155,5 +155,5 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 23. Deploy Fixes | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 24. Hardening | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 25. Filter Foundation | 1/1 | Complete    | 2026-03-09 | - |
-| 26. Settings UI & Engine Integration | 1/1 | Complete   | 2026-03-09 | - |
+| 26. Settings UI & Engine Integration | 1/1 | Complete    | 2026-03-09 | - |
 | 27. Dashboard Display | v2.2 | 0/? | Not started | - |
