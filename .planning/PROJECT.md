@@ -73,13 +73,23 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ### Active
 
-(No active milestone — run `/gsd:new-milestone` to start next)
+## Current Milestone: v2.3 Multi-Instance & Tag Filtering
+
+**Goal:** Support multiple Radarr/Sonarr instances with per-instance tag-based search filtering.
+
+**Target features:**
+- Multiple Radarr/Sonarr instances (named, each with own URL/API key/schedule)
+- Instance management via both TOML config and web UI
+- Per-instance tag filtering for missing queue (e.g. `triggarr-missing` tag)
+- Per-instance tag filtering for cutoff queue (e.g. `triggarr-upgrade` tag)
+- Default behavior unchanged: all monitored items searched when no tag configured
+- Dashboard and search history scoped per instance
 
 ### Out of Scope
 
 - User accounts / authentication — local network tool, no auth needed
 - Lidarr / Readarr / other *arr support — Radarr + Sonarr only
-- Multi-instance support — single Radarr + single Sonarr
+- ~~Multi-instance support~~ — now in scope for v2.3 (GitHub #8)
 - Notifications (Discord, Telegram, Apprise) — web UI log sufficient
 - Prowlarr / indexer management — uses existing *arr search infrastructure
 - Download queue management — *arr apps handle this
@@ -149,4 +159,4 @@ Known tech debt: missing_monitored not in AppState TypedDict (cosmetic); Sonarr 
 | contextlib.suppress for date parsing | ruff SIM105 compliance; cleaner than try/except/pass | ✓ Good — v2.2 |
 
 ---
-*Last updated: 2026-03-09 after v2.2 milestone*
+*Last updated: 2026-03-09 after v2.3 milestone start*
