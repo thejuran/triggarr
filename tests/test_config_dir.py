@@ -51,3 +51,54 @@ def test_state_path_default(monkeypatch: pytest.MonkeyPatch) -> None:
     from triggarr.state import get_state_path
 
     assert get_state_path() == Path("/config/state.json")
+
+
+# ---------------------------------------------------------------------------
+# HARDEN-01..04: Path validation and frozen constants
+# ---------------------------------------------------------------------------
+
+
+def test_relative_path_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_config_dir() raises ValueError for relative paths like 'relative/path'."""
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", "relative/path")
+    from triggarr.models.config import get_config_dir
+
+    with pytest.raises(ValueError, match="must be an absolute path"):
+        get_config_dir()
+
+
+def test_traversal_path_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_config_dir() raises ValueError for relative traversal path '../etc'."""
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", "../etc")
+    from triggarr.models.config import get_config_dir
+
+    with pytest.raises(ValueError, match="must be an absolute path"):
+        get_config_dir()
+
+
+def test_absolute_path_with_dotdot_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_config_dir() with absolute path containing '..' resolves it and succeeds."""
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", "/config/../data")
+    from triggarr.models.config import get_config_dir
+
+    result = get_config_dir()
+    assert result == Path("/data")
+
+
+def test_frozen_constants_not_affected_by_env_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CONFIG_DIR is frozen at import time; changing env var only affects get_config_dir()."""
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", "/original")
+    from triggarr.models.config import CONFIG_DIR, get_config_dir
+
+    # CONFIG_DIR was set at module import time (before this test),
+    # so it won't match /original. The function call should reflect the env var.
+    result_fn = get_config_dir()
+    assert result_fn == Path("/original")
+
+    # Now change the env var
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", "/changed")
+    result_fn_after = get_config_dir()
+    assert result_fn_after == Path("/changed")
+
+    # CONFIG_DIR constant is still the value from first import -- it's frozen
+    assert CONFIG_DIR != result_fn_after, "CONFIG_DIR should be frozen and not track env changes"

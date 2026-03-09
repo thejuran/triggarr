@@ -7,6 +7,7 @@ key preservation, PRG redirect), htmx partials, and search-now validation.
 from __future__ import annotations
 
 import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -737,3 +738,47 @@ def test_format_duration_hours():
     from triggarr.web.routes import _format_duration
 
     assert _format_duration(7500) == "2h 5m"
+
+
+# ---------------------------------------------------------------------------
+# HARDEN-03: Temp file cleanup on os.replace failure
+# ---------------------------------------------------------------------------
+
+
+def test_save_settings_cleans_temp_on_replace_failure(client, test_app, tmp_path):
+    """POST /settings cleans up temp file when os.replace raises OSError (HARDEN-03)."""
+    # Track temp files created in the config directory
+    created_temps: list[str] = []
+    original_named_temp = __import__("tempfile").NamedTemporaryFile
+
+    def tracking_temp(**kwargs):
+        result = original_named_temp(**kwargs)
+        created_temps.append(result.name)
+        return result
+
+    with patch("triggarr.web.routes.tempfile.NamedTemporaryFile", side_effect=tracking_temp), \
+         patch("triggarr.web.routes.os.replace", side_effect=OSError("disk full")):
+        response = client.post(
+            "/settings",
+            data={
+                "log_level": "info",
+                "radarr_url": "http://radarr:7878",
+                "radarr_api_key": "test-key",
+                "radarr_enabled": "on",
+                "radarr_search_interval": "30",
+                "radarr_search_missing_count": "5",
+                "radarr_search_cutoff_count": "5",
+                "sonarr_url": "",
+                "sonarr_api_key": "",
+                "sonarr_search_interval": "30",
+                "sonarr_search_missing_count": "5",
+                "sonarr_search_cutoff_count": "5",
+            },
+            follow_redirects=False,
+        )
+    # The OSError should propagate (500 error)
+    assert response.status_code == 500
+
+    # Verify temp files were cleaned up (don't exist on disk)
+    for temp_path in created_temps:
+        assert not os.path.exists(temp_path), f"Temp file {temp_path} should have been cleaned up"
