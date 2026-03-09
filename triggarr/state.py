@@ -44,6 +44,7 @@ class AppState(TypedDict, total=False):
     connected: bool | None  # True after successful fetch, False after failure
     unreachable_since: str | None  # ISO timestamp of first failure, None when healthy
     missing_count: int | None  # Total wanted-missing items (before filtering)
+    missing_eligible: int | None  # Items eligible for search (after filtering)
     cutoff_count: int | None  # Total cutoff-unmet items (before filtering)
 
 

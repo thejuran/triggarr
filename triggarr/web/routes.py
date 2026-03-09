@@ -131,7 +131,9 @@ def _build_app_context(request: Request, app_name: str) -> dict | None:
         "connected": app_state.get("connected"),
         "unreachable_since": app_state.get("unreachable_since"),
         "missing_count": app_state.get("missing_count"),
+        "missing_eligible": app_state.get("missing_eligible"),
         "cutoff_count": app_state.get("cutoff_count"),
+        "skip_unreleased": settings.general.skip_unreleased,
     }
 
 

@@ -292,6 +292,7 @@ async def run_radarr_cycle(
     missing = filter_monitored(missing)
     if settings.general.skip_unreleased:
         missing = filter_unreleased_movies(missing)
+    state["radarr"]["missing_eligible"] = len(missing)
     cursor = state["radarr"]["missing_cursor"]
     batch, new_cursor = slice_batch(missing, cursor, missing_limit)
     for movie in batch:
@@ -441,6 +442,7 @@ async def run_sonarr_cycle(
     # --- Missing queue ---
     missing_episodes = filter_sonarr_episodes(missing_episodes)
     missing_seasons = deduplicate_to_seasons(missing_episodes)
+    state["sonarr"]["missing_eligible"] = len(missing_seasons)
     cursor = state["sonarr"]["missing_cursor"]
     batch, new_cursor = slice_batch(missing_seasons, cursor, missing_limit)
     for season in batch:
