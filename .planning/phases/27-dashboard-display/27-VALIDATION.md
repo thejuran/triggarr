@@ -1,13 +1,13 @@
 ---
-phase: 25
-slug: filter-foundation
+phase: 27
+slug: dashboard-display
 status: complete
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-03-09
 ---
 
-# Phase 25 — Validation Strategy
+# Phase 27 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution.
 
@@ -17,9 +17,9 @@ created: 2026-03-09
 
 | Property | Value |
 |----------|-------|
-| **Framework** | pytest + pytest-asyncio (asyncio_mode=auto) |
+| **Framework** | pytest + pytest-asyncio (auto mode) |
 | **Config file** | pyproject.toml |
-| **Quick run command** | `uv run pytest tests/test_search.py tests/test_config.py -x -q` |
+| **Quick run command** | `uv run pytest tests/test_web.py tests/test_search.py -x -q` |
 | **Full suite command** | `uv run pytest tests/ -x -q` |
 | **Estimated runtime** | ~5 seconds |
 
@@ -27,7 +27,7 @@ created: 2026-03-09
 
 ## Sampling Rate
 
-- **After every task commit:** Run `uv run pytest tests/test_search.py tests/test_config.py -x -q`
+- **After every task commit:** Run `uv run pytest tests/test_web.py tests/test_search.py -x -q`
 - **After every plan wave:** Run `uv run pytest tests/ -x -q`
 - **Before `/gsd:verify-work`:** Full suite must be green
 - **Max feedback latency:** 5 seconds
@@ -38,10 +38,9 @@ created: 2026-03-09
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 25-01-01 | 01 | 1 | CFG-02 | unit | `uv run pytest tests/test_config.py -x -q -k skip_unreleased` | Yes (3 tests) | ✅ green |
-| 25-01-02 | 01 | 1 | FILT-01 | unit | `uv run pytest tests/test_search.py -x -q -k unreleased` | Yes (17 tests) | ✅ green |
-| 25-01-03 | 01 | 1 | FILT-03 | unit | `uv run pytest tests/test_search.py -x -q -k null` | Yes (5 tests) | ✅ green |
-| 25-01-04 | 01 | 1 | FILT-04 | unit | `uv run pytest tests/test_search.py -x -q -k unreleased` | Yes (17 tests) | ✅ green |
+| 27-01-01 | 01 | 1 | DASH-01 | unit | `uv run pytest tests/test_search.py -k "eligible" -x` | Yes (3 tests) | ✅ green |
+| 27-01-02 | 01 | 1 | DASH-01 | unit | `uv run pytest tests/test_web.py -k "eligible" -x` | Yes (3 tests) | ✅ green |
+| 27-01-03 | 01 | 1 | DASH-02 | unit | `uv run pytest tests/test_web.py -k "skip" -x` | Yes (8 tests) | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -49,17 +48,19 @@ created: 2026-03-09
 
 ## Wave 0 Requirements
 
-- [x] Tests for `filter_unreleased_movies()` in `tests/test_search.py` -- covers FILT-01, FILT-03, FILT-04
-- [x] Test for `skip_unreleased` config field persistence in `tests/test_config.py` -- covers CFG-02
-- [x] No new framework or fixture needs -- existing `make_settings` and test infrastructure sufficient
+- [x] `tests/test_search.py` — eligible count tracking tests
+- [x] `tests/test_web.py` — eligible/total display and skip badge tests
 
-*Existing infrastructure covers framework and fixtures.*
+*Existing infrastructure covers all phase requirements.*
 
 ---
 
 ## Manual-Only Verifications
 
-*All phase behaviors have automated verification.*
+| Behavior | Requirement | Why Manual | Test Instructions |
+|----------|-------------|------------|-------------------|
+| Visual appearance of amber skip badge | DASH-02 | CSS rendering | Run with Radarr instance with unreleased movies, verify badge styling |
+| Real-time HTMX update after first cycle | DASH-01 | Live timing | Start fresh, watch dashboard through first cycle |
 
 ---
 
@@ -82,4 +83,4 @@ created: 2026-03-09
 | Resolved | 0 |
 | Escalated | 0 |
 
-All requirements have automated verification. Tests confirmed green.
+Reconstructed from SUMMARY.md and VERIFICATION.md artifacts. All requirements have automated verification. Tests confirmed green.
