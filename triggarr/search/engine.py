@@ -446,7 +446,8 @@ async def run_sonarr_cycle(
     # --- Missing queue ---
     missing_episodes = filter_sonarr_episodes(missing_episodes)
     missing_seasons = deduplicate_to_seasons(missing_episodes)
-    state["sonarr"]["missing_eligible"] = len(missing_seasons)
+    state["sonarr"]["missing_eligible"] = len(missing_episodes)
+    state["sonarr"]["missing_searchable"] = len(missing_seasons)
     cursor = state["sonarr"]["missing_cursor"]
     batch, new_cursor = slice_batch(missing_seasons, cursor, missing_limit)
     for season in batch:
@@ -486,6 +487,7 @@ async def run_sonarr_cycle(
     # --- Cutoff queue ---
     cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
     cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
+    state["sonarr"]["cutoff_searchable"] = len(cutoff_seasons)
     cursor = state["sonarr"]["cutoff_cursor"]
     batch, new_cursor = slice_batch(cutoff_seasons, cursor, cutoff_limit)
     for season in batch:

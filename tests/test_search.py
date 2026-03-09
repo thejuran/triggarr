@@ -934,12 +934,12 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_disabled(tmp_path
 
 
 async def test_run_sonarr_cycle_eligible_count(tmp_path):
-    """Sonarr missing_eligible reflects len(missing_seasons) after filtering + dedup (DASH-01)."""
+    """Sonarr missing_eligible = filtered episodes, missing_searchable = seasons (DASH-01)."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    # 4 episodes -> 2 unique seasons after dedup (series 10 s1 has 2 eps)
+    # 3 episodes -> 2 unique seasons after dedup (series 10 s1 has 2 eps)
     episodes = [
         _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
         _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=101),
@@ -956,8 +956,9 @@ async def test_run_sonarr_cycle_eligible_count(tmp_path):
 
     result = await run_sonarr_cycle(client, state, settings, db)
 
-    # 3 episodes -> filter_sonarr_episodes -> dedup -> 2 seasons
-    assert result["sonarr"]["missing_eligible"] == 2
+    # 3 filtered episodes, 2 seasons after dedup
+    assert result["sonarr"]["missing_eligible"] == 3
+    assert result["sonarr"]["missing_searchable"] == 2
     await db.close()
 
 

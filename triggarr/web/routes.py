@@ -133,7 +133,9 @@ def _build_app_context(request: Request, app_name: str) -> dict | None:
         "missing_count": app_state.get("missing_count"),
         "missing_eligible": app_state.get("missing_eligible"),
         "missing_monitored": app_state.get("missing_monitored"),
+        "missing_searchable": app_state.get("missing_searchable"),
         "cutoff_count": app_state.get("cutoff_count"),
+        "cutoff_searchable": app_state.get("cutoff_searchable"),
         "skip_unreleased": settings.general.skip_unreleased,
     }
 

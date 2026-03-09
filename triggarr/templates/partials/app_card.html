@@ -43,7 +43,7 @@
         {%- endif -%}
       </p>
       <p class="text-xs text-triggarr-muted">
-        {{ app.missing_cursor }} of {{ app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?') }}
+        {{ app.missing_cursor }} of {{ app.missing_searchable if app.missing_searchable is not none else (app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?')) }}
         {%- if app.missing_pass is defined and app.missing_pass > 0 %}
           {%- set p = app.missing_pass %}
           ({{ p }}{{ 'st' if p % 10 == 1 and p % 100 != 11 else 'nd' if p % 10 == 2 and p % 100 != 12 else 'rd' if p % 10 == 3 and p % 100 != 13 else 'th' }} pass)
@@ -57,7 +57,7 @@
       <span class="text-xs uppercase tracking-wide text-triggarr-muted">Cutoff</span>
       <p class="text-sm font-medium">{{ app.cutoff_count if app.cutoff_count is not none else '&mdash;' }} items</p>
       <p class="text-xs text-triggarr-muted">
-        {{ app.cutoff_cursor }} of {{ app.cutoff_count if app.cutoff_count is not none else '?' }}
+        {{ app.cutoff_cursor }} of {{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}
         {%- if app.cutoff_pass is defined and app.cutoff_pass > 0 %}
           {%- set p = app.cutoff_pass %}
           ({{ p }}{{ 'st' if p % 10 == 1 and p % 100 != 11 else 'nd' if p % 10 == 2 and p % 100 != 12 else 'rd' if p % 10 == 3 and p % 100 != 13 else 'th' }} pass)
