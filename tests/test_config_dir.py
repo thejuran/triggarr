@@ -101,4 +101,4 @@ def test_frozen_constants_not_affected_by_env_change(monkeypatch: pytest.MonkeyP
     assert result_fn_after == Path("/changed")
 
     # CONFIG_DIR constant is still the value from first import -- it's frozen
-    assert CONFIG_DIR != result_fn_after, "CONFIG_DIR should be frozen and not track env changes"
+    assert result_fn_after != CONFIG_DIR, "CONFIG_DIR should be frozen and not track env changes"
