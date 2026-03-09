@@ -10,6 +10,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v1.1 Ship & Document -- Phases 9-12 (shipped 2026-02-24) -- [archive](milestones/v1.1-ROADMAP.md)
 - ✅ v1.2 Polish & Harden -- Phases 13-16 (shipped 2026-02-24) -- [archive](milestones/v1.2-ROADMAP.md)
 - ✅ v2.0 Closed-Loop Tracking -- Phases 17-22 (shipped 2026-03-09) -- [archive](milestones/v2.0-ROADMAP.md)
+- 🚧 v2.0 Harden & Fix -- Phase 23 (in progress)
 
 ## Phases
 
@@ -61,7 +62,32 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 </details>
 
+### v2.0 Harden & Fix (In Progress)
+
+**Milestone Goal:** Fix deployment friction -- configurable config path and reverse proxy compatibility.
+
+- [ ] **Phase 23: Deploy Fixes** - Configurable config directory and reverse proxy CSS compatibility
+
+## Phase Details
+
+### Phase 23: Deploy Fixes
+**Goal**: Users can deploy Triggarr in any Docker environment without path or proxy workarounds
+**Depends on**: Phase 22
+**Requirements**: DEPLOY-01, DEPLOY-02
+**Success Criteria** (what must be TRUE):
+  1. User can set `TRIGGARR_CONFIG_DIR` env var and the container reads/writes config and database from that directory
+  2. User can deploy behind a reverse proxy (e.g., Nginx, Caddy, Traefik) and all CSS/static assets load correctly without broken styles
+  3. Existing deployments without `TRIGGARR_CONFIG_DIR` set continue to work with the default config path (backward compatible)
+**Plans**: TBD
+
+Plans:
+- [ ] 23-01: TBD
+- [ ] 23-02: TBD
+
 ## Progress
+
+**Execution Order:**
+Phase 23
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -89,3 +115,4 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 | 20.2 Deep Review — Quality | v2.0 | 2/2 | Complete | 2026-02-26 |
 | 21. Dashboard & Stats | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
+| 23. Deploy Fixes | v2.0-harden | 0/TBD | Not started | - |

@@ -26,14 +26,14 @@ None planned.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DEPLOY-01 | TBD | Pending |
-| DEPLOY-02 | TBD | Pending |
+| DEPLOY-01 | Phase 23 | Pending |
+| DEPLOY-02 | Phase 23 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 2 total
-- Mapped to phases: 0
-- Unmapped: 2 ⚠️
+- Mapped to phases: 2
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 after initial definition*
+*Last updated: 2026-03-08 after roadmap creation*
