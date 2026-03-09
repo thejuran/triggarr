@@ -21,8 +21,8 @@ Requirements for skip-unreleased-media milestone. Each maps to roadmap phases.
 
 ### Dashboard
 
-- [ ] **DASH-01**: Dashboard shows eligible vs total item counts per app (e.g., "X eligible of Y total")
-- [ ] **DASH-02**: Skip-count indicator visible on app cards when items are being skipped
+- [x] **DASH-01**: Dashboard shows eligible vs total item counts per app (e.g., "X eligible of Y total")
+- [x] **DASH-02**: Skip-count indicator visible on app cards when items are being skipped
 
 ## Future Requirements
 
@@ -49,8 +49,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FILT-02 | Phase 25 | Complete |
 | FILT-03 | Phase 25 | Complete |
 | FILT-04 | Phase 25 | Complete |
-| DASH-01 | Phase 27 | Pending |
-| DASH-02 | Phase 27 | Pending |
+| DASH-01 | Phase 27 | Complete |
+| DASH-02 | Phase 27 | Complete |
 
 **Coverage:**
 - v2.2 requirements: 8 total

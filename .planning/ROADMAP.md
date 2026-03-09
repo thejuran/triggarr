@@ -11,7 +11,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v1.2 Polish & Harden -- Phases 13-16 (shipped 2026-02-24) -- [archive](milestones/v1.2-ROADMAP.md)
 - ✅ v2.0 Closed-Loop Tracking -- Phases 17-22 (shipped 2026-03-09) -- [archive](milestones/v2.0-ROADMAP.md)
 - ✅ v2.1 Harden & Fix -- Phases 23-24 (shipped 2026-03-09) -- [archive](milestones/v2.1-ROADMAP.md)
-- **v2.2 Skip Unreleased Media -- Phases 25-27 (in progress)**
+- **v2.2 Skip Unreleased Media -- Phases 25-27 (complete)**
 
 ## Phases
 
@@ -75,7 +75,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 - [x] **Phase 25: Filter Foundation** - Config model field and pure filter functions with comprehensive edge-case tests (completed 2026-03-09)
 - [x] **Phase 26: Settings UI & Engine Integration** - Web UI toggle, form save/load, and conditional filter wiring into search pipeline (completed 2026-03-09)
-- [ ] **Phase 27: Dashboard Display** - Eligible-count tracking and skip-count indicators on app cards
+- [x] **Phase 27: Dashboard Display** - Eligible-count tracking and skip-count indicators on app cards (completed 2026-03-09)
 
 ## Phase Details
 
@@ -92,7 +92,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 25-01-PLAN.md -- Config field, filter function, and comprehensive tests (TDD)
+- [x] 25-01-PLAN.md -- Config field, filter function, and comprehensive tests (TDD)
 
 ### Phase 26: Settings UI & Engine Integration
 **Goal**: Users can toggle skip-unreleased from the web UI and the filter activates conditionally in the search pipeline
@@ -106,7 +106,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 26-01-PLAN.md -- Settings UI toggle + engine pipeline conditional filter wiring
+- [x] 26-01-PLAN.md -- Settings UI toggle + engine pipeline conditional filter wiring
 
 ### Phase 27: Dashboard Display
 **Goal**: Users can see how many items are eligible vs total and when items are being skipped
@@ -116,10 +116,10 @@ Plans:
   1. Dashboard app cards show eligible item count alongside total count (e.g., "X eligible of Y total")
   2. When items are being skipped, a skip-count indicator is visible on the relevant app card
   3. When skip-unreleased is disabled or no items are skipped, no misleading skip indicator appears
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 27-01-PLAN.md -- Eligible-count state tracking, route threading, and app card display with skip badge
+- [x] 27-01-PLAN.md -- Eligible-count state tracking, route threading, and app card display with skip badge
 
 ## Progress
 
@@ -156,4 +156,4 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 24. Hardening | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 25. Filter Foundation | v2.2 | 1/1 | Complete | 2026-03-09 |
 | 26. Settings UI & Engine Integration | v2.2 | 1/1 | Complete | 2026-03-09 |
-| 27. Dashboard Display | v2.2 | 0/1 | Not started | - |
+| 27. Dashboard Display | v2.2 | 1/1 | Complete | 2026-03-09 |
