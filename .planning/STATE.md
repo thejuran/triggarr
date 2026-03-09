@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Skip Unreleased Media
 status: completed
-stopped_at: Completed 27-01-PLAN.md
-last_updated: "2026-03-09T12:37:03.065Z"
-last_activity: 2026-03-09 -- Completed 27-01 Dashboard Display
+stopped_at: Completed 28-02-PLAN.md
+last_updated: "2026-03-09T13:06:42.391Z"
+last_activity: 2026-03-09 -- Completed 28-01 Fix Skip Badge Math
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 5
+  completed_plans: 5
   percent: 100
 ---
 
@@ -21,26 +21,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 27 - Dashboard Display (complete)
+**Current focus:** Phase 28 - Fix Code Review Findings (complete)
 
 ## Current Position
 
-Phase: 27 (3 of 3 in v2.2)
+Phase: 28 (4 of 4 in v2.2)
 Plan: 1 of 1 in current phase (complete)
-Status: Phase 27 complete -- milestone v2.2 complete
-Last activity: 2026-03-09 -- Completed 27-01 Dashboard Display
+Status: Phase 28 complete -- all code review findings fixed
+Last activity: 2026-03-09 -- Completed 28-01 Fix Skip Badge Math
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 54 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 3)
+- Total plans completed: 55 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 4)
 - Milestones shipped: 5 (v1.0, v1.1, v1.2, v2.0, v2.1)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 27    | 01   | ~10m     | 2     | 6     |
+| 28    | 01   | ~7m      | 1     | 5     |
+| Phase 28 P02 | 7min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -59,6 +61,12 @@ Recent decisions affecting current work:
 - [26-01]: Checkbox at bottom of General section grid, after tracking window
 - [26-01]: Filter call inserted between filter_monitored and cursor/slice_batch
 - [27-01]: missing_eligible captures post-filter count; skip badge restricted to Radarr only
+- [28-01]: missing_monitored set unconditionally after filter_monitored for accurate skip badge math
+- [Phase 28]: No behavioral changes -- purely cosmetic and lint compliance fixes for code review findings
+
+### Roadmap Evolution
+
+- Phase 28 added: Fix code review findings from v2.2
 
 ### Pending Todos
 
@@ -70,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09T12:22:48Z
-Stopped at: Completed 27-01-PLAN.md
-Resume file: .planning/phases/27-dashboard-display/27-01-SUMMARY.md
+Last session: 2026-03-09T13:06:42.389Z
+Stopped at: Completed 28-02-PLAN.md
+Resume file: None
