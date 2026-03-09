@@ -130,4 +130,4 @@ Phase 23 -> Phase 24
 | 21. Dashboard & Stats | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 23. Deploy Fixes | v2.0 | 1/1 | Complete | 2026-03-09 |
-| 24. Hardening | 1/1 | Complete   | 2026-03-09 | - |
+| 24. Hardening | 1/1 | Complete    | 2026-03-09 | - |
