@@ -8,6 +8,7 @@ persisted to SQLite via the ``triggarr.db`` module.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from datetime import UTC, datetime
 
@@ -170,6 +171,56 @@ def filter_sonarr_episodes(episodes: list[dict]) -> list[dict]:
         if air_date > now:
             continue
         result.append(ep)
+    return result
+
+
+def filter_unreleased_movies(movies: list[dict]) -> list[dict]:
+    """Filter out Radarr movies that have not been released digitally or physically.
+
+    A movie is considered released if either digitalRelease or physicalRelease
+    is in the past. Movies with BOTH dates null/missing pass through (not blackholed).
+    Movies with BOTH dates in the future are skipped.
+
+    This filter applies to missing-queue items only. Cutoff-unmet items already
+    have files and must never be passed through this filter.
+
+    Args:
+        movies: List of movie dicts from Radarr wanted/missing API.
+
+    Returns:
+        Movies eligible for searching (released or unknown release date).
+    """
+    now = datetime.now(UTC)
+    result: list[dict] = []
+    for movie in movies:
+        digital_str = movie.get("digitalRelease")
+        physical_str = movie.get("physicalRelease")
+
+        # Parse dates, treating unparseable values as None
+        digital: datetime | None = None
+        physical: datetime | None = None
+        if digital_str is not None:
+            with contextlib.suppress(ValueError, AttributeError):
+                digital = datetime.fromisoformat(digital_str.replace("Z", "+00:00"))
+        if physical_str is not None:
+            with contextlib.suppress(ValueError, AttributeError):
+                physical = datetime.fromisoformat(physical_str.replace("Z", "+00:00"))
+
+        # Both null/unparseable -> pass through (don't blackhole)
+        if digital is None and physical is None:
+            result.append(movie)
+            continue
+
+        # Either date in the past -> released
+        if (digital is not None and digital <= now) or (physical is not None and physical <= now):
+            result.append(movie)
+            continue
+
+        # Both dates in the future (or one future + one null) -> skip
+        logger.debug(
+            "Radarr: Skipping unreleased movie {title}",
+            title=movie.get("title", "unknown"),
+        )
     return result
 
 
