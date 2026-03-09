@@ -1,5 +1,28 @@
 # Milestones
 
+## v2.0 Closed-Loop Tracking (Shipped: 2026-03-09)
+
+**Phases completed:** 8 phases, 18 plans
+**Timeline:** 12 days (Feb 25 – Mar 8, 2026)
+**LOC:** ~8,010 Python | 220+ tests
+**Git range:** 98dc93a..7b1e6fd (67 commits)
+
+**Delivered:** Closed-loop download tracking with grab detection, per-item outcome badges, dashboard effectiveness stats, production hardening, deep security/quality review, and full rename from Fetcharr to Triggarr.
+
+**Key accomplishments:**
+- Closed-loop tracking pipeline: polls Radarr/Sonarr history after searches to detect grabs, correlates via timestamp+itemID windows, updates outcomes atomically with lifetime stats
+- Per-item outcome badges (grabbed/partial/unresolved) in search history and dashboard with color coding and tooltips
+- Dashboard stats cards: aggregate grab effectiveness rate with per-app breakdown, lifetime movies/episodes found, time-to-grab metric, htmx auto-refresh
+- Production hardening: rate limiting (10s window with double-check), health check endpoint, graceful shutdown with 35s lock-drain, CSRF integration test
+- Deep code review: 20 fixes across security (XSS urlencode, race conditions, exception sanitization, migration safety) and quality (type annotations, pass counter, sorted migrations, model validators)
+- Renamed project from Fetcharr to Triggarr across package, Docker, CI/CD, and all documentation
+
+**Tech debt carried forward:**
+- 2 test assertions in test_search.py need updating for DRSEC-07 sanitization change
+- test_search.py hangs on execution (pre-existing)
+
+---
+
 ## v1.0 MVP (Shipped: 2026-02-24)
 
 **Phases completed:** 8 phases, 18 plans
