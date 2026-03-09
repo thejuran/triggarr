@@ -1,220 +1,133 @@
 # Project Research Summary
 
-**Project:** Fetcharr v2.0 — Closed-Loop Download Tracking + Tech Debt
-**Domain:** *arr search automation daemon — download outcome verification and lifetime stats
-**Researched:** 2026-02-24
+**Project:** Triggarr v2.2 -- Skip Unreleased Media
+**Domain:** Release-date filtering for Radarr/Sonarr search automation
+**Researched:** 2026-03-09
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Fetcharr v2.0 transforms the existing fire-and-forget search automation daemon into a closed-loop system: it triggers searches in Radarr/Sonarr (as before) and then polls their history APIs to detect whether those searches actually resulted in grabs. The architecture research is clear that this tracking should integrate as a post-search phase within existing cycle functions — not as a separate scheduler job. The reasoning is solid: the `search_lock` already serializes cycle access, grabs appear in *arr history within 30-90 seconds of a search command, and a single-poll approach avoids coordination complexity between two jobs sharing state. The existing layered architecture (`engine` -> `clients` -> `db`) absorbs all new code cleanly, with only one new source file (`tracking.py`) containing pure correlation functions.
+Triggarr v2.2 is a narrowly-scoped feature addition: a single boolean toggle (`skip_unreleased`) that prevents the search engine from triggering searches on Radarr movies that have no past digital or physical release date. This avoids grabbing cam recordings for movies still only in theaters. The Sonarr side already filters unaired episodes unconditionally via `filter_sonarr_episodes()`, so no Sonarr logic changes are needed -- the toggle controls Radarr filtering only. Zero new dependencies are required; the entire feature is built with Python stdlib `datetime`, existing Pydantic config patterns, and existing Jinja2/htmx UI patterns.
 
-The stack research delivers excellent news: zero new PyPI dependencies are required. Every new capability — history polling, outcome correlation, lifetime stats, rate limiting, CSRF hardening, connection pooling, health check, graceful shutdown — is achievable with the existing stack (Python 3.13, FastAPI, httpx, APScheduler 3.x, aiosqlite, Jinja2, htmx, Tailwind CSS v4) plus stdlib. The Radarr and Sonarr history endpoints are well-documented REST calls verified against OpenAPI specs, and they fit the existing `ArrClient` pattern exactly. The 8 tech debt items are all internal code changes requiring no library additions.
+The recommended approach is a pure filter function (`filter_unreleased_movies()`) inserted into the Radarr search pipeline after `filter_monitored()` and before `slice_batch()`. This mirrors the existing Sonarr filter architecture. The filter checks `digitalRelease` and `physicalRelease` fields from the Radarr API response -- `inCinemas` is deliberately excluded because theatrical-only availability means only cam copies exist. The filter applies ONLY to the missing queue, NOT the cutoff-unmet queue (cutoff items already have a downloaded file and are provably released).
 
-The main risk is the correctness of grab attribution. The *arr history APIs provide no causal link between a search command and a subsequent grab — there is no `commandId` field on history records. Fetcharr must use timestamp-windowed correlation: record when each search fires, poll for grabs within a configurable window afterward, and attribute any grab within that window to fetcharr. This is probabilistic, not deterministic, and the implementation must protect against two well-documented failure modes: false positive attribution (organic RSS grabs counted as fetcharr-triggered) and pruning rows before correlation completes. Both are solvable with the strategies documented in PITFALLS.md and both must be addressed in Phase 1 before any tracking logic is layered on top.
+The primary risk is the null-date edge case: movies where both `digitalRelease` and `physicalRelease` are null. Research produced two conflicting recommendations. STACK.md and FEATURES.md recommend skipping null-date movies (assume unreleased). PITFALLS.md recommends searching null-date movies (assume released, safe default). **The correct answer is PITFALLS.md's approach: when dates are unknown, search anyway.** Silent filtering of movies with incomplete metadata creates invisible data loss -- the worst failure mode. The filter should only skip movies where a date IS present AND is in the future. A secondary risk is the dashboard "X of Y" display becoming misleading after filtering reduces the effective queue size; this should be addressed by tracking eligible counts separately.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The existing stack needs no additions. v2.0 is purely additive changes to existing files plus one new module. The critical insight from STACK.md is that all 8 tech debt items and the entire closed-loop tracking feature fit within the current dependency set. The two items most commonly over-engineered — rate limiting (often drives slowapi/Redis) and connection pooling (often drives aiosqlitepool) — are both resolvable with stdlib `time.monotonic()` and a single shared aiosqlite connection with WAL mode respectively. This is explicitly justified: fetcharr is a single-process, single-user local network tool, and the solutions that match that constraint are simpler and have zero new attack surface.
+No stack changes. Zero new dependencies. Everything needed is already present in the codebase.
 
-**Core technologies:**
-- Python 3.13 + FastAPI: existing application framework — no change needed
-- httpx (AsyncClient): used for new history endpoint calls — same retry logic, same timeout, same error handling as existing `ArrClient` methods
-- aiosqlite: single shared connection with WAL mode replaces connection-per-operation — eliminates concurrent write contention, adds zero deps
-- APScheduler 3.x: post-search tracking integrates as a delay within existing cycle functions — no new scheduler jobs needed
-- Pydantic/pydantic-settings: new config fields (`tracking_delay_seconds`, `history_max_rows`, `page_size`, `request_timeout`) — backward compatible, existing configs work unchanged
-- stdlib `time.monotonic()`: rate limiting on search-now endpoint — 4-line in-memory check, zero deps
-
-**New API endpoints verified (HIGH confidence against OpenAPI specs):**
-- Radarr: `GET /api/v3/history/movie?movieId={id}&eventType=1` — per-movie grab history
-- Sonarr: `GET /api/v3/history/series?seriesId={id}&eventType=1` — per-series grab history
-- `eventType=1` (Grabbed) is integer value 1 in both Radarr and Sonarr; higher enum values diverge between apps
+**Core technologies (all existing):**
+- Python stdlib `datetime` -- ISO 8601 parsing and UTC comparison, already used in `filter_sonarr_episodes()`
+- Pydantic `GeneralConfig` -- one new `bool` field (`skip_unreleased = True`), follows existing pattern
+- Jinja2/htmx -- checkbox toggle in settings UI, identical to existing enable/disable toggles
 
 ### Expected Features
 
-**Must have (table stakes — v2.0 incomplete without these):**
-- Poll Radarr history for grab events after fetcharr-triggered searches
-- Poll Sonarr history for grab events after fetcharr-triggered searches
-- Correlate grabs to fetcharr searches via timestamp + item ID window matching
-- Update search history entries with `grabbed` / `partial` / `unresolved` outcomes
-- Visual outcome badges (`grabbed`, `partial`, `unresolved`) on search history entries
-- `partial` badge for Sonarr season searches (some but not all missing episodes grabbed)
-- Aggregate search effectiveness percentage on dashboard
-- Lifetime stats counters: movies found, movies upgraded, episodes found, episodes upgraded
-- Rate limiting on search-now endpoint (prevents indexer hammering)
-- Health check endpoint (`/health`) with accurate status reporting
-- Graceful shutdown (WAL connection closed, clients closed on SIGTERM)
+**Must have (table stakes):**
+- Global `skip_unreleased` toggle in settings UI and TOML config
+- Filter Radarr movies without a past digital/physical release date (missing queue only)
+- Log skipped-item counts so users understand why search counts changed
+- Settings persistence through save/reload cycle (three-location update: model, template, route)
 
-**Should have (differentiators — complete v2.0 but not blocking):**
-- Configurable tracking window and poll interval via `fetcharr.toml`
-- Per-app effectiveness breakdown (Radarr: X%, Sonarr: Y%)
-- Configurable `page_size`, `history_max_rows`, `request_timeout` (tech debt hardening)
-- Settings UI controls for new config options
-- Color-coded outcome badges (green grabbed, yellow partial, gray unresolved, red failed)
-- Tooltips explaining "unresolved" and "partial" states
+**Should have (differentiators):**
+- Dashboard indicator showing unreleased-skip counts on app cards (low effort, high visibility)
 
-**Defer (v2.1+):**
-- Grab source metadata display (quality, indexer name) per search entry
-- Time-to-grab metric (average seconds from search to grab)
-- Dashboard sparkline/chart for grab rate trend over time
-- Per-indexer effectiveness aggregation (Prowlarr's job)
-- Automated re-search of unresolved items (round-robin already handles naturally)
-- Historical backfill of pre-fetcharr grabs (impossible to attribute correctly)
-
-**Anti-features (explicitly excluded):**
-- Download client integration (qBit/SAB polling) — out of scope; *arr apps manage download clients
-- Webhook receiver for *arr notifications — adds bidirectional coupling and attack surface
-- Full import tracking (downloadFolderImported) — two-phase tracking for marginal value
-- Cookie-based CSRF tokens — sessionless app; Origin/Referer validation is the correct approach
-- slowapi/Redis for rate limiting — single-user local tool; in-memory timestamp check is sufficient
+**Defer:**
+- Per-app skip-unreleased override (Sonarr already filters unconditionally; adds config noise for zero benefit)
+- Configurable release-date offset/delay (Radarr handles this natively via quality profiles)
+- Per-movie force-search overrides (too complex; users can toggle globally and use manual search)
 
 ### Architecture Approach
 
-The architecture recommendation is minimal new components with maximum reuse of the existing layered structure (`__main__.py` -> `startup.py` -> `scheduler.py` -> `engine.py` -> `clients/` + `db.py`). The closed-loop tracking integrates as a post-search phase inside `run_radarr_cycle()` and `run_sonarr_cycle()` — after all searches fire, wait `tracking_delay_seconds` (default 90, configurable), then poll *arr history per searched item, classify outcomes, update DB rows, and increment lifetime stats. The single shared `search_lock` already serializes cycle access so no new locking is needed. Only one new file is created (`tracking.py` — pure correlation functions, no I/O, highly testable).
+The filter is a pure function (`filter_unreleased_movies()`) that takes a list of movie dicts and returns only those with at least one past release date. It sits in the pipeline after `filter_monitored()` and before `slice_batch()`, ensuring batch sizes remain predictable and cursors operate on the filtered list. The existing `filter_sonarr_episodes()` remains unchanged and unconditional -- it already handles Sonarr's equivalent filtering. Config integration touches three files: `models/config.py` (field), `templates/settings.html` (checkbox), `web/routes.py` (form parsing).
 
-**Major components and changes:**
-1. `tracking.py` (NEW) — pure functions `classify_radarr_outcome()` and `classify_sonarr_outcome()` that take pre-fetched history records and return outcome strings; no I/O, no state mutation
-2. `db.py` (MODIFY) — shared connection via `get_connection()` / WAL mode; new `update_search_outcome()`, `increment_stat()`, `get_lifetime_stats()`; `insert_search_entry()` returns row ID; pruning excludes `outcome='searched'` rows
-3. `clients/radarr.py` + `clients/sonarr.py` (MODIFY) — add `get_movie_history()` and `get_series_history()` methods; per-app event type constants
-4. `search/engine.py` (MODIFY) — post-search tracking phase; collect entry IDs from inserts; wire correlation logic
-5. `web/routes.py` (MODIFY) — `/health` endpoint with state-based status reporting; rate limit dict on `app.state`; lifetime stats display
-6. `models/config.py` (MODIFY) — new config fields with backward-compatible defaults
-7. `lifetime_stats` SQLite table (NEW) — key/value counter table; atomic increments; survives `state.json` resets
-
-**Critical schema dependency:** `search_history` currently does not store `movieId` / `seriesId` / `seasonNumber` / `tracked_until`. Without these, grab correlation is impossible. This schema migration is the absolute first deliverable.
+**Major components:**
+1. `filter_unreleased_movies()` + `_has_past_date()` in `search/engine.py` -- pure filter function, no side effects
+2. `GeneralConfig.skip_unreleased` in `models/config.py` -- boolean toggle, default True
+3. Settings UI checkbox in `settings.html` + form handling in `routes.py` -- three-location config pattern
 
 ### Critical Pitfalls
 
-1. **False positive grab attribution** — Organic RSS grabs appear in *arr history after a fetcharr search on the same item, inflating lifetime stats. Prevention: tight configurable time window (default 30 min); timestamp-windowed correlation only; document that stats are probabilistic.
-
-2. **Pruning search history rows before correlation completes** — The existing auto-prune deletes `searched` entries that the history poller needs to UPDATE. Prevention: change pruning logic to exclude `outcome='searched'` rows; add secondary limit that marks aged pending rows as `unresolved` before pruning.
-
-3. **SQLite write contention from concurrent writers** — Adding a history polling phase creates two async writers without the current single-writer guarantee. Prevention: enable WAL mode + `busy_timeout=5000` in `init_db()` before adding any new writers; use a single shared connection.
-
-4. **Sonarr season correlation complexity** — "Partial" vs "grabbed" determination requires recording how many episodes were missing at search time, not just the total season episode count. Prevention: store `missing_episode_count` at search time; compare grabbed episode count to recorded missing count.
-
-5. **Lifetime stats double-counting on container restart** — In-memory counters reset and re-process old grab events on restart. Prevention: store lifetime stats in SQLite `lifetime_stats` table (not `state.json`); persist high-water marks; make stats derivable from `search_history` via `COUNT WHERE outcome='grabbed'`.
+1. **Null dates treated as unreleased (silent data loss)** -- Movies with no metadata dates get silently filtered forever. Fix: search when dates are unknown, only skip when a date IS present AND is in the future. Log null-date items at debug level.
+2. **Filter applied to cutoff-unmet queue** -- Cutoff items already have files (provably released). Applying release-date filter would incorrectly skip upgrades for movies with incomplete metadata. Fix: filter missing queue only.
+3. **Dashboard "X of Y" becomes misleading** -- Raw `missing_count` stays at unfiltered total while cursor operates on filtered list. Fix: track and display eligible count separately.
+4. **Settings save drops new field** -- The `save_settings` route manually picks form fields. Missing the new field causes it to silently revert to default on any settings save. Fix: update all three locations (model, template, route) and test the round-trip.
+5. **Sonarr double-filtering risk** -- Adding a second Sonarr filter with different logic could cause subtle bugs. Fix: leave Sonarr filtering completely untouched; the toggle controls Radarr only.
 
 ## Implications for Roadmap
 
-Based on combined research, the dependency chain dictates phase ordering. The architecture research provides an explicit 5-phase build order that matches the feature priority table in FEATURES.md and maps directly to pitfall prevention requirements in PITFALLS.md.
+Based on research, this is a 3-phase feature with clear dependency ordering.
 
-### Phase 1: Foundation and DB Preparation
+### Phase 1: Config and Filter Function
 
-**Rationale:** The schema migration and WAL mode enablement are hard prerequisites for every subsequent phase. Building history polling on top of a connection-per-operation pattern without WAL mode will produce intermittent "database is locked" errors under concurrent access. Building correlation logic without `item_id` and `season_number` columns is impossible. These changes must land first.
+**Rationale:** Everything depends on the config field existing and the filter function being correct. This is the foundation. Pure functions are fully testable without integration concerns.
+**Delivers:** `skip_unreleased` config field, `filter_unreleased_movies()` function, `_has_past_date()` helper, comprehensive unit tests covering all edge cases (null dates, future dates, past dates, mixed, malformed).
+**Addresses:** Core table-stakes feature (Radarr release-date filtering), config model addition, TOML template update.
+**Avoids:** Null-date silent filtering (Pitfall 1), cutoff-queue misapplication (Pitfall 4).
 
-**Delivers:** DB shared connection with WAL mode; search history schema extended with `item_id`, `season_number`, `tracked_until`; `insert_search_entry()` returns row ID; pruning excludes pending rows; `lifetime_stats` table created; configurable `page_size`, `history_max_rows`, `request_timeout` added to config models.
+### Phase 2: Engine Integration and Settings UI
 
-**Addresses:** All prerequisite table stakes (schema migration, configurable pagination/timeout/row-limit).
+**Rationale:** With the filter function tested, wire it into the search pipeline and make it configurable from the UI. These are coupled -- the filter must be conditional on the setting, and the setting must be saveable.
+**Delivers:** Conditional filter call in `run_radarr_cycle()` (missing queue only), debug/info logging for filtered counts, settings UI checkbox, form save/load round-trip.
+**Addresses:** Settings UI toggle (table stakes), log transparency (table stakes), three-location config pattern.
+**Avoids:** Filter placed after `slice_batch()` (anti-pattern), settings save dropping the field (Pitfall 8), cursor reset temptation (Pitfall 11).
 
-**Avoids:** SQLite write contention (Pitfall 5), pruning-vs-correlation race (Pitfall 10 in PITFALLS.md).
+### Phase 3: Dashboard and Polish
 
-### Phase 2: Security and Operations (Tech Debt)
-
-**Rationale:** Tech debt items are small, independent, and improve production safety before the larger tracking feature lands. Rate limiting and health check need to be in place before v2.0 is called releasable. Each item is self-contained and can be implemented, tested, and verified in isolation with no dependencies on tracking logic.
-
-**Delivers:** Rate limiting on search-now (in-memory `time.monotonic()` check, 429 with message); CSRF middleware verification and documentation; `/health` endpoint returning 503 when *arr unreachable; graceful shutdown cleanup (WAL connection close in lifespan `finally`); Dockerfile `STOPSIGNAL SIGTERM`.
-
-**Addresses:** All 8 tech debt table-stakes features.
-
-**Avoids:** Health check false positive (PITFALLS.md Pitfall 12), CSRF scope ambiguity (Pitfall 6), graceful shutdown data corruption (Pitfall 9).
-
-### Phase 3: Tracking Infrastructure
-
-**Rationale:** With DB foundation in place and connections managed correctly, the core tracking components can be built in isolation and fully tested before wiring into the search engine. `tracking.py` pure functions are testable without any mock I/O. The new client history methods follow the exact same pattern as existing client methods and can be independently verified against live *arr instances.
-
-**Delivers:** `RadarrClient.get_movie_history()` and `SonarrClient.get_series_history()` methods with per-app event type constants; `tracking.py` with `classify_radarr_outcome()` and `classify_sonarr_outcome()` pure functions; `update_search_outcome()`, `increment_stat()`, `get_lifetime_stats()` in `db.py`.
-
-**Addresses:** History polling capability for both Radarr and Sonarr; per-app API asymmetry handling.
-
-**Avoids:** Radarr/Sonarr API asymmetry (PITFALLS.md Pitfall 3), pagination mishandling (Pitfall 2), history timeout surfacing as crashes (Pitfall 13).
-
-### Phase 4: Tracking Integration
-
-**Rationale:** With infrastructure tested in isolation, wiring into `engine.py` is straightforward. The post-search delay pattern is fully spec'd in ARCHITECTURE.md with explicit code examples. This phase activates the core v2.0 feature — closed-loop tracking becomes live.
-
-**Delivers:** Post-search tracking phase in `run_radarr_cycle()` and `run_sonarr_cycle()`; `tracking_delay_seconds` config field (default 90s, 0 disables tracking); Sonarr partial detection comparing grabbed-count to missing-count-at-search-time; outcome updates flowing to `search_history` rows; lifetime stats incrementing on confirmed grabs; tracking failures non-fatal (log at debug, retain "searched" outcome).
-
-**Addresses:** Core tracking table stakes (correlation, outcome updates, partial detection, lifetime stats).
-
-**Avoids:** False positive attribution (PITFALLS.md Pitfall 1), Sonarr season correlation complexity (Pitfall 4), stats double-counting (Pitfall 11), history polling frequency abuse (Pitfall 8).
-
-### Phase 5: Dashboard Integration
-
-**Rationale:** Presentation changes are lowest risk and depend entirely on Phases 3-4 having produced real data. Template changes are isolated to `templates/` and do not touch business logic. Stats cards and badges can be built and visually verified end-to-end once correlation data flows.
-
-**Delivers:** Color-coded outcome badges in search history UI; aggregate effectiveness stats display (X of Y searches resulted in grabs, by app); lifetime stats cards on dashboard; settings UI controls for new config options; tooltips explaining "unresolved" and "partial" states; "partial (3 of 5 episodes)" detail in badge labels.
-
-**Addresses:** Dashboard and badge features; configurable tracking window; per-app effectiveness breakdown; UX clarity for new outcome states.
-
-**Avoids:** UX pitfalls (unexplained "unresolved" badge, ambiguous "partial" without episode counts).
+**Rationale:** With the core feature working, address the UX gap in dashboard display and add the skip-count indicator.
+**Delivers:** Eligible-count tracking in app state, updated "X of Y" display, unreleased-skip count on app cards, integration tests for full cycle with toggle on/off.
+**Addresses:** Dashboard indicator (differentiator), "X of Y" confusion (Pitfall 3).
+**Avoids:** Over-engineering performance (Pitfall 12).
 
 ### Phase Ordering Rationale
 
-- Foundation before everything else: WAL mode and schema migration are prerequisites — building on connection-per-op without WAL guarantees intermittent failures once two async paths write to the same DB
-- Tech debt before tracking: small independent items removed from the tracking phase to keep phases focused; security/ops hardening belongs before a complex new feature ships
-- Infrastructure before integration: `tracking.py` pure functions can be fully unit-tested in Phase 3; Phase 4 integration depends on them being correct and client methods being verified
-- Dashboard last: presentation requires data; data requires the correlation pipeline; template changes are reversible and low-risk
+- Phase 1 before Phase 2 because the filter function must exist and be tested before it can be wired into the engine.
+- Phase 2 before Phase 3 because the dashboard changes depend on the filter being active and producing skip counts.
+- Sonarr is deliberately excluded from all phases -- its filtering is already implemented and unconditional.
+- The cutoff queue is deliberately excluded from filtering in all phases -- cutoff items are provably released.
 
 ### Research Flags
 
-Phases with well-documented patterns (skip research-phase during planning):
-- **Phase 1 (Foundation):** Standard aiosqlite and SQLite WAL patterns; Pydantic config additions are routine; schema migration follows established codebase pattern with `contextlib.suppress` guards
-- **Phase 2 (Tech Debt):** Each item explicitly documented in STACK.md and ARCHITECTURE.md with code examples; no novel patterns
-- **Phase 5 (Dashboard):** Standard htmx template modifications; no new technology
+Phases with standard patterns (skip phase research):
+- **Phase 1:** Pure function, established date-parsing pattern from `filter_sonarr_episodes()`, well-documented Radarr API fields.
+- **Phase 2:** Follows existing config/UI patterns exactly (checkbox toggle, form parsing, conditional filter call).
+- **Phase 3:** Follows existing app-state and template patterns.
 
-Phases that may benefit from targeted implementation verification:
-- **Phase 3 (Tracking Infrastructure):** Radarr event type integer values beyond `grabbed=1` should be verified against a live instance — ARCHITECTURE.md flags MEDIUM confidence on exact Radarr integers; Sonarr values are HIGH confidence. Verify before finalizing per-app enum constants.
-- **Phase 4 (Tracking Integration):** The post-search delay within a cycle extends cycle duration significantly (90s default). Verify behavior with short search intervals (<10 min) before release; document the interaction in config comments.
+No phases need deeper research. This is a well-precedented feature addition following established codebase patterns throughout.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies confirmed; all existing library capabilities verified against official docs and OpenAPI specs; no version conflicts |
-| Features | HIGH (API mechanics) / MEDIUM (UX patterns) | History API fields and endpoints verified against Radarr/Sonarr OpenAPI specs, Go SDK, and pyarr docs; "search effectiveness" dashboard UX has no canonical reference but is straightforward to implement |
-| Architecture | MEDIUM-HIGH | Integration pattern (post-search phase) is well-reasoned from codebase analysis; Radarr history endpoint confirmed via OpenAPI; some exact query parameter behavior needs live instance verification |
-| Pitfalls | HIGH | Critical pitfalls verified against official SQLite docs, Radarr/Sonarr issue trackers, and direct codebase analysis; mitigation strategies are concrete and code-level |
+| Stack | HIGH | Zero new dependencies; all patterns verified in existing codebase |
+| Features | HIGH | Narrow scope, clear table stakes vs. defer decisions, edge cases thoroughly analyzed |
+| Architecture | HIGH | Pipeline insertion point verified via direct codebase analysis; cursor behavior confirmed safe |
+| Pitfalls | HIGH | Pitfalls derived from codebase analysis and Radarr API field verification; community issues confirm edge cases |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Radarr `MovieHistoryEventType` integer values beyond `grabbed=1`:** ARCHITECTURE.md notes these may differ from Sonarr. The `grabbed` value (1) is confirmed for both apps; `downloadFolderImported` is 2 in Radarr but 3 in Sonarr. For v2.0 (grab detection only via `eventType=1`), this gap does not block implementation. If import detection is ever added, verify against a live Radarr instance first.
-- **Sonarr `includeSeries`/`includeEpisode` parameter status:** FEATURES.md notes these were broken in older Sonarr versions (issue #4727 closed as completed). Since fetcharr does not need the expanded objects (only episode IDs for correlation), excluding these params avoids any residual risk entirely.
-- **Tracking delay interaction with short search intervals:** If a user configures a 5-minute search interval and a 90-second tracking delay, the tracking delay consumes 30% of the cycle window. The `search_lock` prevents overlapping cycles, but cycle start times will drift. Document this in config comments rather than engineer around it.
-- **Sonarr season pack grab counting:** Season pack grabs in Sonarr are expected to create one history event per episode within the pack. The correlation logic assumes this. Verify against a live Sonarr instance during Phase 4 implementation before marking season correlation complete.
+- **Null-date behavior must be decided definitively at implementation time.** Research files disagree (STACK.md says skip, PITFALLS.md says search). Recommendation: follow PITFALLS.md (search when uncertain). Validate against a live Radarr instance to see how common null-date movies are in practice.
+- **Radarr `status` field usage.** STACK.md says ignore it entirely; PITFALLS.md says use it as a fallback (if `status == "released"`, search even if dates are null). Recommendation: use dates only for simplicity, but log `status` at debug level for future analysis. Do not add `status` checks in v2.2.
+- **Dashboard eligible-count display.** The exact UI treatment (replace "X of Y" vs. show both raw and eligible) should be decided during Phase 3 planning based on available template space.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- Radarr OpenAPI specification — `https://raw.githubusercontent.com/Radarr/Radarr/develop/src/Radarr.Api.V3/openapi.json` — `/history`, `/history/movie`, `/history/since` endpoints; query parameters; response schema
-- Sonarr OpenAPI specification — `https://raw.githubusercontent.com/Sonarr/Sonarr/develop/src/Sonarr.Api.V3/openapi.json` — `/history`, `/history/series` endpoints; eventType filter
-- Sonarr GitHub issue #3587 — confirms Sonarr EpisodeHistoryEventType integer enum: Unknown=0, Grabbed=1, SeriesFolderImported=2, DownloadFolderImported=3, DownloadFailed=4, Deleted=5, Renamed=6, DownloadIgnored=7
-- pyarr Radarr docs — `https://docs.totaldebug.uk/pyarr/modules/radarr.html` — MovieHistoryEventType values; `get_movie_history(id, event_type)` signature
-- Sonarr EpisodeHistory.cs source — definitive enum values and field definitions
-- SQLite WAL mode documentation — `https://sqlite.org/wal.html` — WAL mode concurrency behavior; PRAGMA journal_mode=WAL
-- Fetcharr codebase (direct analysis, 2026-02-24) — `db.py`, `engine.py`, `state.py`, `routes.py`, `middleware.py`, `scheduler.py`
-- FastAPI lifespan events docs — `https://fastapi.tiangolo.com/advanced/events/` — shutdown lifecycle
-- httpx timeout docs — `https://www.python-httpx.org/advanced/timeouts/` — Timeout class behavior
+- Triggarr codebase (v2.1): `search/engine.py`, `models/config.py`, `web/routes.py`, `templates/settings.html`, `state.py` -- direct code analysis
+- Radarr `MovieResource.cs`: https://github.com/Radarr/Radarr/blob/develop/src/Radarr.Api.V3/Movies/MovieResource.cs
+- Sonarr `EpisodeResource.cs`: https://github.com/Sonarr/Sonarr/blob/develop/src/Sonarr.Api.V3/Episodes/EpisodeResource.cs
+- Radarr API docs: https://radarr.video/docs/api/
 
 ### Secondary (MEDIUM confidence)
-- golift/starr Sonarr package — `https://pkg.go.dev/golift.io/starr/sonarr` — HistoryRecord struct; FilterGrabbed=1 constant
-- Go Radarr SDK (SkYNewZ) — `https://pkg.go.dev/github.com/SkYNewZ/radarr` — Record struct with field definitions including `downloadId` omitempty
-- Sonarr GitHub issue #4727 — `/history/series` endpoint; `seriesId` param; `includeSeries`/`includeEpisode` fix confirmed
-- Sonarr GitHub issue #4759 — command API does not link to resulting history events; confirms poll-based approach required
-- DeepWiki Radarr REST API — `/history/since` endpoint existence; HistoryService architecture
-- FastAPI graceful shutdown discussion #6912 — confirms uvicorn handles SIGTERM via lifespan; custom handlers risk interference
-- arr-tracker-source-tagger — downloadId correlation approach for grab-to-import matching
-- aiosqlite "database is locked" prevention — WAL mode + busy_timeout resolves concurrent write issues
-
-### Tertiary (LOW confidence)
-- Huntarr fork (zephyrnux) — competitor analysis; no grab tracking in competitor; command completion monitoring only
-- Huntarr security incident coverage (2026-02-24) — competitor context; main repo deleted post-incident
-- aiosqlitepool GitHub — connection pooling for aiosqlite; evaluated and rejected as overkill for fetcharr's workload
+- Radarr status/date mismatches: GitHub issues #4460, #4920, #5647, #9849
+- Radarr JSON naming convention: Go client struct tags (third-party confirmation)
+- pyarr/pycliarr/ArrAPI documentation (third-party API wrappers confirming field names)
 
 ---
-*Research completed: 2026-02-24*
+*Research completed: 2026-03-09*
 *Ready for roadmap: yes*
