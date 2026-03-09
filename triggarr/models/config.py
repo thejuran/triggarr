@@ -13,12 +13,23 @@ def get_config_dir() -> Path:
     """Return the config directory, respecting TRIGGARR_CONFIG_DIR env var.
 
     Defaults to /config when the env var is not set (backward compatible).
+
+    Raises:
+        ValueError: If TRIGGARR_CONFIG_DIR is set to a relative path.
     """
-    return Path(os.environ.get("TRIGGARR_CONFIG_DIR", "/config"))
+    raw = os.environ.get("TRIGGARR_CONFIG_DIR", "/config")
+    path = Path(raw)
+    if not path.is_absolute():
+        msg = f"TRIGGARR_CONFIG_DIR must be an absolute path, got: {raw}"
+        raise ValueError(msg)
+    return path.resolve()
 
 
 CONFIG_DIR = get_config_dir()
 CONFIG_PATH = CONFIG_DIR / "triggarr.toml"
+# NOTE: CONFIG_DIR and CONFIG_PATH are evaluated once at first import.
+# Changing TRIGGARR_CONFIG_DIR after import has no effect on these constants.
+# Functions accept path parameters to allow testing without module reload.
 
 
 class ArrConfig(BaseModel):

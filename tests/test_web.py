@@ -745,7 +745,7 @@ def test_format_duration_hours():
 # ---------------------------------------------------------------------------
 
 
-def test_save_settings_cleans_temp_on_replace_failure(client, test_app, tmp_path):
+def test_save_settings_cleans_temp_on_replace_failure(test_app, tmp_path):
     """POST /settings cleans up temp file when os.replace raises OSError (HARDEN-03)."""
     # Track temp files created in the config directory
     created_temps: list[str] = []
@@ -756,29 +756,31 @@ def test_save_settings_cleans_temp_on_replace_failure(client, test_app, tmp_path
         created_temps.append(result.name)
         return result
 
-    with patch("triggarr.web.routes.tempfile.NamedTemporaryFile", side_effect=tracking_temp), \
-         patch("triggarr.web.routes.os.replace", side_effect=OSError("disk full")):
-        response = client.post(
-            "/settings",
-            data={
-                "log_level": "info",
-                "radarr_url": "http://radarr:7878",
-                "radarr_api_key": "test-key",
-                "radarr_enabled": "on",
-                "radarr_search_interval": "30",
-                "radarr_search_missing_count": "5",
-                "radarr_search_cutoff_count": "5",
-                "sonarr_url": "",
-                "sonarr_api_key": "",
-                "sonarr_search_interval": "30",
-                "sonarr_search_missing_count": "5",
-                "sonarr_search_cutoff_count": "5",
-            },
-            follow_redirects=False,
-        )
+    with TestClient(test_app, raise_server_exceptions=False) as tc:
+        with patch("triggarr.web.routes.tempfile.NamedTemporaryFile", side_effect=tracking_temp), \
+             patch("triggarr.web.routes.os.replace", side_effect=OSError("disk full")):
+            response = tc.post(
+                "/settings",
+                data={
+                    "log_level": "info",
+                    "radarr_url": "http://radarr:7878",
+                    "radarr_api_key": "test-key",
+                    "radarr_enabled": "on",
+                    "radarr_search_interval": "30",
+                    "radarr_search_missing_count": "5",
+                    "radarr_search_cutoff_count": "5",
+                    "sonarr_url": "",
+                    "sonarr_api_key": "",
+                    "sonarr_search_interval": "30",
+                    "sonarr_search_missing_count": "5",
+                    "sonarr_search_cutoff_count": "5",
+                },
+                follow_redirects=False,
+            )
     # The OSError should propagate (500 error)
     assert response.status_code == 500
 
     # Verify temp files were cleaned up (don't exist on disk)
+    assert len(created_temps) > 0, "At least one temp file should have been created"
     for temp_path in created_temps:
         assert not os.path.exists(temp_path), f"Temp file {temp_path} should have been cleaned up"

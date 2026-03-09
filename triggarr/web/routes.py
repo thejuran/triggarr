@@ -7,6 +7,7 @@ and partial endpoints for htmx fragment updates.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 import time
@@ -311,7 +312,12 @@ async def save_settings(request: Request) -> RedirectResponse:
         tmp.write(content)
         tmp.flush()
         os.fsync(tmp.fileno())
-    os.replace(tmp.name, str(config_path))
+    try:
+        os.replace(tmp.name, str(config_path))
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp.name)
+        raise
     os.chmod(config_path, 0o600)
     request.app.state.settings = new_settings
 

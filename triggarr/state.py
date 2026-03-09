@@ -28,6 +28,9 @@ def get_state_path() -> Path:
 
 
 STATE_PATH = get_state_path()
+# NOTE: STATE_PATH is evaluated once at first import.
+# Changing TRIGGARR_CONFIG_DIR after import has no effect on this constant.
+# Functions accept path parameters to allow testing without module reload.
 
 
 class AppState(TypedDict, total=False):
