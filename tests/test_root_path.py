@@ -1,7 +1,8 @@
-"""Tests for ROOT_PATH / reverse proxy support.
+"""Tests for reverse proxy support (ROOT_PATH + proxy headers).
 
 Verifies that when ROOT_PATH is set, uvicorn root_path is configured
 and all URLs (static assets, nav links, htmx endpoints) respect the prefix.
+Also verifies proxy_headers is enabled so X-Forwarded-Proto is respected.
 """
 
 from __future__ import annotations
@@ -39,3 +40,14 @@ def test_nav_links_use_url_for() -> None:
 
     # Should use url_for (or request.url_for)
     assert "url_for" in content, "base.html should use url_for for nav links"
+
+
+def test_proxy_headers_enabled() -> None:
+    """Uvicorn config includes proxy_headers so X-Forwarded-Proto is respected."""
+    import inspect
+
+    from triggarr.__main__ import _run
+
+    source = inspect.getsource(_run)
+    assert "proxy_headers=True" in source
+    assert "forwarded_allow_ips" in source

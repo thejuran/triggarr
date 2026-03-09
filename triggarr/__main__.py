@@ -59,6 +59,8 @@ async def _run() -> None:
         port=8080,
         log_level="warning",
         root_path=root_path,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
     server = uvicorn.Server(config)
     await server.serve()
