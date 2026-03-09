@@ -103,10 +103,10 @@ Plans:
   2. Toggle state saves correctly and survives settings page reload (three-location round-trip: model, template, route)
   3. When enabled, Radarr missing-queue searches skip movies without a past release date (filter runs after filter_monitored, before cursor/slice_batch)
   4. When disabled, all monitored Radarr missing items are searched regardless of release date
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 26-01: TBD
+- [ ] 26-01-PLAN.md -- Settings UI toggle + engine pipeline conditional filter wiring
 
 ### Phase 27: Dashboard Display
 **Goal**: Users can see how many items are eligible vs total and when items are being skipped
@@ -155,5 +155,5 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 23. Deploy Fixes | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 24. Hardening | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 25. Filter Foundation | 1/1 | Complete    | 2026-03-09 | - |
-| 26. Settings UI & Engine Integration | v2.2 | 0/? | Not started | - |
+| 26. Settings UI & Engine Integration | v2.2 | 0/1 | Not started | - |
 | 27. Dashboard Display | v2.2 | 0/? | Not started | - |
