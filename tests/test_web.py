@@ -188,7 +188,7 @@ def test_save_settings_writes_toml(client, test_app, tmp_path):
         follow_redirects=False,
     )
     assert response.status_code == 303, f"Expected 303 redirect, got {response.status_code}"
-    assert response.headers["location"] == "/settings"
+    assert response.headers["location"].endswith("/settings")
 
     # Verify TOML was written
     config_path = test_app.state.config_path
@@ -277,7 +277,7 @@ def test_save_settings_rejects_both_zero_counts(client, test_app, tmp_path):
         follow_redirects=False,
     )
     assert response.status_code == 303, f"Expected 303 redirect, got {response.status_code}"
-    assert response.headers["location"] == "/settings"
+    assert response.headers["location"].endswith("/settings")
     # Config file should NOT have been written (validation rejected the request)
     assert not test_app.state.config_path.exists(), "Config should not be written when both counts are 0"
 
@@ -304,7 +304,7 @@ def test_save_settings_accepts_zero_missing_with_positive_cutoff(client, test_ap
         follow_redirects=False,
     )
     assert response.status_code == 303, f"Expected 303 redirect, got {response.status_code}"
-    assert response.headers["location"] == "/settings"
+    assert response.headers["location"].endswith("/settings")
     # Config file SHOULD have been written (0 missing is valid when cutoff > 0)
     assert test_app.state.config_path.exists(), "Config should be written when one count is positive"
     content = test_app.state.config_path.read_text()
@@ -409,13 +409,17 @@ def test_history_page_has_nav_link(client):
     """GET /history nav contains active History link with text-white class."""
     response = client.get("/history")
     assert response.status_code == 200
-    assert 'href="/history"' in response.text
+    # url_for returns full URL in test client (http://testserver/history)
+    assert "/history" in response.text
     # The history page sets nav_history_class to text-white (active)
-    # Find the <a> tag containing href="/history" and check its class
+    # Find the <a> tag containing the history href and check its class
     text = response.text
-    history_link_start = text.index('href="/history"')
+    # Match the href ending with /history (url_for produces full URL in tests)
+    import re
+    match = re.search(r'href="[^"]*(/history)"', text)
+    assert match, "History nav link should be present"
+    history_link_start = match.start()
     a_start = text.rfind("<a", 0, history_link_start)
-    # Get the full <a> tag (up to closing >)
     a_end = text.index(">", history_link_start)
     a_tag = text[a_start:a_end + 1]
     assert "text-white" in a_tag, "History nav link should have active text-white class"
@@ -473,7 +477,8 @@ def test_dashboard_nav_has_history_link(client):
     """GET / dashboard nav bar contains History link."""
     response = client.get("/")
     assert response.status_code == 200
-    assert 'href="/history"' in response.text
+    # url_for returns full URL in test client (http://testserver/history)
+    assert "/history" in response.text
 
 
 # ---------------------------------------------------------------------------
@@ -622,7 +627,7 @@ def test_stats_row_partial_returns_200(client):
     response = client.get("/partials/stats-row")
     assert response.status_code == 200
     assert "Grab Rate" in response.text
-    assert 'hx-get="/partials/stats-row"' in response.text
+    assert "/partials/stats-row" in response.text
     assert "every 30s" in response.text
 
 

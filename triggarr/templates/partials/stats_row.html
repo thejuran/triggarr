@@ -1,5 +1,5 @@
 <div id="stats-row"
-     hx-get="/partials/stats-row"
+     hx-get="{{ request.url_for('partial_stats_row') }}"
      hx-trigger="every 30s"
      hx-swap="outerHTML"
      class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">

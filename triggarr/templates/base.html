@@ -12,15 +12,15 @@
     <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
       <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
       <div class="flex items-center gap-6">
-        <a href="/"
+        <a href="{{ request.url_for('dashboard') }}"
            class="{% block nav_dashboard_class %}text-white{% endblock %} hover:text-white text-sm">
           Dashboard
         </a>
-        <a href="/history"
+        <a href="{{ request.url_for('history_page') }}"
            class="{% block nav_history_class %}text-triggarr-muted{% endblock %} hover:text-white text-sm">
           History
         </a>
-        <a href="/settings"
+        <a href="{{ request.url_for('settings_page') }}"
            class="{% block nav_settings_class %}text-triggarr-muted{% endblock %} hover:text-white text-sm">
           Settings
         </a>

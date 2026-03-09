@@ -287,7 +287,7 @@ async def save_settings(request: Request) -> RedirectResponse:
         valid, err = validate_arr_url(url)
         if not valid:
             logger.warning("{name}: URL rejected -- {err}", name=name.title(), err=err)
-            return RedirectResponse(url="/settings", status_code=303)
+            return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
         new_config[name] = {
             "url": url,
@@ -303,7 +303,7 @@ async def save_settings(request: Request) -> RedirectResponse:
         new_settings = SettingsModel(**new_config)
     except pydantic.ValidationError as exc:
         logger.warning("Invalid settings rejected: {exc}", exc=exc)
-        return RedirectResponse(url="/settings", status_code=303)
+        return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
     # Config is valid -- write to disk
     content = tomli_w.dumps(new_config)
@@ -382,7 +382,7 @@ async def save_settings(request: Request) -> RedirectResponse:
                     interval=new_cfg.search_interval,
                 )
 
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
 
 @router.post("/api/search-now/{app_name}", response_class=HTMLResponse)

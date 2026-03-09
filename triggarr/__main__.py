@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 import uvicorn
 from fastapi import FastAPI
@@ -14,6 +15,14 @@ from triggarr.search.scheduler import create_lifespan
 from triggarr.state import STATE_PATH
 from triggarr.web.middleware import OriginCheckMiddleware
 from triggarr.web.routes import STATIC_DIR, router
+
+
+def get_root_path() -> str:
+    """Return the root path for reverse proxy support.
+
+    Reads the ROOT_PATH env var. Defaults to empty string (no prefix).
+    """
+    return os.environ.get("ROOT_PATH", "")
 
 
 def main() -> None:
@@ -35,6 +44,10 @@ async def _run() -> None:
 
     settings = await startup()
 
+    root_path = get_root_path()
+    if root_path:
+        logger.info("Root path: {path}", path=root_path)
+
     app = FastAPI(lifespan=create_lifespan(settings, STATE_PATH, CONFIG_PATH))
     app.add_middleware(OriginCheckMiddleware)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -45,6 +58,7 @@ async def _run() -> None:
         host="0.0.0.0",
         port=8080,
         log_level="warning",
+        root_path=root_path,
     )
     server = uvicorn.Server(config)
     await server.serve()

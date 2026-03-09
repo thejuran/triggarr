@@ -6,12 +6,12 @@ and all URLs (static assets, nav links, htmx endpoints) respect the prefix.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from unittest.mock import MagicMock
+
+import pytest
 
 
-def test_root_path_default(monkeypatch: "pytest.MonkeyPatch") -> None:
+def test_root_path_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """When ROOT_PATH is not set, root_path defaults to empty string."""
     monkeypatch.delenv("ROOT_PATH", raising=False)
     from triggarr.__main__ import get_root_path
@@ -19,7 +19,7 @@ def test_root_path_default(monkeypatch: "pytest.MonkeyPatch") -> None:
     assert get_root_path() == ""
 
 
-def test_root_path_custom(monkeypatch: "pytest.MonkeyPatch") -> None:
+def test_root_path_custom(monkeypatch: pytest.MonkeyPatch) -> None:
     """When ROOT_PATH is set, it is returned."""
     monkeypatch.setenv("ROOT_PATH", "/triggarr")
     from triggarr.__main__ import get_root_path

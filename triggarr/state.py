@@ -16,6 +16,7 @@ from typing import TypedDict
 
 from loguru import logger
 
+
 def get_state_path() -> Path:
     """Return the state file path, derived from TRIGGARR_CONFIG_DIR env var.
 

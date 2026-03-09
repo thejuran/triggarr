@@ -16,7 +16,7 @@
             {# Currently inactive -- click adds it #}
             {% set new_apps = (active_apps + [app_val]) | join(',') %}
           {% endif %}
-          <a hx-get="/partials/history-results?page=1&app={{ new_apps | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
+          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ new_apps | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -39,7 +39,7 @@
           {% else %}
             {% set new_queues = (active_queues + [q_val]) | join(',') %}
           {% endif %}
-          <a hx-get="/partials/history-results?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ new_queues | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
+          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ new_queues | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -62,7 +62,7 @@
           {% else %}
             {% set new_outcomes = (active_outcomes + [o_val]) | join(',') %}
           {% endif %}
-          <a hx-get="/partials/history-results?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ new_outcomes | urlencode }}&search={{ search_text | urlencode }}"
+          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ new_outcomes | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -86,7 +86,7 @@
                name="search"
                value="{{ search_text }}"
                placeholder="Search by title..."
-               hx-get="/partials/history-results"
+               hx-get="{{ request.url_for('partial_history_results') }}"
                hx-trigger="keyup changed delay:300ms"
                hx-target="#history-results"
                hx-swap="outerHTML"
@@ -142,7 +142,7 @@
 
       {# Previous #}
       {% if result.page > 1 %}
-        <a hx-get="/partials/history-results?page={{ result.page - 1 }}&{{ base_qs }}"
+        <a hx-get="{{ request.url_for('partial_history_results') }}?page={{ result.page - 1 }}&{{ base_qs }}"
            hx-target="#history-results"
            hx-swap="outerHTML"
            class="cursor-pointer text-xs px-3 py-1.5 rounded bg-triggarr-card text-triggarr-muted border border-triggarr-border hover:text-white">
@@ -161,7 +161,7 @@
           {% if p == result.page %}
             <span class="text-xs px-3 py-1.5 rounded bg-triggarr-green text-white font-medium">{{ p }}</span>
           {% else %}
-            <a hx-get="/partials/history-results?page={{ p }}&{{ base_qs }}"
+            <a hx-get="{{ request.url_for('partial_history_results') }}?page={{ p }}&{{ base_qs }}"
                hx-target="#history-results"
                hx-swap="outerHTML"
                class="cursor-pointer text-xs px-3 py-1.5 rounded bg-triggarr-card text-triggarr-muted border border-triggarr-border hover:text-white">
@@ -175,7 +175,7 @@
 
       {# Next #}
       {% if result.page < result.total_pages %}
-        <a hx-get="/partials/history-results?page={{ result.page + 1 }}&{{ base_qs }}"
+        <a hx-get="{{ request.url_for('partial_history_results') }}?page={{ result.page + 1 }}&{{ base_qs }}"
            hx-target="#history-results"
            hx-swap="outerHTML"
            class="cursor-pointer text-xs px-3 py-1.5 rounded bg-triggarr-card text-triggarr-muted border border-triggarr-border hover:text-white">

@@ -1,5 +1,5 @@
 <div id="log-viewer"
-     hx-get="/partials/log-viewer"
+     hx-get="{{ request.url_for('partial_log_viewer') }}"
      hx-trigger="every 5s"
      hx-swap="outerHTML"
      class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">

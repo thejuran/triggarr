@@ -1,5 +1,5 @@
 <div id="search-log"
-     hx-get="/partials/search-log"
+     hx-get="{{ request.url_for('partial_search_log') }}"
      hx-trigger="every 5s"
      hx-swap="outerHTML"
      class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
