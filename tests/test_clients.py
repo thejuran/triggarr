@@ -330,30 +330,25 @@ async def test_radarr_get_grab_history_returns_grab_events() -> None:
     """RadarrClient.get_grab_history returns parsed GrabEvent instances."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        body = {
-            "page": 1,
-            "pageSize": 50,
-            "sortKey": "date",
-            "totalRecords": 2,
-            "records": [
-                {
-                    "id": 100,
-                    "date": "2026-02-25T10:00:00Z",
-                    "eventType": "grabbed",
-                    "sourceTitle": "Movie.2024.1080p",
-                    "movieId": 42,
-                    "quality": {"quality": {"name": "Bluray-1080p"}},
-                },
-                {
-                    "id": 101,
-                    "date": "2026-02-25T09:30:00Z",
-                    "eventType": "grabbed",
-                    "sourceTitle": "Movie.2024.720p",
-                    "movieId": 42,
-                    "quality": {"quality": {"name": "Bluray-720p"}},
-                },
-            ],
-        }
+        # Per-movie history endpoint returns a flat JSON array (not paginated)
+        body = [
+            {
+                "id": 100,
+                "date": "2026-02-25T10:00:00Z",
+                "eventType": "grabbed",
+                "sourceTitle": "Movie.2024.1080p",
+                "movieId": 42,
+                "quality": {"quality": {"name": "Bluray-1080p"}},
+            },
+            {
+                "id": 101,
+                "date": "2026-02-25T09:30:00Z",
+                "eventType": "grabbed",
+                "sourceTitle": "Movie.2024.720p",
+                "movieId": 42,
+                "quality": {"quality": {"name": "Bluray-720p"}},
+            },
+        ]
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
@@ -379,14 +374,8 @@ async def test_radarr_get_grab_history_empty() -> None:
     """RadarrClient.get_grab_history returns empty list for zero results."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        body = {
-            "page": 1,
-            "pageSize": 50,
-            "sortKey": "date",
-            "totalRecords": 0,
-            "records": [],
-        }
-        return httpx.Response(200, json=body)
+        # Per-movie history endpoint returns empty array
+        return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
     client = RadarrClient(base_url="http://test", api_key="key")
@@ -398,20 +387,14 @@ async def test_radarr_get_grab_history_empty() -> None:
         await client.close()
 
 
-async def test_radarr_get_grab_history_passes_movie_id_param() -> None:
-    """RadarrClient.get_grab_history passes movieId and eventType=1 in URL params."""
+async def test_radarr_get_grab_history_passes_correct_params() -> None:
+    """RadarrClient.get_grab_history uses /history/movie with movieId and eventType=grabbed."""
 
     def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v3/history/movie" in str(request.url.path)
         assert request.url.params["movieId"] == "42"
-        assert request.url.params["eventType"] == "1"
-        body = {
-            "page": 1,
-            "pageSize": 50,
-            "sortKey": "date",
-            "totalRecords": 0,
-            "records": [],
-        }
-        return httpx.Response(200, json=body)
+        assert request.url.params["eventType"] == "grabbed"
+        return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
     client = RadarrClient(base_url="http://test", api_key="key")
@@ -426,30 +409,25 @@ async def test_sonarr_get_grab_history_returns_grab_events() -> None:
     """SonarrClient.get_grab_history returns parsed GrabEvent instances."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        body = {
-            "page": 1,
-            "pageSize": 50,
-            "sortKey": "date",
-            "totalRecords": 2,
-            "records": [
-                {
-                    "id": 200,
-                    "date": "2026-02-25T11:00:00Z",
-                    "eventType": "grabbed",
-                    "sourceTitle": "Show.S01E01.1080p",
-                    "seriesId": 10,
-                    "episodeId": 55,
-                },
-                {
-                    "id": 201,
-                    "date": "2026-02-25T10:45:00Z",
-                    "eventType": "grabbed",
-                    "sourceTitle": "Show.S01E02.1080p",
-                    "seriesId": 10,
-                    "episodeId": 56,
-                },
-            ],
-        }
+        # Per-series history endpoint returns a flat JSON array (not paginated)
+        body = [
+            {
+                "id": 200,
+                "date": "2026-02-25T11:00:00Z",
+                "eventType": "grabbed",
+                "sourceTitle": "Show.S01E01.1080p",
+                "seriesId": 10,
+                "episodeId": 55,
+            },
+            {
+                "id": 201,
+                "date": "2026-02-25T10:45:00Z",
+                "eventType": "grabbed",
+                "sourceTitle": "Show.S01E02.1080p",
+                "seriesId": 10,
+                "episodeId": 56,
+            },
+        ]
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
@@ -475,14 +453,8 @@ async def test_sonarr_get_grab_history_empty() -> None:
     """SonarrClient.get_grab_history returns empty list for zero results."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        body = {
-            "page": 1,
-            "pageSize": 50,
-            "sortKey": "date",
-            "totalRecords": 0,
-            "records": [],
-        }
-        return httpx.Response(200, json=body)
+        # Per-series history endpoint returns empty array
+        return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
     client = SonarrClient(base_url="http://test", api_key="key")
@@ -494,20 +466,14 @@ async def test_sonarr_get_grab_history_empty() -> None:
         await client.close()
 
 
-async def test_sonarr_get_grab_history_passes_series_id_param() -> None:
-    """SonarrClient.get_grab_history passes seriesId and eventType=1 in URL params."""
+async def test_sonarr_get_grab_history_passes_correct_params() -> None:
+    """SonarrClient.get_grab_history uses /history/series with seriesId and eventType=grabbed."""
 
     def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v3/history/series" in str(request.url.path)
         assert request.url.params["seriesId"] == "10"
-        assert request.url.params["eventType"] == "1"
-        body = {
-            "page": 1,
-            "pageSize": 50,
-            "sortKey": "date",
-            "totalRecords": 0,
-            "records": [],
-        }
-        return httpx.Response(200, json=body)
+        assert request.url.params["eventType"] == "grabbed"
+        return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
     client = SonarrClient(base_url="http://test", api_key="key")

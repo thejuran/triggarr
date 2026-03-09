@@ -75,15 +75,15 @@ class SonarrClient(ArrClient):
     async def get_grab_history(self, series_id: int) -> list[GrabEvent]:
         """Fetch grab history for a specific series from Sonarr.
 
-        Queries /api/v3/history filtered to grabbed events (eventType=1)
-        for the given series ID.  Returns parsed GrabEvent models.
+        Uses the per-series history endpoint ``/api/v3/history/series``
+        filtered to grabbed events (``eventType=grabbed``) for the
+        given series ID.  Returns parsed GrabEvent models.
         """
-        records = await self.get_paginated(
-            "/api/v3/history",
-            extra_params={
+        records = await self.get_json_list(
+            "/api/v3/history/series",
+            params={
                 "seriesId": series_id,
-                "eventType": 1,
-                "sortDirection": "descending",
+                "eventType": "grabbed",
             },
         )
         return [GrabEvent.model_validate(r) for r in records]

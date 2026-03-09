@@ -77,6 +77,34 @@ class ArrClient:
         return await self._request_with_retry("POST", path, json=json_data)
 
     # ------------------------------------------------------------------
+    # Non-paginated list fetching
+    # ------------------------------------------------------------------
+
+    async def get_json_list(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch a non-paginated JSON array from an *arr endpoint.
+
+        Used for per-item endpoints (e.g. ``/api/v3/history/movie``,
+        ``/api/v3/history/series``) that return a flat JSON array
+        instead of a paginated envelope.
+        """
+        response = await self.get(path, params=params)
+        data = response.json()
+        if not isinstance(data, list):
+            raise ValueError(
+                f"Expected JSON array from {path}, got {type(data).__name__}"
+            )
+        logger.debug(
+            "Fetched {count} items from {path}",
+            count=len(data),
+            path=path,
+        )
+        return data
+
+    # ------------------------------------------------------------------
     # Paginated fetching
     # ------------------------------------------------------------------
 

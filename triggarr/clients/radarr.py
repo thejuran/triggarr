@@ -32,15 +32,15 @@ class RadarrClient(ArrClient):
     async def get_grab_history(self, movie_id: int) -> list[GrabEvent]:
         """Fetch grab history for a specific movie from Radarr.
 
-        Queries /api/v3/history filtered to grabbed events (eventType=1)
-        for the given movie ID.  Returns parsed GrabEvent models.
+        Uses the per-movie history endpoint ``/api/v3/history/movie``
+        filtered to grabbed events (``eventType=grabbed``) for the
+        given movie ID.  Returns parsed GrabEvent models.
         """
-        records = await self.get_paginated(
-            "/api/v3/history",
-            extra_params={
+        records = await self.get_json_list(
+            "/api/v3/history/movie",
+            params={
                 "movieId": movie_id,
-                "eventType": 1,
-                "sortDirection": "descending",
+                "eventType": "grabbed",
             },
         )
         return [GrabEvent.model_validate(r) for r in records]
