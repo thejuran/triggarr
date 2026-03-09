@@ -290,6 +290,8 @@ async def run_radarr_cycle(
 
     # --- Missing queue ---
     missing = filter_monitored(missing)
+    if settings.general.skip_unreleased:
+        missing = filter_unreleased_movies(missing)
     cursor = state["radarr"]["missing_cursor"]
     batch, new_cursor = slice_batch(missing, cursor, missing_limit)
     for movie in batch:
