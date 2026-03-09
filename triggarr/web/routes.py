@@ -294,8 +294,8 @@ async def save_settings(request: Request) -> RedirectResponse:
             "api_key": submitted_key if submitted_key else current_cfg.api_key.get_secret_value(),
             "enabled": form.get(f"{name}_enabled") == "on",
             "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
-            "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 1, 100),
-            "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 1, 100),
+            "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
+            "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
         }
 
     # Validate BEFORE writing to disk (QUAL-02)

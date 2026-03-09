@@ -677,7 +677,7 @@ async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
     assert len(searches) == 1
     assert searches[0]["name"] == "Movie Fail"
     assert searches[0]["outcome"] == "failed"
-    assert "API timeout" in searches[0]["detail"]
+    assert searches[0]["detail"] == "Exception"
     await db.close()
 
 
@@ -707,5 +707,5 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     assert len(searches) == 1
     assert "Show Fail" in searches[0]["name"]
     assert searches[0]["outcome"] == "failed"
-    assert "Connection refused" in searches[0]["detail"]
+    assert searches[0]["detail"] == "Exception"
     await db.close()
