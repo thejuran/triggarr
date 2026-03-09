@@ -105,7 +105,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   2. User can define multiple named Sonarr instances in TOML config, each with independent URL, API key, schedule, and batch sizes
   3. Existing single-instance v2.2 config files are auto-detected and converted to multi-instance format on first startup, with the original backed up
   4. Config validation rejects duplicate instance names within the same app type
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 33-01-PLAN.md -- InstanceConfig model and dict-based Settings with validation (TDD)
+- [ ] 33-02-PLAN.md -- v2.2 migration logic, default config template, conftest update (TDD)
 
 ### Phase 34: State Model & Cursor Isolation
 **Goal**: Each instance maintains its own round-robin position that persists across restarts without cross-contamination
@@ -179,7 +182,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 33. Config Model & Migration | v2.3 | 0/? | Not started | - |
+| 33. Config Model & Migration | v2.3 | 0/2 | Not started | - |
 | 34. State Model & Cursor Isolation | v2.3 | 0/? | Not started | - |
 | 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
 | 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
