@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Triggarr{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='css/output.css') }}">
-  <script src="{{ url_for('static', path='js/htmx.min.js') }}"></script>
+  <link rel="stylesheet" href="{{ request.url_for('static', path='css/output.css') }}">
+  <script src="{{ request.url_for('static', path='js/htmx.min.js') }}"></script>
 </head>
 <body class="bg-triggarr-bg text-triggarr-text min-h-screen">
   <nav class="bg-triggarr-card border-b border-triggarr-border">
