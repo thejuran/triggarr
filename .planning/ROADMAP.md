@@ -10,7 +10,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v1.1 Ship & Document -- Phases 9-12 (shipped 2026-02-24) -- [archive](milestones/v1.1-ROADMAP.md)
 - ✅ v1.2 Polish & Harden -- Phases 13-16 (shipped 2026-02-24) -- [archive](milestones/v1.2-ROADMAP.md)
 - ✅ v2.0 Closed-Loop Tracking -- Phases 17-22 (shipped 2026-03-09) -- [archive](milestones/v2.0-ROADMAP.md)
-- 🚧 v2.0 Harden & Fix -- Phase 23 (in progress)
+- 🚧 v2.0 Harden & Fix -- Phase 23-24 (in progress)
 
 ## Phases
 
@@ -67,6 +67,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Milestone Goal:** Fix deployment friction -- configurable config path and reverse proxy compatibility.
 
 - [x] **Phase 23: Deploy Fixes** - Configurable config directory and reverse proxy CSS compatibility (completed 2026-03-09)
+- [ ] **Phase 24: Hardening** - Config path validation, temp file cleanup, freeze constraint docs and tests
 
 ## Phase Details
 
@@ -81,12 +82,26 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Plans**: 1 plan
 
 Plans:
-- [ ] 23-01-PLAN.md -- Configurable config directory and reverse proxy static asset support
+- [x] 23-01-PLAN.md -- Configurable config directory and reverse proxy static asset support
+
+### Phase 24: Hardening: config validation and temp file cleanup
+**Goal**: Config path validation rejects misconfiguration at startup, temp file writes are safe, and freeze constraints are documented and tested
+**Depends on**: Phase 23
+**Requirements**: HARDEN-01, HARDEN-02, HARDEN-03, HARDEN-04
+**Success Criteria** (what must be TRUE):
+  1. Setting TRIGGARR_CONFIG_DIR to a relative or traversal path fails fast with a clear error
+  2. Temp file is cleaned up if os.replace fails during settings save
+  3. Module-level constant freeze constraint is documented in code comments
+  4. Tests cover path validation and frozen constant behavior
+**Plans**: 1 plan
+
+Plans:
+- [ ] 24-01-PLAN.md -- Config path validation, temp file cleanup, freeze docs and tests
 
 ## Progress
 
 **Execution Order:**
-Phase 23
+Phase 23 -> Phase 24
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -114,4 +129,5 @@ Phase 23
 | 20.2 Deep Review — Quality | v2.0 | 2/2 | Complete | 2026-02-26 |
 | 21. Dashboard & Stats | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
-| 23. Deploy Fixes | 1/1 | Complete    | 2026-03-09 | - |
+| 23. Deploy Fixes | v2.0 | 1/1 | Complete | 2026-03-09 |
+| 24. Hardening | v2.0 | 0/1 | Planned | - |

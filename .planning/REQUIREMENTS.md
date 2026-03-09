@@ -12,6 +12,13 @@ Requirements for v2.0 Harden & Fix. Each maps to roadmap phases.
 - [x] **DEPLOY-01**: User can configure config directory via `TRIGGARR_CONFIG_DIR` env var
 - [x] **DEPLOY-02**: CSS and static assets load correctly behind a reverse proxy
 
+### Hardening
+
+- [ ] **HARDEN-01**: `TRIGGARR_CONFIG_DIR` rejects relative and traversal paths at startup
+- [ ] **HARDEN-02**: Temp file cleaned up if `os.replace` fails during settings save
+- [ ] **HARDEN-03**: Module-level constant freeze constraint documented in code
+- [ ] **HARDEN-04**: Test coverage for frozen module-level constants behavior
+
 ## Future Requirements
 
 None planned.
@@ -28,10 +35,14 @@ None planned.
 |-------------|-------|--------|
 | DEPLOY-01 | Phase 23 | Complete |
 | DEPLOY-02 | Phase 23 | Complete |
+| HARDEN-01 | Phase 24 | Planned |
+| HARDEN-02 | Phase 24 | Planned |
+| HARDEN-03 | Phase 24 | Planned |
+| HARDEN-04 | Phase 24 | Planned |
 
 **Coverage:**
-- v2.0 requirements: 2 total
-- Mapped to phases: 2
+- v2.0 requirements: 6 total
+- Mapped to phases: 6
 - Unmapped: 0
 
 ---
