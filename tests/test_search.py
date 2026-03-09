@@ -25,6 +25,7 @@ from triggarr.search.engine import (
     deduplicate_to_seasons,
     filter_monitored,
     filter_sonarr_episodes,
+    filter_unreleased_movies,
     run_radarr_cycle,
     run_sonarr_cycle,
     slice_batch,
@@ -709,3 +710,94 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     assert searches[0]["outcome"] == "failed"
     assert searches[0]["detail"] == "Exception"
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# filter_unreleased_movies
+# ---------------------------------------------------------------------------
+
+
+def _movie(title: str, digital: str | None = None, physical: str | None = None) -> dict:
+    """Build a Radarr movie dict with optional release dates."""
+    m: dict = {"title": title}
+    if digital is not None:
+        m["digitalRelease"] = digital
+    if physical is not None:
+        m["physicalRelease"] = physical
+    return m
+
+
+def _past_iso() -> str:
+    """Return an ISO date string 30 days in the past."""
+    return (datetime.now(UTC) - timedelta(days=30)).isoformat().replace("+00:00", "Z")
+
+
+def _future_iso() -> str:
+    """Return an ISO date string 30 days in the future."""
+    return (datetime.now(UTC) + timedelta(days=30)).isoformat().replace("+00:00", "Z")
+
+
+def test_filter_unreleased_past_digital_passes():
+    """Movie with past digitalRelease passes through."""
+    movies = [_movie("Released Digital", digital=_past_iso())]
+    assert filter_unreleased_movies(movies) == movies
+
+
+def test_filter_unreleased_past_physical_passes():
+    """Movie with past physicalRelease passes through."""
+    movies = [_movie("Released Physical", physical=_past_iso())]
+    assert filter_unreleased_movies(movies) == movies
+
+
+def test_filter_unreleased_both_future_skipped():
+    """Movie with both dates in the future is skipped."""
+    movies = [_movie("Unreleased", digital=_future_iso(), physical=_future_iso())]
+    assert filter_unreleased_movies(movies) == []
+
+
+def test_filter_unreleased_one_past_one_future_passes():
+    """Movie with one past date and one future date passes through."""
+    movies = [_movie("Mixed", digital=_past_iso(), physical=_future_iso())]
+    assert filter_unreleased_movies(movies) == movies
+
+
+def test_filter_unreleased_both_null_passes():
+    """Movie with both dates null passes through (not blackholed) [FILT-03]."""
+    movies = [_movie("Unknown")]
+    assert filter_unreleased_movies(movies) == movies
+
+
+def test_filter_unreleased_one_null_one_future_skipped():
+    """Movie with one null date and one future date is skipped."""
+    movies = [_movie("Null+Future", physical=_future_iso())]
+    assert filter_unreleased_movies(movies) == []
+
+
+def test_filter_unreleased_one_null_one_past_passes():
+    """Movie with one null date and one past date passes through."""
+    movies = [_movie("Null+Past", digital=_past_iso())]
+    assert filter_unreleased_movies(movies) == movies
+
+
+def test_filter_unreleased_unparseable_date_treated_as_null():
+    """Movie with unparseable date string treated as null."""
+    movies = [_movie("BadDate", digital="not-a-date", physical="also-bad")]
+    assert filter_unreleased_movies(movies) == movies
+
+
+def test_filter_unreleased_empty_list():
+    """Empty list returns empty list."""
+    assert filter_unreleased_movies([]) == []
+
+
+def test_filter_unreleased_mixed_list():
+    """Mixed list filters correctly (released + unreleased + null)."""
+    movies = [
+        _movie("Released", digital=_past_iso()),
+        _movie("Unreleased", digital=_future_iso(), physical=_future_iso()),
+        _movie("Unknown"),
+    ]
+    result = filter_unreleased_movies(movies)
+    assert len(result) == 2
+    assert result[0]["title"] == "Released"
+    assert result[1]["title"] == "Unknown"

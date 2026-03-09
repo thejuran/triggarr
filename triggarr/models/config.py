@@ -64,6 +64,8 @@ class GeneralConfig(BaseModel):
     page_size: int = 50  # DEBT-08: *arr API pagination size
     tracking_window_minutes: int = 60  # TRACK-07: how long to wait for grabs after search
     tracking_delay_seconds: int = 90  # Delay before tracking check (unused)
+    # v2.2: skip Radarr movies without past digital/physical release date
+    skip_unreleased: bool = True
 
 
 class Settings(BaseSettings):

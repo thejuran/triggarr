@@ -23,6 +23,7 @@ log_level = "info"
 # page_size = 50            # Page size for Radarr/Sonarr API pagination
 # tracking_window_minutes = 60  # Minutes to wait for grabs after a search
 # tracking_delay_seconds = 90   # Delay before tracking check
+# skip_unreleased = true    # Skip Radarr movies without a past digital/physical release date
 
 [radarr]
 # Radarr connection settings

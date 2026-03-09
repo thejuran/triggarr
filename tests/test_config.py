@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from triggarr.config import ensure_config, generate_default_config, load_settings
-from triggarr.models.config import ArrConfig
+from triggarr.models.config import ArrConfig, GeneralConfig
 
 VALID_TOML = """\
 [general]
@@ -137,6 +137,58 @@ def test_arr_config_allows_both_counts_zero_when_disabled() -> None:
         search_cutoff_count=0,
     )
     assert config.search_missing_count == 0
+
+
+# ---------------------------------------------------------------------------
+# skip_unreleased config field
+# ---------------------------------------------------------------------------
+
+
+def test_skip_unreleased_defaults_true() -> None:
+    """GeneralConfig().skip_unreleased defaults to True."""
+    assert GeneralConfig().skip_unreleased is True
+
+
+def test_skip_unreleased_from_toml(tmp_path: Path) -> None:
+    """skip_unreleased=false in TOML loads as False."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("""\
+[general]
+skip_unreleased = false
+
+[radarr]
+url = ""
+api_key = ""
+enabled = false
+
+[sonarr]
+url = ""
+api_key = ""
+enabled = false
+""")
+    settings = load_settings(config_file)
+    assert settings.general.skip_unreleased is False
+
+
+def test_skip_unreleased_missing_defaults_true(tmp_path: Path) -> None:
+    """TOML without skip_unreleased defaults to True."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("""\
+[general]
+log_level = "info"
+
+[radarr]
+url = ""
+api_key = ""
+enabled = false
+
+[sonarr]
+url = ""
+api_key = ""
+enabled = false
+""")
+    settings = load_settings(config_file)
+    assert settings.general.skip_unreleased is True
 
 
 def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
