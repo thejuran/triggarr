@@ -59,16 +59,18 @@
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">How long to wait for grabs after a search before marking unresolved.</p>
             </div>
-            <div class="flex items-center gap-3 mt-2">
-                <input type="checkbox" name="skip_unreleased"
-                       {% if skip_unreleased %}checked{% endif %}
-                       class="accent-triggarr-green w-4 h-4"
-                       id="skip_unreleased">
-                <label for="skip_unreleased" class="text-sm">Skip Unreleased Movies</label>
+            <div>
+                <div class="flex items-center gap-3 mt-2">
+                    <input type="checkbox" name="skip_unreleased"
+                           {% if skip_unreleased %}checked{% endif %}
+                           class="accent-triggarr-green w-4 h-4"
+                           id="skip_unreleased">
+                    <label for="skip_unreleased" class="text-sm">Skip Unreleased Movies</label>
+                </div>
+                <p class="text-xs text-triggarr-muted mt-1">
+                    Skip Radarr movies without a past digital or physical release date.
+                </p>
             </div>
-            <p class="text-xs text-triggarr-muted mt-1">
-                Skip Radarr movies without a past digital or physical release date.
-            </p>
         </div>
     </section>
 
