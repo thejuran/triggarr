@@ -5,7 +5,7 @@ milestone_name: Skip Unreleased Media
 status: completed
 stopped_at: Completed 28-02-PLAN.md
 last_updated: "2026-03-09T13:06:42.391Z"
-last_activity: 2026-03-09 -- Completed 28-01 Fix Skip Badge Math
+last_activity: 2026-03-09 -- Completed 28-02 Fix Template & Deferred Findings
 progress:
   total_phases: 4
   completed_phases: 4
@@ -21,28 +21,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 28 - Fix Code Review Findings (complete)
+**Current focus:** Phase 28 - Fix Code Review Findings (complete, all plans done)
 
 ## Current Position
 
 Phase: 28 (4 of 4 in v2.2)
-Plan: 1 of 1 in current phase (complete)
+Plan: 2 of 2 in current phase (complete)
 Status: Phase 28 complete -- all code review findings fixed
-Last activity: 2026-03-09 -- Completed 28-01 Fix Skip Badge Math
+Last activity: 2026-03-09 -- Completed 28-02 Fix Template & Deferred Findings
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 55 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 4)
+- Total plans completed: 56 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 5)
 - Milestones shipped: 5 (v1.0, v1.1, v1.2, v2.0, v2.1)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 27    | 01   | ~10m     | 2     | 6     |
 | 28    | 01   | ~7m      | 1     | 5     |
-| Phase 28 P02 | 7min | 2 tasks | 3 files |
+| 28    | 02   | ~7m      | 2     | 3     |
 
 ## Accumulated Context
 

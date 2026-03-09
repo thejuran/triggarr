@@ -125,11 +125,11 @@ Plans:
 **Goal:** Fix skip badge math bug (unmonitored items inflating unreleased count), improve settings template structure, and resolve deferred code quality findings
 **Depends on:** Phase 27
 **Requirements**: Code review findings (F1, F2, F4, M5, M6 from 28-RESEARCH.md)
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 28-01-PLAN.md -- Fix skip badge math (missing_monitored tracking) and INFO skip log
-- [ ] 28-02-PLAN.md -- Settings template wrapping and deferred code quality fixes (M5, M6)
+- [x] 28-02-PLAN.md -- Settings template wrapping and deferred code quality fixes (M5, M6)
 
 ## Progress
 
@@ -166,5 +166,5 @@ Phases execute in numeric order: 25 -> 26 -> 27 -> 28
 | 24. Hardening | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 25. Filter Foundation | v2.2 | 1/1 | Complete | 2026-03-09 |
 | 26. Settings UI & Engine Integration | v2.2 | 1/1 | Complete | 2026-03-09 |
-| 27. Dashboard Display | v2.2 | Complete    | 2026-03-09 | 2026-03-09 |
-| 28. Fix code review findings | v2.2 | 1/2 | In Progress | - |
+| 27. Dashboard Display | v2.2 | 1/1 | Complete | 2026-03-09 |
+| 28. Fix code review findings | v2.2 | 2/2 | Complete | 2026-03-09 |
