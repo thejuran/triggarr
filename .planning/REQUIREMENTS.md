@@ -14,10 +14,10 @@ Requirements for v2.0 Harden & Fix. Each maps to roadmap phases.
 
 ### Hardening
 
-- [ ] **HARDEN-01**: `TRIGGARR_CONFIG_DIR` rejects relative and traversal paths at startup
-- [ ] **HARDEN-02**: Temp file cleaned up if `os.replace` fails during settings save
-- [ ] **HARDEN-03**: Module-level constant freeze constraint documented in code
-- [ ] **HARDEN-04**: Test coverage for frozen module-level constants behavior
+- [x] **HARDEN-01**: `TRIGGARR_CONFIG_DIR` rejects relative and traversal paths at startup
+- [x] **HARDEN-02**: Temp file cleaned up if `os.replace` fails during settings save
+- [x] **HARDEN-03**: Module-level constant freeze constraint documented in code
+- [x] **HARDEN-04**: Test coverage for frozen module-level constants behavior
 
 ## Future Requirements
 

@@ -67,7 +67,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Milestone Goal:** Fix deployment friction -- configurable config path and reverse proxy compatibility.
 
 - [x] **Phase 23: Deploy Fixes** - Configurable config directory and reverse proxy CSS compatibility (completed 2026-03-09)
-- [ ] **Phase 24: Hardening** - Config path validation, temp file cleanup, freeze constraint docs and tests
+- [x] **Phase 24: Hardening** - Config path validation, temp file cleanup, freeze constraint docs and tests (completed 2026-03-09)
 
 ## Phase Details
 
@@ -130,4 +130,4 @@ Phase 23 -> Phase 24
 | 21. Dashboard & Stats | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |
 | 23. Deploy Fixes | v2.0 | 1/1 | Complete | 2026-03-09 |
-| 24. Hardening | v2.0 | 0/1 | Planned | - |
+| 24. Hardening | 1/1 | Complete   | 2026-03-09 | - |
