@@ -7,6 +7,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from loguru import logger
+
 from triggarr.models.config import Settings
 
 # Default commented config template written on first run.
@@ -87,10 +89,9 @@ def ensure_config(config_path: Path) -> Settings:
     """
     if not config_path.exists():
         generate_default_config(config_path)
-        print(
-            f"Default config written to {config_path}\n"
-            "Edit the config file and restart Triggarr.",
-            file=sys.stderr,
+        logger.warning(
+            "Default config written to {path} -- edit the config file and restart Triggarr",
+            path=config_path,
         )
         sys.exit(1)
 

@@ -103,7 +103,7 @@ def make_search_job(
 
 def create_lifespan(
     settings: Settings, state_path: Path, config_path: Path
-) -> callable:  # type: ignore[type-arg]
+) -> Callable[..., AsyncIterator[None]]:
     """Build a FastAPI lifespan context manager wired to APScheduler.
 
     Creates long-lived API clients for enabled apps, schedules interval
