@@ -876,7 +876,7 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_enabled(tmp_path)
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    # 3 monitored movies, 1 unreleased (will be filtered)
+    # 4 raw: 3 monitored, 1 unmonitored; of monitored: 1 unreleased
     future = (datetime.now(UTC) + timedelta(days=30)).isoformat().replace("+00:00", "Z")
     past = (datetime.now(UTC) - timedelta(days=30)).isoformat().replace("+00:00", "Z")
     client = AsyncMock()
@@ -885,6 +885,7 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_enabled(tmp_path)
             {"id": 1, "title": "Released A", "monitored": True, "digitalRelease": past},
             {"id": 2, "title": "Released B", "monitored": True, "digitalRelease": past},
             {"id": 3, "title": "Unreleased C", "monitored": True, "digitalRelease": future, "physicalRelease": future},
+            {"id": 4, "title": "Unmonitored D", "monitored": False, "digitalRelease": past},
         ]
     )
     client.get_wanted_cutoff = AsyncMock(return_value=[])
@@ -895,13 +896,14 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_enabled(tmp_path)
 
     result = await run_radarr_cycle(client, state, settings, db)
 
-    # 3 monitored, 1 filtered by unreleased -> 2 eligible
+    # 4 raw, 3 monitored, 1 unreleased filtered -> 2 eligible
+    assert result["radarr"]["missing_monitored"] == 3
     assert result["radarr"]["missing_eligible"] == 2
     await db.close()
 
 
 async def test_run_radarr_cycle_eligible_count_skip_unreleased_disabled(tmp_path):
-    """With skip_unreleased=False, missing_eligible equals post-filter_monitored count (DASH-01)."""
+    """With skip_unreleased=False, missing_monitored is set and equals missing_eligible (DASH-01)."""
     from triggarr.models.config import GeneralConfig
 
     db_path = tmp_path / "test.db"
@@ -925,7 +927,8 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_disabled(tmp_path
 
     result = await run_radarr_cycle(client, state, settings, db)
 
-    # 2 monitored, no unreleased filtering -> eligible = 2
+    # 2 monitored, no unreleased filtering -> missing_monitored = missing_eligible = 2
+    assert result["radarr"]["missing_monitored"] == 2
     assert result["radarr"]["missing_eligible"] == 2
     await db.close()
 
@@ -955,6 +958,75 @@ async def test_run_sonarr_cycle_eligible_count(tmp_path):
 
     # 3 episodes -> filter_sonarr_episodes -> dedup -> 2 seasons
     assert result["sonarr"]["missing_eligible"] == 2
+    await db.close()
+
+
+async def test_run_radarr_cycle_info_log_unreleased_skipped(tmp_path):
+    """INFO log emitted when unreleased items are skipped during Radarr cycle."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    future = (datetime.now(UTC) + timedelta(days=30)).isoformat().replace("+00:00", "Z")
+    past = (datetime.now(UTC) - timedelta(days=30)).isoformat().replace("+00:00", "Z")
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "title": "Released A", "monitored": True, "digitalRelease": past},
+            {"id": 2, "title": "Unreleased B", "monitored": True, "digitalRelease": future, "physicalRelease": future},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_state()
+    settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="INFO")
+    try:
+        await run_radarr_cycle(client, state, settings, db)
+    finally:
+        logger.remove(handler_id)
+
+    output = sink.getvalue()
+    assert "1 unreleased movies skipped" in output
+    await db.close()
+
+
+async def test_run_radarr_cycle_no_info_log_when_zero_unreleased(tmp_path):
+    """No INFO log when zero items are filtered by unreleased filter."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    past = (datetime.now(UTC) - timedelta(days=30)).isoformat().replace("+00:00", "Z")
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "title": "Released A", "monitored": True, "digitalRelease": past},
+            {"id": 2, "title": "Released B", "monitored": True, "digitalRelease": past},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_state()
+    settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="INFO")
+    try:
+        await run_radarr_cycle(client, state, settings, db)
+    finally:
+        logger.remove(handler_id)
+
+    output = sink.getvalue()
+    assert "unreleased movies skipped" not in output
     await db.close()
 
 
