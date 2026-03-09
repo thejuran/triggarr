@@ -61,7 +61,8 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ### Active
 
-(None — next milestone requirements TBD)
+- [ ] Configurable config directory via `TRIGGARR_CONFIG_DIR` env var
+- [ ] CSS works behind reverse proxy (proxy header forwarding)
 
 ### Out of Scope
 
@@ -92,9 +93,7 @@ CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + 
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt:
-- 2 test assertions in test_search.py need updating for exception sanitization change
-- test_search.py hangs on execution (pre-existing)
+Known tech debt: None — test issues resolved by recent patch (257 tests passing).
 
 ## Constraints
 
@@ -130,4 +129,4 @@ Known tech debt:
 | SUM(CASE WHEN) for SQLite compatibility | FILTER clause not available in all SQLite versions | ✓ Good — v2.0 |
 
 ---
-*Last updated: 2026-03-09 after v2.0 milestone*
+*Last updated: 2026-03-08 after v2.0 Harden & Fix milestone start*

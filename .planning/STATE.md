@@ -1,39 +1,40 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.0
-milestone_name: Closed-Loop Tracking
-status: archived
-stopped_at: Milestone v2.0 completed and archived
-last_updated: "2026-03-09T02:00:00.000Z"
-last_activity: 2026-03-09 -- Milestone v2.0 completed, archived, and tagged
+milestone_name: Harden & Fix
+status: active
+stopped_at: null
+last_updated: "2026-03-08T00:00:00.000Z"
+last_activity: 2026-03-08 -- Milestone v2.0 Harden & Fix started
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 18
-  completed_plans: 18
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-09)
+See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Planning next milestone
+**Current focus:** Milestone v2.0 Harden & Fix
 
 ## Current Position
 
-Milestone v2.0 Closed-Loop Tracking shipped 2026-03-09.
-All 22 phases across 4 milestones complete (49 plans total).
-Next: /gsd:new-milestone for v2.1 or v3.0.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-08 — Milestone v2.0 started
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 49 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18)
-- Milestones shipped: 4 (v1.0, v1.1, v1.2, v2.0)
+- Total plans completed: 49 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0-tracking: 18)
+- Milestones shipped: 4 (v1.0, v1.1, v1.2, v2.0-tracking)
 
 ## Accumulated Context
 
@@ -47,9 +48,9 @@ None.
 
 ### Blockers/Concerns
 
-None — milestone complete.
+None.
 
 ## Session Continuity
 
-Last session: 2026-03-09
-Stopped at: Milestone v2.0 archived
+Last session: 2026-03-08
+Stopped at: Defining requirements for v2.0 Harden & Fix
