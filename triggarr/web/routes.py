@@ -132,6 +132,7 @@ def _build_app_context(request: Request, app_name: str) -> dict | None:
         "unreachable_since": app_state.get("unreachable_since"),
         "missing_count": app_state.get("missing_count"),
         "missing_eligible": app_state.get("missing_eligible"),
+        "missing_monitored": app_state.get("missing_monitored"),
         "cutoff_count": app_state.get("cutoff_count"),
         "skip_unreleased": settings.general.skip_unreleased,
     }
