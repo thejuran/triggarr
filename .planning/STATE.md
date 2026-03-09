@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: Skip Unreleased Media
-status: active
-stopped_at: null
-last_updated: "2026-03-09"
-last_activity: 2026-03-09 — Roadmap created for v2.2
+status: planning
+stopped_at: Phase 25 context gathered
+last_updated: "2026-03-09T04:34:49.447Z"
+last_activity: 2026-03-09 -- Roadmap created for v2.2 Skip Unreleased Media
 progress:
   total_phases: 3
   completed_phases: 0
@@ -61,6 +61,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09
-Stopped at: Roadmap created for v2.2 milestone
-Resume file: None
+Last session: 2026-03-09T04:34:49.440Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-filter-foundation/25-CONTEXT.md
