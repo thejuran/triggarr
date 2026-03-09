@@ -16,7 +16,17 @@ from typing import TypedDict
 
 from loguru import logger
 
-STATE_PATH = Path("/config/state.json")
+def get_state_path() -> Path:
+    """Return the state file path, derived from TRIGGARR_CONFIG_DIR env var.
+
+    Defaults to /config/state.json when the env var is not set.
+    """
+    from triggarr.models.config import get_config_dir
+
+    return get_config_dir() / "state.json"
+
+
+STATE_PATH = get_state_path()
 
 
 class AppState(TypedDict, total=False):

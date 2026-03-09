@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from pydantic import BaseModel, SecretStr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
-CONFIG_PATH = Path("/config/triggarr.toml")
+
+def get_config_dir() -> Path:
+    """Return the config directory, respecting TRIGGARR_CONFIG_DIR env var.
+
+    Defaults to /config when the env var is not set (backward compatible).
+    """
+    return Path(os.environ.get("TRIGGARR_CONFIG_DIR", "/config"))
+
+
+CONFIG_DIR = get_config_dir()
+CONFIG_PATH = CONFIG_DIR / "triggarr.toml"
 
 
 class ArrConfig(BaseModel):

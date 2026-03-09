@@ -6,6 +6,7 @@ set -e
 # the UID/GID the application runs as inside the container.
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
+CONFIG_DIR="${TRIGGARR_CONFIG_DIR:-/config}"
 
 # Validate numeric
 if ! [[ "$PUID" =~ ^[0-9]+$ ]]; then
@@ -24,11 +25,12 @@ fi
 
 # Create user if UID doesn't already exist
 if ! getent passwd "$PUID" > /dev/null 2>&1; then
-    useradd -u "$PUID" -g "$PGID" -d /config -s /sbin/nologin triggarr
+    useradd -u "$PUID" -g "$PGID" -d "$CONFIG_DIR" -s /sbin/nologin triggarr
 fi
 
-# Ensure the config volume is owned by the runtime user
-chown -R "$PUID:$PGID" /config
+# Ensure the config directory exists and is owned by the runtime user
+mkdir -p "$CONFIG_DIR"
+chown -R "$PUID:$PGID" "$CONFIG_DIR"
 
 # Drop privileges and exec into Triggarr.
 # exec replaces this shell so python becomes PID 1 and receives SIGTERM
