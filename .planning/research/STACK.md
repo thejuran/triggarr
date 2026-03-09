@@ -1,159 +1,288 @@
 # Technology Stack
 
-**Project:** Triggarr v2.2 -- Skip Unreleased Media
+**Project:** Triggarr v2.3 -- Multi-Instance & Tag Filtering
 **Researched:** 2026-03-09
-**Scope:** NEW capability only -- filtering unreleased media by release dates
 
-## Recommendation: Zero New Dependencies
+## Core Finding: Zero New Dependencies
 
-This feature requires **no new libraries or stack changes**. Everything needed is already in the existing stack (Python stdlib `datetime`, existing httpx clients, existing TOML config system). The codebase already has a working pattern for date-based filtering in `filter_sonarr_episodes()` that serves as the direct template for the Radarr equivalent.
+No new libraries are needed. Multi-instance support and tag-based filtering are achievable entirely with the existing stack plus refactoring of config, state, database schema, and client management. This continues the v2.0 pattern of "zero new dependencies."
 
-## Radarr API Date Fields
+## Existing Stack (Unchanged)
 
-**Source:** Radarr source code (`MovieResource.cs` on develop branch) -- HIGH confidence
+| Technology | Version | Purpose | Status for v2.3 |
+|------------|---------|---------|------------------|
+| Python | 3.13 | Runtime | No change |
+| FastAPI | current | Web framework | No change |
+| httpx | current | Async HTTP client | No change -- one client per instance |
+| Pydantic | current | Config/validation | No change -- models extended |
+| pydantic-settings[toml] | current | TOML config loading | No change -- config structure changes |
+| APScheduler 3.x | >=3.11,<4 | Job scheduling | No change -- one job per instance |
+| aiosqlite | current | Async SQLite | No change -- schema migration |
+| Jinja2 | current | Templates | No change -- templates updated |
+| htmx | vendored | Dynamic UI | No change |
+| Tailwind CSS v4 | via pytailwindcss | Styling | No change |
+| loguru | current | Logging | No change |
+| tomli-w | current | TOML writing | No change -- config save |
+| ruff | current | Linting | No change |
 
-The Radarr `/api/v3/wanted/missing` and `/api/v3/wanted/cutoff` endpoints return movie records with these release date fields:
+## New Capabilities from Existing Stack
 
-| JSON Field | C# Type | Description | Can Be Null |
-|------------|---------|-------------|-------------|
-| `inCinemas` | `DateTime?` | Theatrical release date | Yes |
-| `physicalRelease` | `DateTime?` | Physical media (DVD/Blu-ray) release date | Yes |
-| `digitalRelease` | `DateTime?` | Digital/streaming release date | Yes |
-| `releaseDate` | `DateTime?` | Computed "primary" release date (read-only aggregate) | Yes |
+### 1. Multi-Instance Config (pydantic + pydantic-settings + tomli-w)
 
-**Format:** ISO 8601 datetime strings, e.g. `"2024-01-15T00:00:00Z"`. All fields are nullable -- movies with unknown release dates will have `null` for the corresponding field.
+**What changes:** The flat `[radarr]` / `[sonarr]` TOML sections become lists of instance tables.
 
-**JSON naming convention:** Radarr uses camelCase serialization globally (C# PascalCase properties become camelCase in JSON). Confirmed by Go client struct tags (`json:"inCinemas"`, `json:"physicalRelease"`) and Python client implementations.
-
-### Which Fields to Use for Skip Logic
-
-Use `digitalRelease` and `physicalRelease` because these represent when a movie becomes available for download in acceptable quality. `inCinemas` is NOT useful for skip logic -- a movie in cinemas is not available for quality downloads (only cam recordings, which is exactly what we want to avoid).
-
-**Decision:** A movie is searchable when at least one of `digitalRelease` or `physicalRelease` is non-null and in the past. Skip when:
-- Both `digitalRelease` and `physicalRelease` are null (unknown release = assume unreleased), OR
-- Both non-null dates are in the future, OR
-- The only non-null date is in the future
-
-In other words: `min(digitalRelease, physicalRelease)` must be in the past (considering only non-null values). If both are null, skip.
-
-### Edge Case: Both Dates Null
-
-Movies with no release date information (both `digitalRelease` and `physicalRelease` are null) should be **skipped** when the toggle is enabled. These are typically announced/pre-production titles with no availability timeline. Searching for them produces only cam recordings or mismarked content -- exactly the problem this feature solves.
-
-### Do NOT Use `releaseDate`
-
-The `releaseDate` field is a computed aggregate that Radarr derives internally. Its logic depends on `minimumAvailability` settings and may include `inCinemas` dates, which would defeat the purpose. Use `digitalRelease` and `physicalRelease` explicitly for full control.
-
-## Sonarr API Date Fields
-
-**Source:** Sonarr source code (`EpisodeResource.cs` on develop branch) -- HIGH confidence
-
-The Sonarr `/api/v3/wanted/missing` and `/api/v3/wanted/cutoff` endpoints return episode records with:
-
-| JSON Field | C# Type | Description | Can Be Null |
-|------------|---------|-------------|-------------|
-| `airDate` | `string` | Local air date (format: `"YYYY-MM-DD"`) | Yes |
-| `airDateUtc` | `DateTime?` | UTC air date/time (ISO 8601) | Yes |
-
-### Already Implemented -- Hardcoded in Existing Code
-
-**The codebase already filters Sonarr episodes by air date.** The `filter_sonarr_episodes()` function in `triggarr/search/engine.py` (lines 145-173) already:
-- Skips episodes where `airDateUtc` is `None` (TBA episodes)
-- Skips episodes where `airDateUtc` is in the future
-- Uses `datetime.fromisoformat()` with the `Z` -> `+00:00` replacement pattern
-
-This means the Sonarr side of skip-unreleased is **already implemented as hardcoded behavior**. The v2.2 feature needs to:
-1. Make this behavior conditional on the `skip_unreleased` setting (when disabled, allow unaired episodes through)
-2. Add the equivalent Radarr filtering (which does not exist yet)
-
-## Python Date Handling
-
-### Pattern to Follow (Already Established)
-
-The codebase has a proven date parsing pattern in `filter_sonarr_episodes()`:
-
-```python
-from datetime import UTC, datetime
-
-# Parse ISO 8601 from *arr API responses
-air_date = datetime.fromisoformat(air_date_str.replace("Z", "+00:00"))
-
-# Compare against current time
-now = datetime.now(UTC)
-if air_date > now:
-    # Skip -- not yet released
-    continue
-```
-
-### Key Considerations
-
-| Concern | Approach | Notes |
-|---------|----------|-------|
-| Timezone handling | Always use `datetime.now(UTC)` and parse with timezone info | Already established in codebase |
-| `"Z"` suffix | Replace with `"+00:00"` before `fromisoformat()` | Python 3.11+ handles `Z` natively, but the replace pattern is already used and is safe |
-| Null dates | Check for `None` before parsing | Both Radarr and Sonarr can return null for date fields |
-| Invalid dates | Catch `ValueError` and `AttributeError` | Already handled in existing pattern |
-| Date-only strings | Not an issue | Radarr returns full datetime; Sonarr's `airDate` is date-only but we use `airDateUtc` |
-
-### Python 3.11+ `fromisoformat` Note
-
-Python 3.11 expanded `datetime.fromisoformat()` to handle the `Z` suffix directly. Since Triggarr targets Python 3.13, the `.replace("Z", "+00:00")` is technically unnecessary but harmless. Keep it for consistency with the existing codebase pattern -- do not change the existing code just to remove the replace.
-
-## Config Addition
-
-One new boolean field on `GeneralConfig`:
-
-```python
-class GeneralConfig(BaseModel):
-    skip_unreleased: bool = True  # Skip unreleased media during search cycles
-```
-
-In TOML:
+**TOML structure (TOML array of tables):**
 ```toml
-[general]
-skip_unreleased = true
+[[radarr]]
+name = "radarr-4k"
+url = "http://radarr-4k:7878"
+api_key = "abc123"
+enabled = true
+search_interval = 30
+search_missing_count = 5
+search_cutoff_count = 5
+tag_missing = ""           # empty = search all monitored missing
+tag_cutoff = ""            # empty = search all monitored cutoff
+
+[[radarr]]
+name = "radarr-hd"
+url = "http://radarr-hd:7878"
+api_key = "def456"
+enabled = true
+tag_missing = "triggarr-missing"
+tag_cutoff = "triggarr-upgrade"
+
+[[sonarr]]
+name = "sonarr-main"
+url = "http://sonarr:8989"
+api_key = "ghi789"
+enabled = true
 ```
 
-**Default: `True`** (skip unreleased). This is the safe default -- users who want to search for unreleased content must explicitly opt out. The feature description in PROJECT.md confirms: "Default: enabled (skip unreleased)".
+**Why `[[radarr]]` array-of-tables:** TOML natively supports this via `[[section]]` syntax. pydantic-settings can load this as `list[InstanceConfig]`. No custom parsing needed. tomli-w can write it back. This is the cleanest approach.
 
-No new config sections, no new config models. Just one boolean.
+**Backward compatibility:** Single-instance `[radarr]` (table) and `[[radarr]]` (array-of-tables) are different TOML types. A migration path is needed: detect old format on load, convert to list-of-one internally, and optionally rewrite the file. Pydantic's `model_validator` can handle this.
+
+**Confidence:** HIGH -- TOML array-of-tables is well-specified, pydantic handles `list[Model]` natively.
+
+### 2. Tag-Based Filtering (httpx -- existing API calls)
+
+**How Radarr/Sonarr tags work (verified via API docs and SDK source):**
+
+- **Tag object:** `{id: int, label: string}` -- e.g., `{id: 3, label: "triggarr-missing"}`
+- **Tag endpoint:** `GET /api/v3/tag` returns all tags as `[{id, label}]`
+- **Movie object (Radarr):** Has `tags: int[]` field -- array of tag IDs. Present in `wanted/missing` and `wanted/cutoff` responses.
+- **Series object (Sonarr):** Has `tags: int[]` field on the **series** object, NOT on episodes. The existing `includeSeries=true` parameter in Sonarr's `wanted/missing` already returns the series object nested in each episode, so tags are accessible at `episode["series"]["tags"]`.
+- **Tag label validation:** Radarr/Sonarr enforce `[a-z0-9-]` only for tag labels (no spaces, uppercase, or special chars).
+
+**Filtering approach -- client-side, not server-side:**
+The wanted/missing and wanted/cutoff endpoints do NOT support server-side tag filtering. Filtering must happen client-side:
+
+1. At startup (or periodically), call `GET /api/v3/tag` to resolve tag label to tag ID
+2. After fetching wanted items, filter: keep only items where `tags` array contains the resolved tag ID
+3. If tag label not found on the instance, log a warning and skip filtering (search all)
+
+**No new library needed.** This is pure Python list filtering on the existing API response data that Triggarr already fetches.
+
+**Confidence:** HIGH -- verified via Go SDK (`golift.io/starr`) type definitions showing `Series.Tags` as `[]int` and Episode having no tags field. Pyarr SDK confirms `get_tag()` / `create_tag()` methods. Radarr Go SDK confirms `Movie.Tags` as `[]int`.
+
+### 3. Multi-Instance SQLite Schema (aiosqlite -- existing migration system)
+
+**Current schema (single instance):**
+```sql
+search_history (
+    id, timestamp, app, queue_type, item_name,
+    outcome, detail, item_id, season_number, missing_count, resolved_at
+)
+lifetime_stats (
+    app PRIMARY KEY, movies_found, movies_updated,
+    episodes_found, episodes_updated, last_reset_at
+)
+```
+
+**Problem:** The `app` column stores "Radarr" or "Sonarr" -- no instance discrimination. The `lifetime_stats` table uses `app` as primary key, so only one row per app type.
+
+**Required migration (v6):**
+
+```sql
+-- Add instance_id to search_history for per-instance filtering
+ALTER TABLE search_history ADD COLUMN instance_id TEXT DEFAULT NULL;
+
+-- Create index for per-instance queries
+CREATE INDEX idx_search_history_instance ON search_history(instance_id);
+
+-- Recreate lifetime_stats with composite key (app + instance_id)
+-- SQLite doesn't support ALTER TABLE to change PRIMARY KEY, so:
+CREATE TABLE lifetime_stats_v2 (
+    app TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    movies_found INTEGER NOT NULL DEFAULT 0,
+    movies_updated INTEGER NOT NULL DEFAULT 0,
+    episodes_found INTEGER NOT NULL DEFAULT 0,
+    episodes_updated INTEGER NOT NULL DEFAULT 0,
+    last_reset_at TEXT NOT NULL,
+    PRIMARY KEY (app, instance_id)
+);
+-- Migrate existing rows with default instance_id
+INSERT INTO lifetime_stats_v2
+    SELECT app, 'default', movies_found, movies_updated,
+           episodes_found, episodes_updated, last_reset_at
+    FROM lifetime_stats;
+DROP TABLE lifetime_stats;
+ALTER TABLE lifetime_stats_v2 RENAME TO lifetime_stats;
+```
+
+**`instance_id` value:** Use the user-provided `name` field from config (e.g., "radarr-4k"). This is human-readable and stable across restarts. Enforce uniqueness per app type in config validation.
+
+**Backward compat:** Existing rows get `instance_id = NULL` or a default value. Queries without instance filter continue to work (dashboard shows aggregate or per-instance based on UI selection).
+
+**Confidence:** HIGH -- the existing migration system (v1-v5) handles this pattern well. `ALTER TABLE ADD COLUMN` is safe in SQLite.
+
+### 4. Multi-Instance State (JSON state file)
+
+**Current state structure:**
+```json
+{
+    "radarr": {"missing_cursor": 0, "cutoff_cursor": 0, ...},
+    "sonarr": {"missing_cursor": 0, "cutoff_cursor": 0, ...}
+}
+```
+
+**Required change:** State must be keyed by instance ID, not app type.
+
+```json
+{
+    "instances": {
+        "radarr-4k": {"missing_cursor": 0, "cutoff_cursor": 0, "app_type": "radarr", ...},
+        "radarr-hd": {"missing_cursor": 0, "cutoff_cursor": 0, "app_type": "radarr", ...},
+        "sonarr-main": {"missing_cursor": 0, "cutoff_cursor": 0, "app_type": "sonarr", ...}
+    }
+}
+```
+
+**Migration:** The existing `_merge_defaults` pattern handles missing keys gracefully. Detect old format (has "radarr"/"sonarr" top-level keys without "instances"), migrate to new format with auto-generated instance names.
+
+**Confidence:** HIGH -- pure JSON restructuring, existing atomic write pattern preserved.
+
+### 5. Multi-Instance Scheduling (APScheduler 3.x)
+
+**Current:** Two jobs: `radarr_search` and `sonarr_search`.
+
+**Required change:** One job per instance, keyed by instance ID:
+```python
+scheduler.add_job(job_fn, "interval", minutes=interval, id=f"{instance_id}_search")
+```
+
+**No APScheduler changes needed.** The scheduler already supports arbitrary job IDs and multiple interval jobs. Each instance gets its own `make_search_job` closure reading its own client/state.
+
+**Confidence:** HIGH -- APScheduler 3.x handles this natively.
+
+### 6. Multi-Instance HTTP Clients (httpx)
+
+**Current:** One `RadarrClient` and one `SonarrClient` stored on `app.state`.
+
+**Required change:** Dictionary of clients keyed by instance ID:
+```python
+app.state.clients: dict[str, ArrClient] = {
+    "radarr-4k": RadarrClient(...),
+    "radarr-hd": RadarrClient(...),
+    "sonarr-main": SonarrClient(...),
+}
+```
+
+Each client needs a `get_tags()` method added to the base `ArrClient`:
+```python
+async def get_tags(self) -> list[dict[str, Any]]:
+    """Fetch all tags from the *arr instance."""
+    response = await self.get("/api/v3/tag")
+    return response.json()
+```
+
+**Tag resolution cache:** Store resolved tag label -> ID mapping per instance at startup and refresh on config reload. This avoids calling `/api/v3/tag` on every search cycle.
+
+**Confidence:** HIGH -- trivial httpx addition.
 
 ## What NOT to Add
 
-| Temptation | Why Not |
-|------------|---------|
-| `python-dateutil` | stdlib `datetime.fromisoformat()` handles all *arr date formats |
-| `arrow` or `pendulum` | Overkill for simple UTC comparisons already handled by stdlib |
-| New Pydantic models for movie dates | Items flow as `dict[str, Any]` through the pipeline -- adding typed models for 3 optional fields is unnecessary churn |
-| Per-app `skip_unreleased` toggle | One toggle is sufficient. Wanting to search unreleased movies but not unaired episodes (or vice versa) is a niche case not worth the config complexity |
-| Configurable "release date offset" (e.g., skip until N days after release) | Feature creep. The toggle is binary: released or not. Users wanting offset logic can disable the toggle |
-| `releaseDate` field from Radarr | Computed aggregate that may include `inCinemas` -- defeats the purpose of avoiding cam recordings |
+| Library | Why Not |
+|---------|---------|
+| SQLAlchemy / SQLModel | Overkill -- aiosqlite with raw SQL is already working well, migration system is proven |
+| Redis | Single-user local tool, no shared state needed |
+| Celery / dramatiq | APScheduler handles interval jobs fine for this use case |
+| pydantic[multi] or similar | pydantic already handles `list[Model]` natively |
+| toml (stdlib) | Already using tomllib (stdlib) for reading, tomli-w for writing |
+| Any ORM | Adds complexity for ~6 queries total |
+
+## Alternatives Considered
+
+| Decision | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| Instance identification | User-provided `name` field | Auto-generated UUID | Names are human-readable in UI and logs |
+| Config format | TOML `[[array]]` of tables | Nested `[radarr.instance-name]` | Array-of-tables is cleaner, order-preserving, standard TOML |
+| Tag resolution | At startup + cache | On every cycle | Wasteful -- tags rarely change; refresh on config reload is sufficient |
+| Tag filtering location | After fetch, before monitored filter | Server-side API param | *arr APIs don't support server-side tag filtering on wanted endpoints |
+| State key | Instance name string | Numeric index | Name is stable if user reorders instances in config |
+| DB instance column | TEXT `instance_id` | INTEGER foreign key to instances table | No instances table needed; name string is sufficient and self-documenting |
+
+## Radarr/Sonarr Tag API Reference
+
+### Endpoints (both apps, identical)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v3/tag` | GET | List all tags -> `[{id: int, label: string}]` |
+| `/api/v3/tag/{id}` | GET | Get single tag by ID |
+| `/api/v3/tag` | POST | Create tag -> `{label: string}` |
+| `/api/v3/tag/{id}` | PUT | Update tag |
+| `/api/v3/tag/{id}` | DELETE | Delete tag |
+
+### Tag Fields on Media Objects
+
+| App | Object | Field | Type | Present in wanted/missing? |
+|-----|--------|-------|------|---------------------------|
+| Radarr | Movie | `tags` | `int[]` | YES -- movie objects in wanted/missing include tags |
+| Sonarr | Series | `tags` | `int[]` | YES -- via `includeSeries=true` (already used), accessible at `episode["series"]["tags"]` |
+| Sonarr | Episode | n/a | n/a | NO -- episodes do not have tags, only series do |
+
+### Tag Label Constraints
+
+- Radarr: `[a-z0-9-]` only (lowercase, digits, hyphens)
+- Sonarr: Same pattern (shared Servarr codebase)
+
+### Filtering Logic (Pseudocode)
+
+```python
+# At startup or config reload:
+tags = await client.get_tags()  # GET /api/v3/tag
+tag_map = {t["label"]: t["id"] for t in tags}
+missing_tag_id = tag_map.get(config.tag_missing)  # e.g., "triggarr-missing" -> 3
+
+# During search cycle:
+items = await client.get_wanted_missing()
+if missing_tag_id is not None:
+    # Radarr: filter on movie["tags"]
+    items = [m for m in items if missing_tag_id in m.get("tags", [])]
+    # Sonarr: filter on episode["series"]["tags"]
+    items = [e for e in items if missing_tag_id in e.get("series", {}).get("tags", [])]
+# If no tag configured or tag not found on instance: search all (existing behavior)
+```
 
 ## Installation
 
-No changes to `pyproject.toml`. No new packages.
+No changes to `pyproject.toml` dependencies:
 
 ```bash
-# Nothing to install -- zero new dependencies
+# Existing (unchanged)
+uv sync --extra dev
 ```
-
-## Existing Dependencies That Cover Everything
-
-| Existing Dependency | v2.2 Use | Notes |
-|---------------------|----------|-------|
-| Python stdlib `datetime` | Parse ISO 8601 dates, compare against UTC now | Already used in `filter_sonarr_episodes()` |
-| Pydantic / pydantic-settings | One new `bool` field on `GeneralConfig` | Existing pattern |
-| Jinja2 / htmx | Toggle control in settings UI | Existing pattern (same as per-app enable/disable) |
 
 ## Sources
 
-- Radarr `MovieResource.cs` (release date fields): https://github.com/Radarr/Radarr/blob/develop/src/Radarr.Api.V3/Movies/MovieResource.cs (HIGH confidence -- primary source)
-- Radarr `Movie.cs` (metadata model): https://github.com/Radarr/Radarr/blob/develop/src/NzbDrone.Core/Movies/Movie.cs (HIGH confidence)
-- Sonarr `EpisodeResource.cs` (air date fields): https://github.com/Sonarr/Sonarr/blob/develop/src/Sonarr.Api.V3/Episodes/EpisodeResource.cs (HIGH confidence -- primary source)
-- Go Radarr client confirming camelCase JSON tags: https://pkg.go.dev/github.com/SkYNewZ/radarr (MEDIUM confidence -- third-party but confirms naming)
-- Radarr API docs: https://radarr.video/docs/api/ (HIGH confidence -- official docs)
-- Existing codebase `triggarr/search/engine.py` lines 145-173: `filter_sonarr_episodes()` (HIGH confidence -- verified in source)
-
----
-*Stack research for: Triggarr v2.2 -- Skip Unreleased Media*
-*Researched: 2026-03-09*
+- [Radarr API Docs (Swagger)](https://radarr.video/docs/api/) -- OpenAPI spec at `Radarr.Api.V3/openapi.json`
+- [Radarr REST API - DeepWiki](https://deepwiki.com/radarr/radarr/4.1-rest-api) -- architectural overview
+- [Sonarr API Docs](https://sonarr.tv/docs/api/) -- OpenAPI spec reference
+- [golift.io/starr/sonarr Go SDK](https://pkg.go.dev/golift.io/starr/sonarr) -- Series.Tags typed as `[]int`, Episode has no tags field (HIGH confidence)
+- [github.com/SkYNewZ/radarr Go SDK](https://pkg.go.dev/github.com/SkYNewZ/radarr) -- Movie.Tags typed as `[]int` (HIGH confidence)
+- [pyarr SonarrAPI docs](https://docs.totaldebug.uk/pyarr/modules/sonarr.html) -- `get_tag()`, `create_tag()` method signatures (MEDIUM confidence)
+- [ArrAPI documentation](https://arrapi.kometa.wiki/en/latest/radarr.html) -- tags as `Optional[List[Union[str, int, Tag]]]` in wrapper (MEDIUM confidence)
+- [Radarr tag validation issue](https://github.com/seerr-team/seerr/issues/2317) -- tag label `[a-z0-9-]` constraint (MEDIUM confidence)

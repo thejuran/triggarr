@@ -1,215 +1,291 @@
-# Domain Pitfalls
+# Pitfalls Research
 
-**Domain:** Adding release-date filtering to existing search automation pipeline (v2.2)
+**Domain:** Adding multi-instance support and tag-based filtering to existing search automation daemon
 **Researched:** 2026-03-09
-**Confidence:** HIGH (pitfalls derived from direct codebase analysis of engine.py, state.py, and app_card.html; Radarr API fields verified against OpenAPI spec and community sources; Sonarr filtering verified against existing filter_sonarr_episodes implementation)
+**Confidence:** HIGH (based on direct codebase analysis of all core modules + Radarr/Sonarr API research + multi-instance community patterns)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause incorrect filtering, cursor corruption, or silent data loss.
+### Pitfall 1: Single search_lock Serializes All Instances
 
-### Pitfall 1: Null/Missing Release Date Fields in Radarr API -- Silent Search Blackhole
+**What goes wrong:**
+The current system uses one `asyncio.Lock()` (`app.state.search_lock`) that serializes ALL search cycles. With N instances, each cycle waits for all others to finish. If Radarr-4K has 500 items and Radarr-HD has 200, the HD instance waits for 4K to complete before it can run. This effectively turns "parallel instances" into a slow sequential queue, defeating the purpose of separate instances.
 
-**What goes wrong:** Radarr movie objects have three nullable date fields: `digitalRelease`, `physicalRelease`, and `inCinemas`. Any or all can be `null`. A movie might have `inCinemas` set but `digitalRelease` and `physicalRelease` both null (theatrical-only, no home release date announced yet). If the filter treats "no date" as "unreleased," those movies NEVER get searched -- even if they have been released for months and Radarr simply lacks the metadata.
+**Why it happens:**
+The single lock was correct for single-instance (prevents concurrent API calls to the same server). Developers carry it forward assuming "one lock = safe" without recognizing that different instances target different servers and can safely run concurrently.
 
-**Why it happens:** Radarr sources release dates from TMDb/external metadata. New, obscure, or independent movies frequently have incomplete data. A movie can sit in "announced" status with zero date fields populated. Direct-to-streaming movies may have only `digitalRelease` set. Foreign films may have only `inCinemas`. The developer tests with well-known movies (complete metadata) and misses the null-date edge case.
+**How to avoid:**
+Use per-instance locks. Each instance gets its own `asyncio.Lock()` keyed by instance ID. Store in a dict: `{instance_id: asyncio.Lock()}`. This allows Radarr-4K and Sonarr-anime to search simultaneously (different servers) while preventing concurrent cycles on the SAME instance. The search-now endpoint and graceful shutdown must also use per-instance locks instead of the global lock.
 
-**Consequences:** The worst failure mode: invisible data loss. The user adds a movie, Radarr lacks metadata, and Triggarr silently never searches for it. The user has no way to know why the movie is not being searched. It does not appear in any log or error -- it is simply filtered out.
+**Warning signs:**
+- Search cycles taking much longer after adding instances
+- "next_run" times drifting behind schedule
+- Log messages showing one instance idle while another runs
 
-**Prevention:** Treat "no release date available" as "eligible for search" (do NOT skip). The filter should only skip items where a date IS present AND is in the future. The safe default: if we cannot determine the release status, search anyway. This matches the principle of least surprise -- the filter should prevent searching for things we KNOW are unreleased, not things we are uncertain about.
-
-**Detection:** Log a debug-level count per cycle: `"Radarr: 5 items with no release date (searched anyway)"`. If this number is consistently high, it is a metadata issue in Radarr, not a Triggarr problem.
-
-**Phase:** Core implementation phase -- the filter function must handle this from day one.
-
----
-
-### Pitfall 2: Radarr `status` Field vs. Actual Release Dates Disagree
-
-**What goes wrong:** Radarr has a `status` field with enum values `announced`, `inCinemas`, and `released`. It also has three date fields (`inCinemas`, `digitalRelease`, `physicalRelease`). These can disagree. A movie might have `status: "released"` but `digitalRelease: null` and `physicalRelease: null` (only `inCinemas` in the past). Filtering on dates alone would incorrectly skip this movie. Filtering on status alone might search movies that are "inCinemas" but have no digital/physical release (cam risk -- the whole point of the feature).
-
-**Why it happens:** Radarr calculates `status` from its "Minimum Availability" setting and available dates. The status transitions automatically. Direct-to-VOD movies are a known source of status/date mismatches (GitHub issues #4460, #4920). A movie can be `status: "released"` with no `digitalRelease` or `physicalRelease` if the only date that has passed is `inCinemas`.
-
-**Consequences:** Using status alone: might search movies still only in cinemas (cam recordings). Using dates alone: might skip movies that Radarr considers released. Either approach alone has edge cases where the user gets exactly what the feature was designed to prevent.
-
-**Prevention:** Use a combined check. A movie is "released enough to search" if ANY of: (a) `status == "released"`, (b) `digitalRelease` is in the past, (c) `physicalRelease` is in the past. Only skip when ALL available evidence says the movie is unreleased (no dates in the past AND status is not "released"). When in doubt, search. The feature is about preventing obvious cases (searching for a movie announced 6 months from now), not being a perfect release-date oracle.
-
-**Phase:** Core implementation phase -- the filter logic design decision.
+**Phase to address:**
+Phase 1 (core multi-instance infrastructure) -- foundational to scheduler design.
 
 ---
 
-### Pitfall 3: "X of Y" Dashboard Counts Become Misleading
+### Pitfall 2: Config Migration Destroys Existing Single-Instance Setups
 
-**What goes wrong:** The dashboard currently shows `{{ app.missing_cursor }} of {{ app.missing_count }}` where `missing_count` is the RAW count from the API (set at engine.py line 220 BEFORE `filter_monitored()` runs). After adding the release-date filter, the cursor indexes a shorter filtered list, but `missing_count` still reflects the unfiltered total. Users see "3 of 50" but 20 of those 50 are unreleased and will never be searched -- the effective queue is only 30 items.
+**What goes wrong:**
+The TOML config changes from `[radarr]` (single table) to `[[instances]]` (array of tables) or similar. `tomllib` parses `[radarr]` as `dict` and `[[instances]]` as `list[dict]`. These are incompatible types -- Pydantic validation fails. Existing users upgrade the Docker image, the container starts, hits a parse error, and their working setup breaks with no clear error.
 
-**Why it happens:** `state["radarr"]["missing_count"] = len(missing)` is intentionally set before filtering to show the raw API count. With one filter layer (`filter_monitored`), the gap was small (most items are monitored). Adding a second filter layer for release dates makes the gap much larger and the display actively confusing.
+**Why it happens:**
+TOML format changes are breaking changes at the parser level. The config file on disk was written by the old code. The new code expects a different structure. There is no automatic bridging.
 
-**Consequences:** Users think progress is slower than it is. "3 of 50" suggests 10 cycles to complete a pass at batch_size=5, but it actually takes 6 (30 eligible items). Users may increase batch sizes or shorten intervals, hammering indexers unnecessarily.
+**How to avoid:**
+1. Detect old format on startup: if `config.get("radarr")` is a `dict` (not absent or a list), the user has an old single-instance config.
+2. Auto-migrate: wrap the old `[radarr]` section into an instance with a default name (e.g., `"radarr"`), preserving all values.
+3. Write the migrated config back to disk atomically (existing `tempfile + fsync + os.replace` pattern).
+4. Back up the original: copy `triggarr.toml` to `triggarr.toml.pre-v2.3-backup` before rewriting.
+5. Log a clear INFO message: `"Migrated single-instance config to multi-instance format"`.
+6. Critical: the migration must preserve the API key value (currently a `SecretStr`). Read the raw TOML value (string), not the Pydantic-parsed `SecretStr`.
 
-**Prevention:** Track both raw and filtered counts in AppState. Add `missing_eligible` (or similar) that reflects the post-filter count. Update `app_card.html` to show cursor position relative to the eligible count. The raw count can remain as context (e.g., tooltip or secondary display). The cursor must be "X of eligible," not "X of total."
+**Warning signs:**
+- Startup crashes with "validation error" on radarr/sonarr fields
+- Users reporting "my config stopped working after update"
+- Silent loss of configured instances (no searches running, no error)
 
-**Phase:** UI/dashboard update phase -- can follow core filter implementation but should not be deferred past the milestone.
-
----
-
-### Pitfall 4: Applying the Release-Date Filter to the Cutoff Queue
-
-**What goes wrong:** The cutoff-unmet queue contains movies that HAVE files but at insufficient quality. These movies are, by definition, already released (they have been downloaded at least once). Applying the "skip unreleased" filter to the cutoff queue would incorrectly skip movies whose date fields happen to be null despite already being released and downloaded.
-
-**Why it happens:** The filter is implemented as a function and the developer applies it uniformly to both missing and cutoff processing. It feels consistent. But the cutoff queue has a fundamentally different semantic: these items have been found and downloaded; they just need better quality.
-
-**Consequences:** Movies in the cutoff queue with incomplete metadata (null `digitalRelease`, `physicalRelease`) get filtered out and never upgraded. The user sees the cutoff count but progress stalls for those items.
-
-**Prevention:** Only apply the release-date filter to the MISSING queue. The cutoff queue must NOT be filtered by release date. The `inCinemas` date check is also wrong for cutoff items -- a movie could be upgrading from a web-dl while still in cinemas. Cutoff items have proven they are available.
-
-**Phase:** Core implementation phase -- must scope the filter correctly from the start.
+**Phase to address:**
+Phase 1 (config model) -- must be the FIRST thing implemented, before any other work.
 
 ---
 
-## Moderate Pitfalls
+### Pitfall 3: State File Cursor Collision Between Instances
 
-### Pitfall 5: Sonarr Already Filters by Air Date -- Double-Filtering Risk
+**What goes wrong:**
+The current `state.json` stores cursors at `state["radarr"]["missing_cursor"]`. With two Radarr instances, both write to the same key. Instance A advances cursor to 50, instance B overwrites it to 12, instance A reads 12 next cycle and re-searches items 12-50.
 
-**What goes wrong:** The existing `filter_sonarr_episodes()` function (engine.py lines 145-173) already filters out episodes with future `airDateUtc` or no air date. Adding a separate "skip unreleased" filter for Sonarr would be redundant. The PROJECT.md says "skip Sonarr episodes that haven't aired yet" -- but this is already implemented.
+**Why it happens:**
+The state structure uses app type ("radarr", "sonarr") as the key, not instance identity. The `_default_state()` function hardcodes exactly two entries. The `_merge_defaults()` function only looks for "radarr" and "sonarr" keys.
 
-**Why it happens:** The v2.2 feature spec was written without accounting for the existing filter. The feature request describes behavior that already exists for Sonarr.
+**How to avoid:**
+Key state by instance ID. Change from `state["radarr"]` to `state["instances"]["my-radarr-4k"]` (or similar). Migration on first load: detect old `state["radarr"]` keys, move their values to the default instance's new key. The `AppState` TypedDict itself can remain unchanged (it describes per-instance state). Only the top-level `TriggarrState` changes.
 
-**Consequences:** If a second filter is added with slightly different logic (e.g., different datetime comparison, different null handling), the two filters could disagree, causing subtle bugs. At best, it doubles the work with zero benefit.
+**Warning signs:**
+- Cursor positions jumping backwards in logs
+- Items being re-searched that were just searched
+- Pass counters resetting or not incrementing
 
-**Prevention:** Recognize that Sonarr episode air-date filtering is ALREADY DONE and unconditional. The "skip unreleased" toggle should control ONLY the Radarr release-date filter. For Sonarr, the existing `filter_sonarr_episodes()` should remain unchanged and not gated behind the toggle. Document this in the code: the toggle is Radarr-specific because Sonarr already handles this.
-
-**Phase:** Core implementation phase -- critical to recognize before writing code.
-
----
-
-### Pitfall 6: Cursor Position Drift When Filtered List Changes Between Cycles
-
-**What goes wrong:** The cursor is an index into the filtered list. Between cycle N and cycle N+1, a movie's release date gets added in Radarr (metadata refresh). The movie moves from "unreleased" to "released," changing the filtered list composition. The cursor still points to the same integer index, but that index now refers to a different movie. Some movies may be searched twice while others are skipped.
-
-**Why it happens:** This is inherent to index-based cursors over volatile lists. It already happens today when users add/remove movies in Radarr between cycles. The release-date filter adds another source of list volatility.
-
-**Consequences:** Minor fairness degradation. Some items get double-searched, others wait an extra cycle. The round-robin still guarantees eventual complete coverage.
-
-**Prevention:** This does NOT need fixing. The existing `slice_batch()` wrap-around logic handles list changes gracefully. Items are never permanently skipped -- the cursor wraps and covers everything within one pass. The temptation to "fix" this by switching to ID-based cursors would be a major refactor with its own edge cases (deleted items, ID gaps). Resist.
-
-**Phase:** N/A -- accept as existing behavior. Document in code comments.
+**Phase to address:**
+Phase 1 (state model) -- must change alongside config migration.
 
 ---
 
-### Pitfall 7: Timezone and Date Boundary Edge Cases
+### Pitfall 4: Database search_history Loses Instance Attribution
 
-**What goes wrong:** Radarr stores dates as ISO 8601 UTC (e.g., `"2026-03-15T00:00:00Z"`). A movie "released March 15" means midnight UTC on March 15. For US users, this is 5pm-7pm on March 14 in their local time. The filter would consider this movie "released" when it is not yet March 15 locally. Conversely, a movie released "March 15" in Australia would be March 14 in UTC.
+**What goes wrong:**
+The `search_history` table stores `app` as "Radarr" or "Sonarr" -- a type, not an instance identifier. With two Radarr instances, all searches log as "Radarr" with no way to tell which instance triggered them. This breaks:
+- **Dashboard stats**: combined grab rates for different instances (meaningless aggregate)
+- **History filtering**: cannot filter to one instance's activity
+- **Tracking correlation**: `run_tracking_check` groups by `(app, item_id)` and picks a client by app name. With two Radarr clients, it picks the wrong one 50% of the time. Grab detection fails for searches on the instance whose client was NOT picked.
 
-**Why it happens:** Release dates are inherently timezone-ambiguous. There is no single correct moment when a movie becomes "released."
+**Why it happens:**
+The `app` column was designed for exactly two values. It is used in `GROUP BY app` queries, template rendering, the `_get_client()` function in tracking.py, and the `lifetime_stats` table (keyed on `app TEXT PRIMARY KEY`).
 
-**Consequences:** Minor: movies become searchable a few hours early or late relative to the user's local expectation. Not practically harmful -- the round-robin will get to them eventually regardless.
+**How to avoid:**
+1. Add `instance_id TEXT` column to `search_history` (schema migration v6).
+2. Keep the `app` column for backward compat (still useful for "Radarr or Sonarr?" type checks).
+3. Backfill existing rows: `UPDATE search_history SET instance_id = 'radarr' WHERE app = 'Radarr' AND instance_id IS NULL`.
+4. Change `lifetime_stats` primary key from `app` to `instance_id` (or add `instance_id` column and a new composite key). This requires creating a new table and migrating data since SQLite cannot alter primary keys.
+5. Update all `GROUP BY app` queries to `GROUP BY instance_id` where per-instance breakdown is needed.
 
-**Prevention:** Use the same simple comparison as the existing `filter_sonarr_episodes()`: compare `release_date > now` using UTC `datetime.now(UTC)`. Anything past midnight UTC is eligible. This is good enough -- a 24-hour ambiguity on release dates is irrelevant for a tool that searches on a 30-minute cycle. Do NOT add timezone configuration or local time handling.
+**Warning signs:**
+- Dashboard stats showing blended numbers for different Radarr instances
+- Tracking marking wrong items as "grabbed" (cross-instance correlation)
+- History page showing mixed results with no instance filter
 
-**Phase:** Core implementation phase -- simple, just be deliberate about UTC.
-
----
-
-### Pitfall 8: Config Toggle Not Round-Tripped Through Settings Save
-
-**What goes wrong:** Adding `skip_unreleased: bool = True` to the Pydantic config model is straightforward (defaults handle missing TOML keys). But the `save_settings` route in routes.py manually constructs a config dict from form data (lines 270-300). If the new field is not read from the form and written to the dict, it gets silently dropped to its default value every time the user saves any settings.
-
-**Why it happens:** The settings save route does not use a generic "serialize model" approach -- it manually picks form fields. Every new config field requires updates in THREE places: (1) the Pydantic model, (2) the settings.html template (form input), (3) the save_settings route (form parsing). Missing any one causes silent data loss.
-
-**Consequences:** User enables skip_unreleased=False (they want to search everything). User changes an unrelated setting (e.g., search interval). The save route drops skip_unreleased, which reverts to the default (True). Now unreleased items are being skipped when the user explicitly disabled that behavior.
-
-**Prevention:** Update all three locations: `GeneralConfig` model (add field with default), `settings.html` template (add toggle UI), `save_settings` route (read from form, write to config dict). Test the round-trip explicitly: change the toggle, save, reload the page, verify the value persisted.
-
-**Phase:** Config/settings phase -- straightforward but the three-location pattern must not be overlooked.
-
----
-
-### Pitfall 9: Items Transitioning from Unreleased to Released Between Cycles
-
-**What goes wrong:** A movie is unreleased at cycle N and filtered out. At cycle N+1, its release date has passed and it enters the filtered list. But it enters at some position in the sorted list. If the cursor has already passed that position, the movie is not searched until the next full pass (cursor wrap-around).
-
-**Why it happens:** The round-robin cursor only advances forward. New items entering behind the cursor wait for the next pass. This is existing behavior for newly-added movies, but the release-date filter makes it more visible -- the user knows exactly when the movie became eligible and notices the delay.
-
-**Consequences:** For a library of 100 eligible items with batch_size=5 and 30-minute intervals, a full pass takes 10 hours. A movie that becomes eligible just after the cursor passes its position waits up to 10 hours.
-
-**Prevention:** This is acceptable and should NOT be "fixed" with priority queuing. Priority logic would break the round-robin simplicity and create edge cases worse than the symptom. Document this behavior. Point users to the "Search Now" button for immediate coverage of newly-released items.
-
-**Phase:** Documentation phase.
+**Phase to address:**
+Phase 2 (database schema + tracking) -- after config/state model is stable.
 
 ---
 
-### Pitfall 10: Log Messages Do Not Explain Where Filtered Items Went
+### Pitfall 5: Tag Filtering Requires Client-Side Implementation (No Server-Side Support)
 
-**What goes wrong:** The cycle diagnostic log says `"50 fetched, 3 searched, 0 skipped"` but the user wonders where the other 47 items went. The existing "skipped" counter counts search failures (exceptions), not filtered-out items. There is no indication that items were filtered due to release dates.
+**What goes wrong:**
+Developers assume they can pass a `tags` query parameter to `/api/v3/wanted/missing` to get only tagged items server-side. The Radarr and Sonarr wanted/missing and wanted/cutoff endpoints do NOT support tag filtering. You must fetch ALL wanted items and filter client-side. This is a known API limitation confirmed by the syncarr project's implementation struggles (GitHub syncarr/syncarr#77) and Radarr issue #7704.
 
-**Why it happens:** The filter runs silently. `filter_monitored()` does not log its effect. Adding another silent filter compounds the opacity.
+**Why it happens:**
+The *arr APIs include `tags` on the movie/series object as an integer array (tag IDs), but the wanted endpoints do not accept tag filter parameters. The assumption that a field exists on the response implies it is also filterable on the request is natural but wrong.
 
-**Prevention:** Add a single INFO-level log line per cycle when items are filtered: `"Radarr: 20 unreleased items filtered (skip_unreleased=true)"`. This appears once per cycle, not per item. Include the count in the diagnostic summary: `"50 fetched, 20 unreleased, 30 eligible, 3 searched, 0 failed"`.
+**How to avoid:**
+1. Fetch wanted items as currently done (full paginated fetch).
+2. After fetching, filter: `[item for item in items if configured_tag_id in item.get("tags", [])]`.
+3. When no tag is configured, skip filtering entirely (current behavior preserved).
+4. Resolve tag names to IDs via `GET /api/v3/tag` (returns `[{"id": 1, "label": "triggarr-missing"}, ...]`).
+5. For Sonarr: tags are on the SERIES object, not episodes. Since `includeSeries=true` is already passed, use `episode.get("series", {}).get("tags", [])` to check tags.
 
-**Phase:** Core implementation phase -- add alongside the filter logic.
+**Warning signs:**
+- Attempting to add `tags` param to the paginated fetch and getting it silently ignored
+- Tag filtering appearing to work but matching zero items (wrong tag ID resolution)
 
----
-
-## Minor Pitfalls
-
-### Pitfall 11: Temptation to Reset Cursors When Toggle Changes
-
-**What goes wrong:** User enables skip_unreleased. The developer thinks "the filtered list is now different, I should reset cursors to 0 to start fresh." But resetting cursors causes items at the beginning of the list to be re-searched immediately, even if they were just searched in the previous cycle.
-
-**Prevention:** Do NOT reset cursors when the toggle changes. The cursor-pointing-to-a-different-item effect is identical to what happens when movies are added/removed from Radarr. The existing `slice_batch()` wrap-around handles this. Resetting cursors is always worse than letting the wrap-around handle it naturally.
-
-**Phase:** Config/settings phase -- resist the urge.
-
----
-
-### Pitfall 12: Performance Over-Engineering for Date Comparisons
-
-**What goes wrong:** Developer adds caching, pre-computation, or a "released items cache" to avoid parsing dates on every cycle. This adds complexity (cache invalidation, stale cache bugs) for zero practical benefit.
-
-**Prevention:** `datetime.fromisoformat()` in CPython 3.11+ is C-implemented and handles ~1M parses/second. Even 10,000 movies with 3 date fields = 30,000 parses = ~30ms. The HTTP fetch to Radarr takes 100-500ms. Keep the filter simple, stateless, and re-computed every cycle. No caching needed.
-
-**Phase:** N/A -- just avoid over-engineering.
+**Phase to address:**
+Phase 3 (tag filtering) -- after multi-instance infrastructure is solid.
 
 ---
 
-## Phase-Specific Warnings
+### Pitfall 6: Tag ID vs Tag Name Mismatch Silently Filters Everything Out
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Filter function | Null dates treated as "unreleased" (Pitfall 1) | Default to "search" when dates missing |
-| Filter function | Status vs. date disagreement (Pitfall 2) | Combined check: status OR dates |
-| Filter function | Applied to cutoff queue (Pitfall 4) | Missing queue only |
-| Filter function | Redundant Sonarr filtering (Pitfall 5) | Radarr-only; Sonarr already handled |
-| Filter function | Silent operation (Pitfall 10) | Log filtered count per cycle |
-| Dashboard UI | "X of Y" confusing (Pitfall 3) | Track eligible count separately |
-| Config/settings | Save route drops new field (Pitfall 8) | Update model + template + route |
-| Config/settings | Cursor reset temptation (Pitfall 11) | Do not reset |
-| Testing | Incomplete null-date coverage | Test: all dates null, only inCinemas, status="released" with no dates, status="announced" with past digitalRelease |
+**What goes wrong:**
+Users configure tag filtering by label ("triggarr-missing") in TOML. The app resolves this to an integer ID (e.g., 5) via `/api/v3/tag`. If the user deletes and recreates the tag in Radarr, the ID changes from 5 to 8. If the app caches the old ID, it filters against a nonexistent tag, matching zero items. The instance silently searches nothing.
+
+**Why it happens:**
+Tag IDs in *arr are auto-incrementing database IDs, not stable identifiers. Labels are stable but filtering requires IDs. The syncarr project hit exactly this problem -- tag ID comparisons broke when tags were recreated (syncarr#77).
+
+**How to avoid:**
+1. Resolve tag name to ID at the START of every search cycle, not just at startup. The API call to `GET /api/v3/tag` is lightweight (~10ms).
+2. If the tag name does not resolve (no match), log a WARNING and fall back to "search all items" for that cycle. Do NOT silently search nothing.
+3. Store tag NAME in config, never tag ID. The ID is ephemeral runtime state.
+4. Show a warning badge on the dashboard: "Tag 'triggarr-missing' not found in Radarr-4K".
+5. Optional optimization: cache the tag mapping with a 5-minute TTL to avoid calling `/api/v3/tag` on every cycle.
+
+**Warning signs:**
+- Zero items searched after user reorganized tags in *arr
+- "Tag 'triggarr-missing' not found" warnings accumulating in logs
+- Instance suddenly searching all items when it should be filtered (fallback kicking in)
+
+**Phase to address:**
+Phase 3 (tag filtering) -- part of the tag resolution design.
 
 ---
 
-## Integration Pitfalls with Existing Systems
+### Pitfall 7: Tracking Cross-Contamination Between Instances
 
-| Integration Point | Pitfall | Prevention |
-|-------------------|---------|------------|
-| `filter_monitored()` pipeline | New filter placed AFTER `slice_batch()` instead of before | Insert filter between `filter_monitored()` and `slice_batch()` calls |
-| `state["radarr"]["missing_count"]` | Raw count no longer meaningful as "queue size" | Add `missing_eligible` to AppState for post-filter count |
-| `deduplicate_to_seasons()` (Sonarr) | Release filter applied to episodes AFTER deduplication (seasons have no air date) | Not needed -- Sonarr already filters by air date before this step |
-| Search history `insert_search_entry()` | No record of WHY an item was not searched (filtered vs. not in batch) | Log filtered count; do NOT add history entries for filtered items |
-| Tracking/correlation (`tracking.py`) | Filtered items still have old search history entries that get correlated | Not a problem -- correlation only looks at entries with outcome="searched" |
-| `cap_batch_sizes()` hard max | Hard max calculated against pre-filter batch sizes | Hard max applies to requested batch size, not filtered list size -- no change needed |
-| `app_card.html` template | Cursor shows position in filtered list but count shows unfiltered total | Update template to use eligible count for "of Y" |
+**What goes wrong:**
+The tracking system (`tracking.py`) polls `/api/v3/history/movie` or `/api/v3/history/series` to detect grabs. With two Radarr instances on different servers, tracking must query the CORRECT instance's API. Currently `_get_client()` does a simple name match: `if app == "Radarr": return radarr_client`. With multiple Radarr instances, this picks one client arbitrarily. Searches on instance B get checked against instance A's history, finding no grabs.
+
+**Why it happens:**
+`run_tracking_check` receives `radarr_client` and `sonarr_client` as single objects. The `_get_client()` function dispatches by app name, not instance identity. The `get_trackable_entries()` query does not return instance information.
+
+**How to avoid:**
+1. Store `instance_id` on each `search_history` row (see Pitfall 4).
+2. Pass a client dict to tracking: `{instance_id: client}` instead of two positional args.
+3. For each pending entry, look up client by `instance_id`.
+4. If a client is unavailable (instance removed from config), immediately mark pending entries as "unresolved" instead of leaving them pending forever.
+
+**Warning signs:**
+- All searches showing "unresolved" despite items being grabbed
+- Pending entries accumulating for removed instances
+- Grab rates dropping to near zero after adding a second instance of the same type
+
+**Phase to address:**
+Phase 2-3 -- after instance_id is in the database schema.
+
+---
+
+## Technical Debt Patterns
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Hardcoded "Radarr"/"Sonarr" strings in engine, tracking, templates | Quick string comparisons | Every multi-instance feature needs conditional logic; breaks if third app type added | Never -- replace with instance_id early |
+| Single shared DB connection for all instances | Simple connection management | Write contention with many instances (SQLite serializes writes) | Acceptable for up to ~6 instances (WAL mode handles concurrent reads; cycles are mostly reads with brief writes) |
+| Resolving tag IDs only at startup | Faster cycles | Stale IDs after tag changes | Never -- resolve per-cycle or with short TTL cache |
+| Keeping `app` column without `instance_id` | Less migration work | Ambiguous queries, cross-instance tracking bugs | Only during Phase 1 transition -- must add instance_id in Phase 2 |
+| Storing instance config inline in one TOML file | Simple single file | Long files with many instances, harder to read | Acceptable -- TOML array of tables is readable up to ~8 instances |
+
+## Integration Gotchas
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| Radarr/Sonarr tag API (`GET /api/v3/tag`) | Assuming tag labels are globally unique | Labels ARE unique within one *arr instance, but different instances have different IDs for the same label name. Resolve per-instance. |
+| Radarr/Sonarr tag API | Assuming the tag exists | `/api/v3/tag` may return a list without the expected label. Handle with fallback to "search all" + dashboard warning. |
+| Movie/series `tags` field | Assuming `tags` key always present | Some API responses omit `tags` when empty. Always use `.get("tags", [])`. |
+| Sonarr episode tags | Filtering episodes directly by tags | Tags are on the SERIES object, not individual episodes. Use `episode.get("series", {}).get("tags", [])` since `includeSeries=true` is already set. |
+| APScheduler job IDs | Using `f"{app_name}_search"` pattern | With multiple instances, job IDs must be unique per instance: `f"{instance_id}_search"`. Duplicate IDs cause APScheduler to silently replace the first job. |
+| `make_search_job()` closure | Captures app_name to select cycle function | Must capture instance_id AND app type. The cycle function selection (radarr vs sonarr) depends on app type, but client lookup depends on instance_id. |
+| Settings save route | Manually constructing config dict from form fields | With N instances, the form structure changes fundamentally. Must iterate over instance fields dynamically, not hardcode "radarr" and "sonarr" names. |
+| Health endpoint | Checking `state["radarr"]["connected"]` | Must iterate all instances, check each. Report per-instance health. |
+| Same movie on two instances | Searching movie ID 42 on both Radarr-HD and Radarr-4K | Movie IDs are local to each *arr database. Movie ID 42 on Radarr-HD is a DIFFERENT movie than ID 42 on Radarr-4K. The tracking correlation must scope item_id to instance_id. |
+
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| N instances fetching full wanted lists for tag filtering | Slow total cycle time; high memory | Accept this is unavoidable (no server-side tag filter). Log fetch times. Stagger instance schedules. | >5,000 wanted items per instance |
+| N instances x M API calls = N*M outbound requests per interval | API rate limiting in *arr; slow cycles | Per-instance locks allow parallelism. Stagger start times (offset initial run by instance index * 30s). | >4 instances with <15min intervals |
+| Dashboard aggregating stats across all instances | Slow page loads from many DB queries | Single query with `GROUP BY instance_id`, not N separate queries. | >3 instances |
+| Tag resolution API call per instance per cycle | Extra 100-200ms per instance per cycle | Cache with 5-min TTL. Only re-resolve on miss or expiry. | Noticeable at >6 instances |
+| `get_trackable_entries()` returning all pending from all instances | Large result set when many instances have pending entries | Consider adding instance_id filter to the query when processing per-instance. | >100 pending entries across instances |
+
+## Security Mistakes
+
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| New instance API keys not added to log redaction | Keys from added instances appear in loguru output | After config save/load with new instances, re-collect ALL secrets from ALL instances and update the redacting sink. The existing `collect_secrets()` + `setup_logging()` pattern must iterate all instances. |
+| Instance names interpolated unsafely in log messages or templates | XSS if instance name contains HTML; log injection if it contains format strings | Validate instance names: alphanumeric + hyphens only, max 32 chars. Apply same urlencode discipline in templates as existing XSS prevention. |
+| Settings form not masking all API keys | Multiple API key fields on page; easy to miss masking one | Loop over all instances when building settings context, applying same `has_api_key` mask pattern per instance. |
+| Instance URL not validated | SSRF if user enters internal network addresses | Apply existing `validate_arr_url()` to every instance URL, not just "radarr" and "sonarr". |
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| Dashboard shows all instances in a flat list | Cluttered with 4+ instances | Group cards by app type (Radarr section, Sonarr section). Instance name as card title. |
+| Tag configured but tag does not exist in *arr | Silent failure -- instance searches nothing, user thinks tool is broken | Warning badge on dashboard card: "Tag 'triggarr-missing' not found in Radarr-4K" |
+| Config UI for N instances is a long scrolling form | Tedious for 4+ instances | Tabbed or accordion UI per instance. Add/remove instance buttons. |
+| No visual distinction between instances | Users confuse which Radarr instance is which | Require unique instance names. Show name prominently in cards, history, and logs. |
+| Search history mixes all instances | Cannot see one instance's activity | Instance filter pills on history page (same pattern as existing app/queue/outcome filters). |
+| "Search Now" button ambiguity | Which instance does it trigger? | One button per instance card, labeled with instance name. |
+| Stats aggregated across instances | Overall grab rate is meaningless when one instance has 90% and another has 10% | Per-instance stats on dashboard. Optional "all instances" aggregate. |
+
+## "Looks Done But Isn't" Checklist
+
+- [ ] **Config migration:** Old single-instance TOML auto-detected and migrated on first startup -- verify with a real v2.2 `triggarr.toml` file
+- [ ] **State migration:** Old `state["radarr"]` cursors preserved and attributed to default instance -- verify cursor positions survive upgrade
+- [ ] **DB migration:** `instance_id` column added to `search_history` AND `lifetime_stats` restructured -- verify existing rows backfilled with default instance IDs
+- [ ] **Tracking:** Pending search entries from before upgrade are resolvable -- verify they get attributed to correct default instance client
+- [ ] **Scheduler:** Each instance has unique job ID -- verify removing an instance also removes its APScheduler job
+- [ ] **Per-instance locks:** Instances on different servers run concurrently -- verify with log timestamps showing overlapping cycles
+- [ ] **Tag resolution:** Tag name resolves to correct ID per instance -- verify with two instances where same tag label has different IDs
+- [ ] **Tag not found:** Graceful fallback to "search all" with dashboard warning -- verify by configuring a nonexistent tag name
+- [ ] **Sonarr tag path:** Tags checked via `episode.series.tags`, not `episode.tags` -- verify with a tagged Sonarr series
+- [ ] **Settings form:** All instance API keys masked, never sent to browser -- verify with browser dev tools
+- [ ] **Log redaction:** All instance API keys redacted -- verify by triggering connection error on each instance
+- [ ] **Health endpoint:** Reports per-instance health -- verify with one healthy and one unhealthy instance of same type
+- [ ] **Search-now:** Works per-instance -- verify button triggers correct instance cycle
+- [ ] **Graceful shutdown:** All instance clients closed, all locks drained -- verify no resource leaks
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Config migration failed / corrupt | LOW | Restore from `triggarr.toml.pre-v2.3-backup`, fix migration code, retry |
+| State cursors corrupted by collision | LOW | Delete `state.json` -- all cursors reset to 0, instances restart from beginning of queues |
+| DB missing instance_id on rows | MEDIUM | Run backfill migration: `UPDATE search_history SET instance_id = 'default-radarr' WHERE app = 'Radarr' AND instance_id IS NULL` (similarly for Sonarr) |
+| Tracking cross-contamination | MEDIUM | Mark all pending entries as "unresolved" (`UPDATE search_history SET outcome = 'unresolved' WHERE outcome IN ('searched', 'partial')`), let next cycles create fresh entries with correct instance_id |
+| Wrong tag ID cached | LOW | Restart app or wait for next cycle (if per-cycle resolution implemented) |
+| APScheduler duplicate job IDs | LOW | Restart app with fixed job ID scheme |
+| Tag silently matching zero items | LOW | Check logs for "Tag not found" warning; verify tag exists in *arr instance; restart app |
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Single search_lock (P1) | Phase 1: Core infrastructure | Two instances run cycles concurrently (overlapping log timestamps) |
+| Config migration breaks existing (P2) | Phase 1: Config model | Start new code with old v2.2 triggarr.toml; auto-migration succeeds; searches run |
+| State cursor collision (P3) | Phase 1: State model | Two Radarr instances maintain independent cursors across multiple cycles |
+| DB lacks instance attribution (P4) | Phase 2: Schema migration | Search history shows correct instance name per entry; tracking resolves against correct server |
+| Tag filtering is client-side (P5) | Phase 3: Tag filtering | Tag-filtered instance searches fewer items than unfiltered |
+| Tag ID vs name mismatch (P6) | Phase 3: Tag filtering | Delete + recreate tag in *arr; next cycle picks up new ID |
+| Tracking cross-contamination (P7) | Phase 2-3: Tracking update | Search on instance A detected via instance A's history API, not instance B's |
 
 ---
 
 ## Sources
 
-- Radarr API documentation: [Radarr API Docs](https://radarr.video/docs/api/)
-- Radarr MovieStatusType enum: [pyarr Radarr models](https://docs.totaldebug.uk/pyarr/models/radarr.html) -- `announced`, `inCinemas`, `released` (HIGH confidence)
-- Direct-to-VOD status/date mismatches: [Radarr Issue #4460](https://github.com/Radarr/Radarr/issues/4460), [Radarr Issue #4920](https://github.com/Radarr/Radarr/issues/4920) (HIGH confidence -- official issue tracker)
-- Release date metadata gaps: [Radarr Issue #8944](https://github.com/Radarr/Radarr/issues/8944) (MEDIUM confidence)
-- Radarr release date fallback behavior: [Radarr Issue #5647](https://github.com/Radarr/Radarr/issues/5647) (MEDIUM confidence)
-- Sonarr TBA/air date handling: [Sonarr FAQ](https://wiki.servarr.com/sonarr/faq) (HIGH confidence)
-- Codebase analysis (2026-03-09): Direct reading of `triggarr/search/engine.py` (filter pipeline, cursor logic, cycle functions), `triggarr/state.py` (AppState TypedDict), `triggarr/models/config.py` (Settings/GeneralConfig/ArrConfig), `triggarr/web/routes.py` (save_settings form parsing, _build_app_context), `triggarr/templates/partials/app_card.html` (X of Y display) (HIGH confidence -- primary source)
+- **Codebase analysis (HIGH confidence):** Direct reading of `triggarr/config.py`, `triggarr/models/config.py` (Settings/ArrConfig), `triggarr/state.py` (TriggarrState/AppState TypedDict, `_default_state`, `_merge_defaults`), `triggarr/search/scheduler.py` (single `search_lock`, `make_search_job`, lifespan), `triggarr/search/engine.py` (cycle functions, filter pipeline), `triggarr/db.py` (schema, migrations, `app` column usage, lifetime_stats PK), `triggarr/tracking.py` (`_get_client` dispatch, `run_tracking_check` grouping), `triggarr/web/routes.py` (settings save, search-now, health, hardcoded "radarr"/"sonarr")
+- [Syncarr tag filtering issues (syncarr#77)](https://github.com/syncarr/syncarr/issues/77) -- tag filtering only worked on Sonarr initially; tag ID mismatches caused silent zero-match filtering in Radarr (HIGH confidence)
+- [Radarr#7704](https://github.com/Radarr/Radarr/issues/7704) -- wanted/missing endpoint lacks server-side filtering; client-side filtering required (HIGH confidence)
+- [Servarr Wiki: Multiple Instances](https://wiki.servarr.com/radarr/installation/multiple-instances) -- port conflicts, config isolation (MEDIUM confidence)
+- [Overseerr#3615](https://github.com/sct/overseerr/issues/3615) -- multi-instance integration complexity in *arr ecosystem tools (MEDIUM confidence)
+- [Bazarr#404](https://github.com/morpheus65535/bazarr/issues/404) -- multi-instance support challenges (MEDIUM confidence)
+- [Radarr#11146](https://github.com/Radarr/Radarr/issues/11146) -- browser localStorage conflicts with multiple instances (LOW confidence -- different domain but instructive)
+- [TOML array of tables (Real Python)](https://realpython.com/python-toml/) -- `[[section]]` syntax, tomli_w behavior (HIGH confidence)
+
+---
+*Pitfalls research for: Triggarr v2.3 multi-instance and tag filtering*
+*Researched: 2026-03-09*

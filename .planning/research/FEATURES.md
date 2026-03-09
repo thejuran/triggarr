@@ -1,192 +1,221 @@
-# Feature Landscape: v2.2 Skip Unreleased Media
+# Feature Research: Multi-Instance & Tag Filtering
 
-**Domain:** Skip-unreleased-media filtering for Radarr/Sonarr search automation
+**Domain:** *arr ecosystem search automation (multi-instance extension)
 **Researched:** 2026-03-09
-**Confidence:** HIGH -- feature is narrow in scope, Radarr API fields verified, existing codebase pattern is clear
+**Confidence:** HIGH
 
-## Context
+## Feature Landscape
 
-Triggarr v2.1 searches for all wanted/missing and cutoff-unmet items in Radarr/Sonarr. For Sonarr, `filter_sonarr_episodes()` already skips unaired episodes (engine.py:145-173). For Radarr, there is **no equivalent filter** -- movies still in theaters (with only `inCinemas` dates) get searched, which can result in cam recordings being grabbed.
+### Table Stakes (Users Expect These)
 
-v2.2 adds a configurable toggle to skip unreleased media, primarily targeting Radarr movies without a past digital or physical release date.
-
----
-
-## Table Stakes
-
-Features users expect. Missing = product feels incomplete.
+Features users assume exist once "multi-instance support" is advertised. Missing these = product feels broken.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Global `skip_unreleased` toggle in settings | Users expect a single on/off switch matching existing toggle pattern (per-app enable/disable, hard max, etc.) | Low | Add `skip_unreleased: bool = True` to `GeneralConfig`. Follows existing checkbox UI pattern in settings.html |
-| Skip Radarr movies without a past digital/physical release date | Core problem: searching movies only in theaters yields cam recordings. This is the entire point of the feature | Med | New `filter_radarr_movies()` function parallel to existing `filter_sonarr_episodes()`. Check `digitalRelease` and `physicalRelease` fields on movie dicts from wanted/missing API response |
-| Sonarr unaired-episode filtering (already exists) | Users expect unaired episodes to be skipped | None | **Already built.** `filter_sonarr_episodes()` at engine.py:145-173 checks `airDateUtc` against current UTC time. Skips episodes with no air date or future air date. Zero work needed |
-| Log skipped items so users understand why counts changed | Users will be confused if item counts drop without explanation | Low | Add unreleased-skip count to existing cycle diagnostic log line. Pattern: `"{searched} searched, {skipped} skipped"` becomes `"{searched} searched, {unreleased} unreleased-skipped, {skipped} failed"` |
-| Settings UI toggle for the feature | Must be configurable from the web UI, not just TOML editing | Low | Add checkbox in General section of settings.html. Wire through `save_settings()` form handling in routes.py |
-| TOML config persistence for the toggle | Setting must survive restarts | Low | Automatic -- existing `save_settings()` writes all `GeneralConfig` fields to TOML. Just add the field |
+| Named instances with independent URL/API key | Every multi-instance tool (Recyclarr, Notifiarr, Huntarr) uses named instances. Users name them by purpose: "radarr-4k", "sonarr-anime". | MEDIUM | Config model changes from single `[radarr]`/`[sonarr]` sections to named sub-tables like `[radarr.NAME]`. Recyclarr uses named keys under `radarr:` YAML; Notifiarr uses numbered `[[radarr]]` blocks. |
+| Per-instance search schedule and batch sizes | Users run different cadences for different instances (4K = slower, anime = faster). Huntarr supports independent schedules and caps per instance. | LOW | Already have `search_interval`, `search_missing_count`, `search_cutoff_count` per ArrConfig -- just replicate per instance. |
+| Per-instance enable/disable toggle | Users temporarily disable an instance without removing config. Already exists for single-instance. | LOW | Already implemented in `ArrConfig.enabled`. |
+| Independent round-robin cursors per instance | Each instance manages its own library; cursors must not cross. | MEDIUM | State model must change from `state["radarr"]` to `state["radarr"]["instance_name"]`. Existing state migration needed. |
+| Dashboard shows all instances with per-instance status | Users need to see which instances are connected, last-run times, queue sizes. | MEDIUM | Dashboard cards must iterate over instances. htmx polling already handles status -- just need to template N cards instead of 2. |
+| Search history scoped per instance | When filtering history, users want to see "radarr-4k" vs "radarr-hd" separately, not just "Radarr". | LOW | DB `app` column currently stores "Radarr"/"Sonarr". Change to store instance name (e.g. "radarr-4k"). Existing filter UI toggle pattern works. |
+| Backward-compatible single-instance config | Users upgrading from v2.2 must not need to rewrite their config. Old `[radarr]` section must still work. | MEDIUM | Detect old format and treat it as a single unnamed instance. Critical for upgrade path. |
+| Tag-based filtering for missing queue | Core requirement. Users tag movies/shows in Radarr/Sonarr and only search items with matching tag. Common pattern: "triggarr-missing" tag. | MEDIUM | Radarr/Sonarr API returns `tags: [int]` on each item in wanted/missing. Triggarr fetches `/api/v3/tag` to resolve tag names to IDs, then filters locally after fetch. |
+| Tag-based filtering for cutoff queue | Same as missing but for upgrade searches. Separate tag config (e.g. "triggarr-upgrade") because users may want different policies. | LOW | Same mechanism as missing tag filter, applied to cutoff items. |
+| Default = search everything when no tag configured | Users who don't care about tags should not be affected. Empty tag config = current behavior. | LOW | Filter function is a no-op when tag list is empty. |
 
-## Differentiators
+### Differentiators (Competitive Advantage)
 
-Features that set product apart. Not expected, but valued.
+Features that set Triggarr apart from Huntarr and similar tools. Not required, but valuable.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Dashboard indicator showing unreleased-skip counts | "3 unreleased skipped" on app cards shows the feature is actively working | Low | Add `unreleased_skipped` to app_state dict alongside existing `missing_count`/`cutoff_count`. Display in `app_card.html` partial. **Recommendation: build this.** Low effort, high visibility |
-| Per-app skip-unreleased override | Allow Radarr skip but Sonarr pass-through (or vice versa) | Low | Add `skip_unreleased` to `ArrConfig`. **Recommendation: do NOT build.** Sonarr already filters by air date unconditionally. The global toggle only controls Radarr in practice. Per-app adds config noise for zero real benefit |
-| Configurable release-date offset (skip until N days after release) | Buffer period to wait for higher-quality rips after digital release | Med | `skip_unreleased_delay_days: int = 0` in config. **Recommendation: defer.** Radarr's own quality profiles and availability delays handle this already. Triggarr should not duplicate Radarr's job |
+| Web UI instance management (add/edit/remove) | Huntarr has a web UI for instance management. Triggarr already has a config editor -- extending it for multi-instance is natural. | HIGH | Current config editor is a flat form. Multi-instance needs a list-of-forms pattern with add/remove. TOML serialization with comments is already solved. |
+| Tag name autocomplete from *arr API | When configuring tag filters, show available tags fetched from the instance. Prevents typos and invalid tag names. | MEDIUM | Fetch `/api/v3/tag` and populate a dropdown/datalist. Requires the instance to be connected first. |
+| Per-instance effectiveness stats | Track grab rates separately for each instance. "My 4K instance finds 40% of searches, HD finds 70%." | LOW | Already track stats per `app` column. Changing to per-instance-name gives this for free. |
+| Cross-instance search deduplication | If the same movie exists in radarr-hd and radarr-4k, don't search both in the same cycle (indexer courtesy). | HIGH | Requires cross-instance item correlation by TMDB/TVDB ID. Marginal value since indexers handle dedup. |
+| Instance health summary card | Single dashboard card showing "3/4 instances connected" with quick expand to see which is down. | LOW | Aggregate view over per-instance state. Nice UX touch. |
 
-## Anti-Features
+### Anti-Features (Commonly Requested, Often Problematic)
 
-Features to explicitly NOT build.
+Features that seem good but create problems or violate Triggarr's philosophy.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Fetching release dates from TMDB directly | Radarr already syncs dates from TMDB and exposes them via API. Adding TMDB calls duplicates work, adds an API key requirement, and creates data consistency problems | Use date fields already present in Radarr's API response (`digitalRelease`, `physicalRelease`, `inCinemas`) |
-| Per-movie override (force-search specific unreleased movie) | Adds per-item state management, a new UI surface, and complexity far beyond a simple toggle | Users can disable the toggle globally, trigger a manual search, then re-enable. Or set the movie's minimum availability in Radarr itself |
-| Separate "skip cam" vs "skip unreleased" modes | These are the same problem. A movie without a digital/physical release date that is "in cinemas" is exactly the cam-risk scenario | Single toggle covers both cases |
-| Querying Radarr's `minimumAvailability` per movie | Radarr has its own per-movie availability setting (announced/inCinemas/released/preDB). Its wanted/missing endpoint already filters based on this. Triggarr's filter is an additional safety layer, not a replacement | Filter purely on date fields. Radarr's `minimumAvailability` is Radarr's concern |
-| Making Sonarr's air-date filter conditional on the toggle | `filter_sonarr_episodes()` already runs unconditionally. Searching for literally-unaired episodes is always wrong (the file cannot exist yet). This is not a preference | Keep Sonarr air-date filtering unconditional. The toggle only controls the new Radarr release-date filter |
-
----
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Auto-discover *arr instances via network scan | "Just find my instances automatically" | SSRF risk, unreliable on different network topologies, violates zero-credential-exposure principle. Huntarr doesn't do this either. | Manual config with clear docs. |
+| Centralized tag management (create/assign tags in *arr from Triggarr) | "Let me manage tags from one place" | Write operations to *arr API expand attack surface. Triggarr is read+search-only by design. Tags should be managed in the *arr UI where users already work. | Read-only tag fetching for filter config. |
+| Shared schedule across all instances of same type | "All my Radarr instances should search at the same time" | Defeats the purpose of per-instance config. Simultaneous searches hammer indexers. | Independent schedules with offset defaults. |
+| Dynamic instance addition without restart | "Hot-add an instance while running" | APScheduler job management during runtime is error-prone. Config reload complexity. Current pattern: edit config, restart. | Restart required for config changes (current behavior). |
+| Priority ordering between instances | "Search 4K instance first, then HD" | Adds scheduling complexity. Round-robin already ensures fairness. Independent schedules handle different cadences. | Independent per-instance schedules. |
+| Tag-based exclusion (search everything EXCEPT items with tag) | "Skip items tagged 'no-search'" | Inverse logic is confusing. Inclusive filtering is clearer: "only search items with this tag." | Include-only tag filtering. |
+| Webhook receiver for instance registration | "My *arr instances should register with Triggarr" | Adds network listener, increases attack surface, requires *arr-side configuration. | Pull-based config only. |
 
 ## Feature Dependencies
 
 ```
-Existing: filter_sonarr_episodes() -- already skips unaired episodes (NO CHANGE NEEDED)
-Existing: filter_monitored() -- filters unmonitored items (NO CHANGE NEEDED)
+[Multi-instance config model]
+    |
+    +--requires--> [Per-instance state management]
+    |                   |
+    |                   +--requires--> [State migration from v2.2 format]
+    |
+    +--requires--> [Per-instance scheduler jobs]
+    |
+    +--enables--> [Per-instance dashboard cards]
+    |                 |
+    |                 +--enables--> [Instance health summary]
+    |
+    +--enables--> [Per-instance search history]
+    |
+    +--enables--> [Tag-based filtering]
+                      |
+                      +--requires--> [Tag resolution (name -> ID via API)]
+                      |
+                      +--enables--> [Tag name autocomplete in UI]
+                      |
+                      +--enables--> [Per-instance effectiveness stats]
 
-New: GeneralConfig.skip_unreleased (bool, default True)
-    |
-    +-- Required by: settings.html toggle (UI)
-    +-- Required by: save_settings() form handling (routes.py)
-    +-- Required by: filter_radarr_movies() conditional call
-    |
-New: filter_radarr_movies(movies: list[dict]) -> list[dict]
-    |   - Parallel to existing filter_sonarr_episodes()
-    |   - Checks digitalRelease and physicalRelease date fields
-    |   - Returns only movies where at least one release date is in the past
-    |
-    +-- Required by: run_radarr_cycle() -- conditional call after filter_monitored()
-    +-- Required by: Dashboard skip-count logging
+[Backward-compatible config parsing]
+    +--required-by--> [Multi-instance config model]
+
+[Web UI instance management]
+    +--requires--> [Multi-instance config model]
+    +--requires--> [TOML serialization for instance arrays]
 ```
 
-**Critical dependency:** The Radarr wanted/missing API must return `digitalRelease` and `physicalRelease` fields in its movie records. Verified: the Radarr `/api/v3/wanted/missing` endpoint returns full movie resource objects which include these nullable datetime fields.
+### Dependency Notes
 
----
+- **Multi-instance config model requires per-instance state management:** Each instance needs its own cursors, connection health, and timing state. Without this, instances would fight over shared cursors.
+- **Tag-based filtering requires tag resolution:** Radarr/Sonarr items have `tags: [1, 3, 7]` (integer IDs). Users configure by name ("triggarr-missing"). Must call `/api/v3/tag` to build a name-to-ID mapping at startup/cycle start.
+- **Backward-compatible config parsing required by multi-instance config:** If old `[radarr]` config breaks on upgrade, users will be locked out. Must detect and handle gracefully.
+- **Web UI instance management requires TOML serialization for instance arrays:** Current config editor writes a flat TOML. Multi-instance needs `[radarr.NAME]` sub-table syntax.
 
-## Edge Cases and Design Decisions
+## MVP Definition (v2.3 Scope)
 
-### Edge Case 1: Movie with no release dates at all (all three null)
-**Scenario:** Movie added to Radarr from a list or manual add, TMDB has no date info.
-**Decision:** Skip it when `skip_unreleased=True`. No dates = no evidence it is released.
-**Confidence:** HIGH -- safe default. User can disable toggle temporarily if needed.
+### Must Have
 
-### Edge Case 2: Movie with only `inCinemas` date in the past
-**Scenario:** Movie is in theaters, no digital/physical date set yet in TMDB.
-**Decision:** Skip it. This is exactly the cam-risk scenario and the primary use case for the feature.
-**Confidence:** HIGH -- the whole point of the feature.
+- [ ] Multi-instance config model with named instances -- core architectural change
+- [ ] Backward-compatible config parsing (old single-instance format still works)
+- [ ] Per-instance state (cursors, connection health, timing)
+- [ ] State migration from v2.2 single-instance format
+- [ ] Per-instance APScheduler jobs with independent schedules
+- [ ] Tag-based filtering for missing queue (configurable tag name per instance)
+- [ ] Tag-based filtering for cutoff queue (separate configurable tag name per instance)
+- [ ] No-tag = search everything (default behavior unchanged)
+- [ ] Tag name-to-ID resolution via `/api/v3/tag` endpoint
+- [ ] Dashboard showing all instances
+- [ ] Search history scoped per instance name
+- [ ] DB migration to add `instance_name` column to search_history and lifetime_stats
 
-### Edge Case 3: Movie with `digitalRelease` date that just passed (today)
-**Scenario:** Digital release today. Streaming platforms often go live at midnight PT/ET, not UTC.
-**Decision:** Use simple UTC `date <= now` comparison. Do NOT add timezone sophistication. Radarr stores dates in UTC. A few hours of discrepancy is irrelevant -- Triggarr cycles every 30 minutes by default, so the movie will be picked up on the next cycle.
-**Confidence:** HIGH -- same approach as existing `filter_sonarr_episodes()`.
+### Add After Core Works
 
-### Edge Case 4: Movie becomes released mid-cycle
-**Scenario:** Between fetching the wanted list and triggering searches, a movie's release date passes.
-**Decision:** Not a real problem. Filter runs on fetched data. Movie gets skipped this cycle, picked up next cycle (30 min). Round-robin self-heals.
-**Confidence:** HIGH.
+- [ ] Web UI instance management (add/edit/remove instances) -- current TOML editing is sufficient initially
+- [ ] Tag name autocomplete from *arr API -- nice UX, not blocking
+- [ ] Instance health summary card -- aggregate view
 
-### Edge Case 5: Only one of `digitalRelease`/`physicalRelease` is set
-**Scenario:** Streaming-first releases often have no physical date (common).
-**Decision:** If either `digitalRelease` or `physicalRelease` is in the past, the movie is released. Only skip when both are null or both are in the future. This matches how Radarr itself handles availability since the issue #4460 fix.
-**Confidence:** HIGH.
+### Defer
 
-### Edge Case 6: User has `skip_unreleased=True` but Radarr's minimumAvailability is "announced"
-**Scenario:** User told Radarr "grab anything announced" but Triggarr skips unreleased.
-**Decision:** Triggarr's filter wins. The user explicitly enabled `skip_unreleased` in Triggarr. If they want to search announced movies, they disable the toggle. Triggarr is an independent filter layer, not a proxy for Radarr settings.
-**Confidence:** HIGH.
+- [ ] Cross-instance search deduplication -- marginal value, high complexity
+- [ ] Dynamic instance hot-add without restart -- engineering effort not justified
 
-### Edge Case 7: Toggle changed while a cycle is running
-**Scenario:** User disables `skip_unreleased` via settings UI mid-cycle.
-**Decision:** No special handling needed. Settings are read at cycle start. Next cycle uses new setting. This matches existing behavior for all other settings changes.
-**Confidence:** HIGH -- follows established pattern.
+## Feature Prioritization Matrix
 
-### Edge Case 8: Cutoff-unmet items that are unreleased
-**Scenario:** A movie is in the cutoff-unmet list (has a file but below quality cutoff) but is technically unreleased (only in cinemas). Rare but possible if user grabbed a cam.
-**Decision:** Apply the same filter to cutoff-unmet items. If the movie is unreleased, do not search for an upgrade -- a better version is not available yet either.
-**Confidence:** HIGH.
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Multi-instance config model | HIGH | HIGH | P1 |
+| Backward-compatible config parsing | HIGH | MEDIUM | P1 |
+| Per-instance state and cursors | HIGH | MEDIUM | P1 |
+| Per-instance scheduler jobs | HIGH | MEDIUM | P1 |
+| Tag filtering (missing queue) | HIGH | MEDIUM | P1 |
+| Tag filtering (cutoff queue) | MEDIUM | LOW | P1 |
+| Tag name-to-ID resolution | HIGH | LOW | P1 |
+| Dashboard per-instance cards | HIGH | MEDIUM | P1 |
+| Search history per instance | MEDIUM | LOW | P1 |
+| State migration (v2.2 upgrade) | HIGH | MEDIUM | P1 |
+| DB schema migration (instance_name) | HIGH | MEDIUM | P1 |
+| Web UI instance management | MEDIUM | HIGH | P2 |
+| Tag autocomplete in UI | LOW | MEDIUM | P2 |
+| Instance health summary | LOW | LOW | P3 |
+| Cross-instance dedup | LOW | HIGH | P3 |
 
----
+**Priority key:**
+- P1: Must have for v2.3 launch
+- P2: Should have, add if time permits
+- P3: Nice to have, future consideration
 
-## Radarr API Date Fields (Research Findings)
+## Competitor Feature Analysis
 
-The Radarr `/api/v3/wanted/missing` and `/api/v3/wanted/cutoff` endpoints return full movie resource objects. Each movie includes these date fields:
+| Feature | Huntarr | Recyclarr | Notifiarr | Triggarr v2.3 Plan |
+|---------|---------|-----------|-----------|-------------------|
+| Multi-instance | Yes, web UI add/remove | Yes, YAML named instances | Yes, numbered env vars or `[[app]]` blocks | TOML named sub-tables with backward compat |
+| Instance naming | Implicit (by order or URL) | Explicit names under `radarr:` key | Numbered (1, 2, 3...) | Explicit names: `[radarr.my-4k]` |
+| Per-instance schedule | Yes, independent | N/A (sync tool, not scheduler) | N/A (notification tool) | Yes, independent per instance |
+| Tag-based filtering | No (searches all items) | N/A (syncs profiles, not searches) | N/A | Yes, per-instance tag filter for missing and cutoff |
+| Closed-loop tracking | No | N/A | Notifications only | Yes (existing), scoped per instance |
+| Config format | JSON via web UI | YAML with secrets file | Config file or env vars | TOML with backward compat |
+| Indexer rate protection | Hourly caps | N/A | N/A | Round-robin + batch sizing + hard max |
 
-| Field | Type | Nullable | Description |
-|-------|------|----------|-------------|
-| `inCinemas` | ISO 8601 datetime string | Yes | Theatrical release date. Can be null for direct-to-streaming titles |
-| `digitalRelease` | ISO 8601 datetime string | Yes | Digital/streaming release date. Often null until close to release |
-| `physicalRelease` | ISO 8601 datetime string | Yes | Physical media (Blu-ray/DVD) release date. Often null for streaming-first titles |
-| `status` | string enum | No | One of: `tba`, `announced`, `inCinemas`, `released`, `deleted` |
+**Key differentiator for Triggarr:** Tag-based filtering combined with closed-loop grab tracking is unique in this space. Huntarr searches everything in each instance with no filtering capability. Triggarr lets users scope searches to tagged items only, which is valuable for large libraries where only a subset should be actively searched.
 
-**Key insight:** The `status` field reflects Radarr's own determination of release state, but it uses complex fallback logic (issue #9849) that sometimes marks movies as "released" prematurely when TMDB data is incomplete. Triggarr should filter on the actual date fields, not the `status` enum, because:
-1. Date fields are objective (either set or null, either past or future)
-2. The `status` field's fallback logic can produce surprising results
-3. Filtering on dates is the same approach used by `filter_sonarr_episodes()` for consistency
+## *arr Ecosystem Tag Patterns
 
-**Confidence:** MEDIUM on exact field nullability behavior (verified from multiple API wrappers and GitHub issues, but not from a live API call). HIGH on the fields existing and being datetime strings.
+### How Tags Work in Radarr/Sonarr
 
----
+Tags are simple label objects stored in the *arr database:
+- **API endpoint:** `GET /api/v3/tag` returns all tags as `[{"id": 1, "label": "triggarr-missing"}, ...]`
+- **Item association:** Each movie/series object has a `tags: [1, 3, 7]` field containing integer tag IDs
+- **Wanted/missing response:** Items returned by `/api/v3/wanted/missing` include the `tags` array
+- **Tags are instance-scoped:** Each Radarr/Sonarr instance has its own tag namespace
+- **Tag creation:** Tags are created in the *arr UI under Settings > Tags. Triggarr should NOT create tags.
 
-## MVP Recommendation
+### How Ecosystem Tools Use Tags
 
-Build in this order:
+- **Recyclarr:** Uses tags to scope quality profile syncs to specific media
+- **Kometa/PMM:** Uses tags to control collection membership and metadata operations
+- **Maintainerr:** Creates tags (e.g. "Maintainerr") to mark managed content for cleanup rules
+- **Overseerr/Jellyseerr:** Can apply tags when adding media to *arr instances
+- **Common user pattern:** Tag media by source/purpose: "overseerr", "sync", "4k-only", etc.
 
-1. **Config model change** -- Add `skip_unreleased: bool = True` to `GeneralConfig` in `models/config.py`
-2. **Settings UI** -- Add checkbox toggle in General section of `settings.html`, wire through `save_settings()` in `routes.py`
-3. **Filter function** -- Add `filter_radarr_movies()` to `search/engine.py`, parallel to `filter_sonarr_episodes()`
-4. **Wire into cycle** -- Call `filter_radarr_movies()` in `run_radarr_cycle()` when `settings.general.skip_unreleased` is True, after `filter_monitored()`. Add unreleased-skip count to log diagnostic
-5. **Tests** -- Unit tests for `filter_radarr_movies()` covering all edge cases, integration test for cycle with toggle on/off
-6. **Dashboard indicator** (stretch) -- Show unreleased-skip count on app cards
+### Recommended Tag Filter Implementation
 
-Defer:
-- Per-app toggle: Sonarr already filters unconditionally; global toggle is sufficient
-- Release-date offset: Radarr handles this natively
-- Per-movie overrides: Too complex for the value
+1. User creates tag(s) in Radarr/Sonarr UI (e.g. "triggarr-missing", "triggarr-upgrade")
+2. User configures tag name in Triggarr instance config: `missing_tag = "triggarr-missing"`
+3. At cycle start, Triggarr calls `GET /api/v3/tag` to resolve name to ID
+4. After fetching wanted/missing items, filter to only items where `tags` array contains the resolved tag ID
+5. Cache tag-ID mapping per instance (refresh on each cycle to handle tag renames)
+6. If configured tag name doesn't exist in the *arr instance, log a warning and skip all searches for that queue (strict behavior -- don't silently search everything when user intended filtering)
 
----
+### Important: Tags on Movies vs Series
 
-## Implementation Complexity Assessment
+- **Radarr:** Tags are on the **movie** object directly. The `tags` field appears on items from `/api/v3/wanted/missing`.
+- **Sonarr:** Tags are on the **series** object, NOT on individual episodes. The `/api/v3/wanted/missing` endpoint returns **episodes**, each with an embedded `series` object. The tag filtering must check `episode["series"]["tags"]` not `episode["tags"]`.
+- **This asymmetry is critical** and a common source of bugs in *arr ecosystem tools.
 
-| Component | Complexity | Existing Pattern | Files Changed |
-|-----------|-----------|-----------------|---------------|
-| Config model (`skip_unreleased` field) | Low | Copy `hard_max_per_cycle` pattern | `models/config.py` |
-| TOML persistence | Low | Automatic via existing `save_settings` | `web/routes.py` (add form field) |
-| Settings UI toggle | Low | Copy existing checkbox pattern (enabled toggle) | `templates/settings.html` |
-| `filter_radarr_movies()` function | Med | Parallel to `filter_sonarr_episodes()` | `search/engine.py` |
-| Wire into `run_radarr_cycle()` | Low | Add conditional call after `filter_monitored()` | `search/engine.py` |
-| Dashboard skip indicator | Low | Add to `_build_app_context()` and `app_card.html` | `web/routes.py`, template |
-| Tests | Med | Follow `test_engine.py` patterns | `tests/test_engine.py` |
-| **Total estimate** | **Med** | Well-precedented throughout | **~6 files** |
+### User Workflows for Multi-Instance
 
-**Zero new dependencies.** All achievable with existing stack (datetime parsing, Pydantic config, Jinja2 templates).
+Common multi-instance setups in the *arr community:
+1. **Quality split:** radarr-hd (1080p) + radarr-4k (2160p) for same library. Most common pattern. Users want both qualities of the same content.
+2. **Content split:** sonarr-tv + sonarr-anime with different profiles and indexers. Each instance has completely different content.
+3. **User split:** radarr-family (clean content) + radarr-personal (everything). Less common but exists.
 
----
+Users expect each instance to be independently configurable with no cross-contamination. The typical workflow:
+- Add instance to tool config (URL + API key + name)
+- Configure per-instance settings (schedule, batch size, tags)
+- Each instance operates independently
+- Dashboard shows all instances at once
 
 ## Sources
 
-### HIGH Confidence
-- Existing `filter_sonarr_episodes()` implementation: `triggarr/search/engine.py:145-173` -- verified by direct code reading
-- Existing config model and settings UI patterns: `triggarr/models/config.py`, `triggarr/templates/settings.html` -- verified by direct code reading
-- Radarr movie date fields (`inCinemas`, `digitalRelease`, `physicalRelease`): [ArrAPI documentation](https://arrapi.kometa.wiki/en/latest/radarr.html), [pycliarr API docs](https://pycliarr.readthedocs.io/en/stable/_modules/pycliarr/api/radarr.html)
-
-### MEDIUM Confidence
-- Radarr `status` enum values (tba/announced/inCinemas/released/deleted): [Radarr issue #5002](https://github.com/Radarr/Radarr/issues/5002)
-- Radarr minimumAvailability options (announced/inCinemas/released/preDB): [Servarr Wiki - Radarr Settings](https://wiki.servarr.com/radarr/settings)
-- Radarr digital-release-only movies fixed to show as "released": [Radarr issue #4460](https://github.com/Radarr/Radarr/issues/4460)
-- Movies showing as "missing" before release due to fallback logic: [Radarr issue #9849](https://github.com/Radarr/Radarr/issues/9849)
-- Radarr fallback to digital release date discussion: [Radarr issue #5647](https://github.com/Radarr/Radarr/issues/5647)
+- [Recyclarr configuration docs](https://recyclarr.dev/wiki/yaml/config-reference/)
+- [Recyclarr basic setup](https://recyclarr.dev/wiki/yaml/config-reference/basic/)
+- [Notifiarr client configuration](https://notifiarr.wiki/pages/client/configuration/)
+- [Huntarr.io DeepWiki](https://deepwiki.com/plexguide/Huntarr.io)
+- [Huntarr Radarr docs](https://plexguide.github.io/Huntarr.io/apps/radarr.html)
+- [Radarr API docs](https://radarr.video/docs/api/)
+- [Sonarr API docs](https://sonarr.tv/docs/api/)
+- [ArrAPI documentation (Kometa)](https://arrapi.kometa.wiki/)
+- [Overseerr multi-instance issue](https://github.com/sct/overseerr/issues/3615)
+- [Using tags in Sonarr/Radarr for selective sync](https://charlesthomas.dev/blog/using-tags-in-sonarr-and-radarr-to-selectively-sync-media-2025-04-19/)
 
 ---
-*Feature research for: Triggarr v2.2 skip-unreleased-media*
+*Feature research for: Triggarr v2.3 multi-instance & tag filtering*
 *Researched: 2026-03-09*
