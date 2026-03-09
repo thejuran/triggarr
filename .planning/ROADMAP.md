@@ -12,6 +12,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v2.0 Closed-Loop Tracking -- Phases 17-22 (shipped 2026-03-09) -- [archive](milestones/v2.0-ROADMAP.md)
 - ✅ v2.1 Harden & Fix -- Phases 23-24 (shipped 2026-03-09) -- [archive](milestones/v2.1-ROADMAP.md)
 - ✅ v2.2 Skip Unreleased Media -- Phases 25-28 (shipped 2026-03-09) -- [archive](milestones/v2.2-ROADMAP.md)
+- 🚧 **v2.3 Multi-Instance & Tag Filtering** -- Phases 33-39 (in progress)
 
 ## Phases
 
@@ -80,3 +81,108 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] Phase 28: Fix Code Review Findings (2/2 plans) -- completed 2026-03-09
 
 </details>
+
+### v2.3 Multi-Instance & Tag Filtering (In Progress)
+
+**Milestone Goal:** Support multiple Radarr/Sonarr instances with per-instance tag-based search filtering, scoped observability, and version display.
+
+- [ ] **Phase 33: Config Model & Migration** - Multi-instance config shape with backward-compatible auto-migration
+- [ ] **Phase 34: State Model & Cursor Isolation** - Per-instance state with independent round-robin cursors
+- [ ] **Phase 35: Client Registry & Tag Resolution** - Dynamic client pool with per-cycle tag name-to-ID resolution
+- [ ] **Phase 36: Search Engine & Tag Filtering** - Tag-based item filtering in the search pipeline
+- [ ] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats
+- [ ] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation
+- [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display
+
+## Phase Details
+
+### Phase 33: Config Model & Migration
+**Goal**: Users can define multiple named Radarr/Sonarr instances in config, and existing v2.2 configs auto-migrate safely on upgrade
+**Depends on**: Nothing (first phase of v2.3)
+**Requirements**: INST-01, INST-02, INST-04
+**Success Criteria** (what must be TRUE):
+  1. User can define multiple named Radarr instances in TOML config, each with independent URL, API key, schedule, and batch sizes
+  2. User can define multiple named Sonarr instances in TOML config, each with independent URL, API key, schedule, and batch sizes
+  3. Existing single-instance v2.2 config files are auto-detected and converted to multi-instance format on first startup, with the original backed up
+  4. Config validation rejects duplicate instance names within the same app type
+**Plans**: TBD
+
+### Phase 34: State Model & Cursor Isolation
+**Goal**: Each instance maintains its own round-robin position that persists across restarts without cross-contamination
+**Depends on**: Phase 33
+**Requirements**: INST-03
+**Success Criteria** (what must be TRUE):
+  1. Each instance has independent round-robin cursors (missing and cutoff) that persist across restarts
+  2. Two instances of the same app type (e.g., two Radarr) do not share or corrupt each other's cursor positions
+  3. Existing v2.2 state.json is auto-migrated to the new per-instance format keyed by instance ID
+**Plans**: TBD
+
+### Phase 35: Client Registry & Tag Resolution
+**Goal**: The application creates and manages one HTTP client per instance, with the ability to resolve tag names to IDs from the *arr API
+**Depends on**: Phase 33
+**Requirements**: TAG-04
+**Success Criteria** (what must be TRUE):
+  1. Application startup creates one async HTTP client per enabled instance, stored in a registry keyed by instance ID
+  2. Tag names configured on an instance are resolved to numeric IDs via the *arr `/api/v3/tag` endpoint at the start of each search cycle
+  3. When a configured tag name is not found in the *arr instance, the resolution fails gracefully (logged, not crashed)
+**Plans**: TBD
+
+### Phase 36: Search Engine & Tag Filtering
+**Goal**: Search cycles filter items by configured tags so only tagged items are searched, with no-tag meaning search everything
+**Depends on**: Phase 34, Phase 35
+**Requirements**: TAG-01, TAG-02, TAG-03
+**Success Criteria** (what must be TRUE):
+  1. When a missing-queue tag is configured for an instance, only items bearing that tag are included in the search cycle
+  2. When a cutoff-queue tag is configured for an instance, only cutoff-unmet items bearing that tag are included in the search cycle
+  3. When no tag is configured for a queue, all monitored items are searched (existing default behavior preserved)
+  4. Sonarr tag filtering correctly reads tags from the series object (not the episode object)
+**Plans**: TBD
+
+### Phase 37: Database Schema & Instance Scoping
+**Goal**: Search history and lifetime stats are attributed to specific instances so data from different instances never mixes
+**Depends on**: Phase 33
+**Requirements**: OBS-02
+**Success Criteria** (what must be TRUE):
+  1. Search history entries include an instance_id column populated for all new searches
+  2. Lifetime stats use a composite key of (app_type, instance_id) so per-instance counts are tracked independently
+  3. Search history page can filter results by instance name
+**Plans**: TBD
+
+### Phase 38: Scheduler & Tracking Wiring
+**Goal**: Each enabled instance runs on its own schedule, and grab tracking queries the correct *arr server for each search
+**Depends on**: Phase 35, Phase 36, Phase 37
+**Requirements**: INST-06
+**Success Criteria** (what must be TRUE):
+  1. Each enabled instance has its own APScheduler interval job running at that instance's configured interval
+  2. User can enable/disable individual instances, and disabled instances have their scheduler jobs removed (no searches run)
+  3. Post-search grab tracking queries the correct *arr instance (not a different instance of the same app type)
+  4. Enabling/disabling an instance takes effect on the next scheduler tick without requiring application restart
+**Plans**: TBD
+
+### Phase 39: Web UI Integration
+**Goal**: Users can manage instances, view per-instance status, configure tag filters, and see the application version -- all from the web UI
+**Depends on**: Phase 38
+**Requirements**: INST-05, INST-07, TAG-05, TAG-06, OBS-01, OBS-03, VER-01, VER-02
+**Success Criteria** (what must be TRUE):
+  1. User can add, edit, and remove instances from the web UI settings page without editing TOML directly
+  2. Dashboard shows a per-instance status card with connection health, queue sizes, and last-run time for each instance
+  3. Dashboard shows an instance health summary (connected/disconnected count) and per-instance effectiveness stats (grab rate, lifetime counts)
+  4. Tag configuration fields in the settings UI offer autocomplete populated from the *arr instance's tag list
+  5. Dashboard displays a warning badge when a configured tag name is not found in the *arr instance
+  6. Dashboard displays the current Triggarr version and indicates when a newer release is available
+**Plans**: TBD
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 33. Config Model & Migration | v2.3 | 0/? | Not started | - |
+| 34. State Model & Cursor Isolation | v2.3 | 0/? | Not started | - |
+| 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
+| 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
+| 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
+| 38. Scheduler & Tracking Wiring | v2.3 | 0/? | Not started | - |
+| 39. Web UI Integration | v2.3 | 0/? | Not started | - |

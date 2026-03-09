@@ -63,30 +63,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INST-01 | TBD | Pending |
-| INST-02 | TBD | Pending |
-| INST-03 | TBD | Pending |
-| INST-04 | TBD | Pending |
-| INST-05 | TBD | Pending |
-| INST-06 | TBD | Pending |
-| INST-07 | TBD | Pending |
-| TAG-01 | TBD | Pending |
-| TAG-02 | TBD | Pending |
-| TAG-03 | TBD | Pending |
-| TAG-04 | TBD | Pending |
-| TAG-05 | TBD | Pending |
-| TAG-06 | TBD | Pending |
-| OBS-01 | TBD | Pending |
-| OBS-02 | TBD | Pending |
-| OBS-03 | TBD | Pending |
-| VER-01 | TBD | Pending |
-| VER-02 | TBD | Pending |
+| INST-01 | Phase 33 | Pending |
+| INST-02 | Phase 33 | Pending |
+| INST-03 | Phase 34 | Pending |
+| INST-04 | Phase 33 | Pending |
+| INST-05 | Phase 39 | Pending |
+| INST-06 | Phase 38 | Pending |
+| INST-07 | Phase 39 | Pending |
+| TAG-01 | Phase 36 | Pending |
+| TAG-02 | Phase 36 | Pending |
+| TAG-03 | Phase 36 | Pending |
+| TAG-04 | Phase 35 | Pending |
+| TAG-05 | Phase 39 | Pending |
+| TAG-06 | Phase 39 | Pending |
+| OBS-01 | Phase 39 | Pending |
+| OBS-02 | Phase 37 | Pending |
+| OBS-03 | Phase 39 | Pending |
+| VER-01 | Phase 39 | Pending |
+| VER-02 | Phase 39 | Pending |
 
 **Coverage:**
 - v2.3 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after initial definition*
+*Last updated: 2026-03-09 after roadmap creation*
