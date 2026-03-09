@@ -80,6 +80,7 @@ async def test_app(tmp_path):
     mock_settings.general.page_size = 50
     mock_settings.general.tracking_window_minutes = 60
     mock_settings.general.tracking_delay_seconds = 90
+    mock_settings.general.skip_unreleased = True
     app.state.settings = mock_settings
 
     # Mock scheduler
@@ -784,3 +785,93 @@ def test_save_settings_cleans_temp_on_replace_failure(test_app, tmp_path):
     assert len(created_temps) > 0, "At least one temp file should have been created"
     for temp_path in created_temps:
         assert not os.path.exists(temp_path), f"Temp file {temp_path} should have been cleaned up"
+
+
+# ---------------------------------------------------------------------------
+# CFG-01: Skip Unreleased Movies checkbox on settings page
+# ---------------------------------------------------------------------------
+
+
+def test_settings_page_shows_skip_unreleased_checkbox(client):
+    """GET /settings response contains skip_unreleased checkbox input."""
+    response = client.get("/settings")
+    assert response.status_code == 200
+    assert 'name="skip_unreleased"' in response.text, "Settings should show skip_unreleased checkbox"
+
+
+def test_settings_page_skip_unreleased_checked_when_true(client):
+    """GET /settings renders checkbox as checked when skip_unreleased=True (default)."""
+    response = client.get("/settings")
+    assert response.status_code == 200
+    # Find the skip_unreleased input and verify it has checked attribute
+    text = response.text
+    import re
+    match = re.search(r'<input[^>]*name="skip_unreleased"[^>]*>', text)
+    assert match, "skip_unreleased checkbox input should exist"
+    assert "checked" in match.group(0), "skip_unreleased checkbox should be checked when True"
+
+
+def test_save_settings_skip_unreleased_on(client, test_app):
+    """POST /settings with skip_unreleased=on saves True to config."""
+    response = client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "skip_unreleased": "on",
+            "radarr_url": "http://radarr:7878",
+            "radarr_api_key": "",
+            "radarr_enabled": "on",
+            "radarr_search_interval": "30",
+            "radarr_search_missing_count": "5",
+            "radarr_search_cutoff_count": "5",
+            "sonarr_url": "http://sonarr:8989",
+            "sonarr_api_key": "",
+            "sonarr_enabled": "on",
+            "sonarr_search_interval": "30",
+            "sonarr_search_missing_count": "5",
+            "sonarr_search_cutoff_count": "5",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    content = test_app.state.config_path.read_text()
+    assert "skip_unreleased = true" in content, "TOML should contain skip_unreleased = true"
+
+
+def test_save_settings_skip_unreleased_off(client, test_app):
+    """POST /settings WITHOUT skip_unreleased in form data saves False."""
+    response = client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            # NOTE: skip_unreleased deliberately omitted (unchecked checkbox)
+            "radarr_url": "http://radarr:7878",
+            "radarr_api_key": "",
+            "radarr_enabled": "on",
+            "radarr_search_interval": "30",
+            "radarr_search_missing_count": "5",
+            "radarr_search_cutoff_count": "5",
+            "sonarr_url": "http://sonarr:8989",
+            "sonarr_api_key": "",
+            "sonarr_enabled": "on",
+            "sonarr_search_interval": "30",
+            "sonarr_search_missing_count": "5",
+            "sonarr_search_cutoff_count": "5",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    content = test_app.state.config_path.read_text()
+    assert "skip_unreleased = false" in content, "TOML should contain skip_unreleased = false"
