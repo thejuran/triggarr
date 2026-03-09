@@ -64,18 +64,16 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 - ✓ Temp file cleanup on os.replace failure during settings save — v2.1
 - ✓ Module-level freeze constraint documented and tested — v2.1
 - ✓ Consistent request.url_for across all templates for root_path awareness — v2.1
+- ✓ Configurable toggle to skip unreleased Radarr movies via web UI checkbox — v2.2
+- ✓ Skip movies until digital or physical release date has passed — v2.2
+- ✓ Null/missing release dates pass through filter (not blackholed) — v2.2
+- ✓ Cutoff-unmet items never filtered (already have files) — v2.2
+- ✓ Dashboard eligible vs total counts per app with skip-count indicator — v2.2
+- ✓ Skip badge math uses monitored count (not raw total) for accuracy — v2.2
 
 ### Active
 
-#### Current Milestone: v2.2 Skip Unreleased Media
-
-**Goal:** Allow users to skip searching for unreleased media to avoid cam recordings and mismarked content.
-
-**Target features:**
-- Configurable toggle to skip unreleased media during search cycles
-- Skip movies until digital or physical release date has passed (whichever comes first)
-- Skip Sonarr episodes that haven't aired yet
-- Default: enabled (skip unreleased)
+(No active milestone — run `/gsd:new-milestone` to start next)
 
 ### Out of Scope
 
@@ -99,14 +97,14 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ## Context
 
-Shipped v2.1 with ~8,322 Python LOC (3,389 source + 4,933 test). 270 tests passing. 24 phases, 51 plans completed across 5 milestones.
+Shipped v2.2 with ~8,964 Python LOC (3,389 source + 5,575 test). 302 tests passing. 28 phases, 56 plans completed across 6 milestones.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt: None.
+Known tech debt: missing_monitored not in AppState TypedDict (cosmetic); Sonarr eligible/total mixes units (accepted).
 
 ## Constraints
 
@@ -143,6 +141,12 @@ Known tech debt: None.
 | get_config_dir() function for testable env var reading | Avoids module reload issues in tests | ✓ Good — v2.1 |
 | url_for via request.url_for everywhere | Consistent root_path support for reverse proxies | ✓ Good — v2.1 |
 | Absolute-path-only config dir validation | Prevents relative/traversal path misconfiguration | ✓ Good — v2.1 |
+| Null release dates = pass through (not blackhole) | PITFALLS.md approach; unknown != unreleased | ✓ Good — v2.2 |
+| Filter uses digitalRelease/physicalRelease only | inCinemas = cam quality; status field lags behind dates | ✓ Good — v2.2 |
+| Filter after filter_monitored, before cursor/slice | Correct pipeline position: skip only monitored unreleased | ✓ Good — v2.2 |
+| Cutoff-unmet never filtered | Already have files = proven released | ✓ Good — v2.2 |
+| Skip badge uses missing_monitored not missing_count | Avoids inflating skip count with unmonitored items | ✓ Good — v2.2 |
+| contextlib.suppress for date parsing | ruff SIM105 compliance; cleaner than try/except/pass | ✓ Good — v2.2 |
 
 ---
-*Last updated: 2026-03-09 after v2.2 milestone started*
+*Last updated: 2026-03-09 after v2.2 milestone*

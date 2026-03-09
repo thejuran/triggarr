@@ -1,5 +1,27 @@
 # Milestones
 
+## v2.2 Skip Unreleased Media (Shipped: 2026-03-09)
+
+**Phases completed:** 4 phases, 5 plans
+**Timeline:** 1 day (Mar 9, 2026)
+**LOC:** ~8,964 Python (3,389 source + 5,575 test) | 302 tests
+**Git range:** c38e853..7da1fbf (30 commits, 9 files changed, +527 -7 lines)
+
+**Delivered:** Skip-unreleased media filtering with configurable UI toggle, eligible-count dashboard display, and code review fixes.
+
+**Key accomplishments:**
+- `skip_unreleased` config field with TOML persistence and `filter_unreleased_movies()` pure function covering all release-date edge cases (null passthrough, future skip, past pass)
+- Settings UI checkbox with full save/load round-trip, conditionally wiring filter into Radarr missing-queue pipeline (after filter_monitored, before cursor/slice_batch)
+- Dashboard "X of Y items" eligible-count display with conditional amber skip badge on Radarr cards when items are being skipped
+- Fixed skip badge math using `missing_monitored` intermediate count, added INFO skip log, print→loguru migration, Callable type annotation fix
+- Nyquist validation complete across all 4 phases; 302 tests passing, 0 ruff violations
+
+**Tech debt carried forward:**
+- `missing_monitored` not declared in AppState TypedDict (cosmetic, no runtime impact)
+- Sonarr eligible/total mixes units (seasons vs episodes) — accepted as-is
+
+---
+
 ## v2.1 Harden & Fix (Shipped: 2026-03-09)
 
 **Phases completed:** 2 phases, 2 plans
