@@ -5,9 +5,9 @@ milestone_name: Skip Unreleased Media
 status: active
 stopped_at: null
 last_updated: "2026-03-09"
-last_activity: 2026-03-09 — Milestone v2.2 started
+last_activity: 2026-03-09 — Roadmap created for v2.2
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,15 +20,17 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-09)
 
-**Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.2 Skip Unreleased Media
+**Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
+**Current focus:** Phase 25 - Filter Foundation
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-09 — Milestone v2.2 started
+Phase: 25 (1 of 3 in v2.2)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-03-09 -- Roadmap created for v2.2 Skip Unreleased Media
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -41,10 +43,13 @@ Last activity: 2026-03-09 — Milestone v2.2 started
 ### Decisions
 
 Full decision log in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
 
-### Roadmap Evolution
-
-(Reset for new milestone)
+- [v2.2 Roadmap]: Null release dates = search anyway (don't blackhole). PITFALLS.md approach over STACK.md.
+- [v2.2 Roadmap]: Filter uses digitalRelease and physicalRelease only (NOT inCinemas or status field)
+- [v2.2 Roadmap]: Filter goes after filter_monitored, before cursor/slice_batch in pipeline
+- [v2.2 Roadmap]: Cutoff-unmet queue is never filtered
+- [v2.2 Roadmap]: Sonarr filtering remains unconditional (toggle controls Radarr only)
 
 ### Pending Todos
 
@@ -57,4 +62,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-09
-Stopped at: Milestone v2.2 started
+Stopped at: Roadmap created for v2.2 milestone
+Resume file: None
