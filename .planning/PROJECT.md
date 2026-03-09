@@ -58,11 +58,16 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 - ✓ Deep security review: row_factory guards, XSS urlencode, rate limiter race fix, migration safety — v2.0
 - ✓ Deep quality review: type annotations, pass counter, sorted migrations, model validators — v2.0
 - ✓ Project renamed from Fetcharr to Triggarr across package, Docker, CI/CD, and docs — v2.0
+- ✓ Configurable config directory via `TRIGGARR_CONFIG_DIR` env var — v2.1
+- ✓ CSS and static assets work behind reverse proxy via ROOT_PATH — v2.1
+- ✓ Config path validation rejects relative/traversal paths at startup — v2.1
+- ✓ Temp file cleanup on os.replace failure during settings save — v2.1
+- ✓ Module-level freeze constraint documented and tested — v2.1
+- ✓ Consistent request.url_for across all templates for root_path awareness — v2.1
 
 ### Active
 
-- [ ] Configurable config directory via `TRIGGARR_CONFIG_DIR` env var
-- [ ] CSS works behind reverse proxy (proxy header forwarding)
+(None — planning next milestone)
 
 ### Out of Scope
 
@@ -86,14 +91,14 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ## Context
 
-Shipped v2.0 with ~8,010 Python LOC. 220+ tests passing. 22 phases, 49 plans completed across 4 milestones.
+Shipped v2.1 with ~8,322 Python LOC (3,389 source + 4,933 test). 270 tests passing. 24 phases, 51 plans completed across 5 milestones.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt: None — test issues resolved by recent patch (257 tests passing).
+Known tech debt: None.
 
 ## Constraints
 
@@ -127,6 +132,9 @@ Known tech debt: None — test issues resolved by recent patch (257 tests passin
 | Double-checked locking for rate limiter | Pre-check optimistic, re-check inside lock authoritative | ✓ Good — v2.0 |
 | _sanitize_exc type-based dispatch | Avoids leaking internal details in exception messages | ✓ Good — v2.0 |
 | SUM(CASE WHEN) for SQLite compatibility | FILTER clause not available in all SQLite versions | ✓ Good — v2.0 |
+| get_config_dir() function for testable env var reading | Avoids module reload issues in tests | ✓ Good — v2.1 |
+| url_for via request.url_for everywhere | Consistent root_path support for reverse proxies | ✓ Good — v2.1 |
+| Absolute-path-only config dir validation | Prevents relative/traversal path misconfiguration | ✓ Good — v2.1 |
 
 ---
-*Last updated: 2026-03-08 after v2.0 Harden & Fix milestone start*
+*Last updated: 2026-03-09 after v2.1 milestone*

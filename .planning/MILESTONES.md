@@ -1,5 +1,26 @@
 # Milestones
 
+## v2.1 Harden & Fix (Shipped: 2026-03-09)
+
+**Phases completed:** 2 phases, 2 plans
+**Timeline:** 1 day (Mar 8, 2026)
+**LOC:** ~8,322 Python (3,389 source + 4,933 test) | 270 tests
+**Git range:** 69bee92..b73a9b4 (19 commits)
+
+**Delivered:** Deployment hardening — configurable config directory, reverse proxy compatibility, path validation, and temp file safety.
+
+**Key accomplishments:**
+- Configurable config directory via TRIGGARR_CONFIG_DIR env var for flexible Docker deployments
+- ROOT_PATH support for reverse proxy deployments (Nginx, Caddy, Traefik) with consistent request.url_for across all templates
+- Config path validation rejects relative/traversal paths at startup with clear errors
+- Temp file cleanup on os.replace failure in settings save (matching state.py pattern)
+- Module-level freeze constraint documented and tested
+- 13 new tests added, 270 total passing
+
+**Tech debt carried forward:** None
+
+---
+
 ## v2.0 Closed-Loop Tracking (Shipped: 2026-03-09)
 
 **Phases completed:** 8 phases, 18 plans
