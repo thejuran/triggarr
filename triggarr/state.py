@@ -45,6 +45,7 @@ class AppState(TypedDict, total=False):
     unreachable_since: str | None  # ISO timestamp of first failure, None when healthy
     missing_count: int | None  # Total wanted-missing items (before filtering)
     missing_eligible: int | None  # Items eligible for search (after filtering)
+    missing_monitored: int | None  # Monitored items before unreleased filtering (Radarr only)
     missing_searchable: int | None  # Searchable units (Sonarr: seasons after dedup; None for Radarr)
     cutoff_count: int | None  # Total cutoff-unmet items (before filtering)
     cutoff_searchable: int | None  # Searchable units for cutoff (Sonarr: seasons; None for Radarr)
