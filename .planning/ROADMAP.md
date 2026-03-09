@@ -58,7 +58,7 @@ Fetcharr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 20.1: Deep Review — Security & Safety** - Fix async race conditions, XSS, migration correctness, and exception sanitization (completed 2026-02-26)
 - [x] **Phase 20.2: Deep Review — Code Quality** - Type annotations, off-by-one fixes, dead code cleanup, and config consistency (completed 2026-02-26)
 - [x] **Phase 21: Dashboard & Stats** - Outcome badges, effectiveness rates, lifetime stats cards, and time-to-grab metric (completed 2026-03-07)
-- [ ] **Phase 22: Rename to Triggarr** - Rename package, Docker image, docs, and all references from fetcharr to triggarr
+- [x] **Phase 22: Rename to Triggarr** - Rename package, Docker image, docs, and all references from fetcharr to triggarr (completed 2026-03-07)
 
 ## Phase Details
 
@@ -227,4 +227,4 @@ Phases execute in numeric order: 17 > 18 > 19 > 20 > 20.1 > 20.2 > 21 > 22
 | 20.1 Deep Review — Security & Safety | 2/2 | Complete    | 2026-02-26 | - |
 | 20.2 Deep Review — Code Quality | 2/2 | Complete    | 2026-02-26 | - |
 | 21. Dashboard & Stats | 2/2 | Complete    | 2026-03-07 | - |
-| 22. Rename to Triggarr | v2.0 | 1/2 | In progress | - |
+| 22. Rename to Triggarr | v2.0 | 2/2 | Complete | 2026-03-07 |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Closed-Loop Tracking
 status: in-progress
-stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-03-07T03:00:47Z"
-last_activity: 2026-03-07 -- Completed 22-01 rename Python package to triggarr
+stopped_at: Completed 22-02-PLAN.md
+last_updated: "2026-03-07T03:30:00Z"
+last_activity: 2026-03-07 -- Completed 22-02 update Docker, CI, docs, templates to triggarr
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 11
-  completed_plans: 16
+  completed_plans: 17
   percent: 100
 ---
 
@@ -26,16 +26,16 @@ See: .planning/PROJECT.md (updated 2026-02-24)
 ## Current Position
 
 Phase: 22 of 22 (Rename to Triggarr)
-Plan: 1 of 2 in current phase
-Status: Plan 22-01 complete
-Last activity: 2026-03-07 -- Completed 22-01 rename Python package to triggarr
+Plan: 2 of 2 in current phase
+Status: Plan 22-02 complete -- phase complete
+Last activity: 2026-03-07 -- Completed 22-02 update Docker, CI, docs, templates to triggarr
 
-Progress: [█████████░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 44 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 13)
+- Total plans completed: 45 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 14)
 - Milestones shipped: 3 (v1.0, v1.1, v1.2)
 
 **By Phase (v2.0):**
@@ -59,6 +59,7 @@ Progress: [█████████░] 50%
 | Phase 21 P01 | 7min | 2 tasks | 6 files |
 | Phase 21 P02 | 11min | 2 tasks | 5 files |
 | Phase 22 P01 | 9min | 2 tasks | 55 files |
+| Phase 22 P02 | 4min | 2 tasks | 30 files |
 
 *Updated after each plan completion*
 
@@ -114,6 +115,9 @@ Recent decisions affecting current work:
 - [Phase 21-02]: tracking_delay_seconds remains preserved (not user-editable) per CONTEXT.md
 - [Phase 22-01]: FetcharrState class name, fetcharr_state attribute, fetcharr.toml, fetcharr.db kept as-is (deferred to Plan 02)
 - [Phase 22-01]: 2 pre-existing test failures in test_search.py (_sanitize_exc returns type name not message)
+- [Phase 22-02]: FetcharrState renamed to TriggarrState, fetcharr_state to triggarr_state throughout
+- [Phase 22-02]: Config path changed from fetcharr.toml to triggarr.toml, db from fetcharr.db to triggarr.db
+- [Phase 22-02]: FETCHARR_ env var prefix updated to TRIGGARR_ in documentation
 
 ### Pending Todos
 
@@ -127,6 +131,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07T03:00:47Z
-Stopped at: Completed 22-01-PLAN.md
-Resume file: .planning/phases/22-rename-to-triggarr/22-01-SUMMARY.md
+Last session: 2026-03-07T03:30:00Z
+Stopped at: Completed 22-02-PLAN.md
+Resume file: .planning/phases/22-rename-to-triggarr/22-02-SUMMARY.md
