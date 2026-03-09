@@ -9,7 +9,7 @@ Requirements for skip-unreleased-media milestone. Each maps to roadmap phases.
 
 ### Configuration
 
-- [ ] **CFG-01**: User can enable/disable skip-unreleased-media filtering via web UI toggle
+- [x] **CFG-01**: User can enable/disable skip-unreleased-media filtering via web UI toggle
 - [x] **CFG-02**: Skip-unreleased setting persists in TOML config file with default enabled
 
 ### Filtering
@@ -43,7 +43,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CFG-01 | Phase 26 | Pending |
+| CFG-01 | Phase 26 | Complete |
 | CFG-02 | Phase 25 | Complete |
 | FILT-01 | Phase 25 | Complete |
 | FILT-02 | Phase 25 | Complete |

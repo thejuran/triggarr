@@ -74,7 +74,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 ### v2.2 Skip Unreleased Media
 
 - [x] **Phase 25: Filter Foundation** - Config model field and pure filter functions with comprehensive edge-case tests (completed 2026-03-09)
-- [ ] **Phase 26: Settings UI & Engine Integration** - Web UI toggle, form save/load, and conditional filter wiring into search pipeline
+- [x] **Phase 26: Settings UI & Engine Integration** - Web UI toggle, form save/load, and conditional filter wiring into search pipeline (completed 2026-03-09)
 - [ ] **Phase 27: Dashboard Display** - Eligible-count tracking and skip-count indicators on app cards
 
 ## Phase Details
@@ -103,7 +103,7 @@ Plans:
   2. Toggle state saves correctly and survives settings page reload (three-location round-trip: model, template, route)
   3. When enabled, Radarr missing-queue searches skip movies without a past release date (filter runs after filter_monitored, before cursor/slice_batch)
   4. When disabled, all monitored Radarr missing items are searched regardless of release date
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 26-01-PLAN.md -- Settings UI toggle + engine pipeline conditional filter wiring
@@ -155,5 +155,5 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 23. Deploy Fixes | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 24. Hardening | v2.1 | 1/1 | Complete | 2026-03-09 |
 | 25. Filter Foundation | 1/1 | Complete    | 2026-03-09 | - |
-| 26. Settings UI & Engine Integration | v2.2 | 0/1 | Not started | - |
+| 26. Settings UI & Engine Integration | 1/1 | Complete   | 2026-03-09 | - |
 | 27. Dashboard Display | v2.2 | 0/? | Not started | - |
