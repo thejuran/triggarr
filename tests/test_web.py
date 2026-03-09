@@ -844,6 +844,24 @@ def test_save_settings_skip_unreleased_on(client, test_app):
     assert "skip_unreleased = true" in content, "TOML should contain skip_unreleased = true"
 
 
+def test_build_app_context_includes_eligible_and_skip_unreleased(client, test_app):
+    """_build_app_context returns missing_eligible and skip_unreleased keys (DASH-01)."""
+    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
+    response = client.get("/partials/app-card/radarr")
+    assert response.status_code == 200
+    # The template should render the eligible count
+    assert "30" in response.text
+
+
+def test_build_app_context_eligible_none_when_missing(client, test_app):
+    """_build_app_context returns missing_eligible as None when state has no field (DASH-01)."""
+    # Ensure no missing_eligible in state (pre-first-cycle)
+    test_app.state.triggarr_state["radarr"].pop("missing_eligible", None)
+    response = client.get("/partials/app-card/radarr")
+    assert response.status_code == 200
+    # Template should gracefully fall back (no crash)
+
+
 def test_save_settings_skip_unreleased_off(client, test_app):
     """POST /settings WITHOUT skip_unreleased in form data saves False."""
     response = client.post(

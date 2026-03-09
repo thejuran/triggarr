@@ -868,6 +868,96 @@ async def test_run_radarr_cycle_skip_unreleased_disabled(tmp_path):
     await db.close()
 
 
+async def test_run_radarr_cycle_eligible_count_skip_unreleased_enabled(tmp_path):
+    """With skip_unreleased=True, missing_eligible reflects post-filter count (DASH-01)."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    # 3 monitored movies, 1 unreleased (will be filtered)
+    future = (datetime.now(UTC) + timedelta(days=30)).isoformat().replace("+00:00", "Z")
+    past = (datetime.now(UTC) - timedelta(days=30)).isoformat().replace("+00:00", "Z")
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "title": "Released A", "monitored": True, "digitalRelease": past},
+            {"id": 2, "title": "Released B", "monitored": True, "digitalRelease": past},
+            {"id": 3, "title": "Unreleased C", "monitored": True, "digitalRelease": future, "physicalRelease": future},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_state()
+    settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+
+    result = await run_radarr_cycle(client, state, settings, db)
+
+    # 3 monitored, 1 filtered by unreleased -> 2 eligible
+    assert result["radarr"]["missing_eligible"] == 2
+    await db.close()
+
+
+async def test_run_radarr_cycle_eligible_count_skip_unreleased_disabled(tmp_path):
+    """With skip_unreleased=False, missing_eligible equals post-filter_monitored count (DASH-01)."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    # 3 movies, 2 monitored
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "title": "Movie A", "monitored": True},
+            {"id": 2, "title": "Movie B", "monitored": True},
+            {"id": 3, "title": "Movie C", "monitored": False},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_state()
+    settings = make_settings(general=GeneralConfig(skip_unreleased=False))
+
+    result = await run_radarr_cycle(client, state, settings, db)
+
+    # 2 monitored, no unreleased filtering -> eligible = 2
+    assert result["radarr"]["missing_eligible"] == 2
+    await db.close()
+
+
+async def test_run_sonarr_cycle_eligible_count(tmp_path):
+    """Sonarr missing_eligible reflects len(missing_seasons) after filtering + dedup (DASH-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    # 4 episodes -> 2 unique seasons after dedup (series 10 s1 has 2 eps)
+    episodes = [
+        _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=101),
+        _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=200),
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=episodes)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _default_state()
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    result = await run_sonarr_cycle(client, state, settings, db)
+
+    # 3 episodes -> filter_sonarr_episodes -> dedup -> 2 seasons
+    assert result["sonarr"]["missing_eligible"] == 2
+    await db.close()
+
+
 async def test_run_radarr_cycle_skip_unreleased_never_filters_cutoff(tmp_path):
     """With skip_unreleased=True, filter_unreleased_movies called once (missing only), not cutoff."""
     from unittest.mock import patch
