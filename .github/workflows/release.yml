@@ -18,7 +18,7 @@ jobs:
 
     permissions:
       packages: write
-      contents: read
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -52,3 +52,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Triggarr ${{ github.ref_name }}" \
+            --generate-notes \
+            --latest
