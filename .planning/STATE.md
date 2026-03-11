@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: in_progress
-stopped_at: Completed 33-01-PLAN.md
-last_updated: "2026-03-11T01:36:20Z"
-last_activity: 2026-03-10 -- Completed Phase 33 Plan 01
+stopped_at: Completed 33-02-PLAN.md
+last_updated: "2026-03-11T01:49:44Z"
+last_activity: 2026-03-10 -- Completed Phase 33 Plan 02
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 0
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 33 (1 of 7 in v2.3) — Config Model & Migration
-Plan: 01 complete, next: 02
+Plan: 02 complete, next: Phase 34
 Status: In progress
-Last activity: 2026-03-10 — Completed Plan 01 (config model migration)
+Last activity: 2026-03-10 — Completed Plan 02 (config migration & default config)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -39,12 +39,13 @@ Progress: [░░░░░░░░░░] 0%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 1
+- Plans completed: 2
 - Phases: 7 (33-39)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 33 | 01 | 3min | 1 | 2 |
+| 33 | 02 | 11min | 2 | 3 |
 
 ## Accumulated Context
 
@@ -54,6 +55,9 @@ Full decision log in PROJECT.md Key Decisions table.
 
 - Phase 33-01: Renamed ArrConfig to InstanceConfig with backward-compat alias
 - Phase 33-01: Updated test TOML fixtures to v2.3 nested format
+- Phase 33-02: Extracted _atomic_toml_write helper for reuse
+- Phase 33-02: v2.2 detection uses flat key set intersection
+- Phase 33-02: .migrated marker file for web UI banner (Phase 39)
 
 ### Pending Todos
 
@@ -67,5 +71,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Completed 33-01-PLAN.md
+Stopped at: Completed 33-02-PLAN.md
 Resume file: None

@@ -12,7 +12,7 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 - [ ] **INST-01**: User can configure multiple named Radarr instances with independent URL, API key, schedule, and batch sizes
 - [ ] **INST-02**: User can configure multiple named Sonarr instances with independent URL, API key, schedule, and batch sizes
 - [ ] **INST-03**: Each instance maintains independent round-robin cursors that persist across restarts
-- [ ] **INST-04**: Existing single-instance config auto-migrates to multi-instance format on upgrade
+- [x] **INST-04**: Existing single-instance config auto-migrates to multi-instance format on upgrade
 - [ ] **INST-05**: User can add, edit, and remove instances from the web UI settings page
 - [ ] **INST-06**: User can enable/disable individual instances from the web UI
 - [ ] **INST-07**: Dashboard shows an instance health summary card (connected/disconnected count with per-instance detail)
@@ -66,7 +66,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-01 | Phase 33 | Pending |
 | INST-02 | Phase 33 | Pending |
 | INST-03 | Phase 34 | Pending |
-| INST-04 | Phase 33 | Pending |
+| INST-04 | Phase 33 | Complete |
 | INST-05 | Phase 39 | Pending |
 | INST-06 | Phase 38 | Pending |
 | INST-07 | Phase 39 | Pending |
