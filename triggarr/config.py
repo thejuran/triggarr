@@ -1,50 +1,156 @@
-"""TOML configuration loading and default config generation."""
+"""TOML configuration loading, default config generation, and v2.2 migration."""
 
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
+import tomli_w
 from loguru import logger
 
 from triggarr.models.config import Settings
 
 # Default commented config template written on first run.
+# Instance configuration is managed through the web UI -- radarr/sonarr
+# sections are empty by default.
 DEFAULT_CONFIG = """\
 # Triggarr Configuration
-# Edit this file and restart Triggarr.
 
 [general]
 # Log level: debug, info, warning, error
 log_level = "info"
-# hard_max_per_cycle = 0   # 0 = unlimited; caps total items searched per app per cycle
-# max_history_rows = 1000   # Maximum resolved rows kept in search history (pending rows always preserved)
-# request_timeout = 30.0    # Seconds before outbound HTTP requests time out
-# page_size = 50            # Page size for Radarr/Sonarr API pagination
-# tracking_window_minutes = 60  # Minutes to wait for grabs after a search
-# tracking_delay_seconds = 90   # Delay before tracking check
-# skip_unreleased = true    # Skip Radarr movies without a past digital/physical release date
+# hard_max_per_cycle = 0
+# max_history_rows = 1000
+# request_timeout = 30.0
+# page_size = 50
+# tracking_window_minutes = 60
+# tracking_delay_seconds = 90
+# skip_unreleased = true
+
+# Instance configuration is managed through the web UI.
+# Add your first Radarr or Sonarr instance at: http://<host>:8080/settings
 
 [radarr]
-# Radarr connection settings
-url = ""           # e.g. "http://radarr:7878"
-api_key = ""       # From Radarr > Settings > General > API Key
-enabled = false
-# search_interval = 30       # Minutes between search cycles
-# search_missing_count = 5   # Missing items to search per cycle
-# search_cutoff_count = 5    # Cutoff items to search per cycle
 
 [sonarr]
-# Sonarr connection settings
-url = ""           # e.g. "http://sonarr:8989"
-api_key = ""       # From Sonarr > Settings > General > API Key
-enabled = false
-# search_interval = 30       # Minutes between search cycles
-# search_missing_count = 5   # Missing items to search per cycle
-# search_cutoff_count = 5    # Cutoff items to search per cycle
 """
+
+# Keys that appear directly under [radarr] or [sonarr] in v2.2 flat format
+_V22_FLAT_KEYS = {"url", "api_key", "enabled"}
+
+
+def _is_v22_format(data: dict) -> bool:
+    """Check if parsed TOML data uses the v2.2 flat config format.
+
+    In v2.2, [radarr] and [sonarr] sections contain url/api_key/enabled
+    directly. In v2.3, they contain named instance sub-tables.
+
+    Args:
+        data: Parsed TOML data dict.
+
+    Returns:
+        True if v2.2 flat format detected.
+    """
+    for section in ("radarr", "sonarr"):
+        section_data = data.get(section, {})
+        if section_data and _V22_FLAT_KEYS & section_data.keys():
+            return True
+    return False
+
+
+def _migrate_v22_to_v23(data: dict) -> dict:
+    """Transform v2.2 flat config data to v2.3 multi-instance format.
+
+    Wraps flat [radarr] and [sonarr] sections into {"Default": {...}}.
+    Preserves [general] section unchanged.
+
+    Args:
+        data: Parsed v2.2 TOML data dict.
+
+    Returns:
+        New dict with v2.3 multi-instance structure.
+    """
+    result = dict(data)
+    for section in ("radarr", "sonarr"):
+        section_data = result.get(section, {})
+        if section_data and _V22_FLAT_KEYS & section_data.keys():
+            result[section] = {"Default": section_data}
+    return result
+
+
+def _atomic_toml_write(path: Path, data: dict) -> None:
+    """Write TOML data to a file atomically using tempfile + fsync + rename.
+
+    Args:
+        path: Destination file path.
+        data: TOML-serializable dict.
+    """
+    dir_fd = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        with os.fdopen(fd, "wb") as f:
+            tomli_w.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        # fsync the directory to ensure rename is durable
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        os.fsync(dir_fd)
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
+
+
+def detect_and_migrate_v22(config_path: Path) -> bool:
+    """Detect v2.2 config format and migrate to v2.3 multi-instance format.
+
+    If the config file uses the v2.2 flat format (url/api_key/enabled directly
+    under [radarr] or [sonarr]), it is migrated to the v2.3 nested format
+    with instance name "Default".
+
+    Steps:
+    1. Read and parse existing config
+    2. If not v2.2 format, return False
+    3. Backup original to triggarr.toml.bak
+    4. Migrate data structure
+    5. Write migrated config atomically
+    6. Create .migrated marker for web UI banner
+    7. Return True
+
+    Args:
+        config_path: Path to the TOML configuration file.
+
+    Returns:
+        True if migration was performed, False if already v2.3 format.
+    """
+    with open(config_path, "rb") as f:
+        data = tomllib.load(f)
+
+    if not _is_v22_format(data):
+        return False
+
+    # Backup original config
+    backup_path = config_path.with_suffix(".toml.bak")
+    shutil.copy2(config_path, backup_path)
+
+    # Migrate data structure
+    migrated = _migrate_v22_to_v23(data)
+
+    # Write migrated config atomically
+    _atomic_toml_write(config_path, migrated)
+
+    # Create marker file for web UI banner
+    marker = config_path.parent / ".migrated"
+    marker.touch()
+
+    logger.info("Config migrated from v2.2 to v2.3 multi-instance format")
+    logger.info("Original config backed up to {path}", path=backup_path)
+
+    return True
 
 
 def load_settings(config_path: Path) -> Settings:
@@ -81,6 +187,8 @@ def ensure_config(config_path: Path) -> Settings:
     If the config file is missing, generates a default template,
     prints a message to stderr, and exits with code 1.
 
+    For existing configs, runs v2.2 migration detection before loading.
+
     Args:
         config_path: Path to the TOML configuration file.
 
@@ -94,5 +202,10 @@ def ensure_config(config_path: Path) -> Settings:
             path=config_path,
         )
         sys.exit(1)
+
+    migrated = detect_and_migrate_v22(config_path)
+    if migrated:
+        backup_path = config_path.with_suffix(".toml.bak")
+        logger.info("v2.2 config backed up to {path}", path=backup_path)
 
     return load_settings(config_path)
