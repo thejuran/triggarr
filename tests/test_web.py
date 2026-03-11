@@ -16,8 +16,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 
+from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import LogEntry, log_buffer
+from triggarr.models.config import GeneralConfig
 from triggarr.web.routes import STATIC_DIR, router
 
 
@@ -36,52 +38,43 @@ async def test_app(tmp_path):
     await insert_search_entry(db, "Radarr", "missing", "Test Movie")
     app.state.db = db
 
-    # Mock triggarr state
+    # Mock triggarr state (nested per-instance format)
     app.state.triggarr_state = {
         "radarr": {
-            "missing_cursor": 3,
-            "cutoff_cursor": 1,
-            "last_run": "2026-01-15T10:30:00Z",
-            "connected": True,
-            "unreachable_since": None,
-            "missing_count": 42,
-            "cutoff_count": 7,
+            "Default": {
+                "missing_cursor": 3,
+                "cutoff_cursor": 1,
+                "last_run": "2026-01-15T10:30:00Z",
+                "connected": True,
+                "unreachable_since": None,
+                "missing_count": 42,
+                "cutoff_count": 7,
+            },
         },
         "sonarr": {
-            "missing_cursor": 0,
-            "cutoff_cursor": 0,
-            "last_run": None,
-            "connected": None,
-            "unreachable_since": None,
-            "missing_count": None,
-            "cutoff_count": None,
+            "Default": {
+                "missing_cursor": 0,
+                "cutoff_cursor": 0,
+                "last_run": None,
+                "connected": None,
+                "unreachable_since": None,
+                "missing_count": None,
+                "cutoff_count": None,
+            },
         },
         "search_log": [],
     }
 
-    # Mock settings with SecretStr-like api_key
-    mock_settings = MagicMock()
-    mock_settings.radarr.enabled = True
-    mock_settings.radarr.url = "http://radarr:7878"
-    mock_settings.radarr.api_key.get_secret_value.return_value = "test-radarr-key"
-    mock_settings.radarr.search_interval = 30
-    mock_settings.radarr.search_missing_count = 5
-    mock_settings.radarr.search_cutoff_count = 5
-    mock_settings.sonarr.enabled = True
-    mock_settings.sonarr.url = "http://sonarr:8989"
-    mock_settings.sonarr.api_key.get_secret_value.return_value = "test-sonarr-key"
-    mock_settings.sonarr.search_interval = 30
-    mock_settings.sonarr.search_missing_count = 5
-    mock_settings.sonarr.search_cutoff_count = 5
-    mock_settings.general.log_level = "info"
-    mock_settings.general.hard_max_per_cycle = 0
-    mock_settings.general.max_history_rows = 1000
-    mock_settings.general.request_timeout = 30.0
-    mock_settings.general.page_size = 50
-    mock_settings.general.tracking_window_minutes = 60
-    mock_settings.general.tracking_delay_seconds = 90
-    mock_settings.general.skip_unreleased = True
-    app.state.settings = mock_settings
+    # Real Settings with dict-based instances
+    app.state.settings = make_settings(
+        radarr_url="http://radarr:7878",
+        radarr_api_key="test-radarr-key",
+        radarr_enabled=True,
+        sonarr_url="http://sonarr:8989",
+        sonarr_api_key="test-sonarr-key",
+        sonarr_enabled=True,
+        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+    )
 
     # Mock scheduler
     mock_scheduler = MagicMock()
@@ -90,13 +83,13 @@ async def test_app(tmp_path):
     mock_scheduler.get_job.return_value = mock_job
     app.state.scheduler = mock_scheduler
 
-    # Mock clients (close() is async, so needs AsyncMock)
+    # Mock clients (close() is async, so needs AsyncMock) -- per-instance dicts
     radarr_client = MagicMock()
     radarr_client.close = AsyncMock()
-    app.state.radarr_client = radarr_client
     sonarr_client = MagicMock()
     sonarr_client.close = AsyncMock()
-    app.state.sonarr_client = sonarr_client
+    app.state.radarr_clients = {"Default": radarr_client}
+    app.state.sonarr_clients = {"Default": sonarr_client}
 
     # Paths
     app.state.config_path = tmp_path / "triggarr.toml"
@@ -562,10 +555,10 @@ def test_search_now_not_rate_limited_after_window(client, test_app):
 
 
 def test_health_all_connected_returns_200(client, test_app):
-    """GET /health returns 200 when all enabled apps have connected=True."""
+    """GET /health returns 200 when all enabled instances have connected=True."""
     test_app.state.triggarr_state = {
-        "radarr": {"connected": True},
-        "sonarr": {"connected": True},
+        "radarr": {"Default": {"connected": True}},
+        "sonarr": {"Default": {"connected": True}},
     }
     response = client.get("/health")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
@@ -574,10 +567,10 @@ def test_health_all_connected_returns_200(client, test_app):
 
 
 def test_health_unreachable_app_returns_503(client, test_app):
-    """GET /health returns 503 when an enabled app has connected=False."""
+    """GET /health returns 503 when an enabled instance has connected=False."""
     test_app.state.triggarr_state = {
-        "radarr": {"connected": False},
-        "sonarr": {"connected": True},
+        "radarr": {"Default": {"connected": False}},
+        "sonarr": {"Default": {"connected": True}},
     }
     response = client.get("/health")
     assert response.status_code == 503, f"Expected 503, got {response.status_code}"
@@ -587,10 +580,10 @@ def test_health_unreachable_app_returns_503(client, test_app):
 
 
 def test_health_not_yet_verified_returns_503(client, test_app):
-    """GET /health returns 503 when an enabled app has connected=None (never run)."""
+    """GET /health returns 503 when an enabled instance has connected=None (never run)."""
     test_app.state.triggarr_state = {
-        "radarr": {"connected": True},
-        "sonarr": {"connected": None},
+        "radarr": {"Default": {"connected": True}},
+        "sonarr": {"Default": {"connected": None}},
     }
     response = client.get("/health")
     assert response.status_code == 503, f"Expected 503, got {response.status_code}"
@@ -600,9 +593,8 @@ def test_health_not_yet_verified_returns_503(client, test_app):
 
 def test_health_no_apps_enabled_returns_200(client, test_app):
     """GET /health returns 200 when no apps are enabled (valid awaiting-setup state)."""
-    test_app.state.settings.radarr.enabled = False
-    test_app.state.settings.sonarr.enabled = False
-    test_app.state.triggarr_state = {}
+    test_app.state.settings = make_settings(radarr_enabled=False, sonarr_enabled=False)
+    test_app.state.triggarr_state = {"radarr": {}, "sonarr": {}}
     response = client.get("/health")
     assert response.status_code == 200, f"Expected 200 for no-apps-configured, got {response.status_code}"
     data = response.json()
@@ -846,8 +838,8 @@ def test_save_settings_skip_unreleased_on(client, test_app):
 
 def test_build_app_context_includes_eligible_and_skip_unreleased(client, test_app):
     """_build_app_context returns missing_eligible, missing_monitored, and skip_unreleased keys (F1)."""
-    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
-    test_app.state.triggarr_state["radarr"]["missing_monitored"] = 42
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
     response = client.get("/partials/app-card/radarr")
     assert response.status_code == 200
     # The template should render the eligible count and monitored count
@@ -858,7 +850,7 @@ def test_build_app_context_includes_eligible_and_skip_unreleased(client, test_ap
 def test_build_app_context_eligible_none_when_missing(client, test_app):
     """_build_app_context returns missing_eligible as None when state has no field (DASH-01)."""
     # Ensure no missing_eligible in state (pre-first-cycle)
-    test_app.state.triggarr_state["radarr"].pop("missing_eligible", None)
+    test_app.state.triggarr_state["radarr"]["Default"].pop("missing_eligible", None)
     response = client.get("/partials/app-card/radarr")
     assert response.status_code == 200
     # Template should gracefully fall back -- show total count only
@@ -867,9 +859,9 @@ def test_build_app_context_eligible_none_when_missing(client, test_app):
 
 def test_app_card_skip_indicator_shown(client, test_app):
     """App card shows amber skip badge using missing_monitored - missing_eligible (F1 fix)."""
-    test_app.state.triggarr_state["radarr"]["missing_count"] = 50
-    test_app.state.triggarr_state["radarr"]["missing_monitored"] = 42
-    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
     test_app.state.settings.general.skip_unreleased = True
     response = client.get("/partials/app-card/radarr")
     assert response.status_code == 200
@@ -881,9 +873,9 @@ def test_app_card_skip_indicator_shown(client, test_app):
 
 def test_app_card_no_skip_when_disabled(client, test_app):
     """App card does NOT show skip badge when skip_unreleased is False (DASH-02)."""
-    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
-    test_app.state.triggarr_state["radarr"]["missing_monitored"] = 42
-    test_app.state.triggarr_state["radarr"]["missing_count"] = 50
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
     test_app.state.settings.general.skip_unreleased = False
     response = client.get("/partials/app-card/radarr")
     assert response.status_code == 200
@@ -892,9 +884,9 @@ def test_app_card_no_skip_when_disabled(client, test_app):
 
 def test_app_card_no_skip_when_equal(client, test_app):
     """App card does NOT show skip badge when missing_monitored == missing_eligible (DASH-02)."""
-    test_app.state.triggarr_state["radarr"]["missing_monitored"] = 42
-    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 42
-    test_app.state.triggarr_state["radarr"]["missing_count"] = 50
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 42
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
     test_app.state.settings.general.skip_unreleased = True
     response = client.get("/partials/app-card/radarr")
     assert response.status_code == 200
@@ -903,9 +895,9 @@ def test_app_card_no_skip_when_equal(client, test_app):
 
 def test_app_card_eligible_total_display(client, test_app):
     """App card shows 'X of Y items' using missing_monitored as denominator (F1 fix)."""
-    test_app.state.triggarr_state["radarr"]["missing_eligible"] = 30
-    test_app.state.triggarr_state["radarr"]["missing_monitored"] = 42
-    test_app.state.triggarr_state["radarr"]["missing_count"] = 50
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
     response = client.get("/partials/app-card/radarr")
     assert response.status_code == 200
     assert "30 of 42 items" in response.text, "Should show eligible of monitored format"
@@ -914,8 +906,8 @@ def test_app_card_eligible_total_display(client, test_app):
 
 def test_app_card_sonarr_no_skip_badge(client, test_app):
     """Sonarr card does NOT show skip badge even when eligible < total (DASH-02)."""
-    test_app.state.triggarr_state["sonarr"]["missing_eligible"] = 5
-    test_app.state.triggarr_state["sonarr"]["missing_count"] = 10
+    test_app.state.triggarr_state["sonarr"]["Default"]["missing_eligible"] = 5
+    test_app.state.triggarr_state["sonarr"]["Default"]["missing_count"] = 10
     test_app.state.settings.general.skip_unreleased = True
     response = client.get("/partials/app-card/sonarr")
     assert response.status_code == 200

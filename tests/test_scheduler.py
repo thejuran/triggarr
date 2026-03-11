@@ -24,10 +24,10 @@ from triggarr.state import _default_state, save_state
 async def test_make_search_job_client_none_returns_early():
     """Job returns immediately without error when client is None."""
     app = FastAPI()
-    app.state.radarr_client = None
+    app.state.radarr_clients = {}
     app.state.search_lock = asyncio.Lock()
 
-    job = make_search_job(app, "radarr", Path("/tmp/state.json"))
+    job = make_search_job(app, "radarr", "Default", Path("/tmp/state.json"))
     # Should complete without error and without touching other state attrs
     await job()
 
@@ -35,9 +35,9 @@ async def test_make_search_job_client_none_returns_early():
 async def test_make_search_job_exception_swallowed():
     """Job catches and swallows unhandled exceptions from cycle function."""
     app = FastAPI()
-    app.state.radarr_client = AsyncMock()
+    app.state.radarr_clients = {"Default": AsyncMock()}
     app.state.search_lock = asyncio.Lock()
-    app.state.triggarr_state = _default_state()
+    app.state.triggarr_state = _default_state(make_settings())
     app.state.settings = make_settings()
 
     with (
@@ -50,7 +50,7 @@ async def test_make_search_job_exception_swallowed():
             new=MagicMock(),
         ),
     ):
-        job = make_search_job(app, "radarr", Path("/tmp/state.json"))
+        job = make_search_job(app, "radarr", "Default", Path("/tmp/state.json"))
         # Should NOT raise -- exception is caught internally
         await job()
 
@@ -124,16 +124,17 @@ async def _make_app_with_db(tmp_path, *, radarr_client=None, sonarr_client=None)
     await init_db(db, db_path)
 
     state_path = tmp_path / "state.json"
-    state = _default_state()
+    settings = make_settings()
+    state = _default_state(settings)
     save_state(state, state_path)
 
     app = FastAPI()
     app.state.db = db
     app.state.search_lock = asyncio.Lock()
     app.state.triggarr_state = state
-    app.state.settings = make_settings()
-    app.state.radarr_client = radarr_client
-    app.state.sonarr_client = sonarr_client
+    app.state.settings = settings
+    app.state.radarr_clients = {"Default": radarr_client} if radarr_client else {}
+    app.state.sonarr_clients = {"Default": sonarr_client} if sonarr_client else {}
     app.state.state_path = state_path
     return app, db, state_path
 
@@ -181,7 +182,7 @@ async def test_search_job_runs_tracking_after_cycle(tmp_path):
                 new=MagicMock(),
             ),
         ):
-            job = make_search_job(app, "radarr", state_path)
+            job = make_search_job(app, "radarr", "Default", state_path)
             await job()
 
         # Verify the entry was resolved to "grabbed"
@@ -213,7 +214,7 @@ async def test_search_job_tracking_failure_nonfatal(tmp_path):
                 new=AsyncMock(side_effect=RuntimeError("tracking exploded")),
             ),
         ):
-            job = make_search_job(app, "radarr", state_path)
+            job = make_search_job(app, "radarr", "Default", state_path)
             # Should NOT raise despite tracking failure
             await job()
             # State was saved before tracking ran
@@ -253,7 +254,7 @@ async def test_search_job_logs_tracking_results(tmp_path, capsys):
                 new=AsyncMock(return_value=tracking_result),
             ),
         ):
-            job = make_search_job(app, "radarr", state_path)
+            job = make_search_job(app, "radarr", "Default", state_path)
             await job()
 
         # Check that tracking info was logged

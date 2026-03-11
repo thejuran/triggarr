@@ -68,8 +68,8 @@ def _format_duration(seconds: float | None) -> str:
 async def health(request: Request) -> JSONResponse:
     """Health probe for container orchestrators.
 
-    Returns 200 when all enabled apps are reachable (connected=True),
-    503 when any enabled app is unreachable or not yet verified.
+    Returns 200 when all enabled instances are reachable (connected=True),
+    503 when any enabled instance is unreachable or not yet verified.
     If no apps are enabled, returns 200 (valid configuration, waiting for setup).
     """
     settings = request.app.state.settings
@@ -77,12 +77,11 @@ async def health(request: Request) -> JSONResponse:
     problems: list[str] = []
 
     for app_name in ("radarr", "sonarr"):
-        cfg = getattr(settings, app_name)
-        if not cfg.enabled:
-            continue
-        connected = state.get(app_name, {}).get("connected")
-        if connected is not True:  # None (never run) or False (unreachable) -> unhealthy
-            problems.append(app_name)
+        for inst_name, _cfg in settings.get_enabled_instances(app_name).items():
+            inst_state = state.get(app_name, {}).get(inst_name, {})
+            connected = inst_state.get("connected")
+            if connected is not True:  # None (never run) or False (unreachable) -> unhealthy
+                problems.append(app_name)
 
     if problems:
         return JSONResponse(
@@ -95,7 +94,9 @@ async def health(request: Request) -> JSONResponse:
 def _build_app_context(request: Request, app_name: str) -> dict | None:
     """Build a template context dict for a single app.
 
-    Returns None if the app is not enabled in settings.
+    Returns None if the app has no enabled instances. For multi-instance
+    configs, shows the first enabled instance's state (Phase 39 adds
+    full multi-instance dashboard).
 
     Args:
         request: The incoming FastAPI request (used to access app.state).
@@ -106,17 +107,20 @@ def _build_app_context(request: Request, app_name: str) -> dict | None:
         or None if app is not enabled.
     """
     settings = request.app.state.settings
-    app_config = getattr(settings, app_name, None)
-    if app_config is None or not app_config.enabled:
+    enabled = settings.get_enabled_instances(app_name)
+    if not enabled:
         return None
 
-    state = request.app.state.triggarr_state
-    app_state = state.get(app_name, {})
+    # Use first enabled instance for dashboard display (Phase 39: multi-instance UI)
+    first_instance_name = next(iter(enabled))
 
-    # Determine next_run from scheduler job
+    state = request.app.state.triggarr_state
+    app_state = state.get(app_name, {}).get(first_instance_name, {})
+
+    # Determine next_run from scheduler job (per-instance job ID)
     next_run = None
     scheduler = request.app.state.scheduler
-    job = scheduler.get_job(f"{app_name}_search")
+    job = scheduler.get_job(f"{app_name}_{first_instance_name}_search")
     if job and job.next_run_time:
         next_run = job.next_run_time.isoformat()
 
@@ -169,11 +173,23 @@ async def dashboard(request: Request) -> HTMLResponse:
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
-    """Render the settings page with pre-filled form and masked API keys."""
+    """Render the settings page with pre-filled form and masked API keys.
+
+    For now, shows the first instance per app type (Phase 39 adds
+    multi-instance settings UI).
+    """
     settings = request.app.state.settings
     apps = {}
     for name in ("radarr", "sonarr"):
-        cfg = getattr(settings, name)
+        instances = getattr(settings, name)
+        if instances:
+            # Show first instance for settings form (Phase 39: multi-instance editing)
+            first_name = next(iter(instances))
+            cfg = instances[first_name]
+        else:
+            # No instances configured -- show empty defaults
+            from triggarr.models.config import InstanceConfig
+            cfg = InstanceConfig()
         apps[name] = {
             "url": cfg.url,
             "has_api_key": bool(cfg.api_key.get_secret_value()),
@@ -287,7 +303,16 @@ async def save_settings(request: Request) -> RedirectResponse:
     }
 
     for name in ("radarr", "sonarr"):
-        current_cfg = getattr(current_settings, name)
+        # Get first existing instance's config for key preservation
+        current_instances = getattr(current_settings, name)
+        if current_instances:
+            first_inst_name = next(iter(current_instances))
+            current_cfg = current_instances[first_inst_name]
+        else:
+            from triggarr.models.config import InstanceConfig
+            first_inst_name = "Default"
+            current_cfg = InstanceConfig()
+
         submitted_key = form.get(f"{name}_api_key", "").strip()
 
         # Validate URL before accepting it
@@ -297,13 +322,16 @@ async def save_settings(request: Request) -> RedirectResponse:
             logger.warning("{name}: URL rejected -- {err}", name=name.title(), err=err)
             return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
+        # Save as single instance under existing name (Phase 39: multi-instance editing)
         new_config[name] = {
-            "url": url,
-            "api_key": submitted_key if submitted_key else current_cfg.api_key.get_secret_value(),
-            "enabled": form.get(f"{name}_enabled") == "on",
-            "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
-            "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
-            "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
+            first_inst_name: {
+                "url": url,
+                "api_key": submitted_key if submitted_key else current_cfg.api_key.get_secret_value(),
+                "enabled": form.get(f"{name}_enabled") == "on",
+                "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
+                "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
+                "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
+            },
         }
 
     # Validate BEFORE writing to disk (QUAL-02)
@@ -332,56 +360,58 @@ async def save_settings(request: Request) -> RedirectResponse:
     secrets = collect_secrets(new_settings)
     setup_logging(new_settings.general.log_level, secrets)
 
-    # Handle scheduler updates for each app
+    # Handle scheduler updates for each app's instances
     for name in ("radarr", "sonarr"):
-        new_cfg = getattr(new_settings, name)
-        old_cfg = getattr(current_settings, name)
-        job_id = f"{name}_search"
-        existing_job = scheduler.get_job(job_id)
+        new_instances = getattr(new_settings, name)
+        old_instances = getattr(current_settings, name)
+        clients_dict = getattr(request.app.state, f"{name}_clients", {})
+        ClientClass = RadarrClient if name == "radarr" else SonarrClient
 
-        if not new_cfg.enabled:
-            # Disable: remove job and close client
-            if existing_job:
-                scheduler.remove_job(job_id)
-            client = getattr(request.app.state, f"{name}_client", None)
-            if client:
-                await client.close()
-                setattr(request.app.state, f"{name}_client", None)
-            logger.info("{name} disabled", name=name.title())
+        # Close clients for removed/disabled instances
+        for inst_name in list(clients_dict.keys()):
+            new_cfg = new_instances.get(inst_name)
+            if new_cfg is None or not new_cfg.enabled:
+                job_id = f"{name}_{inst_name}_search"
+                if scheduler.get_job(job_id):
+                    scheduler.remove_job(job_id)
+                client = clients_dict.pop(inst_name, None)
+                if client:
+                    await client.close()
 
-        elif new_cfg.enabled:
-            # Check if client needs recreation (URL or API key changed)
-            url_changed = new_cfg.url != old_cfg.url
-            key_changed = (
+        # Update/create clients for enabled instances
+        for inst_name, new_cfg in new_instances.items():
+            if not new_cfg.enabled:
+                continue
+            job_id = f"{name}_{inst_name}_search"
+            old_cfg = old_instances.get(inst_name)
+
+            # Check if client needs recreation
+            url_changed = old_cfg is None or new_cfg.url != old_cfg.url
+            key_changed = old_cfg is None or (
                 new_cfg.api_key.get_secret_value()
                 != old_cfg.api_key.get_secret_value()
             )
 
-            if url_changed or key_changed or not getattr(request.app.state, f"{name}_client", None):
-                # Close old client if exists
-                old_client = getattr(request.app.state, f"{name}_client", None)
+            if url_changed or key_changed or inst_name not in clients_dict:
+                old_client = clients_dict.pop(inst_name, None)
                 if old_client:
                     await old_client.close()
-                # Create new client
-                ClientClass = RadarrClient if name == "radarr" else SonarrClient
-                new_client = ClientClass(
+                clients_dict[inst_name] = ClientClass(
                     base_url=new_cfg.url,
                     api_key=new_cfg.api_key.get_secret_value(),
                     timeout=new_settings.general.request_timeout,
                     page_size=new_settings.general.page_size,
                 )
-                setattr(request.app.state, f"{name}_client", new_client)
 
+            existing_job = scheduler.get_job(job_id)
             if existing_job:
-                # Reschedule with new interval
                 scheduler.reschedule_job(
                     job_id,
                     trigger="interval",
                     minutes=new_cfg.search_interval,
                 )
             else:
-                # Add new job for newly-enabled app
-                job_fn = make_search_job(request.app, name, state_path)
+                job_fn = make_search_job(request.app, name, inst_name, state_path)
                 scheduler.add_job(
                     job_fn,
                     "interval",
@@ -390,23 +420,37 @@ async def save_settings(request: Request) -> RedirectResponse:
                     next_run_time=datetime.now(UTC),
                 )
                 logger.info(
-                    "Enabled {name} search every {interval}m",
+                    "Enabled {name}/{inst} search every {interval}m",
                     name=name.title(),
+                    inst=inst_name,
                     interval=new_cfg.search_interval,
                 )
+
+        setattr(request.app.state, f"{name}_clients", clients_dict)
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
 
 @router.post("/api/search-now/{app_name}", response_class=HTMLResponse)
 async def search_now(request: Request, app_name: str) -> HTMLResponse:
-    """Trigger an immediate search cycle for the given app and return updated card."""
+    """Trigger an immediate search cycle for the given app and return updated card.
+
+    Runs the cycle for the first enabled instance (Phase 39 adds
+    per-instance search-now).
+    """
     if app_name not in ("radarr", "sonarr"):
         return HTMLResponse("Invalid app", status_code=400)
 
-    client = getattr(request.app.state, f"{app_name}_client", None)
+    # Get first enabled instance's client
+    clients = getattr(request.app.state, f"{app_name}_clients", {})
+    enabled = request.app.state.settings.get_enabled_instances(app_name)
+    if not enabled or not clients:
+        return HTMLResponse("App not enabled", status_code=400)
+    instance_name = next(iter(enabled))
+    client = clients.get(instance_name)
     if client is None:
         return HTMLResponse("App not enabled", status_code=400)
+    instance_config = enabled[instance_name]
 
     # Optimistic rate limit check BEFORE lock (fast-fail for obvious cases)
     now = time.monotonic()
@@ -429,6 +473,8 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
             request.app.state.triggarr_state = await cycle_fn(
                 client,
                 request.app.state.triggarr_state,
+                instance_name,
+                instance_config,
                 request.app.state.settings,
                 request.app.state.db,
             )

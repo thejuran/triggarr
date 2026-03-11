@@ -9,7 +9,7 @@ import httpx
 from loguru import logger
 
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.models.config import ArrConfig, Settings
+from triggarr.models.config import InstanceConfig, Settings
 from triggarr.startup import check_localhost_urls, collect_secrets, validate_connections
 
 
@@ -21,16 +21,16 @@ def _make_settings(
 ) -> Settings:
     """Build a Settings instance with the given app URLs and enabled flags."""
     return Settings(
-        radarr=ArrConfig(
+        radarr={"Default": InstanceConfig(
             url=radarr_url,
             api_key="test-key",
             enabled=radarr_enabled,
-        ),
-        sonarr=ArrConfig(
+        )},
+        sonarr={"Default": InstanceConfig(
             url=sonarr_url,
             api_key="test-key",
             enabled=sonarr_enabled,
-        ),
+        )},
     )
 
 
@@ -128,18 +128,18 @@ def test_disabled_app_with_localhost_no_warning() -> None:
 
 
 def test_collect_secrets_extracts_all_api_keys() -> None:
-    """collect_secrets returns non-empty API key values from all configured apps."""
+    """collect_secrets returns non-empty API key values from all configured instances."""
     settings = Settings(
-        radarr=ArrConfig(
+        radarr={"Default": InstanceConfig(
             url="http://radarr:7878",
             api_key="radarr-secret",
             enabled=True,
-        ),
-        sonarr=ArrConfig(
+        )},
+        sonarr={"Default": InstanceConfig(
             url="http://sonarr:8989",
             api_key="sonarr-secret",
             enabled=True,
-        ),
+        )},
     )
     result = collect_secrets(settings)
     assert "radarr-secret" in result

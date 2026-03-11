@@ -22,7 +22,7 @@ LOCALHOST_PATTERNS = {"localhost", "127.0.0.1", "::1"}
 
 
 def check_localhost_urls(settings: Settings) -> None:
-    """Warn if any enabled app's URL points to localhost.
+    """Warn if any enabled instance's URL points to localhost.
 
     Inside Docker, ``localhost`` refers to the container itself, not the
     host machine.  This is the most common networking mistake for new
@@ -30,25 +30,23 @@ def check_localhost_urls(settings: Settings) -> None:
     user sees a clear explanation rather than a mysterious timeout.
     """
     for name in ("radarr", "sonarr"):
-        cfg = getattr(settings, name)
-        if not cfg.enabled:
-            continue
-        hostname = urlparse(cfg.url).hostname
-        if hostname and hostname in LOCALHOST_PATTERNS:
-            logger.warning(
-                "{app} URL ({url}) uses localhost, which inside Docker "
-                "refers to the container itself, not your host machine. "
-                "Use 'host.docker.internal' (Docker Desktop) or the "
-                "container/service name (e.g. 'http://{app_lower}:{port}') instead.",
-                app=name.title(),
-                url=cfg.url,
-                app_lower=name,
-                port="7878" if name == "radarr" else "8989",
-            )
+        for _inst_name, cfg in settings.get_enabled_instances(name).items():
+            hostname = urlparse(cfg.url).hostname
+            if hostname and hostname in LOCALHOST_PATTERNS:
+                logger.warning(
+                    "{app} URL ({url}) uses localhost, which inside Docker "
+                    "refers to the container itself, not your host machine. "
+                    "Use 'host.docker.internal' (Docker Desktop) or the "
+                    "container/service name (e.g. 'http://{app_lower}:{port}') instead.",
+                    app=name.title(),
+                    url=cfg.url,
+                    app_lower=name,
+                    port="7878" if name == "radarr" else "8989",
+                )
 
 
 def collect_secrets(settings: Settings) -> list[str]:
-    """Extract API key values from all configured apps.
+    """Extract API key values from all configured instances.
 
     This is the ONLY place where ``get_secret_value()`` is called for
     logging purposes.  The returned list is passed to the redaction
@@ -61,34 +59,38 @@ def collect_secrets(settings: Settings) -> list[str]:
         List of non-empty secret strings for the redaction filter.
     """
     secrets: list[str] = []
-    for app in (settings.radarr, settings.sonarr):
-        value = app.api_key.get_secret_value()
-        if value:
-            secrets.append(value)
+    for app_type in ("radarr", "sonarr"):
+        for cfg in getattr(settings, app_type).values():
+            value = cfg.api_key.get_secret_value()
+            if value:
+                secrets.append(value)
     return secrets
 
 
 def print_banner(settings: Settings) -> None:
-    """Log the startup banner showing version and configured apps.
+    """Log the startup banner showing version and configured instances.
 
     Displays the Triggarr version, log level, and connection status
-    for each *arr application (URL or "disabled").
+    for each *arr instance (URL or "disabled").
     """
-    radarr_status = settings.radarr.url if settings.radarr.enabled else "disabled"
-    sonarr_status = settings.sonarr.url if settings.sonarr.enabled else "disabled"
-
     logger.info("==================================================")
     logger.info("Triggarr v{version}", version=__version__)
     logger.info("Log level: {level}", level=settings.general.log_level)
-    logger.info("Radarr: {status}", status=radarr_status)
-    logger.info("Sonarr: {status}", status=sonarr_status)
+    for app_type in ("radarr", "sonarr"):
+        instances = getattr(settings, app_type)
+        if not instances:
+            logger.info("{app}: disabled", app=app_type.title())
+        else:
+            for inst_name, cfg in instances.items():
+                status = cfg.url if cfg.enabled else "disabled"
+                logger.info("{app}/{inst}: {status}", app=app_type.title(), inst=inst_name, status=status)
     logger.info("==================================================")
 
 
 async def validate_connections(settings: Settings) -> dict[str, bool]:
-    """Validate connections to all enabled *arr applications.
+    """Validate connections to all enabled *arr instances.
 
-    For each enabled app, creates a temporary client, calls
+    For each enabled instance, creates a temporary client, calls
     ``validate_connection()``, and closes the client.  These clients
     are temporary -- the scheduler creates its own long-lived clients
     that persist for the lifetime of the application.
@@ -101,24 +103,24 @@ async def validate_connections(settings: Settings) -> dict[str, bool]:
 
     Returns:
         Dict mapping app name to connection result (True/False).
-        Only includes enabled apps.
+        Only includes enabled apps (uses first enabled instance per type).
     """
     results: dict[str, bool] = {}
 
-    if settings.radarr.enabled:
+    for _inst_name, cfg in settings.get_enabled_instances("radarr").items():
         client = RadarrClient(
-            base_url=settings.radarr.url,
-            api_key=settings.radarr.api_key.get_secret_value(),
+            base_url=cfg.url,
+            api_key=cfg.api_key.get_secret_value(),
         )
         try:
             results["radarr"] = await client.validate_connection()
         finally:
             await client.close()
 
-    if settings.sonarr.enabled:
+    for _inst_name, cfg in settings.get_enabled_instances("sonarr").items():
         client = SonarrClient(
-            base_url=settings.sonarr.url,
-            api_key=settings.sonarr.api_key.get_secret_value(),
+            base_url=cfg.url,
+            api_key=cfg.api_key.get_secret_value(),
         )
         try:
             results["sonarr"] = await client.validate_connection()

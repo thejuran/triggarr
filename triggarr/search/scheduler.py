@@ -27,12 +27,18 @@ from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
 from triggarr.models.config import Settings
 from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
-from triggarr.state import TriggarrState, load_state, save_state
+from triggarr.state import (
+    TriggarrState,
+    _default_instance_state,
+    cleanup_orphaned_instances,
+    load_state,
+    save_state,
+)
 from triggarr.tracking import run_tracking_check
 
 
 def make_search_job(
-    app: FastAPI, app_name: str, state_path: Path
+    app: FastAPI, app_name: str, instance_name: str, state_path: Path
 ) -> Callable[[], Coroutine]:
     """Create an async job function that reads client/state/settings from app.state.
 
@@ -44,6 +50,7 @@ def make_search_job(
     Args:
         app: The FastAPI application instance.
         app_name: One of "radarr" or "sonarr".
+        instance_name: Name of this instance (e.g., "Default", "4K").
         state_path: Path to the JSON state file for persistence.
 
     Returns:
@@ -52,24 +59,35 @@ def make_search_job(
     cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle
 
     async def job() -> None:
-        client = getattr(app.state, f"{app_name}_client", None)
+        clients = getattr(app.state, f"{app_name}_clients", {})
+        client = clients.get(instance_name)
         if client is None:
+            return
+        instance_config = app.state.settings.get_enabled_instances(app_name).get(instance_name)
+        if instance_config is None:
             return
         async with app.state.search_lock:
             try:
                 app.state.triggarr_state = await cycle_fn(
                     client,
                     app.state.triggarr_state,
+                    instance_name,
+                    instance_config,
                     app.state.settings,
                     app.state.db,
                 )
                 save_state(app.state.triggarr_state, state_path)
                 # --- Tracking check: resolve pending search outcomes ---
                 try:
+                    # Pass first available client for each app type for tracking
+                    radarr_clients = getattr(app.state, "radarr_clients", {})
+                    sonarr_clients = getattr(app.state, "sonarr_clients", {})
+                    radarr_client = next(iter(radarr_clients.values()), None)
+                    sonarr_client = next(iter(sonarr_clients.values()), None)
                     tracking_result = await run_tracking_check(
                         app.state.db,
-                        getattr(app.state, "radarr_client", None),
-                        getattr(app.state, "sonarr_client", None),
+                        radarr_client,
+                        sonarr_client,
                         app.state.settings.general.tracking_window_minutes,
                     )
                     resolved = (
@@ -125,6 +143,16 @@ def create_lifespan(
         state: TriggarrState = load_state(state_path)
         scheduler = AsyncIOScheduler()
 
+        # Clean up orphaned instances and ensure new instances get default state
+        state = cleanup_orphaned_instances(state, settings)
+        for app_type in ("radarr", "sonarr"):
+            instances = getattr(settings, app_type, {})
+            for inst_name in instances:
+                if inst_name not in state.get(app_type, {}):
+                    if app_type not in state:
+                        state[app_type] = {}  # type: ignore[literal-required]
+                    state[app_type][inst_name] = _default_instance_state()  # type: ignore[literal-required]
+
         # Initialize search history database with shared WAL connection
         db_path = state_path.parent / "triggarr.db"
         db = await aiosqlite.connect(db_path)
@@ -139,22 +167,22 @@ def create_lifespan(
                 state["search_log"] = []
                 save_state(state, state_path)
 
-        radarr_client: RadarrClient | None = None
-        sonarr_client: SonarrClient | None = None
+        # --- Create long-lived clients for enabled instances ---
+        radarr_clients: dict[str, RadarrClient] = {}
+        sonarr_clients: dict[str, SonarrClient] = {}
 
-        # --- Create long-lived clients for enabled apps ---
-        if settings.radarr.enabled:
-            radarr_client = RadarrClient(
-                base_url=settings.radarr.url,
-                api_key=settings.radarr.api_key.get_secret_value(),
+        for inst_name, cfg in settings.get_enabled_instances("radarr").items():
+            radarr_clients[inst_name] = RadarrClient(
+                base_url=cfg.url,
+                api_key=cfg.api_key.get_secret_value(),
                 timeout=settings.general.request_timeout,
                 page_size=settings.general.page_size,
             )
 
-        if settings.sonarr.enabled:
-            sonarr_client = SonarrClient(
-                base_url=settings.sonarr.url,
-                api_key=settings.sonarr.api_key.get_secret_value(),
+        for inst_name, cfg in settings.get_enabled_instances("sonarr").items():
+            sonarr_clients[inst_name] = SonarrClient(
+                base_url=cfg.url,
+                api_key=cfg.api_key.get_secret_value(),
                 timeout=settings.general.request_timeout,
                 page_size=settings.general.page_size,
             )
@@ -164,29 +192,30 @@ def create_lifespan(
         app.state.settings = settings
         app.state.db = db
         app.state.scheduler = scheduler
-        app.state.radarr_client = radarr_client
-        app.state.sonarr_client = sonarr_client
+        app.state.radarr_clients = radarr_clients
+        app.state.sonarr_clients = sonarr_clients
         app.state.config_path = config_path
         app.state.state_path = state_path
         app.state.search_lock = asyncio.Lock()
         app.state.last_search_time: dict[str, float] = {}
 
-        # --- Schedule jobs for enabled apps using make_search_job ---
-        for name in ("radarr", "sonarr"):
-            app_config = getattr(settings, name)
-            if app_config.enabled:
-                job_fn = make_search_job(app, name, state_path)
+        # --- Schedule jobs for enabled instances using make_search_job ---
+        for app_name in ("radarr", "sonarr"):
+            for inst_name, cfg in settings.get_enabled_instances(app_name).items():
+                job_fn = make_search_job(app, app_name, inst_name, state_path)
+                job_id = f"{app_name}_{inst_name}_search"
                 scheduler.add_job(
                     job_fn,
                     "interval",
-                    minutes=app_config.search_interval,
-                    id=f"{name}_search",
+                    minutes=cfg.search_interval,
+                    id=job_id,
                     next_run_time=datetime.now(UTC),
                 )
                 logger.info(
-                    "Scheduled {app} search every {interval}m (first run: now)",
-                    app=name.title(),
-                    interval=app_config.search_interval,
+                    "Scheduled {app}/{instance} search every {interval}m (first run: now)",
+                    app=app_name.title(),
+                    instance=inst_name,
+                    interval=cfg.search_interval,
                 )
 
         scheduler.start()
@@ -198,20 +227,17 @@ def create_lifespan(
             scheduler.shutdown(wait=False)
 
             # 2. Drain any in-flight search cycle before closing resources (DEBT-06)
-            # AsyncIOScheduler.shutdown(wait=True) only waits on ThreadPoolExecutor,
-            # not async jobs.  search_lock is the correct synchronization primitive
-            # for this codebase's async cycles.
             try:
                 await asyncio.wait_for(app.state.search_lock.acquire(), timeout=35.0)
                 app.state.search_lock.release()
             except TimeoutError:
                 logger.warning("Shutdown: search cycle did not finish in 35s — forcing close")
 
-            # 3. Close HTTP clients (app.state versions — may have been replaced by config editor)
-            for name in ("radarr", "sonarr"):
-                client = getattr(app.state, f"{name}_client", None)
-                if client:
-                    await client.close()
+            # 3. Close HTTP clients (all instances)
+            for client in app.state.radarr_clients.values():
+                await client.close()
+            for client in app.state.sonarr_clients.values():
+                await client.close()
 
             # 4. Close shared database connection (all writes complete per step 2)
             await app.state.db.close()
