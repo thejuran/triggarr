@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: executing
-stopped_at: Completed 36-01-PLAN.md
-last_updated: "2026-03-11T11:50:20.000Z"
-last_activity: 2026-03-11 — Completed Plan 01 (tag config fields and filter_by_tag)
+stopped_at: Completed 36-02-PLAN.md
+last_updated: "2026-03-11T12:01:54.000Z"
+last_activity: 2026-03-11 — Completed Plan 02 (wire tag filtering into cycle functions)
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 7
-  completed_plans: 6
-  percent: 19
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 36 (4 of 7 in v2.3) — Search Engine Tag Filtering
-Plan: 01 complete, next: 36-02
+Plan: 02 complete (phase complete), next: Phase 37
 Status: In progress
-Last activity: 2026-03-11 — Completed Plan 01 (tag config fields and filter_by_tag)
+Last activity: 2026-03-11 — Completed Plan 02 (wire tag filtering into cycle functions)
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -39,7 +39,7 @@ Progress: [█████████░] 93%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 6
+- Plans completed: 7
 - Phases: 7 (33-39)
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -50,6 +50,7 @@ Progress: [█████████░] 93%
 | 34 | 02 | 18min | 2 | 8 |
 | 35 | 01 | 3min | 2 | 5 |
 | 36 | 01 | 1min | 1 | 5 |
+| 36 | 02 | 9min | 2 | 2 |
 
 ## Accumulated Context
 
@@ -73,6 +74,9 @@ Full decision log in PROJECT.md Key Decisions table.
 - Phase 35-01: resolve_tag_id is a pure function following filter_monitored pattern
 - Phase 36-01: Tag accessor pattern uses Callable[[dict], list[int]] for Radarr vs Sonarr tag location difference
 - Phase 36-01: Tag fields default to empty string (search all) for backward compatibility
+- Phase 36-02: Tag resolution happens once per cycle (single get_tags call) to minimize API calls
+- Phase 36-02: Sonarr tag filter placed before deduplicate_to_seasons (deduped dicts lose series.tags)
+- Phase 36-02: Radarr filter order: filter_monitored -> filter_by_tag -> filter_unreleased_movies
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-11T11:50:20.000Z
-Stopped at: Completed 36-01-PLAN.md
+Last session: 2026-03-11T12:01:54.000Z
+Stopped at: Completed 36-02-PLAN.md
 Resume file: None
