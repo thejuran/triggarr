@@ -1406,3 +1406,155 @@ async def test_radarr_tag_resolution_failure_searches_all(tmp_path):
     # Tag not found -> fail-open, all monitored items searched
     assert client.search_movies.call_count == 2
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# TAG-01/TAG-02/TAG-03: Sonarr cycle tag filtering integration
+# ---------------------------------------------------------------------------
+
+
+def _make_tagged_sonarr_episode(
+    series_id: int,
+    season_number: int,
+    series_title: str = "Show",
+    episode_id: int = 1,
+    series_tags: list[int] | None = None,
+) -> dict:
+    """Build a Sonarr episode dict with series tags for tag filtering tests."""
+    return {
+        "id": episode_id,
+        "seriesId": series_id,
+        "seasonNumber": season_number,
+        "monitored": True,
+        "airDateUtc": "2025-01-01T00:00:00Z",
+        "series": {"title": series_title, "tags": series_tags or []},
+    }
+
+
+async def test_sonarr_cycle_missing_tag_filters(tmp_path):
+    """Sonarr cycle with missing_tag filters episodes by series.tags BEFORE dedup."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="triggarr")])
+    # Series A (tags [10]): 2 episodes -> passes tag filter
+    # Series B (no tags): 2 episodes -> filtered out
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=2, series_tags=[10]),
+        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=3, series_tags=[]),
+        _make_tagged_sonarr_episode(series_id=200, season_number=2, series_title="Show B", episode_id=4, series_tags=[]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Only Series A's season 1 should be searched (after tag filter + dedup)
+    assert client.search_season.call_count == 1
+    client.search_season.assert_called_once_with(100, 1)
+    client.get_tags.assert_awaited_once()
+    await db.close()
+
+
+async def test_sonarr_cycle_cutoff_tag_filters(tmp_path):
+    """Sonarr cycle with cutoff_tag filters cutoff episodes by series.tags."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="triggarr")])
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    # Series A (tags [10]): 1 episode -> passes; Series B (no tags): 1 episode -> filtered
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        cutoff_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Only Series A searched in cutoff queue
+    assert client.search_season.call_count == 1
+    client.search_season.assert_called_once_with(100, 1)
+    await db.close()
+
+
+async def test_sonarr_cycle_no_tag_searches_all(tmp_path):
+    """Sonarr cycle with no tags configured searches all, get_tags NOT called."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="", cutoff_tag="",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Both series searched (2 seasons after dedup)
+    assert client.search_season.call_count == 2
+    client.get_tags.assert_not_awaited()
+    await db.close()
+
+
+async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
+    """Sonarr cycle with tag not found in tag list searches all (fail-open)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="existing-tag")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="nonexistent",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Tag not found -> fail-open, all seasons searched
+    assert client.search_season.call_count == 2
+    await db.close()
