@@ -11,15 +11,12 @@ import pytest
 from triggarr.state import (
     AppState,
     TriggarrState,
-    _default_instance_state,
     _default_state,
     _is_v22_state_format,
-    _migrate_v22_state,
     cleanup_orphaned_instances,
     load_state,
     save_state,
 )
-
 
 # --- New nested-format tests ---
 

@@ -45,10 +45,14 @@ def make_settings(
     )
 
 
-def default_state():
+def default_state(settings=None):
     """Return a fresh default application state.
 
     Re-exports ``_default_state()`` from ``triggarr.state`` so test files
     do not need to import internal helpers directly.
+
+    Args:
+        settings: Optional Settings instance.  When provided, the returned
+            state contains per-instance entries for every configured instance.
     """
-    return _default_state()
+    return _default_state(settings)
