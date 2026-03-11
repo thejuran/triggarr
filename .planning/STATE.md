@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: executing
-stopped_at: Completed 35-01-PLAN.md
-last_updated: "2026-03-11T03:03:34.113Z"
-last_activity: 2026-03-11 — Completed Plan 01 (tag model and resolution)
+stopped_at: Completed 36-01-PLAN.md
+last_updated: "2026-03-11T11:50:20.000Z"
+last_activity: 2026-03-11 — Completed Plan 01 (tag config fields and filter_by_tag)
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
   percent: 19
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 35 — Client Registry & Tag Resolution
+**Current focus:** Phase 36 — Search Engine Tag Filtering
 
 ## Current Position
 
-Phase: 35 (3 of 7 in v2.3) — Client Registry & Tag Resolution
-Plan: 01 complete, next: 35-02 (if exists) or next phase
+Phase: 36 (4 of 7 in v2.3) — Search Engine Tag Filtering
+Plan: 01 complete, next: 36-02
 Status: In progress
-Last activity: 2026-03-11 — Completed Plan 01 (tag model and resolution)
+Last activity: 2026-03-11 — Completed Plan 01 (tag config fields and filter_by_tag)
 
-Progress: [###░░░░░░░] 19%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -39,7 +39,7 @@ Progress: [###░░░░░░░] 19%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 5
+- Plans completed: 6
 - Phases: 7 (33-39)
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -49,6 +49,7 @@ Progress: [###░░░░░░░] 19%
 | 34 | 01 | 2min | 1 | 3 |
 | 34 | 02 | 18min | 2 | 8 |
 | 35 | 01 | 3min | 2 | 5 |
+| 36 | 01 | 1min | 1 | 5 |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Full decision log in PROJECT.md Key Decisions table.
 - Phase 34-02: search_now triggers first enabled instance (Phase 39 for per-instance)
 - Phase 35-01: Tag model uses extra=ignore to match GrabEvent/SystemStatus pattern
 - Phase 35-01: resolve_tag_id is a pure function following filter_monitored pattern
+- Phase 36-01: Tag accessor pattern uses Callable[[dict], list[int]] for Radarr vs Sonarr tag location difference
+- Phase 36-01: Tag fields default to empty string (search all) for backward compatibility
 
 ### Pending Todos
 
@@ -82,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-11T03:00:43.694Z
-Stopped at: Completed 35-01-PLAN.md
+Last session: 2026-03-11T11:50:20.000Z
+Stopped at: Completed 36-01-PLAN.md
 Resume file: None

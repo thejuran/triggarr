@@ -19,9 +19,9 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 
 ### Tag Filtering
 
-- [ ] **TAG-01**: User can configure a tag name per instance for the missing queue (only items with that tag are searched)
-- [ ] **TAG-02**: User can configure a tag name per instance for the cutoff queue (only items with that tag are searched)
-- [ ] **TAG-03**: When no tag is configured, all monitored items are searched (default behavior unchanged)
+- [x] **TAG-01**: User can configure a tag name per instance for the missing queue (only items with that tag are searched)
+- [x] **TAG-02**: User can configure a tag name per instance for the cutoff queue (only items with that tag are searched)
+- [x] **TAG-03**: When no tag is configured, all monitored items are searched (default behavior unchanged)
 - [x] **TAG-04**: Tag names are resolved to IDs via the *arr `/api/v3/tag` endpoint each cycle
 - [ ] **TAG-05**: Dashboard shows a warning badge when a configured tag is not found in the *arr instance
 - [ ] **TAG-06**: Tag name autocomplete dropdown populated from the *arr instance when configuring filters in the web UI
@@ -70,9 +70,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-05 | Phase 39 | Pending |
 | INST-06 | Phase 38 | Pending |
 | INST-07 | Phase 39 | Pending |
-| TAG-01 | Phase 36 | Pending |
-| TAG-02 | Phase 36 | Pending |
-| TAG-03 | Phase 36 | Pending |
+| TAG-01 | Phase 36 | Complete |
+| TAG-02 | Phase 36 | Complete |
+| TAG-03 | Phase 36 | Complete |
 | TAG-04 | Phase 35 | Complete |
 | TAG-05 | Phase 39 | Pending |
 | TAG-06 | Phase 39 | Pending |
