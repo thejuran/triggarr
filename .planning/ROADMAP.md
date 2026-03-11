@@ -131,7 +131,9 @@ Plans:
   1. Application startup creates one async HTTP client per enabled instance, stored in a registry keyed by instance ID
   2. Tag names configured on an instance are resolved to numeric IDs via the *arr `/api/v3/tag` endpoint at the start of each search cycle
   3. When a configured tag name is not found in the *arr instance, the resolution fails gracefully (logged, not crashed)
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 35-01-PLAN.md -- Tag model, ArrClient.get_tags(), and resolve_tag_id() helper (TDD)
 
 ### Phase 36: Search Engine & Tag Filtering
 **Goal**: Search cycles filter items by configured tags so only tagged items are searched, with no-tag meaning search everything
@@ -187,7 +189,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 |-------|-----------|----------------|--------|-----------|
 | 33. Config Model & Migration | 2/2 | Complete    | 2026-03-11 | - |
 | 34. State Model & Cursor Isolation | 2/2 | Complete    | 2026-03-11 | - |
-| 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
+| 35. Client Registry & Tag Resolution | v2.3 | 0/1 | Not started | - |
 | 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
 | 38. Scheduler & Tracking Wiring | v2.3 | 0/? | Not started | - |
