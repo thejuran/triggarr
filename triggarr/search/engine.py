@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -52,6 +53,34 @@ def resolve_tag_id(tag_name: str, tags: list[Tag]) -> int | None:
         if tag.label.strip().lower() == normalized:
             return tag.id
     return None
+
+
+def filter_by_tag(
+    items: list[dict],
+    tag_id: int,
+    get_tags: Callable[[dict], list[int]],
+) -> list[dict]:
+    """Filter items to only those bearing the given tag ID.
+
+    Args:
+        items: List of item dicts from the *arr API.
+        tag_id: Numeric tag ID to filter by.
+        get_tags: Callable that extracts a list of tag IDs from an item dict.
+
+    Returns:
+        Only items where ``tag_id`` is present in ``get_tags(item)``.
+    """
+    return [item for item in items if tag_id in get_tags(item)]
+
+
+def _radarr_tags(item: dict) -> list[int]:
+    """Extract tag IDs from a Radarr movie dict."""
+    return item.get("tags", [])
+
+
+def _sonarr_tags(item: dict) -> list[int]:
+    """Extract tag IDs from a Sonarr episode dict (via series object)."""
+    return item.get("series", {}).get("tags", [])
 
 
 def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tuple[int, int]:

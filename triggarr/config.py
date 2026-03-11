@@ -31,6 +31,10 @@ log_level = "info"
 # tracking_delay_seconds = 90
 # skip_unreleased = true
 
+# Tag filtering: configure missing_tag and cutoff_tag per instance
+# to limit searches to items bearing a specific tag.
+# Example: missing_tag = "triggarr"
+
 # Instance configuration is managed through the web UI.
 # Add your first Radarr or Sonarr instance at: http://<host>:8080/settings
 

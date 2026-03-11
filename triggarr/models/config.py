@@ -48,6 +48,10 @@ class InstanceConfig(BaseModel):
     search_missing_count: int = 5  # Missing items to search per cycle
     search_cutoff_count: int = 5  # Cutoff items to search per cycle
 
+    # Tag filtering (empty = search all items, no filtering)
+    missing_tag: str = ""  # Tag name for missing queue filter
+    cutoff_tag: str = ""  # Tag name for cutoff queue filter
+
     @model_validator(mode="after")
     def at_least_one_search_count(self) -> InstanceConfig:
         """Ensure at least one search count is positive when instance is enabled."""
