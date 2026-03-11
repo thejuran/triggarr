@@ -118,7 +118,10 @@ Plans:
   1. Each instance has independent round-robin cursors (missing and cutoff) that persist across restarts
   2. Two instances of the same app type (e.g., two Radarr) do not share or corrupt each other's cursor positions
   3. Existing v2.2 state.json is auto-migrated to the new per-instance format keyed by instance ID
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 34-01-PLAN.md -- Per-instance state model with v2.2 migration and orphan cleanup (TDD)
+- [ ] 34-02-PLAN.md -- Update engine, scheduler, routes, and startup for per-instance wiring
 
 ### Phase 35: Client Registry & Tag Resolution
 **Goal**: The application creates and manages one HTTP client per instance, with the ability to resolve tag names to IDs from the *arr API
@@ -183,7 +186,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 33. Config Model & Migration | 2/2 | Complete    | 2026-03-11 | - |
-| 34. State Model & Cursor Isolation | v2.3 | 0/? | Not started | - |
+| 34. State Model & Cursor Isolation | v2.3 | 0/2 | Not started | - |
 | 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
 | 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
