@@ -144,7 +144,10 @@ Plans:
   2. When a cutoff-queue tag is configured for an instance, only cutoff-unmet items bearing that tag are included in the search cycle
   3. When no tag is configured for a queue, all monitored items are searched (existing default behavior preserved)
   4. Sonarr tag filtering correctly reads tags from the series object (not the episode object)
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 36-01-PLAN.md -- InstanceConfig tag fields, filter_by_tag pure function, tag accessors (TDD)
+- [ ] 36-02-PLAN.md -- Wire tag resolution and filtering into Radarr and Sonarr cycle functions (TDD)
 
 ### Phase 37: Database Schema & Instance Scoping
 **Goal**: Search history and lifetime stats are attributed to specific instances so data from different instances never mixes
@@ -190,7 +193,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 33. Config Model & Migration | 2/2 | Complete    | 2026-03-11 | - |
 | 34. State Model & Cursor Isolation | 2/2 | Complete    | 2026-03-11 | - |
 | 35. Client Registry & Tag Resolution | 1/1 | Complete    | 2026-03-11 | - |
-| 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
+| 36. Search Engine & Tag Filtering | v2.3 | 0/2 | Not started | - |
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
 | 38. Scheduler & Tracking Wiring | v2.3 | 0/? | Not started | - |
 | 39. Web UI Integration | v2.3 | 0/? | Not started | - |
