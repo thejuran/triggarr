@@ -340,6 +340,8 @@ def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
     content = config_file.read_text()
     assert "[radarr]" in content
     assert "[sonarr]" in content
+    # New default config should have web UI comment and empty instance sections
+    assert "web UI" in content or "settings" in content.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from triggarr.models.config import ArrConfig, GeneralConfig, Settings
+from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 from triggarr.state import _default_state
 
 
@@ -21,26 +21,27 @@ def make_settings(
     """Build a Settings instance with sensible test defaults.
 
     Accepts keyword overrides for any field.  Default: both apps enabled
-    with service-name URLs and dummy API keys.
+    with service-name URLs and dummy API keys.  Uses dict-based radarr/sonarr
+    with a "Default" instance name.
     """
     return Settings(
         general=general or GeneralConfig(),
-        radarr=ArrConfig(
+        radarr={"Default": InstanceConfig(
             url=radarr_url,
             api_key=radarr_api_key,
             enabled=radarr_enabled,
             search_missing_count=search_missing_count,
             search_cutoff_count=search_cutoff_count,
             search_interval=search_interval,
-        ),
-        sonarr=ArrConfig(
+        )},
+        sonarr={"Default": InstanceConfig(
             url=sonarr_url,
             api_key=sonarr_api_key,
             enabled=sonarr_enabled,
             search_missing_count=search_missing_count,
             search_cutoff_count=search_cutoff_count,
             search_interval=search_interval,
-        ),
+        )},
     )
 
 
