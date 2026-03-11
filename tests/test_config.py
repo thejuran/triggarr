@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
 
-from triggarr.config import ensure_config, generate_default_config, load_settings
+from triggarr.config import (
+    _is_v22_format,
+    _migrate_v22_to_v23,
+    detect_and_migrate_v22,
+    ensure_config,
+    generate_default_config,
+    load_settings,
+)
 from triggarr.models.config import ArrConfig, GeneralConfig, InstanceConfig, Settings
 
 VALID_TOML = """\
@@ -332,3 +340,275 @@ def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
     content = config_file.read_text()
     assert "[radarr]" in content
     assert "[sonarr]" in content
+
+
+# ---------------------------------------------------------------------------
+# v2.2 detection and migration
+# ---------------------------------------------------------------------------
+
+V22_RADARR_SONARR_TOML = """\
+[general]
+log_level = "info"
+
+[radarr]
+url = "http://radarr:7878"
+api_key = "radarr-key-123"
+enabled = true
+search_interval = 30
+search_missing_count = 5
+search_cutoff_count = 5
+
+[sonarr]
+url = "http://sonarr:8989"
+api_key = "sonarr-key-456"
+enabled = true
+search_interval = 30
+search_missing_count = 5
+search_cutoff_count = 5
+"""
+
+V22_RADARR_ONLY_TOML = """\
+[general]
+log_level = "info"
+
+[radarr]
+url = "http://radarr:7878"
+api_key = "radarr-key-123"
+enabled = true
+"""
+
+V22_DISABLED_TOML = """\
+[general]
+log_level = "info"
+
+[radarr]
+url = "http://radarr:7878"
+api_key = "radarr-key-disabled"
+enabled = false
+
+[sonarr]
+url = ""
+api_key = ""
+enabled = false
+"""
+
+
+def test_is_v22_format_radarr_flat() -> None:
+    """_is_v22_format returns True for flat radarr section with url/api_key/enabled keys."""
+    data = {"radarr": {"url": "http://radarr:7878", "api_key": "key", "enabled": True}}
+    assert _is_v22_format(data) is True
+
+
+def test_is_v22_format_sonarr_flat() -> None:
+    """_is_v22_format returns True for flat sonarr section with url/api_key/enabled keys."""
+    data = {"sonarr": {"url": "http://sonarr:8989", "api_key": "key", "enabled": True}}
+    assert _is_v22_format(data) is True
+
+
+def test_is_v22_format_false_for_v23() -> None:
+    """_is_v22_format returns False for v2.3 format (nested instance names)."""
+    data = {
+        "radarr": {"Default": {"url": "http://radarr:7878", "api_key": "key", "enabled": True}},
+        "sonarr": {"Default": {"url": "http://sonarr:8989", "api_key": "key", "enabled": True}},
+    }
+    assert _is_v22_format(data) is False
+
+
+def test_is_v22_format_false_for_empty() -> None:
+    """_is_v22_format returns False for empty radarr/sonarr sections."""
+    data = {"radarr": {}, "sonarr": {}}
+    assert _is_v22_format(data) is False
+
+
+def test_migrate_v22_to_v23_wraps_radarr() -> None:
+    """_migrate_v22_to_v23 wraps flat radarr section into {'Default': {...}}."""
+    data = {
+        "general": {"log_level": "info"},
+        "radarr": {"url": "http://radarr:7878", "api_key": "key", "enabled": True},
+        "sonarr": {"url": "http://sonarr:8989", "api_key": "key2", "enabled": False},
+    }
+    result = _migrate_v22_to_v23(data)
+    assert "Default" in result["radarr"]
+    assert result["radarr"]["Default"]["url"] == "http://radarr:7878"
+
+
+def test_migrate_v22_to_v23_wraps_sonarr() -> None:
+    """_migrate_v22_to_v23 wraps flat sonarr section into {'Default': {...}}."""
+    data = {
+        "general": {"log_level": "info"},
+        "radarr": {"url": "http://radarr:7878", "api_key": "key", "enabled": True},
+        "sonarr": {"url": "http://sonarr:8989", "api_key": "key2", "enabled": False},
+    }
+    result = _migrate_v22_to_v23(data)
+    assert "Default" in result["sonarr"]
+    assert result["sonarr"]["Default"]["url"] == "http://sonarr:8989"
+
+
+def test_migrate_v22_to_v23_preserves_general() -> None:
+    """_migrate_v22_to_v23 preserves general section unchanged."""
+    data = {
+        "general": {"log_level": "debug", "skip_unreleased": False},
+        "radarr": {"url": "http://radarr:7878", "api_key": "key", "enabled": True},
+    }
+    result = _migrate_v22_to_v23(data)
+    assert result["general"]["log_level"] == "debug"
+    assert result["general"]["skip_unreleased"] is False
+
+
+def test_migrate_v22_to_v23_handles_missing_sonarr() -> None:
+    """_migrate_v22_to_v23 handles radarr present but sonarr missing."""
+    data = {
+        "general": {"log_level": "info"},
+        "radarr": {"url": "http://radarr:7878", "api_key": "key", "enabled": True},
+    }
+    result = _migrate_v22_to_v23(data)
+    assert "Default" in result["radarr"]
+    assert result.get("sonarr", {}) == {}
+
+
+def test_detect_and_migrate_v22_creates_backup(tmp_path: Path) -> None:
+    """detect_and_migrate_v22 creates backup file triggarr.toml.bak."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_RADARR_SONARR_TOML)
+
+    detect_and_migrate_v22(config_file)
+
+    backup = config_file.with_suffix(".toml.bak")
+    assert backup.exists()
+    assert backup.read_text() == V22_RADARR_SONARR_TOML
+
+
+def test_detect_and_migrate_v22_writes_valid_settings(tmp_path: Path) -> None:
+    """detect_and_migrate_v22 writes migrated config that loads as valid Settings."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_RADARR_SONARR_TOML)
+
+    detect_and_migrate_v22(config_file)
+
+    settings = load_settings(config_file)
+    assert "Default" in settings.radarr
+    assert settings.radarr["Default"].url == "http://radarr:7878"
+    assert "Default" in settings.sonarr
+    assert settings.sonarr["Default"].url == "http://sonarr:8989"
+
+
+def test_detect_and_migrate_v22_returns_true(tmp_path: Path) -> None:
+    """detect_and_migrate_v22 returns True when migration performed."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_RADARR_SONARR_TOML)
+
+    result = detect_and_migrate_v22(config_file)
+
+    assert result is True
+
+
+def test_detect_and_migrate_v22_returns_false_for_v23(tmp_path: Path) -> None:
+    """detect_and_migrate_v22 returns False for already-migrated config (no backup created)."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(VALID_TOML)
+
+    result = detect_and_migrate_v22(config_file)
+
+    assert result is False
+    backup = config_file.with_suffix(".toml.bak")
+    assert not backup.exists()
+
+
+def test_detect_and_migrate_v22_creates_marker(tmp_path: Path) -> None:
+    """detect_and_migrate_v22 creates .migrated marker file in config dir."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_RADARR_SONARR_TOML)
+
+    detect_and_migrate_v22(config_file)
+
+    marker = config_file.parent / ".migrated"
+    assert marker.exists()
+
+
+def test_detect_and_migrate_v22_preserves_disabled(tmp_path: Path) -> None:
+    """detect_and_migrate_v22 preserves disabled app as disabled 'Default' instance."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_DISABLED_TOML)
+
+    detect_and_migrate_v22(config_file)
+
+    settings = load_settings(config_file)
+    assert "Default" in settings.radarr
+    assert settings.radarr["Default"].enabled is False
+    assert settings.radarr["Default"].url == "http://radarr:7878"
+    assert settings.radarr["Default"].api_key.get_secret_value() == "radarr-key-disabled"
+
+
+def test_detect_and_migrate_v22_preserves_api_key_plaintext(tmp_path: Path) -> None:
+    """detect_and_migrate_v22 preserves API key values (not SecretStr-masked) in written TOML."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_RADARR_SONARR_TOML)
+
+    detect_and_migrate_v22(config_file)
+
+    content = config_file.read_text()
+    assert "radarr-key-123" in content
+    assert "sonarr-key-456" in content
+    # Must NOT contain SecretStr masked representation
+    assert "**********" not in content
+
+
+def test_generate_default_config_web_ui_comment(tmp_path: Path) -> None:
+    """generate_default_config produces new template with web UI comment, empty radarr/sonarr sections."""
+    config_file = tmp_path / "triggarr.toml"
+
+    generate_default_config(config_file)
+
+    content = config_file.read_text()
+    assert "web UI" in content or "settings" in content.lower()
+    assert "[radarr]" in content
+    assert "[sonarr]" in content
+    # Should NOT have url/api_key/enabled under radarr/sonarr (empty sections)
+    # Parse and verify
+    with open(config_file, "rb") as f:
+        data = tomllib.load(f)
+    assert data.get("radarr", {}) == {}
+    assert data.get("sonarr", {}) == {}
+
+
+def test_ensure_config_calls_migration(tmp_path: Path) -> None:
+    """ensure_config calls detect_and_migrate_v22 before load_settings for existing configs."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_RADARR_SONARR_TOML)
+
+    settings = ensure_config(config_file)
+
+    # Should have migrated and loaded successfully
+    assert "Default" in settings.radarr
+    assert settings.radarr["Default"].url == "http://radarr:7878"
+    # Backup should exist
+    backup = config_file.with_suffix(".toml.bak")
+    assert backup.exists()
+
+
+def test_toml_round_trip(tmp_path: Path) -> None:
+    """TOML round-trip: load migrated config, serialize back, reload -- same values."""
+    import tomli_w
+
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(V22_RADARR_SONARR_TOML)
+
+    detect_and_migrate_v22(config_file)
+
+    # Load migrated config
+    with open(config_file, "rb") as f:
+        data1 = tomllib.load(f)
+
+    # Serialize back and reload
+    round_trip_file = tmp_path / "round_trip.toml"
+    with open(round_trip_file, "wb") as f:
+        tomli_w.dump(data1, f)
+
+    with open(round_trip_file, "rb") as f:
+        data2 = tomllib.load(f)
+
+    # Values should be identical
+    assert data1["radarr"]["Default"]["url"] == data2["radarr"]["Default"]["url"]
+    assert data1["radarr"]["Default"]["api_key"] == data2["radarr"]["Default"]["api_key"]
+    assert data1["sonarr"]["Default"]["url"] == data2["sonarr"]["Default"]["url"]
+    assert data1["sonarr"]["Default"]["api_key"] == data2["sonarr"]["Default"]["api_key"]
