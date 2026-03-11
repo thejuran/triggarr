@@ -20,6 +20,7 @@ from loguru import logger
 
 from tests.conftest import make_settings
 from triggarr.db import init_db
+from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig
 from triggarr.search.engine import (
     cap_batch_sizes,
@@ -27,6 +28,7 @@ from triggarr.search.engine import (
     filter_monitored,
     filter_sonarr_episodes,
     filter_unreleased_movies,
+    resolve_tag_id,
     run_radarr_cycle,
     run_sonarr_cycle,
     slice_batch,
@@ -1104,3 +1106,37 @@ async def test_run_radarr_cycle_skip_unreleased_never_filters_cutoff(tmp_path):
         assert spy.call_count == 1
 
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# resolve_tag_id (Phase 35)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_tag_id_exact_match():
+    """resolve_tag_id returns tag ID for exact name match."""
+    tags = [Tag(id=1, label="4k")]
+    assert resolve_tag_id("4k", tags) == 1
+
+
+def test_resolve_tag_id_case_insensitive():
+    """resolve_tag_id matches tag name case-insensitively."""
+    tags = [Tag(id=1, label="4k")]
+    assert resolve_tag_id("4K", tags) == 1
+
+
+def test_resolve_tag_id_strips_whitespace():
+    """resolve_tag_id strips whitespace from both name and tag labels."""
+    tags = [Tag(id=1, label=" 4k ")]
+    assert resolve_tag_id(" 4K ", tags) == 1
+
+
+def test_resolve_tag_id_missing_returns_none():
+    """resolve_tag_id returns None when tag name is not found."""
+    tags = [Tag(id=1, label="4k")]
+    assert resolve_tag_id("missing", tags) is None
+
+
+def test_resolve_tag_id_empty_tags_returns_none():
+    """resolve_tag_id returns None when tag list is empty."""
+    assert resolve_tag_id("anything", []) is None

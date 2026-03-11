@@ -20,6 +20,7 @@ from loguru import logger
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import insert_search_entry
+from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
 from triggarr.state import TriggarrState
 
@@ -39,6 +40,18 @@ def _sanitize_exc(exc: Exception) -> str:
     if isinstance(exc, pydantic.ValidationError):
         return f"validation error ({exc.error_count()} issues)"
     return type(exc).__name__
+
+
+def resolve_tag_id(tag_name: str, tags: list[Tag]) -> int | None:
+    """Resolve a tag name to its numeric ID (case-insensitive, whitespace-stripped).
+
+    Returns None if the tag name is not found in the tag list.
+    """
+    normalized = tag_name.strip().lower()
+    for tag in tags:
+        if tag.label.strip().lower() == normalized:
+            return tag.id
+    return None
 
 
 def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tuple[int, int]:
