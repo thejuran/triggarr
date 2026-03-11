@@ -13,12 +13,12 @@ VALID_TOML = """\
 [general]
 log_level = "debug"
 
-[radarr]
+[radarr."Default"]
 url = "http://radarr:7878"
 api_key = "radarr-secret-key-123"
 enabled = true
 
-[sonarr]
+[sonarr."Default"]
 url = "http://sonarr:8989"
 api_key = "sonarr-secret-key-456"
 enabled = true
@@ -28,7 +28,7 @@ RADARR_ONLY_TOML = """\
 [general]
 log_level = "info"
 
-[radarr]
+[radarr."Default"]
 url = "http://radarr:7878"
 api_key = "radarr-key"
 enabled = true
@@ -37,16 +37,6 @@ enabled = true
 NO_APPS_TOML = """\
 [general]
 log_level = "info"
-
-[radarr]
-url = ""
-api_key = ""
-enabled = false
-
-[sonarr]
-url = ""
-api_key = ""
-enabled = false
 """
 
 
@@ -58,12 +48,14 @@ def test_settings_loads_from_toml(tmp_path: Path) -> None:
     settings = load_settings(config_file)
 
     assert settings.general.log_level == "debug"
-    assert settings.radarr.url == "http://radarr:7878"
-    assert settings.radarr.api_key.get_secret_value() == "radarr-secret-key-123"
-    assert settings.radarr.enabled is True
-    assert settings.sonarr.url == "http://sonarr:8989"
-    assert settings.sonarr.api_key.get_secret_value() == "sonarr-secret-key-456"
-    assert settings.sonarr.enabled is True
+    assert "Default" in settings.radarr
+    assert settings.radarr["Default"].url == "http://radarr:7878"
+    assert settings.radarr["Default"].api_key.get_secret_value() == "radarr-secret-key-123"
+    assert settings.radarr["Default"].enabled is True
+    assert "Default" in settings.sonarr
+    assert settings.sonarr["Default"].url == "http://sonarr:8989"
+    assert settings.sonarr["Default"].api_key.get_secret_value() == "sonarr-secret-key-456"
+    assert settings.sonarr["Default"].enabled is True
 
 
 def test_settings_allows_no_enabled_apps(tmp_path: Path) -> None:
@@ -73,8 +65,8 @@ def test_settings_allows_no_enabled_apps(tmp_path: Path) -> None:
 
     settings = load_settings(config_file)
 
-    assert settings.radarr.enabled is False
-    assert settings.sonarr.enabled is False
+    assert settings.radarr == {}
+    assert settings.sonarr == {}
     assert settings.has_enabled_app is False
 
 
@@ -85,10 +77,11 @@ def test_settings_allows_single_app(tmp_path: Path) -> None:
 
     settings = load_settings(config_file)
 
-    assert settings.radarr.enabled is True
-    assert settings.radarr.url == "http://radarr:7878"
-    # sonarr should have defaults (disabled)
-    assert settings.sonarr.enabled is False
+    assert "Default" in settings.radarr
+    assert settings.radarr["Default"].enabled is True
+    assert settings.radarr["Default"].url == "http://radarr:7878"
+    # sonarr should be empty dict (no instances configured)
+    assert settings.sonarr == {}
 
 
 def test_default_config_generation(tmp_path: Path) -> None:
@@ -155,16 +148,6 @@ def test_skip_unreleased_from_toml(tmp_path: Path) -> None:
     config_file.write_text("""\
 [general]
 skip_unreleased = false
-
-[radarr]
-url = ""
-api_key = ""
-enabled = false
-
-[sonarr]
-url = ""
-api_key = ""
-enabled = false
 """)
     settings = load_settings(config_file)
     assert settings.general.skip_unreleased is False
@@ -176,16 +159,6 @@ def test_skip_unreleased_missing_defaults_true(tmp_path: Path) -> None:
     config_file.write_text("""\
 [general]
 log_level = "info"
-
-[radarr]
-url = ""
-api_key = ""
-enabled = false
-
-[sonarr]
-url = ""
-api_key = ""
-enabled = false
 """)
     settings = load_settings(config_file)
     assert settings.general.skip_unreleased is True

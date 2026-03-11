@@ -32,8 +32,12 @@ CONFIG_PATH = CONFIG_DIR / "triggarr.toml"
 # Functions accept path parameters to allow testing without module reload.
 
 
-class ArrConfig(BaseModel):
-    """Connection configuration for a single *arr application."""
+class InstanceConfig(BaseModel):
+    """Configuration for a single *arr instance.
+
+    Each named instance holds its own URL, API key, schedule, and batch sizes.
+    Multiple instances can be configured per app type (radarr, sonarr).
+    """
 
     url: str = ""
     api_key: SecretStr = SecretStr("")
@@ -45,12 +49,16 @@ class ArrConfig(BaseModel):
     search_cutoff_count: int = 5  # Cutoff items to search per cycle
 
     @model_validator(mode="after")
-    def at_least_one_search_count(self) -> ArrConfig:
-        """Ensure at least one search count is positive when app is enabled."""
+    def at_least_one_search_count(self) -> InstanceConfig:
+        """Ensure at least one search count is positive when instance is enabled."""
         if self.enabled and self.search_missing_count <= 0 and self.search_cutoff_count <= 0:
             msg = "At least one of search_missing_count or search_cutoff_count must be > 0 when enabled"
             raise ValueError(msg)
         return self
+
+
+# Backward-compat alias for transition period (Plan 02+ will update consumers)
+ArrConfig = InstanceConfig
 
 
 class GeneralConfig(BaseModel):
@@ -72,6 +80,8 @@ class Settings(BaseSettings):
     """Application settings loaded from TOML config file.
 
     Sections: [general], [radarr], [sonarr].
+    Radarr and sonarr hold dict[str, InstanceConfig] mapping instance names
+    to their configurations (e.g., {"4K Radarr": InstanceConfig(...)}).
     """
 
     model_config = {
@@ -79,15 +89,31 @@ class Settings(BaseSettings):
     }
 
     general: GeneralConfig = GeneralConfig()
-    radarr: ArrConfig = ArrConfig()
-    sonarr: ArrConfig = ArrConfig()
+    radarr: dict[str, InstanceConfig] = {}
+    sonarr: dict[str, InstanceConfig] = {}
+
+    @model_validator(mode="after")
+    def validate_instances(self) -> Settings:
+        """Enforce maximum 5 instances per app type."""
+        for app_type in ("radarr", "sonarr"):
+            instances = getattr(self, app_type)
+            if len(instances) > 5:
+                msg = f"Maximum 5 {app_type} instances allowed"
+                raise ValueError(msg)
+        return self
 
     @property
     def has_enabled_app(self) -> bool:
-        """Check if at least one app is configured with a URL and enabled."""
-        radarr_ok = self.radarr.enabled and self.radarr.url.strip()
-        sonarr_ok = self.sonarr.enabled and self.sonarr.url.strip()
-        return radarr_ok or sonarr_ok
+        """Check if at least one instance across any app type is enabled with a URL."""
+        for app_type in ("radarr", "sonarr"):
+            for cfg in getattr(self, app_type).values():
+                if cfg.enabled and cfg.url.strip():
+                    return True
+        return False
+
+    def get_enabled_instances(self, app_type: str) -> dict[str, InstanceConfig]:
+        """Return only enabled instances with non-empty URLs for an app type."""
+        return {name: cfg for name, cfg in getattr(self, app_type).items() if cfg.enabled and cfg.url.strip()}
 
     @classmethod
     def settings_customise_sources(
