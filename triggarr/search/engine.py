@@ -20,7 +20,7 @@ from loguru import logger
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import insert_search_entry
-from triggarr.models.config import Settings
+from triggarr.models.config import InstanceConfig, Settings
 from triggarr.state import TriggarrState
 
 
@@ -227,6 +227,8 @@ def filter_unreleased_movies(movies: list[dict]) -> list[dict]:
 async def run_radarr_cycle(
     client: RadarrClient,
     state: TriggarrState,
+    instance_name: str,
+    instance_config: InstanceConfig,
     settings: Settings,
     db: aiosqlite.Connection,
 ) -> TriggarrState:
@@ -243,37 +245,40 @@ async def run_radarr_cycle(
     Args:
         client: Connected Radarr API client.
         state: Mutable application state (modified in place).
-        settings: Application settings with batch size configuration.
+        instance_name: Name of this Radarr instance (e.g., "Default", "4K").
+        instance_config: Configuration for this specific instance.
+        settings: Application settings with general config (hard_max, skip_unreleased).
         db: Open aiosqlite connection for search history persistence.
 
     Returns:
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
+    ist = state["radarr"][instance_name]
 
     try:
         missing = await client.get_wanted_missing()
         cutoff = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Cycle aborted -- {exc}", exc=exc)
-        state["radarr"]["connected"] = False
-        if not state["radarr"].get("unreachable_since"):
-            state["radarr"]["unreachable_since"] = (
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = (
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")
             )
         return state
 
     # Track connection health (WEBU-06)
-    state["radarr"]["connected"] = True
-    state["radarr"]["unreachable_since"] = None
+    ist["connected"] = True
+    ist["unreachable_since"] = None
 
     # Cache raw item counts before filtering (WEBU-04)
-    state["radarr"]["missing_count"] = len(missing)
-    state["radarr"]["cutoff_count"] = len(cutoff)
+    ist["missing_count"] = len(missing)
+    ist["cutoff_count"] = len(cutoff)
 
     # Apply hard max cap (SRCH-12)
-    missing_limit = settings.radarr.search_missing_count
-    cutoff_limit = settings.radarr.search_cutoff_count
+    missing_limit = instance_config.search_missing_count
+    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
     orig_missing, orig_cutoff = missing_limit, cutoff_limit
     missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
@@ -290,14 +295,14 @@ async def run_radarr_cycle(
 
     # --- Missing queue ---
     missing = filter_monitored(missing)
-    state["radarr"]["missing_monitored"] = len(missing)
+    ist["missing_monitored"] = len(missing)
     if settings.general.skip_unreleased:
         missing = filter_unreleased_movies(missing)
-        skipped_unreleased = state["radarr"]["missing_monitored"] - len(missing)
+        skipped_unreleased = ist["missing_monitored"] - len(missing)
         if skipped_unreleased > 0:
             logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
-    state["radarr"]["missing_eligible"] = len(missing)
-    cursor = state["radarr"]["missing_cursor"]
+    ist["missing_eligible"] = len(missing)
+    cursor = ist["missing_cursor"]
     batch, new_cursor = slice_batch(missing, cursor, missing_limit)
     for movie in batch:
         try:
@@ -323,15 +328,15 @@ async def run_radarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    state["radarr"]["missing_cursor"] = new_cursor
+    ist["missing_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["radarr"]["missing_pass"] = state["radarr"].get("missing_pass", 0) + 1
-        pass_num = state["radarr"]["missing_pass"]
+        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+        pass_num = ist["missing_pass"]
         logger.info("Radarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Cutoff queue ---
     cutoff = filter_monitored(cutoff)
-    cursor = state["radarr"]["cutoff_cursor"]
+    cursor = ist["cutoff_cursor"]
     batch, new_cursor = slice_batch(cutoff, cursor, cutoff_limit)
     for movie in batch:
         try:
@@ -357,10 +362,10 @@ async def run_radarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    state["radarr"]["cutoff_cursor"] = new_cursor
+    ist["cutoff_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["radarr"]["cutoff_pass"] = state["radarr"].get("cutoff_pass", 0) + 1
-        pass_num = state["radarr"]["cutoff_pass"]
+        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+        pass_num = ist["cutoff_pass"]
         logger.info("Radarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Diagnostic summary ---
@@ -368,19 +373,21 @@ async def run_radarr_cycle(
     logger.info(
         "Radarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
         elapsed=elapsed,
-        fetched=state["radarr"]["missing_count"] + state["radarr"]["cutoff_count"],
+        fetched=ist["missing_count"] + ist["cutoff_count"],
         searched=searched_count,
         skipped=skipped_count,
     )
 
     # --- Update last_run ---
-    state["radarr"]["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    ist["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     return state
 
 
 async def run_sonarr_cycle(
     client: SonarrClient,
     state: TriggarrState,
+    instance_name: str,
+    instance_config: InstanceConfig,
     settings: Settings,
     db: aiosqlite.Connection,
 ) -> TriggarrState:
@@ -398,37 +405,40 @@ async def run_sonarr_cycle(
     Args:
         client: Connected Sonarr API client.
         state: Mutable application state (modified in place).
-        settings: Application settings with batch size configuration.
+        instance_name: Name of this Sonarr instance (e.g., "Default").
+        instance_config: Configuration for this specific instance.
+        settings: Application settings with general config (hard_max, etc.).
         db: Open aiosqlite connection for search history persistence.
 
     Returns:
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
+    ist = state["sonarr"][instance_name]
 
     try:
         missing_episodes = await client.get_wanted_missing()
         cutoff_episodes = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Cycle aborted -- {exc}", exc=exc)
-        state["sonarr"]["connected"] = False
-        if not state["sonarr"].get("unreachable_since"):
-            state["sonarr"]["unreachable_since"] = (
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = (
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")
             )
         return state
 
     # Track connection health (WEBU-06)
-    state["sonarr"]["connected"] = True
-    state["sonarr"]["unreachable_since"] = None
+    ist["connected"] = True
+    ist["unreachable_since"] = None
 
     # Cache raw item counts before filtering (WEBU-04)
-    state["sonarr"]["missing_count"] = len(missing_episodes)
-    state["sonarr"]["cutoff_count"] = len(cutoff_episodes)
+    ist["missing_count"] = len(missing_episodes)
+    ist["cutoff_count"] = len(cutoff_episodes)
 
     # Apply hard max cap (SRCH-12)
-    missing_limit = settings.sonarr.search_missing_count
-    cutoff_limit = settings.sonarr.search_cutoff_count
+    missing_limit = instance_config.search_missing_count
+    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
     orig_missing, orig_cutoff = missing_limit, cutoff_limit
     missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
@@ -446,9 +456,9 @@ async def run_sonarr_cycle(
     # --- Missing queue ---
     missing_episodes = filter_sonarr_episodes(missing_episodes)
     missing_seasons = deduplicate_to_seasons(missing_episodes)
-    state["sonarr"]["missing_eligible"] = len(missing_episodes)
-    state["sonarr"]["missing_searchable"] = len(missing_seasons)
-    cursor = state["sonarr"]["missing_cursor"]
+    ist["missing_eligible"] = len(missing_episodes)
+    ist["missing_searchable"] = len(missing_seasons)
+    cursor = ist["missing_cursor"]
     batch, new_cursor = slice_batch(missing_seasons, cursor, missing_limit)
     for season in batch:
         try:
@@ -478,17 +488,17 @@ async def run_sonarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    state["sonarr"]["missing_cursor"] = new_cursor
+    ist["missing_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["sonarr"]["missing_pass"] = state["sonarr"].get("missing_pass", 0) + 1
-        pass_num = state["sonarr"]["missing_pass"]
+        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+        pass_num = ist["missing_pass"]
         logger.info("Sonarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Cutoff queue ---
     cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
     cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
-    state["sonarr"]["cutoff_searchable"] = len(cutoff_seasons)
-    cursor = state["sonarr"]["cutoff_cursor"]
+    ist["cutoff_searchable"] = len(cutoff_seasons)
+    cursor = ist["cutoff_cursor"]
     batch, new_cursor = slice_batch(cutoff_seasons, cursor, cutoff_limit)
     for season in batch:
         try:
@@ -518,10 +528,10 @@ async def run_sonarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    state["sonarr"]["cutoff_cursor"] = new_cursor
+    ist["cutoff_cursor"] = new_cursor
     if new_cursor == 0 and batch:
-        state["sonarr"]["cutoff_pass"] = state["sonarr"].get("cutoff_pass", 0) + 1
-        pass_num = state["sonarr"]["cutoff_pass"]
+        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+        pass_num = ist["cutoff_pass"]
         logger.info("Sonarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
 
     # --- Diagnostic summary ---
@@ -529,11 +539,11 @@ async def run_sonarr_cycle(
     logger.info(
         "Sonarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
         elapsed=elapsed,
-        fetched=state["sonarr"]["missing_count"] + state["sonarr"]["cutoff_count"],
+        fetched=ist["missing_count"] + ist["cutoff_count"],
         searched=searched_count,
         skipped=skipped_count,
     )
 
     # --- Update last_run ---
-    state["sonarr"]["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    ist["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     return state
