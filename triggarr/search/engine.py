@@ -527,11 +527,43 @@ async def run_sonarr_cycle(
             c=cutoff_limit,
         )
 
+    # --- Tag resolution (only when at least one tag is configured) ---
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    if instance_config.missing_tag or instance_config.cutoff_tag:
+        try:
+            tags = await client.get_tags()
+        except (httpx.HTTPError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "Sonarr: Failed to fetch tags -- skipping tag filtering: {exc}",
+                exc=exc,
+            )
+            tags = []
+
+        if instance_config.missing_tag:
+            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
+            if missing_tag_id is None and tags:
+                logger.warning(
+                    "Sonarr: Tag '{tag}' not found -- searching all missing items",
+                    tag=instance_config.missing_tag,
+                )
+
+        if instance_config.cutoff_tag:
+            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
+            if cutoff_tag_id is None and tags:
+                logger.warning(
+                    "Sonarr: Tag '{tag}' not found -- searching all cutoff items",
+                    tag=instance_config.cutoff_tag,
+                )
+
     searched_count = 0
     skipped_count = 0
 
     # --- Missing queue ---
     missing_episodes = filter_sonarr_episodes(missing_episodes)
+    if missing_tag_id is not None:
+        missing_episodes = filter_by_tag(missing_episodes, missing_tag_id, _sonarr_tags)
+        logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
     missing_seasons = deduplicate_to_seasons(missing_episodes)
     ist["missing_eligible"] = len(missing_episodes)
     ist["missing_searchable"] = len(missing_seasons)
@@ -573,6 +605,9 @@ async def run_sonarr_cycle(
 
     # --- Cutoff queue ---
     cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
+    if cutoff_tag_id is not None:
+        cutoff_episodes = filter_by_tag(cutoff_episodes, cutoff_tag_id, _sonarr_tags)
+        logger.debug("Sonarr: Tag filter applied -- {n} cutoff episodes match tag", n=len(cutoff_episodes))
     cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
     ist["cutoff_searchable"] = len(cutoff_seasons)
     cursor = ist["cutoff_cursor"]

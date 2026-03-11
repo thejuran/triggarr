@@ -1441,11 +1441,12 @@ async def test_sonarr_cycle_missing_tag_filters(tmp_path):
     client.get_tags = AsyncMock(return_value=[Tag(id=10, label="triggarr")])
     # Series A (tags [10]): 2 episodes -> passes tag filter
     # Series B (no tags): 2 episodes -> filtered out
+    _ep = _make_tagged_sonarr_episode
     client.get_wanted_missing = AsyncMock(return_value=[
-        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
-        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=2, series_tags=[10]),
-        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=3, series_tags=[]),
-        _make_tagged_sonarr_episode(series_id=200, season_number=2, series_title="Show B", episode_id=4, series_tags=[]),
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=2, series_tags=[10]),
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=3, series_tags=[]),
+        _ep(series_id=200, season_number=2, series_title="Show B", episode_id=4, series_tags=[]),
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
@@ -1477,9 +1478,10 @@ async def test_sonarr_cycle_cutoff_tag_filters(tmp_path):
     client.get_tags = AsyncMock(return_value=[Tag(id=10, label="triggarr")])
     client.get_wanted_missing = AsyncMock(return_value=[])
     # Series A (tags [10]): 1 episode -> passes; Series B (no tags): 1 episode -> filtered
+    _ep = _make_tagged_sonarr_episode
     client.get_wanted_cutoff = AsyncMock(return_value=[
-        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
-        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
     ])
     client.search_season = AsyncMock()
 
@@ -1507,9 +1509,10 @@ async def test_sonarr_cycle_no_tag_searches_all(tmp_path):
 
     client = AsyncMock()
     client.get_tags = AsyncMock(return_value=[])
+    _ep = _make_tagged_sonarr_episode
     client.get_wanted_missing = AsyncMock(return_value=[
-        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
-        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
@@ -1538,9 +1541,10 @@ async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
 
     client = AsyncMock()
     client.get_tags = AsyncMock(return_value=[Tag(id=10, label="existing-tag")])
+    _ep = _make_tagged_sonarr_episode
     client.get_wanted_missing = AsyncMock(return_value=[
-        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
-        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[]),
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
