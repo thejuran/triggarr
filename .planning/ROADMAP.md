@@ -107,7 +107,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   4. Config validation rejects duplicate instance names within the same app type
 **Plans**: 2 plans
 Plans:
-- [ ] 33-01-PLAN.md -- InstanceConfig model and dict-based Settings with validation (TDD)
+- [x] 33-01-PLAN.md -- InstanceConfig model and dict-based Settings with validation (TDD)
 - [ ] 33-02-PLAN.md -- v2.2 migration logic, default config template, conftest update (TDD)
 
 ### Phase 34: State Model & Cursor Isolation
@@ -182,7 +182,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 33. Config Model & Migration | v2.3 | 0/2 | Not started | - |
+| 33. Config Model & Migration | v2.3 | 1/2 | In progress | - |
 | 34. State Model & Cursor Isolation | v2.3 | 0/? | Not started | - |
 | 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
 | 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |

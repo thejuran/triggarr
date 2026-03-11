@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
-status: ready_to_plan
-stopped_at: Roadmap created, ready to plan Phase 33
-last_updated: "2026-03-09T18:00:00Z"
-last_activity: 2026-03-09 -- Roadmap created for v2.3
+status: in_progress
+stopped_at: Completed 33-01-PLAN.md
+last_updated: "2026-03-11T01:36:20Z"
+last_activity: 2026-03-10 -- Completed Phase 33 Plan 01
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 0
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 33 (1 of 7 in v2.3) — Config Model & Migration
-Plan: —
-Status: Ready to plan
-Last activity: 2026-03-09 — Roadmap created for v2.3
+Plan: 01 complete, next: 02
+Status: In progress
+Last activity: 2026-03-10 — Completed Plan 01 (config model migration)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -39,14 +39,21 @@ Progress: [░░░░░░░░░░] 0%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 0
+- Plans completed: 1
 - Phases: 7 (33-39)
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 33 | 01 | 3min | 1 | 2 |
 
 ## Accumulated Context
 
 ### Decisions
 
 Full decision log in PROJECT.md Key Decisions table.
+
+- Phase 33-01: Renamed ArrConfig to InstanceConfig with backward-compat alias
+- Phase 33-01: Updated test TOML fixtures to v2.3 nested format
 
 ### Pending Todos
 
@@ -59,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-09
-Stopped at: Roadmap created for v2.3 milestone
+Last session: 2026-03-10
+Stopped at: Completed 33-01-PLAN.md
 Resume file: None
