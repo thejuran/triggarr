@@ -332,12 +332,44 @@ async def run_radarr_cycle(
             c=cutoff_limit,
         )
 
+    # --- Tag resolution (only when at least one tag is configured) ---
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    if instance_config.missing_tag or instance_config.cutoff_tag:
+        try:
+            tags = await client.get_tags()
+        except (httpx.HTTPError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "Radarr: Failed to fetch tags -- skipping tag filtering: {exc}",
+                exc=exc,
+            )
+            tags = []
+
+        if instance_config.missing_tag:
+            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
+            if missing_tag_id is None and tags:
+                logger.warning(
+                    "Radarr: Tag '{tag}' not found -- searching all missing items",
+                    tag=instance_config.missing_tag,
+                )
+
+        if instance_config.cutoff_tag:
+            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
+            if cutoff_tag_id is None and tags:
+                logger.warning(
+                    "Radarr: Tag '{tag}' not found -- searching all cutoff items",
+                    tag=instance_config.cutoff_tag,
+                )
+
     searched_count = 0
     skipped_count = 0
 
     # --- Missing queue ---
     missing = filter_monitored(missing)
     ist["missing_monitored"] = len(missing)
+    if missing_tag_id is not None:
+        missing = filter_by_tag(missing, missing_tag_id, _radarr_tags)
+        logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
     if settings.general.skip_unreleased:
         missing = filter_unreleased_movies(missing)
         skipped_unreleased = ist["missing_monitored"] - len(missing)
@@ -378,6 +410,9 @@ async def run_radarr_cycle(
 
     # --- Cutoff queue ---
     cutoff = filter_monitored(cutoff)
+    if cutoff_tag_id is not None:
+        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
+        logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
     cursor = ist["cutoff_cursor"]
     batch, new_cursor = slice_batch(cutoff, cursor, cutoff_limit)
     for movie in batch:
