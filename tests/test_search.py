@@ -1236,3 +1236,173 @@ def test_resolve_tag_id_missing_returns_none():
 def test_resolve_tag_id_empty_tags_returns_none():
     """resolve_tag_id returns None when tag list is empty."""
     assert resolve_tag_id("anything", []) is None
+
+
+# ---------------------------------------------------------------------------
+# TAG-01/TAG-02/TAG-03: Radarr cycle tag filtering integration
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_cycle_missing_tag_filters(tmp_path):
+    """Radarr cycle with missing_tag configured filters missing items by tag."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[
+        Tag(id=5, label="triggarr"),
+        Tag(id=6, label="other"),
+    ])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [6]},
+        {"id": 3, "title": "Movie C", "monitored": True, "tags": [5, 6]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Only movies with tag 5 (Movie A, Movie C) should be searched
+    assert client.search_movies.call_count == 2
+    client.search_movies.assert_any_call([1])
+    client.search_movies.assert_any_call([3])
+    client.get_tags.assert_awaited_once()
+    await db.close()
+
+
+async def test_radarr_cycle_cutoff_tag_filters(tmp_path):
+    """Radarr cycle with cutoff_tag configured filters cutoff items by tag."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[
+        Tag(id=5, label="triggarr"),
+        Tag(id=6, label="other"),
+    ])
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 10, "title": "Cutoff A", "monitored": True, "tags": [5]},
+        {"id": 11, "title": "Cutoff B", "monitored": True, "tags": [6]},
+        {"id": 12, "title": "Cutoff C", "monitored": True, "tags": [5]},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        cutoff_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Only cutoff items with tag 5 (Cutoff A, Cutoff C) should be searched
+    assert client.search_movies.call_count == 2
+    client.search_movies.assert_any_call([10])
+    client.search_movies.assert_any_call([12])
+    await db.close()
+
+
+async def test_radarr_cycle_no_tag_searches_all(tmp_path):
+    """Radarr cycle with no tags configured searches all monitored items."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [6]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="", cutoff_tag="",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # All items searched, get_tags NOT called
+    assert client.search_movies.call_count == 2
+    client.get_tags.assert_not_awaited()
+    await db.close()
+
+
+async def test_no_tag_api_call_when_unconfigured(tmp_path):
+    """Explicit check that get_tags is never called when both tags are empty."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Movie B", "monitored": True},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    client.get_tags.assert_not_awaited()
+    await db.close()
+
+
+async def test_radarr_tag_resolution_failure_searches_all(tmp_path):
+    """Radarr cycle with tag not found in tag list searches all items (fail-open)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[
+        Tag(id=5, label="existing-tag"),
+    ])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": []},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="nonexistent",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Tag not found -> fail-open, all monitored items searched
+    assert client.search_movies.call_count == 2
+    await db.close()
