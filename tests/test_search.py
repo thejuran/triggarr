@@ -20,6 +20,7 @@ from loguru import logger
 
 from tests.conftest import make_settings
 from triggarr.db import init_db
+from triggarr.models.config import InstanceConfig
 from triggarr.search.engine import (
     cap_batch_sizes,
     deduplicate_to_seasons,
@@ -200,6 +201,26 @@ def _cycle_settings(missing_count: int = 2, cutoff_count: int = 2):
     )
 
 
+def _cycle_instance_config(missing_count: int = 2, cutoff_count: int = 2):
+    """Build an InstanceConfig tuned for predictable batching in cycle tests."""
+    return InstanceConfig(
+        url="http://radarr:7878",
+        api_key="test-key",
+        enabled=True,
+        search_missing_count=missing_count,
+        search_cutoff_count=cutoff_count,
+    )
+
+
+def _default_instance_state():
+    """Return a default per-instance state nested under 'Default'."""
+    state = _default_state()
+    from triggarr.state import _default_instance_state as _dis
+    state["radarr"] = {"Default": _dis()}
+    state["sonarr"] = {"Default": _dis()}
+    return state
+
+
 async def test_run_radarr_cycle_happy_path(tmp_path):
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
@@ -215,20 +236,21 @@ async def test_run_radarr_cycle_happy_path(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    result = await run_radarr_cycle(client, state, settings, db)
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
     # Both movies searched (batch_size=2 covers both)
     assert client.search_movies.call_count == 2
     client.search_movies.assert_any_call([1])
     client.search_movies.assert_any_call([2])
 
-    assert result["radarr"]["last_run"] is not None
-    assert result["radarr"]["connected"] is True
+    assert result["radarr"]["Default"]["last_run"] is not None
+    assert result["radarr"]["Default"]["connected"] is True
     # 2 items, batch 2, cursor wraps to 0
-    assert result["radarr"]["missing_cursor"] == 0
+    assert result["radarr"]["Default"]["missing_cursor"] == 0
     await db.close()
 
 
@@ -242,16 +264,17 @@ async def test_run_radarr_cycle_network_failure(tmp_path):
         side_effect=httpx.ConnectError("refused")
     )
 
-    state = _default_state()
-    state["radarr"]["missing_cursor"] = 5
+    state = _default_instance_state()
+    state["radarr"]["Default"]["missing_cursor"] = 5
     settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
 
-    result = await run_radarr_cycle(client, state, settings, db)
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert result["radarr"]["connected"] is False
-    assert result["radarr"]["unreachable_since"] is not None
+    assert result["radarr"]["Default"]["connected"] is False
+    assert result["radarr"]["Default"]["unreachable_since"] is not None
     # Cursor unchanged on abort
-    assert result["radarr"]["missing_cursor"] == 5
+    assert result["radarr"]["Default"]["missing_cursor"] == 5
     await db.close()
 
 
@@ -273,10 +296,11 @@ async def test_run_radarr_cycle_per_item_skip(tmp_path):
         side_effect=[Exception("boom"), None]
     )
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    await run_radarr_cycle(client, state, settings, db)
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
     # Did not abort after first failure -- called twice
     assert client.search_movies.call_count == 2
@@ -304,6 +328,7 @@ async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     ]
 
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
     # --- Run 1: cursor 0 -> 2 ---
     client = AsyncMock()
@@ -311,27 +336,27 @@ async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
-    state["radarr"]["missing_cursor"] = 0
+    state = _default_instance_state()
+    state["radarr"]["Default"]["missing_cursor"] = 0
 
-    result = await run_radarr_cycle(client, state, settings, db)
-    assert result["radarr"]["missing_cursor"] == 2
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["missing_cursor"] == 2
 
     # --- Run 2: cursor 2 -> 4 ---
     client.get_wanted_missing = AsyncMock(return_value=movies)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    result = await run_radarr_cycle(client, result, settings, db)
-    assert result["radarr"]["missing_cursor"] == 4
+    result = await run_radarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["missing_cursor"] == 4
 
     # --- Run 3: cursor 4 -> wraps to 0 (only 1 item left, then wraps) ---
     client.get_wanted_missing = AsyncMock(return_value=movies)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    result = await run_radarr_cycle(client, result, settings, db)
-    assert result["radarr"]["missing_cursor"] == 0
+    result = await run_radarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["missing_cursor"] == 0
     await db.close()
 
 
@@ -372,17 +397,18 @@ async def test_run_sonarr_cycle_happy_path(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    result = await run_sonarr_cycle(client, state, settings, db)
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
     # Two unique seasons from same series searched
     assert client.search_season.call_count == 2
     client.search_season.assert_any_call(10, 1)
     client.search_season.assert_any_call(10, 2)
-    assert result["sonarr"]["connected"] is True
-    assert result["sonarr"]["last_run"] is not None
+    assert result["sonarr"]["Default"]["connected"] is True
+    assert result["sonarr"]["Default"]["last_run"] is not None
     await db.close()
 
 
@@ -396,15 +422,16 @@ async def test_run_sonarr_cycle_network_failure(tmp_path):
         side_effect=httpx.ConnectError("refused")
     )
 
-    state = _default_state()
-    state["sonarr"]["missing_cursor"] = 3
+    state = _default_instance_state()
+    state["sonarr"]["Default"]["missing_cursor"] = 3
     settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
 
-    result = await run_sonarr_cycle(client, state, settings, db)
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert result["sonarr"]["connected"] is False
-    assert result["sonarr"]["unreachable_since"] is not None
-    assert result["sonarr"]["missing_cursor"] == 3
+    assert result["sonarr"]["Default"]["connected"] is False
+    assert result["sonarr"]["Default"]["unreachable_since"] is not None
+    assert result["sonarr"]["Default"]["missing_cursor"] == 3
     await db.close()
 
 
@@ -427,10 +454,11 @@ async def test_run_sonarr_cycle_per_item_skip(tmp_path):
         side_effect=[Exception("boom"), None]
     )
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    await run_sonarr_cycle(client, state, settings, db)
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
     assert client.search_season.call_count == 2
     # Both searches logged to SQLite (failed + succeeded)
@@ -460,6 +488,7 @@ async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
     ]
 
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
     # --- Run 1: cursor 0 -> 2 ---
     client = AsyncMock()
@@ -467,19 +496,19 @@ async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_state()
-    state["sonarr"]["missing_cursor"] = 0
+    state = _default_instance_state()
+    state["sonarr"]["Default"]["missing_cursor"] = 0
 
-    result = await run_sonarr_cycle(client, state, settings, db)
-    assert result["sonarr"]["missing_cursor"] == 2
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["sonarr"]["Default"]["missing_cursor"] == 2
 
     # --- Run 2: cursor 2 -> wraps to 0 (only 1 season left) ---
     client.get_wanted_missing = AsyncMock(return_value=episodes)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    result = await run_sonarr_cycle(client, result, settings, db)
-    assert result["sonarr"]["missing_cursor"] == 0
+    result = await run_sonarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["sonarr"]["Default"]["missing_cursor"] == 0
     await db.close()
 
 
@@ -555,13 +584,14 @@ async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
     )
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
+    instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_radarr_cycle(client, state, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -590,13 +620,14 @@ async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
+    instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_sonarr_cycle(client, state, settings, db)
+        await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -629,13 +660,14 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
         side_effect=[Exception("boom"), None, None]
     )
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
+    instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_radarr_cycle(client, state, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -667,10 +699,11 @@ async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock(side_effect=Exception("API timeout"))
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    await run_radarr_cycle(client, state, settings, db)
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
     from triggarr.db import get_recent_searches
 
@@ -697,10 +730,11 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock(side_effect=Exception("Connection refused"))
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    await run_sonarr_cycle(client, state, settings, db)
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
     from triggarr.db import get_recent_searches
 
@@ -825,14 +859,15 @@ async def test_run_radarr_cycle_skip_unreleased_enabled(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+    instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
     with patch(
         "triggarr.search.engine.filter_unreleased_movies",
         wraps=filter_unreleased_movies,
     ) as spy:
-        await run_radarr_cycle(client, state, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
         spy.assert_called_once()
 
     await db.close()
@@ -855,14 +890,15 @@ async def test_run_radarr_cycle_skip_unreleased_disabled(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=False))
+    instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
     with patch(
         "triggarr.search.engine.filter_unreleased_movies",
         wraps=filter_unreleased_movies,
     ) as spy:
-        await run_radarr_cycle(client, state, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
         spy.assert_not_called()
 
     await db.close()
@@ -891,14 +927,15 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_enabled(tmp_path)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+    instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
-    result = await run_radarr_cycle(client, state, settings, db)
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
     # 4 raw, 3 monitored, 1 unreleased filtered -> 2 eligible
-    assert result["radarr"]["missing_monitored"] == 3
-    assert result["radarr"]["missing_eligible"] == 2
+    assert result["radarr"]["Default"]["missing_monitored"] == 3
+    assert result["radarr"]["Default"]["missing_eligible"] == 2
     await db.close()
 
 
@@ -922,14 +959,15 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_disabled(tmp_path
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=False))
+    instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
-    result = await run_radarr_cycle(client, state, settings, db)
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
     # 2 monitored, no unreleased filtering -> missing_monitored = missing_eligible = 2
-    assert result["radarr"]["missing_monitored"] == 2
-    assert result["radarr"]["missing_eligible"] == 2
+    assert result["radarr"]["Default"]["missing_monitored"] == 2
+    assert result["radarr"]["Default"]["missing_eligible"] == 2
     await db.close()
 
 
@@ -951,14 +989,15 @@ async def test_run_sonarr_cycle_eligible_count(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
+    instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
-    result = await run_sonarr_cycle(client, state, settings, db)
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
     # 3 filtered episodes, 2 seasons after dedup
-    assert result["sonarr"]["missing_eligible"] == 3
-    assert result["sonarr"]["missing_searchable"] == 2
+    assert result["sonarr"]["Default"]["missing_eligible"] == 3
+    assert result["sonarr"]["Default"]["missing_searchable"] == 2
     await db.close()
 
 
@@ -982,13 +1021,14 @@ async def test_run_radarr_cycle_info_log_unreleased_skipped(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+    instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_radarr_cycle(client, state, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -1016,13 +1056,14 @@ async def test_run_radarr_cycle_no_info_log_when_zero_unreleased(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+    instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="INFO")
     try:
-        await run_radarr_cycle(client, state, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
     finally:
         logger.remove(handler_id)
 
@@ -1050,14 +1091,15 @@ async def test_run_radarr_cycle_skip_unreleased_never_filters_cutoff(tmp_path):
     )
     client.search_movies = AsyncMock()
 
-    state = _default_state()
+    state = _default_instance_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
+    instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
     with patch(
         "triggarr.search.engine.filter_unreleased_movies",
         wraps=filter_unreleased_movies,
     ) as spy:
-        await run_radarr_cycle(client, state, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
         # Called exactly once (missing queue), not for cutoff queue
         assert spy.call_count == 1
 
