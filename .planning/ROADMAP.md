@@ -87,7 +87,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Milestone Goal:** Support multiple Radarr/Sonarr instances with per-instance tag-based search filtering, scoped observability, and version display.
 
 - [x] **Phase 33: Config Model & Migration** - Multi-instance config shape with backward-compatible auto-migration (completed 2026-03-11)
-- [ ] **Phase 34: State Model & Cursor Isolation** - Per-instance state with independent round-robin cursors
+- [x] **Phase 34: State Model & Cursor Isolation** - Per-instance state with independent round-robin cursors (completed 2026-03-11)
 - [ ] **Phase 35: Client Registry & Tag Resolution** - Dynamic client pool with per-cycle tag name-to-ID resolution
 - [ ] **Phase 36: Search Engine & Tag Filtering** - Tag-based item filtering in the search pipeline
 - [ ] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats
@@ -186,7 +186,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 33. Config Model & Migration | 2/2 | Complete    | 2026-03-11 | - |
-| 34. State Model & Cursor Isolation | v2.3 | 1/2 | In progress | - |
+| 34. State Model & Cursor Isolation | 2/2 | Complete   | 2026-03-11 | - |
 | 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
 | 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: executing
-stopped_at: Completed 34-01-PLAN.md
-last_updated: "2026-03-11T02:12:00Z"
-last_activity: 2026-03-11 — Completed Plan 01 (per-instance state model)
+stopped_at: Completed 34-02-PLAN.md
+last_updated: "2026-03-11T02:33:00Z"
+last_activity: 2026-03-11 — Completed Plan 02 (per-instance state consumers)
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 3
-  completed_plans: 3
-  percent: 14
+  completed_plans: 4
+  percent: 19
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 34 (2 of 7 in v2.3) — State Model & Cursor Isolation
-Plan: 01 complete, next: 34-02
+Plan: 02 complete, phase done, next: 35-01
 Status: In progress
-Last activity: 2026-03-11 — Completed Plan 01 (per-instance state model)
+Last activity: 2026-03-11 — Completed Plan 02 (per-instance state consumers)
 
-Progress: [##░░░░░░░░] 14%
+Progress: [###░░░░░░░] 19%
 
 ## Performance Metrics
 
@@ -39,7 +39,7 @@ Progress: [##░░░░░░░░] 14%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 3
+- Plans completed: 4
 - Phases: 7 (33-39)
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -47,6 +47,7 @@ Progress: [##░░░░░░░░] 14%
 | 33 | 01 | 3min | 1 | 2 |
 | 33 | 02 | 11min | 2 | 3 |
 | 34 | 01 | 2min | 1 | 3 |
+| 34 | 02 | 18min | 2 | 8 |
 
 ## Accumulated Context
 
@@ -63,6 +64,9 @@ Full decision log in PROJECT.md Key Decisions table.
 - Phase 34-01: _default_state without settings returns empty dicts for backward compat
 - Phase 34-01: cleanup_orphaned_instances is standalone (not inside load_state)
 - Phase 34-01: v2.2 migration wraps flat AppState into {"Default": AppState}
+- Phase 34-02: Dashboard shows first enabled instance (Phase 39 for multi-instance UI)
+- Phase 34-02: Tracking uses first available client per app type for grab checks
+- Phase 34-02: search_now triggers first enabled instance (Phase 39 for per-instance)
 
 ### Pending Todos
 
@@ -76,5 +80,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-11
-Stopped at: Completed 34-01-PLAN.md
+Stopped at: Completed 34-02-PLAN.md
 Resume file: None

@@ -11,7 +11,7 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 
 - [ ] **INST-01**: User can configure multiple named Radarr instances with independent URL, API key, schedule, and batch sizes
 - [ ] **INST-02**: User can configure multiple named Sonarr instances with independent URL, API key, schedule, and batch sizes
-- [ ] **INST-03**: Each instance maintains independent round-robin cursors that persist across restarts
+- [x] **INST-03**: Each instance maintains independent round-robin cursors that persist across restarts
 - [x] **INST-04**: Existing single-instance config auto-migrates to multi-instance format on upgrade
 - [ ] **INST-05**: User can add, edit, and remove instances from the web UI settings page
 - [ ] **INST-06**: User can enable/disable individual instances from the web UI
