@@ -120,7 +120,7 @@ Plans:
   3. Existing v2.2 state.json is auto-migrated to the new per-instance format keyed by instance ID
 **Plans**: 2 plans
 Plans:
-- [ ] 34-01-PLAN.md -- Per-instance state model with v2.2 migration and orphan cleanup (TDD)
+- [x] 34-01-PLAN.md -- Per-instance state model with v2.2 migration and orphan cleanup (TDD)
 - [ ] 34-02-PLAN.md -- Update engine, scheduler, routes, and startup for per-instance wiring
 
 ### Phase 35: Client Registry & Tag Resolution
@@ -186,7 +186,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 33. Config Model & Migration | 2/2 | Complete    | 2026-03-11 | - |
-| 34. State Model & Cursor Isolation | v2.3 | 0/2 | Not started | - |
+| 34. State Model & Cursor Isolation | v2.3 | 1/2 | In progress | - |
 | 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
 | 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |

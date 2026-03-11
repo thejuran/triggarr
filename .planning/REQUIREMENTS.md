@@ -65,7 +65,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | INST-01 | Phase 33 | Pending |
 | INST-02 | Phase 33 | Pending |
-| INST-03 | Phase 34 | Pending |
+| INST-03 | Phase 34 | In progress |
 | INST-04 | Phase 33 | Complete |
 | INST-05 | Phase 39 | Pending |
 | INST-06 | Phase 38 | Pending |
