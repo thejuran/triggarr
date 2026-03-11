@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: executing
-stopped_at: Completed 34-02-PLAN.md
-last_updated: "2026-03-11T02:37:35.821Z"
-last_activity: 2026-03-11 — Completed Plan 02 (per-instance state consumers)
+stopped_at: Completed 35-01-PLAN.md
+last_updated: "2026-03-11T03:00:43.696Z"
+last_activity: 2026-03-11 — Completed Plan 01 (tag model and resolution)
 progress:
   total_phases: 7
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 3
+  total_plans: 5
+  completed_plans: 5
   percent: 19
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 34 — State Model & Cursor Isolation
+**Current focus:** Phase 35 — Client Registry & Tag Resolution
 
 ## Current Position
 
-Phase: 34 (2 of 7 in v2.3) — State Model & Cursor Isolation
-Plan: 02 complete, phase done, next: 35-01
+Phase: 35 (3 of 7 in v2.3) — Client Registry & Tag Resolution
+Plan: 01 complete, next: 35-02 (if exists) or next phase
 Status: In progress
-Last activity: 2026-03-11 — Completed Plan 02 (per-instance state consumers)
+Last activity: 2026-03-11 — Completed Plan 01 (tag model and resolution)
 
 Progress: [###░░░░░░░] 19%
 
@@ -39,7 +39,7 @@ Progress: [###░░░░░░░] 19%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 4
+- Plans completed: 5
 - Phases: 7 (33-39)
 
 | Phase | Plan | Duration | Tasks | Files |
@@ -48,6 +48,7 @@ Progress: [###░░░░░░░] 19%
 | 33 | 02 | 11min | 2 | 3 |
 | 34 | 01 | 2min | 1 | 3 |
 | 34 | 02 | 18min | 2 | 8 |
+| 35 | 01 | 3min | 2 | 5 |
 
 ## Accumulated Context
 
@@ -67,6 +68,8 @@ Full decision log in PROJECT.md Key Decisions table.
 - Phase 34-02: Dashboard shows first enabled instance (Phase 39 for multi-instance UI)
 - Phase 34-02: Tracking uses first available client per app type for grab checks
 - Phase 34-02: search_now triggers first enabled instance (Phase 39 for per-instance)
+- Phase 35-01: Tag model uses extra=ignore to match GrabEvent/SystemStatus pattern
+- Phase 35-01: resolve_tag_id is a pure function following filter_monitored pattern
 
 ### Pending Todos
 
@@ -79,6 +82,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-11
-Stopped at: Completed 34-02-PLAN.md
+Last session: 2026-03-11T03:00:43.694Z
+Stopped at: Completed 35-01-PLAN.md
 Resume file: None
