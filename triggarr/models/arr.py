@@ -36,6 +36,19 @@ class GrabEvent(BaseModel):
     sourceTitle: str
 
 
+class Tag(BaseModel):
+    """A tag from the *arr /api/v3/tag endpoint.
+
+    Used for tag name-to-ID resolution during search filtering.
+    Extra fields from the API response are ignored.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    label: str
+
+
 class SystemStatus(BaseModel):
     """Minimal system status from /api/v3/system/status.
 

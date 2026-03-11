@@ -9,7 +9,7 @@ import httpx
 import pydantic
 from loguru import logger
 
-from triggarr.models.arr import PaginatedResponse, SystemStatus
+from triggarr.models.arr import PaginatedResponse, SystemStatus, Tag
 
 
 class ArrClient:
@@ -103,6 +103,20 @@ class ArrClient:
             path=path,
         )
         return data
+
+    # ------------------------------------------------------------------
+    # Tag fetching
+    # ------------------------------------------------------------------
+
+    async def get_tags(self) -> list[Tag]:
+        """Fetch all tags from the *arr instance.
+
+        Calls ``/api/v3/tag`` which returns a flat JSON array of
+        ``{id, label}`` objects.  Each item is validated into a
+        :class:`Tag` model.
+        """
+        data = await self.get_json_list("/api/v3/tag")
+        return [Tag.model_validate(item) for item in data]
 
     # ------------------------------------------------------------------
     # Paginated fetching

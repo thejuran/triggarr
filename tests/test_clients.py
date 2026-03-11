@@ -11,7 +11,7 @@ import pytest
 from triggarr.clients.base import ArrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.models.arr import GrabEvent
+from triggarr.models.arr import GrabEvent, Tag
 
 
 def test_arr_client_sets_api_key_header() -> None:
@@ -461,6 +461,68 @@ async def test_sonarr_get_grab_history_empty() -> None:
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_grab_history(series_id=999)
+        assert result == []
+    finally:
+        await client.close()
+
+
+# ---------------------------------------------------------------------------
+# Tag model and get_tags() (Phase 35)
+# ---------------------------------------------------------------------------
+
+
+def test_tag_model_parses_response() -> None:
+    """Tag.model_validate parses {id, label} JSON into Tag object."""
+    tag = Tag.model_validate({"id": 1, "label": "4k"})
+    assert tag.id == 1
+    assert tag.label == "4k"
+
+
+def test_tag_model_ignores_extra_fields() -> None:
+    """Tag model ignores extra fields from the API response."""
+    tag = Tag.model_validate({"id": 1, "label": "4k", "extra": "stuff"})
+    assert tag.id == 1
+    assert tag.label == "4k"
+    assert not hasattr(tag, "extra")
+
+
+async def test_get_tags_returns_tag_list() -> None:
+    """ArrClient.get_tags() returns list of Tag objects from API response."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[
+            {"id": 1, "label": "4k"},
+            {"id": 2, "label": "anime"},
+        ])
+
+    transport = httpx.MockTransport(handler)
+    client = ArrClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_tags()
+        assert len(result) == 2
+        assert all(isinstance(t, Tag) for t in result)
+        assert result[0].id == 1
+        assert result[0].label == "4k"
+        assert result[1].id == 2
+        assert result[1].label == "anime"
+    finally:
+        await client.close()
+
+
+async def test_get_tags_empty_response() -> None:
+    """ArrClient.get_tags() returns empty list when endpoint returns []."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[])
+
+    transport = httpx.MockTransport(handler)
+    client = ArrClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_tags()
         assert result == []
     finally:
         await client.close()
