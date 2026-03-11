@@ -320,6 +320,48 @@ def test_instance_config_secret_str_hidden() -> None:
     assert secret not in cfg.model_dump_json()
 
 
+# ---------------------------------------------------------------------------
+# Tag fields on InstanceConfig (Phase 36)
+# ---------------------------------------------------------------------------
+
+
+def test_instance_config_missing_tag_default() -> None:
+    """InstanceConfig().missing_tag defaults to empty string."""
+    cfg = InstanceConfig()
+    assert cfg.missing_tag == ""
+
+
+def test_instance_config_cutoff_tag_default() -> None:
+    """InstanceConfig().cutoff_tag defaults to empty string."""
+    cfg = InstanceConfig()
+    assert cfg.cutoff_tag == ""
+
+
+def test_instance_config_tag_fields_from_toml(tmp_path: Path) -> None:
+    """Tag fields load correctly from TOML config."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("""\
+[radarr."Default"]
+url = "http://radarr:7878"
+api_key = "key"
+enabled = true
+missing_tag = "triggarr"
+cutoff_tag = "upgrade"
+""")
+    settings = load_settings(config_file)
+    assert settings.radarr["Default"].missing_tag == "triggarr"
+    assert settings.radarr["Default"].cutoff_tag == "upgrade"
+
+
+def test_instance_config_toml_without_tag_fields(tmp_path: Path) -> None:
+    """TOML without tag fields parses cleanly (backward compat)."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(VALID_TOML)
+    settings = load_settings(config_file)
+    assert settings.radarr["Default"].missing_tag == ""
+    assert settings.radarr["Default"].cutoff_tag == ""
+
+
 def test_arr_config_alias_backward_compat() -> None:
     """ArrConfig alias still works (backward compatibility for transition)."""
     cfg = ArrConfig(url="http://radarr:7878", api_key="key", enabled=True)

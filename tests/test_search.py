@@ -1113,6 +1113,102 @@ async def test_run_radarr_cycle_skip_unreleased_never_filters_cutoff(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# filter_by_tag and tag accessors (Phase 36)
+# ---------------------------------------------------------------------------
+
+
+def test_filter_by_tag_radarr():
+    """filter_by_tag with _radarr_tags returns only items with matching tag ID."""
+    from triggarr.search.engine import _radarr_tags, filter_by_tag
+
+    items = [
+        {"id": 1, "title": "Movie A", "tags": [1, 2, 3]},
+        {"id": 2, "title": "Movie B", "tags": [4, 5]},
+        {"id": 3, "title": "Movie C", "tags": [2, 6]},
+    ]
+    result = filter_by_tag(items, 2, _radarr_tags)
+    assert len(result) == 2
+    assert result[0]["id"] == 1
+    assert result[1]["id"] == 3
+
+
+def test_filter_by_tag_sonarr():
+    """filter_by_tag with _sonarr_tags returns only episodes with matching series tag."""
+    from triggarr.search.engine import _sonarr_tags, filter_by_tag
+
+    items = [
+        {"episodeId": 100, "series": {"tags": [5, 6]}},
+        {"episodeId": 101, "series": {"tags": [7]}},
+        {"episodeId": 102, "series": {"tags": [5, 8]}},
+    ]
+    result = filter_by_tag(items, 5, _sonarr_tags)
+    assert len(result) == 2
+    assert result[0]["episodeId"] == 100
+    assert result[1]["episodeId"] == 102
+
+
+def test_filter_by_tag_empty_list():
+    """filter_by_tag with empty items list returns empty list."""
+    from triggarr.search.engine import _radarr_tags, filter_by_tag
+
+    result = filter_by_tag([], 1, _radarr_tags)
+    assert result == []
+
+
+def test_filter_by_tag_no_match():
+    """filter_by_tag where no items match returns empty list."""
+    from triggarr.search.engine import _radarr_tags, filter_by_tag
+
+    items = [
+        {"id": 1, "tags": [1, 2]},
+        {"id": 2, "tags": [3, 4]},
+    ]
+    result = filter_by_tag(items, 99, _radarr_tags)
+    assert result == []
+
+
+def test_radarr_tags_accessor():
+    """_radarr_tags returns item.get('tags', [])."""
+    from triggarr.search.engine import _radarr_tags
+
+    assert _radarr_tags({"tags": [1, 2, 3]}) == [1, 2, 3]
+    assert _radarr_tags({}) == []
+
+
+def test_sonarr_tags_accessor():
+    """_sonarr_tags returns item.get('series', {}).get('tags', [])."""
+    from triggarr.search.engine import _sonarr_tags
+
+    assert _sonarr_tags({"series": {"tags": [5, 6]}}) == [5, 6]
+    assert _sonarr_tags({}) == []
+    assert _sonarr_tags({"series": {}}) == []
+
+
+def test_sonarr_tag_filter_before_dedup():
+    """Sonarr tag filtering must happen BEFORE deduplication.
+
+    Episodes have series.tags but deduplicated season dicts do not.
+    """
+    from triggarr.search.engine import _sonarr_tags, filter_by_tag
+
+    # Episodes with series.tags -- filterable
+    episodes = [
+        {"episodeId": 1, "seriesId": 10, "seasonNumber": 1, "series": {"title": "Show A", "tags": [5]}},
+        {"episodeId": 2, "seriesId": 20, "seasonNumber": 1, "series": {"title": "Show B", "tags": [6]}},
+    ]
+    filtered = filter_by_tag(episodes, 5, _sonarr_tags)
+    assert len(filtered) == 1
+    assert filtered[0]["seriesId"] == 10
+
+    # Deduplicated dicts lose series.tags -- cannot filter
+    from triggarr.search.engine import deduplicate_to_seasons
+
+    deduped = deduplicate_to_seasons(episodes)
+    deduped_filtered = filter_by_tag(deduped, 5, _sonarr_tags)
+    assert deduped_filtered == []  # No series.tags on deduped dicts
+
+
 def test_resolve_tag_id_exact_match():
     """resolve_tag_id returns tag ID for exact name match."""
     tags = [Tag(id=1, label="4k")]
