@@ -186,7 +186,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 33. Config Model & Migration | 2/2 | Complete    | 2026-03-11 | - |
-| 34. State Model & Cursor Isolation | 2/2 | Complete   | 2026-03-11 | - |
+| 34. State Model & Cursor Isolation | 2/2 | Complete    | 2026-03-11 | - |
 | 35. Client Registry & Tag Resolution | v2.3 | 0/? | Not started | - |
 | 36. Search Engine & Tag Filtering | v2.3 | 0/? | Not started | - |
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
