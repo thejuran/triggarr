@@ -187,7 +187,7 @@ Plans:
 **Goal:** Fix all critical and warning-level bugs found during deep code review of multi-instance support, covering crash bugs in the validate-schedule-cycle chain, config safety issues, and input validation hardening
 **Requirements**: BUG-01, BUG-02, BUG-03, BUG-04, BUG-05, BUG-06, BUG-07, BUG-08, BUG-09, BUG-10, BUG-11
 **Depends on:** Phase 36
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 40-01-PLAN.md -- Fix crash bugs in validate-schedule-cycle chain (KeyError, loop overwrite, missing state entry)
@@ -208,4 +208,4 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
 | 38. Scheduler & Tracking Wiring | v2.3 | 0/? | Not started | - |
 | 39. Web UI Integration | v2.3 | 0/? | Not started | - |
-| 40. Fix Multi-Instance Bugs | v2.3 | 0/3 | Not started | - |
+| 40. Fix Multi-Instance Bugs | 1/3 | In Progress|  | - |

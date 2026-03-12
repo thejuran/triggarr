@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: executing
-stopped_at: Completed 36-02-PLAN.md
-last_updated: "2026-03-11T12:05:18.474Z"
+stopped_at: Completed 40-01-PLAN.md
+last_updated: "2026-03-12T01:24:38.882Z"
 last_activity: 2026-03-11 — Completed Plan 02 (wire tag filtering into cycle functions)
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 10
+  completed_plans: 8
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 36 — Search Engine Tag Filtering
+**Current focus:** Phase 40 — Fix Multi-Instance Bugs and Hardening
 
 ## Current Position
 
-Phase: 36 (4 of 7 in v2.3) — Search Engine Tag Filtering
-Plan: 02 complete (phase complete), next: Phase 37
+Phase: 40 (8 of 8 in v2.3) — Fix Multi-Instance Bugs and Hardening
+Plan: 01 of 3 complete, next: 40-02
 Status: In progress
-Last activity: 2026-03-11 — Completed Plan 02 (wire tag filtering into cycle functions)
+Last activity: 2026-03-11 — Completed Plan 01 (fix engine KeyError, startup loop overwrite, save_settings state)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: [██████████] 100%
 | 35 | 01 | 3min | 2 | 5 |
 | 36 | 01 | 1min | 1 | 5 |
 | 36 | 02 | 9min | 2 | 2 |
+| 40 | 01 | 19min | 2 | 6 |
 
 ## Accumulated Context
 
@@ -77,10 +78,17 @@ Full decision log in PROJECT.md Key Decisions table.
 - Phase 36-02: Tag resolution happens once per cycle (single get_tags call) to minimize API calls
 - Phase 36-02: Sonarr tag filter placed before deduplicate_to_seasons (deduped dicts lose series.tags)
 - Phase 36-02: Radarr filter order: filter_monitored -> filter_by_tag -> filter_unreleased_movies
+- [Phase 40]: setdefault with _default_instance_state() as guard pattern for missing state entries
+- [Phase 40]: validate_connections keys results as app/instance for unique per-instance tracking
+- [Phase 40]: save_settings persists state after adding new instance entries
 
 ### Pending Todos
 
 None.
+
+### Roadmap Evolution
+
+- Phase 40 added: Fix Multi-Instance Bugs and Hardening
 
 ### Blockers/Concerns
 
@@ -89,6 +97,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-11T12:01:54.000Z
-Stopped at: Completed 36-02-PLAN.md
+Last session: 2026-03-12T01:24:38.880Z
+Stopped at: Completed 40-01-PLAN.md
 Resume file: None
