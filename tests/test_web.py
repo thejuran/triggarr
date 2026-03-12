@@ -1270,15 +1270,12 @@ def test_sanitize_card_id_safe_chars():
 def test_build_app_context_uses_sanitized_card_id(client, test_app):
     """_build_app_context returns sanitized card_id for special-character instance names (BUG-04)."""
     # Add an instance with special characters in the name
-    from triggarr.models.config import InstanceConfig
     test_app.state.settings.radarr["My.4K#1"] = InstanceConfig(
         url="http://radarr4k:7878", api_key="key", enabled=True,
     )
     test_app.state.triggarr_state["radarr"]["My.4K#1"] = {"connected": True}
 
-    from triggarr.web.routes import _build_app_context
-    ctx = _build_app_context(client.app if hasattr(client, 'app') else test_app, "radarr", "My.4K#1")
-    # For _build_app_context we need a real request -- test via partial endpoint instead
+    # Test via partial endpoint (which calls _build_app_context internally)
     response = client.get("/partials/app-card/radarr/My.4K%231")
     # The card_id in the rendered HTML should be sanitized
     assert "radarr-My-4K-1" in response.text, "Card ID should be sanitized"

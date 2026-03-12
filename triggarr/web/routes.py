@@ -8,6 +8,7 @@ and partial endpoints for htmx fragment updates.
 from __future__ import annotations
 
 import os
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,22 @@ templates.env.globals["triggarr_version"] = __version__
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
+
+
+def _sanitize_card_id(raw: str) -> str:
+    """Sanitize a string for use as an HTML id / CSS selector target.
+
+    Replaces any character that is not alphanumeric, hyphen, or underscore
+    with a hyphen.  This prevents CSS selector injection when instance names
+    contain dots, hashes, spaces, or other special characters.
+
+    Args:
+        raw: Raw string (e.g. "radarr-My.Instance#1").
+
+    Returns:
+        Sanitized string safe for use as an HTML id attribute.
+    """
+    return re.sub(r"[^a-zA-Z0-9_-]", "-", raw)
 
 
 def _format_duration(seconds: float | None) -> str:
@@ -126,7 +143,7 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
     return {
         "name": app_name,
         "instance": instance_name,
-        "card_id": f"{app_name}-{instance_name}".replace(" ", "-"),
+        "card_id": _sanitize_card_id(f"{app_name}-{instance_name}"),
         "last_run": app_state.get("last_run"),
         "next_run": next_run,
         "missing_cursor": app_state.get("missing_cursor", 0),

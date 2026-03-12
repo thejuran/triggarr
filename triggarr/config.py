@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import sys
@@ -89,13 +90,16 @@ def _migrate_v22_to_v23(data: dict) -> dict:
 def _atomic_toml_write(path: Path, data: dict) -> None:
     """Write TOML data to a file atomically using tempfile + fsync + rename.
 
+    On failure (e.g. serialization error), the temp file is cleaned up
+    so no orphaned files remain on disk.
+
     Args:
         path: Destination file path.
         data: TOML-serializable dict.
     """
     dir_fd = None
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
         with os.fdopen(fd, "wb") as f:
             tomli_w.dump(data, f)
             f.flush()
@@ -104,6 +108,10 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
         # fsync the directory to ensure rename is durable
         dir_fd = os.open(path.parent, os.O_RDONLY)
         os.fsync(dir_fd)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
     finally:
         if dir_fd is not None:
             os.close(dir_fd)

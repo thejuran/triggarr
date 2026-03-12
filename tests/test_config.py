@@ -680,7 +680,6 @@ def test_atomic_toml_write_succeeds(tmp_path: Path) -> None:
 
 def test_atomic_toml_write_cleans_temp_on_failure(tmp_path: Path) -> None:
     """_atomic_toml_write removes temp file when tomli_w.dump raises (BUG-06)."""
-    import os
     from unittest.mock import patch
 
     from triggarr.config import _atomic_toml_write
