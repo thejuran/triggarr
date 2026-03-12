@@ -1246,3 +1246,40 @@ def test_save_settings_persists_state_to_disk(client, test_app, tmp_path):
     assert response.status_code == 303
     # save_state should have been called to persist new state entries
     assert mock_save.called, "save_state should be called after adding new instance state entries"
+
+
+# ---------------------------------------------------------------------------
+# BUG-04: CSS selector injection via unsanitized card IDs
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_card_id_special_chars():
+    """_sanitize_card_id replaces dots and hashes with hyphens (BUG-04)."""
+    from triggarr.web.routes import _sanitize_card_id
+
+    assert _sanitize_card_id("radarr-My.Instance#1") == "radarr-My-Instance-1"
+
+
+def test_sanitize_card_id_safe_chars():
+    """_sanitize_card_id leaves alphanumeric, hyphens, and underscores unchanged (BUG-04)."""
+    from triggarr.web.routes import _sanitize_card_id
+
+    assert _sanitize_card_id("radarr-Default") == "radarr-Default"
+
+
+def test_build_app_context_uses_sanitized_card_id(client, test_app):
+    """_build_app_context returns sanitized card_id for special-character instance names (BUG-04)."""
+    # Add an instance with special characters in the name
+    from triggarr.models.config import InstanceConfig
+    test_app.state.settings.radarr["My.4K#1"] = InstanceConfig(
+        url="http://radarr4k:7878", api_key="key", enabled=True,
+    )
+    test_app.state.triggarr_state["radarr"]["My.4K#1"] = {"connected": True}
+
+    from triggarr.web.routes import _build_app_context
+    ctx = _build_app_context(client.app if hasattr(client, 'app') else test_app, "radarr", "My.4K#1")
+    # For _build_app_context we need a real request -- test via partial endpoint instead
+    response = client.get("/partials/app-card/radarr/My.4K%231")
+    # The card_id in the rendered HTML should be sanitized
+    assert "radarr-My-4K-1" in response.text, "Card ID should be sanitized"
+    assert "radarr-My.4K#1" not in response.text, "Unsanitized card ID should not appear"

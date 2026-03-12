@@ -656,3 +656,41 @@ def test_toml_round_trip(tmp_path: Path) -> None:
     assert data1["radarr"]["Default"]["api_key"] == data2["radarr"]["Default"]["api_key"]
     assert data1["sonarr"]["Default"]["url"] == data2["sonarr"]["Default"]["url"]
     assert data1["sonarr"]["Default"]["api_key"] == data2["sonarr"]["Default"]["api_key"]
+
+
+# ---------------------------------------------------------------------------
+# BUG-06: _atomic_toml_write temp file cleanup on failure
+# ---------------------------------------------------------------------------
+
+
+def test_atomic_toml_write_succeeds(tmp_path: Path) -> None:
+    """_atomic_toml_write writes valid TOML data to disk (no regression)."""
+    from triggarr.config import _atomic_toml_write
+
+    config_file = tmp_path / "test.toml"
+    data = {"general": {"log_level": "info"}, "radarr": {"Default": {"url": "http://radarr:7878"}}}
+    _atomic_toml_write(config_file, data)
+
+    assert config_file.exists()
+    with open(config_file, "rb") as f:
+        written = tomllib.load(f)
+    assert written["general"]["log_level"] == "info"
+    assert written["radarr"]["Default"]["url"] == "http://radarr:7878"
+
+
+def test_atomic_toml_write_cleans_temp_on_failure(tmp_path: Path) -> None:
+    """_atomic_toml_write removes temp file when tomli_w.dump raises (BUG-06)."""
+    import os
+    from unittest.mock import patch
+
+    from triggarr.config import _atomic_toml_write
+
+    config_file = tmp_path / "test.toml"
+
+    with pytest.raises(TypeError), \
+         patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")):
+        _atomic_toml_write(config_file, {"key": "value"})
+
+    # No temp files should remain in the directory
+    remaining = list(tmp_path.glob("*.tmp"))
+    assert remaining == [], f"Temp files should be cleaned up, found: {remaining}"
