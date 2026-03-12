@@ -13,8 +13,8 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 - [x] **INST-02**: User can configure multiple named Sonarr instances with independent URL, API key, schedule, and batch sizes
 - [x] **INST-03**: Each instance maintains independent round-robin cursors that persist across restarts
 - [x] **INST-04**: Existing single-instance config auto-migrates to multi-instance format on upgrade
-- [ ] **INST-05**: User can add, edit, and remove instances from the web UI settings page *(Phase 41)*
-- [ ] **INST-06**: User can enable/disable individual instances from the web UI *(Phase 41)*
+- [x] **INST-05**: User can add, edit, and remove instances from the web UI settings page *(Phase 41)*
+- [x] **INST-06**: User can enable/disable individual instances from the web UI *(Phase 41)*
 - [ ] **INST-07**: Dashboard shows an instance health summary card (connected/disconnected count with per-instance detail) *(Phase 42)*
 
 ### Tag Filtering
@@ -24,7 +24,7 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 - [x] **TAG-03**: When no tag is configured, all monitored items are searched (default behavior unchanged)
 - [x] **TAG-04**: Tag names are resolved to IDs via the *arr `/api/v3/tag` endpoint each cycle
 - [ ] **TAG-05**: Dashboard shows a warning badge when a configured tag is not found in the *arr instance *(Phase 42)*
-- [ ] **TAG-06**: Tag name autocomplete dropdown populated from the *arr instance when configuring filters in the web UI *(Phase 41)*
+- [x] **TAG-06**: Tag name autocomplete dropdown populated from the *arr instance when configuring filters in the web UI *(Phase 41)*
 
 ### Observability
 
@@ -67,15 +67,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-02 | Phase 33 | Complete |
 | INST-03 | Phase 34 | Complete |
 | INST-04 | Phase 33 | Complete |
-| INST-05 | Phase 41 | Pending |
-| INST-06 | Phase 41 | Pending |
+| INST-05 | Phase 41 | Complete |
+| INST-06 | Phase 41 | Complete |
 | INST-07 | Phase 42 | Pending |
 | TAG-01 | Phase 36 | Complete |
 | TAG-02 | Phase 36 | Complete |
 | TAG-03 | Phase 36 | Complete |
 | TAG-04 | Phase 35 | Complete |
 | TAG-05 | Phase 42 | Pending |
-| TAG-06 | Phase 41 | Pending |
+| TAG-06 | Phase 41 | Complete |
 | OBS-01 | Phase 39 | Complete |
 | OBS-02 | Phase 37 | Complete |
 | OBS-03 | Phase 42 | Pending |

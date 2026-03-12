@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
-status: completed
-stopped_at: Completed 40-02-PLAN.md
-last_updated: "2026-03-12T01:38:05.943Z"
-last_activity: 2026-03-11 — Completed Plan 03 (input validation, tag logging, state immutability, test hygiene)
+status: in-progress
+stopped_at: Completed 41-01-PLAN.md
+last_updated: "2026-03-12T02:36:10.000Z"
+last_activity: 2026-03-12 — Completed Plan 01 (multi-instance settings UI with tag autocomplete)
 progress:
-  total_phases: 8
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
+  total_phases: 9
+  completed_phases: 6
+  total_plans: 11
+  completed_plans: 11
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 40 — Fix Multi-Instance Bugs and Hardening
+**Current focus:** Phase 41 — Multi-Instance Settings UI
 
 ## Current Position
 
-Phase: 40 (8 of 8 in v2.3) — Fix Multi-Instance Bugs and Hardening
-Plan: 03 of 3 complete (phase complete)
+Phase: 41 (9 of 9 in v2.3) — Multi-Instance Settings UI
+Plan: 01 of 1 complete (phase complete)
 Status: Complete
-Last activity: 2026-03-11 — Completed Plan 03 (input validation, tag logging, state immutability, test hygiene)
+Last activity: 2026-03-12 — Completed Plan 01 (multi-instance settings UI with tag autocomplete)
 
 Progress: [██████████] 100%
 
@@ -39,8 +39,8 @@ Progress: [██████████] 100%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 10
-- Phases: 8 (33-40)
+- Plans completed: 11
+- Phases: 9 (33-41)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -54,6 +54,7 @@ Progress: [██████████] 100%
 | 40 | 01 | 19min | 2 | 6 |
 | 40 | 02 | 25min | 2 | 4 |
 | 40 | 03 | 25min | 2 | 5 |
+| 41 | 01 | 11min | 2 | 5 |
 
 ## Accumulated Context
 
@@ -89,6 +90,11 @@ Full decision log in PROJECT.md Key Decisions table.
 - [Phase 40-03]: tag_fetch_ok boolean replaces 'if tags:' guard for clearer fetch-failure semantics
 - [Phase 40-03]: cleanup_orphaned_instances uses dict comprehension for immutability
 - [Phase 40-03]: Test helper renamed to _make_test_state with direct import of production symbol
+- [Phase 41-01]: Double-underscore separator for form fields ({app}__{inst}__{field}) to avoid collision with underscores in instance names
+- [Phase 41-01]: validate_instance_name rejects __ to protect form field parsing regex
+- [Phase 41-01]: Tag autocomplete uses htmx hx-get on focus with datalist
+- [Phase 41-01]: response_model=None for endpoints returning mixed HTMLResponse/RedirectResponse
+- [Phase 41-01]: _settings_to_dict helper for SecretStr-safe TOML serialization
 
 ### Pending Todos
 
@@ -105,6 +111,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-12T01:30:06Z
-Stopped at: Completed 40-02-PLAN.md
+Last session: 2026-03-12T02:36:10Z
+Stopped at: Completed 41-01-PLAN.md
 Resume file: None

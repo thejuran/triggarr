@@ -93,7 +93,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats (completed 2026-03-11, via GSD slice S05)
 - [ ] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation (partial via GSD slice S06 — INST-06 only works for first instance)
 - [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (partial via GSD slice S07 — OBS-01/OBS-02/VER-01 done; INST-05/INST-07/TAG-05/TAG-06/OBS-03/VER-02 missing)
-- [ ] **Phase 41: Multi-Instance Settings UI** - Instance CRUD, enable/disable, and tag filter config in web UI (gap closure)
+- [x] **Phase 41: Multi-Instance Settings UI** - Instance CRUD, enable/disable, and tag filter config in web UI (gap closure) (completed 2026-03-12)
 - [ ] **Phase 42: Dashboard Enhancements** - Health summary, tag warning badges, per-instance stats (gap closure)
 - [ ] **Phase 43: Update Notification & Cleanup** - GitHub release check, migration banner, dead code removal (gap closure)
 
@@ -211,7 +211,7 @@ Plans:
   3. User can enable/disable any instance from the settings page
   4. Tag name fields (missing_tag, cutoff_tag) are exposed in the settings form with autocomplete from the *arr instance's tag list
   5. All changes persist to TOML config via existing atomic write path
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 41-01-PLAN.md -- Backend route refactoring, template rewrite, tag autocomplete, add/remove endpoints, tests
 
@@ -250,6 +250,6 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 38. Scheduler & Tracking Wiring | v2.3 | 1/1 (S06) | Partial | - |
 | 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
-| 41. Multi-Instance Settings UI | v2.3 | 0/1 | Pending | - |
+| 41. Multi-Instance Settings UI | 1/1 | Complete   | 2026-03-12 | - |
 | 42. Dashboard Enhancements | v2.3 | 0/0 | Pending | - |
 | 43. Update Notification & Cleanup | v2.3 | 0/0 | Pending | - |
