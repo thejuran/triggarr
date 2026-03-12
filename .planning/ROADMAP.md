@@ -90,9 +90,9 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 34: State Model & Cursor Isolation** - Per-instance state with independent round-robin cursors (completed 2026-03-11)
 - [x] **Phase 35: Client Registry & Tag Resolution** - Dynamic client pool with per-cycle tag name-to-ID resolution (completed 2026-03-11)
 - [x] **Phase 36: Search Engine & Tag Filtering** - Tag-based item filtering in the search pipeline (completed 2026-03-11)
-- [ ] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats
-- [ ] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation
-- [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display
+- [x] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats (completed 2026-03-11, via GSD slice S05)
+- [x] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation (completed 2026-03-11, via GSD slice S06)
+- [x] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (completed 2026-03-11, via GSD slice S07)
 
 ## Phase Details
 
@@ -153,27 +153,30 @@ Plans:
 **Goal**: Search history and lifetime stats are attributed to specific instances so data from different instances never mixes
 **Depends on**: Phase 33
 **Requirements**: OBS-02
+**Status**: Complete (2026-03-11, via GSD slice S05)
 **Success Criteria** (what must be TRUE):
   1. Search history entries include an instance_id column populated for all new searches
   2. Lifetime stats use a composite key of (app_type, instance_id) so per-instance counts are tracked independently
   3. Search history page can filter results by instance name
-**Plans**: TBD
+**Plans**: Executed as GSD slice S05 — see `.gsd/milestones/M001/slices/S05/S05-SUMMARY.md`
 
 ### Phase 38: Scheduler & Tracking Wiring
 **Goal**: Each enabled instance runs on its own schedule, and grab tracking queries the correct *arr server for each search
 **Depends on**: Phase 35, Phase 36, Phase 37
 **Requirements**: INST-06
+**Status**: Complete (2026-03-11, via GSD slice S06)
 **Success Criteria** (what must be TRUE):
   1. Each enabled instance has its own APScheduler interval job running at that instance's configured interval
   2. User can enable/disable individual instances, and disabled instances have their scheduler jobs removed (no searches run)
   3. Post-search grab tracking queries the correct *arr instance (not a different instance of the same app type)
   4. Enabling/disabling an instance takes effect on the next scheduler tick without requiring application restart
-**Plans**: TBD
+**Plans**: Executed as GSD slice S06 — see `.gsd/milestones/M001/slices/S06/S06-SUMMARY.md`
 
 ### Phase 39: Web UI Integration
 **Goal**: Users can manage instances, view per-instance status, configure tag filters, and see the application version -- all from the web UI
 **Depends on**: Phase 38
 **Requirements**: INST-05, INST-07, TAG-05, TAG-06, OBS-01, OBS-03, VER-01, VER-02
+**Status**: Complete (2026-03-11, via GSD slice S07)
 **Success Criteria** (what must be TRUE):
   1. User can add, edit, and remove instances from the web UI settings page without editing TOML directly
   2. Dashboard shows a per-instance status card with connection health, queue sizes, and last-run time for each instance
@@ -181,7 +184,7 @@ Plans:
   4. Tag configuration fields in the settings UI offer autocomplete populated from the *arr instance's tag list
   5. Dashboard displays a warning badge when a configured tag name is not found in the *arr instance
   6. Dashboard displays the current Triggarr version and indicates when a newer release is available
-**Plans**: TBD
+**Plans**: Executed as GSD slice S07 — see `.gsd/milestones/M001/slices/S07/S07-SUMMARY.md`
 
 ### Phase 40: Fix Multi-Instance Bugs and Hardening
 **Goal:** Fix all critical and warning-level bugs found during deep code review of multi-instance support, covering crash bugs in the validate-schedule-cycle chain, config safety issues, and input validation hardening
@@ -205,7 +208,7 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 34. State Model & Cursor Isolation | 2/2 | Complete    | 2026-03-11 | - |
 | 35. Client Registry & Tag Resolution | 1/1 | Complete    | 2026-03-11 | - |
 | 36. Search Engine & Tag Filtering | 2/2 | Complete    | 2026-03-11 | - |
-| 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
-| 38. Scheduler & Tracking Wiring | v2.3 | 0/? | Not started | - |
-| 39. Web UI Integration | v2.3 | 0/? | Not started | - |
+| 37. Database Schema & Instance Scoping | v2.3 | 1/1 (S05) | Complete | 2026-03-11 |
+| 38. Scheduler & Tracking Wiring | v2.3 | 1/1 (S06) | Complete | 2026-03-11 |
+| 39. Web UI Integration | v2.3 | 1/1 (S07) | Complete | 2026-03-11 |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |

@@ -9,13 +9,13 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 
 ### Multi-Instance
 
-- [ ] **INST-01**: User can configure multiple named Radarr instances with independent URL, API key, schedule, and batch sizes
-- [ ] **INST-02**: User can configure multiple named Sonarr instances with independent URL, API key, schedule, and batch sizes
+- [x] **INST-01**: User can configure multiple named Radarr instances with independent URL, API key, schedule, and batch sizes
+- [x] **INST-02**: User can configure multiple named Sonarr instances with independent URL, API key, schedule, and batch sizes
 - [x] **INST-03**: Each instance maintains independent round-robin cursors that persist across restarts
 - [x] **INST-04**: Existing single-instance config auto-migrates to multi-instance format on upgrade
-- [ ] **INST-05**: User can add, edit, and remove instances from the web UI settings page
-- [ ] **INST-06**: User can enable/disable individual instances from the web UI
-- [ ] **INST-07**: Dashboard shows an instance health summary card (connected/disconnected count with per-instance detail)
+- [x] **INST-05**: User can add, edit, and remove instances from the web UI settings page
+- [x] **INST-06**: User can enable/disable individual instances from the web UI
+- [x] **INST-07**: Dashboard shows an instance health summary card (connected/disconnected count with per-instance detail)
 
 ### Tag Filtering
 
@@ -23,19 +23,19 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 - [x] **TAG-02**: User can configure a tag name per instance for the cutoff queue (only items with that tag are searched)
 - [x] **TAG-03**: When no tag is configured, all monitored items are searched (default behavior unchanged)
 - [x] **TAG-04**: Tag names are resolved to IDs via the *arr `/api/v3/tag` endpoint each cycle
-- [ ] **TAG-05**: Dashboard shows a warning badge when a configured tag is not found in the *arr instance
-- [ ] **TAG-06**: Tag name autocomplete dropdown populated from the *arr instance when configuring filters in the web UI
+- [x] **TAG-05**: Dashboard shows a warning badge when a configured tag is not found in the *arr instance
+- [x] **TAG-06**: Tag name autocomplete dropdown populated from the *arr instance when configuring filters in the web UI
 
 ### Observability
 
-- [ ] **OBS-01**: Dashboard renders a status card per instance showing connection health, queue sizes, and last-run time
-- [ ] **OBS-02**: Search history is scoped per instance with an instance filter on the history page
-- [ ] **OBS-03**: Per-instance effectiveness stats (grab rate, lifetime counts) displayed on dashboard
+- [x] **OBS-01**: Dashboard renders a status card per instance showing connection health, queue sizes, and last-run time
+- [x] **OBS-02**: Search history is scoped per instance with an instance filter on the history page
+- [x] **OBS-03**: Per-instance effectiveness stats (grab rate, lifetime counts) displayed on dashboard
 
 ### Version
 
-- [ ] **VER-01**: Dashboard displays the current Triggarr version
-- [ ] **VER-02**: Dashboard indicates when a newer release is available by checking GitHub/GHCR
+- [x] **VER-01**: Dashboard displays the current Triggarr version
+- [x] **VER-02**: Dashboard indicates when a newer release is available by checking GitHub/GHCR
 
 ## Future Requirements
 
@@ -63,30 +63,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INST-01 | Phase 33 | Pending |
-| INST-02 | Phase 33 | Pending |
-| INST-03 | Phase 34 | In progress |
+| INST-01 | Phase 33 | Complete |
+| INST-02 | Phase 33 | Complete |
+| INST-03 | Phase 34 | Complete |
 | INST-04 | Phase 33 | Complete |
-| INST-05 | Phase 39 | Pending |
-| INST-06 | Phase 38 | Pending |
-| INST-07 | Phase 39 | Pending |
+| INST-05 | Phase 39 | Complete |
+| INST-06 | Phase 38 | Complete |
+| INST-07 | Phase 39 | Complete |
 | TAG-01 | Phase 36 | Complete |
 | TAG-02 | Phase 36 | Complete |
 | TAG-03 | Phase 36 | Complete |
 | TAG-04 | Phase 35 | Complete |
-| TAG-05 | Phase 39 | Pending |
-| TAG-06 | Phase 39 | Pending |
-| OBS-01 | Phase 39 | Pending |
-| OBS-02 | Phase 37 | Pending |
-| OBS-03 | Phase 39 | Pending |
-| VER-01 | Phase 39 | Pending |
-| VER-02 | Phase 39 | Pending |
+| TAG-05 | Phase 39 | Complete |
+| TAG-06 | Phase 39 | Complete |
+| OBS-01 | Phase 39 | Complete |
+| OBS-02 | Phase 37 | Complete |
+| OBS-03 | Phase 39 | Complete |
+| VER-01 | Phase 39 | Complete |
+| VER-02 | Phase 39 | Complete |
 
 **Coverage:**
 - v2.3 requirements: 18 total
 - Mapped to phases: 18
+- Complete: 18
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after roadmap creation*
+*Last updated: 2026-03-11 — all 18 requirements complete (Phases 37-39 delivered via GSD slices S05-S07)*
