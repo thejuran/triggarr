@@ -75,47 +75,109 @@
     </section>
 
     <!-- Per-app sections: Radarr, Sonarr -->
-    {% for name, app in apps.items() %}
+    {% for app_name, instances in apps.items() %}
     <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold capitalize">{{ name }}</h2>
-            <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="{{ name }}_enabled"
-                       {% if app.enabled %}checked{% endif %}
-                       class="accent-triggarr-green w-4 h-4">
-                <span class="text-sm">Enabled</span>
-            </label>
-        </div>
+        <h2 class="text-lg font-semibold capitalize mb-4">{{ app_name }}</h2>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label class="block text-sm text-triggarr-muted mb-1">URL</label>
-                <input type="text" name="{{ name }}_url" value="{{ app.url }}"
-                       placeholder="http://{{ name }}:{% if name == 'radarr' %}7878{% else %}8989{% endif %}"
-                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+        {% if not instances %}
+        <p class="text-triggarr-muted text-sm">No instances configured. Add one below.</p>
+        {% endif %}
+
+        {% for inst_name, inst in instances.items() %}
+        {% set sanitized = inst_name | replace(' ', '-') | replace('.', '-') %}
+        <details open class="bg-triggarr-bg rounded-lg border border-triggarr-border mb-3">
+            <summary class="flex items-center justify-between px-4 py-3 cursor-pointer">
+                <span class="font-medium">{{ inst_name }} &mdash; {{ "Enabled" if inst.enabled else "Disabled" }}</span>
+                <button hx-post="{{ request.url_for('remove_instance', app_name=app_name, instance_name=inst_name) }}"
+                        hx-confirm="Remove instance '{{ inst_name }}'? This cannot be undone."
+                        hx-target="body" hx-swap="outerHTML"
+                        class="text-red-400 hover:text-red-300 text-sm"
+                        type="button" onclick="event.stopPropagation()">
+                    Remove
+                </button>
+            </summary>
+            <div class="px-4 pb-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <input type="checkbox" name="{{ app_name }}__{{ inst_name }}__enabled"
+                           {% if inst.enabled %}checked{% endif %}
+                           class="accent-triggarr-green w-4 h-4"
+                           id="enabled-{{ app_name }}-{{ sanitized }}">
+                    <label for="enabled-{{ app_name }}-{{ sanitized }}" class="text-sm">Enabled</label>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-triggarr-muted mb-1">URL</label>
+                        <input type="text" name="{{ app_name }}__{{ inst_name }}__url" value="{{ inst.url }}"
+                               placeholder="http://{{ app_name }}:{% if app_name == 'radarr' %}7878{% else %}8989{% endif %}"
+                               class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-triggarr-muted mb-1">API Key</label>
+                        <input type="password" name="{{ app_name }}__{{ inst_name }}__api_key" value=""
+                               placeholder="{{ '********' if inst.has_api_key else 'Paste API key' }}"
+                               class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-triggarr-muted mb-1">Search Interval (minutes)</label>
+                        <input type="number" name="{{ app_name }}__{{ inst_name }}__search_interval" value="{{ inst.search_interval }}"
+                               min="1" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-triggarr-muted mb-1">Missing Items Per Cycle</label>
+                        <input type="number" name="{{ app_name }}__{{ inst_name }}__search_missing_count" value="{{ inst.search_missing_count }}"
+                               min="0" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-triggarr-muted mb-1">Cutoff Items Per Cycle</label>
+                        <input type="number" name="{{ app_name }}__{{ inst_name }}__search_cutoff_count" value="{{ inst.search_cutoff_count }}"
+                               min="0" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <!-- Tag fields -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="block text-sm text-triggarr-muted mb-1">Missing Tag</label>
+                        <input type="text" name="{{ app_name }}__{{ inst_name }}__missing_tag" value="{{ inst.missing_tag }}"
+                               list="tags-{{ app_name }}-{{ sanitized }}-missing"
+                               hx-get="/api/tags/{{ app_name }}/{{ inst_name }}"
+                               hx-trigger="focus once"
+                               hx-target="#tags-{{ app_name }}-{{ sanitized }}-missing"
+                               hx-swap="innerHTML"
+                               placeholder="Leave empty to search all"
+                               class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                        <datalist id="tags-{{ app_name }}-{{ sanitized }}-missing"></datalist>
+                        <p class="text-xs text-triggarr-muted mt-1">Leave empty to search all items. Autocomplete loads from the *arr instance when focused.</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-triggarr-muted mb-1">Cutoff Tag</label>
+                        <input type="text" name="{{ app_name }}__{{ inst_name }}__cutoff_tag" value="{{ inst.cutoff_tag }}"
+                               list="tags-{{ app_name }}-{{ sanitized }}-cutoff"
+                               hx-get="/api/tags/{{ app_name }}/{{ inst_name }}"
+                               hx-trigger="focus once"
+                               hx-target="#tags-{{ app_name }}-{{ sanitized }}-cutoff"
+                               hx-swap="innerHTML"
+                               placeholder="Leave empty to search all"
+                               class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                        <datalist id="tags-{{ app_name }}-{{ sanitized }}-cutoff"></datalist>
+                        <p class="text-xs text-triggarr-muted mt-1">Leave empty to search all items. Autocomplete loads from the *arr instance when focused.</p>
+                    </div>
+                </div>
             </div>
-            <div>
-                <label class="block text-sm text-triggarr-muted mb-1">API Key</label>
-                <input type="password" name="{{ name }}_api_key" value=""
-                       placeholder="{{ '********' if app.has_api_key else 'Paste API key' }}"
-                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
-            </div>
-            <div>
-                <label class="block text-sm text-triggarr-muted mb-1">Search Interval (minutes)</label>
-                <input type="number" name="{{ name }}_search_interval" value="{{ app.search_interval }}"
-                       min="1" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
-            </div>
-            <div>
-                <label class="block text-sm text-triggarr-muted mb-1">Missing Items Per Cycle</label>
-                <input type="number" name="{{ name }}_search_missing_count" value="{{ app.search_missing_count }}"
-                       min="0" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
-            </div>
-            <div>
-                <label class="block text-sm text-triggarr-muted mb-1">Cutoff Items Per Cycle</label>
-                <input type="number" name="{{ name }}_search_cutoff_count" value="{{ app.search_cutoff_count }}"
-                       min="0" class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
-            </div>
+        </details>
+        {% endfor %}
+
+        <!-- Add Instance inline form -->
+        <div class="flex items-center gap-2 mt-4">
+            <input type="text" name="instance_name" placeholder="New instance name"
+                   class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm"
+                   form="add-{{ app_name }}">
+            <input type="hidden" name="app_name" value="{{ app_name }}" form="add-{{ app_name }}">
+            <button type="submit" form="add-{{ app_name }}"
+                    class="bg-triggarr-green hover:bg-triggarr-green-dark text-white font-medium px-4 py-2 rounded text-sm transition-colors">
+                + Add
+            </button>
         </div>
+        <form id="add-{{ app_name }}" method="post" action="{{ request.url_for('add_instance') }}"></form>
     </section>
     {% endfor %}
 

@@ -1,19 +1,50 @@
 """Input validation helpers for the Triggarr web UI.
 
 Provides URL scheme + SSRF validation, integer clamping with safe bounds,
-and log level allowlisting for the settings form.
+log level allowlisting, and instance name validation for the settings form.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import re
 from urllib.parse import urlparse
+
+# Instance name validation pattern: starts with alphanumeric, then allows
+# alphanumeric, spaces, single underscores, dots, and hyphens.
+_INSTANCE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9 _.\-]*$")
 
 # Hostnames explicitly blocked to prevent SSRF against cloud metadata services.
 BLOCKED_HOSTS: set[str] = {"169.254.169.254", "metadata.google.internal", "metadata.azure.com", "100.100.100.200"}
 
 # Only these log levels are accepted; anything else defaults to "info".
 ALLOWED_LOG_LEVELS: set[str] = {"debug", "info", "warning", "error"}
+
+
+def validate_instance_name(name: str) -> tuple[bool, str]:
+    """Validate a user-supplied instance name.
+
+    Names must be 1-32 chars, start with an alphanumeric character,
+    and may contain letters, digits, spaces, single underscores, dots,
+    and hyphens.  Double underscores are forbidden because they serve
+    as the form-field separator in the settings UI.
+
+    Args:
+        name: The raw instance name string.
+
+    Returns:
+        A ``(valid, error_message)`` tuple.
+    """
+    stripped = name.strip()
+    if not stripped:
+        return (False, "Instance name cannot be empty")
+    if len(stripped) > 32:
+        return (False, "Instance name too long (max 32 characters)")
+    if "__" in stripped:
+        return (False, "Instance name cannot contain double underscores")
+    if not _INSTANCE_NAME_RE.match(stripped):
+        return (False, "Instance name must start with alphanumeric character and use valid characters only")
+    return (True, "")
 
 
 def validate_arr_url(url: str) -> tuple[bool, str]:

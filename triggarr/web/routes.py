@@ -31,7 +31,7 @@ from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import save_state
-from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url
+from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url, validate_instance_name
 
 _PKG_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = _PKG_DIR / "templates"
@@ -42,6 +42,9 @@ templates.env.globals["triggarr_version"] = __version__
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
+
+# Regex for multi-instance form field names: {app}__{instance}__{field}
+INSTANCE_FIELD_RE = re.compile(r"^(radarr|sonarr)__(.+)__(\w+)$")
 
 
 def _sanitize_card_id(raw: str) -> str:
@@ -79,6 +82,22 @@ def _format_duration(seconds: float | None) -> str:
     hours = minutes // 60
     remaining_minutes = minutes % 60
     return f"{hours}h {remaining_minutes}m"
+
+
+def _settings_to_dict(settings: SettingsModel) -> dict:
+    """Convert Settings to a plain dict suitable for TOML serialization.
+
+    Extracts SecretStr values so they serialize as plain strings.
+    """
+    result: dict = {"general": settings.general.model_dump()}
+    for app_name in ("radarr", "sonarr"):
+        instances = getattr(settings, app_name)
+        result[app_name] = {}
+        for inst_name, cfg in instances.items():
+            d = cfg.model_dump()
+            d["api_key"] = cfg.api_key.get_secret_value()
+            result[app_name][inst_name] = d
+    return result
 
 
 @router.get("/health")
@@ -193,31 +212,23 @@ async def dashboard(request: Request) -> HTMLResponse:
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
-    """Render the settings page with pre-filled form and masked API keys.
-
-    For now, shows the first instance per app type (Phase 39 adds
-    multi-instance settings UI).
-    """
+    """Render the settings page with all instances per app type and masked API keys."""
     settings = request.app.state.settings
-    apps = {}
+    apps: dict[str, dict] = {}
     for name in ("radarr", "sonarr"):
         instances = getattr(settings, name)
-        if instances:
-            # Show first instance for settings form (Phase 39: multi-instance editing)
-            first_name = next(iter(instances))
-            cfg = instances[first_name]
-        else:
-            # No instances configured -- show empty defaults
-            from triggarr.models.config import InstanceConfig
-            cfg = InstanceConfig()
-        apps[name] = {
-            "url": cfg.url,
-            "has_api_key": bool(cfg.api_key.get_secret_value()),
-            "enabled": cfg.enabled,
-            "search_interval": cfg.search_interval,
-            "search_missing_count": cfg.search_missing_count,
-            "search_cutoff_count": cfg.search_cutoff_count,
-        }
+        apps[name] = {}
+        for inst_name, cfg in instances.items():
+            apps[name][inst_name] = {
+                "url": cfg.url,
+                "has_api_key": bool(cfg.api_key.get_secret_value()),
+                "enabled": cfg.enabled,
+                "search_interval": cfg.search_interval,
+                "search_missing_count": cfg.search_missing_count,
+                "search_cutoff_count": cfg.search_cutoff_count,
+                "missing_tag": cfg.missing_tag,
+                "cutoff_tag": cfg.cutoff_tag,
+            }
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
@@ -328,62 +339,57 @@ async def save_settings(request: Request) -> RedirectResponse:
         },
     }
 
+    # Parse multi-instance form fields using {app}__{instance}__{field} convention
+    parsed_instances: dict[str, dict[str, dict[str, str]]] = {"radarr": {}, "sonarr": {}}
+    for key in form:
+        match = INSTANCE_FIELD_RE.match(key)
+        if match:
+            app_name, inst_name, field = match.groups()
+            parsed_instances[app_name].setdefault(inst_name, {})[field] = form[key]
+
     for name in ("radarr", "sonarr"):
-        # Get first existing instance's config for key preservation
         current_instances = getattr(current_settings, name)
-        if current_instances:
-            first_inst_name = next(iter(current_instances))
-            current_cfg = current_instances[first_inst_name]
-        else:
-            from triggarr.models.config import InstanceConfig
-            first_inst_name = "Default"
-            current_cfg = InstanceConfig()
-
-        submitted_key = form.get(f"{name}_api_key", "").strip()
-
-        # Validate URL before accepting it
-        url = form.get(f"{name}_url", "").strip()
-        valid, err = validate_arr_url(url)
-        if not valid:
-            logger.warning("{name}: URL rejected -- {err}", name=name.title(), err=err)
-            return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
-
-        # Preserve ALL existing instances; overlay form data onto the first only (BUG-05)
         new_config[name] = {}
-        if current_instances:
-            for existing_name, existing_cfg in current_instances.items():
-                if existing_name == first_inst_name:
-                    new_config[name][first_inst_name] = {
-                        "url": url,
-                        "api_key": submitted_key if submitted_key else existing_cfg.api_key.get_secret_value(),
-                        "enabled": form.get(f"{name}_enabled") == "on",
-                        "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
-                        "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
-                        "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
-                        "missing_tag": existing_cfg.missing_tag,
-                        "cutoff_tag": existing_cfg.cutoff_tag,
-                    }
-                else:
-                    new_config[name][existing_name] = {
-                        "url": existing_cfg.url,
-                        "api_key": existing_cfg.api_key.get_secret_value(),
-                        "enabled": existing_cfg.enabled,
-                        "search_interval": existing_cfg.search_interval,
-                        "search_missing_count": existing_cfg.search_missing_count,
-                        "search_cutoff_count": existing_cfg.search_cutoff_count,
-                        "missing_tag": existing_cfg.missing_tag,
-                        "cutoff_tag": existing_cfg.cutoff_tag,
-                    }
+
+        if parsed_instances[name]:
+            # Multi-instance form data present -- parse all instances
+            for inst_name, fields in parsed_instances[name].items():
+                current_cfg = current_instances.get(inst_name)
+
+                url = fields.get("url", "").strip()
+                valid, err = validate_arr_url(url)
+                if not valid:
+                    logger.warning("{name}/{inst}: URL rejected -- {err}", name=name.title(), inst=inst_name, err=err)
+                    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+
+                submitted_key = fields.get("api_key", "").strip()
+                # Preserve API key when field is empty
+                if not submitted_key and current_cfg:
+                    submitted_key = current_cfg.api_key.get_secret_value()
+
+                new_config[name][inst_name] = {
+                    "url": url,
+                    "api_key": submitted_key,
+                    "enabled": fields.get("enabled") == "on",
+                    "search_interval": safe_int(fields.get("search_interval"), 30, 1, 1440),
+                    "search_missing_count": safe_int(fields.get("search_missing_count"), 5, 0, 100),
+                    "search_cutoff_count": safe_int(fields.get("search_cutoff_count"), 5, 0, 100),
+                    "missing_tag": fields.get("missing_tag", "").strip(),
+                    "cutoff_tag": fields.get("cutoff_tag", "").strip(),
+                }
         else:
-            # No instances configured -- create Default from form data
-            new_config[name][first_inst_name] = {
-                "url": url,
-                "api_key": submitted_key if submitted_key else current_cfg.api_key.get_secret_value(),
-                "enabled": form.get(f"{name}_enabled") == "on",
-                "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
-                "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
-                "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
-            }
+            # No multi-instance form data -- preserve all existing instances unchanged
+            for inst_name, existing_cfg in current_instances.items():
+                new_config[name][inst_name] = {
+                    "url": existing_cfg.url,
+                    "api_key": existing_cfg.api_key.get_secret_value(),
+                    "enabled": existing_cfg.enabled,
+                    "search_interval": existing_cfg.search_interval,
+                    "search_missing_count": existing_cfg.search_missing_count,
+                    "search_cutoff_count": existing_cfg.search_cutoff_count,
+                    "missing_tag": existing_cfg.missing_tag,
+                    "cutoff_tag": existing_cfg.cutoff_tag,
+                }
 
     # Validate BEFORE writing to disk (QUAL-02)
     try:
@@ -480,6 +486,124 @@ async def save_settings(request: Request) -> RedirectResponse:
 
     # Persist state with any new instance entries
     save_state(request.app.state.triggarr_state, state_path)
+
+    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+
+
+@router.get("/api/tags/{app_name}/{instance_name}", response_class=HTMLResponse)
+async def tag_autocomplete(request: Request, app_name: str, instance_name: str) -> HTMLResponse:
+    """Return HTML option elements for tag autocomplete from an *arr instance.
+
+    Used by datalist inputs in the settings form via htmx hx-get on focus.
+    Returns empty HTML if the app/instance is invalid or client unavailable.
+    """
+    if app_name not in ("radarr", "sonarr"):
+        return HTMLResponse("")
+    if len(instance_name) > 64:
+        return HTMLResponse("")
+
+    clients = getattr(request.app.state, f"{app_name}_clients", {})
+    client = clients.get(instance_name)
+    if client is None:
+        return HTMLResponse("")
+
+    try:
+        tags = await client.get_tags()
+        options = "".join(f'<option value="{tag.label}">' for tag in tags)
+        return HTMLResponse(options)
+    except Exception:
+        return HTMLResponse("")
+
+
+@router.post("/api/instance/add", response_model=None)
+async def add_instance(request: Request):
+    """Add a new instance for an app type with default settings.
+
+    Validates the instance name, enforces the max-5-per-app limit,
+    and rejects duplicate names.  On success, writes updated config
+    to TOML and redirects to the settings page.
+    """
+    form = await request.form()
+    app_name = form.get("app_name", "").strip()
+    instance_name = form.get("instance_name", "").strip()
+
+    if app_name not in ("radarr", "sonarr"):
+        return HTMLResponse("Invalid app type", status_code=400)
+
+    valid, err = validate_instance_name(instance_name)
+    if not valid:
+        return HTMLResponse(err, status_code=400)
+
+    settings = request.app.state.settings
+    instances = getattr(settings, app_name)
+
+    if instance_name in instances:
+        return HTMLResponse(f"Instance '{instance_name}' already exists", status_code=400)
+    if len(instances) >= 5:
+        return HTMLResponse("Maximum 5 instances per app type", status_code=400)
+
+    # Add new instance with defaults
+    from triggarr.models.config import InstanceConfig
+
+    instances[instance_name] = InstanceConfig()
+
+    # Write updated config to TOML
+    config_path = request.app.state.config_path
+    config_dict = _settings_to_dict(settings)
+    _atomic_toml_write(config_path, config_dict)
+
+    # Create state entry for the new instance
+    from triggarr.state import _default_instance_state
+
+    triggarr_state = request.app.state.triggarr_state
+    triggarr_state.setdefault(app_name, {})
+    triggarr_state[app_name][instance_name] = _default_instance_state()
+
+    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+
+
+@router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
+async def remove_instance(request: Request, app_name: str, instance_name: str):
+    """Remove an instance from an app type.
+
+    Cleans up the scheduler job, client connection, and state entry.
+    Writes updated config to TOML and redirects to settings page.
+    """
+    if app_name not in ("radarr", "sonarr"):
+        return HTMLResponse("Invalid app type", status_code=400)
+    if len(instance_name) > 64:
+        return HTMLResponse("Instance name too long", status_code=400)
+
+    settings = request.app.state.settings
+    instances = getattr(settings, app_name)
+
+    if instance_name not in instances:
+        return HTMLResponse(f"Instance '{instance_name}' not found", status_code=400)
+
+    # Remove instance from settings
+    del instances[instance_name]
+
+    # Write updated config to TOML
+    config_path = request.app.state.config_path
+    config_dict = _settings_to_dict(settings)
+    _atomic_toml_write(config_path, config_dict)
+
+    # Clean up scheduler job
+    scheduler = request.app.state.scheduler
+    job_id = f"{app_name}_{instance_name}_search"
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+
+    # Clean up client
+    clients_dict = getattr(request.app.state, f"{app_name}_clients", {})
+    client = clients_dict.pop(instance_name, None)
+    if client:
+        await client.close()
+
+    # Clean up state entry
+    triggarr_state = request.app.state.triggarr_state
+    if app_name in triggarr_state:
+        triggarr_state[app_name].pop(instance_name, None)
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
