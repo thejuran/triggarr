@@ -1,8 +1,8 @@
 """Tests for SQLite search history persistence module.
 
 Covers: database init, insert/retrieve, limit, pruning, migration system,
-tracking columns, lifetime_stats, backfill migration, and shared-connection
-signatures.
+tracking columns, lifetime_stats, backfill migration, shared-connection
+signatures, and multi-instance scoping.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import pytest
 
 from triggarr.db import (
     _migrate_v1,
+    get_dashboard_stats,
     get_recent_searches,
     get_schema_version,
     get_search_history,
@@ -366,7 +367,7 @@ async def test_schema_version_tracked(tmp_path):
     """Schema version is tracked and reaches the expected final version."""
     db, db_path = await _init_test_db(tmp_path)
     version = await get_schema_version(db)
-    assert version == 5
+    assert version == 7
     await db.close()
 
 
@@ -726,7 +727,7 @@ async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
 
     # Verify migrations ran to completion (no FileNotFoundError)
     version = await get_schema_version(db)
-    assert version == 5
+    assert version == 7
 
     # Verify no backup file was created (guard skipped the copy)
     backup = db_path.with_suffix(".v0-backup")
@@ -769,4 +770,279 @@ async def test_migration_suppresses_only_operational_error(tmp_path):
     # Verify the table still works correctly
     results = await get_recent_searches(db)
     assert isinstance(results, list)
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Multi-instance scoping tests (S05)
+# ---------------------------------------------------------------------------
+
+
+async def test_insert_with_instance_id(tmp_path):
+    """insert_search_entry stores instance_id in the row."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="4K")
+    await insert_search_entry(db, "Radarr", "missing", "Movie B", instance_id="1080p")
+    await insert_search_entry(db, "Radarr", "missing", "Movie C")  # default
+
+    async with db.execute("SELECT item_name, instance_id FROM search_history ORDER BY id") as cursor:
+        rows = await cursor.fetchall()
+    assert rows[0] == ("Movie A", "4K")
+    assert rows[1] == ("Movie B", "1080p")
+    assert rows[2] == ("Movie C", "Default")
+    await db.close()
+
+
+async def test_get_recent_searches_instance_filter(tmp_path):
+    """get_recent_searches with instance_id returns only matching entries."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="4K")
+    await insert_search_entry(db, "Radarr", "missing", "Movie B", instance_id="1080p")
+    await insert_search_entry(db, "Sonarr", "missing", "Show C", instance_id="4K")
+
+    results = await get_recent_searches(db, instance_id="4K")
+    assert len(results) == 2
+    names = {r["name"] for r in results}
+    assert names == {"Movie A", "Show C"}
+    assert all(r["instance_id"] == "4K" for r in results)
+
+    # Without filter returns all
+    all_results = await get_recent_searches(db)
+    assert len(all_results) == 3
+    await db.close()
+
+
+async def test_get_recent_searches_includes_instance_id(tmp_path):
+    """get_recent_searches includes instance_id in returned dicts."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="Anime")
+
+    results = await get_recent_searches(db)
+    assert len(results) == 1
+    assert results[0]["instance_id"] == "Anime"
+    await db.close()
+
+
+async def test_get_search_history_instance_filter(tmp_path):
+    """get_search_history with instance_filter returns only matching instances."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="4K")
+    await insert_search_entry(db, "Radarr", "missing", "Movie B", instance_id="1080p")
+    await insert_search_entry(db, "Sonarr", "missing", "Show C", instance_id="4K")
+
+    result = await get_search_history(db, instance_filter=["4K"])
+    assert result["total"] == 2
+    assert all(e["instance_id"] == "4K" for e in result["entries"])
+
+    # Multiple instance filter
+    result = await get_search_history(db, instance_filter=["4K", "1080p"])
+    assert result["total"] == 3
+    await db.close()
+
+
+async def test_get_search_history_combined_instance_and_app_filter(tmp_path):
+    """get_search_history combines instance_filter with app_filter."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="4K")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", instance_id="4K")
+    await insert_search_entry(db, "Radarr", "missing", "Movie C", instance_id="1080p")
+
+    result = await get_search_history(db, app_filter=["Radarr"], instance_filter=["4K"])
+    assert result["total"] == 1
+    assert result["entries"][0]["name"] == "Movie A"
+    await db.close()
+
+
+async def test_get_search_history_entries_include_instance_id(tmp_path):
+    """get_search_history entries include instance_id key."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="TestInst")
+
+    result = await get_search_history(db)
+    assert result["entries"][0]["instance_id"] == "TestInst"
+    await db.close()
+
+
+async def test_get_trackable_entries_instance_filter(tmp_path):
+    """get_trackable_entries with instance_id returns only matching entries."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1, instance_id="4K",
+    )
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie B", outcome="searched", item_id=2, instance_id="1080p",
+    )
+
+    results = await get_trackable_entries(db, instance_id="4K")
+    assert len(results) == 1
+    assert results[0]["item_id"] == 1
+    assert results[0]["instance_id"] == "4K"
+
+    # Without filter returns all
+    all_results = await get_trackable_entries(db)
+    assert len(all_results) == 2
+    await db.close()
+
+
+async def test_get_trackable_entries_includes_instance_id(tmp_path):
+    """get_trackable_entries includes instance_id in returned dicts."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1, instance_id="Anime",
+    )
+
+    results = await get_trackable_entries(db)
+    assert len(results) == 1
+    assert results[0]["instance_id"] == "Anime"
+    await db.close()
+
+
+async def test_update_outcome_and_stats_instance_scoped(tmp_path):
+    """update_outcome_and_stats increments the correct instance's lifetime stats."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    # Insert entries for two instances
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1, instance_id="4K",
+    )
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie B", outcome="searched", item_id=2, instance_id="1080p",
+    )
+
+    entries = await get_trackable_entries(db)
+    entry_4k = next(e for e in entries if e["instance_id"] == "4K")
+    entry_1080p = next(e for e in entries if e["instance_id"] == "1080p")
+
+    # Resolve 4K entry
+    await update_outcome_and_stats(
+        db, entry_4k["id"], "grabbed", "grabbed: test",
+        app="Radarr", queue_type="missing", instance_id="4K",
+        stat_increments={"movies_found": 1},
+    )
+    # Resolve 1080p entry
+    await update_outcome_and_stats(
+        db, entry_1080p["id"], "grabbed", "grabbed: test",
+        app="Radarr", queue_type="missing", instance_id="1080p",
+        stat_increments={"movies_found": 3},
+    )
+
+    # Verify per-instance stats
+    async with db.execute(
+        "SELECT instance_id, movies_found FROM lifetime_stats WHERE app = 'Radarr' ORDER BY instance_id",
+    ) as cursor:
+        rows = await cursor.fetchall()
+
+    stats = {row[0]: row[1] for row in rows}
+    assert stats["4K"] == 1
+    assert stats["1080p"] == 3
+    await db.close()
+
+
+async def test_get_dashboard_stats_instance_scoped(tmp_path):
+    """get_dashboard_stats with instance_id returns stats for that instance only."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    # Insert grabbed entry for 4K and unresolved for 1080p
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1, instance_id="4K",
+    )
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie B", outcome="searched", item_id=2, instance_id="1080p",
+    )
+
+    # Resolve 4K as grabbed
+    entries = await get_trackable_entries(db, instance_id="4K")
+    await update_outcome_and_stats(
+        db, entries[0]["id"], "grabbed", "grabbed: test",
+        app="Radarr", queue_type="missing", instance_id="4K",
+        stat_increments={"movies_found": 1},
+    )
+
+    # Resolve 1080p as unresolved
+    entries = await get_trackable_entries(db, instance_id="1080p")
+    await update_outcome_and_stats(
+        db, entries[0]["id"], "unresolved", "no grabs",
+        app="Radarr", queue_type="missing", instance_id="1080p",
+    )
+
+    # 4K stats: 100% grab rate, 1 movie found
+    stats_4k = await get_dashboard_stats(db, instance_id="4K")
+    assert stats_4k["radarr_rate"] == 100.0
+    assert stats_4k["movies_found"] == 1
+
+    # 1080p stats: 0% grab rate, 0 movies found
+    stats_1080p = await get_dashboard_stats(db, instance_id="1080p")
+    assert stats_1080p["radarr_rate"] == 0.0
+    assert stats_1080p["movies_found"] == 0
+
+    # Overall stats: 50% grab rate, 1 movie found
+    stats_all = await get_dashboard_stats(db)
+    assert stats_all["radarr_rate"] == pytest.approx(50.0)
+    assert stats_all["movies_found"] == 1
+    await db.close()
+
+
+async def test_migration_v6_adds_instance_id_column(tmp_path):
+    """Migration v6 adds instance_id column with 'Default' as default value."""
+    db, db_path = await _init_test_db(tmp_path)
+    # Existing entries from init_db should have 'Default' as instance_id
+    await insert_search_entry(db, "Radarr", "missing", "Pre-migration Movie")
+
+    async with db.execute("SELECT instance_id FROM search_history") as cursor:
+        rows = await cursor.fetchall()
+    assert all(row[0] == "Default" for row in rows)
+
+    # Verify index exists
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_search_history_instance_id'",
+    ) as cursor:
+        idx = await cursor.fetchone()
+    assert idx is not None
+    await db.close()
+
+
+async def test_migration_v7_lifetime_stats_composite_key(tmp_path):
+    """Migration v7 rebuilds lifetime_stats with (app, instance_id) composite key."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    # Default rows should exist
+    async with db.execute(
+        "SELECT app, instance_id FROM lifetime_stats ORDER BY app",
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert len(rows) == 2
+    assert rows[0] == ("Radarr", "Default")
+    assert rows[1] == ("Sonarr", "Default")
+
+    # Can insert new instance rows without violating PK
+    now = "2026-01-01T00:00:00Z"
+    await db.execute(
+        "INSERT INTO lifetime_stats (app, instance_id, last_reset_at) VALUES (?, ?, ?)",
+        ("Radarr", "4K", now),
+    )
+    await db.execute(
+        "INSERT INTO lifetime_stats (app, instance_id, last_reset_at) VALUES (?, ?, ?)",
+        ("Radarr", "1080p", now),
+    )
+    await db.commit()
+
+    async with db.execute("SELECT COUNT(*) FROM lifetime_stats WHERE app = 'Radarr'") as cursor:
+        count = (await cursor.fetchone())[0]
+    assert count == 3  # Default + 4K + 1080p
+    await db.close()
+
+
+async def test_row_factory_reset_after_instance_scoped_queries(tmp_path):
+    """row_factory is reset to None after instance-scoped query functions."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="4K")
+
+    await get_recent_searches(db, instance_id="4K")
+    assert db.row_factory is None, "row_factory not reset after instance-scoped get_recent_searches"
+
+    await get_trackable_entries(db, instance_id="4K")
+    assert db.row_factory is None, "row_factory not reset after instance-scoped get_trackable_entries"
+
+    await get_dashboard_stats(db, instance_id="4K")
+    assert db.row_factory is None, "row_factory not reset after instance-scoped get_dashboard_stats"
     await db.close()

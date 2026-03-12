@@ -385,6 +385,7 @@ async def run_radarr_cycle(
                 db, "Radarr", "missing", movie["title"],
                 outcome="searched", detail="search triggered",
                 item_id=movie["id"],
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             logger.info("Radarr: Searched {title} (missing)", title=movie["title"])
@@ -399,6 +400,7 @@ async def run_radarr_cycle(
                 db, "Radarr", "missing", movie.get("title", "unknown"),
                 outcome="failed", detail=_sanitize_exc(exc),
                 item_id=movie.get("id"),
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
@@ -422,6 +424,7 @@ async def run_radarr_cycle(
                 db, "Radarr", "cutoff", movie["title"],
                 outcome="searched", detail="search triggered",
                 item_id=movie["id"],
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             logger.info("Radarr: Searched {title} (cutoff)", title=movie["title"])
@@ -436,6 +439,7 @@ async def run_radarr_cycle(
                 db, "Radarr", "cutoff", movie.get("title", "unknown"),
                 outcome="failed", detail=_sanitize_exc(exc),
                 item_id=movie.get("id"),
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
@@ -578,6 +582,7 @@ async def run_sonarr_cycle(
                 item_id=season["seriesId"],
                 season_number=season["seasonNumber"],
                 missing_count=season["episode_count"],
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             logger.info("Sonarr: Searched {name} (missing)", name=season["display_name"])
@@ -594,6 +599,7 @@ async def run_sonarr_cycle(
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
@@ -621,6 +627,7 @@ async def run_sonarr_cycle(
                 item_id=season["seriesId"],
                 season_number=season["seasonNumber"],
                 missing_count=season["episode_count"],
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             logger.info("Sonarr: Searched {name} (cutoff)", name=season["display_name"])
@@ -637,6 +644,7 @@ async def run_sonarr_cycle(
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
+                instance_id=instance_name,
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1

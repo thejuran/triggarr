@@ -127,6 +127,45 @@ async def _migrate_v5(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
+async def _migrate_v6(db: aiosqlite.Connection) -> None:
+    """Add instance_id column to search_history for multi-instance scoping."""
+    with contextlib.suppress(sqlite3.OperationalError):
+        await db.execute("ALTER TABLE search_history ADD COLUMN instance_id TEXT DEFAULT 'Default'")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_search_history_instance_id "
+        "ON search_history(instance_id, timestamp DESC)"
+    )
+    await db.commit()
+
+
+async def _migrate_v7(db: aiosqlite.Connection) -> None:
+    """Rebuild lifetime_stats with composite (app, instance_id) primary key."""
+    # 1. Create new table with composite key
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS lifetime_stats_new (
+            app TEXT NOT NULL,
+            instance_id TEXT NOT NULL DEFAULT 'Default',
+            movies_found INTEGER NOT NULL DEFAULT 0,
+            movies_updated INTEGER NOT NULL DEFAULT 0,
+            episodes_found INTEGER NOT NULL DEFAULT 0,
+            episodes_updated INTEGER NOT NULL DEFAULT 0,
+            last_reset_at TEXT NOT NULL,
+            PRIMARY KEY (app, instance_id)
+        )
+    """)
+    # 2. Copy existing rows with instance_id='Default'
+    await db.execute("""
+        INSERT OR IGNORE INTO lifetime_stats_new
+            (app, instance_id, movies_found, movies_updated, episodes_found, episodes_updated, last_reset_at)
+        SELECT app, 'Default', movies_found, movies_updated, episodes_found, episodes_updated, last_reset_at
+        FROM lifetime_stats
+    """)
+    # 3. Drop old table, rename new
+    await db.execute("DROP TABLE lifetime_stats")
+    await db.execute("ALTER TABLE lifetime_stats_new RENAME TO lifetime_stats")
+    await db.commit()
+
+
 # Register migrations after functions are defined
 MIGRATIONS = {
     1: ("add outcome and detail columns", _migrate_v1),
@@ -134,6 +173,8 @@ MIGRATIONS = {
     3: ("create lifetime_stats table", _migrate_v3),
     4: ("backfill existing rows as unresolved", _migrate_v4),
     5: ("add resolved_at column for time-to-grab", _migrate_v5),
+    6: ("add instance_id to search_history", _migrate_v6),
+    7: ("rebuild lifetime_stats with composite key", _migrate_v7),
 }
 
 
@@ -183,6 +224,7 @@ async def insert_search_entry(
     item_id: int | None = None,
     season_number: int | None = None,
     missing_count: int | None = None,
+    instance_id: str = "Default",
     max_rows: int = 1000,
 ) -> None:
     """Insert a search log entry and prune resolved rows beyond *max_rows*.
@@ -197,14 +239,15 @@ async def insert_search_entry(
         item_id: *arr item ID for tracking correlation.
         season_number: Season number (Sonarr only).
         missing_count: Number of missing episodes at search time (Sonarr only).
+        instance_id: Instance name for multi-instance scoping.
         max_rows: Maximum resolved rows to keep (pending rows are exempt).
     """
     timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     await db.execute(
         "INSERT INTO search_history "
-        "(timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, missing_count) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, missing_count),
+        "(timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, missing_count, instance_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, missing_count, instance_id),
     )
     # Tracking-aware pruning (DEBT-03): only prune resolved rows, preserve pending (outcome='searched')
     await db.execute(
@@ -222,24 +265,35 @@ async def insert_search_entry(
     await db.commit()
 
 
-async def get_recent_searches(db: aiosqlite.Connection, limit: int = 50) -> list[dict]:
+async def get_recent_searches(
+    db: aiosqlite.Connection, limit: int = 50, *, instance_id: str | None = None,
+) -> list[dict]:
     """Return the most recent search history entries.
 
     Args:
         db: Open aiosqlite connection.
         limit: Maximum number of entries to return.
+        instance_id: If set, filter to entries from this instance only.
 
     Returns:
-        List of dicts with keys: name, timestamp, app, queue_type, outcome, detail.
+        List of dicts with keys: name, timestamp, app, queue_type, outcome, detail, instance_id.
         Ordered newest-first (by id DESC).
     """
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(
-            "SELECT timestamp, app, queue_type, item_name, outcome, detail "
-            "FROM search_history ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ) as cursor:
+        if instance_id is not None:
+            query = (
+                "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+                "FROM search_history WHERE instance_id = ? ORDER BY id DESC LIMIT ?"
+            )
+            params: tuple = (instance_id, limit)
+        else:
+            query = (
+                "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+                "FROM search_history ORDER BY id DESC LIMIT ?"
+            )
+            params = (limit,)
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
     finally:
         db.row_factory = None
@@ -251,6 +305,7 @@ async def get_recent_searches(db: aiosqlite.Connection, limit: int = 50) -> list
             "queue_type": row["queue_type"],
             "outcome": row["outcome"] or "searched",
             "detail": row["detail"] or "",
+            "instance_id": row["instance_id"] or "Default",
         }
         for row in rows
     ]
@@ -264,6 +319,7 @@ async def get_search_history(
     app_filter: list[str] | None = None,
     queue_filter: list[str] | None = None,
     outcome_filter: list[str] | None = None,
+    instance_filter: list[str] | None = None,
     search_text: str = "",
 ) -> dict:
     """Return paginated, filtered search history entries.
@@ -275,6 +331,7 @@ async def get_search_history(
         app_filter: Filter on app column (e.g. ["Radarr", "Sonarr"]).
         queue_filter: Filter on queue_type column (e.g. ["missing", "cutoff"]).
         outcome_filter: Filter on outcome column (e.g. ["searched", "failed"]).
+        instance_filter: Filter on instance_id column (e.g. ["4K", "Default"]).
         search_text: Case-insensitive substring match on item_name.
 
     Returns:
@@ -303,6 +360,11 @@ async def get_search_history(
         conditions.append(f"COALESCE(outcome, 'searched') IN ({placeholders})")
         params.extend(outcome_filter)
 
+    if instance_filter:
+        placeholders = ", ".join("?" for _ in instance_filter)
+        conditions.append(f"instance_id IN ({placeholders})")
+        params.extend(instance_filter)
+
     if search_text:
         conditions.append("item_name LIKE ?")
         params.append(f"%{search_text}%")
@@ -322,7 +384,7 @@ async def get_search_history(
         # Paginated results
         offset = (page - 1) * per_page
         async with db.execute(
-            f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail "
+            f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail, instance_id "
             f"FROM search_history{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
             [*params, per_page, offset],
         ) as cursor:
@@ -339,6 +401,7 @@ async def get_search_history(
             "queue_type": row["queue_type"],
             "outcome": row["outcome"] or "searched",
             "detail": row["detail"] or "",
+            "instance_id": row["instance_id"] or "Default",
         }
         for row in rows
     ]
@@ -352,25 +415,39 @@ async def get_search_history(
     }
 
 
-async def get_trackable_entries(db: aiosqlite.Connection) -> list[dict]:
+async def get_trackable_entries(
+    db: aiosqlite.Connection, *, instance_id: str | None = None,
+) -> list[dict]:
     """Return search history entries eligible for tracking resolution.
 
     Finds rows with outcome ``'searched'`` or ``'partial'`` that have a
     non-null ``item_id`` (entries without an item_id cannot be correlated
     with grab events).
 
+    Args:
+        db: Open aiosqlite connection.
+        instance_id: If set, filter to entries from this instance only.
+
     Returns:
         List of dicts ordered by ``id ASC`` (oldest first) with keys:
-        id, app, queue_type, item_id, season_number, missing_count, timestamp.
+        id, app, queue_type, item_id, season_number, missing_count, timestamp,
+        outcome, instance_id.
     """
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(
-            "SELECT id, app, queue_type, item_id, season_number, missing_count, timestamp, outcome "
+        base = (
+            "SELECT id, app, queue_type, item_id, season_number, missing_count, "
+            "timestamp, outcome, instance_id "
             "FROM search_history "
-            "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
-            "ORDER BY id ASC",
-        ) as cursor:
+            "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL"
+        )
+        if instance_id is not None:
+            query = f"{base} AND instance_id = ? ORDER BY id ASC"
+            params: tuple = (instance_id,)
+        else:
+            query = f"{base} ORDER BY id ASC"
+            params = ()
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
     finally:
         db.row_factory = None
@@ -384,6 +461,7 @@ async def get_trackable_entries(db: aiosqlite.Connection) -> list[dict]:
             "missing_count": row["missing_count"],
             "timestamp": row["timestamp"],
             "outcome": row["outcome"],
+            "instance_id": row["instance_id"] or "Default",
         }
         for row in rows
     ]
@@ -402,6 +480,7 @@ async def update_outcome_and_stats(
     *,
     app: str,
     queue_type: str,
+    instance_id: str = "Default",
     stat_increments: dict[str, int] | None = None,
 ) -> None:
     """Atomically update a search entry's outcome and increment lifetime stats.
@@ -416,6 +495,7 @@ async def update_outcome_and_stats(
         detail: Human-readable detail string.
         app: Application name for lifetime_stats lookup.
         queue_type: Queue type (unused in SQL, kept for caller convenience/logging).
+        instance_id: Instance name for lifetime_stats composite key lookup.
         stat_increments: Optional mapping of column name to increment value,
             e.g. ``{"movies_found": 1}``.  Only columns in lifetime_stats are
             allowed; a ``ValueError`` is raised for unknown column names.
@@ -437,21 +517,27 @@ async def update_outcome_and_stats(
         (outcome, detail, now, history_id),
     )
 
-    # 2. Increment lifetime stats (if any)
+    # 2. Increment lifetime stats (if any) using composite key (app, instance_id)
     if stat_increments:
-        set_parts = [f"{col} = {col} + ?" for col in stat_increments]
-        values = [*stat_increments.values(), app]
+        # Ensure the stats row exists for this app+instance combo
         await db.execute(
-            f"UPDATE lifetime_stats SET {', '.join(set_parts)} WHERE app = ?",  # noqa: S608
+            "INSERT OR IGNORE INTO lifetime_stats (app, instance_id, last_reset_at) VALUES (?, ?, ?)",
+            (app, instance_id, now),
+        )
+        set_parts = [f"{col} = {col} + ?" for col in stat_increments]
+        values = [*stat_increments.values(), app, instance_id]
+        await db.execute(
+            f"UPDATE lifetime_stats SET {', '.join(set_parts)} WHERE app = ? AND instance_id = ?",  # noqa: S608
             values,
         )
 
     # 3. Single commit for the whole transaction
     await db.commit()
     logger.debug(
-        "Updated history_id={hid} outcome={out} stats={stats}",
+        "Updated history_id={hid} outcome={out} instance={inst} stats={stats}",
         hid=history_id,
         out=outcome,
+        inst=instance_id,
         stats=stat_increments or {},
     )
 
@@ -489,14 +575,25 @@ async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -
     return count
 
 
-async def get_dashboard_stats(db: aiosqlite.Connection) -> dict:
+async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | None = None) -> dict:
     """Compute aggregate dashboard statistics from search_history and lifetime_stats.
+
+    Args:
+        db: Open aiosqlite connection.
+        instance_id: If set, scope stats to this instance only.
 
     Returns:
         Dict with keys: overall_rate, radarr_rate, sonarr_rate, movies_found,
         movies_updated, episodes_found, episodes_updated, avg_time_to_grab_seconds.
         Rate values are percentages (0-100) or None if no data.
     """
+    # Build optional instance filter clause
+    inst_clause = ""
+    inst_params: tuple = ()
+    if instance_id is not None:
+        inst_clause = " AND instance_id = ?"
+        inst_params = (instance_id,)
+
     # 1. Effectiveness: grab rate per app
     db.row_factory = aiosqlite.Row
     try:
@@ -505,8 +602,9 @@ async def get_dashboard_stats(db: aiosqlite.Connection) -> dict:
             "SUM(CASE WHEN outcome IN ('grabbed', 'partial') THEN 1 ELSE 0 END) AS grabbed_count, "
             "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
             "FROM search_history "
-            "WHERE outcome IS NOT NULL "
+            f"WHERE outcome IS NOT NULL{inst_clause} "
             "GROUP BY app",
+            inst_params,
         ) as cursor:
             effectiveness_rows = await cursor.fetchall()
     finally:
@@ -540,9 +638,16 @@ async def get_dashboard_stats(db: aiosqlite.Connection) -> dict:
 
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute(
-            "SELECT movies_found, movies_updated, episodes_found, episodes_updated FROM lifetime_stats",
-        ) as cursor:
+        if instance_id is not None:
+            stats_query = (
+                "SELECT movies_found, movies_updated, episodes_found, episodes_updated "
+                "FROM lifetime_stats WHERE instance_id = ?"
+            )
+            stats_params: tuple = (instance_id,)
+        else:
+            stats_query = "SELECT movies_found, movies_updated, episodes_found, episodes_updated FROM lifetime_stats"
+            stats_params = ()
+        async with db.execute(stats_query, stats_params) as cursor:
             stats_rows = await cursor.fetchall()
     finally:
         db.row_factory = None
@@ -557,7 +662,8 @@ async def get_dashboard_stats(db: aiosqlite.Connection) -> dict:
     async with db.execute(
         "SELECT AVG((julianday(resolved_at) - julianday(timestamp)) * 86400) AS avg_seconds "
         "FROM search_history "
-        "WHERE outcome = 'grabbed' AND resolved_at IS NOT NULL",
+        f"WHERE outcome = 'grabbed' AND resolved_at IS NOT NULL{inst_clause}",
+        inst_params,
     ) as cursor:
         ttg_row = await cursor.fetchone()
 

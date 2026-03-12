@@ -110,6 +110,7 @@ async def run_tracking_check(
                 detail,
                 app=app,
                 queue_type=entry["queue_type"],
+                instance_id=entry.get("instance_id", "Default"),
                 stat_increments=stat_increments,
             )
             counts[outcome] = counts.get(outcome, 0) + 1

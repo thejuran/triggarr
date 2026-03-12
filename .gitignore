@@ -14,5 +14,8 @@ build/
 .vscode/
 *.swp
 
+# GSD activity logs
+.gsd/activity/
+
 # OS
 .DS_Store
