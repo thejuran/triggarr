@@ -7,15 +7,12 @@ and partial endpoints for htmx fragment updates.
 
 from __future__ import annotations
 
-import contextlib
 import os
-import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pydantic
-import tomli_w
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -24,6 +21,7 @@ from loguru import logger
 from triggarr import __version__
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
+from triggarr.config import _atomic_toml_write
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
@@ -333,17 +331,42 @@ async def save_settings(request: Request) -> RedirectResponse:
             logger.warning("{name}: URL rejected -- {err}", name=name.title(), err=err)
             return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
-        # Save as single instance under existing name (Phase 39: multi-instance editing)
-        new_config[name] = {
-            first_inst_name: {
+        # Preserve ALL existing instances; overlay form data onto the first only (BUG-05)
+        new_config[name] = {}
+        if current_instances:
+            for existing_name, existing_cfg in current_instances.items():
+                if existing_name == first_inst_name:
+                    new_config[name][first_inst_name] = {
+                        "url": url,
+                        "api_key": submitted_key if submitted_key else existing_cfg.api_key.get_secret_value(),
+                        "enabled": form.get(f"{name}_enabled") == "on",
+                        "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
+                        "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
+                        "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
+                        "missing_tag": existing_cfg.missing_tag,
+                        "cutoff_tag": existing_cfg.cutoff_tag,
+                    }
+                else:
+                    new_config[name][existing_name] = {
+                        "url": existing_cfg.url,
+                        "api_key": existing_cfg.api_key.get_secret_value(),
+                        "enabled": existing_cfg.enabled,
+                        "search_interval": existing_cfg.search_interval,
+                        "search_missing_count": existing_cfg.search_missing_count,
+                        "search_cutoff_count": existing_cfg.search_cutoff_count,
+                        "missing_tag": existing_cfg.missing_tag,
+                        "cutoff_tag": existing_cfg.cutoff_tag,
+                    }
+        else:
+            # No instances configured -- create Default from form data
+            new_config[name][first_inst_name] = {
                 "url": url,
                 "api_key": submitted_key if submitted_key else current_cfg.api_key.get_secret_value(),
                 "enabled": form.get(f"{name}_enabled") == "on",
                 "search_interval": safe_int(form.get(f"{name}_search_interval"), 30, 1, 1440),
                 "search_missing_count": safe_int(form.get(f"{name}_search_missing_count"), 5, 0, 100),
                 "search_cutoff_count": safe_int(form.get(f"{name}_search_cutoff_count"), 5, 0, 100),
-            },
-        }
+            }
 
     # Validate BEFORE writing to disk (QUAL-02)
     try:
@@ -352,18 +375,8 @@ async def save_settings(request: Request) -> RedirectResponse:
         logger.warning("Invalid settings rejected: {exc}", exc=exc)
         return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
-    # Config is valid -- write to disk
-    content = tomli_w.dumps(new_config)
-    with tempfile.NamedTemporaryFile(mode="w", dir=config_path.parent, suffix=".tmp", delete=False) as tmp:
-        tmp.write(content)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-    try:
-        os.replace(tmp.name, str(config_path))
-    except OSError:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp.name)
-        raise
+    # Config is valid -- write to disk using shared atomic helper (BUG-05 dedup)
+    _atomic_toml_write(config_path, new_config)
     os.chmod(config_path, 0o600)
     request.app.state.settings = new_settings
 
@@ -437,7 +450,19 @@ async def save_settings(request: Request) -> RedirectResponse:
                     interval=new_cfg.search_interval,
                 )
 
+        # Ensure state entry exists for newly enabled instances (BUG-03)
+        triggarr_state = request.app.state.triggarr_state
+        triggarr_state.setdefault(name, {})
+        for inst_name, new_cfg in new_instances.items():
+            if new_cfg.enabled and inst_name not in triggarr_state[name]:
+                from triggarr.state import _default_instance_state
+
+                triggarr_state[name][inst_name] = _default_instance_state()
+
         setattr(request.app.state, f"{name}_clients", clients_dict)
+
+    # Persist state with any new instance entries
+    save_state(request.app.state.triggarr_state, state_path)
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 

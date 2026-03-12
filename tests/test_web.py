@@ -7,7 +7,6 @@ key preservation, PRG redirect), htmx partials, and search-now validation.
 from __future__ import annotations
 
 import asyncio
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -769,20 +768,10 @@ def test_format_duration_hours():
 # ---------------------------------------------------------------------------
 
 
-def test_save_settings_cleans_temp_on_replace_failure(test_app, tmp_path):
-    """POST /settings cleans up temp file when os.replace raises OSError (HARDEN-03)."""
-    # Track temp files created in the config directory
-    created_temps: list[str] = []
-    original_named_temp = __import__("tempfile").NamedTemporaryFile
-
-    def tracking_temp(**kwargs):
-        result = original_named_temp(**kwargs)
-        created_temps.append(result.name)
-        return result
-
+def test_save_settings_propagates_write_failure(test_app, tmp_path):
+    """POST /settings returns 500 when _atomic_toml_write raises OSError (HARDEN-03)."""
     with TestClient(test_app, raise_server_exceptions=False) as tc, \
-         patch("triggarr.web.routes.tempfile.NamedTemporaryFile", side_effect=tracking_temp), \
-         patch("triggarr.web.routes.os.replace", side_effect=OSError("disk full")):
+         patch("triggarr.web.routes._atomic_toml_write", side_effect=OSError("disk full")):
         response = tc.post(
             "/settings",
             data={
@@ -803,11 +792,6 @@ def test_save_settings_cleans_temp_on_replace_failure(test_app, tmp_path):
         )
     # The OSError should propagate (500 error)
     assert response.status_code == 500
-
-    # Verify temp files were cleaned up (don't exist on disk)
-    assert len(created_temps) > 0, "At least one temp file should have been created"
-    for temp_path in created_temps:
-        assert not os.path.exists(temp_path), f"Temp file {temp_path} should have been cleaned up"
 
 
 # ---------------------------------------------------------------------------
@@ -985,8 +969,6 @@ def test_app_card_rejects_long_instance_name(client):
 
 def test_search_now_accepts_valid_length_instance_name(client, test_app):
     """POST /api/search-now with instance_name <= 64 chars proceeds normally (BUG-11)."""
-    from unittest.mock import AsyncMock, patch
-
     valid_name = "A" * 64
     # The instance won't be found in enabled instances, so we expect 400 "Instance not enabled"
     # but NOT "Instance name too long"
@@ -1131,7 +1113,8 @@ def test_save_settings_preserves_tag_fields(test_app, tmp_path):
 def test_save_settings_uses_atomic_toml_write(test_app, tmp_path):
     """POST /settings writes config using _atomic_toml_write, not manual tempfile (BUG-05 dedup)."""
     with TestClient(test_app) as tc, \
-         patch("triggarr.web.routes._atomic_toml_write") as mock_write:
+         patch("triggarr.web.routes._atomic_toml_write") as mock_write, \
+         patch("triggarr.web.routes.os.chmod"):
         tc.post(
             "/settings",
             data={
