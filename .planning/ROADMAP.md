@@ -91,8 +91,8 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 35: Client Registry & Tag Resolution** - Dynamic client pool with per-cycle tag name-to-ID resolution (completed 2026-03-11)
 - [x] **Phase 36: Search Engine & Tag Filtering** - Tag-based item filtering in the search pipeline (completed 2026-03-11)
 - [x] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats (completed 2026-03-11, via GSD slice S05)
-- [x] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation (completed 2026-03-11, via GSD slice S06)
-- [x] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (completed 2026-03-11, via GSD slice S07)
+- [ ] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation (partial via GSD slice S06 — INST-06 only works for first instance)
+- [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (partial via GSD slice S07 — OBS-01/OBS-02/VER-01 done; INST-05/INST-07/TAG-05/TAG-06/OBS-03/VER-02 missing)
 
 ## Phase Details
 
@@ -209,6 +209,6 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 35. Client Registry & Tag Resolution | 1/1 | Complete    | 2026-03-11 | - |
 | 36. Search Engine & Tag Filtering | 2/2 | Complete    | 2026-03-11 | - |
 | 37. Database Schema & Instance Scoping | v2.3 | 1/1 (S05) | Complete | 2026-03-11 |
-| 38. Scheduler & Tracking Wiring | v2.3 | 1/1 (S06) | Complete | 2026-03-11 |
-| 39. Web UI Integration | v2.3 | 1/1 (S07) | Complete | 2026-03-11 |
+| 38. Scheduler & Tracking Wiring | v2.3 | 1/1 (S06) | Partial | - |
+| 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
