@@ -1562,3 +1562,55 @@ async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
     # Tag not found -> fail-open, all seasons searched
     assert client.search_season.call_count == 2
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# BUG-02: engine.py KeyError -- setdefault guard for missing instance state
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_cycle_missing_instance_state_no_keyerror(tmp_path):
+    """run_radarr_cycle with instance_name NOT in state does NOT raise KeyError (BUG-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+
+    # State has radarr key but NO entry for "NewInstance"
+    state = _default_state()  # radarr: {}, sonarr: {}
+    instance_config = _cycle_instance_config()
+    settings = _cycle_settings()
+
+    # This should NOT raise KeyError
+    result = await run_radarr_cycle(client, state, "NewInstance", instance_config, settings, db)
+
+    # Should have created state entry with defaults
+    assert "NewInstance" in result["radarr"]
+    assert result["radarr"]["NewInstance"]["missing_cursor"] == 0
+    await db.close()
+
+
+async def test_sonarr_cycle_missing_instance_state_no_keyerror(tmp_path):
+    """run_sonarr_cycle with instance_name NOT in state does NOT raise KeyError (BUG-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+
+    # State has sonarr key but NO entry for "NewInstance"
+    state = _default_state()
+    instance_config = _cycle_instance_config()
+    settings = _cycle_settings()
+
+    # This should NOT raise KeyError
+    result = await run_sonarr_cycle(client, state, "NewInstance", instance_config, settings, db)
+
+    assert "NewInstance" in result["sonarr"]
+    assert result["sonarr"]["NewInstance"]["missing_cursor"] == 0
+    await db.close()

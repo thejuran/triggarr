@@ -275,3 +275,68 @@ async def test_sonarr_version_detection_failure() -> None:
 
     # Connection still validated successfully
     assert results["sonarr"] is True
+
+
+# ---------------------------------------------------------------------------
+# BUG-01: validate_connections overwrites results -- should key by instance
+# ---------------------------------------------------------------------------
+
+
+def _make_multi_instance_settings(
+    radarr_count: int = 2,
+    sonarr_count: int = 2,
+) -> Settings:
+    """Build Settings with multiple enabled instances per app type."""
+    radarr_instances = {}
+    for i in range(radarr_count):
+        name = "Default" if i == 0 else f"Instance{i}"
+        radarr_instances[name] = InstanceConfig(
+            url=f"http://radarr{i}:7878",
+            api_key=f"radarr-key-{i}",
+            enabled=True,
+        )
+    sonarr_instances = {}
+    for i in range(sonarr_count):
+        name = "Default" if i == 0 else f"Instance{i}"
+        sonarr_instances[name] = InstanceConfig(
+            url=f"http://sonarr{i}:8989",
+            api_key=f"sonarr-key-{i}",
+            enabled=True,
+        )
+    return Settings(radarr=radarr_instances, sonarr=sonarr_instances)
+
+
+async def test_validate_connections_multi_radarr_returns_both() -> None:
+    """validate_connections with 2 enabled Radarr instances returns results for both (BUG-01)."""
+    settings = _make_multi_instance_settings(radarr_count=2, sonarr_count=0)
+
+    with patch("triggarr.startup.RadarrClient") as MockRadarrCls:
+        mock_client = AsyncMock()
+        mock_client.validate_connection = AsyncMock(return_value=True)
+        mock_client.close = AsyncMock()
+        MockRadarrCls.return_value = mock_client
+
+        results = await validate_connections(settings)
+
+    # Should have TWO entries, keyed by instance name
+    radarr_keys = [k for k in results if k.startswith("radarr")]
+    assert len(radarr_keys) == 2, f"Expected 2 radarr results, got {radarr_keys}"
+    assert all(results[k] is True for k in radarr_keys)
+
+
+async def test_validate_connections_multi_sonarr_returns_both() -> None:
+    """validate_connections with 2 enabled Sonarr instances returns results for both (BUG-01)."""
+    settings = _make_multi_instance_settings(radarr_count=0, sonarr_count=2)
+
+    with patch("triggarr.startup.SonarrClient") as MockSonarrCls:
+        mock_client = AsyncMock()
+        mock_client.validate_connection = AsyncMock(return_value=True)
+        mock_client.detect_api_version = AsyncMock(return_value="v3")
+        mock_client.close = AsyncMock()
+        MockSonarrCls.return_value = mock_client
+
+        results = await validate_connections(settings)
+
+    sonarr_keys = [k for k in results if k.startswith("sonarr")]
+    assert len(sonarr_keys) == 2, f"Expected 2 sonarr results, got {sonarr_keys}"
+    assert all(results[k] is True for k in sonarr_keys)
