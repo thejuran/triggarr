@@ -190,9 +190,9 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 40-01-PLAN.md -- Fix crash bugs in validate-schedule-cycle chain (KeyError, loop overwrite, missing state entry)
-- [ ] 40-02-PLAN.md -- Fix config safety (instance deletion on save, CSS injection, temp file leak, write dedup)
-- [ ] 40-03-PLAN.md -- Fix input validation and code hygiene (filter cap, name length, tag logging, state mutation, test shadowing)
+- [x] 40-01-PLAN.md -- Fix crash bugs in validate-schedule-cycle chain (KeyError, loop overwrite, missing state entry)
+- [x] 40-02-PLAN.md -- Fix config safety (instance deletion on save, CSS injection, temp file leak, write dedup)
+- [x] 40-03-PLAN.md -- Fix input validation and code hygiene (filter cap, name length, tag logging, state mutation, test shadowing)
 
 ## Progress
 

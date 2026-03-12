@@ -52,7 +52,7 @@ Progress: [██████████] 100%
 | 36 | 01 | 1min | 1 | 5 |
 | 36 | 02 | 9min | 2 | 2 |
 | 40 | 01 | 19min | 2 | 6 |
-| 40 | 02 | 6min | 2 | 4 |
+| 40 | 02 | 25min | 2 | 4 |
 | 40 | 03 | 25min | 2 | 5 |
 
 ## Accumulated Context
@@ -83,6 +83,9 @@ Full decision log in PROJECT.md Key Decisions table.
 - [Phase 40]: setdefault with _default_instance_state() as guard pattern for missing state entries
 - [Phase 40]: validate_connections keys results as app/instance for unique per-instance tracking
 - [Phase 40]: save_settings persists state after adding new instance entries
+- [Phase 40-02]: Preserve tag fields on both edited and non-edited instances during save
+- [Phase 40-02]: _sanitize_card_id with re.sub for HTML id/CSS selector safety
+- [Phase 40-02]: Temp file created before try block so except can always unlink
 - [Phase 40-03]: tag_fetch_ok boolean replaces 'if tags:' guard for clearer fetch-failure semantics
 - [Phase 40-03]: cleanup_orphaned_instances uses dict comprehension for immutability
 - [Phase 40-03]: Test helper renamed to _make_test_state with direct import of production symbol
@@ -102,6 +105,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-12T01:29:34Z
-Stopped at: Completed 40-03-PLAN.md
+Last session: 2026-03-12T01:30:06Z
+Stopped at: Completed 40-02-PLAN.md
 Resume file: None
