@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: executing
-stopped_at: Completed 40-01-PLAN.md
-last_updated: "2026-03-12T01:24:38.882Z"
-last_activity: 2026-03-11 — Completed Plan 02 (wire tag filtering into cycle functions)
+stopped_at: Completed 40-03-PLAN.md
+last_updated: "2026-03-12T01:29:34Z"
+last_activity: 2026-03-11 — Completed Plan 03 (input validation, tag logging, state immutability, test hygiene)
 progress:
   total_phases: 8
-  completed_phases: 4
+  completed_phases: 8
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 10
   percent: 100
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 40 (8 of 8 in v2.3) — Fix Multi-Instance Bugs and Hardening
-Plan: 01 of 3 complete, next: 40-02
-Status: In progress
-Last activity: 2026-03-11 — Completed Plan 01 (fix engine KeyError, startup loop overwrite, save_settings state)
+Plan: 03 of 3 complete (phase complete)
+Status: Complete
+Last activity: 2026-03-11 — Completed Plan 03 (input validation, tag logging, state immutability, test hygiene)
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -39,8 +39,8 @@ Progress: [████████░░] 80%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 7
-- Phases: 7 (33-39)
+- Plans completed: 10
+- Phases: 8 (33-40)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -52,6 +52,8 @@ Progress: [████████░░] 80%
 | 36 | 01 | 1min | 1 | 5 |
 | 36 | 02 | 9min | 2 | 2 |
 | 40 | 01 | 19min | 2 | 6 |
+| 40 | 02 | 6min | 2 | 4 |
+| 40 | 03 | 25min | 2 | 5 |
 
 ## Accumulated Context
 
@@ -81,6 +83,9 @@ Full decision log in PROJECT.md Key Decisions table.
 - [Phase 40]: setdefault with _default_instance_state() as guard pattern for missing state entries
 - [Phase 40]: validate_connections keys results as app/instance for unique per-instance tracking
 - [Phase 40]: save_settings persists state after adding new instance entries
+- [Phase 40-03]: tag_fetch_ok boolean replaces 'if tags:' guard for clearer fetch-failure semantics
+- [Phase 40-03]: cleanup_orphaned_instances uses dict comprehension for immutability
+- [Phase 40-03]: Test helper renamed to _make_test_state with direct import of production symbol
 
 ### Pending Todos
 
@@ -97,6 +102,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-12T01:24:38.880Z
-Stopped at: Completed 40-01-PLAN.md
+Last session: 2026-03-12T01:29:34Z
+Stopped at: Completed 40-03-PLAN.md
 Resume file: None
