@@ -1186,3 +1186,80 @@ def test_save_settings_skip_unreleased_off(client, test_app):
 
     content = test_app.state.config_path.read_text()
     assert "skip_unreleased = false" in content, "TOML should contain skip_unreleased = false"
+
+
+# ---------------------------------------------------------------------------
+# BUG-03: save_settings missing state entry for runtime-added instances
+# ---------------------------------------------------------------------------
+
+
+def test_save_settings_creates_state_for_new_instance(client, test_app, tmp_path):
+    """After save_settings adds a new enabled instance, state contains default entry (BUG-03)."""
+    # Start with NO state entries for radarr
+    test_app.state.triggarr_state = {"radarr": {}, "sonarr": {}, "search_log": []}
+
+    response = client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "radarr_url": "http://radarr:7878",
+            "radarr_api_key": "test-key",
+            "radarr_enabled": "on",
+            "radarr_search_interval": "30",
+            "radarr_search_missing_count": "5",
+            "radarr_search_cutoff_count": "5",
+            "sonarr_url": "http://sonarr:8989",
+            "sonarr_api_key": "test-key",
+            "sonarr_enabled": "on",
+            "sonarr_search_interval": "30",
+            "sonarr_search_missing_count": "5",
+            "sonarr_search_cutoff_count": "5",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    # State should now have entries for the enabled instances
+    state = test_app.state.triggarr_state
+    assert "Default" in state.get("radarr", {}), "State should have Default radarr entry after save_settings"
+    assert state["radarr"]["Default"]["missing_cursor"] == 0
+    assert "Default" in state.get("sonarr", {}), "State should have Default sonarr entry after save_settings"
+
+
+def test_save_settings_persists_state_to_disk(client, test_app, tmp_path):
+    """After save_settings adds new instances, save_state is called to persist (BUG-03)."""
+    test_app.state.triggarr_state = {"radarr": {}, "sonarr": {}, "search_log": []}
+
+    with patch("triggarr.web.routes.save_state") as mock_save:
+        response = client.post(
+            "/settings",
+            data={
+                "log_level": "info",
+                "hard_max_per_cycle": "0",
+                "max_history_rows": "1000",
+                "request_timeout": "30",
+                "page_size": "50",
+                "tracking_window_minutes": "60",
+                "radarr_url": "http://radarr:7878",
+                "radarr_api_key": "test-key",
+                "radarr_enabled": "on",
+                "radarr_search_interval": "30",
+                "radarr_search_missing_count": "5",
+                "radarr_search_cutoff_count": "5",
+                "sonarr_url": "http://sonarr:8989",
+                "sonarr_api_key": "test-key",
+                "sonarr_enabled": "on",
+                "sonarr_search_interval": "30",
+                "sonarr_search_missing_count": "5",
+                "sonarr_search_cutoff_count": "5",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    # save_state should have been called to persist new state entries
+    assert mock_save.called, "save_state should be called after adding new instance state entries"
