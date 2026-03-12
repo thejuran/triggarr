@@ -93,6 +93,9 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats (completed 2026-03-11, via GSD slice S05)
 - [ ] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation (partial via GSD slice S06 — INST-06 only works for first instance)
 - [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (partial via GSD slice S07 — OBS-01/OBS-02/VER-01 done; INST-05/INST-07/TAG-05/TAG-06/OBS-03/VER-02 missing)
+- [ ] **Phase 41: Multi-Instance Settings UI** - Instance CRUD, enable/disable, and tag filter config in web UI (gap closure)
+- [ ] **Phase 42: Dashboard Enhancements** - Health summary, tag warning badges, per-instance stats (gap closure)
+- [ ] **Phase 43: Update Notification & Cleanup** - GitHub release check, migration banner, dead code removal (gap closure)
 
 ## Phase Details
 
@@ -197,6 +200,38 @@ Plans:
 - [x] 40-02-PLAN.md -- Fix config safety (instance deletion on save, CSS injection, temp file leak, write dedup)
 - [x] 40-03-PLAN.md -- Fix input validation and code hygiene (filter cap, name length, tag logging, state mutation, test shadowing)
 
+### Phase 41: Multi-Instance Settings UI
+**Goal:** Users can manage all instances (add, edit, remove, enable/disable) and configure tag filters from the web UI settings page
+**Depends on:** Phase 40
+**Requirements:** INST-05, INST-06, TAG-06
+**Gap Closure:** Closes gaps from v2.3 audit — settings page overhaul
+**Success Criteria** (what must be TRUE):
+  1. Settings page lists all configured instances (not just the first per app type)
+  2. User can add a new instance, edit an existing instance, and remove an instance from the web UI
+  3. User can enable/disable any instance from the settings page
+  4. Tag name fields (missing_tag, cutoff_tag) are exposed in the settings form with autocomplete from the *arr instance's tag list
+  5. All changes persist to TOML config via existing atomic write path
+
+### Phase 42: Dashboard Enhancements
+**Goal:** Dashboard shows instance health summary, tag warning badges, and per-instance effectiveness stats
+**Depends on:** Phase 41
+**Requirements:** INST-07, TAG-05, OBS-03
+**Gap Closure:** Closes gaps from v2.3 audit — dashboard feature completion
+**Success Criteria** (what must be TRUE):
+  1. Dashboard shows an instance health summary card with connected/disconnected count
+  2. Dashboard shows a warning badge when a configured tag name is not found in the *arr instance
+  3. Per-instance effectiveness stats (grab rate, lifetime counts) are displayed using instance_id-scoped DB queries
+
+### Phase 43: Update Notification & Cleanup
+**Goal:** Dashboard shows update availability and migration banner; dead code removed
+**Depends on:** Phase 41
+**Requirements:** VER-02
+**Gap Closure:** Closes gaps from v2.3 audit — version check, migration banner, dead code
+**Success Criteria** (what must be TRUE):
+  1. Dashboard indicates when a newer Triggarr release is available by checking GitHub releases
+  2. Dashboard shows a migration banner when .migrated marker exists (from v2.2→v2.3 upgrade)
+  3. ArrConfig backward-compat alias removed (dead code cleanup)
+
 ## Progress
 
 **Execution Order:**
@@ -212,3 +247,6 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 38. Scheduler & Tracking Wiring | v2.3 | 1/1 (S06) | Partial | - |
 | 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
+| 41. Multi-Instance Settings UI | v2.3 | 0/0 | Pending | - |
+| 42. Dashboard Enhancements | v2.3 | 0/0 | Pending | - |
+| 43. Update Notification & Cleanup | v2.3 | 0/0 | Pending | - |
