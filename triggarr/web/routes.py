@@ -262,6 +262,8 @@ async def partial_history_results(request: Request) -> HTMLResponse:
     queue_filter = _split_filter_param(params.get("queue"))
     outcome_filter = _split_filter_param(params.get("outcome"))
     instance_filter = _split_filter_param(params.get("instance"))
+    if instance_filter:
+        instance_filter = instance_filter[:10]
     search_text = params.get("search", "")
 
     result = await get_search_history(
@@ -443,6 +445,8 @@ async def save_settings(request: Request) -> RedirectResponse:
 @router.post("/api/search-now/{app_name}/{instance_name}", response_class=HTMLResponse)
 async def search_now(request: Request, app_name: str, instance_name: str) -> HTMLResponse:
     """Trigger an immediate search cycle for a specific instance and return updated card."""
+    if len(instance_name) > 64:
+        return HTMLResponse("Instance name too long", status_code=400)
     if app_name not in ("radarr", "sonarr"):
         return HTMLResponse("Invalid app", status_code=400)
 
@@ -508,6 +512,8 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
 @router.get("/partials/app-card/{app_name}/{instance_name}", response_class=HTMLResponse)
 async def partial_app_card(request: Request, app_name: str, instance_name: str) -> HTMLResponse:
     """Return an HTML fragment for a single app instance status card (htmx partial)."""
+    if len(instance_name) > 64:
+        return HTMLResponse("Instance name too long", status_code=400)
     app_data = _build_app_context(request, app_name, instance_name)
     if app_data is None:
         return HTMLResponse("")
