@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url
+from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url, validate_instance_name
 
 # ---------------------------------------------------------------------------
 # validate_arr_url
@@ -145,3 +145,62 @@ class TestSafeLogLevel:
 
     def test_none_defaults(self) -> None:
         assert safe_log_level(None) == "info"
+
+
+# ---------------------------------------------------------------------------
+# validate_instance_name
+# ---------------------------------------------------------------------------
+
+
+class TestValidateInstanceName:
+    """Instance name validation: empty, too-long, double-underscore, invalid chars."""
+
+    def test_empty_rejected(self) -> None:
+        ok, err = validate_instance_name("")
+        assert ok is False
+        assert "empty" in err.lower()
+
+    def test_whitespace_only_rejected(self) -> None:
+        ok, err = validate_instance_name("   ")
+        assert ok is False
+        assert "empty" in err.lower()
+
+    def test_too_long_rejected(self) -> None:
+        ok, err = validate_instance_name("a" * 33)
+        assert ok is False
+        assert "too long" in err.lower()
+
+    def test_double_underscore_rejected(self) -> None:
+        ok, err = validate_instance_name("foo__bar")
+        assert ok is False
+        assert "double underscore" in err.lower()
+
+    def test_invalid_start_char_rejected(self) -> None:
+        ok, err = validate_instance_name("!bad")
+        assert ok is False
+        assert "alphanumeric" in err.lower()
+
+    def test_valid_simple_name(self) -> None:
+        ok, err = validate_instance_name("My Instance")
+        assert ok is True
+        assert err == ""
+
+    def test_valid_name_with_digits(self) -> None:
+        ok, err = validate_instance_name("4K Radarr")
+        assert ok is True
+        assert err == ""
+
+    def test_valid_name_with_single_underscore(self) -> None:
+        ok, err = validate_instance_name("my_instance")
+        assert ok is True
+        assert err == ""
+
+    def test_valid_name_with_dot_and_hyphen(self) -> None:
+        ok, err = validate_instance_name("v2.0-test")
+        assert ok is True
+        assert err == ""
+
+    def test_max_length_accepted(self) -> None:
+        ok, err = validate_instance_name("a" * 32)
+        assert ok is True
+        assert err == ""

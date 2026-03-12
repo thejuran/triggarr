@@ -897,6 +897,389 @@ def test_app_card_no_skip_when_disabled(client, test_app):
     assert "skipped (unreleased)" not in response.text, "No skip badge when skip_unreleased is off"
 
 
+# ---------------------------------------------------------------------------
+# INST-05/06, TAG-06: Multi-instance settings CRUD, tags, add/remove
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def multi_instance_app(tmp_path):
+    """Build a FastAPI app with multiple radarr instances for multi-instance tests."""
+    log_buffer.clear()
+    app = FastAPI()
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.include_router(router)
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    app.state.db = db
+
+    app.state.triggarr_state = {
+        "radarr": {
+            "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+            "4K": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+        },
+        "sonarr": {
+            "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+        },
+        "search_log": [],
+    }
+
+    app.state.settings = Settings(
+        general=GeneralConfig(),
+        radarr={
+            "Default": InstanceConfig(
+                url="http://radarr:7878",
+                api_key="radarr-default-key",
+                enabled=True,
+                missing_tag="wanted",
+                cutoff_tag="upgrade",
+            ),
+            "4K": InstanceConfig(
+                url="http://radarr4k:7878",
+                api_key="radarr-4k-key",
+                enabled=False,
+                missing_tag="wanted-4k",
+                cutoff_tag="",
+            ),
+        },
+        sonarr={
+            "Default": InstanceConfig(
+                url="http://sonarr:8989",
+                api_key="sonarr-key",
+                enabled=True,
+            ),
+        },
+    )
+
+    mock_scheduler = MagicMock()
+    mock_job = MagicMock()
+    mock_job.next_run_time = None
+    mock_scheduler.get_job.return_value = mock_job
+    app.state.scheduler = mock_scheduler
+
+    radarr_default_client = MagicMock()
+    radarr_default_client.close = AsyncMock()
+    radarr_4k_client = MagicMock()
+    radarr_4k_client.close = AsyncMock()
+    sonarr_client = MagicMock()
+    sonarr_client.close = AsyncMock()
+    app.state.radarr_clients = {"Default": radarr_default_client, "4K": radarr_4k_client}
+    app.state.sonarr_clients = {"Default": sonarr_client}
+
+    app.state.config_path = tmp_path / "triggarr.toml"
+    app.state.state_path = tmp_path / "state.json"
+    app.state.search_lock = asyncio.Lock()
+    app.state.last_search_time = {}
+
+    return app
+
+
+@pytest.fixture
+def multi_client(multi_instance_app):
+    """Create a TestClient for the multi-instance test app."""
+    return TestClient(multi_instance_app)
+
+
+def test_settings_lists_all_instances(multi_client):
+    """GET /settings shows all configured instances (not just first per app type)."""
+    response = multi_client.get("/settings")
+    assert response.status_code == 200
+    assert "Default" in response.text, "Settings should show Default instance"
+    assert "4K" in response.text, "Settings should show 4K instance"
+
+
+def test_settings_contains_tag_fields(multi_client):
+    """GET /settings response contains missing_tag and cutoff_tag field names."""
+    response = multi_client.get("/settings")
+    assert response.status_code == 200
+    assert "missing_tag" in response.text, "Settings should contain missing_tag fields"
+    assert "cutoff_tag" in response.text, "Settings should contain cutoff_tag fields"
+
+
+def test_settings_never_leaks_api_keys_multi(multi_client):
+    """GET /settings with multiple instances never contains raw API key values."""
+    response = multi_client.get("/settings")
+    assert response.status_code == 200
+    assert "radarr-default-key" not in response.text
+    assert "radarr-4k-key" not in response.text
+    assert "sonarr-key" not in response.text
+
+
+def test_save_settings_multi_instance(multi_client, multi_instance_app):
+    """POST /settings with multi-instance form fields saves all instances to TOML."""
+    response = multi_client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "radarr__Default__url": "http://radarr:7878",
+            "radarr__Default__api_key": "",
+            "radarr__Default__enabled": "on",
+            "radarr__Default__search_interval": "30",
+            "radarr__Default__search_missing_count": "5",
+            "radarr__Default__search_cutoff_count": "5",
+            "radarr__Default__missing_tag": "wanted",
+            "radarr__Default__cutoff_tag": "upgrade",
+            "radarr__4K__url": "http://radarr4k:7878",
+            "radarr__4K__api_key": "new-4k-key",
+            "radarr__4K__enabled": "on",
+            "radarr__4K__search_interval": "60",
+            "radarr__4K__search_missing_count": "3",
+            "radarr__4K__search_cutoff_count": "2",
+            "radarr__4K__missing_tag": "wanted-4k",
+            "radarr__4K__cutoff_tag": "",
+            "sonarr__Default__url": "http://sonarr:8989",
+            "sonarr__Default__api_key": "",
+            "sonarr__Default__enabled": "on",
+            "sonarr__Default__search_interval": "30",
+            "sonarr__Default__search_missing_count": "5",
+            "sonarr__Default__search_cutoff_count": "5",
+            "sonarr__Default__missing_tag": "",
+            "sonarr__Default__cutoff_tag": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    content = multi_instance_app.state.config_path.read_text()
+    assert "radarr4k" in content, "4K instance URL should be saved"
+    assert "new-4k-key" in content, "New 4K API key should be saved"
+
+
+def test_save_settings_preserves_api_keys_multi(multi_client, multi_instance_app):
+    """POST /settings with empty api_key preserves existing keys for all instances."""
+    response = multi_client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "radarr__Default__url": "http://radarr:7878",
+            "radarr__Default__api_key": "",
+            "radarr__Default__enabled": "on",
+            "radarr__Default__search_interval": "30",
+            "radarr__Default__search_missing_count": "5",
+            "radarr__Default__search_cutoff_count": "5",
+            "radarr__Default__missing_tag": "",
+            "radarr__Default__cutoff_tag": "",
+            "radarr__4K__url": "http://radarr4k:7878",
+            "radarr__4K__api_key": "",
+            "radarr__4K__enabled": "on",
+            "radarr__4K__search_interval": "30",
+            "radarr__4K__search_missing_count": "5",
+            "radarr__4K__search_cutoff_count": "5",
+            "radarr__4K__missing_tag": "",
+            "radarr__4K__cutoff_tag": "",
+            "sonarr__Default__url": "http://sonarr:8989",
+            "sonarr__Default__api_key": "",
+            "sonarr__Default__enabled": "on",
+            "sonarr__Default__search_interval": "30",
+            "sonarr__Default__search_missing_count": "5",
+            "sonarr__Default__search_cutoff_count": "5",
+            "sonarr__Default__missing_tag": "",
+            "sonarr__Default__cutoff_tag": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    content = multi_instance_app.state.config_path.read_text()
+    assert "radarr-default-key" in content, "Default radarr key should be preserved"
+    assert "radarr-4k-key" in content, "4K radarr key should be preserved"
+    assert "sonarr-key" in content, "Sonarr key should be preserved"
+
+
+def test_save_settings_tag_fields_preserved(multi_client, multi_instance_app):
+    """POST /settings preserves tag field values for all instances."""
+    response = multi_client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "radarr__Default__url": "http://radarr:7878",
+            "radarr__Default__api_key": "",
+            "radarr__Default__enabled": "on",
+            "radarr__Default__search_interval": "30",
+            "radarr__Default__search_missing_count": "5",
+            "radarr__Default__search_cutoff_count": "5",
+            "radarr__Default__missing_tag": "my-tag",
+            "radarr__Default__cutoff_tag": "my-cutoff",
+            "radarr__4K__url": "http://radarr4k:7878",
+            "radarr__4K__api_key": "",
+            "radarr__4K__search_interval": "30",
+            "radarr__4K__search_missing_count": "5",
+            "radarr__4K__search_cutoff_count": "5",
+            "radarr__4K__missing_tag": "4k-tag",
+            "radarr__4K__cutoff_tag": "",
+            "sonarr__Default__url": "http://sonarr:8989",
+            "sonarr__Default__api_key": "",
+            "sonarr__Default__enabled": "on",
+            "sonarr__Default__search_interval": "30",
+            "sonarr__Default__search_missing_count": "5",
+            "sonarr__Default__search_cutoff_count": "5",
+            "sonarr__Default__missing_tag": "",
+            "sonarr__Default__cutoff_tag": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    new_settings = multi_instance_app.state.settings
+    assert new_settings.radarr["Default"].missing_tag == "my-tag"
+    assert new_settings.radarr["Default"].cutoff_tag == "my-cutoff"
+    assert new_settings.radarr["4K"].missing_tag == "4k-tag"
+
+
+def test_save_settings_enable_disable_per_instance(multi_client, multi_instance_app):
+    """POST /settings handles enable/disable per instance (checkbox on/off)."""
+    response = multi_client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "radarr__Default__url": "http://radarr:7878",
+            "radarr__Default__api_key": "",
+            "radarr__Default__enabled": "on",
+            "radarr__Default__search_interval": "30",
+            "radarr__Default__search_missing_count": "5",
+            "radarr__Default__search_cutoff_count": "5",
+            "radarr__Default__missing_tag": "",
+            "radarr__Default__cutoff_tag": "",
+            # 4K: no enabled checkbox = disabled
+            "radarr__4K__url": "http://radarr4k:7878",
+            "radarr__4K__api_key": "",
+            "radarr__4K__search_interval": "30",
+            "radarr__4K__search_missing_count": "5",
+            "radarr__4K__search_cutoff_count": "5",
+            "radarr__4K__missing_tag": "",
+            "radarr__4K__cutoff_tag": "",
+            "sonarr__Default__url": "http://sonarr:8989",
+            "sonarr__Default__api_key": "",
+            "sonarr__Default__enabled": "on",
+            "sonarr__Default__search_interval": "30",
+            "sonarr__Default__search_missing_count": "5",
+            "sonarr__Default__search_cutoff_count": "5",
+            "sonarr__Default__missing_tag": "",
+            "sonarr__Default__cutoff_tag": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    new_settings = multi_instance_app.state.settings
+    assert new_settings.radarr["Default"].enabled is True
+    assert new_settings.radarr["4K"].enabled is False
+
+
+def test_tag_autocomplete_returns_options(multi_instance_app):
+    """GET /api/tags/radarr/Default returns HTML option elements when client has tags."""
+    from triggarr.clients.base import Tag
+
+    mock_client = multi_instance_app.state.radarr_clients["Default"]
+    mock_client.get_tags = AsyncMock(return_value=[Tag(id=1, label="wanted"), Tag(id=2, label="upgrade")])
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.get("/api/tags/radarr/Default")
+    assert response.status_code == 200
+    assert '<option value="wanted">' in response.text
+    assert '<option value="upgrade">' in response.text
+
+
+def test_tag_autocomplete_no_client(multi_instance_app):
+    """GET /api/tags/radarr/Nonexistent returns empty string when no client exists."""
+    with TestClient(multi_instance_app) as tc:
+        response = tc.get("/api/tags/radarr/Nonexistent")
+    assert response.status_code == 200
+    assert response.text == ""
+
+
+def test_tag_autocomplete_invalid_app(multi_instance_app):
+    """GET /api/tags/invalid/Default returns empty string."""
+    with TestClient(multi_instance_app) as tc:
+        response = tc.get("/api/tags/invalid/Default")
+    assert response.status_code == 200
+    assert response.text == ""
+
+
+def test_add_instance_happy_path(multi_instance_app):
+    """POST /api/instance/add with valid name creates new instance entry."""
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/add",
+            data={"app_name": "radarr", "instance_name": "Anime"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    assert "Anime" in multi_instance_app.state.settings.radarr
+
+
+def test_add_instance_duplicate_rejected(multi_instance_app):
+    """POST /api/instance/add with existing name returns error."""
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/add",
+            data={"app_name": "radarr", "instance_name": "Default"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "already exists" in response.text.lower()
+
+
+def test_add_instance_max_limit(multi_instance_app):
+    """POST /api/instance/add when at 5 instances returns error."""
+    # Add 3 more to get to 5 (already have Default + 4K = 2)
+    settings = multi_instance_app.state.settings
+    for i in range(3):
+        settings.radarr[f"Extra{i}"] = InstanceConfig()
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/add",
+            data={"app_name": "radarr", "instance_name": "TooMany"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+    assert "maximum" in response.text.lower()
+
+
+def test_remove_instance_happy_path(multi_instance_app):
+    """POST /api/instance/remove removes instance and cleans up."""
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/remove/radarr/4K",
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    assert "4K" not in multi_instance_app.state.settings.radarr
+
+
+def test_remove_instance_nonexistent(multi_instance_app):
+    """POST /api/instance/remove for nonexistent instance returns error."""
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/remove/radarr/Nonexistent",
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+
+
 def test_app_card_no_skip_when_equal(client, test_app):
     """App card does NOT show skip badge when missing_monitored == missing_eligible (DASH-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
