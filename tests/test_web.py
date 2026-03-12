@@ -144,14 +144,14 @@ def test_settings_page_shows_masked_placeholder(client):
 
 
 def test_app_card_partial_returns_200(client):
-    """GET /partials/app-card/radarr returns 200."""
-    response = client.get("/partials/app-card/radarr")
+    """GET /partials/app-card/radarr/Default returns 200."""
+    response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 
 
 def test_app_card_partial_has_htmx_attributes(client):
     """App card partial contains htmx polling attributes."""
-    response = client.get("/partials/app-card/radarr")
+    response = client.get("/partials/app-card/radarr/Default")
     assert "hx-trigger" in response.text, "Card should have hx-trigger attribute"
     assert "every 5s" in response.text, "Card should poll every 5 seconds"
 
@@ -308,7 +308,7 @@ def test_save_settings_accepts_zero_missing_with_positive_cutoff(client, test_ap
 
 def test_search_now_invalid_app(client):
     """POST /api/search-now/invalid returns 400."""
-    response = client.post("/api/search-now/invalid")
+    response = client.post("/api/search-now/invalid/Default")
     assert response.status_code == 400, f"Expected 400, got {response.status_code}"
     assert "Invalid app" in response.text
 
@@ -321,7 +321,7 @@ def test_search_now_happy_path(client, test_app):
     ), patch(
         "triggarr.web.routes.save_state",
     ):
-        response = client.post("/api/search-now/radarr")
+        response = client.post("/api/search-now/radarr/Default")
         assert response.status_code == 200
         assert "Radarr" in response.text  # Card partial contains app name
 
@@ -476,6 +476,37 @@ def test_dashboard_nav_has_history_link(client):
     assert "/history" in response.text
 
 
+async def test_history_results_instance_filter(test_app):
+    """GET /partials/history-results?instance=4K returns only 4K instance entries."""
+    db = test_app.state.db
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="4K")
+    await insert_search_entry(db, "Radarr", "missing", "Movie B", instance_id="1080p")
+    await insert_search_entry(db, "Sonarr", "missing", "Show C", instance_id="4K")
+
+    with TestClient(test_app) as tc:
+        response = tc.get("/partials/history-results?instance=4K")
+    assert response.status_code == 200
+    assert "Movie A" in response.text
+    assert "Show C" in response.text
+    assert "Movie B" not in response.text
+
+
+def test_dashboard_shows_version(client):
+    """Dashboard nav bar shows version string."""
+    response = client.get("/")
+    assert response.status_code == 200
+    from triggarr import __version__
+    assert f"v{__version__}" in response.text
+
+
+def test_app_card_shows_instance_name(client):
+    """App card partial includes instance identifier."""
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    # Default instance doesn't show "/ Default" but the card_id should be present
+    assert "radarr-Default-card" in response.text
+
+
 # ---------------------------------------------------------------------------
 # W1 regression: XSS in hx-vals attribute (Phase 16 code review)
 # ---------------------------------------------------------------------------
@@ -508,9 +539,9 @@ def test_search_now_rate_limited(client, test_app):
     """Second POST /api/search-now/radarr within rate limit window returns 429."""
     import time
 
-    test_app.state.last_search_time["radarr"] = time.monotonic()
+    test_app.state.last_search_time["radarr_Default"] = time.monotonic()
 
-    response = client.post("/api/search-now/radarr")
+    response = client.post("/api/search-now/radarr/Default")
     assert response.status_code == 429, f"Expected 429 rate limit, got {response.status_code}"
     assert "Rate limited" in response.text
 
@@ -524,10 +555,10 @@ def test_search_now_rate_limit_concurrent_protection(client, test_app):
         "triggarr.web.routes.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch("triggarr.web.routes.save_state"):
-        resp1 = client.post("/api/search-now/radarr")
+        resp1 = client.post("/api/search-now/radarr/Default")
         assert resp1.status_code == 200, f"First request should succeed, got {resp1.status_code}"
 
-        resp2 = client.post("/api/search-now/radarr")
+        resp2 = client.post("/api/search-now/radarr/Default")
         assert resp2.status_code == 429, f"Second request within rate window should be 429, got {resp2.status_code}"
         assert "Rate limited" in resp2.text
 
@@ -539,13 +570,13 @@ def test_search_now_not_rate_limited_after_window(client, test_app):
     from triggarr.web.routes import SEARCH_RATE_LIMIT_SECONDS
 
     # Set last_search_time to well before the window
-    test_app.state.last_search_time["radarr"] = time.monotonic() - (SEARCH_RATE_LIMIT_SECONDS + 1)
+    test_app.state.last_search_time["radarr_Default"] = time.monotonic() - (SEARCH_RATE_LIMIT_SECONDS + 1)
 
     with patch(
         "triggarr.web.routes.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch("triggarr.web.routes.save_state"):
-        response = client.post("/api/search-now/radarr")
+        response = client.post("/api/search-now/radarr/Default")
     assert response.status_code == 200, f"Expected 200 after window expired, got {response.status_code}"
 
 
@@ -840,7 +871,7 @@ def test_build_app_context_includes_eligible_and_skip_unreleased(client, test_ap
     """_build_app_context returns missing_eligible, missing_monitored, and skip_unreleased keys (F1)."""
     test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
     test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
-    response = client.get("/partials/app-card/radarr")
+    response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     # The template should render the eligible count and monitored count
     assert "30" in response.text
@@ -851,7 +882,7 @@ def test_build_app_context_eligible_none_when_missing(client, test_app):
     """_build_app_context returns missing_eligible as None when state has no field (DASH-01)."""
     # Ensure no missing_eligible in state (pre-first-cycle)
     test_app.state.triggarr_state["radarr"]["Default"].pop("missing_eligible", None)
-    response = client.get("/partials/app-card/radarr")
+    response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     # Template should gracefully fall back -- show total count only
     assert "42 items" in response.text, "Should fall back to total count when eligible is None"
@@ -863,7 +894,7 @@ def test_app_card_skip_indicator_shown(client, test_app):
     test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
     test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
     test_app.state.settings.general.skip_unreleased = True
-    response = client.get("/partials/app-card/radarr")
+    response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     # Badge should show 42-30=12, NOT 50-30=20
     assert "12 skipped (unreleased)" in response.text, "Should show skip count badge using monitored count"
@@ -877,7 +908,7 @@ def test_app_card_no_skip_when_disabled(client, test_app):
     test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
     test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
     test_app.state.settings.general.skip_unreleased = False
-    response = client.get("/partials/app-card/radarr")
+    response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "skipped (unreleased)" not in response.text, "No skip badge when skip_unreleased is off"
 
@@ -888,7 +919,7 @@ def test_app_card_no_skip_when_equal(client, test_app):
     test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 42
     test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
     test_app.state.settings.general.skip_unreleased = True
-    response = client.get("/partials/app-card/radarr")
+    response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "skipped (unreleased)" not in response.text, "No skip badge when monitored == eligible"
 
@@ -898,7 +929,7 @@ def test_app_card_eligible_total_display(client, test_app):
     test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
     test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
     test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
-    response = client.get("/partials/app-card/radarr")
+    response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "30 of 42 items" in response.text, "Should show eligible of monitored format"
     assert "30 of 50" not in response.text, "Should NOT use raw missing_count as denominator"
@@ -909,7 +940,7 @@ def test_app_card_sonarr_no_skip_badge(client, test_app):
     test_app.state.triggarr_state["sonarr"]["Default"]["missing_eligible"] = 5
     test_app.state.triggarr_state["sonarr"]["Default"]["missing_count"] = 10
     test_app.state.settings.general.skip_unreleased = True
-    response = client.get("/partials/app-card/sonarr")
+    response = client.get("/partials/app-card/sonarr/Default")
     assert response.status_code == 200
     assert "skipped (unreleased)" not in response.text, "Sonarr should not show skip badge"
 

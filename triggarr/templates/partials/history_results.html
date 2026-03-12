@@ -7,16 +7,13 @@
       {# App filter #}
       <div class="flex items-center gap-2">
         <span class="text-xs text-triggarr-muted">App:</span>
-        {% set apps_csv = active_apps | join(',') %}
         {% for app_val in ['Radarr', 'Sonarr'] %}
           {% if app_val in active_apps %}
-            {# Currently active -- click removes it #}
             {% set new_apps = active_apps | reject('equalto', app_val) | list | join(',') %}
           {% else %}
-            {# Currently inactive -- click adds it #}
             {% set new_apps = (active_apps + [app_val]) | join(',') %}
           {% endif %}
-          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ new_apps | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
+          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ new_apps | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&instance={{ active_instances | join(',') | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -30,6 +27,32 @@
         {% endfor %}
       </div>
 
+      {# Instance filter #}
+      {% set all_instances = result.entries | map(attribute='instance_id') | unique | sort | list %}
+      {% if all_instances | length > 1 or active_instances | length > 0 %}
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-triggarr-muted">Instance:</span>
+        {% for inst_val in all_instances %}
+          {% if inst_val in active_instances %}
+            {% set new_instances = active_instances | reject('equalto', inst_val) | list | join(',') %}
+          {% else %}
+            {% set new_instances = (active_instances + [inst_val]) | join(',') %}
+          {% endif %}
+          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&instance={{ new_instances | urlencode }}&search={{ search_text | urlencode }}"
+             hx-target="#history-results"
+             hx-swap="outerHTML"
+             class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
+                    {% if inst_val in active_instances %}
+                      bg-purple-500/20 text-purple-400
+                    {% else %}
+                      bg-triggarr-card text-triggarr-muted border border-triggarr-border hover:text-white
+                    {% endif %}">
+            {{ inst_val }}
+          </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
       {# Queue type filter #}
       <div class="flex items-center gap-2">
         <span class="text-xs text-triggarr-muted">Queue:</span>
@@ -39,7 +62,7 @@
           {% else %}
             {% set new_queues = (active_queues + [q_val]) | join(',') %}
           {% endif %}
-          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ new_queues | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&search={{ search_text | urlencode }}"
+          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ new_queues | urlencode }}&outcome={{ active_outcomes | join(',') | urlencode }}&instance={{ active_instances | join(',') | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -62,7 +85,7 @@
           {% else %}
             {% set new_outcomes = (active_outcomes + [o_val]) | join(',') %}
           {% endif %}
-          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ new_outcomes | urlencode }}&search={{ search_text | urlencode }}"
+          <a hx-get="{{ request.url_for('partial_history_results') }}?page=1&app={{ active_apps | join(',') | urlencode }}&queue={{ active_queues | join(',') | urlencode }}&outcome={{ new_outcomes | urlencode }}&instance={{ active_instances | join(',') | urlencode }}&search={{ search_text | urlencode }}"
              hx-target="#history-results"
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
@@ -90,7 +113,7 @@
                hx-trigger="keyup changed delay:300ms"
                hx-target="#history-results"
                hx-swap="outerHTML"
-               hx-vals="{{ {'app': active_apps | join(','), 'queue': active_queues | join(','), 'outcome': active_outcomes | join(','), 'page': '1'} | tojson }}"
+               hx-vals="{{ {'app': active_apps | join(','), 'queue': active_queues | join(','), 'outcome': active_outcomes | join(','), 'instance': active_instances | join(','), 'page': '1'} | tojson }}"
                class="w-full bg-triggarr-bg border border-triggarr-border text-triggarr-text rounded px-3 py-1.5 text-sm placeholder-triggarr-muted focus:outline-none focus:border-triggarr-green">
       </div>
     </div>
@@ -111,6 +134,11 @@
                  {% else %}bg-blue-500/20 text-blue-400{% endif %}">
             {{ entry.app }}
           </span>
+          {% if entry.instance_id and entry.instance_id != 'Default' %}
+          <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">
+            {{ entry.instance_id }}
+          </span>
+          {% endif %}
           <span class="text-sm flex-1 truncate" {% if entry.detail %}title="{{ entry.detail }}"{% endif %}>{{ entry.name }}</span>
           <span class="text-xs text-triggarr-muted">{{ entry.queue_type }}</span>
           <span class="text-xs px-1.5 py-0.5 rounded
@@ -137,7 +165,7 @@
 
   {# --- Pagination --- #}
   {% if result.total_pages > 1 %}
-    {% set base_qs = "app=" ~ (active_apps | join(',') | urlencode) ~ "&queue=" ~ (active_queues | join(',') | urlencode) ~ "&outcome=" ~ (active_outcomes | join(',') | urlencode) ~ "&search=" ~ (search_text | urlencode) %}
+    {% set base_qs = "app=" ~ (active_apps | join(',') | urlencode) ~ "&queue=" ~ (active_queues | join(',') | urlencode) ~ "&outcome=" ~ (active_outcomes | join(',') | urlencode) ~ "&instance=" ~ (active_instances | join(',') | urlencode) ~ "&search=" ~ (search_text | urlencode) %}
     <div class="flex items-center justify-center gap-2 mt-4">
 
       {# Previous #}

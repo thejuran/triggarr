@@ -1,13 +1,13 @@
-<div id="{{ app.name }}-card"
-     hx-get="{{ request.url_for('partial_app_card', app_name=app.name) }}"
+<div id="{{ app.card_id }}-card"
+     hx-get="{{ request.url_for('partial_app_card', app_name=app.name, instance_name=app.instance) }}"
      hx-trigger="every 5s"
      hx-swap="outerHTML"
      class="bg-triggarr-card rounded-lg border border-triggarr-border p-5
             {% if app.connected == false %}border-l-4 border-l-red-500{% else %}border-l-4 border-l-triggarr-green{% endif %}">
 
-  <!-- Header: app name + connection status -->
+  <!-- Header: app name + instance + connection status -->
   <div class="flex items-center justify-between mb-4">
-    <h2 class="text-lg font-semibold">{{ app.name | capitalize }}</h2>
+    <h2 class="text-lg font-semibold">{{ app.name | capitalize }}{% if app.instance != 'Default' %} <span class="text-sm font-normal text-triggarr-muted">/ {{ app.instance }}</span>{% endif %}</h2>
     {% if app.connected == true %}
       <span class="w-2.5 h-2.5 rounded-full bg-triggarr-green" title="Connected"></span>
     {% elif app.connected == false %}
@@ -68,8 +68,8 @@
 
   <!-- Controls -->
   <div class="flex items-center gap-3 mt-4 pt-3 border-t border-triggarr-border/50">
-      <button hx-post="{{ request.url_for('search_now', app_name=app.name) }}"
-              hx-target="#{{ app.name }}-card"
+      <button hx-post="{{ request.url_for('search_now', app_name=app.name, instance_name=app.instance) }}"
+              hx-target="#{{ app.card_id }}-card"
               hx-swap="outerHTML"
               class="bg-triggarr-green/20 text-triggarr-green text-xs font-medium px-3 py-1.5 rounded
                      hover:bg-triggarr-green/30 transition-colors">

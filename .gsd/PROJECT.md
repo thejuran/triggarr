@@ -10,7 +10,7 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ## Current State
 
-~8,964 Python LOC (3,389 source + 5,575 test). 371 tests passing. 6 milestones shipped (v1.0–v2.2). Active milestone: v2.3 Multi-Instance & Tag Filtering — phases 33–36 complete (config model, state isolation, client registry, tag filtering), phases 37–39 remaining (DB schema, scheduler wiring, web UI).
+~9,500 Python LOC. 389 tests passing. 6 milestones shipped (v1.0–v2.2). Milestone v2.3 Multi-Instance & Tag Filtering complete — all 7 slices delivered (config model, state isolation, client registry, tag filtering, DB schema, scheduler wiring, web UI).
 
 Key capabilities delivered:
 - Round-robin search engine with per-app cursors and season-level Sonarr search
@@ -45,4 +45,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 - [x] M-v2.0: Closed-Loop Tracking — Grab detection, outcome badges, effectiveness stats, rename (shipped 2026-03-09)
 - [x] M-v2.1: Harden & Fix — Config dir, reverse proxy, path validation, temp file safety (shipped 2026-03-09)
 - [x] M-v2.2: Skip Unreleased Media — Unreleased filter, eligible counts, dashboard skip badges (shipped 2026-03-09)
-- [ ] M001: Multi-Instance & Tag Filtering — Multiple *arr instances, per-instance tags, scoped observability, version display
+- [x] M001: Multi-Instance & Tag Filtering — Multiple *arr instances, per-instance tags, scoped observability, version display (shipped 2026-03-11)

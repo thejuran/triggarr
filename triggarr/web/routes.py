@@ -21,6 +21,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
+from triggarr import __version__
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
@@ -38,6 +39,7 @@ TEMPLATES_DIR = _PKG_DIR / "templates"
 STATIC_DIR = _PKG_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.globals["triggarr_version"] = __version__
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
@@ -91,41 +93,42 @@ async def health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-def _build_app_context(request: Request, app_name: str) -> dict | None:
-    """Build a template context dict for a single app.
-
-    Returns None if the app has no enabled instances. For multi-instance
-    configs, shows the first enabled instance's state (Phase 39 adds
-    full multi-instance dashboard).
+def _build_app_context(request: Request, app_name: str, instance_name: str | None = None) -> dict | None:
+    """Build a template context dict for a single app instance.
 
     Args:
         request: The incoming FastAPI request (used to access app.state).
         app_name: One of "radarr" or "sonarr".
+        instance_name: Specific instance name. If None, uses first enabled.
 
     Returns:
-        Dict with name, last_run, next_run, missing_cursor, cutoff_cursor
-        or None if app is not enabled.
+        Dict with name, instance, last_run, next_run, missing_cursor, cutoff_cursor
+        or None if app/instance is not enabled.
     """
     settings = request.app.state.settings
     enabled = settings.get_enabled_instances(app_name)
     if not enabled:
         return None
 
-    # Use first enabled instance for dashboard display (Phase 39: multi-instance UI)
-    first_instance_name = next(iter(enabled))
+    if instance_name is None:
+        instance_name = next(iter(enabled))
+    elif instance_name not in enabled:
+        return None
 
     state = request.app.state.triggarr_state
-    app_state = state.get(app_name, {}).get(first_instance_name, {})
+    app_state = state.get(app_name, {}).get(instance_name, {})
 
     # Determine next_run from scheduler job (per-instance job ID)
     next_run = None
     scheduler = request.app.state.scheduler
-    job = scheduler.get_job(f"{app_name}_{first_instance_name}_search")
+    job = scheduler.get_job(f"{app_name}_{instance_name}_search")
     if job and job.next_run_time:
         next_run = job.next_run_time.isoformat()
 
     return {
         "name": app_name,
+        "instance": instance_name,
+        "card_id": f"{app_name}-{instance_name}".replace(" ", "-"),
         "last_run": app_state.get("last_run"),
         "next_run": next_run,
         "missing_cursor": app_state.get("missing_cursor", 0),
@@ -146,12 +149,14 @@ def _build_app_context(request: Request, app_name: str) -> dict | None:
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
-    """Render the dashboard page with app status cards and search log."""
+    """Render the dashboard page with per-instance status cards and search log."""
     apps: list[dict] = []
-    for name in ("radarr", "sonarr"):
-        ctx = _build_app_context(request, name)
-        if ctx is not None:
-            apps.append(ctx)
+    settings = request.app.state.settings
+    for app_name in ("radarr", "sonarr"):
+        for inst_name in settings.get_enabled_instances(app_name):
+            ctx = _build_app_context(request, app_name, inst_name)
+            if ctx is not None:
+                apps.append(ctx)
 
     search_log = await get_recent_searches(request.app.state.db)
     log_entries = log_buffer.get_recent(30)
@@ -227,6 +232,7 @@ async def history_page(request: Request) -> HTMLResponse:
             "active_apps": [],
             "active_queues": [],
             "active_outcomes": [],
+            "active_instances": [],
             "search_text": "",
         },
     )
@@ -255,6 +261,7 @@ async def partial_history_results(request: Request) -> HTMLResponse:
     app_filter = _split_filter_param(params.get("app"))
     queue_filter = _split_filter_param(params.get("queue"))
     outcome_filter = _split_filter_param(params.get("outcome"))
+    instance_filter = _split_filter_param(params.get("instance"))
     search_text = params.get("search", "")
 
     result = await get_search_history(
@@ -263,6 +270,7 @@ async def partial_history_results(request: Request) -> HTMLResponse:
         app_filter=app_filter,
         queue_filter=queue_filter,
         outcome_filter=outcome_filter,
+        instance_filter=instance_filter,
         search_text=search_text,
     )
 
@@ -274,6 +282,7 @@ async def partial_history_results(request: Request) -> HTMLResponse:
             "active_apps": app_filter or [],
             "active_queues": queue_filter or [],
             "active_outcomes": outcome_filter or [],
+            "active_instances": instance_filter or [],
             "search_text": search_text,
         },
     )
@@ -431,43 +440,39 @@ async def save_settings(request: Request) -> RedirectResponse:
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
 
-@router.post("/api/search-now/{app_name}", response_class=HTMLResponse)
-async def search_now(request: Request, app_name: str) -> HTMLResponse:
-    """Trigger an immediate search cycle for the given app and return updated card.
-
-    Runs the cycle for the first enabled instance (Phase 39 adds
-    per-instance search-now).
-    """
+@router.post("/api/search-now/{app_name}/{instance_name}", response_class=HTMLResponse)
+async def search_now(request: Request, app_name: str, instance_name: str) -> HTMLResponse:
+    """Trigger an immediate search cycle for a specific instance and return updated card."""
     if app_name not in ("radarr", "sonarr"):
         return HTMLResponse("Invalid app", status_code=400)
 
-    # Get first enabled instance's client
     clients = getattr(request.app.state, f"{app_name}_clients", {})
     enabled = request.app.state.settings.get_enabled_instances(app_name)
-    if not enabled or not clients:
-        return HTMLResponse("App not enabled", status_code=400)
-    instance_name = next(iter(enabled))
-    client = clients.get(instance_name)
-    if client is None:
-        return HTMLResponse("App not enabled", status_code=400)
+    if instance_name not in enabled or instance_name not in clients:
+        return HTMLResponse("Instance not enabled", status_code=400)
+    client = clients[instance_name]
     instance_config = enabled[instance_name]
 
     # Optimistic rate limit check BEFORE lock (fast-fail for obvious cases)
+    rate_key = f"{app_name}_{instance_name}"
     now = time.monotonic()
-    last = request.app.state.last_search_time.get(app_name, 0.0)
+    last = request.app.state.last_search_time.get(rate_key, 0.0)
     if now - last < SEARCH_RATE_LIMIT_SECONDS:
-        logger.info("{name}: Manual search rate-limited", name=app_name.title())
+        logger.info("{name}/{inst}: Manual search rate-limited", name=app_name.title(), inst=instance_name)
         return HTMLResponse("Rate limited — try again shortly", status_code=429)
 
     cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle
     async with request.app.state.search_lock:
         # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
         now = time.monotonic()
-        last = request.app.state.last_search_time.get(app_name, 0.0)
+        last = request.app.state.last_search_time.get(rate_key, 0.0)
         if now - last < SEARCH_RATE_LIMIT_SECONDS:
-            logger.info("{name}: Manual search rate-limited (after lock)", name=app_name.title())
+            logger.info(
+                "{name}/{inst}: Manual search rate-limited (after lock)",
+                name=app_name.title(), inst=instance_name,
+            )
             return HTMLResponse("Rate limited — try again shortly", status_code=429)
-        request.app.state.last_search_time[app_name] = now
+        request.app.state.last_search_time[rate_key] = now
 
         try:
             request.app.state.triggarr_state = await cycle_fn(
@@ -482,16 +487,17 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
                 request.app.state.triggarr_state,
                 request.app.state.state_path,
             )
-            logger.info("{name}: Manual search triggered", name=app_name.title())
+            logger.info("{name}/{inst}: Manual search triggered", name=app_name.title(), inst=instance_name)
         except Exception as exc:
             logger.error(
-                "{name}: Manual search failed -- {exc}",
+                "{name}/{inst}: Manual search failed -- {exc}",
                 name=app_name.title(),
+                inst=instance_name,
                 exc=exc,
             )
 
     # Return updated card partial
-    app_data = _build_app_context(request, app_name)
+    app_data = _build_app_context(request, app_name, instance_name)
     return templates.TemplateResponse(
         request=request,
         name="partials/app_card.html",
@@ -499,10 +505,10 @@ async def search_now(request: Request, app_name: str) -> HTMLResponse:
     )
 
 
-@router.get("/partials/app-card/{app_name}", response_class=HTMLResponse)
-async def partial_app_card(request: Request, app_name: str) -> HTMLResponse:
-    """Return an HTML fragment for a single app status card (htmx partial)."""
-    app_data = _build_app_context(request, app_name)
+@router.get("/partials/app-card/{app_name}/{instance_name}", response_class=HTMLResponse)
+async def partial_app_card(request: Request, app_name: str, instance_name: str) -> HTMLResponse:
+    """Return an HTML fragment for a single app instance status card (htmx partial)."""
+    app_data = _build_app_context(request, app_name, instance_name)
     if app_data is None:
         return HTMLResponse("")
 

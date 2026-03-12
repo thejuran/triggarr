@@ -44,3 +44,6 @@
 | 36 | v2.3/S05 | arch | Stats row auto-creation | INSERT OR IGNORE before UPDATE | No need to pre-seed stats rows for new instances | no |
 | 37 | v2.3/S06 | arch | Tracking signature | Single client + app_name + instance_id | Simpler per-instance wiring, no need for _get_client dispatch | no |
 | 38 | v2.3/S06 | arch | Tracking scoping | instance_id filter on get_trackable_entries | Each job only sees its own instance's pending entries | no |
+| 39 | v2.3/S07 | arch | Per-instance route URLs | /{app_name}/{instance_name} path pattern | Unique htmx targets per instance, clean REST URLs | no |
+| 40 | v2.3/S07 | arch | Rate limit key | app_name_instance_name instead of app_name | Per-instance rate limiting for search-now | no |
+| 41 | v2.3/S07 | arch | Version injection | Jinja2 env global | Available in all templates without per-route context | no |
