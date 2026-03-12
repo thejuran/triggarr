@@ -211,6 +211,9 @@ Plans:
   3. User can enable/disable any instance from the settings page
   4. Tag name fields (missing_tag, cutoff_tag) are exposed in the settings form with autocomplete from the *arr instance's tag list
   5. All changes persist to TOML config via existing atomic write path
+**Plans:** 1 plan
+Plans:
+- [ ] 41-01-PLAN.md -- Backend route refactoring, template rewrite, tag autocomplete, add/remove endpoints, tests
 
 ### Phase 42: Dashboard Enhancements
 **Goal:** Dashboard shows instance health summary, tag warning badges, and per-instance effectiveness stats
@@ -247,6 +250,6 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 38. Scheduler & Tracking Wiring | v2.3 | 1/1 (S06) | Partial | - |
 | 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
-| 41. Multi-Instance Settings UI | v2.3 | 0/0 | Pending | - |
+| 41. Multi-Instance Settings UI | v2.3 | 0/1 | Pending | - |
 | 42. Dashboard Enhancements | v2.3 | 0/0 | Pending | - |
 | 43. Update Notification & Cleanup | v2.3 | 0/0 | Pending | - |
