@@ -183,6 +183,17 @@ Plans:
   6. Dashboard displays the current Triggarr version and indicates when a newer release is available
 **Plans**: TBD
 
+### Phase 40: Fix Multi-Instance Bugs and Hardening
+**Goal:** Fix all critical and warning-level bugs found during deep code review of multi-instance support, covering crash bugs in the validate-schedule-cycle chain, config safety issues, and input validation hardening
+**Requirements**: BUG-01, BUG-02, BUG-03, BUG-04, BUG-05, BUG-06, BUG-07, BUG-08, BUG-09, BUG-10, BUG-11
+**Depends on:** Phase 36
+**Plans:** 3 plans
+
+Plans:
+- [ ] 40-01-PLAN.md -- Fix crash bugs in validate-schedule-cycle chain (KeyError, loop overwrite, missing state entry)
+- [ ] 40-02-PLAN.md -- Fix config safety (instance deletion on save, CSS injection, temp file leak, write dedup)
+- [ ] 40-03-PLAN.md -- Fix input validation and code hygiene (filter cap, name length, tag logging, state mutation, test shadowing)
+
 ## Progress
 
 **Execution Order:**
@@ -197,3 +208,4 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
 | 38. Scheduler & Tracking Wiring | v2.3 | 0/? | Not started | - |
 | 39. Web UI Integration | v2.3 | 0/? | Not started | - |
+| 40. Fix Multi-Instance Bugs | v2.3 | 0/3 | Not started | - |
