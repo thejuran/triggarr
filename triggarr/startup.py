@@ -30,7 +30,7 @@ def check_localhost_urls(settings: Settings) -> None:
     user sees a clear explanation rather than a mysterious timeout.
     """
     for name in ("radarr", "sonarr"):
-        for _inst_name, cfg in settings.get_enabled_instances(name).items():
+        for _inst, cfg in settings.get_enabled_instances(name).items():
             hostname = urlparse(cfg.url).hostname
             if hostname and hostname in LOCALHOST_PATTERNS:
                 logger.warning(
@@ -107,24 +107,25 @@ async def validate_connections(settings: Settings) -> dict[str, bool]:
     """
     results: dict[str, bool] = {}
 
-    for _inst_name, cfg in settings.get_enabled_instances("radarr").items():
+    for inst_name, cfg in settings.get_enabled_instances("radarr").items():
         client = RadarrClient(
             base_url=cfg.url,
             api_key=cfg.api_key.get_secret_value(),
         )
         try:
-            results["radarr"] = await client.validate_connection()
+            results[f"radarr/{inst_name}"] = await client.validate_connection()
         finally:
             await client.close()
 
-    for _inst_name, cfg in settings.get_enabled_instances("sonarr").items():
+    for inst_name, cfg in settings.get_enabled_instances("sonarr").items():
         client = SonarrClient(
             base_url=cfg.url,
             api_key=cfg.api_key.get_secret_value(),
         )
         try:
-            results["sonarr"] = await client.validate_connection()
-            if results["sonarr"]:
+            key = f"sonarr/{inst_name}"
+            results[key] = await client.validate_connection()
+            if results[key]:
                 try:
                     api_version = await client.detect_api_version()
                     logger.info("Sonarr: Detected API {version}", version=api_version)
@@ -184,10 +185,11 @@ async def startup(config_path: Path | None = None) -> Settings:
     results = await validate_connections(settings)
 
     # 6. Log summary
-    for app_name, connected in results.items():
+    for key, connected in results.items():
+        app_label = key.replace("/", " ").title()
         if connected:
-            logger.info("{app}: Connection validated", app=app_name.title())
+            logger.info("{app}: Connection validated", app=app_label)
         else:
-            logger.warning("{app}: Connection failed -- will retry during search", app=app_name.title())
+            logger.warning("{app}: Connection failed -- will retry during search", app=app_label)
 
     return settings

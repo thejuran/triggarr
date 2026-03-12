@@ -227,7 +227,7 @@ async def test_sonarr_version_detection_v3() -> None:
         finally:
             logger.remove(handler_id)
 
-    assert results["sonarr"] is True
+    assert results["sonarr/Default"] is True
     assert "Detected API v3" in sink.getvalue()
 
 
@@ -249,7 +249,7 @@ async def test_sonarr_version_detection_v4() -> None:
         finally:
             logger.remove(handler_id)
 
-    assert results["sonarr"] is True
+    assert results["sonarr/Default"] is True
     assert "Detected API v4" in sink.getvalue()
 
 
@@ -274,7 +274,7 @@ async def test_sonarr_version_detection_failure() -> None:
             logger.remove(handler_id)
 
     # Connection still validated successfully
-    assert results["sonarr"] is True
+    assert results["sonarr/Default"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,7 @@ from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
-from triggarr.state import TriggarrState
+from triggarr.state import TriggarrState, _default_instance_state
 
 
 def _sanitize_exc(exc: Exception) -> str:
@@ -296,6 +296,7 @@ async def run_radarr_cycle(
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
+    state["radarr"].setdefault(instance_name, _default_instance_state())
     ist = state["radarr"][instance_name]
 
     try:
@@ -495,6 +496,7 @@ async def run_sonarr_cycle(
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
+    state["sonarr"].setdefault(instance_name, _default_instance_state())
     ist = state["sonarr"][instance_name]
 
     try:
