@@ -61,7 +61,7 @@ This milestone is complete only when all are true:
   > After this: Search cycles filter items by configured tags. Proven by 9 integration tests in cycle functions.
 - [x] **S05: Database Schema & Instance Scoping** `risk:medium` `depends:[S01]`
   > After this: Search history entries include instance_id, stats are per-instance, history page can filter by instance.
-- [ ] **S06: Scheduler & Tracking Wiring** `risk:high` `depends:[S03,S04,S05]`
+- [x] **S06: Scheduler & Tracking Wiring** `risk:high` `depends:[S03,S04,S05]`
   > After this: Each enabled instance runs on its own APScheduler job, grab tracking queries the correct instance, enable/disable takes effect without restart.
 - [ ] **S07: Web UI Integration** `risk:high` `depends:[S06]`
   > After this: Users can manage instances, view per-instance status, configure tag filters with autocomplete, and see version info — all from the web UI.

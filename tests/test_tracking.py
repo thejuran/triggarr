@@ -2,7 +2,8 @@
 
 Covers: Radarr grabbed/unresolved, Sonarr grabbed/partial/unresolved,
 partial->grabbed upgrade, window-expired terminal, error handling,
-empty DB, cutoff queue stat counters, exception sanitization (DRSEC-07).
+empty DB, cutoff queue stat counters, exception sanitization (DRSEC-07),
+and per-instance tracking isolation (S06).
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ async def _insert_entry(
     item_id: int = 1,
     outcome: str = "searched",
     missing_count: int | None = None,
+    instance_id: str = "Default",
     timestamp: datetime | None = None,
 ) -> int:
     """Insert a search entry, optionally override timestamp, return its id."""
@@ -58,6 +60,7 @@ async def _insert_entry(
         outcome=outcome,
         item_id=item_id,
         missing_count=missing_count,
+        instance_id=instance_id,
     )
     # Get the last inserted row id.
     async with db.execute("SELECT last_insert_rowid()") as cursor:
@@ -84,12 +87,17 @@ async def _get_detail(db, row_id: int) -> str:
     return row[0]
 
 
-async def _get_stat(db, app: str, column: str) -> int:
-    """Read a specific stat value from lifetime_stats for an app."""
+async def _get_stat(db, app: str, column: str, instance_id: str = "Default") -> int:
+    """Read a specific stat value from lifetime_stats for an app+instance."""
     db.row_factory = aiosqlite.Row
-    async with db.execute(f"SELECT {column} FROM lifetime_stats WHERE app = ?", (app,)) as cursor:  # noqa: S608
+    async with db.execute(
+        f"SELECT {column} FROM lifetime_stats WHERE app = ? AND instance_id = ?",  # noqa: S608
+        (app, instance_id),
+    ) as cursor:
         row = await cursor.fetchone()
     db.row_factory = None
+    if row is None:
+        return 0
     return row[column]
 
 
@@ -108,7 +116,7 @@ async def test_radarr_grabbed(tmp_path):
     grab_time = searched_at + timedelta(minutes=10)
     radarr.get_grab_history.return_value = [_grab(100, grab_time, source="Movie.2024.1080p")]
 
-    counts = await run_tracking_check(db, radarr, None, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "grabbed"
     assert "Movie.2024.1080p" in await _get_detail(db, row_id)
@@ -131,7 +139,7 @@ async def test_radarr_unresolved_window_expired(tmp_path):
     radarr = AsyncMock()
     radarr.get_grab_history.return_value = []
 
-    counts = await run_tracking_check(db, radarr, None, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "unresolved"
     assert await _get_stat(db, "Radarr", "movies_found") == 0
@@ -153,7 +161,7 @@ async def test_radarr_still_within_window_no_grabs(tmp_path):
     radarr = AsyncMock()
     radarr.get_grab_history.return_value = []
 
-    counts = await run_tracking_check(db, radarr, None, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "searched"
     assert counts == {"grabbed": 0, "partial": 0, "unresolved": 0, "errors": 0}
@@ -180,7 +188,7 @@ async def test_sonarr_grabbed_all_episodes(tmp_path):
         _grab(12, searched_at + timedelta(minutes=7)),
     ]
 
-    counts = await run_tracking_check(db, None, sonarr, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "grabbed"
     assert "3/3" in await _get_detail(db, row_id)
@@ -208,7 +216,7 @@ async def test_sonarr_partial_some_episodes(tmp_path):
         _grab(11, searched_at + timedelta(minutes=4)),
     ]
 
-    counts = await run_tracking_check(db, None, sonarr, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "partial"
     assert "2/5" in await _get_detail(db, row_id)
@@ -238,7 +246,7 @@ async def test_sonarr_partial_to_grabbed_upgrade(tmp_path):
         _grab(12, searched_at + timedelta(minutes=7)),
     ]
 
-    counts = await run_tracking_check(db, None, sonarr, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "grabbed"
     assert "3/3" in await _get_detail(db, row_id)
@@ -266,7 +274,7 @@ async def test_sonarr_partial_window_expired_terminal(tmp_path):
         _grab(11, searched_at + timedelta(minutes=6)),
     ]
 
-    counts = await run_tracking_check(db, None, sonarr, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "partial"
     detail = await _get_detail(db, row_id)
@@ -291,7 +299,7 @@ async def test_tracking_failure_nonfatal(tmp_path):
     radarr = AsyncMock()
     radarr.get_grab_history.side_effect = httpx.ConnectError("Connection refused")
 
-    counts = await run_tracking_check(db, radarr, None, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "searched"
     assert counts["errors"] == 1
@@ -305,17 +313,15 @@ async def test_tracking_failure_nonfatal(tmp_path):
 
 
 async def test_no_trackable_entries(tmp_path):
-    """Fresh DB with no entries returns all-zero counts without calling clients."""
+    """Fresh DB with no entries returns all-zero counts without calling client."""
     db, _ = await _init_db(tmp_path)
 
     radarr = AsyncMock()
-    sonarr = AsyncMock()
 
-    counts = await run_tracking_check(db, radarr, sonarr, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
     assert counts == {"grabbed": 0, "partial": 0, "unresolved": 0, "errors": 0}
     radarr.get_grab_history.assert_not_called()
-    sonarr.get_grab_history.assert_not_called()
     await db.close()
 
 
@@ -335,7 +341,7 @@ async def test_cutoff_queue_uses_updated_counter(tmp_path):
     radarr = AsyncMock()
     radarr.get_grab_history.return_value = [_grab(100, searched_at + timedelta(minutes=10))]
 
-    counts = await run_tracking_check(db, radarr, None, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "grabbed"
     assert await _get_stat(db, "Radarr", "movies_updated") == 1
@@ -406,8 +412,68 @@ async def test_sonarr_missing_count_zero_vs_none(tmp_path):
     sonarr = AsyncMock()
     grab_time = searched_at + timedelta(minutes=5)
     sonarr.get_grab_history.return_value = [_grab(50, grab_time)]
-    counts = await run_tracking_check(db, None, sonarr, tracking_window_minutes=60)
+    counts = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
     # With expected=0, any grab means grabbed
     assert await _get_outcome(db, row_id) == "grabbed"
     assert counts["grabbed"] == 1
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# S06: Per-instance tracking isolation
+# ---------------------------------------------------------------------------
+
+
+async def test_per_instance_tracking_isolation(tmp_path):
+    """Tracking for one instance does not resolve entries from another instance."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=30)
+
+    # Insert entries for two different Radarr instances
+    row_4k = await _insert_entry(
+        db, app="Radarr", item_id=42, instance_id="4K", timestamp=searched_at,
+    )
+    row_1080p = await _insert_entry(
+        db, app="Radarr", item_id=99, instance_id="1080p", timestamp=searched_at,
+    )
+
+    # Client for 4K instance — returns a grab
+    radarr_4k = AsyncMock()
+    radarr_4k.get_grab_history.return_value = [
+        _grab(100, searched_at + timedelta(minutes=10), source="Movie.4K"),
+    ]
+
+    # Run tracking for 4K only
+    counts = await run_tracking_check(db, radarr_4k, "Radarr", "4K", tracking_window_minutes=60)
+
+    # 4K entry resolved
+    assert await _get_outcome(db, row_4k) == "grabbed"
+    assert counts["grabbed"] == 1
+
+    # 1080p entry untouched
+    assert await _get_outcome(db, row_1080p) == "searched"
+    await db.close()
+
+
+async def test_per_instance_stats_isolation(tmp_path):
+    """Tracking increments stats for the correct instance only."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=30)
+
+    row_id = await _insert_entry(
+        db, app="Radarr", item_id=42, instance_id="4K", timestamp=searched_at,
+    )
+
+    radarr = AsyncMock()
+    radarr.get_grab_history.return_value = [
+        _grab(100, searched_at + timedelta(minutes=10)),
+    ]
+
+    await run_tracking_check(db, radarr, "Radarr", "4K", tracking_window_minutes=60)
+
+    assert await _get_outcome(db, row_id) == "grabbed"
+    # 4K instance stats incremented
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="4K") == 1
+    # Default instance stats untouched
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Default") == 0
     await db.close()

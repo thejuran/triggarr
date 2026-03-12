@@ -22,16 +22,21 @@ from triggarr.models.arr import GrabEvent
 
 async def run_tracking_check(
     db: aiosqlite.Connection,
-    radarr_client: RadarrClient | None,
-    sonarr_client: SonarrClient | None,
+    client: RadarrClient | SonarrClient,
+    app_name: str,
+    instance_id: str,
     tracking_window_minutes: int,
 ) -> dict[str, int]:
-    """Poll *arr grab history and resolve pending search outcomes.
+    """Poll *arr grab history and resolve pending search outcomes for one instance.
+
+    Scopes tracking to entries belonging to the given app_name and instance_id,
+    using the provided client to fetch grab history from the correct *arr server.
 
     Args:
         db: Open aiosqlite connection.
-        radarr_client: RadarrClient instance, or None if Radarr is not enabled.
-        sonarr_client: SonarrClient instance, or None if Sonarr is not enabled.
+        client: The *arr client for this instance.
+        app_name: Application name (e.g. "Radarr", "Sonarr").
+        instance_id: Instance name for DB scoping.
         tracking_window_minutes: Minutes after a search to look for grabs.
 
     Returns:
@@ -39,32 +44,29 @@ async def run_tracking_check(
     """
     counts: dict[str, int] = {"grabbed": 0, "partial": 0, "unresolved": 0, "errors": 0}
 
-    entries = await get_trackable_entries(db)
+    entries = await get_trackable_entries(db, instance_id=instance_id)
     if not entries:
-        logger.debug("Tracking: no pending entries")
+        logger.debug("Tracking[{inst}]: no pending entries", inst=instance_id)
         return counts
 
     now = datetime.now(UTC)
 
-    # Group entries by (app, item_id) to share one API call per item.
-    groups: dict[tuple[str, int], list[dict]] = {}
+    # Group entries by item_id to share one API call per item.
+    groups: dict[int, list[dict]] = {}
     for entry in entries:
-        key = (entry["app"], entry["item_id"])
-        groups.setdefault(key, []).append(entry)
+        if entry["app"] != app_name:
+            continue  # belt-and-suspenders: instance_id should already scope correctly
+        groups.setdefault(entry["item_id"], []).append(entry)
 
-    for (app, item_id), group_entries in groups.items():
-        # Pick the right client for this app.
-        client = _get_client(app, radarr_client, sonarr_client)
-        if client is None:
-            continue
-
+    for item_id, group_entries in groups.items():
         # Fetch grab history -- network errors are non-fatal.
         try:
             grabs = await client.get_grab_history(item_id)
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
-                "Tracking: failed to fetch grab history for {app} item {id}: {exc}",
-                app=app,
+                "Tracking[{inst}]: failed to fetch grab history for {app} item {id}: {exc}",
+                inst=instance_id,
+                app=app_name,
                 id=item_id,
                 exc=exc,
             )
@@ -90,7 +92,7 @@ async def run_tracking_check(
             window_expired = now > window_end
 
             outcome, detail, stat_increments = _determine_outcome(
-                app=app,
+                app=app_name,
                 queue_type=entry["queue_type"],
                 current_outcome=entry["outcome"],
                 missing_count=entry["missing_count"],
@@ -108,25 +110,14 @@ async def run_tracking_check(
                 result.history_id,
                 outcome,
                 detail,
-                app=app,
+                app=app_name,
                 queue_type=entry["queue_type"],
-                instance_id=entry.get("instance_id", "Default"),
+                instance_id=instance_id,
                 stat_increments=stat_increments,
             )
             counts[outcome] = counts.get(outcome, 0) + 1
 
     return counts
-
-
-def _get_client(
-    app: str, radarr_client: RadarrClient | None, sonarr_client: SonarrClient | None,
-) -> RadarrClient | SonarrClient | None:
-    """Return the appropriate client for the given app name, or None."""
-    if app == "Radarr":
-        return radarr_client
-    if app == "Sonarr":
-        return sonarr_client
-    return None
 
 
 def _parse_timestamp(ts: str) -> datetime:

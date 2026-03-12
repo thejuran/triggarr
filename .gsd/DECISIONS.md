@@ -42,3 +42,5 @@
 | 34 | v2.3/S05 | arch | instance_id default | 'Default' string everywhere | Backward compat with single-instance data, no NULL handling needed | no |
 | 35 | v2.3/S05 | arch | lifetime_stats composite PK | (app, instance_id) via table-swap migration | Per-instance stats without separate table; table-swap preserves data | no |
 | 36 | v2.3/S05 | arch | Stats row auto-creation | INSERT OR IGNORE before UPDATE | No need to pre-seed stats rows for new instances | no |
+| 37 | v2.3/S06 | arch | Tracking signature | Single client + app_name + instance_id | Simpler per-instance wiring, no need for _get_client dispatch | no |
+| 38 | v2.3/S06 | arch | Tracking scoping | instance_id filter on get_trackable_entries | Each job only sees its own instance's pending entries | no |

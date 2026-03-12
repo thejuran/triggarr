@@ -77,17 +77,13 @@ def make_search_job(
                     app.state.db,
                 )
                 save_state(app.state.triggarr_state, state_path)
-                # --- Tracking check: resolve pending search outcomes ---
+                # --- Tracking check: resolve pending search outcomes for this instance ---
                 try:
-                    # Pass first available client for each app type for tracking
-                    radarr_clients = getattr(app.state, "radarr_clients", {})
-                    sonarr_clients = getattr(app.state, "sonarr_clients", {})
-                    radarr_client = next(iter(radarr_clients.values()), None)
-                    sonarr_client = next(iter(sonarr_clients.values()), None)
                     tracking_result = await run_tracking_check(
                         app.state.db,
-                        radarr_client,
-                        sonarr_client,
+                        client,
+                        app_name.title(),
+                        instance_name,
                         app.state.settings.general.tracking_window_minutes,
                     )
                     resolved = (
