@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import LogEntry, log_buffer
-from triggarr.models.config import GeneralConfig
+from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 from triggarr.web.routes import STATIC_DIR, router
 
 
@@ -943,6 +943,216 @@ def test_app_card_sonarr_no_skip_badge(client, test_app):
     response = client.get("/partials/app-card/sonarr/Default")
     assert response.status_code == 200
     assert "skipped (unreleased)" not in response.text, "Sonarr should not show skip badge"
+
+
+# ---------------------------------------------------------------------------
+# BUG-07 / BUG-11: Input validation (instance_filter cap, instance_name length)
+# ---------------------------------------------------------------------------
+
+
+async def test_history_results_caps_instance_filter_at_10(test_app):
+    """GET /partials/history-results caps instance_filter to 10 items max (BUG-07)."""
+    db = test_app.state.db
+    # Insert entries for 12 different instances
+    for i in range(12):
+        await insert_search_entry(db, "Radarr", "missing", f"Movie {i}", instance_id=f"Inst{i}")
+
+    # Request with 12 instance filters -- only first 10 should be used
+    filter_param = ",".join(f"Inst{i}" for i in range(12))
+    with TestClient(test_app) as tc:
+        response = tc.get(f"/partials/history-results?instance={filter_param}")
+    assert response.status_code == 200
+    # Inst10 and Inst11 should NOT be in the results (capped at 10)
+    assert "Movie 10" not in response.text, "Instance filter should be capped at 10"
+    assert "Movie 11" not in response.text, "Instance filter should be capped at 10"
+
+
+def test_search_now_rejects_long_instance_name(client):
+    """POST /api/search-now with instance_name > 64 chars returns 400 (BUG-11)."""
+    long_name = "A" * 65
+    response = client.post(f"/api/search-now/radarr/{long_name}")
+    assert response.status_code == 400, f"Expected 400, got {response.status_code}"
+    assert "Instance name too long" in response.text
+
+
+def test_app_card_rejects_long_instance_name(client):
+    """GET /partials/app-card with instance_name > 64 chars returns 400 (BUG-11)."""
+    long_name = "A" * 65
+    response = client.get(f"/partials/app-card/radarr/{long_name}")
+    assert response.status_code == 400, f"Expected 400, got {response.status_code}"
+    assert "Instance name too long" in response.text
+
+
+def test_search_now_accepts_valid_length_instance_name(client, test_app):
+    """POST /api/search-now with instance_name <= 64 chars proceeds normally (BUG-11)."""
+    from unittest.mock import AsyncMock, patch
+
+    valid_name = "A" * 64
+    # The instance won't be found in enabled instances, so we expect 400 "Instance not enabled"
+    # but NOT "Instance name too long"
+    response = client.post(f"/api/search-now/radarr/{valid_name}")
+    assert response.status_code == 400
+    assert "Instance not enabled" in response.text
+    assert "Instance name too long" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# BUG-05: Settings save must preserve all instances, not just the first
+# ---------------------------------------------------------------------------
+
+
+def test_save_settings_preserves_non_edited_instances(test_app, tmp_path):
+    """POST /settings with 2 radarr instances preserves both in written config (BUG-05)."""
+    # Configure 2 radarr instances: Default (first) and 4K
+    test_app.state.settings = Settings(
+        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+        radarr={
+            "Default": InstanceConfig(
+                url="http://radarr:7878", api_key="default-key", enabled=True,
+                search_interval=30, search_missing_count=5, search_cutoff_count=5,
+            ),
+            "4K": InstanceConfig(
+                url="http://radarr4k:7878", api_key="4k-key", enabled=True,
+                search_interval=60, search_missing_count=10, search_cutoff_count=3,
+            ),
+        },
+        sonarr={
+            "Default": InstanceConfig(
+                url="http://sonarr:8989", api_key="sonarr-key", enabled=True,
+            ),
+        },
+    )
+    # Need matching clients for scheduler update logic
+    radarr_default_client = MagicMock()
+    radarr_default_client.close = AsyncMock()
+    radarr_4k_client = MagicMock()
+    radarr_4k_client.close = AsyncMock()
+    test_app.state.radarr_clients = {"Default": radarr_default_client, "4K": radarr_4k_client}
+
+    with TestClient(test_app) as tc:
+        response = tc.post(
+            "/settings",
+            data={
+                "log_level": "info",
+                "hard_max_per_cycle": "0",
+                "max_history_rows": "1000",
+                "request_timeout": "30",
+                "page_size": "50",
+                "tracking_window_minutes": "60",
+                "skip_unreleased": "on",
+                "radarr_url": "http://radarr:7878",
+                "radarr_api_key": "",  # keep existing
+                "radarr_enabled": "on",
+                "radarr_search_interval": "30",
+                "radarr_search_missing_count": "5",
+                "radarr_search_cutoff_count": "5",
+                "sonarr_url": "http://sonarr:8989",
+                "sonarr_api_key": "",
+                "sonarr_enabled": "on",
+                "sonarr_search_interval": "30",
+                "sonarr_search_missing_count": "5",
+                "sonarr_search_cutoff_count": "5",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+
+    import tomllib
+    with open(test_app.state.config_path, "rb") as f:
+        written = tomllib.load(f)
+
+    # Both radarr instances must be preserved
+    assert "Default" in written["radarr"], "Default radarr instance should be preserved"
+    assert "4K" in written["radarr"], "4K radarr instance should be preserved"
+    # 4K instance should retain its original settings
+    assert written["radarr"]["4K"]["url"] == "http://radarr4k:7878"
+    assert written["radarr"]["4K"]["api_key"] == "4k-key"
+    assert written["radarr"]["4K"]["search_interval"] == 60
+    assert written["radarr"]["4K"]["search_missing_count"] == 10
+    assert written["radarr"]["4K"]["search_cutoff_count"] == 3
+
+
+def test_save_settings_preserves_tag_fields(test_app, tmp_path):
+    """POST /settings preserves missing_tag and cutoff_tag on non-edited instances (BUG-05)."""
+    test_app.state.settings = Settings(
+        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+        radarr={
+            "Default": InstanceConfig(
+                url="http://radarr:7878", api_key="default-key", enabled=True,
+                missing_tag="triggarr", cutoff_tag="upgrade",
+            ),
+            "4K": InstanceConfig(
+                url="http://radarr4k:7878", api_key="4k-key", enabled=True,
+                missing_tag="4k-tag", cutoff_tag="4k-upgrade",
+            ),
+        },
+        sonarr={"Default": InstanceConfig(url="http://sonarr:8989", api_key="sonarr-key", enabled=True)},
+    )
+    radarr_default_client = MagicMock()
+    radarr_default_client.close = AsyncMock()
+    radarr_4k_client = MagicMock()
+    radarr_4k_client.close = AsyncMock()
+    test_app.state.radarr_clients = {"Default": radarr_default_client, "4K": radarr_4k_client}
+
+    with TestClient(test_app) as tc:
+        response = tc.post(
+            "/settings",
+            data={
+                "log_level": "info",
+                "radarr_url": "http://radarr:7878",
+                "radarr_api_key": "",
+                "radarr_enabled": "on",
+                "radarr_search_interval": "30",
+                "radarr_search_missing_count": "5",
+                "radarr_search_cutoff_count": "5",
+                "sonarr_url": "http://sonarr:8989",
+                "sonarr_api_key": "",
+                "sonarr_enabled": "on",
+                "sonarr_search_interval": "30",
+                "sonarr_search_missing_count": "5",
+                "sonarr_search_cutoff_count": "5",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+
+    import tomllib
+    with open(test_app.state.config_path, "rb") as f:
+        written = tomllib.load(f)
+
+    # Tag fields should be preserved on the 4K (non-edited) instance
+    assert written["radarr"]["4K"]["missing_tag"] == "4k-tag"
+    assert written["radarr"]["4K"]["cutoff_tag"] == "4k-upgrade"
+    # Tag fields should also be preserved on the edited instance
+    assert written["radarr"]["Default"]["missing_tag"] == "triggarr"
+    assert written["radarr"]["Default"]["cutoff_tag"] == "upgrade"
+
+
+def test_save_settings_uses_atomic_toml_write(test_app, tmp_path):
+    """POST /settings writes config using _atomic_toml_write, not manual tempfile (BUG-05 dedup)."""
+    with TestClient(test_app) as tc, \
+         patch("triggarr.web.routes._atomic_toml_write") as mock_write:
+        tc.post(
+            "/settings",
+            data={
+                "log_level": "info",
+                "radarr_url": "http://radarr:7878",
+                "radarr_api_key": "test-key",
+                "radarr_enabled": "on",
+                "radarr_search_interval": "30",
+                "radarr_search_missing_count": "5",
+                "radarr_search_cutoff_count": "5",
+                "sonarr_url": "",
+                "sonarr_api_key": "",
+                "sonarr_search_interval": "30",
+                "sonarr_search_missing_count": "5",
+                "sonarr_search_cutoff_count": "5",
+            },
+            follow_redirects=False,
+        )
+    mock_write.assert_called_once()
+    call_args = mock_write.call_args
+    assert call_args[0][0] == test_app.state.config_path
 
 
 def test_save_settings_skip_unreleased_off(client, test_app):
