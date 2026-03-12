@@ -208,4 +208,4 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 37. Database Schema & Instance Scoping | v2.3 | 0/? | Not started | - |
 | 38. Scheduler & Tracking Wiring | v2.3 | 0/? | Not started | - |
 | 39. Web UI Integration | v2.3 | 0/? | Not started | - |
-| 40. Fix Multi-Instance Bugs | 3/3 | Complete   | 2026-03-12 | - |
+| 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
