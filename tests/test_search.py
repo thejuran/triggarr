@@ -214,12 +214,13 @@ def _cycle_instance_config(missing_count: int = 2, cutoff_count: int = 2):
     )
 
 
-def _default_instance_state():
+def _make_test_state():
     """Return a default per-instance state nested under 'Default'."""
+    from triggarr.state import _default_instance_state
+
     state = _default_state()
-    from triggarr.state import _default_instance_state as _dis
-    state["radarr"] = {"Default": _dis()}
-    state["sonarr"] = {"Default": _dis()}
+    state["radarr"] = {"Default": _default_instance_state()}
+    state["sonarr"] = {"Default": _default_instance_state()}
     return state
 
 
@@ -238,7 +239,7 @@ async def test_run_radarr_cycle_happy_path(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
@@ -266,7 +267,7 @@ async def test_run_radarr_cycle_network_failure(tmp_path):
         side_effect=httpx.ConnectError("refused")
     )
 
-    state = _default_instance_state()
+    state = _make_test_state()
     state["radarr"]["Default"]["missing_cursor"] = 5
     settings = _cycle_settings()
     instance_config = _cycle_instance_config()
@@ -298,7 +299,7 @@ async def test_run_radarr_cycle_per_item_skip(tmp_path):
         side_effect=[Exception("boom"), None]
     )
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
@@ -338,7 +339,7 @@ async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     state["radarr"]["Default"]["missing_cursor"] = 0
 
     result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
@@ -399,7 +400,7 @@ async def test_run_sonarr_cycle_happy_path(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
@@ -424,7 +425,7 @@ async def test_run_sonarr_cycle_network_failure(tmp_path):
         side_effect=httpx.ConnectError("refused")
     )
 
-    state = _default_instance_state()
+    state = _make_test_state()
     state["sonarr"]["Default"]["missing_cursor"] = 3
     settings = _cycle_settings()
     instance_config = _cycle_instance_config()
@@ -456,7 +457,7 @@ async def test_run_sonarr_cycle_per_item_skip(tmp_path):
         side_effect=[Exception("boom"), None]
     )
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
@@ -498,7 +499,7 @@ async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     state["sonarr"]["Default"]["missing_cursor"] = 0
 
     result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
@@ -586,7 +587,7 @@ async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
     )
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
     instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
@@ -622,7 +623,7 @@ async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
     instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
@@ -662,7 +663,7 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
         side_effect=[Exception("boom"), None, None]
     )
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
     instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
@@ -701,7 +702,7 @@ async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock(side_effect=Exception("API timeout"))
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
@@ -732,7 +733,7 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock(side_effect=Exception("Connection refused"))
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
@@ -861,7 +862,7 @@ async def test_run_radarr_cycle_skip_unreleased_enabled(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
     instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
@@ -892,7 +893,7 @@ async def test_run_radarr_cycle_skip_unreleased_disabled(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=False))
     instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
@@ -929,7 +930,7 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_enabled(tmp_path)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
     instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
@@ -961,7 +962,7 @@ async def test_run_radarr_cycle_eligible_count_skip_unreleased_disabled(tmp_path
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=False))
     instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
@@ -991,7 +992,7 @@ async def test_run_sonarr_cycle_eligible_count(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
     instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
 
@@ -1023,7 +1024,7 @@ async def test_run_radarr_cycle_info_log_unreleased_skipped(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
     instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
@@ -1058,7 +1059,7 @@ async def test_run_radarr_cycle_no_info_log_when_zero_unreleased(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
     instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
@@ -1093,7 +1094,7 @@ async def test_run_radarr_cycle_skip_unreleased_never_filters_cutoff(tmp_path):
     )
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     settings = make_settings(general=GeneralConfig(skip_unreleased=True))
     instance_config = InstanceConfig(url="http://radarr:7878", api_key="test-key", enabled=True)
 
@@ -1262,7 +1263,7 @@ async def test_radarr_cycle_missing_tag_filters(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://radarr:7878", api_key="test-key", enabled=True,
         search_missing_count=5, search_cutoff_count=5,
@@ -1299,7 +1300,7 @@ async def test_radarr_cycle_cutoff_tag_filters(tmp_path):
     ])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://radarr:7878", api_key="test-key", enabled=True,
         search_missing_count=5, search_cutoff_count=5,
@@ -1331,7 +1332,7 @@ async def test_radarr_cycle_no_tag_searches_all(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://radarr:7878", api_key="test-key", enabled=True,
         search_missing_count=5, search_cutoff_count=5,
@@ -1363,7 +1364,7 @@ async def test_no_tag_api_call_when_unconfigured(tmp_path):
     ])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://radarr:7878", api_key="test-key", enabled=True,
         search_missing_count=5, search_cutoff_count=5,
@@ -1393,7 +1394,7 @@ async def test_radarr_tag_resolution_failure_searches_all(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://radarr:7878", api_key="test-key", enabled=True,
         search_missing_count=5, search_cutoff_count=5,
@@ -1451,7 +1452,7 @@ async def test_sonarr_cycle_missing_tag_filters(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://sonarr:8989", api_key="test-key", enabled=True,
         search_missing_count=10, search_cutoff_count=10,
@@ -1485,7 +1486,7 @@ async def test_sonarr_cycle_cutoff_tag_filters(tmp_path):
     ])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://sonarr:8989", api_key="test-key", enabled=True,
         search_missing_count=10, search_cutoff_count=10,
@@ -1517,7 +1518,7 @@ async def test_sonarr_cycle_no_tag_searches_all(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://sonarr:8989", api_key="test-key", enabled=True,
         search_missing_count=10, search_cutoff_count=10,
@@ -1549,7 +1550,7 @@ async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://sonarr:8989", api_key="test-key", enabled=True,
         search_missing_count=10, search_cutoff_count=10,
@@ -1635,7 +1636,7 @@ async def test_radarr_tag_fetch_failure_no_tag_not_found_warning(tmp_path):
     client.search_movies = AsyncMock()
     client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://radarr:7878", api_key="test-key", enabled=True,
         search_missing_count=5, search_cutoff_count=5,
@@ -1675,7 +1676,7 @@ async def test_radarr_tag_fetch_success_empty_list_no_tag_not_found(tmp_path):
     # Successful fetch, but empty tag list
     client.get_tags = AsyncMock(return_value=[])
 
-    state = _default_instance_state()
+    state = _make_test_state()
     instance_config = InstanceConfig(
         url="http://radarr:7878", api_key="test-key", enabled=True,
         search_missing_count=5, search_cutoff_count=5,

@@ -337,8 +337,10 @@ async def run_radarr_cycle(
     missing_tag_id: int | None = None
     cutoff_tag_id: int | None = None
     if instance_config.missing_tag or instance_config.cutoff_tag:
+        tag_fetch_ok = False
         try:
             tags = await client.get_tags()
+            tag_fetch_ok = True
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
                 "Radarr: Failed to fetch tags -- skipping tag filtering: {exc}",
@@ -348,7 +350,7 @@ async def run_radarr_cycle(
 
         if instance_config.missing_tag:
             missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tags:
+            if missing_tag_id is None and tag_fetch_ok:
                 logger.warning(
                     "Radarr: Tag '{tag}' not found -- searching all missing items",
                     tag=instance_config.missing_tag,
@@ -356,7 +358,7 @@ async def run_radarr_cycle(
 
         if instance_config.cutoff_tag:
             cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tags:
+            if cutoff_tag_id is None and tag_fetch_ok:
                 logger.warning(
                     "Radarr: Tag '{tag}' not found -- searching all cutoff items",
                     tag=instance_config.cutoff_tag,
@@ -537,8 +539,10 @@ async def run_sonarr_cycle(
     missing_tag_id: int | None = None
     cutoff_tag_id: int | None = None
     if instance_config.missing_tag or instance_config.cutoff_tag:
+        tag_fetch_ok = False
         try:
             tags = await client.get_tags()
+            tag_fetch_ok = True
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
                 "Sonarr: Failed to fetch tags -- skipping tag filtering: {exc}",
@@ -548,7 +552,7 @@ async def run_sonarr_cycle(
 
         if instance_config.missing_tag:
             missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tags:
+            if missing_tag_id is None and tag_fetch_ok:
                 logger.warning(
                     "Sonarr: Tag '{tag}' not found -- searching all missing items",
                     tag=instance_config.missing_tag,
@@ -556,7 +560,7 @@ async def run_sonarr_cycle(
 
         if instance_config.cutoff_tag:
             cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tags:
+            if cutoff_tag_id is None and tag_fetch_ok:
                 logger.warning(
                     "Sonarr: Tag '{tag}' not found -- searching all cutoff items",
                     tag=instance_config.cutoff_tag,

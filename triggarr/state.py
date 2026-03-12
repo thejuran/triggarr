@@ -206,17 +206,18 @@ def cleanup_orphaned_instances(state: TriggarrState, settings: Settings) -> Trig
     Compares instance names in state against configured instance names
     in settings, removing any that are no longer configured.
 
+    Returns a new dict -- the input state is not mutated.
+
     Args:
         state: Current application state.
         settings: Current application settings.
 
     Returns:
-        State with orphaned instance entries removed.
+        New state dict with orphaned instance entries removed.
     """
+    result = dict(state)
     for app_type in ("radarr", "sonarr"):
         configured_names = set(getattr(settings, app_type, {}).keys())
-        state_section = state.get(app_type, {})  # type: ignore[literal-required]
-        orphans = [name for name in state_section if name not in configured_names]
-        for orphan in orphans:
-            del state_section[orphan]
-    return state
+        current = result.get(app_type, {})
+        result[app_type] = {k: v for k, v in current.items() if k in configured_names}
+    return result
