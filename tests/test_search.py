@@ -1614,3 +1614,136 @@ async def test_sonarr_cycle_missing_instance_state_no_keyerror(tmp_path):
     assert "NewInstance" in result["sonarr"]
     assert result["sonarr"]["NewInstance"]["missing_cursor"] == 0
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# BUG-08: Tag fetch failure logging (no false "tag not found" warning)
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_tag_fetch_failure_no_tag_not_found_warning(tmp_path):
+    """When get_tags() raises, 'tag not found' warning must NOT fire (BUG-08)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+    client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings()
+
+    # Capture log output
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    finally:
+        logger.remove(handler_id)
+
+    log_output = sink.getvalue()
+    assert "Failed to fetch tags" in log_output, "Should log tag fetch failure"
+    assert "not found" not in log_output, "Should NOT log 'tag not found' when fetch failed"
+    await db.close()
+
+
+async def test_radarr_tag_fetch_success_empty_list_no_tag_not_found(tmp_path):
+    """When get_tags() succeeds with empty list, 'tag not found' warning SHOULD fire (BUG-08).
+
+    This distinguishes a successful fetch returning no tags from a failed fetch.
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+    # Successful fetch, but empty tag list
+    client.get_tags = AsyncMock(return_value=[])
+
+    state = _default_instance_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings()
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    finally:
+        logger.remove(handler_id)
+
+    log_output = sink.getvalue()
+    # With tag_fetch_ok=True, "tag not found" warning SHOULD fire for empty tag list
+    assert "not found" in log_output, "Should log 'tag not found' when fetch succeeded but tag missing"
+    assert "Failed to fetch tags" not in log_output, "Should NOT log fetch failure"
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# BUG-09: cleanup_orphaned_instances immutability
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_orphaned_instances_does_not_mutate_input():
+    """cleanup_orphaned_instances returns new dict without mutating input (BUG-09)."""
+    from tests.conftest import make_settings
+    from triggarr.state import AppState, TriggarrState, cleanup_orphaned_instances
+
+    settings = make_settings()
+    state = TriggarrState(
+        radarr={
+            "Default": AppState(missing_cursor=5, cutoff_cursor=2, last_run=None),
+            "OldInstance": AppState(missing_cursor=99, cutoff_cursor=88, last_run=None),
+        },
+        sonarr={
+            "Default": AppState(missing_cursor=3, cutoff_cursor=0, last_run=None),
+        },
+        search_log=[],
+    )
+
+    # Keep a reference to the original radarr dict
+    original_radarr = state["radarr"]
+
+    result = cleanup_orphaned_instances(state, settings)
+
+    # Result should not contain orphan
+    assert "OldInstance" not in result["radarr"]
+    assert "Default" in result["radarr"]
+
+    # Input must NOT be mutated
+    assert "OldInstance" in original_radarr, "Original state dict must not be mutated"
+    assert state is not result, "Should return a new dict, not the same object"
+
+
+# ---------------------------------------------------------------------------
+# BUG-10: Test helper rename (_make_test_state)
+# ---------------------------------------------------------------------------
+
+
+def test_make_test_state_helper_works():
+    """_make_test_state helper produces valid state with Default instances (BUG-10)."""
+    state = _make_test_state()
+    assert "radarr" in state
+    assert "Default" in state["radarr"]
+    assert state["radarr"]["Default"]["missing_cursor"] == 0
+    assert "sonarr" in state
+    assert "Default" in state["sonarr"]
+    assert state["sonarr"]["Default"]["missing_cursor"] == 0
