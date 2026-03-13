@@ -2,7 +2,8 @@
      hx-get="{{ request.url_for('partial_stats_row') }}"
      hx-trigger="every 30s"
      hx-swap="outerHTML"
-     class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+     hx-include="[name='instance']"
+     class="grid grid-cols-2 {% if instance_app_type == 'radarr' or instance_app_type == 'sonarr' %}md:grid-cols-3{% else %}md:grid-cols-4{% endif %} gap-3 mb-4">
 
   <!-- Grab Rate card -->
   <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4">
@@ -18,19 +19,23 @@
     </p>
   </div>
 
-  <!-- Movies card -->
+  <!-- Movies card (hidden when filtered to Sonarr) -->
+  {% if instance_app_type != 'sonarr' %}
   <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4">
     <span class="text-xs uppercase tracking-wide text-triggarr-muted">Movies</span>
     <p class="text-lg font-bold mt-1">{{ stats.movies_found + stats.movies_updated }}</p>
     <p class="text-xs text-triggarr-muted mt-1">{{ stats.movies_found }} found &middot; {{ stats.movies_updated }} upgraded</p>
   </div>
+  {% endif %}
 
-  <!-- Episodes card -->
+  <!-- Episodes card (hidden when filtered to Radarr) -->
+  {% if instance_app_type != 'radarr' %}
   <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4">
     <span class="text-xs uppercase tracking-wide text-triggarr-muted">Episodes</span>
     <p class="text-lg font-bold mt-1">{{ stats.episodes_found + stats.episodes_updated }}</p>
     <p class="text-xs text-triggarr-muted mt-1">{{ stats.episodes_found }} found &middot; {{ stats.episodes_updated }} upgraded</p>
   </div>
+  {% endif %}
 
   <!-- Time to Grab card -->
   <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4">

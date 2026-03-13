@@ -265,6 +265,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "health": health,
             "all_instances": all_instances,
             "selected_instance": "",
+            "instance_app_type": None,
         },
     )
 
@@ -769,7 +770,7 @@ async def partial_health_summary(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="partials/health_summary.html",
-        context=health,
+        context={"health": health},
     )
 
 

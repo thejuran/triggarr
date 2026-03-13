@@ -7,7 +7,21 @@
 
 {% block content %}
 {% if apps %}
+<div class="flex justify-end mb-2">
+  <select name="instance"
+          hx-get="{{ request.url_for('partial_stats_row') }}"
+          hx-target="#stats-row"
+          hx-swap="outerHTML"
+          hx-include="this"
+          class="bg-triggarr-card border border-triggarr-border rounded text-sm px-2 py-1 text-white">
+    <option value=""{% if selected_instance == '' %} selected{% endif %}>All instances</option>
+    {% for inst in all_instances %}
+    <option value="{{ inst.value }}"{% if selected_instance == inst.value %} selected{% endif %}>{{ inst.label }}</option>
+    {% endfor %}
+  </select>
+</div>
 {% include "partials/stats_row.html" %}
+{% include "partials/health_summary.html" %}
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
   {% for app in apps %}
   {% include "partials/app_card.html" %}

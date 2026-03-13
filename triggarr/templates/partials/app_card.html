@@ -19,6 +19,17 @@
     {% endif %}
   </div>
 
+  <!-- Tag warning badge -->
+  {% if app.tag_warnings %}
+  <div class="bg-amber-500/20 text-amber-400 text-xs px-3 py-1.5 rounded mb-3">
+    {% if app.tag_warnings | length == 1 %}
+      &#9888; {{ app.tag_warnings[0].field | capitalize }} tag '{{ app.tag_warnings[0].tag }}' not found
+    {% else %}
+      &#9888; Tags not found: {% for w in app.tag_warnings %}'{{ w.tag }}' ({{ w.field }}){% if not loop.last %}, {% endif %}{% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- Stats grid -->
   <div class="grid grid-cols-2 gap-3">
     <div>

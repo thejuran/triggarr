@@ -1,6 +1,18 @@
-<div id="health-summary">
-  <span>{{ connected }} connected</span>
-  <span>{{ disconnected }} disconnected</span>
-  <span>{{ pending }} pending</span>
-  <span>{{ total }} total</span>
+<div id="health-summary"
+     hx-get="{{ request.url_for('partial_health_summary') }}"
+     hx-trigger="every 30s"
+     hx-swap="outerHTML"
+     class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 mb-4">
+  <span class="text-xs uppercase tracking-wide text-triggarr-muted">Instance Health</span>
+  <p class="text-sm font-medium mt-1">
+    {% if health.disconnected == 0 and health.pending == 0 %}
+      <span class="text-triggarr-green">{{ health.connected }}/{{ health.total }} connected</span>
+    {% else %}
+      <span class="text-triggarr-green">{{ health.connected }} connected</span>,
+      <span class="{% if health.disconnected > 0 %}text-red-400{% else %}text-triggarr-muted{% endif %}">{{ health.disconnected }} disconnected</span>
+      {%- if health.pending > 0 %},
+      <span class="text-triggarr-muted">{{ health.pending }} pending</span>
+      {%- endif %}
+    {% endif %}
+  </p>
 </div>
