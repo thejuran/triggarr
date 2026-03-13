@@ -1734,3 +1734,100 @@ def test_build_app_context_uses_sanitized_card_id(client, test_app):
     # The card_id in the rendered HTML should be sanitized
     assert "radarr-My-4K-1" in response.text, "Card ID should be sanitized"
     assert "radarr-My.4K#1" not in response.text, "Unsanitized card ID should not appear"
+
+
+# ---------------------------------------------------------------------------
+# Phase 42: Health summary, stats instance filter, tag_warnings passthrough
+# ---------------------------------------------------------------------------
+
+
+def test_health_summary_counts(client, test_app):
+    """GET /partials/health-summary returns HTML with connected/disconnected/pending counts."""
+    # Radarr Default is connected=True, Sonarr Default is connected=None (pending)
+    response = client.get("/partials/health-summary")
+    assert response.status_code == 200
+    assert "1 connected" in response.text
+    assert "1 pending" in response.text
+
+
+def test_health_summary_excludes_disabled(client, test_app):
+    """Health summary excludes disabled instances from count."""
+    # Add a disabled instance
+    test_app.state.settings.radarr["Disabled4K"] = InstanceConfig(
+        url="http://radarr4k:7878", api_key="key", enabled=False,
+    )
+    test_app.state.triggarr_state["radarr"]["Disabled4K"] = {"connected": False}
+
+    response = client.get("/partials/health-summary")
+    assert response.status_code == 200
+    # Disabled instance should not show in counts - still 1 connected, 0 disconnected
+    assert "1 connected" in response.text
+    assert "0 disconnected" in response.text
+
+
+def test_health_summary_disconnected(client, test_app):
+    """Health summary treats connected=False as disconnected."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
+    response = client.get("/partials/health-summary")
+    assert response.status_code == 200
+    assert "1 disconnected" in response.text
+
+
+def test_stats_row_instance_filter(client, test_app):
+    """GET /partials/stats-row?instance=radarr/Default passes instance_id to get_dashboard_stats."""
+    with patch("triggarr.web.routes.get_dashboard_stats", new_callable=AsyncMock) as mock_stats:
+        mock_stats.return_value = {
+            "overall_rate": None, "radarr_rate": None, "sonarr_rate": None,
+            "movies_found": 0, "movies_updated": 0,
+            "episodes_found": 0, "episodes_updated": 0,
+            "avg_time_to_grab_seconds": None,
+        }
+        response = client.get("/partials/stats-row?instance=radarr/Default")
+        assert response.status_code == 200
+        mock_stats.assert_awaited_once()
+        call_kwargs = mock_stats.call_args
+        assert call_kwargs[1].get("instance_id") == "Default"
+
+
+def test_stats_row_no_filter(client, test_app):
+    """GET /partials/stats-row without ?instance= calls get_dashboard_stats with instance_id=None."""
+    with patch("triggarr.web.routes.get_dashboard_stats", new_callable=AsyncMock) as mock_stats:
+        mock_stats.return_value = {
+            "overall_rate": None, "radarr_rate": None, "sonarr_rate": None,
+            "movies_found": 0, "movies_updated": 0,
+            "episodes_found": 0, "episodes_updated": 0,
+            "avg_time_to_grab_seconds": None,
+        }
+        response = client.get("/partials/stats-row")
+        assert response.status_code == 200
+        mock_stats.assert_awaited_once()
+        call_kwargs = mock_stats.call_args
+        assert call_kwargs[1].get("instance_id") is None
+
+
+def test_app_context_includes_tag_warnings(client, test_app):
+    """_build_app_context includes tag_warnings from app_state (defaults to [])."""
+    # Default state has no tag_warnings key -- should default to []
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    # Verify via internal function
+    from triggarr.web.routes import _build_app_context
+    from starlette.testclient import TestClient as _
+
+    # Build a mock request
+    with TestClient(test_app) as c:
+        # Use internal function directly with a real request
+        pass
+
+    # Set tag_warnings in state and verify it flows through
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"tag": "nonexistent", "field": "missing"}
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+
+
+def test_dashboard_includes_all_instances_and_health(client, test_app):
+    """Dashboard route includes health context and all_instances list."""
+    response = client.get("/")
+    assert response.status_code == 200

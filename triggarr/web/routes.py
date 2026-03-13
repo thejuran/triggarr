@@ -178,7 +178,61 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
         "cutoff_count": app_state.get("cutoff_count"),
         "cutoff_searchable": app_state.get("cutoff_searchable"),
         "skip_unreleased": settings.general.skip_unreleased,
+        "tag_warnings": app_state.get("tag_warnings", []),
     }
+
+
+def _build_health_summary(request: Request) -> dict:
+    """Compute health summary counts from enabled instances in triggarr_state.
+
+    Args:
+        request: The incoming FastAPI request (used to access app.state).
+
+    Returns:
+        Dict with connected, disconnected, pending, and total counts.
+    """
+    settings = request.app.state.settings
+    state = request.app.state.triggarr_state
+    connected = 0
+    disconnected = 0
+    pending = 0
+
+    for app_name in ("radarr", "sonarr"):
+        for inst_name in settings.get_enabled_instances(app_name):
+            ist = state.get(app_name, {}).get(inst_name, {})
+            conn = ist.get("connected")
+            if conn is True:
+                connected += 1
+            elif conn is False:
+                disconnected += 1
+            else:
+                pending += 1
+
+    return {
+        "connected": connected,
+        "disconnected": disconnected,
+        "pending": pending,
+        "total": connected + disconnected + pending,
+    }
+
+
+def _build_all_instances(settings) -> list[dict]:
+    """Build a list of enabled instances for dropdown filters.
+
+    Args:
+        settings: Application settings.
+
+    Returns:
+        List of dicts with value and label keys for each enabled instance.
+    """
+    instances: list[dict] = []
+    for app_name in ("radarr", "sonarr"):
+        for inst_name in settings.get_enabled_instances(app_name):
+            instances.append({
+                "value": f"{app_name}/{inst_name}",
+                "label": f"{app_name.title()} / {inst_name}",
+            })
+    return instances
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -196,6 +250,8 @@ async def dashboard(request: Request) -> HTMLResponse:
     log_entries = log_buffer.get_recent(30)
     stats = await get_dashboard_stats(request.app.state.db)
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
+    health = _build_health_summary(request)
+    all_instances = _build_all_instances(settings)
 
     return templates.TemplateResponse(
         request=request,
@@ -206,6 +262,9 @@ async def dashboard(request: Request) -> HTMLResponse:
             "log_entries": log_entries,
             "stats": stats,
             "time_to_grab": time_to_grab,
+            "health": health,
+            "all_instances": all_instances,
+            "selected_instance": "",
         },
     )
 
@@ -703,15 +762,55 @@ async def partial_search_log(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/partials/health-summary", response_class=HTMLResponse)
+async def partial_health_summary(request: Request) -> HTMLResponse:
+    """Return an HTML fragment for the health summary (htmx partial)."""
+    health = _build_health_summary(request)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/health_summary.html",
+        context=health,
+    )
+
+
 @router.get("/partials/stats-row", response_class=HTMLResponse)
 async def partial_stats_row(request: Request) -> HTMLResponse:
-    """Return an HTML fragment for the dashboard stats row (htmx partial)."""
-    stats = await get_dashboard_stats(request.app.state.db)
+    """Return an HTML fragment for the dashboard stats row (htmx partial).
+
+    Accepts optional ?instance=app/name query param to scope stats to a
+    specific instance. Also builds all_instances list for dropdown filter.
+    """
+    instance_param = request.query_params.get("instance")
+    instance_id: str | None = None
+    instance_app_type: str | None = None
+
+    if instance_param:
+        if "/" in instance_param:
+            app_type, inst_name = instance_param.split("/", 1)
+            instance_id = inst_name
+            instance_app_type = app_type
+        else:
+            instance_id = instance_param
+            # Determine app type by checking which app has this instance
+            settings = request.app.state.settings
+            for app_name in ("radarr", "sonarr"):
+                if instance_id in settings.get_enabled_instances(app_name):
+                    instance_app_type = app_name
+                    break
+
+    stats = await get_dashboard_stats(request.app.state.db, instance_id=instance_id)
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
+    all_instances = _build_all_instances(request.app.state.settings)
     return templates.TemplateResponse(
         request=request,
         name="partials/stats_row.html",
-        context={"stats": stats, "time_to_grab": time_to_grab},
+        context={
+            "stats": stats,
+            "time_to_grab": time_to_grab,
+            "all_instances": all_instances,
+            "selected_instance": instance_param or "",
+            "instance_app_type": instance_app_type,
+        },
     )
 
 
