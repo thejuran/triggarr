@@ -1831,3 +1831,25 @@ def test_dashboard_includes_all_instances_and_health(client, test_app):
     """Dashboard route includes health context and all_instances list."""
     response = client.get("/")
     assert response.status_code == 200
+
+
+def test_dismiss_migration(client, tmp_path):
+    """DELETE /api/dismiss-migration deletes .migrated marker and returns empty HTML."""
+    marker = tmp_path / ".migrated"
+    marker.touch()
+
+    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
+        response = client.delete("/api/dismiss-migration")
+
+    assert response.status_code == 200
+    assert response.text == ""
+    assert not marker.exists()
+
+
+def test_dismiss_migration_no_file(client, tmp_path):
+    """DELETE /api/dismiss-migration succeeds even if .migrated does not exist."""
+    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
+        response = client.delete("/api/dismiss-migration")
+
+    assert response.status_code == 200
+    assert response.text == ""

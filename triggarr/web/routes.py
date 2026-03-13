@@ -26,7 +26,7 @@ from triggarr.config import _atomic_toml_write
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
-from triggarr.models.config import Settings as SettingsModel
+from triggarr.models.config import CONFIG_DIR, Settings as SettingsModel
 from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
@@ -39,6 +39,8 @@ STATIC_DIR = _PKG_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["triggarr_version"] = __version__
+_update_info: dict = {}
+templates.env.globals["update_info"] = _update_info
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
@@ -824,3 +826,14 @@ async def partial_log_viewer(request: Request) -> HTMLResponse:
         name="partials/log_viewer.html",
         context={"log_entries": log_entries},
     )
+
+
+@router.delete("/api/dismiss-migration", response_class=HTMLResponse)
+async def dismiss_migration() -> HTMLResponse:
+    """Dismiss the migration banner by deleting the .migrated marker file.
+
+    Returns empty HTML so hx-swap="outerHTML" removes the banner element.
+    Succeeds even if .migrated does not exist (missing_ok=True).
+    """
+    (CONFIG_DIR / ".migrated").unlink(missing_ok=True)
+    return HTMLResponse("")
