@@ -1748,3 +1748,191 @@ def test_make_test_state_helper_works():
     assert "sonarr" in state
     assert "Default" in state["sonarr"]
     assert state["sonarr"]["Default"]["missing_cursor"] == 0
+
+
+# ---------------------------------------------------------------------------
+# TAG-05: Tag warning state storage
+# ---------------------------------------------------------------------------
+
+
+async def test_tag_warning_state_stored_when_tag_not_found_radarr(tmp_path):
+    """Radarr cycle stores tag_warnings with {tag, field} dicts when configured tag is not found."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="nonexistent",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["radarr"]["Default"]
+    assert "tag_warnings" in ist
+    assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+    await db.close()
+
+
+async def test_tag_warning_state_stored_when_tag_not_found_sonarr(tmp_path):
+    """Sonarr cycle stores tag_warnings with {tag, field} dicts when configured tag is not found."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    _ep = _make_tagged_sonarr_episode
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="existing-tag")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="nonexistent",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["sonarr"]["Default"]
+    assert "tag_warnings" in ist
+    assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+    await db.close()
+
+
+async def test_tag_warning_state_empty_when_tags_resolve(tmp_path):
+    """Radarr cycle stores empty tag_warnings when configured tags resolve successfully."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="triggarr")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["radarr"]["Default"]
+    assert "tag_warnings" in ist
+    assert ist["tag_warnings"] == []
+    await db.close()
+
+
+async def test_tag_warning_state_empty_when_no_tags_configured(tmp_path):
+    """Radarr cycle stores tag_warnings=[] when no tags are configured."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="", cutoff_tag="",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["radarr"]["Default"]
+    assert "tag_warnings" in ist
+    assert ist["tag_warnings"] == []
+    await db.close()
+
+
+async def test_tag_warning_state_cleared_each_cycle(tmp_path):
+    """Tag warnings are cleared at start of each cycle (not accumulated)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="nonexistent",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    # Run cycle twice
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert len(state["radarr"]["Default"]["tag_warnings"]) == 1
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    # Should still be 1, not 2 (no accumulation)
+    assert len(state["radarr"]["Default"]["tag_warnings"]) == 1
+    await db.close()
+
+
+async def test_tag_warning_state_cutoff_tag_not_found(tmp_path):
+    """Radarr cycle stores cutoff tag warning when cutoff tag is not found."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="nonexistent-missing",
+        cutoff_tag="nonexistent-cutoff",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["radarr"]["Default"]
+    assert {"tag": "nonexistent-missing", "field": "missing"} in ist["tag_warnings"]
+    assert {"tag": "nonexistent-cutoff", "field": "cutoff"} in ist["tag_warnings"]
+    await db.close()

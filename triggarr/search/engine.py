@@ -336,6 +336,7 @@ async def run_radarr_cycle(
     # --- Tag resolution (only when at least one tag is configured) ---
     missing_tag_id: int | None = None
     cutoff_tag_id: int | None = None
+    ist["tag_warnings"] = []
     if instance_config.missing_tag or instance_config.cutoff_tag:
         tag_fetch_ok = False
         try:
@@ -355,6 +356,7 @@ async def run_radarr_cycle(
                     "Radarr: Tag '{tag}' not found -- searching all missing items",
                     tag=instance_config.missing_tag,
                 )
+                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
 
         if instance_config.cutoff_tag:
             cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
@@ -363,6 +365,7 @@ async def run_radarr_cycle(
                     "Radarr: Tag '{tag}' not found -- searching all cutoff items",
                     tag=instance_config.cutoff_tag,
                 )
+                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
 
     searched_count = 0
     skipped_count = 0
@@ -538,6 +541,7 @@ async def run_sonarr_cycle(
     # --- Tag resolution (only when at least one tag is configured) ---
     missing_tag_id: int | None = None
     cutoff_tag_id: int | None = None
+    ist["tag_warnings"] = []
     if instance_config.missing_tag or instance_config.cutoff_tag:
         tag_fetch_ok = False
         try:
@@ -557,6 +561,7 @@ async def run_sonarr_cycle(
                     "Sonarr: Tag '{tag}' not found -- searching all missing items",
                     tag=instance_config.missing_tag,
                 )
+                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
 
         if instance_config.cutoff_tag:
             cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
@@ -565,6 +570,7 @@ async def run_sonarr_cycle(
                     "Sonarr: Tag '{tag}' not found -- searching all cutoff items",
                     tag=instance_config.cutoff_tag,
                 )
+                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
 
     searched_count = 0
     skipped_count = 0

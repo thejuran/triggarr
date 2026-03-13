@@ -55,6 +55,7 @@ class AppState(TypedDict, total=False):
     missing_searchable: int | None  # Searchable units (Sonarr: seasons after dedup; None for Radarr)
     cutoff_count: int | None  # Total cutoff-unmet items (before filtering)
     cutoff_searchable: int | None  # Searchable units for cutoff (Sonarr: seasons; None for Radarr)
+    tag_warnings: list[dict]  # Tag resolution warnings: [{"tag": name, "field": "missing"|"cutoff"}]
 
 
 class TriggarrState(TypedDict, total=False):
