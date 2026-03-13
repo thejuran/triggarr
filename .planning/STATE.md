@@ -4,7 +4,7 @@ milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: completed
 stopped_at: Completed 43-01-PLAN.md
-last_updated: "2026-03-13T23:52:48.319Z"
+last_updated: "2026-03-13T23:56:44.657Z"
 last_activity: 2026-03-13 — Completed Plan 01 (update notification & cleanup)
 progress:
   total_phases: 11

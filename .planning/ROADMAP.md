@@ -259,4 +259,4 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
 | 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
 | 42. Dashboard Enhancements | 2/2 | Complete    | 2026-03-13 | - |
-| 43. Update Notification & Cleanup | 1/1 | Complete   | 2026-03-13 | - |
+| 43. Update Notification & Cleanup | 1/1 | Complete    | 2026-03-13 | - |
