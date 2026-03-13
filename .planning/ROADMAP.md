@@ -94,7 +94,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [ ] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation (partial via GSD slice S06 — INST-06 only works for first instance)
 - [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (partial via GSD slice S07 — OBS-01/OBS-02/VER-01 done; INST-05/INST-07/TAG-05/TAG-06/OBS-03/VER-02 missing)
 - [x] **Phase 41: Multi-Instance Settings UI** - Instance CRUD, enable/disable, and tag filter config in web UI (gap closure) (completed 2026-03-12)
-- [ ] **Phase 42: Dashboard Enhancements** - Health summary, tag warning badges, per-instance stats (gap closure)
+- [x] **Phase 42: Dashboard Enhancements** - Health summary, tag warning badges, per-instance stats (gap closure) (completed 2026-03-13)
 - [ ] **Phase 43: Update Notification & Cleanup** - GitHub release check, migration banner, dead code removal (gap closure)
 
 ## Phase Details
@@ -224,7 +224,7 @@ Plans:
   1. Dashboard shows an instance health summary card with connected/disconnected count
   2. Dashboard shows a warning badge when a configured tag name is not found in the *arr instance
   3. Per-instance effectiveness stats (grab rate, lifetime counts) are displayed using instance_id-scoped DB queries
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 42-01-PLAN.md -- Backend data paths: tag warning state, health summary route, stats instance filter
 - [ ] 42-02-PLAN.md -- Template changes: health summary card, tag warning badge, stats filter dropdown
@@ -255,5 +255,5 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
 | 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
-| 42. Dashboard Enhancements | v2.3 | 1/2 | In Progress | - |
+| 42. Dashboard Enhancements | 2/2 | Complete   | 2026-03-13 | - |
 | 43. Update Notification & Cleanup | v2.3 | 0/0 | Pending | - |

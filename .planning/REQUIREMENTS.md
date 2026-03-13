@@ -15,7 +15,7 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 - [x] **INST-04**: Existing single-instance config auto-migrates to multi-instance format on upgrade
 - [x] **INST-05**: User can add, edit, and remove instances from the web UI settings page *(Phase 41)*
 - [x] **INST-06**: User can enable/disable individual instances from the web UI *(Phase 41)*
-- [ ] **INST-07**: Dashboard shows an instance health summary card (connected/disconnected count with per-instance detail) *(Phase 42)*
+- [x] **INST-07**: Dashboard shows an instance health summary card (connected/disconnected count with per-instance detail) *(Phase 42)*
 
 ### Tag Filtering
 
@@ -23,14 +23,14 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 - [x] **TAG-02**: User can configure a tag name per instance for the cutoff queue (only items with that tag are searched)
 - [x] **TAG-03**: When no tag is configured, all monitored items are searched (default behavior unchanged)
 - [x] **TAG-04**: Tag names are resolved to IDs via the *arr `/api/v3/tag` endpoint each cycle
-- [ ] **TAG-05**: Dashboard shows a warning badge when a configured tag is not found in the *arr instance *(Phase 42)*
+- [x] **TAG-05**: Dashboard shows a warning badge when a configured tag is not found in the *arr instance *(Phase 42)*
 - [x] **TAG-06**: Tag name autocomplete dropdown populated from the *arr instance when configuring filters in the web UI *(Phase 41)*
 
 ### Observability
 
 - [x] **OBS-01**: Dashboard renders a status card per instance showing connection health, queue sizes, and last-run time
 - [x] **OBS-02**: Search history is scoped per instance with an instance filter on the history page
-- [ ] **OBS-03**: Per-instance effectiveness stats (grab rate, lifetime counts) displayed on dashboard *(Phase 42)*
+- [x] **OBS-03**: Per-instance effectiveness stats (grab rate, lifetime counts) displayed on dashboard *(Phase 42)*
 
 ### Version
 
@@ -69,16 +69,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-04 | Phase 33 | Complete |
 | INST-05 | Phase 41 | Complete |
 | INST-06 | Phase 41 | Complete |
-| INST-07 | Phase 42 | Pending |
+| INST-07 | Phase 42 | Complete |
 | TAG-01 | Phase 36 | Complete |
 | TAG-02 | Phase 36 | Complete |
 | TAG-03 | Phase 36 | Complete |
 | TAG-04 | Phase 35 | Complete |
-| TAG-05 | Phase 42 | Pending |
+| TAG-05 | Phase 42 | Complete |
 | TAG-06 | Phase 41 | Complete |
 | OBS-01 | Phase 39 | Complete |
 | OBS-02 | Phase 37 | Complete |
-| OBS-03 | Phase 42 | Pending |
+| OBS-03 | Phase 42 | Complete |
 | VER-01 | Phase 39 | Complete |
 | VER-02 | Phase 43 | Pending |
 
