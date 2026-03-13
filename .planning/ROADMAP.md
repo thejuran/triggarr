@@ -255,5 +255,5 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
 | 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
-| 42. Dashboard Enhancements | 2/2 | Complete   | 2026-03-13 | - |
+| 42. Dashboard Enhancements | 2/2 | Complete    | 2026-03-13 | - |
 | 43. Update Notification & Cleanup | v2.3 | 0/0 | Pending | - |
