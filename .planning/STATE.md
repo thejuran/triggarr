@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
 status: completed
-stopped_at: Completed 42-02-PLAN.md
-last_updated: "2026-03-13T23:26:31.758Z"
-last_activity: 2026-03-13 — Completed Plan 02 (dashboard UI templates)
+stopped_at: Completed 43-01-PLAN.md
+last_updated: "2026-03-13T23:52:48.319Z"
+last_activity: 2026-03-13 — Completed Plan 01 (update notification & cleanup)
 progress:
   total_phases: 11
-  completed_phases: 7
-  total_plans: 13
-  completed_plans: 13
+  completed_phases: 8
+  total_plans: 14
+  completed_plans: 14
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 42 — Dashboard Enhancements
+**Current focus:** Phase 43 — Update Notification & Cleanup
 
 ## Current Position
 
-Phase: 42 (10 of 11 in v2.3) — Dashboard Enhancements
-Plan: 02 of 2 complete
+Phase: 43 (11 of 11 in v2.3) — Update Notification & Cleanup
+Plan: 01 of 1 complete
 Status: Phase Complete
-Last activity: 2026-03-13 — Completed Plan 02 (dashboard UI templates)
+Last activity: 2026-03-13 — Completed Plan 01 (update notification & cleanup)
 
 Progress: [██████████] 100%
 
@@ -39,8 +39,8 @@ Progress: [██████████] 100%
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 13
-- Phases: 10 (33-42)
+- Plans completed: 14
+- Phases: 11 (33-43)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -57,6 +57,7 @@ Progress: [██████████] 100%
 | 41 | 01 | 11min | 2 | 5 |
 | 42 | 01 | 9min | 2 | 6 |
 | 42 | 02 | 10min | 2 | 5 |
+| 43 | 01 | 4min | 2 | 10 |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Full decision log in PROJECT.md Key Decisions table.
 - [Phase 42-01]: Stats-row instance filter splits on "/" for app_type/instance_name
 - [Phase 42-01]: tag_warnings defaults to [] in _build_app_context for backward compat
 - [Phase 42-02]: Health summary card placed above stats row (not between stats and app cards)
+- [Phase 43-01]: Lazy import of _update_info inside update_check_job closure to avoid circular import
+- [Phase 43-01]: Mutable dict pattern for _update_info Jinja2 global (clear+update to propagate)
 
 ### Pending Todos
 
@@ -118,6 +121,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T23:22:05Z
-Stopped at: Completed 42-02-PLAN.md
+Last session: 2026-03-13T23:47:00Z
+Stopped at: Completed 43-01-PLAN.md
 Resume file: None

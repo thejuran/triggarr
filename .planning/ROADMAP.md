@@ -95,7 +95,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (partial via GSD slice S07 — OBS-01/OBS-02/VER-01 done; INST-05/INST-07/TAG-05/TAG-06/OBS-03/VER-02 missing)
 - [x] **Phase 41: Multi-Instance Settings UI** - Instance CRUD, enable/disable, and tag filter config in web UI (gap closure) (completed 2026-03-12)
 - [x] **Phase 42: Dashboard Enhancements** - Health summary, tag warning badges, per-instance stats (gap closure) (completed 2026-03-13)
-- [ ] **Phase 43: Update Notification & Cleanup** - GitHub release check, migration banner, dead code removal (gap closure)
+- [x] **Phase 43: Update Notification & Cleanup** - GitHub release check, migration banner, dead code removal (gap closure) (completed 2026-03-13)
 
 ## Phase Details
 
@@ -238,7 +238,7 @@ Plans:
   1. Dashboard indicates when a newer Triggarr release is available by checking GitHub releases
   2. Dashboard shows a migration banner when .migrated marker exists (from v2.2→v2.3 upgrade)
   3. ArrConfig backward-compat alias removed (dead code cleanup)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 43-01-PLAN.md -- Update check module, migration banner, dead code removal
 
@@ -259,4 +259,4 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
 | 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
 | 42. Dashboard Enhancements | 2/2 | Complete    | 2026-03-13 | - |
-| 43. Update Notification & Cleanup | v2.3 | 0/1 | Pending | - |
+| 43. Update Notification & Cleanup | 1/1 | Complete   | 2026-03-13 | - |

@@ -35,7 +35,7 @@ Requirements for multi-instance support and tag-based filtering. Each maps to ro
 ### Version
 
 - [x] **VER-01**: Dashboard displays the current Triggarr version
-- [ ] **VER-02**: Dashboard indicates when a newer release is available by checking GitHub/GHCR *(Phase 43)*
+- [x] **VER-02**: Dashboard indicates when a newer release is available by checking GitHub/GHCR *(Phase 43)*
 
 ## Future Requirements
 
@@ -80,7 +80,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OBS-02 | Phase 37 | Complete |
 | OBS-03 | Phase 42 | Complete |
 | VER-01 | Phase 39 | Complete |
-| VER-02 | Phase 43 | Pending |
+| VER-02 | Phase 43 | Complete |
 
 **Coverage:**
 - v2.3 requirements: 18 total
