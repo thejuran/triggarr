@@ -17,6 +17,12 @@
     <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
       <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
       <span class="text-xs text-triggarr-muted ml-2">v{{ triggarr_version }}</span>
+      {% if update_info and update_info.update_available %}
+      <a href="{{ update_info.html_url }}" target="_blank" rel="noopener"
+         class="text-xs text-triggarr-green ml-1 hover:underline">
+        v{{ update_info.latest_version }} available
+      </a>
+      {% endif %}
       <div class="flex items-center gap-6">
         <a href="{{ request.url_for('dashboard') }}"
            class="{% block nav_dashboard_class %}text-white{% endblock %} hover:text-white text-sm">

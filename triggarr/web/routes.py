@@ -26,7 +26,8 @@ from triggarr.config import _atomic_toml_write
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
-from triggarr.models.config import CONFIG_DIR, Settings as SettingsModel
+from triggarr.models.config import CONFIG_DIR
+from triggarr.models.config import Settings as SettingsModel
 from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
@@ -268,6 +269,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "all_instances": all_instances,
             "selected_instance": "",
             "instance_app_type": None,
+            "show_migration_banner": (CONFIG_DIR / ".migrated").exists(),
         },
     )
 

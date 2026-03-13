@@ -61,10 +61,6 @@ class InstanceConfig(BaseModel):
         return self
 
 
-# Backward-compat alias for transition period (Plan 02+ will update consumers)
-ArrConfig = InstanceConfig
-
-
 class GeneralConfig(BaseModel):
     """Global application settings."""
 

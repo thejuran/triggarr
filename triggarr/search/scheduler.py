@@ -35,6 +35,7 @@ from triggarr.state import (
     save_state,
 )
 from triggarr.tracking import run_tracking_check
+from triggarr.update_check import check_for_update
 
 
 def make_search_job(
@@ -215,6 +216,24 @@ def create_lifespan(
                 )
 
         scheduler.start()
+
+        async def update_check_job():
+            from triggarr.web.routes import _update_info
+
+            result = await check_for_update()
+            if result is not None:
+                _update_info.clear()
+                _update_info.update(result)
+                if result["update_available"]:
+                    logger.info("Update available: v{version}", version=result["latest_version"])
+
+        scheduler.add_job(
+            update_check_job,
+            "interval",
+            hours=24,
+            id="update_check",
+            next_run_time=datetime.now(UTC),
+        )
 
         try:
             yield

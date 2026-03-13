@@ -1,0 +1,9 @@
+<div id="migration-banner"
+     class="bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg p-4 mb-4 flex items-center justify-between">
+  <span>Config migrated to v2.3 format. Your settings were updated.</span>
+  <button hx-delete="{{ request.url_for('dismiss_migration') }}"
+          hx-target="#migration-banner"
+          hx-swap="outerHTML"
+          class="text-blue-400 hover:text-white ml-4 text-lg font-bold"
+          aria-label="Dismiss migration banner">&times;</button>
+</div>

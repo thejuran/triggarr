@@ -15,7 +15,7 @@ from triggarr.config import (
     generate_default_config,
     load_settings,
 )
-from triggarr.models.config import ArrConfig, GeneralConfig, InstanceConfig, Settings
+from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 
 VALID_TOML = """\
 [general]
@@ -107,19 +107,19 @@ def test_default_config_generation(tmp_path: Path) -> None:
 def test_api_key_never_in_str() -> None:
     """API key value must not appear in str(), repr(), or model_dump_json()."""
     secret = "super-secret-api-key-value"
-    config = ArrConfig(url="http://localhost:7878", api_key=secret, enabled=True)
+    config = InstanceConfig(url="http://localhost:7878", api_key=secret, enabled=True)
 
     assert secret not in str(config)
     assert secret not in repr(config)
     assert secret not in config.model_dump_json()
 
 
-def test_arr_config_rejects_both_counts_zero_when_enabled() -> None:
-    """ArrConfig rejects both search counts = 0 when enabled."""
+def test_instance_config_rejects_both_counts_zero_when_enabled_legacy() -> None:
+    """InstanceConfig rejects both search counts = 0 when enabled."""
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="At least one"):
-        ArrConfig(
+        InstanceConfig(
             url="http://radarr:7878",
             api_key="test-key",
             enabled=True,
@@ -128,9 +128,9 @@ def test_arr_config_rejects_both_counts_zero_when_enabled() -> None:
         )
 
 
-def test_arr_config_allows_both_counts_zero_when_disabled() -> None:
-    """ArrConfig allows both counts = 0 when disabled (no validation error)."""
-    config = ArrConfig(
+def test_instance_config_allows_both_counts_zero_when_disabled_legacy() -> None:
+    """InstanceConfig allows both counts = 0 when disabled (no validation error)."""
+    config = InstanceConfig(
         url="http://radarr:7878",
         api_key="test-key",
         enabled=False,
@@ -360,13 +360,6 @@ def test_instance_config_toml_without_tag_fields(tmp_path: Path) -> None:
     settings = load_settings(config_file)
     assert settings.radarr["Default"].missing_tag == ""
     assert settings.radarr["Default"].cutoff_tag == ""
-
-
-def test_arr_config_alias_backward_compat() -> None:
-    """ArrConfig alias still works (backward compatibility for transition)."""
-    cfg = ArrConfig(url="http://radarr:7878", api_key="key", enabled=True)
-    assert isinstance(cfg, InstanceConfig)
-    assert cfg.url == "http://radarr:7878"
 
 
 def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
