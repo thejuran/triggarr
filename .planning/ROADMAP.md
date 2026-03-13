@@ -226,7 +226,7 @@ Plans:
   3. Per-instance effectiveness stats (grab rate, lifetime counts) are displayed using instance_id-scoped DB queries
 **Plans:** 2 plans
 Plans:
-- [ ] 42-01-PLAN.md -- Backend data paths: tag warning state, health summary route, stats instance filter
+- [x] 42-01-PLAN.md -- Backend data paths: tag warning state, health summary route, stats instance filter
 - [ ] 42-02-PLAN.md -- Template changes: health summary card, tag warning badge, stats filter dropdown
 
 ### Phase 43: Update Notification & Cleanup
@@ -255,5 +255,5 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
 | 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
 | 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
-| 42. Dashboard Enhancements | v2.3 | 0/2 | Pending | - |
+| 42. Dashboard Enhancements | v2.3 | 1/2 | In Progress | - |
 | 43. Update Notification & Cleanup | v2.3 | 0/0 | Pending | - |

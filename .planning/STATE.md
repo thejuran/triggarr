@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
-status: completed
-stopped_at: Completed 41-01-PLAN.md
-last_updated: "2026-03-12T02:40:26.440Z"
-last_activity: 2026-03-12 — Completed Plan 01 (multi-instance settings UI with tag autocomplete)
+status: in_progress
+stopped_at: Completed 42-01-PLAN.md
+last_updated: "2026-03-13T22:52:27Z"
+last_activity: 2026-03-13 — Completed Plan 01 (dashboard backend data paths)
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 11
-  completed_plans: 11
-  percent: 100
+  total_plans: 13
+  completed_plans: 12
+  percent: 92
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 41 — Multi-Instance Settings UI
+**Current focus:** Phase 42 — Dashboard Enhancements
 
 ## Current Position
 
-Phase: 41 (9 of 9 in v2.3) — Multi-Instance Settings UI
-Plan: 01 of 1 complete (phase complete)
-Status: Complete
-Last activity: 2026-03-12 — Completed Plan 01 (multi-instance settings UI with tag autocomplete)
+Phase: 42 (10 of 11 in v2.3) — Dashboard Enhancements
+Plan: 01 of 2 complete
+Status: In Progress
+Last activity: 2026-03-13 — Completed Plan 01 (dashboard backend data paths)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 | 40 | 02 | 25min | 2 | 4 |
 | 40 | 03 | 25min | 2 | 5 |
 | 41 | 01 | 11min | 2 | 5 |
+| 42 | 01 | 9min | 2 | 6 |
 
 ## Accumulated Context
 
@@ -95,6 +96,10 @@ Full decision log in PROJECT.md Key Decisions table.
 - [Phase 41-01]: Tag autocomplete uses htmx hx-get on focus with datalist
 - [Phase 41-01]: response_model=None for endpoints returning mixed HTMLResponse/RedirectResponse
 - [Phase 41-01]: _settings_to_dict helper for SecretStr-safe TOML serialization
+- [Phase 42-01]: tag_warnings cleared at cycle start (not accumulated across cycles)
+- [Phase 42-01]: Health summary iterates only enabled instances via get_enabled_instances
+- [Phase 42-01]: Stats-row instance filter splits on "/" for app_type/instance_name
+- [Phase 42-01]: tag_warnings defaults to [] in _build_app_context for backward compat
 
 ### Pending Todos
 
@@ -111,6 +116,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-12T02:36:10Z
-Stopped at: Completed 41-01-PLAN.md
+Last session: 2026-03-13T22:52:27Z
+Stopped at: Completed 42-01-PLAN.md
 Resume file: None
