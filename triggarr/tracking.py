@@ -199,9 +199,13 @@ def _sonarr_outcome(
     if grab_count > 0 and grab_count < expected:
         # Partial grabs exist.
         if window_expired:
-            # Terminal state: partial at window expiry -> increment stats.
+            if current_outcome == "partial_expired":
+                # Already resolved as terminal partial -- no-op to prevent
+                # double-counting stats on subsequent tracking cycles.
+                return None, "", None
+            # Terminal state: partial at window expiry -> increment stats once.
             detail = f"partial: {grab_count}/{expected} episodes (window expired)"
-            return "partial", detail, {stat_key: grab_count}
+            return "partial_expired", detail, {stat_key: grab_count}
 
         if current_outcome == "searched":
             # First detection of partial grabs.

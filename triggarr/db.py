@@ -166,6 +166,69 @@ async def _migrate_v7(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
+async def _migrate_v8(db: aiosqlite.Connection) -> None:
+    """Recompute episode stats from search_history to fix double-counting bug.
+
+    Prior to this fix, expired partial Sonarr entries re-incremented
+    episodes_found/episodes_updated on every tracking cycle.  This migration
+    recomputes the correct totals from search_history detail strings and
+    also renames any 'partial' entries with '(window expired)' in their
+    detail to the new 'partial_expired' terminal outcome.
+    """
+    # 1. Rename lingering partial entries that already expired to partial_expired
+    await db.execute(
+        "UPDATE search_history SET outcome = 'partial_expired' "
+        "WHERE outcome = 'partial' AND detail LIKE '%(window expired)%'"
+    )
+
+    # 2. Recompute episode stats from resolved search_history entries.
+    #    For Sonarr grabbed/partial_expired, parse grab_count from detail string
+    #    (format: "grabbed: N/M episodes" or "partial: N/M episodes (window expired)")
+    #    For entries without parseable counts, use missing_count or 1 as fallback.
+    async with db.execute(
+        "SELECT app, instance_id, queue_type, outcome, detail, missing_count "
+        "FROM search_history "
+        "WHERE app = 'Sonarr' AND outcome IN ('grabbed', 'partial_expired')"
+    ) as cursor:
+        rows = await cursor.fetchall()
+
+    # Accumulate correct totals per (app, instance_id)
+    episode_stats: dict[tuple[str, str], dict[str, int]] = {}
+    for row in rows:
+        app, inst, queue_type, outcome, detail, missing_count = row
+        key = (app, inst or "Default")
+        if key not in episode_stats:
+            episode_stats[key] = {"episodes_found": 0, "episodes_updated": 0}
+
+        stat_col = "episodes_found" if queue_type == "missing" else "episodes_updated"
+
+        # Parse grab count from detail string
+        count = 0
+        if detail:
+            import re
+            # Match patterns like "grabbed: 3/5 episodes" or "partial: 2/5 episodes"
+            m = re.search(r"(?:grabbed|partial):\s*(\d+)", detail)
+            if m:
+                count = int(m.group(1))
+        if count == 0:
+            # Fallback: use missing_count or 1
+            count = missing_count if missing_count and missing_count > 0 else 1
+
+        episode_stats[key][stat_col] += count
+
+    # 3. Reset and reapply episode stats
+    for (app, inst), stats in episode_stats.items():
+        await db.execute(
+            "UPDATE lifetime_stats SET episodes_found = ?, episodes_updated = ? "
+            "WHERE app = ? AND instance_id = ?",
+            (stats["episodes_found"], stats["episodes_updated"], app, inst),
+        )
+
+    await db.commit()
+    total_fixed = sum(1 for r in rows if True)
+    logger.info("Recomputed episode stats from {n} Sonarr entries", n=total_fixed)
+
+
 # Register migrations after functions are defined
 MIGRATIONS = {
     1: ("add outcome and detail columns", _migrate_v1),
@@ -175,6 +238,7 @@ MIGRATIONS = {
     5: ("add resolved_at column for time-to-grab", _migrate_v5),
     6: ("add instance_id to search_history", _migrate_v6),
     7: ("rebuild lifetime_stats with composite key", _migrate_v7),
+    8: ("recompute episode stats and fix partial_expired outcomes", _migrate_v8),
 }
 
 
@@ -356,9 +420,13 @@ async def get_search_history(
         params.extend(queue_filter)
 
     if outcome_filter:
-        placeholders = ", ".join("?" for _ in outcome_filter)
+        # Expand "partial" to include "partial_expired" (terminal partial state)
+        expanded = list(outcome_filter)
+        if "partial" in expanded and "partial_expired" not in expanded:
+            expanded.append("partial_expired")
+        placeholders = ", ".join("?" for _ in expanded)
         conditions.append(f"COALESCE(outcome, 'searched') IN ({placeholders})")
-        params.extend(outcome_filter)
+        params.extend(expanded)
 
     if instance_filter:
         placeholders = ", ".join("?" for _ in instance_filter)
@@ -599,7 +667,7 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
     try:
         async with db.execute(
             "SELECT app, "
-            "SUM(CASE WHEN outcome IN ('grabbed', 'partial') THEN 1 ELSE 0 END) AS grabbed_count, "
+            "SUM(CASE WHEN outcome IN ('grabbed', 'partial', 'partial_expired') THEN 1 ELSE 0 END) AS grabbed_count, "
             "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
             "FROM search_history "
             f"WHERE outcome IS NOT NULL{inst_clause} "

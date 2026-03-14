@@ -276,12 +276,49 @@ async def test_sonarr_partial_window_expired_terminal(tmp_path):
 
     counts = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
 
-    assert await _get_outcome(db, row_id) == "partial"
+    assert await _get_outcome(db, row_id) == "partial_expired"
     detail = await _get_detail(db, row_id)
     assert "2/5" in detail
     assert "window expired" in detail
     assert await _get_stat(db, "Sonarr", "episodes_found") == 2
-    assert counts["partial"] == 1
+    assert counts["partial_expired"] == 1
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Test 7b: Sonarr partial expired must NOT double-count stats on re-run
+# ---------------------------------------------------------------------------
+
+
+async def test_sonarr_partial_expired_no_double_count(tmp_path):
+    """Running tracking twice on an expired partial must not increment stats twice.
+
+    Regression test: prior to the fix, every tracking cycle re-incremented
+    stats for expired partial entries because the outcome stayed 'partial'
+    and re-entered the tracking query on the next cycle.
+    """
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=120)
+    row_id = await _insert_entry(
+        db, app="Sonarr", item_id=100, missing_count=5, outcome="partial", timestamp=searched_at,
+    )
+
+    sonarr = AsyncMock()
+    sonarr.get_grab_history.return_value = [
+        _grab(10, searched_at + timedelta(minutes=5)),
+        _grab(11, searched_at + timedelta(minutes=6)),
+    ]
+
+    # First tracking cycle -- should apply stats and transition to partial_expired.
+    counts1 = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
+    assert await _get_outcome(db, row_id) == "partial_expired"
+    assert await _get_stat(db, "Sonarr", "episodes_found") == 2
+    assert counts1["partial_expired"] == 1
+
+    # Second tracking cycle -- entry is partial_expired, excluded from tracking query.
+    counts2 = await run_tracking_check(db, sonarr, "Sonarr", "Default", tracking_window_minutes=60)
+    assert await _get_stat(db, "Sonarr", "episodes_found") == 2  # still 2, not 4
+    assert counts2.get("partial_expired", 0) == 0  # no new resolutions
     await db.close()
 
 
