@@ -15,14 +15,17 @@
 <body class="bg-triggarr-bg text-triggarr-text min-h-screen">
   <nav class="bg-triggarr-card border-b border-triggarr-border">
     <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
-      <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
-      <span class="text-xs text-triggarr-muted ml-2">v{{ triggarr_version }}</span>
-      {% if update_info and update_info.update_available %}
-      <a href="{{ update_info.html_url }}" target="_blank" rel="noopener"
-         class="text-xs text-triggarr-green ml-1 hover:underline">
-        v{{ update_info.latest_version }} available
-      </a>
-      {% endif %}
+      <div class="flex items-center gap-2">
+        <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
+        <span class="text-xs text-triggarr-muted">v{{ triggarr_version }}</span>
+        {% if update_info and update_info.update_available %}
+        <a href="{{ update_info.html_url }}" target="_blank" rel="noopener"
+           class="text-xs bg-triggarr-green/15 text-triggarr-green px-2 py-0.5 rounded-full hover:bg-triggarr-green/25 transition-colors"
+           title="Update available — click to view release">
+          ↑ v{{ update_info.latest_version }}
+        </a>
+        {% endif %}
+      </div>
       <div class="flex items-center gap-6">
         <a href="{{ request.url_for('dashboard') }}"
            class="{% block nav_dashboard_class %}text-white{% endblock %} hover:text-white text-sm">
