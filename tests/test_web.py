@@ -1810,15 +1810,6 @@ def test_app_context_includes_tag_warnings(client, test_app):
     # Default state has no tag_warnings key -- should default to []
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    # Verify via internal function
-    from triggarr.web.routes import _build_app_context
-    from starlette.testclient import TestClient as _
-
-    # Build a mock request
-    with TestClient(test_app) as c:
-        # Use internal function directly with a real request
-        pass
-
     # Set tag_warnings in state and verify it flows through
     test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
         {"tag": "nonexistent", "field": "missing"}
@@ -1839,7 +1830,7 @@ def test_dismiss_migration(client, tmp_path):
     marker.touch()
 
     with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
-        response = client.delete("/api/dismiss-migration")
+        response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
 
     assert response.status_code == 200
     assert response.text == ""
@@ -1849,7 +1840,30 @@ def test_dismiss_migration(client, tmp_path):
 def test_dismiss_migration_no_file(client, tmp_path):
     """DELETE /api/dismiss-migration succeeds even if .migrated does not exist."""
     with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
-        response = client.delete("/api/dismiss-migration")
+        response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
 
     assert response.status_code == 200
     assert response.text == ""
+
+
+def test_dismiss_migration_csrf_rejects_non_htmx(client, tmp_path):
+    """DELETE /api/dismiss-migration returns 403 without HX-Request header."""
+    marker = tmp_path / ".migrated"
+    marker.touch()
+    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
+        response = client.delete("/api/dismiss-migration")
+
+    assert response.status_code == 403
+    # File should NOT have been deleted
+    assert marker.exists()
+
+
+def test_dismiss_migration_csrf_allows_htmx(client, tmp_path):
+    """DELETE /api/dismiss-migration succeeds with HX-Request header."""
+    marker = tmp_path / ".migrated"
+    marker.touch()
+    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
+        response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
+
+    assert response.status_code == 200
+    assert not marker.exists()

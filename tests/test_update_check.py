@@ -20,6 +20,9 @@ from triggarr.update_check import _parse_version, check_for_update
         ("0.1.0", (0, 1, 0)),
         ("invalid", (0,)),
         ("", (0,)),
+        ("v2.3.0-rc.1", (2, 3, 0)),
+        ("0.1.0.dev1", (0, 1, 0)),
+        ("1.2.3-beta", (1, 2, 3)),
     ],
 )
 def test_parse_version(version_str: str, expected: tuple[int, ...]) -> None:
@@ -90,6 +93,26 @@ async def test_silent_failure_timeout() -> None:
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timed out"))
+
+    with patch("triggarr.update_check.httpx.AsyncClient", return_value=mock_client):
+        result = await check_for_update()
+
+    assert result is None
+
+
+async def test_rejects_non_github_html_url() -> None:
+    """check_for_update returns None when html_url is not a GitHub URL."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "tag_name": "v2.0.0",
+        "html_url": "javascript:alert(1)",
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     with patch("triggarr.update_check.httpx.AsyncClient", return_value=mock_client):
         result = await check_for_update()

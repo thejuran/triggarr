@@ -1936,3 +1936,55 @@ async def test_tag_warning_state_cutoff_tag_not_found(tmp_path):
     assert {"tag": "nonexistent-missing", "field": "missing"} in ist["tag_warnings"]
     assert {"tag": "nonexistent-cutoff", "field": "cutoff"} in ist["tag_warnings"]
     await db.close()
+
+
+async def test_tag_warnings_cleared_on_radarr_connectivity_failure(tmp_path):
+    """Radarr cycle sets tag_warnings=[] when instance is unreachable."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(side_effect=httpx.HTTPError("Connection refused"))
+
+    state = _make_test_state()
+    # Pre-populate stale tag warnings
+    state["radarr"]["Default"]["tag_warnings"] = [{"tag": "stale", "field": "missing"}]
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["radarr"]["Default"]
+    assert ist["tag_warnings"] == []
+    assert ist["connected"] is False
+    await db.close()
+
+
+async def test_tag_warnings_cleared_on_sonarr_connectivity_failure(tmp_path):
+    """Sonarr cycle sets tag_warnings=[] when instance is unreachable."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(side_effect=httpx.HTTPError("Connection refused"))
+
+    state = _make_test_state()
+    # Pre-populate stale tag warnings
+    state["sonarr"]["Default"]["tag_warnings"] = [{"tag": "stale", "field": "missing"}]
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["sonarr"]["Default"]
+    assert ist["tag_warnings"] == []
+    assert ist["connected"] is False
+    await db.close()
