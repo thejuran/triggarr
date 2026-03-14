@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A lightweight Docker-based tool that automates searches in Radarr and Sonarr for wanted and cutoff unmet items, with closed-loop download tracking. Configurable round-robin searches at configurable intervals detect when searched items are actually grabbed, showing per-item outcome badges and aggregate effectiveness stats on a dark theme web UI. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history with tracking correlation, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
+A lightweight Docker-based tool that automates searches in Radarr and Sonarr for wanted and cutoff unmet items, with closed-loop download tracking and multi-instance support. Configurable round-robin searches at configurable intervals detect when searched items are actually grabbed, showing per-item outcome badges and aggregate effectiveness stats on a dark theme web UI. Supports multiple named Radarr/Sonarr instances with per-instance tag-based search filtering, instance health monitoring, and update notifications. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history with tracking correlation, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
 
 ## Core Value
 
@@ -70,26 +70,25 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 - ✓ Cutoff-unmet items never filtered (already have files) — v2.2
 - ✓ Dashboard eligible vs total counts per app with skip-count indicator — v2.2
 - ✓ Skip badge math uses monitored count (not raw total) for accuracy — v2.2
+- ✓ Multiple named Radarr/Sonarr instances with independent URL, API key, schedule, and batch sizes — v2.3
+- ✓ Per-instance round-robin cursors that persist across restarts — v2.3
+- ✓ Auto-migration from single-instance to multi-instance config on upgrade — v2.3
+- ✓ Per-instance tag filtering for missing and cutoff queues — v2.3
+- ✓ Tag autocomplete from *arr instances in settings UI — v2.3
+- ✓ Instance CRUD (add/edit/remove/enable/disable) from web UI — v2.3
+- ✓ Instance health summary card with connected/disconnected counts — v2.3
+- ✓ Tag warning badges on app cards when configured tag not found — v2.3
+- ✓ Per-instance effectiveness stats with instance filter dropdown — v2.3
+- ✓ GitHub release update notification in nav bar — v2.3
+- ✓ Dismissible migration banner for v2.2→v2.3 upgrade — v2.3
+- ✓ Deep review: XSS, CSRF, version parsing, input validation hardening — v2.3
 
 ### Active
-
-## Current Milestone: v2.3 Multi-Instance & Tag Filtering
-
-**Goal:** Support multiple Radarr/Sonarr instances with per-instance tag-based search filtering.
-
-**Target features:**
-- Multiple Radarr/Sonarr instances (named, each with own URL/API key/schedule)
-- Instance management via both TOML config and web UI
-- Per-instance tag filtering for missing queue (e.g. `triggarr-missing` tag)
-- Per-instance tag filtering for cutoff queue (e.g. `triggarr-upgrade` tag)
-- Default behavior unchanged: all monitored items searched when no tag configured
-- Dashboard and search history scoped per instance
 
 ### Out of Scope
 
 - User accounts / authentication — local network tool, no auth needed
 - Lidarr / Readarr / other *arr support — Radarr + Sonarr only
-- ~~Multi-instance support~~ — now in scope for v2.3 (GitHub #8)
 - Notifications (Discord, Telegram, Apprise) — web UI log sufficient
 - Prowlarr / indexer management — uses existing *arr search infrastructure
 - Download queue management — *arr apps handle this
@@ -107,14 +106,14 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ## Context
 
-Shipped v2.2 with ~8,964 Python LOC (3,389 source + 5,575 test). 302 tests passing. 28 phases, 56 plans completed across 6 milestones.
-Tech stack: Python 3.13, FastAPI, httpx, Pydantic, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
+Shipped v2.3 with ~15,079 Python LOC (6,453 source + 8,626 test). 466 tests passing. 40 phases, 71 plans completed across 9 milestones.
+Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt: missing_monitored not in AppState TypedDict (cosmetic); Sonarr eligible/total mixes units (accepted).
+Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted).
 
 ## Constraints
 
@@ -157,6 +156,11 @@ Known tech debt: missing_monitored not in AppState TypedDict (cosmetic); Sonarr 
 | Cutoff-unmet never filtered | Already have files = proven released | ✓ Good — v2.2 |
 | Skip badge uses missing_monitored not missing_count | Avoids inflating skip count with unmonitored items | ✓ Good — v2.2 |
 | contextlib.suppress for date parsing | ruff SIM105 compliance; cleaner than try/except/pass | ✓ Good — v2.2 |
+| Dict-based multi-instance config (nested TOML tables) | Natural TOML mapping, pydantic-settings compatible | ✓ Good — v2.3 |
+| Auto-migration from v2.2 flat config to v2.3 nested format | Zero-downtime upgrade path | ✓ Good — v2.3 |
+| Tag resolution per-cycle (not cached) | Tags may change in *arr; fresh resolution ensures correctness | ✓ Good — v2.3 |
+| Mutable dict for _update_info Jinja2 global | In-place update avoids re-registration; no .clear() for atomicity | ✓ Good — v2.3 |
+| HX-Request header check for CSRF on DELETE endpoints | Htmx sends custom header; cross-origin requests blocked by CORS preflight | ✓ Good — v2.3 |
 
 ---
-*Last updated: 2026-03-09 after v2.3 milestone start*
+*Last updated: 2026-03-14 after v2.3 milestone completion*

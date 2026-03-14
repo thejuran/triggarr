@@ -12,7 +12,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v2.0 Closed-Loop Tracking -- Phases 17-22 (shipped 2026-03-09) -- [archive](milestones/v2.0-ROADMAP.md)
 - ✅ v2.1 Harden & Fix -- Phases 23-24 (shipped 2026-03-09) -- [archive](milestones/v2.1-ROADMAP.md)
 - ✅ v2.2 Skip Unreleased Media -- Phases 25-28 (shipped 2026-03-09) -- [archive](milestones/v2.2-ROADMAP.md)
-- 🚧 **v2.3 Multi-Instance & Tag Filtering** -- Phases 33-39 (in progress)
+- ✅ v2.3 Multi-Instance & Tag Filtering -- Phases 33-44 (shipped 2026-03-14) -- [archive](milestones/v2.3-ROADMAP.md)
 
 ## Phases
 
@@ -82,191 +82,20 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 </details>
 
-### v2.3 Multi-Instance & Tag Filtering (In Progress)
+<details>
+<summary>v2.3 Multi-Instance & Tag Filtering (Phases 33-44) -- SHIPPED 2026-03-14</summary>
 
-**Milestone Goal:** Support multiple Radarr/Sonarr instances with per-instance tag-based search filtering, scoped observability, and version display.
+- [x] Phase 33: Config Model & Migration (2/2 plans) -- completed 2026-03-11
+- [x] Phase 34: State Model & Cursor Isolation (2/2 plans) -- completed 2026-03-11
+- [x] Phase 35: Client Registry & Tag Resolution (1/1 plan) -- completed 2026-03-11
+- [x] Phase 36: Search Engine & Tag Filtering (2/2 plans) -- completed 2026-03-11
+- [x] Phase 37: Database Schema & Instance Scoping (1/1 plan) -- completed 2026-03-11
+- [x] Phase 38: Scheduler & Tracking Wiring (1/1 plan) -- completed 2026-03-11
+- [x] Phase 39: Web UI Integration (1/1 plan) -- completed 2026-03-11
+- [x] Phase 40: Fix Multi-Instance Bugs (3/3 plans) -- completed 2026-03-12
+- [x] Phase 41: Multi-Instance Settings UI (1/1 plan) -- completed 2026-03-12
+- [x] Phase 42: Dashboard Enhancements (2/2 plans) -- completed 2026-03-13
+- [x] Phase 43: Update Notification & Cleanup (1/1 plan) -- completed 2026-03-13
+- [x] Phase 44: Deep Review Fixes (1/1 plan) -- completed 2026-03-14
 
-- [x] **Phase 33: Config Model & Migration** - Multi-instance config shape with backward-compatible auto-migration (completed 2026-03-11)
-- [x] **Phase 34: State Model & Cursor Isolation** - Per-instance state with independent round-robin cursors (completed 2026-03-11)
-- [x] **Phase 35: Client Registry & Tag Resolution** - Dynamic client pool with per-cycle tag name-to-ID resolution (completed 2026-03-11)
-- [x] **Phase 36: Search Engine & Tag Filtering** - Tag-based item filtering in the search pipeline (completed 2026-03-11)
-- [x] **Phase 37: Database Schema & Instance Scoping** - Migration v6 adding instance_id to search history and stats (completed 2026-03-11, via GSD slice S05)
-- [ ] **Phase 38: Scheduler & Tracking Wiring** - Per-instance job scheduling with correct tracking correlation (partial via GSD slice S06 — INST-06 only works for first instance)
-- [ ] **Phase 39: Web UI Integration** - Multi-instance dashboard, settings, history, and version display (partial via GSD slice S07 — OBS-01/OBS-02/VER-01 done; INST-05/INST-07/TAG-05/TAG-06/OBS-03/VER-02 missing)
-- [x] **Phase 41: Multi-Instance Settings UI** - Instance CRUD, enable/disable, and tag filter config in web UI (gap closure) (completed 2026-03-12)
-- [x] **Phase 42: Dashboard Enhancements** - Health summary, tag warning badges, per-instance stats (gap closure) (completed 2026-03-13)
-- [x] **Phase 43: Update Notification & Cleanup** - GitHub release check, migration banner, dead code removal (gap closure) (completed 2026-03-13)
-
-## Phase Details
-
-### Phase 33: Config Model & Migration
-**Goal**: Users can define multiple named Radarr/Sonarr instances in config, and existing v2.2 configs auto-migrate safely on upgrade
-**Depends on**: Nothing (first phase of v2.3)
-**Requirements**: INST-01, INST-02, INST-04
-**Success Criteria** (what must be TRUE):
-  1. User can define multiple named Radarr instances in TOML config, each with independent URL, API key, schedule, and batch sizes
-  2. User can define multiple named Sonarr instances in TOML config, each with independent URL, API key, schedule, and batch sizes
-  3. Existing single-instance v2.2 config files are auto-detected and converted to multi-instance format on first startup, with the original backed up
-  4. Config validation rejects duplicate instance names within the same app type
-**Plans**: 2 plans
-Plans:
-- [x] 33-01-PLAN.md -- InstanceConfig model and dict-based Settings with validation (TDD)
-- [ ] 33-02-PLAN.md -- v2.2 migration logic, default config template, conftest update (TDD)
-
-### Phase 34: State Model & Cursor Isolation
-**Goal**: Each instance maintains its own round-robin position that persists across restarts without cross-contamination
-**Depends on**: Phase 33
-**Requirements**: INST-03
-**Success Criteria** (what must be TRUE):
-  1. Each instance has independent round-robin cursors (missing and cutoff) that persist across restarts
-  2. Two instances of the same app type (e.g., two Radarr) do not share or corrupt each other's cursor positions
-  3. Existing v2.2 state.json is auto-migrated to the new per-instance format keyed by instance ID
-**Plans**: 2 plans
-Plans:
-- [x] 34-01-PLAN.md -- Per-instance state model with v2.2 migration and orphan cleanup (TDD)
-- [ ] 34-02-PLAN.md -- Update engine, scheduler, routes, and startup for per-instance wiring
-
-### Phase 35: Client Registry & Tag Resolution
-**Goal**: The application creates and manages one HTTP client per instance, with the ability to resolve tag names to IDs from the *arr API
-**Depends on**: Phase 33
-**Requirements**: TAG-04
-**Success Criteria** (what must be TRUE):
-  1. Application startup creates one async HTTP client per enabled instance, stored in a registry keyed by instance ID
-  2. Tag names configured on an instance are resolved to numeric IDs via the *arr `/api/v3/tag` endpoint at the start of each search cycle
-  3. When a configured tag name is not found in the *arr instance, the resolution fails gracefully (logged, not crashed)
-**Plans**: 1 plan
-Plans:
-- [ ] 35-01-PLAN.md -- Tag model, ArrClient.get_tags(), and resolve_tag_id() helper (TDD)
-
-### Phase 36: Search Engine & Tag Filtering
-**Goal**: Search cycles filter items by configured tags so only tagged items are searched, with no-tag meaning search everything
-**Depends on**: Phase 34, Phase 35
-**Requirements**: TAG-01, TAG-02, TAG-03
-**Success Criteria** (what must be TRUE):
-  1. When a missing-queue tag is configured for an instance, only items bearing that tag are included in the search cycle
-  2. When a cutoff-queue tag is configured for an instance, only cutoff-unmet items bearing that tag are included in the search cycle
-  3. When no tag is configured for a queue, all monitored items are searched (existing default behavior preserved)
-  4. Sonarr tag filtering correctly reads tags from the series object (not the episode object)
-**Plans**: 2 plans
-Plans:
-- [ ] 36-01-PLAN.md -- InstanceConfig tag fields, filter_by_tag pure function, tag accessors (TDD)
-- [ ] 36-02-PLAN.md -- Wire tag resolution and filtering into Radarr and Sonarr cycle functions (TDD)
-
-### Phase 37: Database Schema & Instance Scoping
-**Goal**: Search history and lifetime stats are attributed to specific instances so data from different instances never mixes
-**Depends on**: Phase 33
-**Requirements**: OBS-02
-**Status**: Complete (2026-03-11, via GSD slice S05)
-**Success Criteria** (what must be TRUE):
-  1. Search history entries include an instance_id column populated for all new searches
-  2. Lifetime stats use a composite key of (app_type, instance_id) so per-instance counts are tracked independently
-  3. Search history page can filter results by instance name
-**Plans**: Executed as GSD slice S05 — see `.gsd/milestones/M001/slices/S05/S05-SUMMARY.md`
-
-### Phase 38: Scheduler & Tracking Wiring
-**Goal**: Each enabled instance runs on its own schedule, and grab tracking queries the correct *arr server for each search
-**Depends on**: Phase 35, Phase 36, Phase 37
-**Requirements**: INST-06
-**Status**: Complete (2026-03-11, via GSD slice S06)
-**Success Criteria** (what must be TRUE):
-  1. Each enabled instance has its own APScheduler interval job running at that instance's configured interval
-  2. User can enable/disable individual instances, and disabled instances have their scheduler jobs removed (no searches run)
-  3. Post-search grab tracking queries the correct *arr instance (not a different instance of the same app type)
-  4. Enabling/disabling an instance takes effect on the next scheduler tick without requiring application restart
-**Plans**: Executed as GSD slice S06 — see `.gsd/milestones/M001/slices/S06/S06-SUMMARY.md`
-
-### Phase 39: Web UI Integration
-**Goal**: Users can manage instances, view per-instance status, configure tag filters, and see the application version -- all from the web UI
-**Depends on**: Phase 38
-**Requirements**: INST-05, INST-07, TAG-05, TAG-06, OBS-01, OBS-03, VER-01, VER-02
-**Status**: Complete (2026-03-11, via GSD slice S07)
-**Success Criteria** (what must be TRUE):
-  1. User can add, edit, and remove instances from the web UI settings page without editing TOML directly
-  2. Dashboard shows a per-instance status card with connection health, queue sizes, and last-run time for each instance
-  3. Dashboard shows an instance health summary (connected/disconnected count) and per-instance effectiveness stats (grab rate, lifetime counts)
-  4. Tag configuration fields in the settings UI offer autocomplete populated from the *arr instance's tag list
-  5. Dashboard displays a warning badge when a configured tag name is not found in the *arr instance
-  6. Dashboard displays the current Triggarr version and indicates when a newer release is available
-**Plans**: Executed as GSD slice S07 — see `.gsd/milestones/M001/slices/S07/S07-SUMMARY.md`
-
-### Phase 40: Fix Multi-Instance Bugs and Hardening
-**Goal:** Fix all critical and warning-level bugs found during deep code review of multi-instance support, covering crash bugs in the validate-schedule-cycle chain, config safety issues, and input validation hardening
-**Requirements**: BUG-01, BUG-02, BUG-03, BUG-04, BUG-05, BUG-06, BUG-07, BUG-08, BUG-09, BUG-10, BUG-11
-**Depends on:** Phase 36
-**Plans:** 3/3 plans complete
-
-Plans:
-- [x] 40-01-PLAN.md -- Fix crash bugs in validate-schedule-cycle chain (KeyError, loop overwrite, missing state entry)
-- [x] 40-02-PLAN.md -- Fix config safety (instance deletion on save, CSS injection, temp file leak, write dedup)
-- [x] 40-03-PLAN.md -- Fix input validation and code hygiene (filter cap, name length, tag logging, state mutation, test shadowing)
-
-### Phase 41: Multi-Instance Settings UI
-**Goal:** Users can manage all instances (add, edit, remove, enable/disable) and configure tag filters from the web UI settings page
-**Depends on:** Phase 40
-**Requirements:** INST-05, INST-06, TAG-06
-**Gap Closure:** Closes gaps from v2.3 audit — settings page overhaul
-**Success Criteria** (what must be TRUE):
-  1. Settings page lists all configured instances (not just the first per app type)
-  2. User can add a new instance, edit an existing instance, and remove an instance from the web UI
-  3. User can enable/disable any instance from the settings page
-  4. Tag name fields (missing_tag, cutoff_tag) are exposed in the settings form with autocomplete from the *arr instance's tag list
-  5. All changes persist to TOML config via existing atomic write path
-**Plans:** 1/1 plans complete
-Plans:
-- [ ] 41-01-PLAN.md -- Backend route refactoring, template rewrite, tag autocomplete, add/remove endpoints, tests
-
-### Phase 42: Dashboard Enhancements
-**Goal:** Dashboard shows instance health summary, tag warning badges, and per-instance effectiveness stats
-**Depends on:** Phase 41
-**Requirements:** INST-07, TAG-05, OBS-03
-**Gap Closure:** Closes gaps from v2.3 audit — dashboard feature completion
-**Success Criteria** (what must be TRUE):
-  1. Dashboard shows an instance health summary card with connected/disconnected count
-  2. Dashboard shows a warning badge when a configured tag name is not found in the *arr instance
-  3. Per-instance effectiveness stats (grab rate, lifetime counts) are displayed using instance_id-scoped DB queries
-**Plans:** 2/2 plans complete
-Plans:
-- [x] 42-01-PLAN.md -- Backend data paths: tag warning state, health summary route, stats instance filter
-- [ ] 42-02-PLAN.md -- Template changes: health summary card, tag warning badge, stats filter dropdown
-
-### Phase 43: Update Notification & Cleanup
-**Goal:** Dashboard shows update availability and migration banner; dead code removed
-**Depends on:** Phase 41
-**Requirements:** VER-02
-**Gap Closure:** Closes gaps from v2.3 audit — version check, migration banner, dead code
-**Success Criteria** (what must be TRUE):
-  1. Dashboard indicates when a newer Triggarr release is available by checking GitHub releases
-  2. Dashboard shows a migration banner when .migrated marker exists (from v2.2→v2.3 upgrade)
-  3. ArrConfig backward-compat alias removed (dead code cleanup)
-**Plans:** 1/1 plans complete
-Plans:
-- [ ] 43-01-PLAN.md -- Update check module, migration banner, dead code removal
-
-### Phase 44: Deep Review Fixes
-**Goal:** Fix 8 security, correctness, and hardening issues from deep code review (XSS, CSRF, stale state, version parsing, URL validation)
-**Requirements**: N/A (bug-fix phase from deep code review)
-**Depends on:** Phase 43
-**Plans:** 1/1 plans complete
-
-Plans:
-- [x] 44-01-PLAN.md -- Apply all 8 deep review fixes with tests (update_check, engine, scheduler, routes)
-
-## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 33. Config Model & Migration | 2/2 | Complete    | 2026-03-11 | - |
-| 34. State Model & Cursor Isolation | 2/2 | Complete    | 2026-03-11 | - |
-| 35. Client Registry & Tag Resolution | 1/1 | Complete    | 2026-03-11 | - |
-| 36. Search Engine & Tag Filtering | 2/2 | Complete    | 2026-03-11 | - |
-| 37. Database Schema & Instance Scoping | v2.3 | 1/1 (S05) | Complete | 2026-03-11 |
-| 38. Scheduler & Tracking Wiring | v2.3 | 1/1 (S06) | Partial | - |
-| 39. Web UI Integration | v2.3 | 1/1 (S07) | Partial | - |
-| 40. Fix Multi-Instance Bugs | 3/3 | Complete    | 2026-03-12 | - |
-| 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
-| 42. Dashboard Enhancements | 2/2 | Complete    | 2026-03-13 | - |
-| 43. Update Notification & Cleanup | 1/1 | Complete    | 2026-03-13 | - |
-| 44. Deep Review Fixes | 1/1 | Complete    | 2026-03-14 | - |
+</details>

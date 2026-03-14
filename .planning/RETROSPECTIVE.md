@@ -112,6 +112,54 @@
 
 ---
 
+## Milestone: v2.3 — Multi-Instance & Tag Filtering
+
+**Shipped:** 2026-03-14
+**Phases:** 12 | **Plans:** 15
+
+### What Was Built
+- Multi-instance support: named Radarr/Sonarr instances with independent config, state, scheduling
+- Per-instance tag-based search filtering (missing and cutoff queues)
+- Auto-migration from v2.2 flat config to v2.3 nested TOML format
+- Instance management UI (add/edit/remove/enable/disable) with tag autocomplete
+- Dashboard enhancements: health summary card, tag warning badges, instance stats filter
+- GitHub release update notification in nav bar
+- Dismissible migration banner for upgrade awareness
+- Deep review fixes: XSS, CSRF, version parsing, input validation hardening
+- 466 tests (up from 302), 15,079 LOC (up from 8,964)
+
+### What Worked
+- Milestone audit after initial phases (33-39) caught 7 requirement gaps early — led to phases 40-44
+- Deep review as final phase caught 8 real issues before release
+- TDD approach in most plans caught regressions immediately
+- Context discussion workflow (discuss-phase) captured user decisions that guided planning accurately
+- Gap-closure phases (40-44) cleanly addressed audit findings without scope creep
+
+### What Was Inefficient
+- Phases 37-39 were executed as GSD slices outside the planning system, requiring gap-closure phases to finish incomplete work
+- Some plans had to be revised due to planner not reading existing code patterns carefully enough
+- The _update_info module-level mutable dict pattern (scheduler → routes) inverts the layer dependency — deferred to next milestone
+
+### Patterns Established
+- Milestone audit → gap-closure phases as a formal quality gate
+- Deep review findings → dedicated bug-fix phase with exact patches
+- Instance filter dropdown with `hx-include` for htmx poll persistence
+- `HX-Request` header check as CSRF mitigation for htmx DELETE endpoints
+
+### Key Lessons
+1. Audit before completing milestone — found 7 gaps that would have shipped incomplete
+2. Gap-closure phases are quick when the audit precisely identifies what's missing
+3. Module-level mutable state shared between modules is a code smell — use `app.state` instead
+4. Pre-release version strings need robust parsing (regex fallback, not just int())
+5. Always clear derived state (tag_warnings) on early-return error paths
+
+### Cost Observations
+- Model mix: ~60% opus (execution), ~30% sonnet (verification, checking), ~10% haiku (exploration)
+- Sessions: ~5 sessions across 5 days
+- Notable: 12 phases in 5 days; audit-driven gap closure was efficient
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -124,6 +172,7 @@
 | v2.0 | 8 | 18 | Decimal phases for inserted work, formal deep review phases |
 | v2.1 | 2 | 2 | Small focused milestone for deployment fixes |
 | v2.2 | 4 | 5 | TDD approach, code review as dedicated phase |
+| v2.3 | 12 | 15 | Milestone audit + gap-closure pattern, deep review as final phase |
 
 ### Cumulative Quality
 
@@ -135,6 +184,7 @@
 | v2.0 | 220+ | ~8,010 | 0 (entire milestone) |
 | v2.1 | 270 | ~8,322 | 0 |
 | v2.2 | 302 | ~8,964 | 0 |
+| v2.3 | 466 | ~15,079 | 0 (pydantic-settings added for config, already in deps) |
 
 ### Top Lessons (Verified Across Milestones)
 

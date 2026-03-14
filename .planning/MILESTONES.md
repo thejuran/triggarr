@@ -1,5 +1,14 @@
 # Milestones
 
+## v2.3 Multi-Instance & Tag Filtering (Shipped: 2026-03-14)
+
+**Phases completed:** 9 phases, 15 plans, 4 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v2.2 Skip Unreleased Media (Shipped: 2026-03-09)
 
 **Phases completed:** 4 phases, 5 plans
