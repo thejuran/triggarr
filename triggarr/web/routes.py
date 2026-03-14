@@ -7,6 +7,7 @@ and partial endpoints for htmx fragment updates.
 
 from __future__ import annotations
 
+import html
 import os
 import re
 import time
@@ -354,6 +355,10 @@ async def partial_history_results(request: Request) -> HTMLResponse:
     instance_filter = _split_filter_param(params.get("instance"))
     if instance_filter:
         instance_filter = instance_filter[:10]
+        # Strip trailing slashes and reject empty/whitespace-only values
+        instance_filter = [v.rstrip("/") for v in instance_filter if v.rstrip("/")]
+        if not instance_filter:
+            instance_filter = None
     search_text = params.get("search", "")
 
     result = await get_search_history(
@@ -573,7 +578,7 @@ async def tag_autocomplete(request: Request, app_name: str, instance_name: str) 
 
     try:
         tags = await client.get_tags()
-        options = "".join(f'<option value="{tag.label}">' for tag in tags)
+        options = "".join(f'<option value="{html.escape(tag.label)}">' for tag in tags)
         return HTMLResponse(options)
     except Exception:
         return HTMLResponse("")
@@ -831,11 +836,14 @@ async def partial_log_viewer(request: Request) -> HTMLResponse:
 
 
 @router.delete("/api/dismiss-migration", response_class=HTMLResponse)
-async def dismiss_migration() -> HTMLResponse:
+async def dismiss_migration(request: Request) -> HTMLResponse:
     """Dismiss the migration banner by deleting the .migrated marker file.
 
     Returns empty HTML so hx-swap="outerHTML" removes the banner element.
     Succeeds even if .migrated does not exist (missing_ok=True).
+    Rejects non-htmx requests with 403 to prevent CSRF.
     """
+    if not request.headers.get("HX-Request"):
+        return HTMLResponse("Forbidden", status_code=403)
     (CONFIG_DIR / ".migrated").unlink(missing_ok=True)
     return HTMLResponse("")

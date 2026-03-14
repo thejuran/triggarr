@@ -305,6 +305,7 @@ async def run_radarr_cycle(
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Cycle aborted -- {exc}", exc=exc)
         ist["connected"] = False
+        ist["tag_warnings"] = []
         if not ist.get("unreachable_since"):
             ist["unreachable_since"] = (
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -510,6 +511,7 @@ async def run_sonarr_cycle(
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Cycle aborted -- {exc}", exc=exc)
         ist["connected"] = False
+        ist["tag_warnings"] = []
         if not ist.get("unreachable_since"):
             ist["unreachable_since"] = (
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")

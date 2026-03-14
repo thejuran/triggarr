@@ -222,7 +222,6 @@ def create_lifespan(
 
             result = await check_for_update()
             if result is not None:
-                _update_info.clear()
                 _update_info.update(result)
                 if result["update_available"]:
                     logger.info("Update available: v{version}", version=result["latest_version"])

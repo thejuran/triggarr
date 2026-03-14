@@ -7,6 +7,8 @@ Failures are silent (debug-logged) to avoid disrupting normal operation.
 
 from __future__ import annotations
 
+import re
+
 import httpx
 from loguru import logger
 
@@ -31,7 +33,14 @@ def _parse_version(version_str: str) -> tuple[int, ...]:
         cleaned = version_str.lstrip("v")
         if not cleaned:
             return (0,)
-        return tuple(int(part) for part in cleaned.split("."))
+        # Strip pre-release suffix (e.g., "2.3.0-rc.1" -> "2.3.0")
+        cleaned = cleaned.split("-", 1)[0]
+        parts = []
+        for part in cleaned.split("."):
+            m = re.match(r"^(\d+)", part)
+            if m:
+                parts.append(int(m.group(1)))
+        return tuple(parts) if parts else (0,)
     except (ValueError, AttributeError):
         return (0,)
 
@@ -54,6 +63,11 @@ async def check_for_update() -> dict | None:
 
             tag_name = data["tag_name"]
             html_url = data["html_url"]
+
+            if not isinstance(html_url, str) or not html_url.startswith("https://github.com/"):
+                logger.debug("Update check: unexpected html_url: {url}", url=html_url)
+                return None
+
             latest_version = tag_name.lstrip("v")
 
             remote = _parse_version(tag_name)
@@ -64,6 +78,6 @@ async def check_for_update() -> dict | None:
                 "update_available": remote > current,
                 "html_url": html_url,
             }
-    except (httpx.HTTPError, httpx.TimeoutException, KeyError, ValueError) as exc:
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
         logger.debug("Update check failed: {exc}", exc=exc)
         return None
