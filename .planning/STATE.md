@@ -113,6 +113,7 @@ None.
 ### Roadmap Evolution
 
 - Phase 40 added: Fix Multi-Instance Bugs and Hardening
+- Phase 44 added: Deep Review Fixes (security, correctness, hardening from /deep-review)
 
 ### Blockers/Concerns
 
