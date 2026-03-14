@@ -48,7 +48,7 @@ router = APIRouter()
 SEARCH_RATE_LIMIT_SECONDS = 10
 
 # Regex for multi-instance form field names: {app}__{instance}__{field}
-INSTANCE_FIELD_RE = re.compile(r"^(radarr|sonarr)__(.+)__(\w+)$")
+INSTANCE_FIELD_RE = re.compile(r"^(radarr|sonarr)__(\w+)__(\w+)$")
 
 
 def _sanitize_card_id(raw: str) -> str:
@@ -607,7 +607,7 @@ async def add_instance(request: Request):
     instances = getattr(settings, app_name)
 
     if instance_name in instances:
-        return HTMLResponse(f"Instance '{instance_name}' already exists", status_code=400)
+        return HTMLResponse(f"Instance '{html.escape(instance_name)}' already exists", status_code=400)
     if len(instances) >= 5:
         return HTMLResponse("Maximum 5 instances per app type", status_code=400)
 
@@ -647,7 +647,7 @@ async def remove_instance(request: Request, app_name: str, instance_name: str):
     instances = getattr(settings, app_name)
 
     if instance_name not in instances:
-        return HTMLResponse(f"Instance '{instance_name}' not found", status_code=400)
+        return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
 
     # Remove instance from settings
     del instances[instance_name]

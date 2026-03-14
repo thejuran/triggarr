@@ -134,8 +134,8 @@ def _make_settings_app() -> FastAPI:
     app.state.scheduler = MagicMock()
     app.state.search_lock = asyncio.Lock()
     app.state.last_search_time = {}
-    app.state.config_path = pathlib.Path(tempfile.mktemp(suffix=".toml"))
-    app.state.state_path = pathlib.Path(tempfile.mktemp(suffix=".json"))
+    app.state.config_path = pathlib.Path(tempfile.mkdtemp()) / "config.toml"
+    app.state.state_path = pathlib.Path(tempfile.mkdtemp()) / "state.json"
 
     return app
 
