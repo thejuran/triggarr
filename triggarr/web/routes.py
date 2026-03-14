@@ -48,7 +48,6 @@ router = APIRouter()
 SEARCH_RATE_LIMIT_SECONDS = 10
 
 # Regex for multi-instance form field names: {app}__{instance}__{field}
-INSTANCE_FIELD_RE = re.compile(r"^(radarr|sonarr)__(\w+)__(\w+)$")
 
 
 def _sanitize_card_id(raw: str) -> str:
@@ -411,9 +410,9 @@ async def save_settings(request: Request) -> RedirectResponse:
     # Parse multi-instance form fields using {app}__{instance}__{field} convention
     parsed_instances: dict[str, dict[str, dict[str, str]]] = {"radarr": {}, "sonarr": {}}
     for key in form:
-        match = INSTANCE_FIELD_RE.match(key)
-        if match:
-            app_name, inst_name, field = match.groups()
+        parts = key.split("__", 2)
+        if len(parts) == 3 and parts[0] in parsed_instances:
+            app_name, inst_name, field = parts
             parsed_instances[app_name].setdefault(inst_name, {})[field] = form[key]
 
     for name in ("radarr", "sonarr"):
