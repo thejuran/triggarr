@@ -246,7 +246,7 @@ Plans:
 **Goal:** Fix 8 security, correctness, and hardening issues from deep code review (XSS, CSRF, stale state, version parsing, URL validation)
 **Requirements**: N/A (bug-fix phase from deep code review)
 **Depends on:** Phase 43
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [x] 44-01-PLAN.md -- Apply all 8 deep review fixes with tests (update_check, engine, scheduler, routes)
