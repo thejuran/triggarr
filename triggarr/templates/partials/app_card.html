@@ -66,7 +66,7 @@
     </div>
     <div>
       <span class="text-xs uppercase tracking-wide text-triggarr-muted">Cutoff</span>
-      <p class="text-sm font-medium">{{ app.cutoff_count if app.cutoff_count is not none else '&mdash;' }} items</p>
+      <p class="text-sm font-medium">{{ app.cutoff_count if app.cutoff_count is not none else '—' }} items</p>
       <p class="text-xs text-triggarr-muted">
         {{ app.cutoff_cursor }} of {{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}
         {%- if app.cutoff_pass is defined and app.cutoff_pass > 0 %}
