@@ -34,8 +34,8 @@ async def test_update_available() -> None:
     """check_for_update returns update_available=True when remote > current."""
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "tag_name": "v2.0.0",
-        "html_url": "https://github.com/thejuran/triggarr/releases/tag/v2.0.0",
+        "tag_name": "v99.0.0",
+        "html_url": "https://github.com/thejuran/triggarr/releases/tag/v99.0.0",
     }
     mock_response.raise_for_status = MagicMock()
 
@@ -49,16 +49,18 @@ async def test_update_available() -> None:
 
     assert result is not None
     assert result["update_available"] is True
-    assert result["latest_version"] == "2.0.0"
-    assert result["html_url"] == "https://github.com/thejuran/triggarr/releases/tag/v2.0.0"
+    assert result["latest_version"] == "99.0.0"
+    assert result["html_url"] == "https://github.com/thejuran/triggarr/releases/tag/v99.0.0"
 
 
 async def test_no_update() -> None:
-    """check_for_update returns update_available=False when remote == current."""
+    """check_for_update returns update_available=False when remote <= current."""
+    from triggarr import __version__
+
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "tag_name": "v0.1.0",
-        "html_url": "https://github.com/thejuran/triggarr/releases/tag/v0.1.0",
+        "tag_name": f"v{__version__}",
+        "html_url": f"https://github.com/thejuran/triggarr/releases/tag/v{__version__}",
     }
     mock_response.raise_for_status = MagicMock()
 
@@ -104,7 +106,7 @@ async def test_rejects_non_github_html_url() -> None:
     """check_for_update returns None when html_url is not a GitHub URL."""
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "tag_name": "v2.0.0",
+        "tag_name": "v99.0.0",
         "html_url": "javascript:alert(1)",
     }
     mock_response.raise_for_status = MagicMock()
