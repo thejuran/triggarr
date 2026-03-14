@@ -249,7 +249,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 44-01-PLAN.md -- Apply all 8 deep review fixes with tests (update_check, engine, scheduler, routes)
+- [x] 44-01-PLAN.md -- Apply all 8 deep review fixes with tests (update_check, engine, scheduler, routes)
 
 ## Progress
 
@@ -269,4 +269,4 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
 | 42. Dashboard Enhancements | 2/2 | Complete    | 2026-03-13 | - |
 | 43. Update Notification & Cleanup | 1/1 | Complete    | 2026-03-13 | - |
-| 44. Deep Review Fixes | 0/1 | Planned | - | - |
+| 44. Deep Review Fixes | 1/1 | Complete    | 2026-03-14 | - |

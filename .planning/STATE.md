@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Multi-Instance & Tag Filtering
-status: completed
-stopped_at: Completed 43-01-PLAN.md
-last_updated: "2026-03-13T23:56:44.657Z"
-last_activity: 2026-03-13 — Completed Plan 01 (update notification & cleanup)
+status: in-progress
+stopped_at: Completed 44-01-PLAN.md
+last_updated: "2026-03-14T00:42:43Z"
+last_activity: 2026-03-14 — Completed Plan 01 (deep review fixes)
 progress:
-  total_phases: 11
-  completed_phases: 8
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 12
+  completed_phases: 9
+  total_plans: 15
+  completed_plans: 15
   percent: 100
 ---
 
@@ -21,26 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 43 — Update Notification & Cleanup
+**Current focus:** Phase 44 — Deep Review Fixes
 
 ## Current Position
 
-Phase: 43 (11 of 11 in v2.3) — Update Notification & Cleanup
+Phase: 44 (12 of 12 in v2.3) — Deep Review Fixes
 Plan: 01 of 1 complete
 Status: Phase Complete
-Last activity: 2026-03-13 — Completed Plan 01 (update notification & cleanup)
+Last activity: 2026-03-14 — Completed Plan 01 (deep review fixes)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 56 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 5)
+- Total plans completed: 57 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 5)
 - Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
 
 **v2.3:**
-- Plans completed: 14
-- Phases: 11 (33-43)
+- Plans completed: 15
+- Phases: 12 (33-44)
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -58,6 +58,7 @@ Progress: [██████████] 100%
 | 42 | 01 | 9min | 2 | 6 |
 | 42 | 02 | 10min | 2 | 5 |
 | 43 | 01 | 4min | 2 | 10 |
+| 44 | 01 | 27min | 2 | 7 |
 
 ## Accumulated Context
 
@@ -105,6 +106,8 @@ Full decision log in PROJECT.md Key Decisions table.
 - [Phase 42-02]: Health summary card placed above stats row (not between stats and app cards)
 - [Phase 43-01]: Lazy import of _update_info inside update_check_job closure to avoid circular import
 - [Phase 43-01]: Mutable dict pattern for _update_info Jinja2 global (clear+update to propagate)
+- [Phase 44-01]: Pre-release suffix stripped by splitting on hyphen before dot-split, with re.match fallback for .devN
+- [Phase 44-01]: Instance filter validation uses trailing-slash stripping instead of strict app/instance format
 
 ### Pending Todos
 
@@ -122,6 +125,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-13T23:47:00Z
-Stopped at: Completed 43-01-PLAN.md
+Last session: 2026-03-14T00:42:43Z
+Stopped at: Completed 44-01-PLAN.md
 Resume file: None
