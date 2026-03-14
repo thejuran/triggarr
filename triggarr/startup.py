@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
-from triggarr import __version__
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.config import ensure_config
@@ -74,7 +73,9 @@ def print_banner(settings: Settings) -> None:
     for each *arr instance (URL or "disabled").
     """
     logger.info("==================================================")
-    logger.info("Triggarr v{version}", version=__version__)
+    from triggarr.version import get_display_version
+
+    logger.info("Triggarr {version}", version=get_display_version())
     logger.info("Log level: {level}", level=settings.general.log_level)
     for app_type in ("radarr", "sonarr"):
         instances = getattr(settings, app_type)

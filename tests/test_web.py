@@ -514,8 +514,8 @@ def test_dashboard_shows_version(client):
     """Dashboard nav bar shows version string."""
     response = client.get("/")
     assert response.status_code == 200
-    from triggarr import __version__
-    assert f"v{__version__}" in response.text
+    from triggarr.version import get_display_version
+    assert get_display_version() in response.text
 
 
 def test_app_card_shows_instance_name(client):

@@ -20,7 +20,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from triggarr import __version__
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.config import _atomic_toml_write
@@ -33,6 +32,7 @@ from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import save_state
+from triggarr.version import get_display_version
 from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url, validate_instance_name
 
 _PKG_DIR = Path(__file__).resolve().parent.parent
@@ -40,7 +40,7 @@ TEMPLATES_DIR = _PKG_DIR / "templates"
 STATIC_DIR = _PKG_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-templates.env.globals["triggarr_version"] = __version__
+templates.env.globals["triggarr_version"] = get_display_version()
 _update_info: dict = {}
 templates.env.globals["update_info"] = _update_info
 router = APIRouter()
