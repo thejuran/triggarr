@@ -242,6 +242,15 @@ Plans:
 Plans:
 - [ ] 43-01-PLAN.md -- Update check module, migration banner, dead code removal
 
+### Phase 44: Deep Review Fixes
+**Goal:** Fix 8 security, correctness, and hardening issues from deep code review (XSS, CSRF, stale state, version parsing, URL validation)
+**Requirements**: N/A (bug-fix phase from deep code review)
+**Depends on:** Phase 43
+**Plans:** 1 plan
+
+Plans:
+- [ ] 44-01-PLAN.md -- Apply all 8 deep review fixes with tests (update_check, engine, scheduler, routes)
+
 ## Progress
 
 **Execution Order:**
@@ -260,13 +269,4 @@ Phases execute in numeric order: 33 -> 34 -> 35 -> 36 -> 37 -> 38 -> 39
 | 41. Multi-Instance Settings UI | 1/1 | Complete    | 2026-03-12 | - |
 | 42. Dashboard Enhancements | 2/2 | Complete    | 2026-03-13 | - |
 | 43. Update Notification & Cleanup | 1/1 | Complete    | 2026-03-13 | - |
-
-### Phase 44: Deep Review Fixes
-
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 43
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (run /gsd:plan-phase 44 to break down)
+| 44. Deep Review Fixes | 0/1 | Planned | - | - |
