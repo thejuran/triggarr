@@ -23,7 +23,7 @@ Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a 
 - Browser-based config editor -- no manual TOML editing needed
 - Hard max limit to cap searches per cycle (safety ceiling)
 - Persistent SQLite search history (survives restarts)
-- Docker-first with PUID/PGID support
+- Docker-first with PUID/PGID support, or standalone pip install
 
 ## Screenshots
 
@@ -35,7 +35,7 @@ Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a 
 
 ## Install
 
-Docker Compose is the recommended (and only supported) installation method.
+### Docker (recommended)
 
 ```yaml
 # docker-compose.yml
@@ -67,6 +67,44 @@ volumes:
 Run `docker compose up -d`, then visit [http://localhost:8080](http://localhost:8080) to configure your Radarr/Sonarr connection.
 
 On first run, a default config file is auto-generated at `/config/triggarr.toml`. Use the web UI to configure -- no need to edit the file by hand.
+
+### Standalone (pip)
+
+Requires Python 3.11+. Download the `.whl` from the [latest release](https://github.com/thejuran/triggarr/releases/latest), or install directly:
+
+```bash
+pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.3.1-py3-none-any.whl
+```
+
+Set the config directory and run:
+
+```bash
+export TRIGGARR_CONFIG_DIR="$HOME/.config/triggarr"
+mkdir -p "$TRIGGARR_CONFIG_DIR"
+triggarr
+```
+
+Visit [http://localhost:8080](http://localhost:8080) to configure. Config and data files are stored in `TRIGGARR_CONFIG_DIR`.
+
+To run in the background, use a process manager like systemd, launchd, or supervisor. A minimal systemd unit:
+
+```ini
+# /etc/systemd/system/triggarr.service
+[Unit]
+Description=Triggarr
+After=network.target
+
+[Service]
+Type=simple
+User=triggarr
+Environment=TRIGGARR_CONFIG_DIR=/var/lib/triggarr
+ExecStart=/usr/local/bin/triggarr
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ## Configuration Reference
 

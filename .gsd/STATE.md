@@ -1,20 +1,19 @@
 # GSD State
 
-**Active Milestone:** M001 — Multi-Instance & Tag Filtering ✅ COMPLETE
-**Active Slice:** none (all 7 slices delivered)
+**Active Milestone:** none
+**Active Slice:** none
 **Active Task:** none
-**Phase:** complete
-**Slice Branch:** gsd/M001/S07
+**Phase:** idle
+**Slice Branch:** —
 **Active Workspace:** /Users/julianamacbook/triggarr
-**Next Action:** Squash-merge S07 to main, milestone complete
-**Last Updated:** 2026-03-11
-**Requirements Status:** 12 active · 9 validated · 2 deferred · 3 out of scope
+**Next Action:** All requirements validated. Ready for new milestone when needed.
+**Last Updated:** 2026-03-21
+**Requirements Status:** 0 active · 18 validated · 2 deferred · 3 out of scope
 
 ## Recent Decisions
 
-- S07: Per-instance route URLs /{app_name}/{instance_name}
-- S07: Rate limit key changed to app_name_instance_name
-- S07: Version injection via Jinja2 env global
+- All 12 previously "active" requirements confirmed implemented and tested in M001 — moved to validated
+- M002 removed (no work needed)
 
 ## Blockers
 

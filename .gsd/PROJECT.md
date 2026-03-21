@@ -10,7 +10,7 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ## Current State
 
-~9,500 Python LOC. 389 tests passing. 6 milestones shipped (v1.0–v2.2). Milestone v2.3 Multi-Instance & Tag Filtering complete — all 7 slices delivered (config model, state isolation, client registry, tag filtering, DB schema, scheduler wiring, web UI).
+~9,500 Python LOC. 389 tests passing. 7 milestones shipped (v1.0–v2.3.1). All 18 requirements validated, 0 active. 2 deferred (cross-instance dedup, dynamic hot-add).
 
 Key capabilities delivered:
 - Round-robin search engine with per-app cursors and season-level Sonarr search
