@@ -73,7 +73,7 @@ On first run, a default config file is auto-generated at `/config/triggarr.toml`
 Requires Python 3.11+. Download the `.whl` from the [latest release](https://github.com/thejuran/triggarr/releases/latest), or install directly:
 
 ```bash
-pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.3.1-py3-none-any.whl
+pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.4.0-py3-none-any.whl
 ```
 
 Set the config directory and run:
