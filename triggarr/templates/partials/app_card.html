@@ -43,10 +43,8 @@
     <div>
       <span class="text-xs uppercase tracking-wide text-triggarr-muted">Missing</span>
       <p class="text-sm font-medium">
-        {%- if app.missing_eligible is not none and app.missing_monitored is not none -%}
-          {{ app.missing_eligible }} of {{ app.missing_monitored }} items
-        {%- elif app.missing_eligible is not none and app.missing_count is not none -%}
-          {{ app.missing_eligible }} of {{ app.missing_count }} items
+        {%- if app.missing_count is not none and app.total_items is not none -%}
+          {{ app.missing_count }} of {{ app.total_items }}
         {%- elif app.missing_count is not none -%}
           {{ app.missing_count }} items
         {%- else -%}
@@ -66,7 +64,15 @@
     </div>
     <div>
       <span class="text-xs uppercase tracking-wide text-triggarr-muted">Cutoff</span>
-      <p class="text-sm font-medium">{{ app.cutoff_count if app.cutoff_count is not none else '—' }} items</p>
+      <p class="text-sm font-medium">
+        {%- if app.cutoff_count is not none and app.total_items is not none -%}
+          {{ app.cutoff_count }} of {{ app.total_items }}
+        {%- elif app.cutoff_count is not none -%}
+          {{ app.cutoff_count }} items
+        {%- else -%}
+          &mdash;
+        {%- endif -%}
+      </p>
       <p class="text-xs text-triggarr-muted">
         {{ app.cutoff_cursor }} of {{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}
         {%- if app.cutoff_pass is defined and app.cutoff_pass > 0 %}

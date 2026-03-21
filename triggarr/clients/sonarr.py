@@ -72,6 +72,24 @@ class SonarrClient(ArrClient):
             extra_params={"includeSeries": "true"},
         )
 
+    async def get_library_count(self) -> int:
+        """Return the total number of episodes across all series in Sonarr.
+
+        Fetches ``/api/v3/series`` and sums each series'
+        ``statistics.episodeCount`` (total tracked episodes).
+
+        Note: Sonarr's ``/api/v3/series`` is a non-paginated flat array,
+        so this downloads all series metadata.  The response is typically
+        much smaller than the equivalent Radarr movie list, but callers
+        should still handle failures gracefully (e.g. timeouts on very
+        large libraries).
+        """
+        series_list = await self.get_json_list("/api/v3/series")
+        return sum(
+            s.get("statistics", {}).get("episodeCount", 0)
+            for s in series_list
+        )
+
     async def get_grab_history(self, series_id: int) -> list[GrabEvent]:
         """Fetch grab history for a specific series from Sonarr.
 

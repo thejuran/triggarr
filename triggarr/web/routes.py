@@ -180,6 +180,7 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
         "missing_searchable": app_state.get("missing_searchable"),
         "cutoff_count": app_state.get("cutoff_count"),
         "cutoff_searchable": app_state.get("cutoff_searchable"),
+        "total_items": app_state.get("total_items"),
         "skip_unreleased": settings.general.skip_unreleased,
         "tag_warnings": app_state.get("tag_warnings", []),
     }

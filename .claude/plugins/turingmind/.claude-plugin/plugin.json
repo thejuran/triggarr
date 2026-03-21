@@ -1,0 +1,12 @@
+{
+  "name": "turingmind-code-review",
+  "description": "AI-powered code review for uncommitted local changes. Catches bugs, security vulnerabilities, and CLAUDE.md compliance issues.",
+  "version": "1.0.0",
+  "author": {
+    "name": "TuringMind"
+  },
+  "repository": "https://github.com/turingmind/turingmind-code-review",
+  "license": "MIT",
+  "keywords": ["code-review", "git", "security", "bugs", "architecture", "typescript", "python"],
+  "commands": "./commands/"
+}

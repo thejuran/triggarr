@@ -312,6 +312,13 @@ async def run_radarr_cycle(
             )
         return state
 
+    # Library count is cosmetic (dashboard denominator) -- never abort
+    # the search cycle if it fails.
+    try:
+        total_items = await client.get_library_count()
+    except (httpx.HTTPError, pydantic.ValidationError):
+        total_items = ist.get("total_items")  # keep previous value
+
     # Track connection health (WEBU-06)
     ist["connected"] = True
     ist["unreachable_since"] = None
@@ -319,6 +326,7 @@ async def run_radarr_cycle(
     # Cache raw item counts before filtering (WEBU-04)
     ist["missing_count"] = len(missing)
     ist["cutoff_count"] = len(cutoff)
+    ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
     missing_limit = instance_config.search_missing_count
@@ -518,6 +526,13 @@ async def run_sonarr_cycle(
             )
         return state
 
+    # Library count is cosmetic (dashboard denominator) -- never abort
+    # the search cycle if it fails.
+    try:
+        total_items = await client.get_library_count()
+    except (httpx.HTTPError, pydantic.ValidationError):
+        total_items = ist.get("total_items")  # keep previous value
+
     # Track connection health (WEBU-06)
     ist["connected"] = True
     ist["unreachable_since"] = None
@@ -525,6 +540,7 @@ async def run_sonarr_cycle(
     # Cache raw item counts before filtering (WEBU-04)
     ist["missing_count"] = len(missing_episodes)
     ist["cutoff_count"] = len(cutoff_episodes)
+    ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
     missing_limit = instance_config.search_missing_count

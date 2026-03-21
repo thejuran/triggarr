@@ -29,6 +29,14 @@ class RadarrClient(ArrClient):
         """Fetch all movies that don't meet their quality cutoff."""
         return await self.get_paginated("/api/v3/wanted/cutoff")
 
+    async def get_library_count(self) -> int:
+        """Return the total number of movies in the Radarr library.
+
+        Uses a lightweight paginated request (pageSize=1) to read
+        ``totalRecords`` without fetching the full movie list.
+        """
+        return await self.get_total_records("/api/v3/movie")
+
     async def get_grab_history(self, movie_id: int) -> list[GrabEvent]:
         """Fetch grab history for a specific movie from Radarr.
 

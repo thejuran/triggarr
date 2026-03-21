@@ -883,25 +883,22 @@ def test_save_settings_skip_unreleased_on(client, test_app):
     assert "skip_unreleased = true" in content, "TOML should contain skip_unreleased = true"
 
 
-def test_build_app_context_includes_eligible_and_skip_unreleased(client, test_app):
-    """_build_app_context returns missing_eligible, missing_monitored, and skip_unreleased keys (F1)."""
-    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
-    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
+def test_build_app_context_includes_total_items(client, test_app):
+    """_build_app_context shows missing_count of total_items when both are available."""
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 30
+    test_app.state.triggarr_state["radarr"]["Default"]["total_items"] = 1200
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    # The template should render the eligible count and monitored count
-    assert "30" in response.text
-    assert "42" in response.text
+    assert "30 of 1200" in response.text
 
 
-def test_build_app_context_eligible_none_when_missing(client, test_app):
-    """_build_app_context returns missing_eligible as None when state has no field (DASH-01)."""
-    # Ensure no missing_eligible in state (pre-first-cycle)
-    test_app.state.triggarr_state["radarr"]["Default"].pop("missing_eligible", None)
+def test_build_app_context_no_total_items_fallback(client, test_app):
+    """App card shows 'X items' when total_items is not yet available (pre-first-cycle)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 42
+    test_app.state.triggarr_state["radarr"]["Default"].pop("total_items", None)
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    # Template should gracefully fall back -- show total count only
-    assert "42 items" in response.text, "Should fall back to total count when eligible is None"
+    assert "42 items" in response.text, "Should fall back to count-only when total_items is None"
 
 
 def test_app_card_skip_indicator_shown(client, test_app):
@@ -1324,14 +1321,12 @@ def test_app_card_no_skip_when_equal(client, test_app):
 
 
 def test_app_card_eligible_total_display(client, test_app):
-    """App card shows 'X of Y items' using missing_monitored as denominator (F1 fix)."""
-    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 30
-    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42
+    """App card shows 'missing_count of total_items' for the missing section."""
     test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
+    test_app.state.triggarr_state["radarr"]["Default"]["total_items"] = 1500
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "30 of 42 items" in response.text, "Should show eligible of monitored format"
-    assert "30 of 50" not in response.text, "Should NOT use raw missing_count as denominator"
+    assert "50 of 1500" in response.text, "Should show missing_count of total_items"
 
 
 def test_app_card_sonarr_no_skip_badge(client, test_app):

@@ -119,6 +119,21 @@ class ArrClient:
         return [Tag.model_validate(item) for item in data]
 
     # ------------------------------------------------------------------
+    # Lightweight count
+    # ------------------------------------------------------------------
+
+    async def get_total_records(self, path: str) -> int:
+        """Return ``totalRecords`` from a paginated endpoint without fetching all pages.
+
+        Requests a single page with ``pageSize=1`` and reads the
+        ``totalRecords`` field from the paginated response envelope.
+        """
+        params: dict[str, Any] = {"page": 1, "pageSize": 1, "sortKey": "id"}
+        response = await self.get(path, params=params)
+        data = PaginatedResponse.model_validate(response.json())
+        return data.totalRecords
+
+    # ------------------------------------------------------------------
     # Paginated fetching
     # ------------------------------------------------------------------
 
