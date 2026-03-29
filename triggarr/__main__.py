@@ -56,7 +56,7 @@ async def _run() -> None:
     config = uvicorn.Config(
         app,
         host="0.0.0.0",
-        port=6868,
+        port=8484,
         log_level="warning",
         root_path=root_path,
         proxy_headers=True,

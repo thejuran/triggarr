@@ -36,11 +36,11 @@ COPY --from=builder /build/triggarr/static/css/output.css triggarr/static/css/ou
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 6868
+EXPOSE 8484
 
 VOLUME /config
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:6868/health')" || exit 1
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8484/health')" || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

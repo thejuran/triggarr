@@ -12,7 +12,7 @@ services:
     volumes:
       - triggarr_config:/config
     ports:
-      - "127.0.0.1:6868:6868"
+      - "127.0.0.1:8484:8484"
     cap_drop:
       - ALL
     cap_add:

@@ -37,7 +37,7 @@ log_level = "info"
 # Example: missing_tag = "triggarr"
 
 # Instance configuration is managed through the web UI.
-# Add your first Radarr or Sonarr instance at: http://<host>:6868/settings
+# Add your first Radarr or Sonarr instance at: http://<host>:8484/settings
 
 [radarr]
 
