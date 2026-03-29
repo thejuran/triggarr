@@ -49,7 +49,7 @@ services:
     volumes:
       - triggarr_config:/config
     ports:
-      - "127.0.0.1:8080:8080"  # Localhost only -- use Tailscale or reverse proxy for remote access
+      - "127.0.0.1:6868:6868"  # Localhost only -- use Tailscale or reverse proxy for remote access
     cap_drop:
       - ALL
     cap_add:
@@ -64,7 +64,7 @@ volumes:
   triggarr_config:
 ```
 
-Run `docker compose up -d`, then visit [http://localhost:8080](http://localhost:8080) to configure your Radarr/Sonarr connection.
+Run `docker compose up -d`, then visit [http://localhost:6868](http://localhost:6868) to configure your Radarr/Sonarr connection.
 
 On first run, a default config file is auto-generated at `/config/triggarr.toml`. Use the web UI to configure -- no need to edit the file by hand.
 
@@ -84,7 +84,7 @@ mkdir -p "$TRIGGARR_CONFIG_DIR"
 triggarr
 ```
 
-Visit [http://localhost:8080](http://localhost:8080) to configure. Config and data files are stored in `TRIGGARR_CONFIG_DIR`.
+Visit [http://localhost:6868](http://localhost:6868) to configure. Config and data files are stored in `TRIGGARR_CONFIG_DIR`.
 
 To run in the background, use a process manager like systemd, launchd, or supervisor. A minimal systemd unit:
 
@@ -108,7 +108,7 @@ WantedBy=multi-user.target
 
 ## Configuration Reference
 
-All settings live in `/config/triggarr.toml`. You can also edit everything from the web UI at [http://localhost:8080/settings](http://localhost:8080/settings) -- changes are written to the TOML file and take effect immediately without restart.
+All settings live in `/config/triggarr.toml`. You can also edit everything from the web UI at [http://localhost:6868/settings](http://localhost:6868/settings) -- changes are written to the TOML file and take effect immediately without restart.
 
 ```toml
 # Triggarr Configuration
@@ -164,11 +164,11 @@ Triggarr is designed to run on a trusted local network -- behind Tailscale, a VP
 
 ### What is NOT protected
 
-Anyone with network access to port 8080 can view the dashboard and edit configuration. There is no login, no session management, no user accounts.
+Anyone with network access to port 6868 can view the dashboard and edit configuration. There is no login, no session management, no user accounts.
 
 ### Recommendation
 
-Bind to localhost (`127.0.0.1:8080:8080` as shown in the docker-compose example) and access via Tailscale or a reverse proxy with authentication.
+Bind to localhost (`127.0.0.1:6868:6868` as shown in the docker-compose example) and access via Tailscale or a reverse proxy with authentication.
 
 ### Synology NAS
 

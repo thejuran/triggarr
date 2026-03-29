@@ -170,7 +170,7 @@ async def startup(config_path: Path | None = None) -> Settings:
     # 4.5 Warn if no apps configured (first-run scenario)
     if not settings.has_enabled_app:
         logger.warning(
-            "No apps configured -- visit http://localhost:8080/settings to "
+            "No apps configured -- visit http://localhost:6868/settings to "
             "add your Radarr/Sonarr connection"
         )
         return settings
