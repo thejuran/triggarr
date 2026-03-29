@@ -23,7 +23,7 @@ from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
-from triggarr.state import TriggarrState, _default_instance_state
+from triggarr.state import TriggarrState
 
 
 def _sanitize_exc(exc: Exception) -> str:
@@ -296,7 +296,9 @@ async def run_radarr_cycle(
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
-    state["radarr"].setdefault(instance_name, _default_instance_state())
+    if instance_name not in state["radarr"]:
+        logger.warning("Radarr: instance {name} not in state -- skipping", name=instance_name)
+        return state
     ist = state["radarr"][instance_name]
 
     try:
@@ -405,7 +407,7 @@ async def run_radarr_cycle(
             )
             logger.info("Radarr: Searched {title} (missing)", title=movie["title"])
             searched_count += 1
-        except Exception as exc:
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Radarr: Failed to search {title}: {exc}",
                 title=movie.get("title", "unknown"),
@@ -444,7 +446,7 @@ async def run_radarr_cycle(
             )
             logger.info("Radarr: Searched {title} (cutoff)", title=movie["title"])
             searched_count += 1
-        except Exception as exc:
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Radarr: Failed to search {title}: {exc}",
                 title=movie.get("title", "unknown"),
@@ -510,7 +512,9 @@ async def run_sonarr_cycle(
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
-    state["sonarr"].setdefault(instance_name, _default_instance_state())
+    if instance_name not in state["sonarr"]:
+        logger.warning("Sonarr: instance {name} not in state -- skipping", name=instance_name)
+        return state
     ist = state["sonarr"][instance_name]
 
     try:
@@ -617,7 +621,7 @@ async def run_sonarr_cycle(
             )
             logger.info("Sonarr: Searched {name} (missing)", name=season["display_name"])
             searched_count += 1
-        except Exception as exc:
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Sonarr: Failed to search {name}: {exc}",
                 name=season.get("display_name", "unknown"),
@@ -662,7 +666,7 @@ async def run_sonarr_cycle(
             )
             logger.info("Sonarr: Searched {name} (cutoff)", name=season["display_name"])
             searched_count += 1
-        except Exception as exc:
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Sonarr: Failed to search {name}: {exc}",
                 name=season.get("display_name", "unknown"),

@@ -160,7 +160,7 @@ def load_state(state_path: Path = STATE_PATH) -> TriggarrState:
         return _default_state()
 
     try:
-        with open(state_path) as f:
+        with open(state_path, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
         logger.warning("Corrupt state file at {} -- resetting to defaults", state_path)
@@ -188,18 +188,25 @@ def save_state(state: TriggarrState, state_path: Path = STATE_PATH) -> None:
     parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.NamedTemporaryFile(
-        mode="w", dir=parent, suffix=".tmp", delete=False
+        mode="w", dir=parent, suffix=".tmp", delete=False, encoding="utf-8"
     ) as tmp:
         json.dump(state, tmp, indent=2)
         tmp.flush()
         os.fsync(tmp.fileno())
 
+    dir_fd = None
     try:
         os.replace(tmp.name, state_path)
+        # fsync the directory to ensure rename is durable (matches config.py)
+        dir_fd = os.open(parent, os.O_RDONLY)
+        os.fsync(dir_fd)
     except OSError:
         with contextlib.suppress(OSError):
             os.unlink(tmp.name)
         raise
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
 
 
 def cleanup_orphaned_instances(state: TriggarrState, settings: Settings) -> TriggarrState:

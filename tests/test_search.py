@@ -296,7 +296,7 @@ async def test_run_radarr_cycle_per_item_skip(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     # First search raises, second succeeds
     client.search_movies = AsyncMock(
-        side_effect=[Exception("boom"), None]
+        side_effect=[httpx.ConnectError("boom"), None]
     )
 
     state = _make_test_state()
@@ -454,7 +454,7 @@ async def test_run_sonarr_cycle_per_item_skip(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     # First season search raises, second succeeds
     client.search_season = AsyncMock(
-        side_effect=[Exception("boom"), None]
+        side_effect=[httpx.ConnectError("boom"), None]
     )
 
     state = _make_test_state()
@@ -660,7 +660,7 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     # First search fails, second and third succeed
     client.search_movies = AsyncMock(
-        side_effect=[Exception("boom"), None, None]
+        side_effect=[httpx.ConnectError("boom"), None, None]
     )
 
     state = _make_test_state()
@@ -700,7 +700,7 @@ async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
         ]
     )
     client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.search_movies = AsyncMock(side_effect=Exception("API timeout"))
+    client.search_movies = AsyncMock(side_effect=httpx.ConnectError("API timeout"))
 
     state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
@@ -714,7 +714,7 @@ async def test_radarr_cycle_logs_failed_search_to_db(tmp_path):
     assert len(searches) == 1
     assert searches[0]["name"] == "Movie Fail"
     assert searches[0]["outcome"] == "failed"
-    assert searches[0]["detail"] == "Exception"
+    assert "HTTP error" in searches[0]["detail"]
     await db.close()
 
 
@@ -731,7 +731,7 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(return_value=episodes)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.search_season = AsyncMock(side_effect=Exception("Connection refused"))
+    client.search_season = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
     state = _make_test_state()
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
@@ -745,7 +745,7 @@ async def test_sonarr_cycle_logs_failed_search_to_db(tmp_path):
     assert len(searches) == 1
     assert "Show Fail" in searches[0]["name"]
     assert searches[0]["outcome"] == "failed"
-    assert searches[0]["detail"] == "Exception"
+    assert "HTTP error" in searches[0]["detail"]
     await db.close()
 
 
@@ -1570,8 +1570,8 @@ async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_radarr_cycle_missing_instance_state_no_keyerror(tmp_path):
-    """run_radarr_cycle with instance_name NOT in state does NOT raise KeyError (BUG-02)."""
+async def test_radarr_cycle_missing_instance_state_skips(tmp_path):
+    """run_radarr_cycle with instance_name NOT in state skips gracefully."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -1585,17 +1585,18 @@ async def test_radarr_cycle_missing_instance_state_no_keyerror(tmp_path):
     instance_config = _cycle_instance_config()
     settings = _cycle_settings()
 
-    # This should NOT raise KeyError
+    # This should NOT raise KeyError -- skips early instead
     result = await run_radarr_cycle(client, state, "NewInstance", instance_config, settings, db)
 
-    # Should have created state entry with defaults
-    assert "NewInstance" in result["radarr"]
-    assert result["radarr"]["NewInstance"]["missing_cursor"] == 0
+    # Should NOT have created state entry (returns early)
+    assert "NewInstance" not in result["radarr"]
+    # API calls should not have been made
+    client.get_wanted_missing.assert_not_awaited()
     await db.close()
 
 
-async def test_sonarr_cycle_missing_instance_state_no_keyerror(tmp_path):
-    """run_sonarr_cycle with instance_name NOT in state does NOT raise KeyError (BUG-02)."""
+async def test_sonarr_cycle_missing_instance_state_skips(tmp_path):
+    """run_sonarr_cycle with instance_name NOT in state skips gracefully."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -1609,11 +1610,11 @@ async def test_sonarr_cycle_missing_instance_state_no_keyerror(tmp_path):
     instance_config = _cycle_instance_config()
     settings = _cycle_settings()
 
-    # This should NOT raise KeyError
+    # This should NOT raise KeyError -- skips early instead
     result = await run_sonarr_cycle(client, state, "NewInstance", instance_config, settings, db)
 
-    assert "NewInstance" in result["sonarr"]
-    assert result["sonarr"]["NewInstance"]["missing_cursor"] == 0
+    assert "NewInstance" not in result["sonarr"]
+    client.get_wanted_missing.assert_not_awaited()
     await db.close()
 
 

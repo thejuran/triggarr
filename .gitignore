@@ -19,3 +19,4 @@ build/
 
 # OS
 .DS_Store
+.bg-shell/

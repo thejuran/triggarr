@@ -60,7 +60,7 @@ async def _run() -> None:
         log_level="warning",
         root_path=root_path,
         proxy_headers=True,
-        forwarded_allow_ips="*",
+        forwarded_allow_ips=os.environ.get("TRUSTED_PROXY_IPS", "127.0.0.1"),
     )
     server = uvicorn.Server(config)
     await server.serve()

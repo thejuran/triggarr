@@ -42,7 +42,7 @@ async def run_tracking_check(
     Returns:
         Dict with counts: ``{"grabbed": N, "partial": N, "unresolved": N, "errors": N}``.
     """
-    counts: dict[str, int] = {"grabbed": 0, "partial": 0, "unresolved": 0, "errors": 0}
+    counts: dict[str, int] = {"grabbed": 0, "partial": 0, "partial_expired": 0, "unresolved": 0, "errors": 0}
 
     entries = await get_trackable_entries(db, instance_id=instance_id)
     if not entries:

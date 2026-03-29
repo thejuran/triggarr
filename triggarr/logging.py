@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from typing import IO
 
 from loguru import logger
 
 from triggarr.log_buffer import LogEntry, log_buffer
 
 
-def create_redacting_sink(secrets: list[str], stream=sys.stderr) -> Callable:
+def create_redacting_sink(secrets: list[str], stream: IO[str] = sys.stderr) -> Callable[[str], None]:
     """Create a loguru sink that redacts secrets from the full formatted output.
 
     Unlike a filter (which only sees record["message"]), a custom sink

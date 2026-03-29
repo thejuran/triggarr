@@ -10,18 +10,20 @@ from __future__ import annotations
 
 import contextlib
 import math
+import re
 import shutil
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 from loguru import logger
 
 # Migration registry: version -> (description, migration_fn)
 # Populated after migration functions are defined below.
-MIGRATIONS: dict[int, tuple[str, Callable]] = {}
+MIGRATIONS: dict[int, tuple[str, Callable[[aiosqlite.Connection], Awaitable[None]]]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +207,6 @@ async def _migrate_v8(db: aiosqlite.Connection) -> None:
         # Parse grab count from detail string
         count = 0
         if detail:
-            import re
             # Match patterns like "grabbed: 3/5 episodes" or "partial: 2/5 episodes"
             m = re.search(r"(?:grabbed|partial):\s*(\d+)", detail)
             if m:
@@ -225,7 +226,7 @@ async def _migrate_v8(db: aiosqlite.Connection) -> None:
         )
 
     await db.commit()
-    total_fixed = sum(1 for r in rows if True)
+    total_fixed = len(rows)
     logger.info("Recomputed episode stats from {n} Sonarr entries", n=total_fixed)
 
 
@@ -254,6 +255,10 @@ async def init_db(db: aiosqlite.Connection, db_path: Path) -> None:
         db: Open aiosqlite connection.
         db_path: Path to the SQLite database file (needed for backup).
     """
+    # Set row_factory globally so all queries return Row objects (dict-like access)
+    # instead of plain tuples. This eliminates per-function row_factory mutation.
+    db.row_factory = aiosqlite.Row
+
     await db.execute("""
         CREATE TABLE IF NOT EXISTS search_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -331,7 +336,7 @@ async def insert_search_entry(
 
 async def get_recent_searches(
     db: aiosqlite.Connection, limit: int = 50, *, instance_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return the most recent search history entries.
 
     Args:
@@ -343,24 +348,20 @@ async def get_recent_searches(
         List of dicts with keys: name, timestamp, app, queue_type, outcome, detail, instance_id.
         Ordered newest-first (by id DESC).
     """
-    db.row_factory = aiosqlite.Row
-    try:
-        if instance_id is not None:
-            query = (
-                "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
-                "FROM search_history WHERE instance_id = ? ORDER BY id DESC LIMIT ?"
-            )
-            params: tuple = (instance_id, limit)
-        else:
-            query = (
-                "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
-                "FROM search_history ORDER BY id DESC LIMIT ?"
-            )
-            params = (limit,)
-        async with db.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
-    finally:
-        db.row_factory = None
+    if instance_id is not None:
+        query = (
+            "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+            "FROM search_history WHERE instance_id = ? ORDER BY id DESC LIMIT ?"
+        )
+        params: tuple[str | int, ...] = (instance_id, limit)
+    else:
+        query = (
+            "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+            "FROM search_history ORDER BY id DESC LIMIT ?"
+        )
+        params = (limit,)
+    async with db.execute(query, params) as cursor:
+        rows = await cursor.fetchall()
     return [
         {
             "name": row["item_name"],
@@ -385,7 +386,7 @@ async def get_search_history(
     outcome_filter: list[str] | None = None,
     instance_filter: list[str] | None = None,
     search_text: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Return paginated, filtered search history entries.
 
     Args:
@@ -439,26 +440,22 @@ async def get_search_history(
 
     where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    db.row_factory = aiosqlite.Row
-    try:
-        # Total count
-        async with db.execute(
-            f"SELECT COUNT(*) AS cnt FROM search_history{where_clause}",
-            params,
-        ) as cursor:
-            row = await cursor.fetchone()
-            total_count: int = row["cnt"]
+    # Total count
+    async with db.execute(
+        f"SELECT COUNT(*) AS cnt FROM search_history{where_clause}",
+        params,
+    ) as cursor:
+        row = await cursor.fetchone()
+        total_count: int = row["cnt"]
 
-        # Paginated results
-        offset = (page - 1) * per_page
-        async with db.execute(
-            f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail, instance_id "
-            f"FROM search_history{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
-            [*params, per_page, offset],
-        ) as cursor:
-            rows = await cursor.fetchall()
-    finally:
-        db.row_factory = None
+    # Paginated results
+    offset = (page - 1) * per_page
+    async with db.execute(
+        f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+        f"FROM search_history{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+        [*params, per_page, offset],
+    ) as cursor:
+        rows = await cursor.fetchall()
 
     entries = [
         {
@@ -485,7 +482,7 @@ async def get_search_history(
 
 async def get_trackable_entries(
     db: aiosqlite.Connection, *, instance_id: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return search history entries eligible for tracking resolution.
 
     Finds rows with outcome ``'searched'`` or ``'partial'`` that have a
@@ -501,24 +498,20 @@ async def get_trackable_entries(
         id, app, queue_type, item_id, season_number, missing_count, timestamp,
         outcome, instance_id.
     """
-    db.row_factory = aiosqlite.Row
-    try:
-        base = (
-            "SELECT id, app, queue_type, item_id, season_number, missing_count, "
-            "timestamp, outcome, instance_id "
-            "FROM search_history "
-            "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL"
-        )
-        if instance_id is not None:
-            query = f"{base} AND instance_id = ? ORDER BY id ASC"
-            params: tuple = (instance_id,)
-        else:
-            query = f"{base} ORDER BY id ASC"
-            params = ()
-        async with db.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
-    finally:
-        db.row_factory = None
+    base = (
+        "SELECT id, app, queue_type, item_id, season_number, missing_count, "
+        "timestamp, outcome, instance_id "
+        "FROM search_history "
+        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL"
+    )
+    if instance_id is not None:
+        query = f"{base} AND instance_id = ? ORDER BY id ASC"
+        params: tuple[str | int, ...] = (instance_id,)
+    else:
+        query = f"{base} ORDER BY id ASC"
+        params = ()
+    async with db.execute(query, params) as cursor:
+        rows = await cursor.fetchall()
     result = [
         {
             "id": row["id"],
@@ -643,7 +636,7 @@ async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -
     return count
 
 
-async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | None = None) -> dict:
+async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | None = None) -> dict[str, Any]:
     """Compute aggregate dashboard statistics from search_history and lifetime_stats.
 
     Args:
@@ -663,20 +656,16 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
         inst_params = (instance_id,)
 
     # 1. Effectiveness: grab rate per app
-    db.row_factory = aiosqlite.Row
-    try:
-        async with db.execute(
-            "SELECT app, "
-            "SUM(CASE WHEN outcome IN ('grabbed', 'partial', 'partial_expired') THEN 1 ELSE 0 END) AS grabbed_count, "
-            "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
-            "FROM search_history "
-            f"WHERE outcome IS NOT NULL{inst_clause} "
-            "GROUP BY app",
-            inst_params,
-        ) as cursor:
-            effectiveness_rows = await cursor.fetchall()
-    finally:
-        db.row_factory = None
+    async with db.execute(
+        "SELECT app, "
+        "SUM(CASE WHEN outcome IN ('grabbed', 'partial', 'partial_expired') THEN 1 ELSE 0 END) AS grabbed_count, "
+        "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
+        "FROM search_history "
+        f"WHERE outcome IS NOT NULL{inst_clause} "
+        "GROUP BY app",
+        inst_params,
+    ) as cursor:
+        effectiveness_rows = await cursor.fetchall()
 
     total_grabbed = 0
     total_count = 0
@@ -704,21 +693,17 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
     episodes_found = 0
     episodes_updated = 0
 
-    db.row_factory = aiosqlite.Row
-    try:
-        if instance_id is not None:
-            stats_query = (
-                "SELECT movies_found, movies_updated, episodes_found, episodes_updated "
-                "FROM lifetime_stats WHERE instance_id = ?"
-            )
-            stats_params: tuple = (instance_id,)
-        else:
-            stats_query = "SELECT movies_found, movies_updated, episodes_found, episodes_updated FROM lifetime_stats"
-            stats_params = ()
-        async with db.execute(stats_query, stats_params) as cursor:
-            stats_rows = await cursor.fetchall()
-    finally:
-        db.row_factory = None
+    if instance_id is not None:
+        stats_query = (
+            "SELECT movies_found, movies_updated, episodes_found, episodes_updated "
+            "FROM lifetime_stats WHERE instance_id = ?"
+        )
+        stats_params: tuple[str | int, ...] = (instance_id,)
+    else:
+        stats_query = "SELECT movies_found, movies_updated, episodes_found, episodes_updated FROM lifetime_stats"
+        stats_params = ()
+    async with db.execute(stats_query, stats_params) as cursor:
+        stats_rows = await cursor.fetchall()
 
     for row in stats_rows:
         movies_found += row["movies_found"]

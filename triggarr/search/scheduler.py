@@ -10,7 +10,7 @@ capturing variables, enabling future hot-reload of clients and settings.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,7 +40,7 @@ from triggarr.update_check import check_for_update
 
 def make_search_job(
     app: FastAPI, app_name: str, instance_name: str, state_path: Path
-) -> Callable[[], Coroutine]:
+) -> Callable[[], Awaitable[None]]:
     """Create an async job function that reads client/state/settings from app.state.
 
     The returned closure reads all shared objects from ``app.state`` at
@@ -77,7 +77,9 @@ def make_search_job(
                     app.state.settings,
                     app.state.db,
                 )
-                save_state(app.state.triggarr_state, state_path)
+                await asyncio.get_event_loop().run_in_executor(
+                    None, save_state, app.state.triggarr_state, state_path
+                )
                 # --- Tracking check: resolve pending search outcomes for this instance ---
                 try:
                     tracking_result = await run_tracking_check(
@@ -90,6 +92,7 @@ def make_search_job(
                     resolved = (
                         tracking_result["grabbed"]
                         + tracking_result["partial"]
+                        + tracking_result.get("partial_expired", 0)
                         + tracking_result["unresolved"]
                     )
                     if resolved > 0 or tracking_result["errors"] > 0:
@@ -196,6 +199,12 @@ def create_lifespan(
         app.state.search_lock = asyncio.Lock()
         app.state.last_search_time: dict[str, float] = {}
 
+        # Import update_info dict once at lifespan start (not inside job)
+        # to avoid circular import during scheduler ticks.
+        from triggarr.web.routes import update_info as _update_info
+
+        app.state.update_info = _update_info
+
         # --- Schedule jobs for enabled instances using make_search_job ---
         for app_name in ("radarr", "sonarr"):
             for inst_name, cfg in settings.get_enabled_instances(app_name).items():
@@ -217,12 +226,10 @@ def create_lifespan(
 
         scheduler.start()
 
-        async def update_check_job():
-            from triggarr.web.routes import _update_info
-
+        async def update_check_job() -> None:
             result = await check_for_update()
             if result is not None:
-                _update_info.update(result)
+                app.state.update_info.update(result)
                 if result["update_available"]:
                     logger.info("Update available: v{version}", version=result["latest_version"])
 

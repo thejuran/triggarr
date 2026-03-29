@@ -183,13 +183,29 @@ def load_settings(config_path: Path) -> Settings:
 
 
 def generate_default_config(config_path: Path) -> None:
-    """Write a commented default TOML config template to disk.
+    """Write a commented default TOML config template to disk atomically.
 
     Args:
         config_path: Destination path for the config file.
     """
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(DEFAULT_CONFIG)
+    dir_fd = None
+    fd, tmp_path = tempfile.mkstemp(dir=config_path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(DEFAULT_CONFIG)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, config_path)
+        dir_fd = os.open(config_path.parent, os.O_RDONLY)
+        os.fsync(dir_fd)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
     os.chmod(config_path, 0o600)
 
 
