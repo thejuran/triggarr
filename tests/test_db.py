@@ -401,8 +401,8 @@ async def test_insert_with_tracking_fields(tmp_path):
     await insert_search_entry(db, "Sonarr", "missing", "Show Y", item_id=100, season_number=3, missing_count=5)
     async with db.execute("SELECT item_id, season_number, missing_count FROM search_history ORDER BY id") as cursor:
         rows = await cursor.fetchall()
-    assert rows[0] == (42, None, None)
-    assert rows[1] == (100, 3, 5)
+    assert tuple(rows[0]) == (42, None, None)
+    assert tuple(rows[1]) == (100, 3, 5)
     await db.close()
 
 
@@ -652,57 +652,25 @@ async def test_update_outcome_rejects_unknown_stat_column(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_row_factory_restored_after_successful_calls(tmp_path):
-    """row_factory is None after successful calls to all three row_factory-using functions."""
+async def test_row_factory_set_globally_at_init(tmp_path):
+    """row_factory is set to aiosqlite.Row at init_db time and stays set."""
     db, db_path = await _init_test_db(tmp_path)
+
+    # init_db sets row_factory globally
+    assert db.row_factory is aiosqlite.Row, "row_factory not set at init"
 
     # Insert a trackable entry so all three functions have data to query
     await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched", item_id=1)
 
-    # get_recent_searches
+    # row_factory remains aiosqlite.Row after each call
     await get_recent_searches(db)
-    assert db.row_factory is None, "row_factory not reset after get_recent_searches"
+    assert db.row_factory is aiosqlite.Row, "row_factory changed after get_recent_searches"
 
-    # get_search_history
     await get_search_history(db)
-    assert db.row_factory is None, "row_factory not reset after get_search_history"
+    assert db.row_factory is aiosqlite.Row, "row_factory changed after get_search_history"
 
-    # get_trackable_entries
     await get_trackable_entries(db)
-    assert db.row_factory is None, "row_factory not reset after get_trackable_entries"
-    await db.close()
-
-
-async def test_row_factory_restored_on_exception(tmp_path, monkeypatch):
-    """row_factory is reset to None even when query execution raises an exception."""
-    db, db_path = await _init_test_db(tmp_path)
-
-    class _FailingContextManager:
-        """Mimics aiosqlite's execute() return: async context manager that raises on __aenter__."""
-
-        async def __aenter__(self):
-            raise aiosqlite.OperationalError("simulated query failure")
-
-        async def __aexit__(self, *args):
-            pass
-
-    def _failing_execute(*args, **kwargs):
-        return _FailingContextManager()
-
-    monkeypatch.setattr(db, "execute", _failing_execute)
-
-    with pytest.raises(aiosqlite.OperationalError, match="simulated query failure"):
-        await get_recent_searches(db)
-    assert db.row_factory is None, "row_factory not reset after exception in get_recent_searches"
-
-    with pytest.raises(aiosqlite.OperationalError, match="simulated query failure"):
-        await get_search_history(db)
-    assert db.row_factory is None, "row_factory not reset after exception in get_search_history"
-
-    with pytest.raises(aiosqlite.OperationalError, match="simulated query failure"):
-        await get_trackable_entries(db)
-    assert db.row_factory is None, "row_factory not reset after exception in get_trackable_entries"
-
+    assert db.row_factory is aiosqlite.Row, "row_factory changed after get_trackable_entries"
     await db.close()
 
 
@@ -787,9 +755,9 @@ async def test_insert_with_instance_id(tmp_path):
 
     async with db.execute("SELECT item_name, instance_id FROM search_history ORDER BY id") as cursor:
         rows = await cursor.fetchall()
-    assert rows[0] == ("Movie A", "4K")
-    assert rows[1] == ("Movie B", "1080p")
-    assert rows[2] == ("Movie C", "Default")
+    assert tuple(rows[0]) == ("Movie A", "4K")
+    assert tuple(rows[1]) == ("Movie B", "1080p")
+    assert tuple(rows[2]) == ("Movie C", "Default")
     await db.close()
 
 
@@ -1011,8 +979,8 @@ async def test_migration_v7_lifetime_stats_composite_key(tmp_path):
     ) as cursor:
         rows = await cursor.fetchall()
     assert len(rows) == 2
-    assert rows[0] == ("Radarr", "Default")
-    assert rows[1] == ("Sonarr", "Default")
+    assert tuple(rows[0]) == ("Radarr", "Default")
+    assert tuple(rows[1]) == ("Sonarr", "Default")
 
     # Can insert new instance rows without violating PK
     now = "2026-01-01T00:00:00Z"
@@ -1032,17 +1000,17 @@ async def test_migration_v7_lifetime_stats_composite_key(tmp_path):
     await db.close()
 
 
-async def test_row_factory_reset_after_instance_scoped_queries(tmp_path):
-    """row_factory is reset to None after instance-scoped query functions."""
+async def test_row_factory_persists_after_instance_scoped_queries(tmp_path):
+    """row_factory remains aiosqlite.Row after instance-scoped query functions."""
     db, db_path = await _init_test_db(tmp_path)
     await insert_search_entry(db, "Radarr", "missing", "Movie A", instance_id="4K")
 
     await get_recent_searches(db, instance_id="4K")
-    assert db.row_factory is None, "row_factory not reset after instance-scoped get_recent_searches"
+    assert db.row_factory is aiosqlite.Row, "row_factory changed after instance-scoped get_recent_searches"
 
     await get_trackable_entries(db, instance_id="4K")
-    assert db.row_factory is None, "row_factory not reset after instance-scoped get_trackable_entries"
+    assert db.row_factory is aiosqlite.Row, "row_factory changed after instance-scoped get_trackable_entries"
 
     await get_dashboard_stats(db, instance_id="4K")
-    assert db.row_factory is None, "row_factory not reset after instance-scoped get_dashboard_stats"
+    assert db.row_factory is aiosqlite.Row, "row_factory changed after instance-scoped get_dashboard_stats"
     await db.close()

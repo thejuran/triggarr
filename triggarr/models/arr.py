@@ -33,7 +33,7 @@ class GrabEvent(BaseModel):
     id: int
     date: str
     eventType: str
-    sourceTitle: str
+    sourceTitle: str = ""
 
 
 class Tag(BaseModel):

@@ -164,7 +164,7 @@ async def test_radarr_still_within_window_no_grabs(tmp_path):
     counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
     assert await _get_outcome(db, row_id) == "searched"
-    assert counts == {"grabbed": 0, "partial": 0, "unresolved": 0, "errors": 0}
+    assert counts == {"grabbed": 0, "partial": 0, "partial_expired": 0, "unresolved": 0, "errors": 0}
     await db.close()
 
 
@@ -357,7 +357,7 @@ async def test_no_trackable_entries(tmp_path):
 
     counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
 
-    assert counts == {"grabbed": 0, "partial": 0, "unresolved": 0, "errors": 0}
+    assert counts == {"grabbed": 0, "partial": 0, "partial_expired": 0, "unresolved": 0, "errors": 0}
     radarr.get_grab_history.assert_not_called()
     await db.close()
 

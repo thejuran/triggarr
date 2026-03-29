@@ -7,6 +7,7 @@ and partial endpoints for htmx fragment updates.
 
 from __future__ import annotations
 
+import asyncio
 import html
 import os
 import re
@@ -14,6 +15,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import aiosqlite
+import httpx
 import pydantic
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -39,10 +42,13 @@ _PKG_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = _PKG_DIR / "templates"
 STATIC_DIR = _PKG_DIR / "static"
 
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR), autoescape=True)
 templates.env.globals["triggarr_version"] = get_display_version()
-_update_info: dict = {}
-templates.env.globals["update_info"] = _update_info
+# Shared mutable dict for update info. The scheduler lifespan assigns this
+# same object to app.state.update_info so both sides share it without
+# the scheduler needing to import from routes.
+update_info: dict = {}
+templates.env.globals["update_info"] = update_info
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
@@ -220,7 +226,7 @@ def _build_health_summary(request: Request) -> dict:
     }
 
 
-def _build_all_instances(settings) -> list[dict]:
+def _build_all_instances(settings: SettingsModel) -> list[dict]:
     """Build a list of enabled instances for dropdown filters.
 
     Args:
@@ -286,7 +292,7 @@ async def settings_page(request: Request) -> HTMLResponse:
         for inst_name, cfg in instances.items():
             apps[name][inst_name] = {
                 "url": cfg.url,
-                "has_api_key": bool(cfg.api_key.get_secret_value()),
+                "has_api_key": bool(cfg.api_key),
                 "enabled": cfg.enabled,
                 "search_interval": cfg.search_interval,
                 "search_missing_count": cfg.search_missing_count,
@@ -481,7 +487,7 @@ async def save_settings(request: Request) -> RedirectResponse:
         new_instances = getattr(new_settings, name)
         old_instances = getattr(current_settings, name)
         clients_dict = getattr(request.app.state, f"{name}_clients", {})
-        ClientClass = RadarrClient if name == "radarr" else SonarrClient
+        client_class = RadarrClient if name == "radarr" else SonarrClient
 
         # Close clients for removed/disabled instances
         for inst_name in list(clients_dict.keys()):
@@ -503,16 +509,13 @@ async def save_settings(request: Request) -> RedirectResponse:
 
             # Check if client needs recreation
             url_changed = old_cfg is None or new_cfg.url != old_cfg.url
-            key_changed = old_cfg is None or (
-                new_cfg.api_key.get_secret_value()
-                != old_cfg.api_key.get_secret_value()
-            )
+            key_changed = old_cfg is None or new_cfg.api_key != old_cfg.api_key
 
             if url_changed or key_changed or inst_name not in clients_dict:
                 old_client = clients_dict.pop(inst_name, None)
                 if old_client:
                     await old_client.close()
-                clients_dict[inst_name] = ClientClass(
+                clients_dict[inst_name] = client_class(
                     base_url=new_cfg.url,
                     api_key=new_cfg.api_key.get_secret_value(),
                     timeout=new_settings.general.request_timeout,
@@ -554,7 +557,9 @@ async def save_settings(request: Request) -> RedirectResponse:
         setattr(request.app.state, f"{name}_clients", clients_dict)
 
     # Persist state with any new instance entries
-    save_state(request.app.state.triggarr_state, state_path)
+    await asyncio.get_event_loop().run_in_executor(
+        None, save_state, request.app.state.triggarr_state, state_path
+    )
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
@@ -580,7 +585,7 @@ async def tag_autocomplete(request: Request, app_name: str, instance_name: str) 
         tags = await client.get_tags()
         options = "".join(f'<option value="{html.escape(tag.label)}">' for tag in tags)
         return HTMLResponse(options)
-    except Exception:
+    except (httpx.HTTPError, pydantic.ValidationError):
         return HTMLResponse("")
 
 
@@ -611,15 +616,20 @@ async def add_instance(request: Request):
     if len(instances) >= 5:
         return HTMLResponse("Maximum 5 instances per app type", status_code=400)
 
-    # Add new instance with defaults
+    # Build new config dict, add instance, and validate before mutating live state
     from triggarr.models.config import InstanceConfig
 
-    instances[instance_name] = InstanceConfig()
-
-    # Write updated config to TOML
     config_path = request.app.state.config_path
     config_dict = _settings_to_dict(settings)
+    config_dict[app_name][instance_name] = InstanceConfig().model_dump()
+    config_dict[app_name][instance_name]["api_key"] = ""
+    try:
+        new_settings = SettingsModel(**config_dict)
+    except pydantic.ValidationError as exc:
+        logger.warning("Invalid settings rejected on add_instance: {exc}", exc=exc)
+        return HTMLResponse(f"Validation error: {html.escape(str(exc))}", status_code=400)
     _atomic_toml_write(config_path, config_dict)
+    request.app.state.settings = new_settings
 
     # Create state entry for the new instance
     from triggarr.state import _default_instance_state
@@ -649,30 +659,32 @@ async def remove_instance(request: Request, app_name: str, instance_name: str):
     if instance_name not in instances:
         return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
 
-    # Remove instance from settings
-    del instances[instance_name]
+    # Acquire search_lock to prevent races with in-flight search jobs
+    async with request.app.state.search_lock:
+        # Remove instance from settings
+        del instances[instance_name]
 
-    # Write updated config to TOML
-    config_path = request.app.state.config_path
-    config_dict = _settings_to_dict(settings)
-    _atomic_toml_write(config_path, config_dict)
+        # Write updated config to TOML
+        config_path = request.app.state.config_path
+        config_dict = _settings_to_dict(settings)
+        _atomic_toml_write(config_path, config_dict)
 
-    # Clean up scheduler job
-    scheduler = request.app.state.scheduler
-    job_id = f"{app_name}_{instance_name}_search"
-    if scheduler.get_job(job_id):
-        scheduler.remove_job(job_id)
+        # Clean up scheduler job
+        scheduler = request.app.state.scheduler
+        job_id = f"{app_name}_{instance_name}_search"
+        if scheduler.get_job(job_id):
+            scheduler.remove_job(job_id)
 
-    # Clean up client
-    clients_dict = getattr(request.app.state, f"{app_name}_clients", {})
-    client = clients_dict.pop(instance_name, None)
-    if client:
-        await client.close()
+        # Clean up client
+        clients_dict = getattr(request.app.state, f"{app_name}_clients", {})
+        client = clients_dict.pop(instance_name, None)
+        if client:
+            await client.close()
 
-    # Clean up state entry
-    triggarr_state = request.app.state.triggarr_state
-    if app_name in triggarr_state:
-        triggarr_state[app_name].pop(instance_name, None)
+        # Clean up state entry
+        triggarr_state = request.app.state.triggarr_state
+        if app_name in triggarr_state:
+            triggarr_state[app_name].pop(instance_name, None)
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
@@ -722,12 +734,11 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
                 request.app.state.settings,
                 request.app.state.db,
             )
-            save_state(
-                request.app.state.triggarr_state,
-                request.app.state.state_path,
+            await asyncio.get_event_loop().run_in_executor(
+                None, save_state, request.app.state.triggarr_state, request.app.state.state_path
             )
             logger.info("{name}/{inst}: Manual search triggered", name=app_name.title(), inst=instance_name)
-        except Exception as exc:
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.error(
                 "{name}/{inst}: Manual search failed -- {exc}",
                 name=app_name.title(),

@@ -43,7 +43,7 @@ class SonarrClient(ArrClient):
             if version.startswith("4"):
                 return "v4"
             return "v3"
-        except (httpx.HTTPError, pydantic.ValidationError, KeyError, Exception) as exc:
+        except (httpx.HTTPError, pydantic.ValidationError, KeyError) as exc:
             logger.warning(
                 "Sonarr: API version detection failed -- assuming v3: {exc}",
                 exc=exc,

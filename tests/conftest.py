@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
-from triggarr.state import _default_state
+from triggarr.state import TriggarrState, _default_state
 
 
 def make_settings(
@@ -45,7 +45,7 @@ def make_settings(
     )
 
 
-def default_state(settings=None):
+def default_state(settings: Settings | None = None) -> TriggarrState:
     """Return a fresh default application state.
 
     Re-exports ``_default_state()`` from ``triggarr.state`` so test files

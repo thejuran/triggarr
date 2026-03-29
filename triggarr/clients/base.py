@@ -153,6 +153,7 @@ class ArrClient:
         page = 1
         extra = extra_params or {}
         effective_page_size = page_size if page_size is not None else self._page_size
+        total_records: int | None = None
 
         while True:
             params: dict[str, Any] = {
@@ -164,7 +165,9 @@ class ArrClient:
             response = await self.get(path, params=params)
             data = PaginatedResponse.model_validate(response.json())
 
-            total_records = data.totalRecords
+            # Lock totalRecords from first page to prevent infinite loops
+            if total_records is None:
+                total_records = data.totalRecords
 
             # Handle zero total records immediately
             if total_records == 0:

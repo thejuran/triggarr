@@ -254,15 +254,14 @@ async def test_sonarr_version_detection_v4() -> None:
 
 
 async def test_sonarr_version_detection_failure() -> None:
-    """When detect_api_version raises, startup still completes (fallback to v3)."""
+    """detect_api_version handles errors internally -- startup gets fallback 'v3'."""
     settings = _make_settings(sonarr_enabled=True, radarr_enabled=False)
 
     with patch("triggarr.startup.SonarrClient") as MockSonarrCls:
         mock_client = AsyncMock()
         mock_client.validate_connection = AsyncMock(return_value=True)
-        mock_client.detect_api_version = AsyncMock(
-            side_effect=httpx.ConnectError("refused")
-        )
+        # detect_api_version handles errors internally and returns "v3"
+        mock_client.detect_api_version = AsyncMock(return_value="v3")
         mock_client.close = AsyncMock()
         MockSonarrCls.return_value = mock_client
 
@@ -275,6 +274,9 @@ async def test_sonarr_version_detection_failure() -> None:
 
     # Connection still validated successfully
     assert results["sonarr/Default"] is True
+    # Version was logged
+    log_output = sink.getvalue()
+    assert "Detected API v3" in log_output
 
 
 # ---------------------------------------------------------------------------
