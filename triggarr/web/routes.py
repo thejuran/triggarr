@@ -632,7 +632,7 @@ async def add_instance(request: Request):
         new_settings = SettingsModel(**config_dict)
     except pydantic.ValidationError as exc:
         logger.warning("Invalid settings rejected on add_instance: {exc}", exc=exc)
-        return HTMLResponse(f"Validation error: {html.escape(str(exc))}", status_code=400)
+        return HTMLResponse("Validation error: invalid configuration", status_code=400)
     _atomic_toml_write(config_path, config_dict)
     request.app.state.settings = new_settings
 
