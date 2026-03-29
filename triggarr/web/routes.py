@@ -17,6 +17,7 @@ from pathlib import Path
 
 import aiosqlite
 import httpx
+import jinja2
 import pydantic
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -42,7 +43,11 @@ _PKG_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = _PKG_DIR / "templates"
 STATIC_DIR = _PKG_DIR / "static"
 
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR), autoescape=True)
+_jinja_env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+    autoescape=True,
+)
+templates = Jinja2Templates(env=_jinja_env)
 templates.env.globals["triggarr_version"] = get_display_version()
 # Shared mutable dict for update info. The scheduler lifespan assigns this
 # same object to app.state.update_info so both sides share it without
