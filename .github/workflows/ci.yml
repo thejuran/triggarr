@@ -61,6 +61,7 @@ jobs:
         run: uv run ruff check triggarr/ tests/
 
   docker:
+    needs: [test, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

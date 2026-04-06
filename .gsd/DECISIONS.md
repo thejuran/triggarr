@@ -47,3 +47,4 @@
 | 39 | v2.3/S07 | arch | Per-instance route URLs | /{app_name}/{instance_name} path pattern | Unique htmx targets per instance, clean REST URLs | no |
 | 40 | v2.3/S07 | arch | Rate limit key | app_name_instance_name instead of app_name | Per-instance rate limiting for search-now | no |
 | 41 | v2.3/S07 | arch | Version injection | Jinja2 env global | Available in all templates without per-route context | no |
+| 1 | 2026-04-06 | cross-repo | Release strategy by visibility | Private: direct tagged release; Public: dev on main → official on tag; All: push :main tag | Uniform pull experience + public quality gate | Yes |
