@@ -25,6 +25,14 @@ def get_root_path() -> str:
     return os.environ.get("ROOT_PATH", "")
 
 
+def get_trusted_proxy_ips() -> str:
+    """Return trusted proxy IPs for uvicorn forwarded_allow_ips.
+
+    Reads the TRUSTED_PROXY_IPS env var. Defaults to 127.0.0.1.
+    """
+    return os.environ.get("TRUSTED_PROXY_IPS", "127.0.0.1")
+
+
 def main() -> None:
     """Run Triggarr: startup, scheduler, and HTTP server.
 
@@ -60,7 +68,7 @@ async def _run() -> None:
         log_level="warning",
         root_path=root_path,
         proxy_headers=True,
-        forwarded_allow_ips=os.environ.get("TRUSTED_PROXY_IPS", "127.0.0.1"),
+        forwarded_allow_ips=get_trusted_proxy_ips(),
     )
     server = uvicorn.Server(config)
     await server.serve()
