@@ -51,3 +51,19 @@ def test_proxy_headers_enabled() -> None:
     source = inspect.getsource(_run)
     assert "proxy_headers=True" in source
     assert "forwarded_allow_ips" in source
+
+
+def test_trusted_proxy_ips_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When TRUSTED_PROXY_IPS is not set, forwarded_allow_ips defaults to 127.0.0.1."""
+    monkeypatch.delenv("TRUSTED_PROXY_IPS", raising=False)
+    from triggarr.__main__ import get_trusted_proxy_ips
+
+    assert get_trusted_proxy_ips() == "127.0.0.1"
+
+
+def test_trusted_proxy_ips_custom(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When TRUSTED_PROXY_IPS is set, that value is used for forwarded_allow_ips."""
+    monkeypatch.setenv("TRUSTED_PROXY_IPS", "172.18.0.0/16")
+    from triggarr.__main__ import get_trusted_proxy_ips
+
+    assert get_trusted_proxy_ips() == "172.18.0.0/16"

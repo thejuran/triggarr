@@ -14,6 +14,7 @@ Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a 
 - [Install](#install)
 - [Configuration Reference](#configuration-reference)
 - [Security Model](#security-model)
+  - [Reverse Proxy](#reverse-proxy)
 - [Development](#development)
 
 ## Features
@@ -169,6 +170,49 @@ Anyone with network access to port 8484 can view the dashboard and edit configur
 ### Recommendation
 
 Bind to localhost (`127.0.0.1:8484:8484` as shown in the docker-compose example) and access via Tailscale or a reverse proxy with authentication.
+
+### Reverse Proxy
+
+When running Triggarr behind a reverse proxy (Nginx, Caddy, Traefik, etc.), configure `TRUSTED_PROXY_IPS` so Triggarr trusts the `X-Forwarded-For` and `X-Forwarded-Proto` headers from your proxy. Without this, Triggarr cannot determine the real client IP or protocol, which affects logging and scheme-aware behavior.
+
+> These are startup-level environment variables read directly by the process — they are not part of `triggarr.toml` and do not use the `TRIGGARR_` prefix.
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `TRUSTED_PROXY_IPS` | `127.0.0.1` | Comma-separated list of trusted proxy IPs or CIDR subnets. Set this to the IP address or subnet of your reverse proxy. **Do not use `*`** — it allows any client to forge its apparent IP address. |
+| `ROOT_PATH` | *(empty)* | URL path prefix when Triggarr is served under a subpath (e.g. `/triggarr`). Sets the ASGI `root_path` so links and assets resolve correctly. |
+
+**Example: Nginx reverse proxy on the same Docker network**
+
+```yaml
+services:
+  triggarr:
+    image: ghcr.io/thejuran/triggarr:latest
+    container_name: triggarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TRUSTED_PROXY_IPS=172.18.0.1       # Docker network gateway (use 172.18.0.0/16 for the full subnet)
+    volumes:
+      - triggarr_config:/config
+    ports:
+      - "127.0.0.1:8484:8484"
+    restart: unless-stopped
+```
+
+If your proxy runs on the Docker host (e.g. host-networked Nginx), set `TRUSTED_PROXY_IPS=172.17.0.1` (the default Docker gateway) or the specific IP your proxy uses to reach Triggarr.
+
+**Example: subpath behind a reverse proxy**
+
+```yaml
+    environment:
+      - TRUSTED_PROXY_IPS=172.18.0.1
+      - ROOT_PATH=/triggarr
+```
+
+Then configure your proxy to forward `/triggarr` to Triggarr's port 8484.
+
+When no proxy is configured, the default trust list (`127.0.0.1`) ensures forwarded headers are only honored from localhost.
 
 ### Synology NAS
 
