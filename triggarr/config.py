@@ -42,6 +42,8 @@ log_level = "info"
 [radarr]
 
 [sonarr]
+
+[lidarr]
 """
 
 # Keys that appear directly under [radarr] or [sonarr] in v2.2 flat format

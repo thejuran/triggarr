@@ -61,6 +61,17 @@ async def test_app(tmp_path):
                 "cutoff_count": None,
             },
         },
+        "lidarr": {
+            "Default": {
+                "missing_cursor": 0,
+                "cutoff_cursor": 0,
+                "last_run": None,
+                "connected": None,
+                "unreachable_since": None,
+                "missing_count": None,
+                "cutoff_count": None,
+            },
+        },
         "search_log": [],
     }
 
@@ -87,8 +98,11 @@ async def test_app(tmp_path):
     radarr_client.close = AsyncMock()
     sonarr_client = MagicMock()
     sonarr_client.close = AsyncMock()
+    lidarr_client = MagicMock()
+    lidarr_client.close = AsyncMock()
     app.state.radarr_clients = {"Default": radarr_client}
     app.state.sonarr_clients = {"Default": sonarr_client}
+    app.state.lidarr_clients = {"Default": lidarr_client}
 
     # Paths
     app.state.config_path = tmp_path / "triggarr.toml"
@@ -609,6 +623,7 @@ def test_health_all_connected_returns_200(client, test_app):
     test_app.state.triggarr_state = {
         "radarr": {"Default": {"connected": True}},
         "sonarr": {"Default": {"connected": True}},
+        "lidarr": {"Default": {"connected": True}},
     }
     response = client.get("/health")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
@@ -621,6 +636,7 @@ def test_health_unreachable_app_returns_503(client, test_app):
     test_app.state.triggarr_state = {
         "radarr": {"Default": {"connected": False}},
         "sonarr": {"Default": {"connected": True}},
+        "lidarr": {"Default": {"connected": True}},
     }
     response = client.get("/health")
     assert response.status_code == 503, f"Expected 503, got {response.status_code}"
@@ -634,6 +650,7 @@ def test_health_not_yet_verified_returns_503(client, test_app):
     test_app.state.triggarr_state = {
         "radarr": {"Default": {"connected": True}},
         "sonarr": {"Default": {"connected": None}},
+        "lidarr": {"Default": {"connected": True}},
     }
     response = client.get("/health")
     assert response.status_code == 503, f"Expected 503, got {response.status_code}"
@@ -643,8 +660,8 @@ def test_health_not_yet_verified_returns_503(client, test_app):
 
 def test_health_no_apps_enabled_returns_200(client, test_app):
     """GET /health returns 200 when no apps are enabled (valid awaiting-setup state)."""
-    test_app.state.settings = make_settings(radarr_enabled=False, sonarr_enabled=False)
-    test_app.state.triggarr_state = {"radarr": {}, "sonarr": {}}
+    test_app.state.settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
+    test_app.state.triggarr_state = {"radarr": {}, "sonarr": {}, "lidarr": {}}
     response = client.get("/health")
     assert response.status_code == 200, f"Expected 200 for no-apps-configured, got {response.status_code}"
     data = response.json()
@@ -1738,11 +1755,11 @@ def test_build_app_context_uses_sanitized_card_id(client, test_app):
 
 def test_health_summary_counts(client, test_app):
     """GET /partials/health-summary returns HTML with connected/disconnected/pending counts."""
-    # Radarr Default is connected=True, Sonarr Default is connected=None (pending)
+    # Radarr Default is connected=True, Sonarr/Lidarr Default is connected=None (pending)
     response = client.get("/partials/health-summary")
     assert response.status_code == 200
     assert "1 connected" in response.text
-    assert "1 pending" in response.text
+    assert "2 pending" in response.text
 
 
 def test_health_summary_excludes_disabled(client, test_app):
@@ -1772,9 +1789,9 @@ def test_stats_row_instance_filter(client, test_app):
     """GET /partials/stats-row?instance=radarr/Default passes instance_id to get_dashboard_stats."""
     with patch("triggarr.web.routes.get_dashboard_stats", new_callable=AsyncMock) as mock_stats:
         mock_stats.return_value = {
-            "overall_rate": None, "radarr_rate": None, "sonarr_rate": None,
+            "overall_rate": None, "radarr_rate": None, "sonarr_rate": None, "lidarr_rate": None,
             "movies_found": 0, "movies_updated": 0,
-            "episodes_found": 0, "episodes_updated": 0,
+            "episodes_found": 0, "episodes_updated": 0, "albums_found": 0, "albums_updated": 0,
             "avg_time_to_grab_seconds": None,
         }
         response = client.get("/partials/stats-row?instance=radarr/Default")
@@ -1788,9 +1805,9 @@ def test_stats_row_no_filter(client, test_app):
     """GET /partials/stats-row without ?instance= calls get_dashboard_stats with instance_id=None."""
     with patch("triggarr.web.routes.get_dashboard_stats", new_callable=AsyncMock) as mock_stats:
         mock_stats.return_value = {
-            "overall_rate": None, "radarr_rate": None, "sonarr_rate": None,
+            "overall_rate": None, "radarr_rate": None, "sonarr_rate": None, "lidarr_rate": None,
             "movies_found": 0, "movies_updated": 0,
-            "episodes_found": 0, "episodes_updated": 0,
+            "episodes_found": 0, "episodes_updated": 0, "albums_found": 0, "albums_updated": 0,
             "avg_time_to_grab_seconds": None,
         }
         response = client.get("/partials/stats-row")
@@ -1862,3 +1879,50 @@ def test_dismiss_migration_csrf_allows_htmx(client, tmp_path):
 
     assert response.status_code == 200
     assert not marker.exists()
+
+
+# ---------------------------------------------------------------------------
+# Lidarr template integration
+# ---------------------------------------------------------------------------
+
+
+def test_settings_page_shows_lidarr_section(client, test_app):
+    """Settings page includes a Lidarr section with correct port placeholder."""
+    response = client.get("/settings")
+    assert response.status_code == 200
+    assert "lidarr" in response.text.lower()
+    assert "8686" in response.text
+
+
+def test_history_filter_includes_lidarr(client, test_app):
+    """History page filter bar includes a Lidarr pill."""
+    response = client.get("/history")
+    assert response.status_code == 200
+    assert "Lidarr" in response.text
+
+
+def test_dashboard_empty_state_mentions_lidarr(client, test_app):
+    """Dashboard empty state mentions Lidarr alongside Radarr and Sonarr."""
+    # Disable all apps to trigger empty state
+    test_app.state.settings = make_settings(
+        radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+    )
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Lidarr" in response.text
+
+
+def test_stats_row_includes_albums(client, test_app):
+    """Stats row partial includes Albums card when not filtered to a specific app."""
+    with patch("triggarr.web.routes.get_dashboard_stats", new_callable=AsyncMock) as mock_stats:
+        mock_stats.return_value = {
+            "overall_rate": 50.0, "radarr_rate": 60.0, "sonarr_rate": 40.0, "lidarr_rate": 70.0,
+            "movies_found": 5, "movies_updated": 2,
+            "episodes_found": 10, "episodes_updated": 3,
+            "albums_found": 8, "albums_updated": 1,
+            "avg_time_to_grab_seconds": 120.0,
+        }
+        response = client.get("/partials/stats-row")
+        assert response.status_code == 200
+        assert "Albums" in response.text
+        assert "8" in response.text  # albums_found

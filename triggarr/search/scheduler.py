@@ -22,11 +22,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
 
+from triggarr.clients.base import ArrClient
+from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
-from triggarr.models.config import Settings
-from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
+from triggarr.models.config import APP_TYPES, Settings
+from triggarr.search.engine import run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.state import (
     TriggarrState,
     _default_instance_state,
@@ -50,14 +52,22 @@ def make_search_job(
 
     Args:
         app: The FastAPI application instance.
-        app_name: One of "radarr" or "sonarr".
+        app_name: One of the APP_TYPES values ("radarr", "sonarr", "lidarr").
         instance_name: Name of this instance (e.g., "Default", "4K").
         state_path: Path to the JSON state file for persistence.
 
     Returns:
         An async callable suitable for ``scheduler.add_job()``.
     """
-    cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle
+    cycle_fns = {"radarr": run_radarr_cycle, "sonarr": run_sonarr_cycle, "lidarr": run_lidarr_cycle}
+    cycle_fn = cycle_fns.get(app_name)
+    if cycle_fn is None:
+        logger.warning("{app}: search cycle not implemented yet, skipping", app=app_name.title())
+
+        async def job() -> None:
+            return
+
+        return job
 
     async def job() -> None:
         clients = getattr(app.state, f"{app_name}_clients", {})
@@ -98,9 +108,11 @@ def make_search_job(
                     if resolved > 0 or tracking_result["errors"] > 0:
                         logger.info(
                             "Tracking: {grabbed} grabbed, {partial} partial, "
+                            "{partial_expired} partial_expired, "
                             "{unresolved} unresolved, {errors} errors",
                             grabbed=tracking_result["grabbed"],
                             partial=tracking_result["partial"],
+                            partial_expired=tracking_result.get("partial_expired", 0),
                             unresolved=tracking_result["unresolved"],
                             errors=tracking_result["errors"],
                         )
@@ -145,7 +157,7 @@ def create_lifespan(
 
         # Clean up orphaned instances and ensure new instances get default state
         state = cleanup_orphaned_instances(state, settings)
-        for app_type in ("radarr", "sonarr"):
+        for app_type in APP_TYPES:
             instances = getattr(settings, app_type, {})
             for inst_name in instances:
                 if inst_name not in state.get(app_type, {}):
@@ -168,32 +180,31 @@ def create_lifespan(
                 save_state(state, state_path)
 
         # --- Create long-lived clients for enabled instances ---
-        radarr_clients: dict[str, RadarrClient] = {}
-        sonarr_clients: dict[str, SonarrClient] = {}
+        client_classes: dict[str, type[ArrClient]] = {
+            "radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient,
+        }
+        all_clients: dict[str, dict[str, ArrClient]] = {}
 
-        for inst_name, cfg in settings.get_enabled_instances("radarr").items():
-            radarr_clients[inst_name] = RadarrClient(
-                base_url=cfg.url,
-                api_key=cfg.api_key.get_secret_value(),
-                timeout=settings.general.request_timeout,
-                page_size=settings.general.page_size,
-            )
-
-        for inst_name, cfg in settings.get_enabled_instances("sonarr").items():
-            sonarr_clients[inst_name] = SonarrClient(
-                base_url=cfg.url,
-                api_key=cfg.api_key.get_secret_value(),
-                timeout=settings.general.request_timeout,
-                page_size=settings.general.page_size,
-            )
+        for app_type in APP_TYPES:
+            clients: dict[str, ArrClient] = {}
+            cls = client_classes[app_type]
+            for inst_name, cfg in settings.get_enabled_instances(app_type).items():
+                clients[inst_name] = cls(
+                    base_url=cfg.url,
+                    api_key=cfg.api_key.get_secret_value(),
+                    timeout=settings.general.request_timeout,
+                    page_size=settings.general.page_size,
+                )
+            all_clients[app_type] = clients
 
         # --- Expose all shared state on app.state ---
         app.state.triggarr_state = state
         app.state.settings = settings
         app.state.db = db
         app.state.scheduler = scheduler
-        app.state.radarr_clients = radarr_clients
-        app.state.sonarr_clients = sonarr_clients
+        app.state.radarr_clients = all_clients.get("radarr", {})
+        app.state.sonarr_clients = all_clients.get("sonarr", {})
+        app.state.lidarr_clients = all_clients.get("lidarr", {})
         app.state.config_path = config_path
         app.state.state_path = state_path
         app.state.search_lock = asyncio.Lock()
@@ -206,7 +217,7 @@ def create_lifespan(
         app.state.update_info = _update_info
 
         # --- Schedule jobs for enabled instances using make_search_job ---
-        for app_name in ("radarr", "sonarr"):
+        for app_name in APP_TYPES:
             for inst_name, cfg in settings.get_enabled_instances(app_name).items():
                 job_fn = make_search_job(app, app_name, inst_name, state_path)
                 job_id = f"{app_name}_{inst_name}_search"
@@ -255,10 +266,9 @@ def create_lifespan(
                 logger.warning("Shutdown: search cycle did not finish in 35s — forcing close")
 
             # 3. Close HTTP clients (all instances)
-            for client in app.state.radarr_clients.values():
-                await client.close()
-            for client in app.state.sonarr_clients.values():
-                await client.close()
+            for app_type in APP_TYPES:
+                for client in getattr(app.state, f"{app_type}_clients", {}).values():
+                    await client.close()
 
             # 4. Close shared database connection (all writes complete per step 2)
             await app.state.db.close()

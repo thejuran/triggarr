@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, TypedDict
 
 from loguru import logger
 
+from triggarr.models.config import APP_TYPES
+
 if TYPE_CHECKING:
     from triggarr.models.config import Settings
 
@@ -51,7 +53,7 @@ class AppState(TypedDict, total=False):
     unreachable_since: str | None  # ISO timestamp of first failure, None when healthy
     missing_count: int | None  # Total wanted-missing items (before filtering)
     missing_eligible: int | None  # Items eligible for search (after filtering)
-    missing_monitored: int | None  # Monitored items before unreleased filtering (Radarr only)
+    missing_monitored: int | None  # Monitored items before tag/unreleased filtering
     missing_searchable: int | None  # Searchable units (Sonarr: seasons after dedup; None for Radarr)
     cutoff_count: int | None  # Total cutoff-unmet items (before filtering)
     cutoff_searchable: int | None  # Searchable units for cutoff (Sonarr: seasons; None for Radarr)
@@ -62,12 +64,13 @@ class AppState(TypedDict, total=False):
 class TriggarrState(TypedDict, total=False):
     """Top-level application state with per-instance cursors.
 
-    radarr and sonarr map instance names to their AppState:
+    radarr, sonarr, and lidarr map instance names to their AppState:
     {"Default": AppState(...), "4K Radarr": AppState(...)}
     """
 
     radarr: dict[str, AppState]
     sonarr: dict[str, AppState]
+    lidarr: dict[str, AppState]
     search_log: list[dict]  # deprecated: migrated to SQLite (SRCH-13), kept for migration compat
 
 
@@ -83,10 +86,10 @@ def _default_state(settings: Settings | None = None) -> TriggarrState:
     With settings: populates per-instance entries from configured instance names.
     """
     if settings is None:
-        return TriggarrState(radarr={}, sonarr={}, search_log=[])
+        return TriggarrState(radarr={}, sonarr={}, lidarr={}, search_log=[])
 
     state: TriggarrState = TriggarrState(search_log=[])
-    for app_type in ("radarr", "sonarr"):
+    for app_type in APP_TYPES:
         instances = getattr(settings, app_type, {})
         state[app_type] = {name: _default_instance_state() for name in instances}  # type: ignore[literal-required]
     return state
@@ -97,6 +100,8 @@ def _is_v22_state_format(data: dict) -> bool:
 
     v2.2 format has keys like "missing_cursor" directly under radarr/sonarr.
     v2.3 format has instance names (e.g., "Default") under radarr/sonarr.
+
+    Only checks radarr/sonarr — lidarr is new in v2.3 and never had flat state.
     """
     for section in ("radarr", "sonarr"):
         section_data = data.get(section, {})
@@ -110,6 +115,8 @@ def _migrate_v22_state(data: dict) -> dict:
 
     Wraps each flat AppState into {"Default": AppState} to match
     the Phase 33 config migration naming convention.
+
+    Only migrates radarr/sonarr — lidarr is new in v2.3 and never had flat state.
     """
     result = dict(data)
     for section in ("radarr", "sonarr"):
@@ -127,7 +134,7 @@ def _merge_defaults(loaded: dict) -> TriggarrState:
     """
     defaults = _default_state()
 
-    for app_key in ("radarr", "sonarr"):
+    for app_key in APP_TYPES:
         loaded_section = loaded.get(app_key, {})
         if isinstance(loaded_section, dict):
             merged_section: dict[str, AppState] = {}
@@ -225,7 +232,7 @@ def cleanup_orphaned_instances(state: TriggarrState, settings: Settings) -> Trig
         New state dict with orphaned instance entries removed.
     """
     result = dict(state)
-    for app_type in ("radarr", "sonarr"):
+    for app_type in APP_TYPES:
         configured_names = set(getattr(settings, app_type, {}).keys())
         current = result.get(app_type, {})
         result[app_type] = {k: v for k, v in current.items() if k in configured_names}

@@ -9,20 +9,28 @@ import pydantic
 import pytest
 
 from triggarr.clients.base import ArrClient
+from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.models.arr import GrabEvent, Tag
 
 
+class _ConcreteClient(ArrClient):
+    """Minimal concrete ArrClient for testing base class behavior."""
+
+    async def get_grab_history(self, item_id: int) -> list[GrabEvent]:
+        return []
+
+
 def test_arr_client_sets_api_key_header() -> None:
     """ArrClient sets X-Api-Key in httpx client headers."""
-    client = ArrClient(base_url="http://localhost:7878", api_key="test-key-123")
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key="test-key-123")
     assert client._client.headers["X-Api-Key"] == "test-key-123"
 
 
 def test_arr_client_sets_timeout() -> None:
     """ArrClient respects custom timeout parameter."""
-    client = ArrClient(base_url="http://localhost:7878", api_key="key", timeout=30)
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key="key", timeout=30)
     # httpx.Timeout stores timeout as a Timeout object; check the connect/read values
     assert client._client.timeout.connect == 30
     assert client._client.timeout.read == 30
@@ -30,7 +38,7 @@ def test_arr_client_sets_timeout() -> None:
 
 def test_arr_client_sets_content_type() -> None:
     """ArrClient sets Content-Type: application/json in default headers."""
-    client = ArrClient(base_url="http://localhost:7878", api_key="key")
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key="key")
     assert client._client.headers["Content-Type"] == "application/json"
 
 
@@ -59,7 +67,7 @@ def test_sonarr_client_app_name() -> None:
 def test_api_key_not_in_url() -> None:
     """API key is in headers only, not in the base URL."""
     api_key = "super-secret-key"
-    client = ArrClient(base_url="http://localhost:7878", api_key=api_key)
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key=api_key)
     assert api_key not in str(client._client.base_url)
     assert client._client.headers["X-Api-Key"] == api_key
 
@@ -76,7 +84,7 @@ async def test_request_with_retry_first_attempt_success() -> None:
         return httpx.Response(200, json={"ok": True})
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -98,7 +106,7 @@ async def test_request_with_retry_retries_on_failure() -> None:
         return httpx.Response(200, json={"ok": True})
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -117,7 +125,7 @@ async def test_request_with_retry_reraises_when_retry_fails() -> None:
         return httpx.Response(500, request=request)
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -146,7 +154,7 @@ async def test_get_paginated_single_page() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -180,7 +188,7 @@ async def test_get_paginated_multi_page() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -204,7 +212,7 @@ async def test_get_paginated_empty_results() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -221,7 +229,7 @@ async def test_get_paginated_malformed_response() -> None:
         return httpx.Response(200, json={"bad": "data"})
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -243,7 +251,7 @@ async def test_validate_connection_success() -> None:
         return httpx.Response(200, json={"version": "5.0.0"})
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -260,7 +268,7 @@ async def test_validate_connection_401() -> None:
         return httpx.Response(401, request=request)
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -277,7 +285,7 @@ async def test_validate_connection_connect_error() -> None:
         raise httpx.ConnectError("refused")
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -294,7 +302,7 @@ async def test_validate_connection_timeout() -> None:
         raise httpx.TimeoutException("timed out")
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -311,13 +319,13 @@ async def test_validate_connection_timeout() -> None:
 
 def test_client_default_page_size() -> None:
     """ArrClient defaults to page_size=50."""
-    client = ArrClient(base_url="http://test:7878", api_key="key")
+    client = _ConcreteClient(base_url="http://test:7878", api_key="key")
     assert client._page_size == 50
 
 
 def test_client_accepts_page_size() -> None:
     """ArrClient stores custom page_size."""
-    client = ArrClient(base_url="http://test:7878", api_key="key", page_size=100)
+    client = _ConcreteClient(base_url="http://test:7878", api_key="key", page_size=100)
     assert client._page_size == 100
 
 
@@ -496,7 +504,7 @@ async def test_get_tags_returns_tag_list() -> None:
         ])
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -518,7 +526,7 @@ async def test_get_tags_empty_response() -> None:
         return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
-    client = ArrClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key="key")
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -542,5 +550,230 @@ async def test_sonarr_get_grab_history_passes_correct_params() -> None:
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         await client.get_grab_history(series_id=10)
+    finally:
+        await client.close()
+
+
+# ---------------------------------------------------------------------------
+# LidarrClient tests
+# ---------------------------------------------------------------------------
+
+
+def test_lidarr_client_is_arr_client_subclass() -> None:
+    """LidarrClient is a subclass of ArrClient."""
+    assert issubclass(LidarrClient, ArrClient)
+
+
+def test_lidarr_client_app_name() -> None:
+    """LidarrClient sets _app_name to 'Lidarr'."""
+    client = LidarrClient(base_url="http://localhost:8686", api_key="key")
+    assert client._app_name == "Lidarr"
+
+
+async def test_lidarr_get_wanted_missing_uses_v1_with_include_artist() -> None:
+    """LidarrClient.get_wanted_missing uses /api/v1/ path with includeArtist=true."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v1/wanted/missing" in str(request.url.path)
+        assert request.url.params["includeArtist"] == "true"
+        return httpx.Response(200, json={
+            "page": 1, "pageSize": 50, "sortKey": "id",
+            "totalRecords": 0, "records": [],
+        })
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_wanted_missing()
+        assert result == []
+    finally:
+        await client.close()
+
+
+async def test_lidarr_get_wanted_cutoff_uses_v1_with_include_artist() -> None:
+    """LidarrClient.get_wanted_cutoff uses /api/v1/ path with includeArtist=true."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v1/wanted/cutoff" in str(request.url.path)
+        assert request.url.params["includeArtist"] == "true"
+        return httpx.Response(200, json={
+            "page": 1, "pageSize": 50, "sortKey": "id",
+            "totalRecords": 0, "records": [],
+        })
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_wanted_cutoff()
+        assert result == []
+    finally:
+        await client.close()
+
+
+async def test_lidarr_get_library_count_counts_artists() -> None:
+    """LidarrClient.get_library_count returns number of artists."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v1/artist" in str(request.url.path)
+        return httpx.Response(200, json=[
+            {"id": 1, "artistName": "Artist One"},
+            {"id": 2, "artistName": "Artist Two"},
+            {"id": 3, "artistName": "Artist Three"},
+        ])
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        count = await client.get_library_count()
+        assert count == 3
+    finally:
+        await client.close()
+
+
+async def test_lidarr_get_tags_uses_v1_endpoint() -> None:
+    """LidarrClient.get_tags uses /api/v1/tag (not /api/v3/tag)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v1/tag" in str(request.url.path)
+        assert "/api/v3/" not in str(request.url.path)
+        return httpx.Response(200, json=[
+            {"id": 1, "label": "flac"},
+            {"id": 2, "label": "vinyl"},
+        ])
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_tags()
+        assert len(result) == 2
+        assert all(isinstance(t, Tag) for t in result)
+        assert result[0].label == "flac"
+    finally:
+        await client.close()
+
+
+async def test_lidarr_get_grab_history_returns_grab_events() -> None:
+    """LidarrClient.get_grab_history returns parsed GrabEvent instances."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v1/history" in str(request.url.path)
+        assert request.url.params["albumId"] == "42"
+        assert request.url.params["eventType"] == "grabbed"
+        # Lidarr history is paginated
+        body = {
+            "page": 1, "pageSize": 50, "totalRecords": 2,
+            "records": [
+                {
+                    "id": 300,
+                    "date": "2026-04-06T10:00:00Z",
+                    "eventType": "grabbed",
+                    "sourceTitle": "Artist.Album.FLAC",
+                    "albumId": 42,
+                    "artistId": 5,
+                    "quality": {"quality": {"name": "FLAC"}},
+                },
+                {
+                    "id": 301,
+                    "date": "2026-04-06T09:30:00Z",
+                    "eventType": "grabbed",
+                    "sourceTitle": "Artist.Album.MP3-320",
+                    "albumId": 42,
+                    "artistId": 5,
+                    "quality": {"quality": {"name": "MP3-320"}},
+                },
+            ],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(album_id=42)
+        assert len(result) == 2
+        assert all(isinstance(e, GrabEvent) for e in result)
+        assert result[0].id == 300
+        assert result[0].sourceTitle == "Artist.Album.FLAC"
+        assert result[1].id == 301
+    finally:
+        await client.close()
+
+
+async def test_lidarr_get_grab_history_empty() -> None:
+    """LidarrClient.get_grab_history returns empty list for zero results."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "page": 1, "pageSize": 50, "totalRecords": 0, "records": [],
+        })
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(album_id=999)
+        assert result == []
+    finally:
+        await client.close()
+
+
+async def test_lidarr_validate_connection_uses_v1_endpoint() -> None:
+    """LidarrClient.validate_connection uses /api/v1/system/status (not /api/v3/)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v1/system/status" in str(request.url.path)
+        assert "/api/v3/" not in str(request.url.path)
+        return httpx.Response(200, json={
+            "version": "2.8.0.1234",
+            "appName": "Lidarr",
+        })
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.validate_connection()
+        assert result is True
+    finally:
+        await client.close()
+
+
+async def test_lidarr_validate_connection_returns_false_on_401() -> None:
+    """LidarrClient.validate_connection returns False on 401."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": "Unauthorized"})
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="bad-key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.validate_connection()
+        assert result is False
+    finally:
+        await client.close()
+
+
+async def test_lidarr_search_albums_sends_correct_command() -> None:
+    """LidarrClient.search_albums sends AlbumSearch command with albumIds."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+        assert "/api/v1/command" in str(request.url.path)
+        body = json.loads(request.content)
+        assert body["name"] == "AlbumSearch"
+        assert body["albumIds"] == [10, 20, 30]
+        return httpx.Response(200, json={"id": 1, "name": "AlbumSearch", "status": "queued"})
+
+    transport = httpx.MockTransport(handler)
+    client = LidarrClient(base_url="http://test", api_key="key")
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        response = await client.search_albums(album_ids=[10, 20, 30])
+        assert response.status_code == 200
     finally:
         await client.close()

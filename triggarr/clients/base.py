@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 import asyncio
+from abc import ABC, abstractmethod
 from typing import Any
 
 import httpx
 import pydantic
 from loguru import logger
 
-from triggarr.models.arr import PaginatedResponse, SystemStatus, Tag
+from triggarr.models.arr import GrabEvent, PaginatedResponse, SystemStatus, Tag
 
 
-class ArrClient:
+class ArrClient(ABC):
     """Base httpx async client wrapping *arr API communication.
 
     Provides paginated fetching, retry logic, and connection validation.
     Subclasses set ``_app_name`` and define endpoint-specific methods.
     """
+
+    _status_path: str = "/api/v3/system/status"
+    """API path for system/status endpoint. Override in subclasses with different API versions."""
 
     def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
         self._app_name: str = ""
@@ -64,7 +68,11 @@ class ArrClient:
                     "{app}: Retry failed for {path}: {exc}",
                     app=self._app_name,
                     path=path,
-                    exc=exc,
+                    exc=(
+                        f"HTTP {exc.response.status_code}"
+                        if isinstance(exc, httpx.HTTPStatusError)
+                        else type(exc).__name__
+                    ),
                 )
                 raise
 
@@ -200,12 +208,12 @@ class ArrClient:
     async def validate_connection(self) -> bool:
         """Validate the connection to the *arr application.
 
-        Calls ``/api/v3/system/status`` and returns True on success.
-        Returns False (with appropriate logging) for auth failures,
-        connection errors, and timeouts.
+        Calls the system/status endpoint (``_status_path`` class attribute)
+        and returns True on success.  Returns False (with appropriate logging)
+        for auth failures, connection errors, and timeouts.
         """
         try:
-            response = await self._client.get("/api/v3/system/status")
+            response = await self._client.get(self._status_path)
             response.raise_for_status()
             status = SystemStatus.model_validate(response.json())
             logger.info(
@@ -246,6 +254,19 @@ class ArrClient:
                 exc=exc,
             )
             return False
+
+    # ------------------------------------------------------------------
+    # Abstract methods — must be implemented by subclasses
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    async def get_grab_history(self, item_id: int) -> list[GrabEvent]:
+        """Fetch grab history for a specific item from the *arr instance.
+
+        Must be implemented by each subclass with the appropriate API path
+        and response parsing for that application.
+        """
+        ...
 
     # ------------------------------------------------------------------
     # Lifecycle

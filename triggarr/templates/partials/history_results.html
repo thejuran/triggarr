@@ -7,7 +7,7 @@
       {# App filter #}
       <div class="flex items-center gap-2">
         <span class="text-xs text-triggarr-muted">App:</span>
-        {% for app_val in ['Radarr', 'Sonarr'] %}
+        {% for app_val in ['Radarr', 'Sonarr', 'Lidarr'] %}
           {% if app_val in active_apps %}
             {% set new_apps = active_apps | reject('equalto', app_val) | list | join(',') %}
           {% else %}
@@ -18,7 +18,7 @@
              hx-swap="outerHTML"
              class="cursor-pointer text-xs font-medium px-2.5 py-1 rounded-full
                     {% if app_val in active_apps %}
-                      {% if app_val == 'Radarr' %}bg-orange-500/20 text-orange-400{% else %}bg-blue-500/20 text-blue-400{% endif %}
+                      {% if app_val == 'Radarr' %}bg-orange-500/20 text-orange-400{% elif app_val == 'Lidarr' %}bg-green-500/20 text-green-400{% else %}bg-blue-500/20 text-blue-400{% endif %}
                     {% else %}
                       bg-triggarr-card text-triggarr-muted border border-triggarr-border hover:text-white
                     {% endif %}">
@@ -131,6 +131,7 @@
         <div class="flex items-center gap-3 py-1.5 {% if not loop.last %}border-b border-triggarr-border/50{% endif %}">
           <span class="text-xs font-medium px-2 py-0.5 rounded
                  {% if entry.app == 'Radarr' %}bg-orange-500/20 text-orange-400
+                 {% elif entry.app == 'Lidarr' %}bg-green-500/20 text-green-400
                  {% else %}bg-blue-500/20 text-blue-400{% endif %}">
             {{ entry.app }}
           </span>

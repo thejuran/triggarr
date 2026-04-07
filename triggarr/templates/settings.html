@@ -74,7 +74,7 @@
         </div>
     </section>
 
-    <!-- Per-app sections: Radarr, Sonarr -->
+    <!-- Per-app sections: Radarr, Sonarr, Lidarr -->
     {% for app_name, instances in apps.items() %}
     <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
         <h2 class="text-lg font-semibold capitalize mb-4">{{ app_name }}</h2>
@@ -108,7 +108,7 @@
                     <div>
                         <label class="block text-sm text-triggarr-muted mb-1">URL</label>
                         <input type="text" name="{{ app_name }}__{{ inst_name }}__url" value="{{ inst.url }}"
-                               placeholder="http://{{ app_name }}:{% if app_name == 'radarr' %}7878{% else %}8989{% endif %}"
+                               placeholder="http://{{ app_name }}:{% if app_name == 'radarr' %}7878{% elif app_name == 'lidarr' %}8686{% else %}8989{% endif %}"
                                class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                     </div>
                     <div>

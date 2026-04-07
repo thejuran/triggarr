@@ -11,11 +11,13 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
+from triggarr.clients.base import ArrClient
+from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.config import ensure_config
 from triggarr.logging import setup_logging
-from triggarr.models.config import CONFIG_PATH, Settings
+from triggarr.models.config import APP_TYPES, CONFIG_PATH, Settings
 
 LOCALHOST_PATTERNS = {"localhost", "127.0.0.1", "::1"}
 
@@ -28,7 +30,7 @@ def check_localhost_urls(settings: Settings) -> None:
     self-hosters.  The warning fires before connection validation so the
     user sees a clear explanation rather than a mysterious timeout.
     """
-    for name in ("radarr", "sonarr"):
+    for name in APP_TYPES:
         for _inst, cfg in settings.get_enabled_instances(name).items():
             hostname = urlparse(cfg.url).hostname
             if hostname and hostname in LOCALHOST_PATTERNS:
@@ -40,7 +42,7 @@ def check_localhost_urls(settings: Settings) -> None:
                     app=name.title(),
                     url=cfg.url,
                     app_lower=name,
-                    port="7878" if name == "radarr" else "8989",
+                    port={"radarr": "7878", "sonarr": "8989", "lidarr": "8686"}.get(name, "8686"),
                 )
 
 
@@ -58,7 +60,7 @@ def collect_secrets(settings: Settings) -> list[str]:
         List of non-empty secret strings for the redaction filter.
     """
     secrets: list[str] = []
-    for app_type in ("radarr", "sonarr"):
+    for app_type in APP_TYPES:
         for cfg in getattr(settings, app_type).values():
             value = cfg.api_key.get_secret_value()
             if value:
@@ -77,7 +79,7 @@ def print_banner(settings: Settings) -> None:
 
     logger.info("Triggarr {version}", version=get_display_version())
     logger.info("Log level: {level}", level=settings.general.log_level)
-    for app_type in ("radarr", "sonarr"):
+    for app_type in APP_TYPES:
         instances = getattr(settings, app_type)
         if not instances:
             logger.info("{app}: disabled", app=app_type.title())
@@ -108,29 +110,28 @@ async def validate_connections(settings: Settings) -> dict[str, bool]:
     """
     results: dict[str, bool] = {}
 
-    for inst_name, cfg in settings.get_enabled_instances("radarr").items():
-        client = RadarrClient(
-            base_url=cfg.url,
-            api_key=cfg.api_key.get_secret_value(),
-        )
-        try:
-            results[f"radarr/{inst_name}"] = await client.validate_connection()
-        finally:
-            await client.close()
+    # Build client class lookup from current module namespace so test patches
+    # to RadarrClient / SonarrClient / LidarrClient are respected.
+    client_classes: dict[str, type[ArrClient]] = {
+        "radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient,
+    }
 
-    for inst_name, cfg in settings.get_enabled_instances("sonarr").items():
-        client = SonarrClient(
-            base_url=cfg.url,
-            api_key=cfg.api_key.get_secret_value(),
-        )
-        try:
-            key = f"sonarr/{inst_name}"
-            results[key] = await client.validate_connection()
-            if results[key]:
-                api_version = await client.detect_api_version()
-                logger.info("Sonarr: Detected API {version}", version=api_version)
-        finally:
-            await client.close()
+    for app_type in APP_TYPES:
+        cls = client_classes[app_type]
+        for inst_name, cfg in settings.get_enabled_instances(app_type).items():
+            client = cls(
+                base_url=cfg.url,
+                api_key=cfg.api_key.get_secret_value(),
+            )
+            try:
+                key = f"{app_type}/{inst_name}"
+                results[key] = await client.validate_connection()
+                # Sonarr-specific: detect API version for logging
+                if results[key] and app_type == "sonarr" and hasattr(client, "detect_api_version"):
+                    api_version = await client.detect_api_version()
+                    logger.info("Sonarr: Detected API {version}", version=api_version)
+            finally:
+                await client.close()
 
     return results
 

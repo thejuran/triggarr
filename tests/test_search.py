@@ -23,12 +23,14 @@ from triggarr.db import init_db
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig
 from triggarr.search.engine import (
+    _lidarr_tags,
     cap_batch_sizes,
     deduplicate_to_seasons,
     filter_monitored,
     filter_sonarr_episodes,
     filter_unreleased_movies,
     resolve_tag_id,
+    run_lidarr_cycle,
     run_radarr_cycle,
     run_sonarr_cycle,
     slice_batch,
@@ -221,6 +223,7 @@ def _make_test_state():
     state = _default_state()
     state["radarr"] = {"Default": _default_instance_state()}
     state["sonarr"] = {"Default": _default_instance_state()}
+    state["lidarr"] = {"Default": _default_instance_state()}
     return state
 
 
@@ -1986,6 +1989,217 @@ async def test_tag_warnings_cleared_on_sonarr_connectivity_failure(tmp_path):
     await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
     ist = state["sonarr"]["Default"]
+    assert ist["tag_warnings"] == []
+    assert ist["connected"] is False
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# run_lidarr_cycle
+# ---------------------------------------------------------------------------
+
+
+async def test_run_lidarr_cycle_happy_path(tmp_path):
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 101, "title": "Album A", "monitored": True},
+            {"id": 102, "title": "Album B", "monitored": True},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=50)
+    client.search_albums = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_albums.call_count == 2
+    client.search_albums.assert_any_call([101])
+    client.search_albums.assert_any_call([102])
+
+    ist = result["lidarr"]["Default"]
+    assert ist["last_run"] is not None
+    assert ist["connected"] is True
+    assert ist["missing_cursor"] == 0  # 2 items, batch 2, wraps
+    assert ist["missing_count"] == 2
+    assert ist["total_items"] == 50
+    await db.close()
+
+
+async def test_run_lidarr_cycle_network_failure(tmp_path):
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = result["lidarr"]["Default"]
+    assert ist["connected"] is False
+    assert ist["unreachable_since"] is not None
+    assert ist["missing_cursor"] == 0  # unchanged
+    client.search_albums.assert_not_called()
+    await db.close()
+
+
+async def test_run_lidarr_cycle_per_item_skip(tmp_path):
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 201, "title": "Good Album", "monitored": True},
+            {"id": 202, "title": "Bad Album", "monitored": True},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    # First call succeeds, second raises
+    client.search_albums = AsyncMock(side_effect=[None, httpx.TimeoutException("timeout")])
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=5, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=5, cutoff_count=0)
+
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_albums.call_count == 2  # both attempted
+    ist = result["lidarr"]["Default"]
+    assert ist["connected"] is True  # cycle didn't abort
+    await db.close()
+
+
+async def test_run_lidarr_cycle_cursor_advancement(tmp_path):
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    albums = [
+        {"id": i, "title": f"Album {i}", "monitored": True}
+        for i in range(1, 6)
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=albums)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=20)
+    client.search_albums = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=2, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+    # First cycle: searches items 0,1 (albums 1,2)
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["lidarr"]["Default"]["missing_cursor"] == 2
+    assert client.search_albums.call_count == 2
+
+    # Second cycle: searches items 2,3 (albums 3,4)
+    client.search_albums.reset_mock()
+    result = await run_lidarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["lidarr"]["Default"]["missing_cursor"] == 4
+    assert client.search_albums.call_count == 2
+
+    # Third cycle: searches item 4 (album 5), then wraps
+    client.search_albums.reset_mock()
+    result = await run_lidarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["lidarr"]["Default"]["missing_cursor"] == 0  # wrapped
+    assert client.search_albums.call_count == 1
+    await db.close()
+
+
+async def test_run_lidarr_cycle_missing_instance_state_skips(tmp_path):
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    state = _make_test_state()
+    del state["lidarr"]["Default"]  # remove instance from state
+
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    client.get_wanted_missing.assert_not_called()
+    assert "Default" not in result["lidarr"]
+    await db.close()
+
+
+async def test_lidarr_cycle_missing_tag_filters(tmp_path):
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "title": "Tagged Album", "monitored": True, "artist": {"tags": [5]}},
+            {"id": 2, "title": "Untagged Album", "monitored": True, "artist": {"tags": []}},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+    client.search_albums = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=5, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=5, cutoff_count=0)
+    instance_config.missing_tag = "music-tag"
+
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Only the tagged album should be searched
+    assert client.search_albums.call_count == 1
+    client.search_albums.assert_called_once_with([1])
+    assert result["lidarr"]["Default"]["missing_eligible"] == 1
+    await db.close()
+
+
+async def test_lidarr_tags_accessor():
+    """Verify _lidarr_tags extracts tags from artist object."""
+    album = {"id": 1, "title": "Test", "artist": {"tags": [3, 7]}}
+    assert _lidarr_tags(album) == [3, 7]
+
+    album_no_artist = {"id": 2, "title": "No Artist"}
+    assert _lidarr_tags(album_no_artist) == []
+
+
+async def test_tag_warnings_cleared_on_lidarr_connectivity_failure(tmp_path):
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+    state = _make_test_state()
+    state["lidarr"]["Default"]["tag_warnings"] = [{"tag": "stale", "field": "missing"}]
+
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = result["lidarr"]["Default"]
     assert ist["tag_warnings"] == []
     assert ist["connected"] is False
     await db.close()

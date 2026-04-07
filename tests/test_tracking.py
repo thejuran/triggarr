@@ -18,7 +18,7 @@ import pytest
 from triggarr.db import init_db, insert_search_entry
 from triggarr.models.arr import GrabEvent
 from triggarr.search.engine import _sanitize_exc
-from triggarr.tracking import run_tracking_check
+from triggarr.tracking import _lidarr_outcome, run_tracking_check
 
 
 def _grab(grab_id: int, date: datetime, source: str = "Release.1080p") -> GrabEvent:
@@ -513,4 +513,79 @@ async def test_per_instance_stats_isolation(tmp_path):
     assert await _get_stat(db, "Radarr", "movies_found", instance_id="4K") == 1
     # Default instance stats untouched
     assert await _get_stat(db, "Radarr", "movies_found", instance_id="Default") == 0
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Lidarr outcome logic
+# ---------------------------------------------------------------------------
+
+
+def test_lidarr_grabbed_missing():
+    """Lidarr missing grab returns albums_found stat."""
+    grab = GrabEvent(id=1, sourceTitle="Artist - Album [FLAC]", date="2026-01-01T00:00:00Z", eventType="grabbed")
+    outcome, detail, stats = _lidarr_outcome("missing", 1, [grab], window_expired=False)
+    assert outcome == "grabbed"
+    assert "Artist - Album [FLAC]" in detail
+    assert stats == {"albums_found": 1}
+
+
+def test_lidarr_grabbed_cutoff():
+    """Lidarr cutoff grab returns albums_updated stat."""
+    grab = GrabEvent(id=2, sourceTitle="Upgrade Release", date="2026-01-01T00:00:00Z", eventType="grabbed")
+    outcome, detail, stats = _lidarr_outcome("cutoff", 1, [grab], window_expired=False)
+    assert outcome == "grabbed"
+    assert stats == {"albums_updated": 1}
+
+
+def test_lidarr_unresolved_window_expired():
+    """Lidarr returns unresolved when window expires with no grabs."""
+    outcome, detail, stats = _lidarr_outcome("missing", 0, [], window_expired=True)
+    assert outcome == "unresolved"
+    assert "no grabs" in detail
+    assert stats is None
+
+
+def test_lidarr_within_window_no_grabs():
+    """Lidarr returns None (keep waiting) within tracking window."""
+    outcome, detail, stats = _lidarr_outcome("missing", 0, [], window_expired=False)
+    assert outcome is None
+    assert detail == ""
+    assert stats is None
+
+
+async def test_lidarr_tracking_integration(tmp_path):
+    """Full integration: Lidarr entry gets resolved via run_tracking_check."""
+    db, _ = await _init_db(tmp_path)
+
+    # Insert a Lidarr search entry that's within tracking window
+    await _insert_entry(
+        db,
+        app="Lidarr",
+        queue_type="missing",
+        item_name="Test Album",
+        item_id=999,
+        outcome="searched",
+        instance_id="Default",
+        timestamp=datetime.now(UTC) - timedelta(minutes=5),
+    )
+
+    client = AsyncMock()
+    client.get_grab_history = AsyncMock(return_value=[
+        GrabEvent(
+            id=1, sourceTitle="Artist - Test Album [FLAC]",
+            date=datetime.now(UTC).isoformat(), eventType="grabbed",
+        ),
+    ])
+
+    result = await run_tracking_check(db, client, "Lidarr", "Default", tracking_window_minutes=30)
+
+    assert result["grabbed"] == 1
+    assert result["errors"] == 0
+
+    # Verify the entry was updated
+    async with db.execute("SELECT outcome FROM search_history WHERE item_id = 999") as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "grabbed"
+
     await db.close()

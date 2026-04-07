@@ -24,15 +24,16 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
+from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.config import _atomic_toml_write
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
-from triggarr.models.config import CONFIG_DIR
+from triggarr.models.config import APP_TYPES, CONFIG_DIR
 from triggarr.models.config import Settings as SettingsModel
-from triggarr.search.engine import run_radarr_cycle, run_sonarr_cycle
+from triggarr.search.engine import run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import save_state
@@ -104,7 +105,7 @@ def _settings_to_dict(settings: SettingsModel) -> dict:
     Extracts SecretStr values so they serialize as plain strings.
     """
     result: dict = {"general": settings.general.model_dump()}
-    for app_name in ("radarr", "sonarr"):
+    for app_name in APP_TYPES:
         instances = getattr(settings, app_name)
         result[app_name] = {}
         for inst_name, cfg in instances.items():
@@ -126,7 +127,7 @@ async def health(request: Request) -> JSONResponse:
     state = request.app.state.triggarr_state
     problems: list[str] = []
 
-    for app_name in ("radarr", "sonarr"):
+    for app_name in APP_TYPES:
         for inst_name, _cfg in settings.get_enabled_instances(app_name).items():
             inst_state = state.get(app_name, {}).get(inst_name, {})
             connected = inst_state.get("connected")
@@ -212,7 +213,7 @@ def _build_health_summary(request: Request) -> dict:
     disconnected = 0
     pending = 0
 
-    for app_name in ("radarr", "sonarr"):
+    for app_name in APP_TYPES:
         for inst_name in settings.get_enabled_instances(app_name):
             ist = state.get(app_name, {}).get(inst_name, {})
             conn = ist.get("connected")
@@ -241,7 +242,7 @@ def _build_all_instances(settings: SettingsModel) -> list[dict]:
         List of dicts with value and label keys for each enabled instance.
     """
     instances: list[dict] = []
-    for app_name in ("radarr", "sonarr"):
+    for app_name in APP_TYPES:
         for inst_name in settings.get_enabled_instances(app_name):
             instances.append({
                 "value": f"{app_name}/{inst_name}",
@@ -255,7 +256,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     """Render the dashboard page with per-instance status cards and search log."""
     apps: list[dict] = []
     settings = request.app.state.settings
-    for app_name in ("radarr", "sonarr"):
+    for app_name in APP_TYPES:
         for inst_name in settings.get_enabled_instances(app_name):
             ctx = _build_app_context(request, app_name, inst_name)
             if ctx is not None:
@@ -291,7 +292,7 @@ async def settings_page(request: Request) -> HTMLResponse:
     """Render the settings page with all instances per app type and masked API keys."""
     settings = request.app.state.settings
     apps: dict[str, dict] = {}
-    for name in ("radarr", "sonarr"):
+    for name in APP_TYPES:
         instances = getattr(settings, name)
         apps[name] = {}
         for inst_name, cfg in instances.items():
@@ -420,14 +421,14 @@ async def save_settings(request: Request) -> RedirectResponse:
     }
 
     # Parse multi-instance form fields using {app}__{instance}__{field} convention
-    parsed_instances: dict[str, dict[str, dict[str, str]]] = {"radarr": {}, "sonarr": {}}
+    parsed_instances: dict[str, dict[str, dict[str, str]]] = {app: {} for app in APP_TYPES}
     for key in form:
         parts = key.split("__", 2)
         if len(parts) == 3 and parts[0] in parsed_instances:
             app_name, inst_name, field = parts
             parsed_instances[app_name].setdefault(inst_name, {})[field] = form[key]
 
-    for name in ("radarr", "sonarr"):
+    for name in APP_TYPES:
         current_instances = getattr(current_settings, name)
         new_config[name] = {}
 
@@ -488,11 +489,11 @@ async def save_settings(request: Request) -> RedirectResponse:
     setup_logging(new_settings.general.log_level, secrets)
 
     # Handle scheduler updates for each app's instances
-    for name in ("radarr", "sonarr"):
+    for name in APP_TYPES:
         new_instances = getattr(new_settings, name)
         old_instances = getattr(current_settings, name)
         clients_dict = getattr(request.app.state, f"{name}_clients", {})
-        client_class = RadarrClient if name == "radarr" else SonarrClient
+        client_class = {"radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient}[name]
 
         # Close clients for removed/disabled instances
         for inst_name in list(clients_dict.keys()):
@@ -576,7 +577,7 @@ async def tag_autocomplete(request: Request, app_name: str, instance_name: str) 
     Used by datalist inputs in the settings form via htmx hx-get on focus.
     Returns empty HTML if the app/instance is invalid or client unavailable.
     """
-    if app_name not in ("radarr", "sonarr"):
+    if app_name not in APP_TYPES:
         return HTMLResponse("")
     if len(instance_name) > 64:
         return HTMLResponse("")
@@ -606,7 +607,7 @@ async def add_instance(request: Request):
     app_name = form.get("app_name", "").strip()
     instance_name = form.get("instance_name", "").strip()
 
-    if app_name not in ("radarr", "sonarr"):
+    if app_name not in APP_TYPES:
         return HTMLResponse("Invalid app type", status_code=400)
 
     valid, err = validate_instance_name(instance_name)
@@ -653,7 +654,7 @@ async def remove_instance(request: Request, app_name: str, instance_name: str):
     Cleans up the scheduler job, client connection, and state entry.
     Writes updated config to TOML and redirects to settings page.
     """
-    if app_name not in ("radarr", "sonarr"):
+    if app_name not in APP_TYPES:
         return HTMLResponse("Invalid app type", status_code=400)
     if len(instance_name) > 64:
         return HTMLResponse("Instance name too long", status_code=400)
@@ -699,7 +700,7 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
     """Trigger an immediate search cycle for a specific instance and return updated card."""
     if len(instance_name) > 64:
         return HTMLResponse("Instance name too long", status_code=400)
-    if app_name not in ("radarr", "sonarr"):
+    if app_name not in APP_TYPES:
         return HTMLResponse("Invalid app", status_code=400)
 
     clients = getattr(request.app.state, f"{app_name}_clients", {})
@@ -717,7 +718,12 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
         logger.info("{name}/{inst}: Manual search rate-limited", name=app_name.title(), inst=instance_name)
         return HTMLResponse("Rate limited — try again shortly", status_code=429)
 
-    cycle_fn = run_radarr_cycle if app_name == "radarr" else run_sonarr_cycle
+    cycle_fns = {"radarr": run_radarr_cycle, "sonarr": run_sonarr_cycle, "lidarr": run_lidarr_cycle}
+    cycle_fn = cycle_fns.get(app_name)
+    if cycle_fn is None:
+        logger.warning("{app}: search cycle not implemented yet", app=app_name.title())
+        return HTMLResponse("Search not yet supported for this app type", status_code=501)
+
     async with request.app.state.search_lock:
         # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
         now = time.monotonic()
@@ -819,7 +825,7 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
             instance_id = instance_param
             # Determine app type by checking which app has this instance
             settings = request.app.state.settings
-            for app_name in ("radarr", "sonarr"):
+            for app_name in APP_TYPES:
                 if instance_id in settings.get_enabled_instances(app_name):
                     instance_app_type = app_name
                     break

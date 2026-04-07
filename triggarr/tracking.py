@@ -13,8 +13,7 @@ import httpx
 import pydantic
 from loguru import logger
 
-from triggarr.clients.radarr import RadarrClient
-from triggarr.clients.sonarr import SonarrClient
+from triggarr.clients.base import ArrClient
 from triggarr.correlation import SearchRecord, correlate_grabs
 from triggarr.db import get_trackable_entries, update_outcome_and_stats
 from triggarr.models.arr import GrabEvent
@@ -22,7 +21,7 @@ from triggarr.models.arr import GrabEvent
 
 async def run_tracking_check(
     db: aiosqlite.Connection,
-    client: RadarrClient | SonarrClient,
+    client: ArrClient,
     app_name: str,
     instance_id: str,
     tracking_window_minutes: int,
@@ -68,7 +67,11 @@ async def run_tracking_check(
                 inst=instance_id,
                 app=app_name,
                 id=item_id,
-                exc=exc,
+                exc=(
+                    f"HTTP {exc.response.status_code}"
+                    if isinstance(exc, httpx.HTTPStatusError)
+                    else type(exc).__name__
+                ),
             )
             counts["errors"] += len(group_entries)
             continue
@@ -145,6 +148,8 @@ def _determine_outcome(
         return _radarr_outcome(queue_type, grab_count, matched_grabs, window_expired)
     if app == "Sonarr":
         return _sonarr_outcome(queue_type, current_outcome, missing_count, grab_count, matched_grabs, window_expired)
+    if app == "Lidarr":
+        return _lidarr_outcome(queue_type, grab_count, matched_grabs, window_expired)
     return None, "", None
 
 
@@ -216,6 +221,30 @@ def _sonarr_outcome(
         return None, "", None
 
     # No grabs at all.
+    if window_expired:
+        return "unresolved", "no grabs detected within tracking window", None
+
+    # Still within window, no grabs yet -- keep waiting.
+    return None, "", None
+
+
+def _lidarr_outcome(
+    queue_type: str,
+    grab_count: int,
+    matched_grabs: list[GrabEvent],
+    window_expired: bool,
+) -> tuple[str | None, str, dict[str, int] | None]:
+    """Lidarr outcome logic -- binary: grabbed or unresolved.
+
+    Albums are atomic search units (like Radarr movies), so the outcome
+    is straightforward: either the album was grabbed or it wasn't.
+    """
+    if grab_count > 0:
+        source = (matched_grabs[0].sourceTitle or "unknown")[:200]
+        detail = f"grabbed: {source}"
+        stat_key = "albums_found" if queue_type == "missing" else "albums_updated"
+        return "grabbed", detail, {stat_key: 1}
+
     if window_expired:
         return "unresolved", "no grabs detected within tracking window", None
 

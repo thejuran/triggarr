@@ -8,6 +8,9 @@ from pathlib import Path
 from pydantic import BaseModel, SecretStr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
+APP_TYPES: tuple[str, ...] = ("radarr", "sonarr", "lidarr")
+"""Supported *arr application types. Used across config, state, scheduler, and routes."""
+
 
 def get_config_dir() -> Path:
     """Return the config directory, respecting TRIGGARR_CONFIG_DIR env var.
@@ -91,11 +94,12 @@ class Settings(BaseSettings):
     general: GeneralConfig = GeneralConfig()
     radarr: dict[str, InstanceConfig] = {}
     sonarr: dict[str, InstanceConfig] = {}
+    lidarr: dict[str, InstanceConfig] = {}
 
     @model_validator(mode="after")
     def validate_instances(self) -> Settings:
         """Enforce maximum 5 instances per app type."""
-        for app_type in ("radarr", "sonarr"):
+        for app_type in APP_TYPES:
             instances = getattr(self, app_type)
             if len(instances) > 5:
                 msg = f"Maximum 5 {app_type} instances allowed"
@@ -105,7 +109,7 @@ class Settings(BaseSettings):
     @property
     def has_enabled_app(self) -> bool:
         """Check if at least one instance across any app type is enabled with a URL."""
-        for app_type in ("radarr", "sonarr"):
+        for app_type in APP_TYPES:
             for cfg in getattr(self, app_type).values():
                 if cfg.enabled and cfg.url.strip():
                     return True

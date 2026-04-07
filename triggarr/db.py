@@ -21,6 +21,8 @@ from typing import Any
 import aiosqlite
 from loguru import logger
 
+from triggarr.models.config import APP_TYPES
+
 # Migration registry: version -> (description, migration_fn)
 # Populated after migration functions are defined below.
 MIGRATIONS: dict[int, tuple[str, Callable[[aiosqlite.Connection], Awaitable[None]]]] = {}
@@ -230,6 +232,20 @@ async def _migrate_v8(db: aiosqlite.Connection) -> None:
     logger.info("Recomputed episode stats from {n} Sonarr entries", n=total_fixed)
 
 
+async def _migrate_v9(db: aiosqlite.Connection) -> None:
+    """Add Lidarr album stat columns and seed row for lifetime_stats."""
+    with contextlib.suppress(sqlite3.OperationalError):
+        await db.execute("ALTER TABLE lifetime_stats ADD COLUMN albums_found INTEGER NOT NULL DEFAULT 0")
+    with contextlib.suppress(sqlite3.OperationalError):
+        await db.execute("ALTER TABLE lifetime_stats ADD COLUMN albums_updated INTEGER NOT NULL DEFAULT 0")
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    await db.execute(
+        "INSERT OR IGNORE INTO lifetime_stats (app, instance_id, last_reset_at) VALUES (?, ?, ?)",
+        ("Lidarr", "Default", now),
+    )
+    await db.commit()
+
+
 # Register migrations after functions are defined
 MIGRATIONS = {
     1: ("add outcome and detail columns", _migrate_v1),
@@ -240,6 +256,7 @@ MIGRATIONS = {
     6: ("add instance_id to search_history", _migrate_v6),
     7: ("rebuild lifetime_stats with composite key", _migrate_v7),
     8: ("recompute episode stats and fix partial_expired outcomes", _migrate_v8),
+    9: ("add Lidarr album stats columns", _migrate_v9),
 }
 
 
@@ -530,7 +547,11 @@ async def get_trackable_entries(
     return result
 
 
-_ALLOWED_STAT_COLUMNS = frozenset({"movies_found", "movies_updated", "episodes_found", "episodes_updated"})
+_ALLOWED_STAT_COLUMNS = frozenset({
+    "movies_found", "movies_updated",
+    "episodes_found", "episodes_updated",
+    "albums_found", "albums_updated",
+})
 
 
 async def update_outcome_and_stats(
@@ -644,8 +665,9 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
         instance_id: If set, scope stats to this instance only.
 
     Returns:
-        Dict with keys: overall_rate, radarr_rate, sonarr_rate, movies_found,
-        movies_updated, episodes_found, episodes_updated, avg_time_to_grab_seconds.
+        Dict with keys: overall_rate, radarr_rate, sonarr_rate, lidarr_rate,
+        movies_found, movies_updated, episodes_found, episodes_updated,
+        albums_found, albums_updated, avg_time_to_grab_seconds.
         Rate values are percentages (0-100) or None if no data.
     """
     # Build optional instance filter clause
@@ -669,8 +691,7 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
 
     total_grabbed = 0
     total_count = 0
-    radarr_rate: float | None = None
-    sonarr_rate: float | None = None
+    app_rates: dict[str, float | None] = {app: None for app in APP_TYPES}
 
     for row in effectiveness_rows:
         app_name = row["app"]
@@ -679,11 +700,9 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
         total_grabbed += grabbed
         total_count += count
         if count > 0:
-            rate = (grabbed / count) * 100
-            if app_name.lower() == "radarr":
-                radarr_rate = rate
-            elif app_name.lower() == "sonarr":
-                sonarr_rate = rate
+            app_key = app_name.lower()
+            if app_key in app_rates:
+                app_rates[app_key] = (grabbed / count) * 100
 
     overall_rate: float | None = (total_grabbed / total_count * 100) if total_count > 0 else None
 
@@ -692,15 +711,21 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
     movies_updated = 0
     episodes_found = 0
     episodes_updated = 0
+    albums_found = 0
+    albums_updated = 0
 
     if instance_id is not None:
         stats_query = (
-            "SELECT movies_found, movies_updated, episodes_found, episodes_updated "
+            "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
+            "albums_found, albums_updated "
             "FROM lifetime_stats WHERE instance_id = ?"
         )
         stats_params: tuple[str | int, ...] = (instance_id,)
     else:
-        stats_query = "SELECT movies_found, movies_updated, episodes_found, episodes_updated FROM lifetime_stats"
+        stats_query = (
+            "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
+            "albums_found, albums_updated FROM lifetime_stats"
+        )
         stats_params = ()
     async with db.execute(stats_query, stats_params) as cursor:
         stats_rows = await cursor.fetchall()
@@ -710,6 +735,8 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
         movies_updated += row["movies_updated"]
         episodes_found += row["episodes_found"]
         episodes_updated += row["episodes_updated"]
+        albums_found += row["albums_found"]
+        albums_updated += row["albums_updated"]
 
     # 3. Time-to-grab average
     async with db.execute(
@@ -724,11 +751,14 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
 
     return {
         "overall_rate": overall_rate,
-        "radarr_rate": radarr_rate,
-        "sonarr_rate": sonarr_rate,
+        "radarr_rate": app_rates.get("radarr"),
+        "sonarr_rate": app_rates.get("sonarr"),
+        "lidarr_rate": app_rates.get("lidarr"),
         "movies_found": movies_found,
         "movies_updated": movies_updated,
         "episodes_found": episodes_found,
         "episodes_updated": episodes_updated,
+        "albums_found": albums_found,
+        "albums_updated": albums_updated,
         "avg_time_to_grab_seconds": avg_seconds,
     }

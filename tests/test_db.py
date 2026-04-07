@@ -367,7 +367,7 @@ async def test_schema_version_tracked(tmp_path):
     """Schema version is tracked and reaches the expected final version."""
     db, db_path = await _init_test_db(tmp_path)
     version = await get_schema_version(db)
-    assert version == 8
+    assert version == 9
     await db.close()
 
 
@@ -380,15 +380,17 @@ async def test_backup_created_on_migration(tmp_path):
 
 
 async def test_lifetime_stats_table_seeded(tmp_path):
-    """lifetime_stats table has Radarr and Sonarr rows after migration."""
+    """lifetime_stats table has Radarr, Sonarr, and Lidarr rows after migration."""
     db, db_path = await _init_test_db(tmp_path)
     db.row_factory = aiosqlite.Row
     async with db.execute("SELECT * FROM lifetime_stats ORDER BY app") as cursor:
         rows = await cursor.fetchall()
     db.row_factory = None
-    assert len(rows) == 2
-    assert rows[0]["app"] == "Radarr"
-    assert rows[1]["app"] == "Sonarr"
+    assert len(rows) == 3
+    apps = [r["app"] for r in rows]
+    assert "Radarr" in apps
+    assert "Sonarr" in apps
+    assert "Lidarr" in apps
     assert rows[0]["movies_found"] == 0
     assert rows[0]["last_reset_at"] is not None
     await db.close()
@@ -695,7 +697,7 @@ async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
 
     # Verify migrations ran to completion (no FileNotFoundError)
     version = await get_schema_version(db)
-    assert version == 8
+    assert version == 9
 
     # Verify no backup file was created (guard skipped the copy)
     backup = db_path.with_suffix(".v0-backup")
@@ -978,9 +980,11 @@ async def test_migration_v7_lifetime_stats_composite_key(tmp_path):
         "SELECT app, instance_id FROM lifetime_stats ORDER BY app",
     ) as cursor:
         rows = await cursor.fetchall()
-    assert len(rows) == 2
-    assert tuple(rows[0]) == ("Radarr", "Default")
-    assert tuple(rows[1]) == ("Sonarr", "Default")
+    assert len(rows) == 3
+    apps = [(r[0], r[1]) for r in rows]
+    assert ("Lidarr", "Default") in apps
+    assert ("Radarr", "Default") in apps
+    assert ("Sonarr", "Default") in apps
 
     # Can insert new instance rows without violating PK
     now = "2026-01-01T00:00:00Z"

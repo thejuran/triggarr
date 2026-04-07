@@ -2,8 +2,8 @@
 
 Pure functions for filtering, batching, and deduplication, plus async
 cycle functions that compose them with API client calls to drive the
-automated search behaviour for Radarr and Sonarr.  Search history is
-persisted to SQLite via the ``triggarr.db`` module.
+automated search behaviour for Radarr, Sonarr, and Lidarr.  Search
+history is persisted to SQLite via the ``triggarr.db`` module.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import httpx
 import pydantic
 from loguru import logger
 
+from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import insert_search_entry
@@ -81,6 +82,11 @@ def _radarr_tags(item: dict) -> list[int]:
 def _sonarr_tags(item: dict) -> list[int]:
     """Extract tag IDs from a Sonarr episode dict (via series object)."""
     return item.get("series", {}).get("tags", [])
+
+
+def _lidarr_tags(item: dict) -> list[int]:
+    """Extract tag IDs from a Lidarr album dict (via artist object)."""
+    return item.get("artist", {}).get("tags", [])
 
 
 def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tuple[int, int]:
@@ -305,7 +311,7 @@ async def run_radarr_cycle(
         missing = await client.get_wanted_missing()
         cutoff = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
-        logger.warning("Radarr: Cycle aborted -- {exc}", exc=exc)
+        logger.warning("Radarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
         ist["connected"] = False
         ist["tag_warnings"] = []
         if not ist.get("unreachable_since"):
@@ -318,7 +324,7 @@ async def run_radarr_cycle(
     # the search cycle if it fails.
     try:
         total_items = await client.get_library_count()
-    except (httpx.HTTPError, pydantic.ValidationError):
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError):
         total_items = ist.get("total_items")  # keep previous value
 
     # Track connection health (WEBU-06)
@@ -356,7 +362,7 @@ async def run_radarr_cycle(
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
                 "Radarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=exc,
+                exc=_sanitize_exc(exc),
             )
             tags = []
 
@@ -411,7 +417,7 @@ async def run_radarr_cycle(
             logger.warning(
                 "Radarr: Failed to search {title}: {exc}",
                 title=movie.get("title", "unknown"),
-                exc=exc,
+                exc=_sanitize_exc(exc),
             )
             await insert_search_entry(
                 db, "Radarr", "missing", movie.get("title", "unknown"),
@@ -450,7 +456,7 @@ async def run_radarr_cycle(
             logger.warning(
                 "Radarr: Failed to search {title}: {exc}",
                 title=movie.get("title", "unknown"),
-                exc=exc,
+                exc=_sanitize_exc(exc),
             )
             await insert_search_entry(
                 db, "Radarr", "cutoff", movie.get("title", "unknown"),
@@ -521,7 +527,7 @@ async def run_sonarr_cycle(
         missing_episodes = await client.get_wanted_missing()
         cutoff_episodes = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
-        logger.warning("Sonarr: Cycle aborted -- {exc}", exc=exc)
+        logger.warning("Sonarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
         ist["connected"] = False
         ist["tag_warnings"] = []
         if not ist.get("unreachable_since"):
@@ -534,7 +540,7 @@ async def run_sonarr_cycle(
     # the search cycle if it fails.
     try:
         total_items = await client.get_library_count()
-    except (httpx.HTTPError, pydantic.ValidationError):
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError):
         total_items = ist.get("total_items")  # keep previous value
 
     # Track connection health (WEBU-06)
@@ -572,7 +578,7 @@ async def run_sonarr_cycle(
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
                 "Sonarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=exc,
+                exc=_sanitize_exc(exc),
             )
             tags = []
 
@@ -625,7 +631,7 @@ async def run_sonarr_cycle(
             logger.warning(
                 "Sonarr: Failed to search {name}: {exc}",
                 name=season.get("display_name", "unknown"),
-                exc=exc,
+                exc=_sanitize_exc(exc),
             )
             await insert_search_entry(
                 db, "Sonarr", "missing", season.get("display_name", "unknown"),
@@ -670,7 +676,7 @@ async def run_sonarr_cycle(
             logger.warning(
                 "Sonarr: Failed to search {name}: {exc}",
                 name=season.get("display_name", "unknown"),
-                exc=exc,
+                exc=_sanitize_exc(exc),
             )
             await insert_search_entry(
                 db, "Sonarr", "cutoff", season.get("display_name", "unknown"),
@@ -692,6 +698,222 @@ async def run_sonarr_cycle(
     elapsed = time.monotonic() - cycle_start
     logger.info(
         "Sonarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
+        elapsed=elapsed,
+        fetched=ist["missing_count"] + ist["cutoff_count"],
+        searched=searched_count,
+        skipped=skipped_count,
+    )
+
+    # --- Update last_run ---
+    ist["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return state
+
+
+async def run_lidarr_cycle(
+    client: LidarrClient,
+    state: TriggarrState,
+    instance_name: str,
+    instance_config: InstanceConfig,
+    settings: Settings,
+    db: aiosqlite.Connection,
+) -> TriggarrState:
+    """Run one complete Lidarr search cycle: missing batch then cutoff batch.
+
+    Fetches the current wanted-missing and wanted-cutoff album lists,
+    filters to monitored items, slices a batch from each queue using
+    independent cursors, triggers ``AlbumSearch`` for each album, and
+    logs the result.
+
+    Albums are atomic search units (like Radarr movies), so no
+    deduplication step is needed (unlike Sonarr episodes → seasons).
+
+    Individual search failures are logged and skipped (skip-and-continue).
+    If the fetch calls themselves fail (network/HTTP errors), the entire
+    cycle aborts and cursors remain unchanged.
+
+    Args:
+        client: Connected Lidarr API client.
+        state: Mutable application state (modified in place).
+        instance_name: Name of this Lidarr instance (e.g., "Default").
+        instance_config: Configuration for this specific instance.
+        settings: Application settings with general config (hard_max, etc.).
+        db: Open aiosqlite connection for search history persistence.
+
+    Returns:
+        Updated state with new cursor positions and last_run timestamp.
+    """
+    cycle_start = time.monotonic()
+    if instance_name not in state["lidarr"]:
+        logger.warning("Lidarr: instance {name} not in state -- skipping", name=instance_name)
+        return state
+    ist = state["lidarr"][instance_name]
+
+    try:
+        missing = await client.get_wanted_missing()
+        cutoff = await client.get_wanted_cutoff()
+    except (httpx.HTTPError, pydantic.ValidationError) as exc:
+        logger.warning("Lidarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
+        ist["connected"] = False
+        ist["tag_warnings"] = []
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = (
+                datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            )
+        return state
+
+    # Library count is cosmetic (dashboard denominator) -- never abort
+    # the search cycle if it fails.
+    try:
+        total_items = await client.get_library_count()
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError):
+        total_items = ist.get("total_items")  # keep previous value
+
+    # Track connection health
+    ist["connected"] = True
+    ist["unreachable_since"] = None
+
+    # Cache raw item counts before filtering
+    ist["missing_count"] = len(missing)
+    ist["cutoff_count"] = len(cutoff)
+    ist["total_items"] = total_items
+
+    # Apply hard max cap
+    missing_limit = instance_config.search_missing_count
+    cutoff_limit = instance_config.search_cutoff_count
+    hard_max = settings.general.hard_max_per_cycle
+    orig_missing, orig_cutoff = missing_limit, cutoff_limit
+    missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
+    if hard_max > 0 and (missing_limit != orig_missing or cutoff_limit != orig_cutoff):
+        logger.debug(
+            "Lidarr: Hard max {max} applied -- missing={m}, cutoff={c}",
+            max=hard_max,
+            m=missing_limit,
+            c=cutoff_limit,
+        )
+
+    # --- Tag resolution (only when at least one tag is configured) ---
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    ist["tag_warnings"] = []
+    if instance_config.missing_tag or instance_config.cutoff_tag:
+        tag_fetch_ok = False
+        try:
+            tags = await client.get_tags()
+            tag_fetch_ok = True
+        except (httpx.HTTPError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "Lidarr: Failed to fetch tags -- skipping tag filtering: {exc}",
+                exc=_sanitize_exc(exc),
+            )
+            tags = []
+
+        if instance_config.missing_tag:
+            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
+            if missing_tag_id is None and tag_fetch_ok:
+                logger.warning(
+                    "Lidarr: Tag '{tag}' not found -- searching all missing items",
+                    tag=instance_config.missing_tag,
+                )
+                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
+
+        if instance_config.cutoff_tag:
+            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
+            if cutoff_tag_id is None and tag_fetch_ok:
+                logger.warning(
+                    "Lidarr: Tag '{tag}' not found -- searching all cutoff items",
+                    tag=instance_config.cutoff_tag,
+                )
+                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
+
+    searched_count = 0
+    skipped_count = 0
+
+    # --- Missing queue ---
+    missing = filter_monitored(missing)
+    ist["missing_monitored"] = len(missing)
+    if missing_tag_id is not None:
+        missing = filter_by_tag(missing, missing_tag_id, _lidarr_tags)
+        logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+    ist["missing_eligible"] = len(missing)
+    cursor = ist["missing_cursor"]
+    batch, new_cursor = slice_batch(missing, cursor, missing_limit)
+    for album in batch:
+        title = album.get("title", "unknown")
+        try:
+            await client.search_albums([album["id"]])
+            await insert_search_entry(
+                db, "Lidarr", "missing", title,
+                outcome="searched", detail="search triggered",
+                item_id=album["id"],
+                instance_id=instance_name,
+                max_rows=settings.general.max_history_rows,
+            )
+            logger.info("Lidarr: Searched {title} (missing)", title=title)
+            searched_count += 1
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
+            logger.warning(
+                "Lidarr: Failed to search {title}: {exc}",
+                title=title,
+                exc=_sanitize_exc(exc),
+            )
+            await insert_search_entry(
+                db, "Lidarr", "missing", title,
+                outcome="failed", detail=_sanitize_exc(exc),
+                item_id=album.get("id"),
+                instance_id=instance_name,
+                max_rows=settings.general.max_history_rows,
+            )
+            skipped_count += 1
+    ist["missing_cursor"] = new_cursor
+    if new_cursor == 0 and batch:
+        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+        pass_num = ist["missing_pass"]
+        logger.info("Lidarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
+
+    # --- Cutoff queue ---
+    cutoff = filter_monitored(cutoff)
+    if cutoff_tag_id is not None:
+        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _lidarr_tags)
+        logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+    cursor = ist["cutoff_cursor"]
+    batch, new_cursor = slice_batch(cutoff, cursor, cutoff_limit)
+    for album in batch:
+        title = album.get("title", "unknown")
+        try:
+            await client.search_albums([album["id"]])
+            await insert_search_entry(
+                db, "Lidarr", "cutoff", title,
+                outcome="searched", detail="search triggered",
+                item_id=album["id"],
+                instance_id=instance_name,
+                max_rows=settings.general.max_history_rows,
+            )
+            logger.info("Lidarr: Searched {title} (cutoff)", title=title)
+            searched_count += 1
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
+            logger.warning(
+                "Lidarr: Failed to search {title}: {exc}",
+                title=title,
+                exc=_sanitize_exc(exc),
+            )
+            await insert_search_entry(
+                db, "Lidarr", "cutoff", title,
+                outcome="failed", detail=_sanitize_exc(exc),
+                item_id=album.get("id"),
+                instance_id=instance_name,
+                max_rows=settings.general.max_history_rows,
+            )
+            skipped_count += 1
+    ist["cutoff_cursor"] = new_cursor
+    if new_cursor == 0 and batch:
+        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+        pass_num = ist["cutoff_pass"]
+        logger.info("Lidarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
+
+    # --- Diagnostic summary ---
+    elapsed = time.monotonic() - cycle_start
+    logger.info(
+        "Lidarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
         elapsed=elapsed,
         fetched=ist["missing_count"] + ist["cutoff_count"],
         searched=searched_count,
