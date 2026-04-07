@@ -1,19 +1,19 @@
 # GSD State
 
-**Active Milestone:** none
-**Active Slice:** none
+**Active Milestone:** M002 — Uniform CI & Release
+**Active Slice:** S01 — Gate All Releases on CI (complete)
 **Active Task:** none
-**Phase:** idle
-**Slice Branch:** —
+**Phase:** awaiting merge
+**Slice Branch:** gsd/M002/S01
 **Active Workspace:** /Users/julianamacbook/triggarr
-**Next Action:** All requirements validated. Ready for new milestone when needed.
-**Last Updated:** 2026-03-21
-**Requirements Status:** 0 active · 18 validated · 2 deferred · 3 out of scope
+**Next Action:** Push branch and merge to main
+**Last Updated:** 2026-04-06
 
 ## Recent Decisions
 
-- All 12 previously "active" requirements confirmed implemented and tested in M001 — moved to validated
-- M002 removed (no work needed)
+- Unified workflow_run for both release paths (Decision #1 2026-04-06 fully implemented)
+- SHA-pinned all third-party actions in release workflow
+- Removed :main Docker tag from tag releases (dev-only now)
 
 ## Blockers
 
