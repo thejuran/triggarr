@@ -177,7 +177,6 @@
                 + Add
             </button>
         </div>
-        <form id="add-{{ app_name }}" method="post" action="{{ request.url_for('add_instance') }}"></form>
     </section>
     {% endfor %}
 
@@ -188,4 +187,9 @@
         </button>
     </div>
 </form>
+
+<!-- Add-instance forms must live outside the main settings form to avoid nested <form> (illegal in HTML) -->
+{% for app_name in apps %}
+<form id="add-{{ app_name }}" method="post" action="{{ request.url_for('add_instance') }}"></form>
+{% endfor %}
 {% endblock %}
