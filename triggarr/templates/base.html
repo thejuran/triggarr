@@ -17,7 +17,11 @@
     <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
-        <span class="text-xs text-triggarr-muted">{{ triggarr_version }}</span>
+        <button onclick="openChangelog()" type="button"
+                class="text-xs text-triggarr-muted hover:text-white transition-colors cursor-pointer"
+                title="View changelog">
+          {{ triggarr_version }}
+        </button>
         {% if update_info and update_info.update_available %}
         <a href="{{ update_info.html_url }}" target="_blank" rel="noopener"
            class="text-xs bg-triggarr-green/15 text-triggarr-green px-2 py-0.5 rounded-full hover:bg-triggarr-green/25 transition-colors"
@@ -42,6 +46,38 @@
       </div>
     </div>
   </nav>
+
+  <!-- Changelog Modal -->
+  <div id="changelog-modal" style="display:none" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/60" onclick="closeChangelog()"></div>
+    <div class="relative bg-triggarr-card border border-triggarr-border rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-triggarr-border shrink-0">
+        <h2 class="text-lg font-semibold text-white">Changelog</h2>
+        <button onclick="closeChangelog()" type="button"
+                class="text-triggarr-muted hover:text-white transition-colors text-xl leading-none">&times;</button>
+      </div>
+      <div id="changelog-body" class="px-6 py-4 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <script>
+    function openChangelog() {
+      var modal = document.getElementById('changelog-modal');
+      var body = document.getElementById('changelog-body');
+      modal.style.display = 'flex';
+      if (!body.dataset.loaded) {
+        body.dataset.loaded = 'true';
+        htmx.ajax('GET', '{{ request.url_for("changelog") }}', {target: '#changelog-body', swap: 'innerHTML'});
+      }
+    }
+    function closeChangelog() {
+      document.getElementById('changelog-modal').style.display = 'none';
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeChangelog();
+    });
+  </script>
+
   <main class="max-w-5xl mx-auto px-6 py-6">
     {% block content %}{% endblock %}
   </main>

@@ -1,19 +1,20 @@
 # GSD State
 
-**Active Milestone:** M003 — Lidarr Support
-**Active Slice:** S03 — Web UI & Templates (COMPLETE)
+**Active Milestone:** M005 — In-App Changelog
+**Active Slice:** —
 **Active Task:** —
-**Phase:** review
-**Slice Branch:** gsd/M003/S03
+**Phase:** planning
+**Slice Branch:** —
 **Active Workspace:** /Users/julianamacbook/triggarr
-**Next Action:** Deep review of S03, then merge M003
-**Last Updated:** 2026-04-06
+**Next Action:** Plan S01 tasks, then execute
+**Last Updated:** 2026-04-07
 
 ## Recent Decisions
 
-- M002 complete (CI-gated releases), PR #15 awaiting merge
-- M003 created: Lidarr support as third app type
-- Lidarr API v1 prefix, album-level search, tags on artist objects
+- M003 shipped as v2.6.0 (Lidarr support)
+- Hotfix: Lidarr tracking eventType must be integer (1), not string ("grabbed")
+- Cross-instance dedup tabled to someday/maybe — revisit if users request
+- Changelog follows Tautulli model: local CHANGELOG.md, read from disk, no GitHub API
 
 ## Blockers
 

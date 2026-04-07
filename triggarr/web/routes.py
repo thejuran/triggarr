@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
+from triggarr.changelog import read_changelog
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
@@ -869,3 +870,15 @@ async def dismiss_migration(request: Request) -> HTMLResponse:
         return HTMLResponse("Forbidden", status_code=403)
     (CONFIG_DIR / ".migrated").unlink(missing_ok=True)
     return HTMLResponse("")
+
+
+@router.get("/changelog", response_class=HTMLResponse)
+async def changelog(request: Request) -> HTMLResponse:
+    """Return rendered changelog HTML for the modal.
+
+    When called with ``?latest=true``, returns only the most recent
+    version section.  Otherwise returns the full changelog.
+    """
+    latest_only = request.query_params.get("latest", "").lower() == "true"
+    html_content = read_changelog(latest_only=latest_only)
+    return HTMLResponse(html_content)

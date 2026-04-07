@@ -28,6 +28,7 @@ WORKDIR /app
 
 COPY pyproject.toml .
 COPY triggarr/ triggarr/
+COPY CHANGELOG.md .
 RUN pip install --no-cache-dir .
 
 # Pull compiled CSS from the builder stage

@@ -1926,3 +1926,32 @@ def test_stats_row_includes_albums(client, test_app):
         assert response.status_code == 200
         assert "Albums" in response.text
         assert "8" in response.text  # albums_found
+
+
+# --- Changelog ---
+
+
+def test_changelog_route_returns_html(client, test_app):
+    """GET /changelog returns 200 with HTML content."""
+    response = client.get("/changelog")
+    assert response.status_code == 200
+    assert "v2.6.0" in response.text or "changelog" in response.text.lower()
+
+
+def test_changelog_route_latest_only(client, test_app):
+    """GET /changelog?latest=true returns only the newest version."""
+    response = client.get("/changelog?latest=true")
+    assert response.status_code == 200
+    full = client.get("/changelog")
+    # If full changelog has multiple versions, latest should have exactly 1
+    if "not available" not in full.text and full.text.count("changelog-version") > 1:
+        assert len(response.text) < len(full.text)
+        assert response.text.count("changelog-version") == 1
+
+
+def test_changelog_link_in_nav(client, test_app):
+    """Dashboard page includes changelog link in the nav bar."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "/changelog" in response.text
+    assert "changelog-modal" in response.text
