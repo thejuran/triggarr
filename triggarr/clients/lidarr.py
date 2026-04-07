@@ -72,12 +72,16 @@ class LidarrClient(ArrClient):
         Uses the ``/api/v1/history`` endpoint filtered to grabbed events
         for the given album ID.  Lidarr's history is paginated, so we
         fetch page 1 with a reasonable size to capture recent grabs.
+
+        Note: Lidarr's ``eventType`` query parameter accepts **integers**
+        (not strings like Radarr/Sonarr v3).  The enum value for
+        ``grabbed`` is ``1`` (Unknown=0, Grabbed=1, ...).
         """
         response = await self.get(
             "/api/v1/history",
             params={
                 "albumId": album_id,
-                "eventType": "grabbed",
+                "eventType": 1,
                 "page": 1,
                 "pageSize": self._page_size,
                 "sortKey": "date",

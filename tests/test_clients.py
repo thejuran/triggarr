@@ -662,7 +662,7 @@ async def test_lidarr_get_grab_history_returns_grab_events() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert "/api/v1/history" in str(request.url.path)
         assert request.url.params["albumId"] == "42"
-        assert request.url.params["eventType"] == "grabbed"
+        assert request.url.params["eventType"] == "1"
         # Lidarr history is paginated
         body = {
             "page": 1, "pageSize": 50, "totalRecords": 2,
