@@ -102,6 +102,50 @@ async def test_silent_failure_timeout() -> None:
     assert result is None
 
 
+async def test_prerelease_tag_not_offered_as_update() -> None:
+    """check_for_update returns update_available=False for pre-release tags."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "tag_name": "v99.0.0-dev",
+        "html_url": "https://github.com/thejuran/triggarr/releases/tag/v99.0.0-dev",
+        "prerelease": False,  # Even if GitHub doesn't mark it, the tag suffix triggers skip
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    with patch("triggarr.update_check.httpx.AsyncClient", return_value=mock_client):
+        result = await check_for_update()
+
+    assert result is not None
+    assert result["update_available"] is False
+
+
+async def test_github_prerelease_flag_not_offered_as_update() -> None:
+    """check_for_update returns update_available=False when GitHub marks release as prerelease."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "tag_name": "v99.0.0",
+        "html_url": "https://github.com/thejuran/triggarr/releases/tag/v99.0.0",
+        "prerelease": True,
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    with patch("triggarr.update_check.httpx.AsyncClient", return_value=mock_client):
+        result = await check_for_update()
+
+    assert result is not None
+    assert result["update_available"] is False
+
+
 async def test_rejects_non_github_html_url() -> None:
     """check_for_update returns None when html_url is not a GitHub URL."""
     mock_response = MagicMock()

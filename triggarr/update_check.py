@@ -70,6 +70,16 @@ async def check_for_update() -> dict | None:
 
             latest_version = tag_name.lstrip("v")
 
+            # Skip pre-release tags (dev, rc, alpha, beta) — only show
+            # stable releases as available updates.
+            if data.get("prerelease") or re.search(r"-(dev|rc|alpha|beta)", tag_name, re.IGNORECASE):
+                logger.debug("Update check: skipping pre-release {tag}", tag=tag_name)
+                return {
+                    "latest_version": latest_version,
+                    "update_available": False,
+                    "html_url": html_url,
+                }
+
             remote = _parse_version(tag_name)
             current = _parse_version(__version__)
 
