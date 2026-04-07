@@ -135,7 +135,7 @@
                  {% else %}bg-blue-500/20 text-blue-400{% endif %}">
             {{ entry.app }}
           </span>
-          {% if entry.instance_id and entry.instance_id != 'Default' %}
+          {% if entry.instance_id and entry.instance_id != 'Default' and entry.instance_id != entry.app %}
           <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">
             {{ entry.instance_id }}
           </span>
