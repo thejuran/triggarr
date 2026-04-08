@@ -10,7 +10,7 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ## Current State
 
-~9,500 Python LOC. 389 tests passing. 7 milestones shipped (v1.0–v2.3.1). All 18 requirements validated, 0 active. 2 deferred (cross-instance dedup, dynamic hot-add).
+~10,000 Python LOC. 520 tests passing. 8 milestones shipped (v1.0–v2.6.1-dev). All 18 requirements validated, 0 active. 2 deferred (cross-instance dedup, dynamic hot-add).
 
 Key capabilities delivered:
 - Round-robin search engine with per-app cursors and season-level Sonarr search
@@ -46,3 +46,5 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 - [x] M-v2.1: Harden & Fix — Config dir, reverse proxy, path validation, temp file safety (shipped 2026-03-09)
 - [x] M-v2.2: Skip Unreleased Media — Unreleased filter, eligible counts, dashboard skip badges (shipped 2026-03-09)
 - [x] M001: Multi-Instance & Tag Filtering — Multiple *arr instances, per-instance tags, scoped observability, version display (shipped 2026-03-11)
+- [x] M004: Version Bump & Release Tag Cleanup — deleted dev tags, version already correct (shipped 2026-04-07)
+- [x] M005: In-App Changelog — Local CHANGELOG.md, regex parser, htmx modal in nav bar (shipped 2026-04-07)

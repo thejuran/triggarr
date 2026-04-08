@@ -1,20 +1,20 @@
 # GSD State
 
-**Active Milestone:** M005 — In-App Changelog
+**Active Milestone:** —
 **Active Slice:** —
 **Active Task:** —
-**Phase:** planning
+**Phase:** idle
 **Slice Branch:** —
 **Active Workspace:** /Users/julianamacbook/triggarr
-**Next Action:** Plan S01 tasks, then execute
+**Next Action:** Plan new work or pick from QUEUE.md (only someday/maybe items remain)
 **Last Updated:** 2026-04-07
 
 ## Recent Decisions
 
+- M004 shipped — deleted v2.6.1-dev tag from GitHub, version strings already correct
+- M005 shipped — in-app changelog with Tautulli model
 - M003 shipped as v2.6.0 (Lidarr support)
-- Hotfix: Lidarr tracking eventType must be integer (1), not string ("grabbed")
-- Cross-instance dedup tabled to someday/maybe — revisit if users request
-- Changelog follows Tautulli model: local CHANGELOG.md, read from disk, no GitHub API
+- Cross-instance dedup tabled to someday/maybe
 
 ## Blockers
 

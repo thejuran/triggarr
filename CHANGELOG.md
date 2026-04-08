@@ -1,25 +1,20 @@
 # Changelog
 
-## v2.6.1 (Unreleased)
+## v2.7.0 (2026-04-07)
+
+* Features:
+
+  * Add Lidarr support — search missing and upgrade-eligible albums, grab tracking, tag filtering
+  * Lidarr instances configurable in settings UI with independent schedules and batch sizes
+  * Dashboard shows Lidarr cards with health, queue sizes, and effectiveness stats
+  * Search history includes Lidarr entries with per-instance filtering
+  * Add in-app changelog — click the version in nav bar to see what's new
 
 * Fixes:
 
   * Fix Lidarr tracking HTTP 400 — eventType must be integer (1), not string
-  * Fix redundant instance badge showing when instance name matches app name (case-insensitive)
-  * Fix dev build version display in nav bar
-
-## v2.6.0 (2026-04-06)
-
-* Features:
-
-  * Add Lidarr support as third *arr app type — search missing/cutoff albums, grab tracking, tag filtering
-  * Lidarr instances configurable in settings UI with independent schedules and batch sizes
-  * Dashboard shows Lidarr cards with health, queue sizes, and effectiveness stats
-  * Search history includes Lidarr entries with per-instance filtering
-
-* Fixes:
-
   * Fix Lidarr badge in dashboard search log showing green instead of Sonarr blue
+  * Fix redundant instance badge showing when instance name matches app name (case-insensitive)
   * Move add-instance forms outside main form to fix Save Settings button
   * Gate Docker build on tests and lint passing
 

@@ -3,9 +3,9 @@
 [![CI](https://github.com/thejuran/triggarr/actions/workflows/ci.yml/badge.svg)](https://github.com/thejuran/triggarr/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/badge/ghcr.io-thejuran%2Ftriggarr-blue?logo=docker)](https://ghcr.io/thejuran/triggarr)
 
-Python automation daemon that triggers searches in Radarr and Sonarr on a schedule.
+Python automation daemon that triggers searches in Radarr, Sonarr, and Lidarr on a schedule.
 
-Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a timer. Triggarr does -- set a schedule, walk away.
+Radarr, Sonarr, and Lidarr don't auto-search for missing and upgrade-eligible media on a timer. Triggarr does -- set a schedule, walk away.
 
 ## Table of Contents
 
@@ -19,8 +19,13 @@ Radarr and Sonarr don't auto-search for missing and upgrade-eligible media on a 
 
 ## Features
 
+- **Radarr, Sonarr, and Lidarr** — movies, TV shows, and music albums
 - Scheduled searches for missing and upgrade-eligible media
-- Web dashboard with real-time connection status and search history
+- Multi-instance support — run multiple instances of each app with independent schedules
+- Tag-based filtering — scope searches to specific tags per instance
+- Closed-loop tracking — polls *arr history to confirm what was actually grabbed
+- Web dashboard with real-time connection status, grab effectiveness stats, and search history
+- In-app changelog — see what's new without leaving the UI
 - Browser-based config editor -- no manual TOML editing needed
 - Hard max limit to cap searches per cycle (safety ceiling)
 - Persistent SQLite search history (survives restarts)
@@ -65,7 +70,7 @@ volumes:
   triggarr_config:
 ```
 
-Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:8484) to configure your Radarr/Sonarr connection.
+Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:8484) to configure your Radarr, Sonarr, and/or Lidarr connections.
 
 On first run, a default config file is auto-generated at `/config/triggarr.toml`. Use the web UI to configure -- no need to edit the file by hand.
 
@@ -74,7 +79,7 @@ On first run, a default config file is auto-generated at `/config/triggarr.toml`
 Requires Python 3.11+. Download the `.whl` from the [latest release](https://github.com/thejuran/triggarr/releases/latest), or install directly:
 
 ```bash
-pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.4.0-py3-none-any.whl
+pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.7.0-py3-none-any.whl
 ```
 
 Set the config directory and run:
@@ -141,6 +146,16 @@ enabled = false                     # default: false -- set to true to activate
 search_interval = 30                # default: 30 (minutes between search cycles)
 search_missing_count = 5            # default: 5 (missing items to search per cycle)
 search_cutoff_count = 5             # default: 5 (cutoff/upgrade items to search per cycle)
+
+[lidarr]
+# Lidarr connection settings
+url = "http://lidarr:8686"          # Lidarr base URL (string, required if enabled)
+api_key = "your-api-key-here"       # From Lidarr > Settings > General > API Key
+enabled = false                     # default: false -- set to true to activate
+
+search_interval = 30                # default: 30 (minutes between search cycles)
+search_missing_count = 5            # default: 5 (missing albums to search per cycle)
+search_cutoff_count = 5             # default: 5 (cutoff/upgrade albums to search per cycle)
 ```
 
 Environment variable overrides are supported via pydantic-settings (e.g., `TRIGGARR_GENERAL__LOG_LEVEL=debug`), but TOML is the primary configuration method.
