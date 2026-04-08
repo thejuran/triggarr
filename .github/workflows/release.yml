@@ -64,9 +64,15 @@ jobs:
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "Triggarr ${{ github.ref_name }}" \
-            --generate-notes \
-            --latest \
-            dist/*
+          if gh release view "$TAG_NAME" &>/dev/null; then
+            echo "Release $TAG_NAME already exists — uploading artifacts only"
+            gh release upload "$TAG_NAME" dist/* --clobber
+          else
+            gh release create "$TAG_NAME" \
+              --title "Triggarr $TAG_NAME" \
+              --generate-notes \
+              --latest \
+              dist/*
+          fi
