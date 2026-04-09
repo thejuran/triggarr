@@ -136,10 +136,11 @@ Plans:
   2. Tests pass that simulate an instance going down mid-search-cycle and verify the cycle completes without crashing
   3. Tests pass that simulate malformed JSON, unexpected HTTP status codes (401, 403, 500, 502), and truncated paginated responses from *arr instances
   4. Tests pass that verify Sonarr v3/v4 API version mismatch edge cases are handled without exceptions
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 46-01: TBD
+- [ ] 46-01-PLAN.md — Connection failure tests (DNS, SSL, timeout, mid-cycle all-fail, unreachable_since)
+- [ ] 46-02-PLAN.md — Bad API response tests (malformed JSON, 403/502 status, Sonarr version edge cases, truncated pagination)
 
 ### Phase 47: Test Hardening -- State & Search Edge Cases
 **Goal**: The test suite verifies Triggarr recovers from corrupt persistent state and handles search logic boundary conditions correctly
@@ -163,5 +164,5 @@ Phases execute in numeric order: 45 → 46 → 47
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 45. Community Health & Repo Metadata | v2.4 | 2/2 | Complete | 2026-04-09 |
-| 46. Test Hardening -- Infrastructure Failures | v2.4 | 0/? | Not started | - |
+| 46. Test Hardening -- Infrastructure Failures | v2.4 | 0/2 | Not started | - |
 | 47. Test Hardening -- State & Search Edge Cases | v2.4 | 0/? | Not started | - |
