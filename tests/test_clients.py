@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -834,5 +835,138 @@ async def test_lidarr_search_albums_sends_correct_command() -> None:
     try:
         response = await client.search_albums(album_ids=[10, 20, 30])
         assert response.status_code == 200
+    finally:
+        await client.close()
+
+
+# ---------------------------------------------------------------------------
+# Bad API response tests (Phase 46, Plan 02)
+# ---------------------------------------------------------------------------
+
+
+async def test_validate_connection_403() -> None:
+    """validate_connection returns False on 403 Forbidden (API-02)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.validate_connection()
+        assert result is False
+    finally:
+        await client.close()
+
+
+async def test_validate_connection_502() -> None:
+    """validate_connection returns False on 502 Bad Gateway (API-02)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.validate_connection()
+        assert result is False
+    finally:
+        await client.close()
+
+
+async def test_get_paginated_invalid_json() -> None:
+    """get_paginated raises on invalid JSON response body (API-01)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not json at all", headers={"content-type": "application/json"})
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        with pytest.raises(json.JSONDecodeError):
+            await client.get_paginated("/items")
+    finally:
+        await client.close()
+
+
+async def test_get_paginated_truncated_response() -> None:
+    """get_paginated returns actual records when totalRecords exceeds reality (API-04)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {
+            "page": 1,
+            "pageSize": 50,
+            "sortKey": "id",
+            "totalRecords": 10,
+            "records": [{"id": 1}, {"id": 2}, {"id": 3}],
+        }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_paginated("/items")
+        # page*pageSize (1*50=50) >= totalRecords (10), so terminates after page 1
+        assert len(result) == 3
+    finally:
+        await client.close()
+
+
+async def test_get_paginated_mid_pagination_empty_page() -> None:
+    """get_paginated terminates when mid-pagination page returns empty records (API-04)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params.get("page", "1")
+        if page == "1":
+            body = {
+                "page": 1,
+                "pageSize": 2,
+                "sortKey": "id",
+                "totalRecords": 6,
+                "records": [{"id": 1}, {"id": 2}],
+            }
+        else:
+            body = {
+                "page": 2,
+                "pageSize": 2,
+                "sortKey": "id",
+                "totalRecords": 6,
+                "records": [],
+            }
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_paginated("/items", page_size=2)
+        assert len(result) == 2
+    finally:
+        await client.close()
+
+
+async def test_get_paginated_missing_records_key() -> None:
+    """get_paginated raises ValidationError when response lacks records key (API-04)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {"page": 1, "pageSize": 50, "sortKey": "id", "totalRecords": 5}
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        with pytest.raises(pydantic.ValidationError):
+            await client.get_paginated("/items")
     finally:
         await client.close()
