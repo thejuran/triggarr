@@ -121,11 +121,11 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   3. A user clicking "New Issue" sees structured bug report and feature request forms (not blank textarea), with blank issues disabled and a Discussions contact link
   4. A contributor opening a PR sees a template with a CI checklist
   5. The repo is discoverable via GitHub topics and has Discussions enabled with General and Q&A categories
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 45-01: TBD
-- [ ] 45-02: TBD
+- [ ] 45-01-PLAN.md — Community health files (CONTRIBUTING.md, SECURITY.md, LICENSE)
+- [ ] 45-02-PLAN.md — GitHub templates (issue forms, PR template) and repo metadata (topics, Discussions)
 
 ### Phase 46: Test Hardening -- Infrastructure Failures
 **Goal**: The test suite verifies Triggarr handles network and API failures gracefully without crashing or corrupting state
@@ -162,6 +162,6 @@ Phases execute in numeric order: 45 → 46 → 47
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 45. Community Health & Repo Metadata | v2.4 | 0/? | Not started | - |
+| 45. Community Health & Repo Metadata | v2.4 | 0/2 | Not started | - |
 | 46. Test Hardening -- Infrastructure Failures | v2.4 | 0/? | Not started | - |
 | 47. Test Hardening -- State & Search Edge Cases | v2.4 | 0/? | Not started | - |
