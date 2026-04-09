@@ -2203,3 +2203,142 @@ async def test_tag_warnings_cleared_on_lidarr_connectivity_failure(tmp_path):
     assert ist["tag_warnings"] == []
     assert ist["connected"] is False
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Connection failure gap tests (Phase 46, Plan 01)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_radarr_cycle_dns_failure(tmp_path):
+    """Radarr cycle aborts gracefully on DNS resolution failure (CONN-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        side_effect=httpx.ConnectError("[Errno -2] Name or service not known")
+    )
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["connected"] is False
+    await db.close()
+
+
+async def test_run_radarr_cycle_ssl_error(tmp_path):
+    """Radarr cycle aborts gracefully on SSL/TLS error (CONN-03)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        side_effect=httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED]")
+    )
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["connected"] is False
+    await db.close()
+
+
+async def test_run_radarr_cycle_timeout_aborts(tmp_path):
+    """Radarr cycle aborts gracefully on timeout during fetch (CONN-01 gap)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        side_effect=httpx.TimeoutException("timed out")
+    )
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["connected"] is False
+    await db.close()
+
+
+async def test_run_radarr_cycle_sets_unreachable_since(tmp_path):
+    """Radarr cycle sets unreachable_since on first connection failure (CONN-01 gap)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        side_effect=httpx.ConnectError("refused")
+    )
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["unreachable_since"] is not None
+    assert isinstance(result["radarr"]["Default"]["unreachable_since"], str)
+    await db.close()
+
+
+async def test_run_radarr_cycle_preserves_unreachable_since(tmp_path):
+    """Radarr cycle preserves existing unreachable_since on repeat failure (CONN-01 gap)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        side_effect=httpx.ConnectError("refused")
+    )
+
+    state = _make_test_state()
+    state["radarr"]["Default"]["unreachable_since"] = "2026-01-01T00:00:00Z"
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["unreachable_since"] == "2026-01-01T00:00:00Z"
+    await db.close()
+
+
+async def test_run_radarr_cycle_all_searches_fail(tmp_path):
+    """Radarr cycle completes without crash when all search commands fail (CONN-04 gap)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "monitored": True, "title": "M1"},
+            {"id": 2, "monitored": True, "title": "M2"},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=100)
+    client.get_tags = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock(side_effect=httpx.ConnectError("instance down"))
+    client.get_grab_history = AsyncMock(return_value=[])
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Fetch succeeded so connected is True
+    assert result["radarr"]["Default"]["connected"] is True
+    # Both items attempted (even though both failed)
+    assert client.search_movies.call_count == 2
+    await db.close()
