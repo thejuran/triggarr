@@ -151,10 +151,11 @@ Plans:
   2. Tests pass that verify recovery from corrupt SQLite (locked DB, schema mismatch) and invalid JSON state files (truncated, wrong structure)
   3. Tests pass that verify config migration handles unexpected starting states (partial migration, unknown fields, missing sections)
   4. Tests pass that verify correct search behavior with empty queues, all items filtered by tags, nonexistent configured tags, batch size exceeding available items, and cursor position exceeding queue length
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 47-01: TBD
+- [ ] 47-01-PLAN.md — Corrupt state/config tests (broken TOML, corrupt SQLite, invalid JSON state, migration edge cases)
+- [ ] 47-02-PLAN.md — Search edge-case tests (empty queues, all-filtered-by-tag, Lidarr tag resolution, SRCH-04/05 coverage documentation)
 
 ## Progress
 
@@ -165,4 +166,4 @@ Phases execute in numeric order: 45 → 46 → 47
 |-------|-----------|----------------|--------|-----------|
 | 45. Community Health & Repo Metadata | v2.4 | 2/2 | Complete | 2026-04-09 |
 | 46. Test Hardening -- Infrastructure Failures | v2.4 | 2/2 | Complete | 2026-04-09 |
-| 47. Test Hardening -- State & Search Edge Cases | v2.4 | 0/? | Not started | - |
+| 47. Test Hardening -- State & Search Edge Cases | v2.4 | 0/2 | Not started | - |
