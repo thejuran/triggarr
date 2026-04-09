@@ -367,6 +367,7 @@ async def test_validate_connection_connect_error_logs_warning() -> None:
         assert result is False
         assert "Connection refused" in sink.getvalue()
         assert "Test" in sink.getvalue()
+        assert "key" not in sink.getvalue()  # API key must never appear in log output
     finally:
         logger.remove(handler_id)
         await client.close()

@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 import aiosqlite
 import httpx
 import pydantic
+import pytest
 from loguru import logger
 
 from tests.conftest import make_settings
@@ -2438,11 +2439,9 @@ async def test_run_radarr_cycle_malformed_json_aborts(tmp_path):
 
     client = AsyncMock()
     # Capture a real pydantic.ValidationError to use as side_effect
-    try:
+    with pytest.raises(pydantic.ValidationError) as exc_info:
         pydantic.TypeAdapter(int).validate_python("not_int")
-    except pydantic.ValidationError as exc:
-        validation_err = exc
-    client.get_wanted_missing = AsyncMock(side_effect=validation_err)
+    client.get_wanted_missing = AsyncMock(side_effect=exc_info.value)
 
     state = _make_test_state()
     settings = _cycle_settings()
