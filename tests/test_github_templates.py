@@ -6,6 +6,8 @@ per COMM-04, COMM-05, COMM-06, COMM-07.
 
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).parent.parent
 
 
@@ -17,13 +19,17 @@ class TestBugReportTemplate:
     def test_file_exists(self):
         assert self.path.exists(), "bug-report.yml must exist"
 
+    def test_valid_yaml(self):
+        data = yaml.safe_load(self.path.read_text())
+        assert data["name"] == "Bug Report"
+
     def test_has_dropdowns(self):
         content = self.path.read_text()
         assert content.count("type: dropdown") == 3, "Must have 3 dropdown fields"
 
     def test_version_dropdown_options(self):
         content = self.path.read_text()
-        for version in ("v2.4", "v2.3", "v2.2", "Older"):
+        for version in ("v2.3", "v2.2", "v2.1", "Older"):
             assert version in content, f"Version dropdown must include '{version}'"
 
     def test_deployment_dropdown_options(self):
@@ -67,6 +73,10 @@ class TestFeatureRequestTemplate:
     def test_file_exists(self):
         assert self.path.exists(), "feature-request.yml must exist"
 
+    def test_valid_yaml(self):
+        data = yaml.safe_load(self.path.read_text())
+        assert data["name"] == "Feature Request"
+
     def test_has_use_case_field(self):
         content = self.path.read_text()
         assert "use-case" in content or "use_case" in content, "Must have use case field"
@@ -83,6 +93,10 @@ class TestIssueTemplateConfig:
 
     def test_file_exists(self):
         assert self.path.exists(), "config.yml must exist"
+
+    def test_valid_yaml(self):
+        data = yaml.safe_load(self.path.read_text())
+        assert data["blank_issues_enabled"] is False
 
     def test_blank_issues_disabled(self):
         content = self.path.read_text()
