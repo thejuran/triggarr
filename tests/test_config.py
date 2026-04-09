@@ -671,6 +671,107 @@ def test_atomic_toml_write_succeeds(tmp_path: Path) -> None:
     assert written["radarr"]["Default"]["url"] == "http://radarr:7878"
 
 
+# ---------------------------------------------------------------------------
+# Broken TOML config tests (STATE-01)
+# ---------------------------------------------------------------------------
+
+
+def test_toml_syntax_error_raises_decode_error(tmp_path: Path) -> None:
+    """Broken TOML syntax (missing closing bracket) raises TOMLDecodeError."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general\nlog_level = "info"')
+
+    with pytest.raises(tomllib.TOMLDecodeError):
+        load_settings(config_file)
+
+
+def test_toml_negative_search_interval_raises_validation_error(tmp_path: Path) -> None:
+    """TOML with both search counts at 0 when enabled raises ValidationError."""
+    import pydantic
+
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("""\
+[radarr."Default"]
+url = "http://radarr:7878"
+api_key = "key"
+enabled = true
+search_missing_count = 0
+search_cutoff_count = 0
+""")
+
+    with pytest.raises(pydantic.ValidationError):
+        load_settings(config_file)
+
+
+def test_toml_wrong_type_raises_validation_error(tmp_path: Path) -> None:
+    """TOML with wrong field type (array instead of string for url) raises ValidationError."""
+    import pydantic
+
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("""\
+[radarr."Default"]
+url = [1, 2, 3]
+api_key = "key"
+enabled = true
+""")
+
+    with pytest.raises(pydantic.ValidationError):
+        load_settings(config_file)
+
+
+# ---------------------------------------------------------------------------
+# Config migration edge cases (STATE-04)
+# ---------------------------------------------------------------------------
+
+
+def test_migrate_v22_partial_radarr_only() -> None:
+    """_migrate_v22_to_v23 with radarr only (no sonarr key) wraps radarr, sonarr stays absent."""
+    data = {
+        "general": {"log_level": "info"},
+        "radarr": {"url": "http://r:7878", "api_key": "k", "enabled": True},
+    }
+    result = _migrate_v22_to_v23(data)
+
+    assert "Default" in result["radarr"]
+    assert result["radarr"]["Default"]["url"] == "http://r:7878"
+    assert result["radarr"]["Default"]["api_key"] == "k"
+    assert result["radarr"]["Default"]["enabled"] is True
+    # sonarr was never in data, so it stays absent
+    assert result.get("sonarr") is None
+
+
+def test_migrate_v22_unknown_extra_fields_preserved() -> None:
+    """_migrate_v22_to_v23 preserves unknown fields by wrapping, not filtering."""
+    data = {
+        "general": {"log_level": "info", "unknown_field": 42},
+        "radarr": {"url": "http://r:7878", "api_key": "k", "enabled": True, "custom": "val"},
+    }
+    result = _migrate_v22_to_v23(data)
+
+    assert result["general"]["unknown_field"] == 42
+    assert result["radarr"]["Default"]["custom"] == "val"
+
+
+def test_is_v22_format_missing_general() -> None:
+    """_is_v22_format returns True for flat radarr even without [general] section."""
+    data = {"radarr": {"url": "http://r:7878"}}
+    assert _is_v22_format(data) is True
+
+
+def test_migrate_v22_mixed_nested_and_flat_only_detects_flat() -> None:
+    """_is_v22_format returns True when sonarr has flat keys even if radarr is v2.3 nested."""
+    data = {
+        "radarr": {"Default": {"url": "http://r:7878", "api_key": "k"}},
+        "sonarr": {"url": "http://s:8989"},
+    }
+    assert _is_v22_format(data) is True
+
+
+# ---------------------------------------------------------------------------
+# BUG-06: _atomic_toml_write temp file cleanup on failure
+# ---------------------------------------------------------------------------
+
+
 def test_atomic_toml_write_cleans_temp_on_failure(tmp_path: Path) -> None:
     """_atomic_toml_write removes temp file when tomli_w.dump raises (BUG-06)."""
     from unittest.mock import patch
