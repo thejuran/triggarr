@@ -24,17 +24,17 @@ Requirements for Community Polish & Test Hardening milestone. Each maps to roadm
 
 ### Test Hardening — Connection Failures
 
-- [ ] **CONN-01**: Tests verify graceful handling when *arr instance is unreachable (connection refused, timeout)
-- [ ] **CONN-02**: Tests verify graceful handling of DNS resolution failure
-- [ ] **CONN-03**: Tests verify graceful handling of SSL/TLS errors
-- [ ] **CONN-04**: Tests verify graceful handling when instance goes down mid-search-cycle
+- [x] **CONN-01**: Tests verify graceful handling when *arr instance is unreachable (connection refused, timeout)
+- [x] **CONN-02**: Tests verify graceful handling of DNS resolution failure
+- [x] **CONN-03**: Tests verify graceful handling of SSL/TLS errors
+- [x] **CONN-04**: Tests verify graceful handling when instance goes down mid-search-cycle
 
 ### Test Hardening — Bad API Responses
 
-- [ ] **API-01**: Tests verify graceful handling of malformed JSON from *arr
-- [ ] **API-02**: Tests verify graceful handling of unexpected HTTP status codes (401, 403, 500, 502)
-- [ ] **API-03**: Tests verify graceful handling of API version mismatches (Sonarr v3/v4 edge cases)
-- [ ] **API-04**: Tests verify graceful handling of empty or truncated paginated responses
+- [x] **API-01**: Tests verify graceful handling of malformed JSON from *arr
+- [x] **API-02**: Tests verify graceful handling of unexpected HTTP status codes (401, 403, 500, 502)
+- [x] **API-03**: Tests verify graceful handling of API version mismatches (Sonarr v3/v4 edge cases)
+- [x] **API-04**: Tests verify graceful handling of empty or truncated paginated responses
 
 ### Test Hardening — Corrupt State/Config
 
@@ -81,14 +81,14 @@ None deferred — milestone scope is complete.
 | COMM-07 | Phase 45 | Satisfied |
 | META-01 | Phase 45 | Satisfied |
 | META-02 | Phase 45 | Satisfied |
-| CONN-01 | Phase 46 | Pending |
-| CONN-02 | Phase 46 | Pending |
-| CONN-03 | Phase 46 | Pending |
-| CONN-04 | Phase 46 | Pending |
-| API-01 | Phase 46 | Pending |
-| API-02 | Phase 46 | Pending |
-| API-03 | Phase 46 | Pending |
-| API-04 | Phase 46 | Pending |
+| CONN-01 | Phase 46 | Satisfied |
+| CONN-02 | Phase 46 | Satisfied |
+| CONN-03 | Phase 46 | Satisfied |
+| CONN-04 | Phase 46 | Satisfied |
+| API-01 | Phase 46 | Satisfied |
+| API-02 | Phase 46 | Satisfied |
+| API-03 | Phase 46 | Satisfied |
+| API-04 | Phase 46 | Satisfied |
 | STATE-01 | Phase 47 | Pending |
 | STATE-02 | Phase 47 | Pending |
 | STATE-03 | Phase 47 | Pending |
@@ -101,8 +101,8 @@ None deferred — milestone scope is complete.
 
 **Coverage:**
 - v2.4 requirements: 26 total
-- Satisfied: 9 (Phase 45)
-- Pending: 17 (Phases 46-47)
+- Satisfied: 17 (Phases 45-46)
+- Pending: 9 (Phase 47)
 - Mapped to phases: 26
 - Unmapped: 0
 
