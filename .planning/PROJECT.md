@@ -82,28 +82,22 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 - ✓ GitHub release update notification in nav bar — v2.3
 - ✓ Dismissible migration banner for v2.2→v2.3 upgrade — v2.3
 - ✓ Deep review: XSS, CSRF, version parsing, input validation hardening — v2.3
+- ✓ CONTRIBUTING.md with fork/branch/PR workflow and dev setup instructions — v2.4
+- ✓ SECURITY.md with vulnerability reporting and security model summary — v2.4
+- ✓ GitHub issue templates (bug report + feature request as YAML forms) — v2.4
+- ✓ Repo metadata (topics + GitHub Discussions) — v2.4
+- ✓ Unhappy-path tests for connection failures (DNS, SSL, timeout, mid-cycle) — v2.4
+- ✓ Unhappy-path tests for bad API responses (malformed JSON, 403/502, truncated pagination) — v2.4
+- ✓ Unhappy-path tests for corrupt state/config (broken TOML, SQLite, JSON, migration) — v2.4
+- ✓ Unhappy-path tests for search logic edge cases (empty queues, tag filtering, cursors) — v2.4
 
 ### Active
 
-- [ ] CONTRIBUTING.md with fork/branch/PR workflow and dev setup instructions
-- [ ] SECURITY.md with vulnerability reporting and security model summary
-- [ ] GitHub issue templates (bug report + feature request as YAML forms)
-- [ ] Repo metadata (topics + GitHub Discussions)
-- [ ] Unhappy-path tests for connection failures
-- [ ] Unhappy-path tests for bad API responses
-- [ ] Unhappy-path tests for corrupt state/config
-- [ ] Unhappy-path tests for search logic edge cases
+(None — planning next milestone)
 
-## Current Milestone: v2.4 Community Polish & Test Hardening
+## Current State
 
-**Goal:** Add community health files for open-source readiness and harden test coverage for unhappy paths.
-
-**Target features:**
-- CONTRIBUTING.md with fork/branch/PR workflow and dev setup
-- SECURITY.md with vulnerability reporting and security model summary
-- GitHub issue templates (bug report + feature request as YAML forms)
-- Repo metadata (topics + GitHub Discussions)
-- Unhappy-path tests: connection failures, bad API responses, corrupt state/config, search logic edge cases
+Shipped v2.4 Community Polish & Test Hardening. Project is open-source ready with community health files and comprehensive unhappy-path test coverage.
 
 ### Out of Scope
 
@@ -126,14 +120,14 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ## Context
 
-Shipped v2.3 with ~15,079 Python LOC (6,453 source + 8,626 test). 466 tests passing. 40 phases, 71 plans completed across 9 milestones.
+Shipped v2.4 with ~15,979 Python LOC (5,308 source + 10,671 test). 606 tests passing. 47 phases, 77 plans completed across 10 milestones.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted).
+Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted); test_state_wrong_structure_list_crashes documents a limitation in _merge_defaults (list JSON).
 
 ## Constraints
 
@@ -200,4 +194,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 after v2.4 milestone start*
+*Last updated: 2026-04-09 after v2.4 milestone completion*
