@@ -9,18 +9,18 @@ Requirements for Community Polish & Test Hardening milestone. Each maps to roadm
 
 ### Community Health
 
-- [ ] **COMM-01**: Repository has CONTRIBUTING.md with fork/branch/PR workflow, dev setup, test/lint commands
-- [ ] **COMM-02**: Repository has SECURITY.md with supported versions table and GitHub private vulnerability reporting link
-- [ ] **COMM-03**: SECURITY.md includes security model summary (SecretStr, CSRF, SSRF, input clamping, atomic writes, Docker hardening, loguru redaction)
-- [ ] **COMM-04**: Repository has bug report issue template (YAML form) with version, deployment method, app type, description, expected vs actual, logs, config excerpt fields
-- [ ] **COMM-05**: Repository has feature request issue template (YAML form) with description, use case, alternatives considered fields
-- [ ] **COMM-06**: Repository has issue template config.yml with blank_issues_enabled: false and Discussions contact link
-- [ ] **COMM-07**: Repository has pull request template with CI checklist
+- [x] **COMM-01**: Repository has CONTRIBUTING.md with fork/branch/PR workflow, dev setup, test/lint commands
+- [x] **COMM-02**: Repository has SECURITY.md with supported versions table and GitHub private vulnerability reporting link
+- [x] **COMM-03**: SECURITY.md includes security model summary (SecretStr, CSRF, SSRF, input clamping, atomic writes, Docker hardening, loguru redaction)
+- [x] **COMM-04**: Repository has bug report issue template (YAML form) with version, deployment method, app type, description, expected vs actual, logs, config excerpt fields
+- [x] **COMM-05**: Repository has feature request issue template (YAML form) with description, use case, alternatives considered fields
+- [x] **COMM-06**: Repository has issue template config.yml with blank_issues_enabled: false and Discussions contact link
+- [x] **COMM-07**: Repository has pull request template with CI checklist
 
 ### Repo Metadata
 
-- [ ] **META-01**: Repository has GitHub topics set (radarr, sonarr, automation, selfhosted, arr, docker, python)
-- [ ] **META-02**: Repository has GitHub Discussions enabled with General and Q&A categories
+- [x] **META-01**: Repository has GitHub topics set (radarr, sonarr, automation, selfhosted, arr, docker, python)
+- [x] **META-02**: Repository has GitHub Discussions enabled with General and Q&A categories
 
 ### Test Hardening — Connection Failures
 
@@ -72,15 +72,15 @@ None deferred — milestone scope is complete.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMM-01 | Phase 45 | Pending |
-| COMM-02 | Phase 45 | Pending |
-| COMM-03 | Phase 45 | Pending |
-| COMM-04 | Phase 45 | Pending |
-| COMM-05 | Phase 45 | Pending |
-| COMM-06 | Phase 45 | Pending |
-| COMM-07 | Phase 45 | Pending |
-| META-01 | Phase 45 | Pending |
-| META-02 | Phase 45 | Pending |
+| COMM-01 | Phase 45 | Satisfied |
+| COMM-02 | Phase 45 | Satisfied |
+| COMM-03 | Phase 45 | Satisfied |
+| COMM-04 | Phase 45 | Satisfied |
+| COMM-05 | Phase 45 | Satisfied |
+| COMM-06 | Phase 45 | Satisfied |
+| COMM-07 | Phase 45 | Satisfied |
+| META-01 | Phase 45 | Satisfied |
+| META-02 | Phase 45 | Satisfied |
 | CONN-01 | Phase 46 | Pending |
 | CONN-02 | Phase 46 | Pending |
 | CONN-03 | Phase 46 | Pending |
@@ -101,6 +101,8 @@ None deferred — milestone scope is complete.
 
 **Coverage:**
 - v2.4 requirements: 26 total
+- Satisfied: 9 (Phase 45)
+- Pending: 17 (Phases 46-47)
 - Mapped to phases: 26
 - Unmapped: 0
 

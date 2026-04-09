@@ -105,7 +105,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 **Milestone Goal:** Add community health files for open-source readiness and harden test coverage for unhappy paths.
 
-- [ ] **Phase 45: Community Health & Repo Metadata** - Contributing guide, security policy, issue templates, PR template, and GitHub repo setup
+- [x] **Phase 45: Community Health & Repo Metadata** - Contributing guide, security policy, issue templates, PR template, and GitHub repo setup -- completed 2026-04-09
 - [ ] **Phase 46: Test Hardening -- Infrastructure Failures** - Unhappy-path tests for connection failures and bad API responses
 - [ ] **Phase 47: Test Hardening -- State & Search Edge Cases** - Unhappy-path tests for corrupt state/config and search logic edge cases
 
@@ -162,6 +162,6 @@ Phases execute in numeric order: 45 → 46 → 47
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 45. Community Health & Repo Metadata | v2.4 | 0/2 | Not started | - |
+| 45. Community Health & Repo Metadata | v2.4 | 2/2 | Complete | 2026-04-09 |
 | 46. Test Hardening -- Infrastructure Failures | v2.4 | 0/? | Not started | - |
 | 47. Test Hardening -- State & Search Edge Cases | v2.4 | 0/? | Not started | - |
