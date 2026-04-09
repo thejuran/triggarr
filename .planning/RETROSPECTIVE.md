@@ -160,6 +160,46 @@
 
 ---
 
+## Milestone: v2.4 — Community Polish & Test Hardening
+
+**Shipped:** 2026-04-09
+**Phases:** 3 | **Plans:** 6
+
+### What Was Built
+- Community health files: CONTRIBUTING.md, SECURITY.md (7-mechanism model summary), MIT LICENSE
+- GitHub templates: bug report + feature request YAML forms, PR template, issue config with Discussions link
+- Repo metadata: 7 GitHub topics, Discussions enabled
+- 45 new unhappy-path tests: connection failures, bad API responses, corrupt state/config, search edge cases
+- Test count: 466 → 606 (+140 tests)
+
+### What Worked
+- Milestone audit passed clean (26/26 requirements, 4/4 flows) — no gap-closure phases needed
+- Test hardening phases (46, 47) were highly parallelizable since they depended on Phase 45 but not each other
+- Research phase for test hardening identified exact gaps in existing coverage, avoiding duplicate tests
+- Community health files were straightforward — clear requirements, no ambiguity
+
+### What Was Inefficient
+- Phase 47 ROADMAP.md still showed `[ ]` instead of `[x]` after execution — roadmap_complete wasn't updated
+- Phase 46 VALIDATION.md not updated to nyquist_compliant after execution
+- Summary one-liner extraction failed for all 6 summaries — gsd-tools summary-extract didn't parse these SUMMARY formats
+
+### Patterns Established
+- Test-only milestones are efficient — no source code changes means no risk of regressions
+- Community health files as a dedicated phase with requirement-per-file granularity
+- Unhappy-path test organization: one plan per failure domain (connection, API, state, search)
+
+### Key Lessons
+1. Test-only milestones can ship quickly — 6 plans in one session when no source code changes are needed
+2. Community health files benefit from YAML form templates over markdown templates — structured input, better UX
+3. Summary one-liner extraction depends on consistent SUMMARY.md format — current format diversity breaks the tool
+
+### Cost Observations
+- Model mix: ~60% opus (execution), ~40% sonnet (planning, verification)
+- Sessions: 1 session
+- Notable: Entire milestone completed in a single session — test-only work is fast
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -173,6 +213,7 @@
 | v2.1 | 2 | 2 | Small focused milestone for deployment fixes |
 | v2.2 | 4 | 5 | TDD approach, code review as dedicated phase |
 | v2.3 | 12 | 15 | Milestone audit + gap-closure pattern, deep review as final phase |
+| v2.4 | 3 | 6 | Test-only milestone, community health files, single-session ship |
 
 ### Cumulative Quality
 
@@ -185,6 +226,7 @@
 | v2.1 | 270 | ~8,322 | 0 |
 | v2.2 | 302 | ~8,964 | 0 |
 | v2.3 | 466 | ~15,079 | 0 (pydantic-settings added for config, already in deps) |
+| v2.4 | 606 | ~15,979 | 0 |
 
 ### Top Lessons (Verified Across Milestones)
 
