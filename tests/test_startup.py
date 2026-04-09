@@ -342,3 +342,83 @@ async def test_validate_connections_multi_sonarr_returns_both() -> None:
     sonarr_keys = [k for k in results if k.startswith("sonarr")]
     assert len(sonarr_keys) == 2, f"Expected 2 sonarr results, got {sonarr_keys}"
     assert all(results[k] is True for k in sonarr_keys)
+
+
+# ---------------------------------------------------------------------------
+# Sonarr API version detection -- edge cases (Phase 46, Plan 02)
+# ---------------------------------------------------------------------------
+
+
+async def test_detect_api_version_future_major() -> None:
+    """detect_api_version returns 'v3' for future major version 5.x (API-03)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": "5.0.0.100"})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr._client = client
+        result = await sonarr.detect_api_version()
+
+    assert result == "v3"
+
+
+async def test_detect_api_version_empty_version() -> None:
+    """detect_api_version returns 'v3' for empty version string (API-03)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": ""})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr._client = client
+        result = await sonarr.detect_api_version()
+
+    assert result == "v3"
+
+
+async def test_detect_api_version_missing_version_key() -> None:
+    """detect_api_version returns 'v3' when version key is missing (API-03)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"appName": "Sonarr"})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr._client = client
+        result = await sonarr.detect_api_version()
+
+    assert result == "v3"
+
+
+async def test_detect_api_version_beta_format() -> None:
+    """detect_api_version returns 'v4' for beta version string 4.0.0-beta1 (API-03)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": "4.0.0-beta1"})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr._client = client
+        result = await sonarr.detect_api_version()
+
+    assert result == "v4"
+
+
+async def test_detect_api_version_connect_error_fallback() -> None:
+    """detect_api_version returns 'v3' on ConnectError (API-03)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr._client = client
+        result = await sonarr.detect_api_version()
+
+    assert result == "v3"
