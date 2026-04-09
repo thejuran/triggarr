@@ -38,18 +38,18 @@ Requirements for Community Polish & Test Hardening milestone. Each maps to roadm
 
 ### Test Hardening — Corrupt State/Config
 
-- [ ] **STATE-01**: Tests verify recovery from broken TOML config (syntax errors, missing fields, wrong types)
-- [ ] **STATE-02**: Tests verify recovery from corrupt SQLite database (locked, schema mismatch)
-- [ ] **STATE-03**: Tests verify recovery from invalid JSON state file (truncated, wrong structure)
-- [ ] **STATE-04**: Tests verify config migration handles unexpected starting state
+- [x] **STATE-01**: Tests verify recovery from broken TOML config (syntax errors, missing fields, wrong types)
+- [x] **STATE-02**: Tests verify recovery from corrupt SQLite database (locked, schema mismatch)
+- [x] **STATE-03**: Tests verify recovery from invalid JSON state file (truncated, wrong structure)
+- [x] **STATE-04**: Tests verify config migration handles unexpected starting state
 
 ### Test Hardening — Search Logic Edge Cases
 
-- [ ] **SRCH-01**: Tests verify correct behavior with empty queues (nothing wanted or cutoff-unmet)
-- [ ] **SRCH-02**: Tests verify correct behavior when all items filtered out by tags
-- [ ] **SRCH-03**: Tests verify graceful handling of tag resolution failure (configured tag doesn't exist)
-- [ ] **SRCH-04**: Tests verify correct behavior when batch size exceeds available items
-- [ ] **SRCH-05**: Tests verify correct behavior when cursor position exceeds queue length
+- [x] **SRCH-01**: Tests verify correct behavior with empty queues (nothing wanted or cutoff-unmet)
+- [x] **SRCH-02**: Tests verify correct behavior when all items filtered out by tags
+- [x] **SRCH-03**: Tests verify graceful handling of tag resolution failure (configured tag doesn't exist)
+- [x] **SRCH-04**: Tests verify correct behavior when batch size exceeds available items
+- [x] **SRCH-05**: Tests verify correct behavior when cursor position exceeds queue length
 
 ## Future Requirements
 
@@ -89,20 +89,20 @@ None deferred — milestone scope is complete.
 | API-02 | Phase 46 | Satisfied |
 | API-03 | Phase 46 | Satisfied |
 | API-04 | Phase 46 | Satisfied |
-| STATE-01 | Phase 47 | Pending |
-| STATE-02 | Phase 47 | Pending |
-| STATE-03 | Phase 47 | Pending |
-| STATE-04 | Phase 47 | Pending |
-| SRCH-01 | Phase 47 | Pending |
-| SRCH-02 | Phase 47 | Pending |
-| SRCH-03 | Phase 47 | Pending |
-| SRCH-04 | Phase 47 | Pending |
-| SRCH-05 | Phase 47 | Pending |
+| STATE-01 | Phase 47 | Satisfied |
+| STATE-02 | Phase 47 | Satisfied |
+| STATE-03 | Phase 47 | Satisfied |
+| STATE-04 | Phase 47 | Satisfied |
+| SRCH-01 | Phase 47 | Satisfied |
+| SRCH-02 | Phase 47 | Satisfied |
+| SRCH-03 | Phase 47 | Satisfied |
+| SRCH-04 | Phase 47 | Satisfied |
+| SRCH-05 | Phase 47 | Satisfied |
 
 **Coverage:**
 - v2.4 requirements: 26 total
-- Satisfied: 17 (Phases 45-46)
-- Pending: 9 (Phase 47)
+- Satisfied: 26 (Phases 45-47)
+- Pending: 0
 - Mapped to phases: 26
 - Unmapped: 0
 
