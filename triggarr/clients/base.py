@@ -230,9 +230,9 @@ class ArrClient(ABC):
                 )
             else:
                 logger.warning(
-                    "{app}: Unexpected HTTP error: {exc}",
+                    "{app}: Unexpected HTTP error: {status}",
                     app=self._app_name,
-                    exc=exc,
+                    status=exc.response.status_code,
                 )
             return False
         except httpx.ConnectError:
@@ -249,9 +249,9 @@ class ArrClient(ABC):
             return False
         except pydantic.ValidationError as exc:
             logger.warning(
-                "{app}: Unexpected API response format: {exc}",
+                "{app}: Unexpected API response format ({count} validation error(s))",
                 app=self._app_name,
-                exc=exc,
+                count=exc.error_count(),
             )
             return False
 
