@@ -85,6 +85,26 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ### Active
 
+- [ ] CONTRIBUTING.md with fork/branch/PR workflow and dev setup instructions
+- [ ] SECURITY.md with vulnerability reporting and security model summary
+- [ ] GitHub issue templates (bug report + feature request as YAML forms)
+- [ ] Repo metadata (topics + GitHub Discussions)
+- [ ] Unhappy-path tests for connection failures
+- [ ] Unhappy-path tests for bad API responses
+- [ ] Unhappy-path tests for corrupt state/config
+- [ ] Unhappy-path tests for search logic edge cases
+
+## Current Milestone: v2.4 Community Polish & Test Hardening
+
+**Goal:** Add community health files for open-source readiness and harden test coverage for unhappy paths.
+
+**Target features:**
+- CONTRIBUTING.md with fork/branch/PR workflow and dev setup
+- SECURITY.md with vulnerability reporting and security model summary
+- GitHub issue templates (bug report + feature request as YAML forms)
+- Repo metadata (topics + GitHub Discussions)
+- Unhappy-path tests: connection failures, bad API responses, corrupt state/config, search logic edge cases
+
 ### Out of Scope
 
 - User accounts / authentication — local network tool, no auth needed
@@ -162,5 +182,22 @@ Known tech debt: _update_info as module-level mutable dict (should move to app.s
 | Mutable dict for _update_info Jinja2 global | In-place update avoids re-registration; no .clear() for atomicity | ✓ Good — v2.3 |
 | HX-Request header check for CSRF on DELETE endpoints | Htmx sends custom header; cross-origin requests blocked by CORS preflight | ✓ Good — v2.3 |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-03-14 after v2.3 milestone completion*
+*Last updated: 2026-04-09 after v2.4 milestone start*

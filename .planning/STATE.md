@@ -1,64 +1,40 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: Multi-Instance & Tag Filtering
-status: completed
-stopped_at: Completed 44-01-PLAN.md
-last_updated: "2026-03-14T00:48:49.704Z"
-last_activity: 2026-03-14 — Completed Plan 01 (deep review fixes)
+milestone: v2.4
+milestone_name: Community Polish & Test Hardening
+status: active
+stopped_at: null
+last_updated: "2026-04-09"
+last_activity: 2026-04-09 — Milestone v2.4 started
 progress:
-  total_phases: 12
-  completed_phases: 9
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-09)
+See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 44 — Deep Review Fixes
+**Current focus:** Defining requirements
 
 ## Current Position
 
-Phase: 44 (12 of 12 in v2.3) — Deep Review Fixes
-Plan: 01 of 1 complete
-Status: Phase Complete
-Last activity: 2026-03-14 — Completed Plan 01 (deep review fixes)
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-09 — Milestone v2.4 started
 
 ## Performance Metrics
 
 **Overall:**
-- Total plans completed: 57 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 5)
-- Milestones shipped: 6 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2)
-
-**v2.3:**
-- Plans completed: 15
-- Phases: 12 (33-44)
-
-| Phase | Plan | Duration | Tasks | Files |
-|-------|------|----------|-------|-------|
-| 33 | 01 | 3min | 1 | 2 |
-| 33 | 02 | 11min | 2 | 3 |
-| 34 | 01 | 2min | 1 | 3 |
-| 34 | 02 | 18min | 2 | 8 |
-| 35 | 01 | 3min | 2 | 5 |
-| 36 | 01 | 1min | 1 | 5 |
-| 36 | 02 | 9min | 2 | 2 |
-| 40 | 01 | 19min | 2 | 6 |
-| 40 | 02 | 25min | 2 | 4 |
-| 40 | 03 | 25min | 2 | 5 |
-| 41 | 01 | 11min | 2 | 5 |
-| 42 | 01 | 9min | 2 | 6 |
-| 42 | 02 | 10min | 2 | 5 |
-| 43 | 01 | 4min | 2 | 10 |
-| 44 | 01 | 27min | 2 | 7 |
+- Total plans completed: 71 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 5, v2.3: 15)
+- Milestones shipped: 9 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3)
 
 ## Accumulated Context
 
@@ -66,65 +42,20 @@ Progress: [██████████] 100%
 
 Full decision log in PROJECT.md Key Decisions table.
 
-- Phase 33-01: Renamed ArrConfig to InstanceConfig with backward-compat alias
-- Phase 33-01: Updated test TOML fixtures to v2.3 nested format
-- Phase 33-02: Extracted _atomic_toml_write helper for reuse
-- Phase 33-02: v2.2 detection uses flat key set intersection
-- Phase 33-02: .migrated marker file for web UI banner (Phase 39)
-- Phase 34-01: TriggarrState uses dict[str, AppState] for nested per-instance cursors
-- Phase 34-01: _default_state without settings returns empty dicts for backward compat
-- Phase 34-01: cleanup_orphaned_instances is standalone (not inside load_state)
-- Phase 34-01: v2.2 migration wraps flat AppState into {"Default": AppState}
-- Phase 34-02: Dashboard shows first enabled instance (Phase 39 for multi-instance UI)
-- Phase 34-02: Tracking uses first available client per app type for grab checks
-- Phase 34-02: search_now triggers first enabled instance (Phase 39 for per-instance)
-- Phase 35-01: Tag model uses extra=ignore to match GrabEvent/SystemStatus pattern
-- Phase 35-01: resolve_tag_id is a pure function following filter_monitored pattern
-- Phase 36-01: Tag accessor pattern uses Callable[[dict], list[int]] for Radarr vs Sonarr tag location difference
-- Phase 36-01: Tag fields default to empty string (search all) for backward compatibility
-- Phase 36-02: Tag resolution happens once per cycle (single get_tags call) to minimize API calls
-- Phase 36-02: Sonarr tag filter placed before deduplicate_to_seasons (deduped dicts lose series.tags)
-- Phase 36-02: Radarr filter order: filter_monitored -> filter_by_tag -> filter_unreleased_movies
-- [Phase 40]: setdefault with _default_instance_state() as guard pattern for missing state entries
-- [Phase 40]: validate_connections keys results as app/instance for unique per-instance tracking
-- [Phase 40]: save_settings persists state after adding new instance entries
-- [Phase 40-02]: Preserve tag fields on both edited and non-edited instances during save
-- [Phase 40-02]: _sanitize_card_id with re.sub for HTML id/CSS selector safety
-- [Phase 40-02]: Temp file created before try block so except can always unlink
-- [Phase 40-03]: tag_fetch_ok boolean replaces 'if tags:' guard for clearer fetch-failure semantics
-- [Phase 40-03]: cleanup_orphaned_instances uses dict comprehension for immutability
-- [Phase 40-03]: Test helper renamed to _make_test_state with direct import of production symbol
-- [Phase 41-01]: Double-underscore separator for form fields ({app}__{inst}__{field}) to avoid collision with underscores in instance names
-- [Phase 41-01]: validate_instance_name rejects __ to protect form field parsing regex
-- [Phase 41-01]: Tag autocomplete uses htmx hx-get on focus with datalist
-- [Phase 41-01]: response_model=None for endpoints returning mixed HTMLResponse/RedirectResponse
-- [Phase 41-01]: _settings_to_dict helper for SecretStr-safe TOML serialization
-- [Phase 42-01]: tag_warnings cleared at cycle start (not accumulated across cycles)
-- [Phase 42-01]: Health summary iterates only enabled instances via get_enabled_instances
-- [Phase 42-01]: Stats-row instance filter splits on "/" for app_type/instance_name
-- [Phase 42-01]: tag_warnings defaults to [] in _build_app_context for backward compat
-- [Phase 42-02]: Health summary card placed above stats row (not between stats and app cards)
-- [Phase 43-01]: Lazy import of _update_info inside update_check_job closure to avoid circular import
-- [Phase 43-01]: Mutable dict pattern for _update_info Jinja2 global (clear+update to propagate)
-- [Phase 44-01]: Pre-release suffix stripped by splitting on hyphen before dot-split, with re.match fallback for .devN
-- [Phase 44-01]: Instance filter validation uses trailing-slash stripping instead of strict app/instance format
-
 ### Pending Todos
 
 None.
 
 ### Roadmap Evolution
 
-- Phase 40 added: Fix Multi-Instance Bugs and Hardening
-- Phase 44 added: Deep Review Fixes (security, correctness, hardening from /deep-review)
+None yet.
 
 ### Blockers/Concerns
 
-- Research flag: Phase 33 — validate pydantic-settings behavior with TOML `[[array]]` syntax and `list[InstanceConfig]` early
-- Research flag: Phase 39 — multi-instance settings form UI pattern (tabbed/accordion) needs design thought
+None.
 
 ## Session Continuity
 
-Last session: 2026-03-14T00:42:43Z
-Stopped at: Completed 44-01-PLAN.md
+Last session: 2026-04-09
+Stopped at: Milestone v2.4 initialized
 Resume file: None
