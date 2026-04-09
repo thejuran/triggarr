@@ -72,38 +72,38 @@ None deferred — milestone scope is complete.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMM-01 | — | Pending |
-| COMM-02 | — | Pending |
-| COMM-03 | — | Pending |
-| COMM-04 | — | Pending |
-| COMM-05 | — | Pending |
-| COMM-06 | — | Pending |
-| COMM-07 | — | Pending |
-| META-01 | — | Pending |
-| META-02 | — | Pending |
-| CONN-01 | — | Pending |
-| CONN-02 | — | Pending |
-| CONN-03 | — | Pending |
-| CONN-04 | — | Pending |
-| API-01 | — | Pending |
-| API-02 | — | Pending |
-| API-03 | — | Pending |
-| API-04 | — | Pending |
-| STATE-01 | — | Pending |
-| STATE-02 | — | Pending |
-| STATE-03 | — | Pending |
-| STATE-04 | — | Pending |
-| SRCH-01 | — | Pending |
-| SRCH-02 | — | Pending |
-| SRCH-03 | — | Pending |
-| SRCH-04 | — | Pending |
-| SRCH-05 | — | Pending |
+| COMM-01 | Phase 45 | Pending |
+| COMM-02 | Phase 45 | Pending |
+| COMM-03 | Phase 45 | Pending |
+| COMM-04 | Phase 45 | Pending |
+| COMM-05 | Phase 45 | Pending |
+| COMM-06 | Phase 45 | Pending |
+| COMM-07 | Phase 45 | Pending |
+| META-01 | Phase 45 | Pending |
+| META-02 | Phase 45 | Pending |
+| CONN-01 | Phase 46 | Pending |
+| CONN-02 | Phase 46 | Pending |
+| CONN-03 | Phase 46 | Pending |
+| CONN-04 | Phase 46 | Pending |
+| API-01 | Phase 46 | Pending |
+| API-02 | Phase 46 | Pending |
+| API-03 | Phase 46 | Pending |
+| API-04 | Phase 46 | Pending |
+| STATE-01 | Phase 47 | Pending |
+| STATE-02 | Phase 47 | Pending |
+| STATE-03 | Phase 47 | Pending |
+| STATE-04 | Phase 47 | Pending |
+| SRCH-01 | Phase 47 | Pending |
+| SRCH-02 | Phase 47 | Pending |
+| SRCH-03 | Phase 47 | Pending |
+| SRCH-04 | Phase 47 | Pending |
+| SRCH-05 | Phase 47 | Pending |
 
 **Coverage:**
 - v2.4 requirements: 26 total
-- Mapped to phases: 0
-- Unmapped: 26 ⚠️
+- Mapped to phases: 26
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-09*
-*Last updated: 2026-04-09 after initial definition*
+*Last updated: 2026-04-09 after roadmap creation*
