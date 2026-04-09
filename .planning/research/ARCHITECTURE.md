@@ -1,623 +1,470 @@
-# Architecture Research: Multi-Instance & Tag Filtering
+# Architecture Research: Community Health Files & Test Hardening
 
-**Domain:** Search automation daemon -- multi-instance *arr integration
-**Researched:** 2026-03-09
-**Confidence:** HIGH (based on full codebase audit + API verification)
+**Domain:** Search automation daemon -- open-source readiness and failure mode testing
+**Researched:** 2026-04-09
+**Confidence:** HIGH (based on full codebase audit of existing test patterns and .github structure)
 
 ## Current Architecture (Baseline)
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         Web Layer (htmx)                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
-│  │Dashboard │  │Settings  │  │History   │  │Partials  │            │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘            │
-├───────┴──────────────┴────────────┴──────────────┴───────────────────┤
-│                     app.state (shared mutable)                       │
-│  settings | triggarr_state | radarr_client | sonarr_client           │
-│  scheduler | search_lock | db | last_search_time                     │
-├──────────────────────────────────────────────────────────────────────┤
-│                      Scheduler (APScheduler)                         │
-│  radarr_search (interval job) | sonarr_search (interval job)         │
-├──────────────────────────────────────────────────────────────────────┤
-│                Search Engine + Tracking                              │
-│  run_radarr_cycle() | run_sonarr_cycle() | run_tracking_check()      │
-├──────────────────────────────────────────────────────────────────────┤
-│                    API Clients                                       │
-│  ┌──────────────┐  ┌──────────────┐                                  │
-│  │ RadarrClient │  │ SonarrClient │                                  │
-│  └──────────────┘  └──────────────┘                                  │
-├──────────────────────────────────────────────────────────────────────┤
-│                    Persistence                                       │
-│  ┌──────────┐  ┌──────────┐                                          │
-│  │state.json│  │triggarr.db│                                         │
-│  │(cursors) │  │(history) │                                          │
-│  └──────────┘  └──────────┘                                          │
-└──────────────────────────────────────────────────────────────────────┘
-```
+The existing architecture is stable from v2.3. This milestone adds no new runtime components -- it adds static repository files and test coverage for existing error handling paths.
 
-### Current Assumptions Broken by Multi-Instance
+### Existing Error Handling Patterns
 
-| Assumption | Where Hardcoded | Impact |
-|-----------|-----------------|--------|
-| One Radarr, one Sonarr | `Settings.radarr: ArrConfig`, `Settings.sonarr: ArrConfig` | Config model must support N instances |
-| State keyed by `"radarr"` / `"sonarr"` | `TriggarrState`, `AppState` TypedDicts, `_default_state()` | State must be keyed by instance ID |
-| Two clients on `app.state` | `app.state.radarr_client`, `app.state.sonarr_client` | Need a client registry/dict |
-| Two scheduler jobs | `radarr_search`, `sonarr_search` job IDs | Dynamic job IDs per instance |
-| Tracking uses hardcoded client lookup | `_get_client()` dispatches on `"Radarr"` / `"Sonarr"` string | Must resolve by instance ID |
-| Dashboard iterates `("radarr", "sonarr")` | `routes.py` loops, `_build_app_context()` | Must iterate dynamic instance list |
-| Settings form has 2 app sections | `settings.html`, `save_settings()` | Must render/parse N instances |
-| Search history `app` column is `"Radarr"` / `"Sonarr"` | `insert_search_entry()`, `get_dashboard_stats()` | Needs instance identifier column |
-| `collect_secrets()` iterates 2 apps | `startup.py` | Must iterate all instances |
+The codebase has a mature, consistent error handling strategy:
 
-## Target Architecture
+| Component | Error Pattern | Catch Scope | Tested? |
+|-----------|--------------|-------------|---------|
+| `clients/base.py` `_request_with_retry` | Retry once on `httpx.HTTPStatusError` / `httpx.TransportError` | Per-request | Partially (retry + reraise tested, not all transport subtypes) |
+| `clients/base.py` `validate_connection` | Typed dispatch: 401 vs ConnectError vs Timeout vs ValidationError | Per-connection | Yes (all 4 branches) |
+| `search/engine.py` cycle functions | `(httpx.HTTPError, pydantic.ValidationError)` for fetch abort | Per-cycle | Yes (ConnectError tested, not HTTPStatusError or ValidationError) |
+| `search/engine.py` per-item search | `(httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError)` | Per-item | Partially (ConnectError and Timeout, not aiosqlite.Error or OSError) |
+| `tracking.py` | `(httpx.HTTPError, pydantic.ValidationError)` per-item group | Per-tracking-group | Yes (ConnectError + HTTPStatusError) |
+| `config.py` `_atomic_toml_write` | Generic `Exception` with temp file cleanup | Per-write | Yes (failure cleanup tested) |
+| `config.py` `load_settings` | `tomllib.TOMLDecodeError` on corrupt config | Per-load | NOT tested |
+| `state.py` `load_state` | `(json.JSONDecodeError, OSError)` on corrupt state | Per-load | Yes (corrupt JSON recovery) |
+| `db.py` `run_migrations` | `sqlite3.OperationalError` suppression in migration | Per-migration | Yes (OperationalError suppression) |
+| `search/engine.py` `_sanitize_exc` | Type-based dispatch to avoid leaking internals | Per-exception | Yes (HTTP status + timeout) |
+
+### Existing Test Organization
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         Web Layer (htmx)                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
-│  │Dashboard │  │Settings  │  │History   │  │Partials  │            │
-│  │(N cards) │  │(N inst.) │  │(+filter) │  │(per-inst)│            │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘            │
-├───────┴──────────────┴────────────┴──────────────┴───────────────────┤
-│                     app.state (shared mutable)                       │
-│  settings | triggarr_state | clients: dict[str, ArrClient]           │
-│  scheduler | search_lock | db | last_search_time: dict               │
-├──────────────────────────────────────────────────────────────────────┤
-│                      Scheduler (APScheduler)                         │
-│  {instance_id}_search (interval job) -- one per enabled instance     │
-├──────────────────────────────────────────────────────────────────────┤
-│                Search Engine + Tracking                              │
-│  run_radarr_cycle(instance_id) | run_sonarr_cycle(instance_id)       │
-│  filter_by_tags() | run_tracking_check(clients_dict)                 │
-├──────────────────────────────────────────────────────────────────────┤
-│                    API Clients (dynamic registry)                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
-│  │ RadarrClient │  │ RadarrClient │  │ SonarrClient │  ...           │
-│  │ "radarr-4k"  │  │ "radarr-hd"  │  │ "sonarr-main"│               │
-│  └──────────────┘  └──────────────┘  └──────────────┘               │
-├──────────────────────────────────────────────────────────────────────┤
-│                    Persistence                                       │
-│  ┌──────────┐  ┌──────────┐                                          │
-│  │state.json│  │triggarr.db│                                         │
-│  │(per-inst)│  │(+inst_id)│                                          │
-│  └──────────┘  └──────────┘                                          │
-└──────────────────────────────────────────────────────────────────────┘
+tests/
+  conftest.py            -- make_settings(), default_state() factories
+  test_changelog.py      -- Changelog parsing
+  test_clients.py        -- ArrClient base + subclass behavior (779 lines)
+  test_config.py         -- TOML loading, migration, atomic writes (688 lines)
+  test_config_dir.py     -- TRIGGARR_CONFIG_DIR env var handling
+  test_correlation.py    -- Grab correlation logic
+  test_db.py             -- SQLite CRUD, migrations (1020 lines)
+  test_log_buffer.py     -- Log buffer ring buffer
+  test_logging.py        -- Loguru redaction sink
+  test_middleware.py      -- CSRF middleware
+  test_root_path.py      -- Reverse proxy support
+  test_scheduler.py      -- APScheduler job wiring
+  test_search.py         -- Engine functions + cycle orchestration (2205 lines)
+  test_startup.py        -- Connection validation, banner
+  test_state.py          -- State load/save, corruption recovery
+  test_tracking.py       -- Tracking orchestrator
+  test_update_check.py   -- GitHub release check
+  test_validation.py     -- Input validation
+  test_web.py            -- FastAPI route tests
 ```
 
-## Component Changes: Detailed Breakdown
+**Key observation:** Tests are organized by module (one test file per source module). Unhappy-path tests are mixed alongside happy-path tests in the same files. This pattern should continue -- do NOT create separate "unhappy path" test files.
 
-### 1. Config Model (`models/config.py`)
+### Existing .github Structure
 
-**Change type:** RESTRUCTURE (breaking)
-
-**Current:**
-```python
-class Settings(BaseSettings):
-    general: GeneralConfig
-    radarr: ArrConfig      # single instance
-    sonarr: ArrConfig      # single instance
+```
+.github/
+  workflows/
+    ci.yml       -- pytest + ruff + Docker build
+    release.yml  -- GHCR publishing
 ```
 
-**Target:**
-```python
-class InstanceConfig(BaseModel):
-    """Configuration for one *arr instance."""
-    name: str                              # Human-readable name (e.g. "Radarr 4K")
-    app_type: Literal["radarr", "sonarr"]  # Which *arr app
-    url: str = ""
-    api_key: SecretStr = SecretStr("")
-    enabled: bool = False
-    search_interval: int = 30
-    search_missing_count: int = 5
-    search_cutoff_count: int = 5
-    # Tag filtering (new)
-    missing_tag: str = ""     # Tag name for missing queue filter (empty = all)
-    cutoff_tag: str = ""      # Tag name for cutoff queue filter (empty = all)
+No issue templates, no ISSUE_TEMPLATE directory, no FUNDING.yml, no CONTRIBUTING.md, no SECURITY.md.
 
-class Settings(BaseSettings):
-    general: GeneralConfig
-    instances: list[InstanceConfig] = []
+## Integration Points for v2.4
+
+### Community Health Files (Static Files -- No Runtime Impact)
+
+These files are purely additive. They do not touch any runtime code paths.
+
+| File | Location | Integration |
+|------|----------|-------------|
+| `CONTRIBUTING.md` | Repo root | References `uv sync --extra dev`, `pytest`, `ruff` from CLAUDE.md conventions |
+| `SECURITY.md` | Repo root | Documents existing security model (SecretStr, CSRF, SSRF, redacting sink) |
+| `.github/ISSUE_TEMPLATE/bug_report.yml` | `.github/ISSUE_TEMPLATE/` | YAML form (not markdown template) |
+| `.github/ISSUE_TEMPLATE/feature_request.yml` | `.github/ISSUE_TEMPLATE/` | YAML form (not markdown template) |
+| `.github/ISSUE_TEMPLATE/config.yml` | `.github/ISSUE_TEMPLATE/` | Controls template chooser (link to Discussions) |
+
+### Unhappy-Path Tests (Test Files Only -- No Runtime Changes)
+
+New tests target existing error handling code that lacks coverage. No source code modifications required.
+
+## Component Details
+
+### 1. Issue Templates (`.github/ISSUE_TEMPLATE/`)
+
+**Structure:** Use YAML form templates (not legacy markdown templates). YAML forms provide structured input with dropdowns, checkboxes, and required fields -- better signal-to-noise than freeform markdown.
+
+**Required files:**
+
+```
+.github/
+  ISSUE_TEMPLATE/
+    bug_report.yml        -- Bug report form
+    feature_request.yml   -- Feature request form
+    config.yml            -- Template chooser config
 ```
 
-**Key design decisions:**
-
-- **`instances` as a list, not a dict.** TOML `[[instances]]` array-of-tables is the natural TOML structure. A dict requires `[instances.radarr-4k]` which is less ergonomic. The list preserves insertion order for dashboard display.
-- **`app_type` discriminator.** Each instance declares whether it is Radarr or Sonarr. This replaces the hardcoded `[radarr]` / `[sonarr]` sections.
-- **`name` as human label, derived `instance_id` for internal use.** The `instance_id` should be derived (slugified name) for internal keying. Use a validator to ensure uniqueness across the list.
-- **Tag fields are strings (tag names), not IDs.** Users configure tag names ("triggarr-missing"); the app resolves to IDs via `/api/v3/tag` at runtime. This is more user-friendly than requiring numeric IDs. IDs can change if a tag is deleted and recreated.
-- **Backward compatibility:** A migration path should detect old-format `[radarr]` / `[sonarr]` sections and auto-convert to `[[instances]]` on first load, rewriting the config file with a logged deprecation warning.
-
-**TOML structure:**
-```toml
-[general]
-log_level = "info"
-
-[[instances]]
-name = "Radarr 4K"
-app_type = "radarr"
-url = "http://radarr-4k:7878"
-api_key = "abc123"
-enabled = true
-search_interval = 30
-search_missing_count = 5
-search_cutoff_count = 5
-missing_tag = "triggarr-missing"
-cutoff_tag = ""
-
-[[instances]]
-name = "Sonarr"
-app_type = "sonarr"
-url = "http://sonarr:8989"
-api_key = "def456"
-enabled = true
+**`config.yml` pattern:**
+```yaml
+blank_issues_enabled: false
+contact_links:
+  - name: Question / Discussion
+    url: https://github.com/thejuran/triggarr/discussions
+    about: Ask questions or discuss ideas
 ```
 
-### 2. State Model (`state.py`)
+Setting `blank_issues_enabled: false` forces users through templates, improving issue quality.
 
-**Change type:** RESTRUCTURE (breaking)
+**`bug_report.yml` fields:**
+- Description (required textarea)
+- Steps to reproduce (required textarea)
+- Expected vs actual behavior (required textarea)
+- Triggarr version (required input -- from Docker tag or `triggarr --version`)
+- Deployment method (dropdown: Docker Compose, Docker run, bare Python)
+- Radarr/Sonarr versions (optional input)
+- Relevant log output (optional textarea, render as code block)
+- Config snippet (optional textarea, render as code block, with warning to redact API keys)
 
-**Current:** State is keyed by `"radarr"` and `"sonarr"` as hardcoded top-level keys.
+**`feature_request.yml` fields:**
+- Problem description (required textarea -- "what problem does this solve?")
+- Proposed solution (required textarea)
+- Alternatives considered (optional textarea)
+- Additional context (optional textarea)
 
-**Target:** State keyed by instance ID (slugified name).
+### 2. CONTRIBUTING.md
 
-```python
-class TriggarrState(TypedDict, total=False):
-    instances: dict[str, AppState]  # instance_id -> per-instance state
-    search_log: list[dict]          # deprecated, kept for migration compat
-```
+**Integration points with existing tooling:**
+- Dev setup: `uv sync --extra dev` (from pyproject.toml)
+- Test command: `uv run pytest tests/ -x -q` (from CLAUDE.md)
+- Lint command: `uv run ruff check triggarr/ tests/` (from CLAUDE.md)
+- CSS dev: `uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch`
+- Docker build: `docker build -t triggarr:local .`
+- Code style: ruff with E, F, I, UP, B, SIM rules, 120 char line length (from pyproject.toml)
+- Async: pytest-asyncio with `asyncio_mode=auto`
 
-**Migration:** On load, detect old-format keys (`"radarr"`, `"sonarr"`) and remap to the new instance IDs. One-time, logged.
+**Sections:**
+1. Fork and branch workflow (fork -> feature branch -> PR to main)
+2. Dev environment setup (Python 3.11+, uv)
+3. Running tests and linting
+4. Code conventions (SecretStr, loguru, atomic writes)
+5. PR expectations (tests pass, ruff clean, descriptive commit messages)
 
-### 3. API Clients (`clients/`)
+### 3. SECURITY.md
 
-**Change type:** MINOR (no structural changes to client classes)
+**Documents existing security model (no new security features):**
+- Vulnerability reporting: private email or GitHub Security Advisory
+- Security model summary: no auth (local network tool), SecretStr API key discipline, CSRF via Origin/Referer, SSRF validation, input clamping, loguru redacting sink
+- Supported versions: latest release only
+- Response timeline expectations
 
-The `RadarrClient` and `SonarrClient` classes themselves do not change. They are already instance-agnostic -- they take a `base_url` and `api_key` and talk to one *arr server.
+### 4. Repo Metadata
 
-**New: Tag resolution method on `ArrClient` base class.**
+**GitHub topics** (set via `gh repo edit --add-topic`):
+- radarr, sonarr, arr, automation, docker, fastapi, htmx, python, search, media-management
+
+**GitHub Discussions:** Enable via `gh repo edit --enable-discussions` or GitHub web UI.
+
+## Test Architecture: Unhappy-Path Coverage
+
+### Test Organization Pattern
+
+**Keep unhappy-path tests in existing files.** The codebase already mixes happy and unhappy tests in the same module-aligned file (e.g., `test_clients.py` has both `test_arr_client_sets_header` and `test_validate_connection_connect_error`). Adding new unhappy-path tests to existing files maintains this pattern and keeps related tests discoverable together.
+
+**Grouping within files:** Use comment section headers (already established pattern):
 
 ```python
-async def get_tags(self) -> list[dict]:
-    """Fetch all tags from /api/v3/tag."""
-    response = await self.get("/api/v3/tag")
-    return response.json()
-
-async def resolve_tag_id(self, tag_name: str) -> int | None:
-    """Resolve a tag name to its ID. Returns None if not found."""
-    tags = await self.get_tags()
-    for tag in tags:
-        if tag.get("label", "").lower() == tag_name.lower():
-            return tag["id"]
-    return None
+# ---------------------------------------------------------------------------
+# Unhappy path: connection failures
+# ---------------------------------------------------------------------------
 ```
 
-Both Radarr and Sonarr share the same `/api/v3/tag` endpoint schema, so this belongs on the base class.
+### Fixture Strategy
 
-**Storage change:** `app.state` replaces individual client attributes with a dict.
+**Existing pattern to follow:** The codebase uses `unittest.mock.AsyncMock` and `unittest.mock.patch` for all mocking. There are no custom httpx transport mocks or respx usage. Continue this pattern.
+
+**Factory fixtures already available:**
+- `make_settings()` in `conftest.py` -- builds `Settings` with test defaults
+- `default_state()` in `conftest.py` -- builds fresh `TriggarrState`
+- `_init_test_db()` in `test_db.py` (local helper) -- creates test SQLite database
+
+**New fixtures NOT needed.** The existing mock patterns are sufficient:
 
 ```python
-# Current
-app.state.radarr_client = RadarrClient(...)
-app.state.sonarr_client = SonarrClient(...)
+# httpx failures -- already established pattern
+client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+client.search_movies = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
 
-# Target
-app.state.clients: dict[str, ArrClient] = {
-    "radarr-4k": RadarrClient(...),
-    "sonarr-main": SonarrClient(...),
-}
+# HTTP status errors -- established in test_tracking.py
+mock_request = httpx.Request("GET", "http://test/api")
+mock_response = httpx.Response(404, request=mock_request)
+exc = httpx.HTTPStatusError("Not found", request=mock_request, response=mock_response)
+client.get_grab_history.side_effect = exc
+
+# Pydantic validation errors -- trigger by returning bad JSON shapes
+client.get_wanted_missing = AsyncMock(return_value=[{"bad": "shape"}])
+
+# SQLite errors
+# Use real aiosqlite with tmp_path, then corrupt the database file
+# Or mock db operations with side_effect=aiosqlite.OperationalError
 ```
 
-### 4. Tag-Based Filtering (`search/engine.py`)
+### Coverage Gap Analysis
 
-**Change type:** NEW FUNCTION + cycle modification
+#### Category 1: Connection Failures (target: `test_clients.py`, `test_search.py`)
 
-**How tags work in the *arr APIs:**
+**Already tested:**
+- `_request_with_retry` retry on HTTP status error
+- `_request_with_retry` reraise after both attempts fail
+- `validate_connection` ConnectError, TimeoutException
+- Radarr/Sonarr/Lidarr cycle network failure (ConnectError)
 
-- Radarr: Each movie object from `/api/v3/wanted/missing` includes a `tags` field -- an array of integer tag IDs (e.g., `[1, 3]`). There is NO server-side tag filter parameter on the wanted endpoints.
-- Sonarr: Each episode object from `/api/v3/wanted/missing` with `includeSeries=true` includes the series data, which has a `tags` field on the series object (at `episode["series"]["tags"]`).
-- Both apps have a `/api/v3/tag` endpoint that returns `[{"id": 1, "label": "triggarr-missing"}, ...]`.
+**Missing -- add to `test_clients.py`:**
+- `_request_with_retry` with `httpx.ReadTimeout` (subtype of TransportError)
+- `_request_with_retry` with `httpx.ConnectTimeout` (subtype of TransportError)
+- `_request_with_retry` first attempt fails, retry succeeds (partial coverage exists but only for HTTPStatusError, not TransportError)
+- `get_paginated` when a mid-pagination page fails (page 1 succeeds, page 2 raises)
+- `get_json_list` when response is not a JSON array (returns dict instead)
+- `get_total_records` when response has malformed pagination envelope
 
-**Filtering strategy:** Client-side filtering after fetch. This is the only option since the wanted/missing endpoints do not support server-side tag filtering.
+**Missing -- add to `test_search.py`:**
+- Cycle abort on `pydantic.ValidationError` (API returns unexpected shape)
+- Per-item search failure logged as "failed" outcome in DB (currently tests ConnectError, not `aiosqlite.Error`)
+- Cycle continues after per-item `aiosqlite.Error` on `insert_search_entry`
 
+#### Category 2: Bad API Responses (target: `test_clients.py`, `test_search.py`, `test_tracking.py`)
+
+**Already tested:**
+- `get_paginated` malformed response (ValidationError)
+- `validate_connection` with pydantic.ValidationError
+
+**Missing -- add to `test_clients.py`:**
+- `get_tags` returns non-list response
+- `get_tags` returns items missing `id` or `label` fields
+- `get_paginated` returns `totalRecords: -1` (negative)
+- `get_paginated` returns `records: null` instead of array
+- HTTP 500 on first attempt, success on retry (verify retry works for server errors)
+
+**Missing -- add to `test_search.py`:**
+- `filter_unreleased_movies` with items missing date fields entirely (not just null -- key absent)
+- `resolve_tag_id` when `get_tags` raises (already tested for ConnectError, but not for malformed tag response)
+- Cycle handles empty `records` array from paginated response gracefully
+
+**Missing -- add to `test_tracking.py`:**
+- Tracking with grab history returning empty list (no grabs found)
+- Tracking with grab history returning events with missing timestamp fields
+- `correlate_grabs` with mismatched item IDs
+
+#### Category 3: Corrupt State/Config (target: `test_config.py`, `test_state.py`, `test_db.py`)
+
+**Already tested:**
+- Corrupt JSON state recovery (`test_state.py`)
+- Atomic TOML write failure cleanup (`test_config.py`)
+- Migration suppresses OperationalError (`test_db.py`)
+
+**Missing -- add to `test_config.py`:**
+- `load_settings` with corrupt/invalid TOML (binary garbage, truncated file)
+- `load_settings` with valid TOML but invalid schema (e.g., `search_interval = "not_a_number"`)
+- `load_settings` with missing required sections
+- `detect_and_migrate_v22` with corrupt TOML file
+- `_atomic_toml_write` when directory does not exist
+- Config file with wrong permissions (read-only)
+
+**Missing -- add to `test_state.py`:**
+- State file is empty (0 bytes)
+- State file contains valid JSON but wrong shape (array instead of object)
+- `save_state` when disk is full (OSError simulation)
+
+**Missing -- add to `test_db.py`:**
+- `init_db` on a corrupted SQLite file (not a valid database)
+- `insert_search_entry` when DB is read-only
+- `get_search_history` when table has been dropped (schema corruption)
+- Migration on a DB that's ahead of expected version (downgrade scenario)
+- `get_dashboard_stats` with empty tables (zero division edge case)
+
+#### Category 4: Search Logic Edge Cases (target: `test_search.py`)
+
+**Already tested:**
+- Empty item lists, wrap-around cursors, batch slicing edge cases
+- Filter monitored with missing key, Sonarr episode filtering
+
+**Missing -- add to `test_search.py`:**
+- `cap_batch_sizes` with `hard_max = 0` (disabled) -- verify no capping
+- `cap_batch_sizes` with all items in one queue (missing=100, cutoff=0)
+- `slice_batch` with `batch_size` larger than item list
+- `deduplicate_to_seasons` with episodes missing `seriesId` or `seasonNumber`
+- Cycle with all items already searched (cursor at end, wraps to 0, nothing new)
+- Cycle with `search_missing_count = 0` and `search_cutoff_count = 0`
+- `_sanitize_exc` with unexpected exception types (not HTTP or timeout)
+
+## Data Flow: No Changes
+
+This milestone adds no runtime data flow changes. All community health files are static. All test changes exercise existing code paths -- they do not modify production code.
+
+```
+BEFORE v2.4:                    AFTER v2.4:
+[Same runtime architecture]     [Same runtime architecture]
+                                + CONTRIBUTING.md (static)
+                                + SECURITY.md (static)
+                                + .github/ISSUE_TEMPLATE/*.yml (static)
+                                + ~50-80 new test cases in existing files
+```
+
+## Patterns to Follow
+
+### Pattern 1: YAML Issue Form Templates (not Markdown)
+
+**What:** Use `.yml` form-based templates in `.github/ISSUE_TEMPLATE/` instead of legacy `.md` templates.
+
+**Why:** YAML forms enforce structured input (required fields, dropdowns, code blocks). Markdown templates are freeform and users frequently delete the template text, submit incomplete reports.
+
+**Example:**
+```yaml
+name: Bug Report
+description: Report a bug in Triggarr
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What went wrong?
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment Method
+      options:
+        - Docker Compose
+        - Docker run
+        - Bare Python (uv)
+    validations:
+      required: true
+```
+
+### Pattern 2: Unhappy Tests Inline with Module Tests
+
+**What:** Add failure-mode tests to the existing test file for each module, not in separate "unhappy path" files.
+
+**Why:** The codebase already mixes happy and unhappy tests. Keeping them together means you see all behavior (normal + failure) when reading one file. Separate files would split related tests and make refactoring harder.
+
+**How:** Use section comment headers to group new tests:
 ```python
-def filter_by_tag(items: list[dict], tag_id: int, tag_path: str = "tags") -> list[dict]:
-    """Filter items to those containing the given tag ID.
-
-    Args:
-        items: List of item dicts from *arr API.
-        tag_id: The resolved tag ID to filter on.
-        tag_path: Dot-path to the tags array. For Radarr movies, "tags".
-                  For Sonarr episodes with includeSeries, "series.tags".
-    """
-    result = []
-    for item in items:
-        obj = item
-        for key in tag_path.split("."):
-            obj = obj.get(key, {}) if isinstance(obj, dict) else {}
-        if isinstance(obj, list) and tag_id in obj:
-            result.append(item)
-    return result
+# ---------------------------------------------------------------------------
+# Connection failure scenarios
+# ---------------------------------------------------------------------------
 ```
 
-**Pipeline position in cycle functions:**
+### Pattern 3: AsyncMock side_effect for httpx Failures
 
-```
-fetch items
-  -> filter_monitored()            # existing
-  -> filter_by_tag()               # NEW: if tag configured, filter here
-  -> filter_unreleased_movies()    # existing (Radarr only)
-  -> deduplicate_to_seasons()      # existing (Sonarr only)
-  -> slice_batch()                 # existing
-  -> search                        # existing
-```
+**What:** Use `AsyncMock(side_effect=httpx.SomeError(...))` to simulate HTTP failures.
 
-Tag filtering goes after monitored filtering but before release filtering. Rationale: tags are a deliberate user opt-in, so they should narrow the set before any further processing. An item without the tag should never reach the release filter or cursor.
+**Why:** This is the established pattern throughout the test suite. No need for respx, httpx MockTransport, or custom test doubles. The existing approach is simple and works.
 
-**Tag ID caching:** Resolve tag name to ID once at cycle start (before the fetch loop). If resolution fails (tag does not exist in *arr), log a warning and skip filtering for that queue (fail-open, not fail-closed -- same philosophy as null release dates in v2.2).
+**When NOT to use:** If testing the actual HTTP retry timing (sleep), patch `asyncio.sleep` as already done in `test_clients.py`.
 
-### 5. Search Engine Cycle Functions (`search/engine.py`)
+### Pattern 4: tmp_path for File Corruption Tests
 
-**Change type:** MODIFY signatures and internal logic
+**What:** Use pytest's `tmp_path` fixture to create corrupt files, then pass them to config/state/db loaders.
 
-**Current:** `run_radarr_cycle(client, state, settings, db)` -- accesses settings directly.
+**Why:** Already established in `test_config.py`, `test_state.py`, `test_db.py`. Avoids filesystem side effects.
 
-**Target:** `run_radarr_cycle(client, instance_id, instance_config, general_config, state, db)` -- receives per-instance config.
-
-Changes within cycle functions:
-1. State access changes from `state["radarr"]` to `state["instances"][instance_id]`.
-2. Settings access changes from `settings.radarr.search_missing_count` to `instance_config.search_missing_count`.
-3. Add tag resolution and filtering step before the existing pipeline.
-4. Search history entries include instance_id (see DB section).
-5. Log messages include instance name for disambiguation (e.g., "Radarr 4K: Searched..." instead of "Radarr: Searched...").
-
-### 6. Scheduler (`search/scheduler.py`)
-
-**Change type:** MODIFY -- dynamic job creation
-
-**Current:** Loops over `("radarr", "sonarr")` and creates two jobs.
-
-**Target:** Loops over `settings.instances` and creates one job per enabled instance.
-
+**Example for corrupt TOML:**
 ```python
-for inst in settings.instances:
-    if not inst.enabled:
-        continue
-    instance_id = slugify(inst.name)
-    job_fn = make_search_job(app, instance_id, state_path)
-    scheduler.add_job(
-        job_fn,
-        "interval",
-        minutes=inst.search_interval,
-        id=f"{instance_id}_search",
-        next_run_time=datetime.now(UTC),
-    )
+def test_load_settings_corrupt_toml(tmp_path):
+    config_path = tmp_path / "triggarr.toml"
+    config_path.write_text("this is not valid [[[toml")
+    with pytest.raises(tomllib.TOMLDecodeError):
+        load_settings(config_path)
 ```
-
-**`make_search_job` changes:** The closure reads the client and instance config from `app.state.clients[instance_id]` and looks up the matching instance in `app.state.settings.instances` at execution time. Same lazy-read pattern as today.
-
-**Lifespan changes:**
-- Create N clients, store in `app.state.clients` dict.
-- Schedule N jobs.
-- Shutdown: close all clients in the dict.
-- The single `search_lock` is shared across all instances. This serializes all search cycles, preventing concurrent API hammering. This is intentional and matches the current design philosophy.
-
-### 7. Database (`db.py`)
-
-**Change type:** MIGRATION (schema v6)
-
-**New column:** `instance_id TEXT` on `search_history` table.
-
-```sql
-ALTER TABLE search_history ADD COLUMN instance_id TEXT DEFAULT NULL;
-```
-
-The `app` column remains (still useful for display: "Radarr" vs "Sonarr"). The `instance_id` column identifies which specific instance triggered the search. Old rows have `NULL` instance_id (acceptable -- they predate multi-instance).
-
-**`lifetime_stats` table:** Currently seeded with rows for "Radarr" and "Sonarr". For multi-instance, the primary key changes from `app` to `instance_id`. Migration v6 should rename existing rows to match instance IDs from the config migration.
-
-**Query changes:**
-- `get_dashboard_stats()`: Group by instance_id instead of (or in addition to) app.
-- `get_trackable_entries()`: Include instance_id in returned dicts.
-- `get_search_history()`: Add instance_id to filterable columns.
-- `insert_search_entry()`: Accept and store instance_id parameter.
-
-### 8. Tracking (`tracking.py`)
-
-**Change type:** MODIFY -- client lookup
-
-**Current:** `_get_client()` dispatches on `"Radarr"` / `"Sonarr"` string to find the client.
-
-**Target:** Tracking entries in DB include `instance_id`. The tracking function receives the full clients dict and looks up `clients[instance_id]`.
-
-```python
-async def run_tracking_check(
-    db: aiosqlite.Connection,
-    clients: dict[str, ArrClient],
-    tracking_window_minutes: int,
-) -> dict[str, int]:
-```
-
-### 9. Web Routes (`web/routes.py`)
-
-**Change type:** MODIFY -- iterate instances
-
-**Dashboard:** Instead of iterating `("radarr", "sonarr")`, iterate `settings.instances` and build one card context per enabled instance.
-
-**Settings page:** Render a dynamic list of instance configuration forms. Support add/remove instance via htmx. Each form section has: name, app_type dropdown, url, api_key, enabled, interval, counts, missing_tag, cutoff_tag.
-
-**Search-now endpoint:** Change `app_name` path param to `instance_id`.
-
-**History page:** Add instance filter alongside existing app/queue/outcome filters.
-
-**Partials:** `partial_app_card/{instance_id}` instead of `partial_app_card/{app_name}`.
-
-### 10. Startup (`startup.py`)
-
-**Change type:** MODIFY -- iterate instances
-
-- `collect_secrets()`: Iterate `settings.instances` instead of `(settings.radarr, settings.sonarr)`.
-- `validate_connections()`: Create temp client per enabled instance, validate, close.
-- `check_localhost_urls()`: Check each instance's URL.
-- `print_banner()`: List all instances with their status.
-
-## Data Flow: Multi-Instance Search Cycle
-
-```
-Scheduler fires {instance_id}_search job
-    |
-    v
-make_search_job closure reads from app.state:
-    client = app.state.clients[instance_id]
-    instance_config = find_instance(app.state.settings, instance_id)
-    general_config = app.state.settings.general
-    |
-    v
-acquire search_lock (shared across all instances)
-    |
-    v
-Determine cycle function: run_radarr_cycle or run_sonarr_cycle
-based on instance_config.app_type
-    |
-    v
-CYCLE FUNCTION:
-    1. Resolve tag IDs (if missing_tag or cutoff_tag configured)
-       -> GET /api/v3/tag -> find tag by label -> cache tag_id
-    2. Fetch wanted/missing + wanted/cutoff from *arr API
-    3. Pipeline:
-       missing items -> filter_monitored -> filter_by_tag(missing_tag_id)
-                     -> filter_unreleased (Radarr) -> slice_batch -> search
-       cutoff items  -> filter_monitored -> filter_by_tag(cutoff_tag_id)
-                     -> slice_batch -> search
-    4. Record searches in DB with instance_id
-    5. Run tracking check (pass clients dict)
-    6. Save state with per-instance cursors
-    |
-    v
-release search_lock
-```
-
-## Architectural Patterns
-
-### Pattern 1: Instance Registry on app.state
-
-**What:** Replace individual `radarr_client` / `sonarr_client` attributes with a `clients: dict[str, ArrClient]` dict keyed by instance_id.
-
-**When to use:** Whenever the number of components is dynamic (not known at compile time).
-
-**Trade-offs:**
-- Pro: No code changes needed when adding the 5th instance.
-- Pro: Hot-reload (settings save) just updates the dict.
-- Con: Dict access is slightly less explicit than named attributes.
-- Con: Must handle missing keys gracefully.
-
-This is the correct pattern because the number of instances is user-configured and can change at runtime via the settings editor.
-
-### Pattern 2: Config Migration (Old Format to New)
-
-**What:** Detect old `[radarr]` / `[sonarr]` TOML sections, auto-convert to `[[instances]]` array, rewrite config file.
-
-**When to use:** When changing config schema in a backward-incompatible way for an app with existing users.
-
-**Implementation:**
-```python
-def migrate_config_format(data: dict) -> dict:
-    """Convert old single-instance config to multi-instance format."""
-    if "instances" in data:
-        return data  # Already new format
-    instances = []
-    for app_type in ("radarr", "sonarr"):
-        if app_type in data:
-            cfg = data.pop(app_type)
-            cfg["name"] = app_type.title()
-            cfg["app_type"] = app_type
-            instances.append(cfg)
-    data["instances"] = instances
-    return data
-```
-
-**Trade-offs:**
-- Pro: Existing users do not have to manually rewrite config.
-- Pro: Clear deprecation path.
-- Con: Migration code must be maintained until old format is dropped.
-
-### Pattern 3: Fail-Open Tag Filtering
-
-**What:** When a configured tag name does not resolve to an ID (tag does not exist in *arr), skip filtering and search all items, with a logged warning.
-
-**When to use:** When the filter is additive (narrows results) and the safe default is "no filter."
-
-**Rationale:** Same philosophy as the existing null-release-date handling (v2.2). A misconfigured tag name should not silently stop all searches. The user sees the warning in logs and can correct the tag name.
-
-### Pattern 4: Slugified Instance ID
-
-**What:** Derive `instance_id` from the user-provided `name` field by lowercasing and replacing non-alphanumeric characters with hyphens.
-
-**When to use:** When human-readable names must map to stable internal keys used in state files, DB columns, and scheduler job IDs.
-
-**Implementation:**
-```python
-import re
-
-def slugify(name: str) -> str:
-    """Convert a human name to a stable slug for internal keying."""
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return slug or "instance"
-```
-
-**Trade-offs:**
-- Pro: Survives config reordering (unlike index-based IDs).
-- Pro: Human-readable in logs and state files.
-- Con: Rename of instance name changes the ID, orphaning old state/history. Mitigate by warning on name change.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Separate Config Sections Per Instance Type
+### Anti-Pattern 1: Separate Test Files for Unhappy Paths
 
-**What people do:** `[radarr_instances]` and `[sonarr_instances]` as separate sections.
-**Why it is wrong:** Duplicates the config schema. The only difference between a Radarr and Sonarr instance is the `app_type` field (and which cycle function runs). All other fields are identical.
-**Do this instead:** Single `[[instances]]` array with an `app_type` discriminator.
+**What:** Creating `test_clients_unhappy.py`, `test_search_failures.py`, etc.
+**Why bad:** Splits related tests across files. When someone changes `_request_with_retry`, they should find ALL tests (happy + unhappy) in one place. The existing convention is module-aligned files.
+**Do this instead:** Add tests to existing `test_clients.py`, `test_search.py`, etc.
 
-### Anti-Pattern 2: Per-Instance Database Connections
+### Anti-Pattern 2: Overly Complex Failure Fixtures
 
-**What people do:** Open a separate SQLite connection per instance.
-**Why it is wrong:** SQLite is single-writer anyway. Multiple connections add complexity (WAL contention, connection management) with zero benefit.
-**Do this instead:** Single shared connection, instance_id column for scoping queries.
+**What:** Building elaborate fixture hierarchies for simulating failures (custom httpx transports, mock servers, failure injection frameworks).
+**Why bad:** The existing `AsyncMock(side_effect=...)` pattern is simple, readable, and proven across 466 tests. Adding complexity for no gain.
+**Do this instead:** Continue using `AsyncMock` + `side_effect`. For file corruption, write bad content to `tmp_path` files.
 
-### Anti-Pattern 3: Per-Instance Search Locks
+### Anti-Pattern 3: Testing Framework Internals
 
-**What people do:** Create an `asyncio.Lock()` per instance so cycles can run concurrently.
-**Why it is wrong:** Concurrent API calls to multiple *arr instances could hammer the network and shared indexers. The single lock serializes cycles, which is the desired behavior for a polite search daemon.
-**Do this instead:** Keep the single `search_lock`. If cycle durations become a problem with many instances, address it later as a concrete performance issue, not a premature optimization.
+**What:** Testing that httpx raises the right exception types, or that aiosqlite raises OperationalError on corrupt files.
+**Why bad:** You are testing third-party library behavior, not your code. Fragile, slow, and low value.
+**Do this instead:** Mock the exception at the boundary (the method your code calls) and verify your code's response to it.
 
-### Anti-Pattern 4: Storing Tag IDs in Config
+### Anti-Pattern 4: Code of Conduct in Community Health Files
 
-**What people do:** Have users put numeric tag IDs in the config file.
-**Why it is wrong:** Users do not know tag IDs. They know tag names. IDs can change if a tag is deleted and recreated.
-**Do this instead:** Store tag names in config, resolve to IDs at runtime via the `/api/v3/tag` API.
-
-### Anti-Pattern 5: Server-Side Tag Filtering
-
-**What people do:** Assume the wanted/missing endpoint accepts a tag filter parameter.
-**Why it is wrong:** The Radarr/Sonarr wanted/missing and wanted/cutoff API endpoints do not support tag-based query parameters. All filtering must be done client-side after fetching the full list.
-**Do this instead:** Fetch all items, then filter in Python using the `tags` array on each item.
-
-## Integration Points
-
-### External Services
-
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| Radarr instances (N) | httpx async client, `/api/v3/*` | Tag endpoint: `/api/v3/tag` (GET, returns `[{id, label}]`). Movie objects have `tags: [int]` at top level. |
-| Sonarr instances (N) | httpx async client, `/api/v3/*` | Same tag endpoint. Episode objects have tags at `series.tags` (when `includeSeries=true`). |
-
-### Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Config -> Clients | Instance list drives client creation | One client per enabled instance |
-| Config -> Scheduler | Instance list drives job creation | One interval job per enabled instance |
-| Config -> State | Instance IDs key state dict entries | State auto-creates entries for new instances |
-| Engine -> DB | instance_id param on all DB writes | Enables per-instance history filtering |
-| Tracking -> Clients | Clients dict lookup by instance_id | Replaces hardcoded app-name dispatch |
-| Settings form -> Scheduler | Settings save triggers dynamic job add/remove/reschedule | Must handle add/remove of instances, not just enable/disable |
+**What:** Adding CODE_OF_CONDUCT.md with Contributor Covenant text.
+**Why bad:** Known to trigger Anthropic content filters during AI-assisted development. Also, for a homelab tool with a small community, it adds ceremony without value.
+**Do this instead:** Skip it. CONTRIBUTING.md covers behavioral expectations implicitly through PR expectations.
 
 ## Suggested Build Order
 
-The build order is driven by dependency chains and testability.
+Build order is straightforward since there are no dependencies between community files and tests.
 
-### Phase 1: Config Model + Migration
+### Phase 1: Community Health Files
 
-**What:** Restructure `InstanceConfig`, `Settings`, config loading/saving, and default template. Add old-format migration. Add instance_id derivation (slugify). Add tag fields.
+**What:** CONTRIBUTING.md, SECURITY.md, `.github/ISSUE_TEMPLATE/` (bug_report.yml, feature_request.yml, config.yml).
 
-**Why first:** Everything depends on the config model. Cannot change clients, scheduler, or engine without the new config shape.
+**Why first:** Static files, zero risk, fast to write, immediately useful if anyone opens an issue.
 
 **Dependencies:** None.
 
-**Test surface:** Config parsing, validation, migration from old format, instance_id uniqueness, tag field defaults.
+**Test surface:** None (static files). Optionally add a test that CONTRIBUTING.md and SECURITY.md exist (like the existing `test_changelog.py` pattern).
 
-### Phase 2: State Model + Migration
+### Phase 2: Repo Metadata
 
-**What:** Restructure `TriggarrState` to use `instances: dict[str, AppState]`. Migrate old state.json format. Update `load_state()`, `save_state()`, `_default_state()`.
+**What:** GitHub topics, enable Discussions.
 
-**Why second:** The engine and scheduler need the new state shape, but state depends on instance IDs from the config model.
+**Why second:** Quick administrative task, no files to write (just `gh` commands).
 
-**Dependencies:** Phase 1 (instance IDs).
+**Dependencies:** None.
 
-**Test surface:** State load/save, old-format migration, default state creation for new instances.
+### Phase 3: Connection Failure Tests
 
-### Phase 3: Client Registry + Tag Resolution
+**What:** New tests in `test_clients.py` and `test_search.py` for transport error subtypes, mid-pagination failures, retry-then-succeed scenarios.
 
-**What:** Add `get_tags()` / `resolve_tag_id()` to `ArrClient` base. Change `app.state` to use `clients: dict[str, ArrClient]`. Update lifespan client creation loop.
+**Why third:** Highest value unhappy-path coverage. Connection failures are the most common real-world failure mode for a tool that talks to external APIs.
 
-**Why third:** Engine changes need the client registry. Tag resolution is needed before engine changes.
+**Dependencies:** None.
 
-**Dependencies:** Phase 1 (instance configs for client creation).
+### Phase 4: Bad API Response Tests
 
-**Test surface:** Tag resolution (found, not found, case-insensitive), client dict management.
+**What:** New tests in `test_clients.py`, `test_search.py`, `test_tracking.py` for malformed JSON, unexpected shapes, missing fields.
 
-### Phase 4: Search Engine + Tag Filtering
+**Why fourth:** Second most common failure mode. *arr APIs can return unexpected shapes during version upgrades.
 
-**What:** Add `filter_by_tag()`. Modify cycle function signatures to accept instance_id + instance_config. Update state access within cycles. Wire tag filtering into pipeline.
+**Dependencies:** None (can run in parallel with Phase 3).
 
-**Why fourth:** Core feature. Needs config model, state model, and client registry.
+### Phase 5: Corrupt State/Config Tests
 
-**Dependencies:** Phases 1-3.
+**What:** New tests in `test_config.py`, `test_state.py`, `test_db.py` for broken TOML, empty files, corrupt SQLite, schema mismatch.
 
-**Test surface:** Tag filtering (match, no match, empty tag = no filter, nested path for Sonarr), cycle functions with instance_id, state updates per instance.
+**Why fifth:** Less likely in practice (files are written atomically) but important for robustness confidence.
 
-### Phase 5: Database Schema + Queries
+**Dependencies:** None (can run in parallel with Phases 3-4).
 
-**What:** Migration v6: add `instance_id` column to `search_history`, update `lifetime_stats` seeding. Update all CRUD functions to accept/return instance_id.
+### Phase 6: Search Logic Edge Cases
 
-**Why fifth:** Can be done in parallel with Phase 4, but logically follows the engine knowing about instance_id.
+**What:** New tests in `test_search.py` for zero-count batches, missing fields in deduplicated episodes, cursor boundary conditions.
 
-**Dependencies:** Phase 1 (instance IDs).
+**Why last:** Lowest risk -- these are pure functions with no I/O. Edge cases are unlikely to cause production issues but improve confidence.
 
-**Test surface:** Migration, queries with instance_id filter, backward compat for NULL instance_id rows.
-
-### Phase 6: Scheduler + Tracking Updates
-
-**What:** Dynamic job creation per instance. Update `make_search_job` closure. Update tracking to use clients dict and instance_id. Update startup sequence.
-
-**Why sixth:** Wires the engine changes into the running application.
-
-**Dependencies:** Phases 3-5.
-
-**Test surface:** Job creation/removal, tracking with instance_id resolution, startup with N instances.
-
-### Phase 7: Web UI Updates
-
-**What:** Dashboard renders N instance cards. Settings page supports add/remove/edit instances with tag fields. History page adds instance filter. Search-now uses instance_id. Partials updated.
-
-**Why last:** UI is the integration layer. Needs all backend changes in place.
-
-**Dependencies:** Phases 1-6.
-
-**Test surface:** Route tests with multi-instance settings, settings form parsing, history filtering.
+**Dependencies:** None.
 
 ## Scaling Considerations
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| 1-3 instances | Current design is fine. Single lock, single DB connection. |
-| 4-10 instances | Still fine. Cycle times may increase due to serial lock. Monitor cycle duration in logs. |
-| 10+ instances | Consider per-instance locks OR a semaphore(N) to allow controlled parallelism. This is unlikely for a homelab tool. |
+Not applicable for this milestone. Community health files and tests do not affect runtime behavior or resource usage.
 
-### First bottleneck: Total cycle time
-
-With many instances running serially behind one lock, the last instance's "next run" could be significantly delayed. Mitigation: if this becomes real, add a semaphore(2) instead of a mutex lock, allowing 2 concurrent cycles. But for a homelab tool with 2-4 instances, this is not a concern.
+The only scaling concern is test suite run time. Adding ~50-80 tests to a suite of 466 should add approximately 2-5 seconds (most tests use mocks, not real I/O). The CI workflow already caches uv packages, so no CI time concern.
 
 ## Sources
 
-- Full codebase audit of all 13 source files in `triggarr/` (HIGH confidence)
-- [Radarr API Docs](https://radarr.video/docs/api/) -- tag and movie endpoints (MEDIUM confidence -- doc UI confirmed, schema via third-party libs)
-- [Sonarr API Docs](https://sonarr.tv/docs/api/) -- tag and series endpoints (MEDIUM confidence)
-- [ArrAPI documentation](https://arrapi.kometa.wiki/en/latest/radarr.html) -- tag field structure confirmation: movie objects have `tags: [int]` (MEDIUM confidence)
-- [Radarr Wiki: API:Movie](https://github.com/Radarr/Radarr/wiki/API:Movie) -- movie object schema (MEDIUM confidence)
-- [Sonarr Wiki: Settings](https://wiki.servarr.com/sonarr/settings) -- tag management reference (MEDIUM confidence)
-- Radarr/Sonarr `/api/v3/tag` endpoint returns `[{id: int, label: str}]` -- confirmed by multiple third-party client libraries (MEDIUM confidence, not verified against live API)
+- Full codebase audit of all 20 test files and 13 source modules in `triggarr/` (HIGH confidence)
+- GitHub YAML issue form template documentation: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms (HIGH confidence -- official docs)
+- GitHub community health files documentation: https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions (HIGH confidence -- official docs)
+- Existing test patterns in codebase: AsyncMock + side_effect, tmp_path for file tests, section comment headers (HIGH confidence -- direct observation)
+- CLAUDE.md project conventions for dev commands and code style (HIGH confidence -- project file)
 
 ---
-*Architecture research for: Triggarr v2.3 Multi-Instance & Tag Filtering*
-*Researched: 2026-03-09*
+*Architecture research for: Triggarr v2.4 Community Polish & Test Hardening*
+*Researched: 2026-04-09*
