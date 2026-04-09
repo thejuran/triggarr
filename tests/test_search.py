@@ -93,6 +93,15 @@ def test_slice_batch_empty_list():
     assert new_cursor == 0
 
 
+# SRCH-04 (batch exceeds available): Covered by test_slice_batch_batch_larger_than_remaining below.
+# The search cycle functions call slice_batch() which handles this correctly -- items=[0,1,2],
+# cursor=1, batch_size=10 -> batch=[1,2], new_cursor=0. No integration test needed.
+#
+# SRCH-05 (cursor past end): Covered by test_slice_batch_cursor_past_end above.
+# Cursor resets to 0 and slices from beginning -- items=[0..4], cursor=99, batch_size=2 ->
+# batch=[0,1], new_cursor=2. No integration test needed.
+
+
 def test_slice_batch_batch_larger_than_remaining():
     items = list(range(3))
     batch, new_cursor = slice_batch(items, cursor=1, batch_size=10)
@@ -2183,6 +2192,68 @@ async def test_lidarr_tags_accessor():
 
     album_no_artist = {"id": 2, "title": "No Artist"}
     assert _lidarr_tags(album_no_artist) == []
+
+
+async def test_lidarr_tag_resolution_failure_searches_all(tmp_path):
+    """Lidarr cycle with tag not found in tag list searches all items (fail-open, SRCH-03)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": [5]}},
+        {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": []}},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.search_albums = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://lidarr:8686", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="nonexistent",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Tag not found -> fail-open, all monitored albums searched
+    assert client.search_albums.call_count == 2
+    await db.close()
+
+
+async def test_tag_warning_state_stored_when_tag_not_found_lidarr(tmp_path):
+    """Lidarr cycle stores tag_warnings when configured tag is not found (SRCH-03)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": [5]}},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.search_albums = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://lidarr:8686", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="nonexistent",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    ist = state["lidarr"]["Default"]
+    assert "tag_warnings" in ist
+    assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+    await db.close()
 
 
 async def test_tag_warnings_cleared_on_lidarr_connectivity_failure(tmp_path):
