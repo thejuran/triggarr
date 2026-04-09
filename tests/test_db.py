@@ -1018,3 +1018,59 @@ async def test_row_factory_persists_after_instance_scoped_queries(tmp_path):
     await get_dashboard_stats(db, instance_id="4K")
     assert db.row_factory is aiosqlite.Row, "row_factory changed after instance-scoped get_dashboard_stats"
     await db.close()
+
+
+# --- Corrupt/invalid database tests ---
+
+
+async def test_init_db_corrupt_file_raises_database_error(tmp_path):
+    """Corrupt SQLite file (random bytes) raises DatabaseError on first SQL execution."""
+    import sqlite3
+
+    db_path = tmp_path / "corrupt.db"
+    db_path.write_bytes(bytes(range(256)))
+
+    db = await aiosqlite.connect(db_path)
+    try:
+        with pytest.raises(sqlite3.DatabaseError):
+            await init_db(db, db_path)
+    finally:
+        await db.close()
+
+
+async def test_init_db_locked_database(tmp_path):
+    """Locked database raises OperationalError with zero busy_timeout."""
+    import sqlite3
+
+    db_path = tmp_path / "locked.db"
+
+    # Create a valid DB first
+    db1 = await aiosqlite.connect(db_path)
+    await init_db(db1, db_path)
+    await db1.close()
+
+    # Hold an exclusive lock with a second connection
+    db2 = await aiosqlite.connect(db_path)
+    await db2.execute("BEGIN EXCLUSIVE")
+
+    # Third connection with zero timeout should fail immediately
+    db3 = await aiosqlite.connect(db_path)
+    await db3.execute("PRAGMA busy_timeout = 0")
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            await init_db(db3, db_path)
+    finally:
+        await db3.close()
+        await db2.close()
+
+
+async def test_get_schema_version_on_empty_db(tmp_path):
+    """get_schema_version on fresh DB creates table and returns 0."""
+    db_path = tmp_path / "empty.db"
+    db = await aiosqlite.connect(db_path)
+
+    version = await get_schema_version(db)
+
+    assert version == 0
+    await db.close()
