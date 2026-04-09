@@ -2450,3 +2450,138 @@ async def test_run_radarr_cycle_malformed_json_aborts(tmp_path):
     result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
     assert result["radarr"]["Default"]["connected"] is False
     await db.close()
+
+
+# --- Empty queue and tag filtering edge cases (SRCH-01, SRCH-02) ---
+
+
+async def test_run_radarr_cycle_empty_queues(tmp_path):
+    """Radarr cycle with empty missing and cutoff queues makes zero searches (SRCH-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_movies.call_count == 0
+    assert result["radarr"]["Default"]["missing_cursor"] == 0
+    assert result["radarr"]["Default"]["cutoff_cursor"] == 0
+    assert result["radarr"]["Default"]["connected"] is True
+    await db.close()
+
+
+async def test_run_sonarr_cycle_empty_queues(tmp_path):
+    """Sonarr cycle with empty missing and cutoff queues makes zero searches (SRCH-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 0
+    assert result["sonarr"]["Default"]["missing_cursor"] == 0
+    assert result["sonarr"]["Default"]["cutoff_cursor"] == 0
+    assert result["sonarr"]["Default"]["connected"] is True
+    await db.close()
+
+
+async def test_run_lidarr_cycle_empty_queues(tmp_path):
+    """Lidarr cycle with empty missing and cutoff queues makes zero searches (SRCH-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=0)
+    client.search_albums = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_albums.call_count == 0
+    assert result["lidarr"]["Default"]["missing_cursor"] == 0
+    assert result["lidarr"]["Default"]["cutoff_cursor"] == 0
+    assert result["lidarr"]["Default"]["connected"] is True
+    await db.close()
+
+
+async def test_radarr_cycle_all_filtered_by_tag(tmp_path):
+    """Radarr cycle with all items filtered out by tag makes zero searches (SRCH-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="triggarr")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [99]},
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [99]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_movies.call_count == 0
+    await db.close()
+
+
+async def test_sonarr_cycle_all_filtered_by_tag(tmp_path):
+    """Sonarr cycle with all episodes filtered out by tag makes zero searches (SRCH-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    _ep = _make_tagged_sonarr_episode
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="triggarr")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[99]),
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[99]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 0
+    await db.close()
