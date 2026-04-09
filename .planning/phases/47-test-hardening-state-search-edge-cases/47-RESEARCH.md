@@ -272,17 +272,15 @@ None -- existing test infrastructure (conftest.py, pytest-asyncio auto mode, tmp
 | A1 | STATE-01 "recovery" means verifying exceptions propagate cleanly (not adding try/except to source code) | Phase Requirements | If recovery logic needs to be ADDED to config.py, the phase scope expands beyond test-only |
 | A2 | SRCH-04 and SRCH-05 are fully covered by existing slice_batch tests | Existing Coverage Audit | If integration-level coverage is required, 2-4 more tests needed |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **STATE-01: Does "recovery" require source code changes?**
+1. **STATE-01: Does "recovery" require source code changes?** RESOLVED: Tests verify exceptions propagate cleanly (TOMLDecodeError, ValidationError). No source code changes needed — "recovery" means confirming clean failure, not adding try/except.
    - What we know: `load_settings()` has no try/except for TOMLDecodeError or ValidationError. The app will crash on startup with bad TOML.
-   - What's unclear: Does the requirement mean (a) test that exceptions are raised cleanly, or (b) add recovery logic (e.g., regenerate default config) and test it?
-   - Recommendation: Tests should verify current behavior (clean exception propagation, no data loss). If recovery logic is desired, that is a code change beyond "test hardening."
+   - Resolution: Tests verify current behavior (clean exception propagation, no data loss). Recovery logic is beyond "test hardening" scope.
 
-2. **STATE-02: How deep should SQLite corruption testing go?**
+2. **STATE-02: How deep should SQLite corruption testing go?** RESOLVED: Test both actual file corruption (256 random bytes → aiosqlite.DatabaseError) and locked DB (PRAGMA busy_timeout=0 → OperationalError).
    - What we know: `init_db()` creates tables and runs migrations. No existing error handling for corrupt DB files.
-   - What's unclear: Should we test actual file corruption (write garbage bytes to .db file) or mock the errors?
-   - Recommendation: Test both -- (1) actual corrupt file to verify aiosqlite raises appropriate error, (2) test that the app's startup handles this (may need source inspection of how init_db is called in app lifespan).
+   - Resolution: Test actual corrupt file (write garbage bytes) and locked DB scenario. Both use real file operations, not mocks.
 
 ## Sources
 
