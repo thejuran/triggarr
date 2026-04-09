@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import io
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pydantic
 import pytest
+from loguru import logger
 
 from triggarr.clients.base import ArrClient
 from triggarr.clients.lidarr import LidarrClient
@@ -309,6 +311,63 @@ async def test_validate_connection_timeout() -> None:
         result = await client.validate_connection()
         assert result is False
     finally:
+        await client.close()
+
+
+async def test_validate_connection_dns_failure() -> None:
+    """validate_connection returns False on DNS resolution failure (CONN-02)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("[Errno -2] Name or service not known")
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://nonexistent.invalid", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.validate_connection()
+        assert result is False
+    finally:
+        await client.close()
+
+
+async def test_validate_connection_ssl_error() -> None:
+    """validate_connection returns False on SSL/TLS error (CONN-03)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="https://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="https://test")
+    try:
+        result = await client.validate_connection()
+        assert result is False
+    finally:
+        await client.close()
+
+
+async def test_validate_connection_connect_error_logs_warning() -> None:
+    """validate_connection logs warning with app name on ConnectError (CONN-01 gap)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        result = await client.validate_connection()
+        assert result is False
+        assert "Connection refused" in sink.getvalue()
+        assert "Test" in sink.getvalue()
+    finally:
+        logger.remove(handler_id)
         await client.close()
 
 
