@@ -1,5 +1,5 @@
 ---
-status: partial
+status: complete
 phase: 45-community-health-repo-metadata
 source: [45-01-SUMMARY.md, 45-02-SUMMARY.md]
 started: 2026-04-09T00:00:00Z
@@ -50,24 +50,20 @@ result: pass
 
 ### 10. Issue Forms Render (manual)
 expected: Clicking "New Issue" on GitHub shows structured forms (bug report, feature request) — not blank textarea.
-result: blocked
-blocked_by: other
-reason: "Commits not yet pushed to origin — templates only render on GitHub after push"
+result: pass
 
 ### 11. PR Template Renders (manual)
 expected: Creating a new PR on GitHub auto-populates the CI checklist from the template.
-result: blocked
-blocked_by: other
-reason: "Commits not yet pushed to origin — template only renders on GitHub after push"
+result: pass
 
 ## Summary
 
 total: 11
-passed: 9
+passed: 11
 issues: 0
 pending: 0
 skipped: 0
-blocked: 2
+blocked: 0
 
 ## Gaps
 
