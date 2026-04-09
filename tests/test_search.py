@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock
 
 import aiosqlite
 import httpx
+import pydantic
 from loguru import logger
 
 from tests.conftest import make_settings
@@ -2341,4 +2342,112 @@ async def test_run_radarr_cycle_all_searches_fail(tmp_path):
     assert result["radarr"]["Default"]["connected"] is True
     # Both items attempted (even though both failed)
     assert client.search_movies.call_count == 2
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Bad API response cycle tests (Phase 46, Plan 02)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_radarr_cycle_403_aborts(tmp_path):
+    """Radarr cycle aborts gracefully on 403 Forbidden during fetch (API-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    request = httpx.Request("GET", "http://test/api/v3/wanted/missing")
+    response = httpx.Response(403, request=request)
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        side_effect=httpx.HTTPStatusError("Forbidden", request=request, response=response)
+    )
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["connected"] is False
+    await db.close()
+
+
+async def test_run_radarr_cycle_502_aborts(tmp_path):
+    """Radarr cycle aborts gracefully on 502 Bad Gateway during fetch (API-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    request = httpx.Request("GET", "http://test/api/v3/wanted/missing")
+    response = httpx.Response(502, request=request)
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        side_effect=httpx.HTTPStatusError("Bad Gateway", request=request, response=response)
+    )
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["connected"] is False
+    await db.close()
+
+
+async def test_run_radarr_cycle_403_per_item_skip(tmp_path):
+    """Radarr cycle continues when per-item search gets 403 Forbidden (API-02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "monitored": True, "title": "M1"},
+            {"id": 2, "monitored": True, "title": "M2"},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=100)
+    client.get_tags = AsyncMock(return_value=[])
+    search_request = httpx.Request("POST", "http://test/api/v3/command")
+    search_response = httpx.Response(403, request=search_request)
+    client.search_movies = AsyncMock(
+        side_effect=httpx.HTTPStatusError("Forbidden", request=search_request, response=search_response)
+    )
+    client.get_grab_history = AsyncMock(return_value=[])
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Fetch succeeded so connected is True (only per-item search failed)
+    assert result["radarr"]["Default"]["connected"] is True
+    # Both items attempted
+    assert client.search_movies.call_count == 2
+    await db.close()
+
+
+async def test_run_radarr_cycle_malformed_json_aborts(tmp_path):
+    """Radarr cycle aborts gracefully on malformed JSON / ValidationError during fetch (API-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    # Capture a real pydantic.ValidationError to use as side_effect
+    try:
+        pydantic.TypeAdapter(int).validate_python("not_int")
+    except pydantic.ValidationError as exc:
+        validation_err = exc
+    client.get_wanted_missing = AsyncMock(side_effect=validation_err)
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["connected"] is False
     await db.close()
