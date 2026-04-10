@@ -109,49 +109,57 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | TBD | Pending |
-| FOUND-02 | TBD | Pending |
-| FOUND-03 | TBD | Pending |
-| FOUND-04 | TBD | Pending |
-| FOUND-05 | TBD | Pending |
-| NAV-01 | TBD | Pending |
-| NAV-02 | TBD | Pending |
-| NAV-03 | TBD | Pending |
-| STATS-01 | TBD | Pending |
-| STATS-02 | TBD | Pending |
-| STATS-03 | TBD | Pending |
-| STATS-04 | TBD | Pending |
-| STATS-05 | TBD | Pending |
-| CARD-01 | TBD | Pending |
-| CARD-02 | TBD | Pending |
-| CARD-03 | TBD | Pending |
-| CARD-04 | TBD | Pending |
-| CARD-05 | TBD | Pending |
-| CARD-06 | TBD | Pending |
-| CARD-07 | TBD | Pending |
-| LAYOUT-01 | TBD | Pending |
-| LOG-01 | TBD | Pending |
-| LOG-02 | TBD | Pending |
-| LOG-03 | TBD | Pending |
-| LOG-04 | TBD | Pending |
-| LOG-05 | TBD | Pending |
-| LOG-06 | TBD | Pending |
-| RAIL-01 | TBD | Pending |
-| RAIL-02 | TBD | Pending |
-| RAIL-03 | TBD | Pending |
-| RAIL-04 | TBD | Pending |
-| RAIL-05 | TBD | Pending |
-| RAIL-06 | TBD | Pending |
-| RAIL-07 | TBD | Pending |
-| DOCS-01 | TBD | Pending |
-| DOCS-02 | TBD | Pending |
-| DOCS-03 | TBD | Pending |
+| FOUND-01 | Phase 48 | Pending |
+| FOUND-02 | Phase 48 | Pending |
+| FOUND-03 | Phase 48 | Pending |
+| FOUND-04 | Phase 48 | Pending |
+| FOUND-05 | Phase 48 | Pending |
+| NAV-01 | Phase 48 | Pending |
+| NAV-02 | Phase 48 | Pending |
+| NAV-03 | Phase 48 | Pending |
+| STATS-01 | Phase 49 | Pending |
+| STATS-02 | Phase 49 | Pending |
+| STATS-03 | Phase 49 | Pending |
+| STATS-04 | Phase 49 | Pending |
+| STATS-05 | Phase 49 | Pending |
+| CARD-01 | Phase 50 | Pending |
+| CARD-02 | Phase 50 | Pending |
+| CARD-03 | Phase 50 | Pending |
+| CARD-04 | Phase 50 | Pending |
+| CARD-05 | Phase 50 | Pending |
+| CARD-06 | Phase 50 | Pending |
+| CARD-07 | Phase 50 | Pending |
+| LAYOUT-01 | Phase 50 | Pending |
+| LOG-01 | Phase 51 | Pending |
+| LOG-02 | Phase 51 | Pending |
+| LOG-03 | Phase 51 | Pending |
+| LOG-04 | Phase 51 | Pending |
+| LOG-05 | Phase 51 | Pending |
+| LOG-06 | Phase 51 | Pending |
+| RAIL-01 | Phase 52 | Pending |
+| RAIL-02 | Phase 52 | Pending |
+| RAIL-03 | Phase 52 | Pending |
+| RAIL-04 | Phase 52 | Pending |
+| RAIL-05 | Phase 52 | Pending |
+| RAIL-06 | Phase 52 | Pending |
+| RAIL-07 | Phase 52 | Pending |
+| DOCS-01 | Phase 53 | Pending |
+| DOCS-02 | Phase 53 | Pending |
+| DOCS-03 | Phase 53 | Pending |
 
 **Coverage:**
 - v2.5 requirements: 37 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 37 ⚠️ (to be resolved by roadmapper)
+- Mapped to phases: 37 ✓
+- Unmapped: 0
+
+**Phase distribution:**
+- Phase 48 (Foundations & Navigation Chrome): 8 requirements (FOUND-01..05, NAV-01..03)
+- Phase 49 (Stats & Health Strip): 5 requirements (STATS-01..05)
+- Phase 50 (App Cards & Services Grid): 8 requirements (CARD-01..07, LAYOUT-01)
+- Phase 51 (Application Log Redesign): 6 requirements (LOG-01..06)
+- Phase 52 (Recent Activity Rail): 7 requirements (RAIL-01..07)
+- Phase 53 (Docs & Metadata): 3 requirements (DOCS-01..03)
 
 ---
 *Requirements defined: 2026-04-10*
-*Last updated: 2026-04-10 after initial definition*
+*Last updated: 2026-04-10 — traceability populated by roadmapper*
