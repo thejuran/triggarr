@@ -2,11 +2,26 @@
 
 ## What This Is
 
-A lightweight Docker-based tool that automates searches in Radarr and Sonarr for wanted and cutoff unmet items, with closed-loop download tracking and multi-instance support. Configurable round-robin searches at configurable intervals detect when searched items are actually grabbed, showing per-item outcome badges and aggregate effectiveness stats on a dark theme web UI. Supports multiple named Radarr/Sonarr instances with per-instance tag-based search filtering, instance health monitoring, and update notifications. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history with tracking correlation, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
+A lightweight Docker-based tool that automates searches in Radarr, Sonarr, and Lidarr for wanted and cutoff unmet items, with closed-loop download tracking and multi-instance support. Configurable round-robin searches at configurable intervals detect when searched items are actually grabbed, showing per-item outcome badges and aggregate effectiveness stats on a dark theme web UI. Supports multiple named Radarr/Sonarr/Lidarr instances with per-instance tag-based search filtering, instance health monitoring, and update notifications. Includes CI/CD pipeline, automated GHCR publishing, SQLite search history with tracking correlation, and comprehensive documentation. Built with Python/FastAPI and htmx/Jinja2. Zero credential exposure by design.
 
 ## Core Value
 
-Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback showing what was actually grabbed — without exposing credentials or expanding attack surface.
+Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback showing what was actually grabbed — without exposing credentials or expanding attack surface.
+
+## Current Milestone: v2.5 Dashboard UI Refresh
+
+**Goal:** Refresh the web dashboard visual language without changing backend data shapes — tighter hierarchy, clearer instance health, and a sticky Recent Activity rail — using `.aidesigner/enhanced-mockup-v3.html` as the design contract.
+
+**Target features:**
+- Foundations: new elevation token, `focus-visible` rings, `prefers-reduced-motion`, Geist Mono, wider `max-w-7xl` container
+- Sticky nav with active-tab underline and pulsing update-available dot
+- Compact one-line health strip + hero Grab Rate card with per-app bar chart
+- Tightened app cards: unified connection pill, schedule row, pass pills, hover elevation
+- Diagonal danger stripes + Retry button on unreachable cards
+- 3-column Services grid on `xl:` breakpoint
+- Application Log: Geist Mono, TAILING indicator, level-colored rows, expandable bottom-terminal mode
+- New sticky **Recent Activity** rail on the right (timeline view, replaces inline Search Log)
+- Docs drift: move Lidarr out of Out of Scope, document existing Lidarr support
 
 ## Requirements
 
@@ -93,16 +108,20 @@ Reliably trigger searches in Radarr and Sonarr for missing and upgrade-eligible 
 
 ### Active
 
-(None — planning next milestone)
+**v2.5 Dashboard UI Refresh** — see Current Milestone section above. Requirements in `.planning/REQUIREMENTS.md`.
+
+### Undocumented shipped capability (discovered during v2.5 planning)
+
+- ✓ Lidarr support across search engine, settings UI, stats row, app cards, and history filters — shipped in v2.3 multi-instance work but never documented as a first-class requirement
 
 ## Current State
 
-Shipped v2.4 Community Polish & Test Hardening. Project is open-source ready with community health files and comprehensive unhappy-path test coverage.
+Starting v2.5 Dashboard UI Refresh. Previous milestone v2.4 shipped open-source community health files and comprehensive unhappy-path test coverage.
 
 ### Out of Scope
 
 - User accounts / authentication — local network tool, no auth needed
-- Lidarr / Readarr / other *arr support — Radarr + Sonarr only
+- Readarr / other *arr support — Radarr + Sonarr + Lidarr only
 - Notifications (Discord, Telegram, Apprise) — web UI log sufficient
 - Prowlarr / indexer management — uses existing *arr search infrastructure
 - Download queue management — *arr apps handle this
@@ -194,4 +213,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 after v2.4 milestone completion*
+*Last updated: 2026-04-10 — started v2.5 Dashboard UI Refresh milestone*
