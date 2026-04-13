@@ -2,17 +2,20 @@
      hx-get="{{ request.url_for('partial_health_summary') }}"
      hx-trigger="every 30s"
      hx-swap="outerHTML"
-     class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 mb-4">
-  <span class="text-xs uppercase tracking-wide text-triggarr-muted">Instance Health</span>
-  <p class="text-sm font-medium mt-1">
-    {% if health.disconnected == 0 and health.pending == 0 %}
-      <span class="text-triggarr-green">{{ health.connected }}/{{ health.total }} connected</span>
-    {% else %}
-      <span class="text-triggarr-green">{{ health.connected }} connected</span>,
-      <span class="{% if health.disconnected > 0 %}text-red-400{% else %}text-triggarr-muted{% endif %}">{{ health.disconnected }} disconnected</span>
-      {%- if health.pending > 0 %},
-      <span class="text-triggarr-muted">{{ health.pending }} pending</span>
-      {%- endif %}
-    {% endif %}
-  </p>
+     class="flex items-center justify-between text-xs mb-4 px-1">
+  <div class="flex items-center gap-4">
+    <span class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-triggarr-green"></span>
+      <span class="text-triggarr-text"><span class="font-semibold">{{ health.connected }}</span> connected</span>
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-red-500"></span>
+      <span class="text-triggarr-text"><span class="font-semibold">{{ health.disconnected }}</span> disconnected</span>
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-triggarr-border"></span>
+      <span class="text-triggarr-muted"><span class="font-semibold">{{ health.pending }}</span> pending</span>
+    </span>
+  </div>
+  <span class="text-triggarr-muted font-geist-mono">Last sync {{ last_sync }}</span>
 </div>

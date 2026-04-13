@@ -200,6 +200,20 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
     }
 
 
+def _relative_time(dt: datetime | None) -> str:
+    """Format a datetime as a short relative string (e.g. '2s ago', '1m ago')."""
+    if dt is None:
+        return "never"
+    delta = datetime.now(UTC) - dt
+    seconds = int(delta.total_seconds())
+    if seconds < 60:
+        return f"{seconds}s ago"
+    elif seconds < 3600:
+        return f"{seconds // 60}m ago"
+    else:
+        return f"{seconds // 3600}h ago"
+
+
 def _build_health_summary(request: Request) -> dict:
     """Compute health summary counts from enabled instances in triggarr_state.
 
@@ -801,10 +815,15 @@ async def partial_search_log(request: Request) -> HTMLResponse:
 async def partial_health_summary(request: Request) -> HTMLResponse:
     """Return an HTML fragment for the health summary (htmx partial)."""
     health = _build_health_summary(request)
+    # Track last health check time for "Last sync" display
+    now = datetime.now(UTC)
+    request.app.state.triggarr_state["last_health_check"] = now
+    last_check = request.app.state.triggarr_state.get("last_health_check")
+    last_sync = _relative_time(last_check)
     return templates.TemplateResponse(
         request=request,
         name="partials/health_summary.html",
-        context={"health": health},
+        context={"health": health, "last_sync": last_sync},
     )
 
 
