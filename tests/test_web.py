@@ -1758,8 +1758,9 @@ def test_health_summary_counts(client, test_app):
     # Radarr Default is connected=True, Sonarr/Lidarr Default is connected=None (pending)
     response = client.get("/partials/health-summary")
     assert response.status_code == 200
-    assert "1 connected" in response.text
-    assert "2 pending" in response.text
+    # New strip format wraps count in <span class="font-semibold">N</span> label
+    assert ">1</span> connected" in response.text
+    assert ">2</span> pending" in response.text
 
 
 def test_health_summary_excludes_disabled(client, test_app):
@@ -1773,8 +1774,8 @@ def test_health_summary_excludes_disabled(client, test_app):
     response = client.get("/partials/health-summary")
     assert response.status_code == 200
     # Disabled instance should not show in counts - still 1 connected, 0 disconnected
-    assert "1 connected" in response.text
-    assert "0 disconnected" in response.text
+    assert ">1</span> connected" in response.text
+    assert ">0</span> disconnected" in response.text
 
 
 def test_health_summary_disconnected(client, test_app):
@@ -1782,7 +1783,7 @@ def test_health_summary_disconnected(client, test_app):
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
     response = client.get("/partials/health-summary")
     assert response.status_code == 200
-    assert "1 disconnected" in response.text
+    assert ">1</span> disconnected" in response.text
 
 
 def test_stats_row_instance_filter(client, test_app):
