@@ -109,14 +109,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 48 | Pending |
-| FOUND-02 | Phase 48 | Pending |
-| FOUND-03 | Phase 48 | Pending |
-| FOUND-04 | Phase 48 | Pending |
-| FOUND-05 | Phase 48 | Pending |
-| NAV-01 | Phase 48 | Pending |
-| NAV-02 | Phase 48 | Pending |
-| NAV-03 | Phase 48 | Pending |
+| FOUND-01 | Phase 48 | Done |
+| FOUND-02 | Phase 48 | Done |
+| FOUND-03 | Phase 48 | Done |
+| FOUND-04 | Phase 48 | Done |
+| FOUND-05 | Phase 48 | Done |
+| NAV-01 | Phase 48 | Done |
+| NAV-02 | Phase 48 | Done |
+| NAV-03 | Phase 48 | Done |
 | STATS-01 | Phase 49 | Pending |
 | STATS-02 | Phase 49 | Pending |
 | STATS-03 | Phase 49 | Pending |

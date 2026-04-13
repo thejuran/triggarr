@@ -114,7 +114,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 <details open>
 <summary>v2.5 Dashboard UI Refresh (Phases 48-53) -- IN PROGRESS</summary>
 
-- [ ] **Phase 48: Foundations & Navigation Chrome** — Global tokens, focus ring, reduced-motion, Geist Mono, wider container, sticky nav with active-tab underline and update dot
+- [x] **Phase 48: Foundations & Navigation Chrome** — Global tokens, focus ring, reduced-motion, Geist Mono, wider container, sticky nav with active-tab underline and update dot
 - [ ] **Phase 49: Stats & Health Strip** — One-line health strip, hero Grab Rate card with health badge and per-app bar chart, card elevation
 - [ ] **Phase 50: App Cards & Services Grid** — Unified connection pill, schedule row, pass pills, hover elevation, danger stripes, Retry button, live dot, 3-col xl grid
 - [ ] **Phase 51: Application Log Redesign** — Geist Mono rows, TAILING indicator, level styling, source tags, expandable bottom terminal pane
@@ -136,7 +136,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   3. User sees monospace surfaces across the site rendered in Geist Mono loaded from Google Fonts, and the main dashboard column extends to `max-w-7xl` on desktop
   4. User scrolling the Dashboard, History, or Settings page sees the top nav bar remain pinned with a backdrop-blur effect and a green underline under the active tab
   5. When an update is available, user sees a pulsing green dot next to the update-available chip in the nav
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 48-01-PLAN.md — CSS foundations: tokens, focus-visible, reduced-motion, self-hosted Geist Mono, dot-pulse utility, rebuilt output.css (FOUND-01, FOUND-02, FOUND-03, FOUND-05)
+- [ ] 48-02-PLAN.md — base.html chrome: sticky nav, max-w-7xl container, centralized active-tab via request.url.path, pulsing dot inside update chip, remove nav_*_class blocks from child templates (FOUND-04, NAV-01, NAV-02, NAV-03)
+- [ ] 48-03-PLAN.md — Verification: tests/test_ui_foundations.py with template smoke tests + CSS-compilation assertion (no new deps)
 **UI hint**: yes
 
 ### Phase 49: Stats & Health Strip
@@ -208,7 +211,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 48. Foundations & Navigation Chrome | 0/0 | Not started | - |
+| 48. Foundations & Navigation Chrome | 3/3 | Complete | 2026-04-13 |
 | 49. Stats & Health Strip | 0/0 | Not started | - |
 | 50. App Cards & Services Grid | 0/0 | Not started | - |
 | 51. Application Log Redesign | 0/0 | Not started | - |

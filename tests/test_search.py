@@ -16,9 +16,9 @@ from unittest.mock import AsyncMock
 
 import aiosqlite
 import httpx
-import pydantic
 import pytest
 from loguru import logger
+from pydantic import TypeAdapter, ValidationError
 
 from tests.conftest import make_settings
 from triggarr.db import init_db
@@ -2194,66 +2194,42 @@ async def test_lidarr_tags_accessor():
     assert _lidarr_tags(album_no_artist) == []
 
 
-async def test_lidarr_tag_resolution_failure_searches_all(tmp_path):
-    """Lidarr cycle with tag not found in tag list searches all items (fail-open, SRCH-03)."""
+async def test_lidarr_tag_resolution_failure_searches_all_and_stores_warning(tmp_path):
+    """Lidarr cycle with tag not found searches all items (fail-open) and stores tag_warnings (SRCH-03)."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    client = AsyncMock()
-    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
-    client.get_wanted_missing = AsyncMock(return_value=[
-        {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": [5]}},
-        {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": []}},
-    ])
-    client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.get_library_count = AsyncMock(return_value=10)
-    client.search_albums = AsyncMock()
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": [5]}},
+            {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": []}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
 
-    state = _make_test_state()
-    instance_config = InstanceConfig(
-        url="http://lidarr:8686", api_key="test-key", enabled=True,
-        search_missing_count=5, search_cutoff_count=5,
-        missing_tag="nonexistent",
-    )
-    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="nonexistent",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
 
-    await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    # Tag not found -> fail-open, all monitored albums searched
-    assert client.search_albums.call_count == 2
-    await db.close()
+        # Tag not found -> fail-open, all monitored albums searched
+        assert client.search_albums.call_count == 2
 
-
-async def test_tag_warning_state_stored_when_tag_not_found_lidarr(tmp_path):
-    """Lidarr cycle stores tag_warnings when configured tag is not found (SRCH-03)."""
-    db_path = tmp_path / "test.db"
-    db = await aiosqlite.connect(db_path)
-    await init_db(db, db_path)
-
-    client = AsyncMock()
-    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="existing-tag")])
-    client.get_wanted_missing = AsyncMock(return_value=[
-        {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": [5]}},
-    ])
-    client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.get_library_count = AsyncMock(return_value=10)
-    client.search_albums = AsyncMock()
-
-    state = _make_test_state()
-    instance_config = InstanceConfig(
-        url="http://lidarr:8686", api_key="test-key", enabled=True,
-        search_missing_count=5, search_cutoff_count=5,
-        missing_tag="nonexistent",
-    )
-    settings = _cycle_settings(missing_count=5, cutoff_count=5)
-
-    await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
-
-    ist = state["lidarr"]["Default"]
-    assert "tag_warnings" in ist
-    assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
-    await db.close()
+        # Tag warning stored in state
+        ist = state["lidarr"]["Default"]
+        assert "tag_warnings" in ist
+        assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+    finally:
+        await db.close()
 
 
 async def test_tag_warnings_cleared_on_lidarr_connectivity_failure(tmp_path):
@@ -2261,21 +2237,23 @@ async def test_tag_warnings_cleared_on_lidarr_connectivity_failure(tmp_path):
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
-    state = _make_test_state()
-    state["lidarr"]["Default"]["tag_warnings"] = [{"tag": "stale", "field": "missing"}]
+        state = _make_test_state()
+        state["lidarr"]["Default"]["tag_warnings"] = [{"tag": "stale", "field": "missing"}]
 
-    settings = _cycle_settings()
-    instance_config = _cycle_instance_config()
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
 
-    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    ist = result["lidarr"]["Default"]
-    assert ist["tag_warnings"] == []
-    assert ist["connected"] is False
-    await db.close()
+        ist = result["lidarr"]["Default"]
+        assert ist["tag_warnings"] == []
+        assert ist["connected"] is False
+    finally:
+        await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -2509,9 +2487,9 @@ async def test_run_radarr_cycle_malformed_json_aborts(tmp_path):
     await init_db(db, db_path)
 
     client = AsyncMock()
-    # Capture a real pydantic.ValidationError to use as side_effect
-    with pytest.raises(pydantic.ValidationError) as exc_info:
-        pydantic.TypeAdapter(int).validate_python("not_int")
+    # Capture a real ValidationError to use as side_effect
+    with pytest.raises(ValidationError) as exc_info:
+        TypeAdapter(int).validate_python("not_int")
     client.get_wanted_missing = AsyncMock(side_effect=exc_info.value)
 
     state = _make_test_state()
@@ -2524,6 +2502,9 @@ async def test_run_radarr_cycle_malformed_json_aborts(tmp_path):
 
 
 # --- Empty queue and tag filtering edge cases (SRCH-01, SRCH-02) ---
+# These provide integration-level confidence that empty/fully-filtered queues
+# propagate correctly through the full cycle, complementing unit-level coverage
+# in test_slice_batch_empty_list and test_filter_by_tag_empty_list.
 
 
 async def test_run_radarr_cycle_empty_queues(tmp_path):
@@ -2532,22 +2513,24 @@ async def test_run_radarr_cycle_empty_queues(tmp_path):
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=[])
-    client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.search_movies = AsyncMock()
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
 
-    state = _make_test_state()
-    settings = _cycle_settings()
-    instance_config = _cycle_instance_config()
+        state = _make_test_state()
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
 
-    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert client.search_movies.call_count == 0
-    assert result["radarr"]["Default"]["missing_cursor"] == 0
-    assert result["radarr"]["Default"]["cutoff_cursor"] == 0
-    assert result["radarr"]["Default"]["connected"] is True
-    await db.close()
+        assert client.search_movies.call_count == 0
+        assert result["radarr"]["Default"]["missing_cursor"] == 0
+        assert result["radarr"]["Default"]["cutoff_cursor"] == 0
+        assert result["radarr"]["Default"]["connected"] is True
+    finally:
+        await db.close()
 
 
 async def test_run_sonarr_cycle_empty_queues(tmp_path):
@@ -2556,22 +2539,24 @@ async def test_run_sonarr_cycle_empty_queues(tmp_path):
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=[])
-    client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.search_season = AsyncMock()
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
 
-    state = _make_test_state()
-    settings = _cycle_settings()
-    instance_config = _cycle_instance_config()
+        state = _make_test_state()
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
 
-    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert client.search_season.call_count == 0
-    assert result["sonarr"]["Default"]["missing_cursor"] == 0
-    assert result["sonarr"]["Default"]["cutoff_cursor"] == 0
-    assert result["sonarr"]["Default"]["connected"] is True
-    await db.close()
+        assert client.search_season.call_count == 0
+        assert result["sonarr"]["Default"]["missing_cursor"] == 0
+        assert result["sonarr"]["Default"]["cutoff_cursor"] == 0
+        assert result["sonarr"]["Default"]["connected"] is True
+    finally:
+        await db.close()
 
 
 async def test_run_lidarr_cycle_empty_queues(tmp_path):
@@ -2580,23 +2565,25 @@ async def test_run_lidarr_cycle_empty_queues(tmp_path):
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=[])
-    client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.get_library_count = AsyncMock(return_value=0)
-    client.search_albums = AsyncMock()
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=0)
+        client.search_albums = AsyncMock()
 
-    state = _make_test_state()
-    settings = _cycle_settings()
-    instance_config = _cycle_instance_config()
+        state = _make_test_state()
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
 
-    result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert client.search_albums.call_count == 0
-    assert result["lidarr"]["Default"]["missing_cursor"] == 0
-    assert result["lidarr"]["Default"]["cutoff_cursor"] == 0
-    assert result["lidarr"]["Default"]["connected"] is True
-    await db.close()
+        assert client.search_albums.call_count == 0
+        assert result["lidarr"]["Default"]["missing_cursor"] == 0
+        assert result["lidarr"]["Default"]["cutoff_cursor"] == 0
+        assert result["lidarr"]["Default"]["connected"] is True
+    finally:
+        await db.close()
 
 
 async def test_radarr_cycle_all_filtered_by_tag(tmp_path):
@@ -2605,27 +2592,31 @@ async def test_radarr_cycle_all_filtered_by_tag(tmp_path):
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    client = AsyncMock()
-    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="triggarr")])
-    client.get_wanted_missing = AsyncMock(return_value=[
-        {"id": 1, "title": "Movie A", "monitored": True, "tags": [99]},
-        {"id": 2, "title": "Movie B", "monitored": True, "tags": [99]},
-    ])
-    client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.search_movies = AsyncMock()
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="triggarr")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Movie A", "monitored": True, "tags": [99]},
+            {"id": 2, "title": "Movie B", "monitored": True, "tags": [99]},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        # Explicitly mock get_library_count to avoid relying on AsyncMock auto-return
+        client.get_library_count = AsyncMock(return_value=0)
+        client.search_movies = AsyncMock()
 
-    state = _make_test_state()
-    instance_config = InstanceConfig(
-        url="http://radarr:7878", api_key="test-key", enabled=True,
-        search_missing_count=5, search_cutoff_count=5,
-        missing_tag="triggarr",
-    )
-    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="triggarr",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
 
-    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert client.search_movies.call_count == 0
-    await db.close()
+        assert client.search_movies.call_count == 0
+    finally:
+        await db.close()
 
 
 async def test_sonarr_cycle_all_filtered_by_tag(tmp_path):
@@ -2634,25 +2625,29 @@ async def test_sonarr_cycle_all_filtered_by_tag(tmp_path):
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    _ep = _make_tagged_sonarr_episode
-    client = AsyncMock()
-    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="triggarr")])
-    client.get_wanted_missing = AsyncMock(return_value=[
-        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[99]),
-        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[99]),
-    ])
-    client.get_wanted_cutoff = AsyncMock(return_value=[])
-    client.search_season = AsyncMock()
+    try:
+        _ep = _make_tagged_sonarr_episode
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=10, label="triggarr")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[99]),
+            _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[99]),
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        # Explicitly mock get_library_count to avoid relying on AsyncMock auto-return
+        client.get_library_count = AsyncMock(return_value=0)
+        client.search_season = AsyncMock()
 
-    state = _make_test_state()
-    instance_config = InstanceConfig(
-        url="http://sonarr:8989", api_key="test-key", enabled=True,
-        search_missing_count=10, search_cutoff_count=10,
-        missing_tag="triggarr",
-    )
-    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://sonarr:8989", api_key="test-key", enabled=True,
+            search_missing_count=10, search_cutoff_count=10,
+            missing_tag="triggarr",
+        )
+        settings = _cycle_settings(missing_count=10, cutoff_count=10)
 
-    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert client.search_season.call_count == 0
-    await db.close()
+        assert client.search_season.call_count == 0
+    finally:
+        await db.close()

@@ -1,5 +1,17 @@
 # Queued Milestones
 
+## Next Release: Update Check Interval 24h → 6h
+
+**Change:** Reduce update check frequency from 24h to 6h (industry standard: Sonarr/Radarr use 6h, Tautulli uses 12h).
+
+**Files:** `triggarr/search/scheduler.py` (line ~250, `hours=24` → `hours=6`), `triggarr/update_check.py` (docstring)
+
+**Status:** Already implemented and stashed — `git stash pop` to apply. 520 tests passing.
+
+**Queued:** 2026-04-07
+
+---
+
 ## Someday/Maybe: Cross-Instance Dedup
 
 **Problem:** When multiple instances of the same app type (e.g. Radarr + Radarr 4K) have overlapping libraries, Triggarr searches the same item independently in both instances, wasting search slots and potentially triggering duplicate grabs.

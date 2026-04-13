@@ -23,7 +23,7 @@
           {{ triggarr_version }}
         </button>
         {% if update_info and update_info.update_available %}
-        <a href="{{ update_info.html_url }}" target="_blank" rel="noopener"
+        <a href="{{ update_info.html_url if update_info.html_url.startswith('https://github.com/') else '#' }}" target="_blank" rel="noopener"
            class="inline-flex items-center gap-1.5 text-xs bg-triggarr-green/15 text-triggarr-green px-2 py-0.5 rounded-full hover:bg-triggarr-green/25 transition-colors"
            title="Update available — click to view release">
           <span class="w-1.5 h-1.5 rounded-full bg-triggarr-green dot-pulse"></span>

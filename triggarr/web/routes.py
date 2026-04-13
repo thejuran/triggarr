@@ -103,7 +103,8 @@ def _format_duration(seconds: float | None) -> str:
 def _settings_to_dict(settings: SettingsModel) -> dict:
     """Convert Settings to a plain dict suitable for TOML serialization.
 
-    Extracts SecretStr values so they serialize as plain strings.
+    This is the sole extraction point for SecretStr → plain string outside of
+    HTTP client init (see CLAUDE.md SecretStr convention).
     """
     result: dict = {"general": settings.general.model_dump()}
     for app_name in APP_TYPES:
@@ -111,7 +112,7 @@ def _settings_to_dict(settings: SettingsModel) -> dict:
         result[app_name] = {}
         for inst_name, cfg in instances.items():
             d = cfg.model_dump()
-            d["api_key"] = cfg.api_key.get_secret_value()
+            d["api_key"] = cfg.api_key.get_secret_value()  # TOML serialization extraction
             result[app_name][inst_name] = d
     return result
 
@@ -445,9 +446,9 @@ async def save_settings(request: Request) -> RedirectResponse:
                     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
                 submitted_key = fields.get("api_key", "").strip()
-                # Preserve API key when field is empty
+                # Preserve API key when field is empty (keep SecretStr for validation)
                 if not submitted_key and current_cfg:
-                    submitted_key = current_cfg.api_key.get_secret_value()
+                    submitted_key = current_cfg.api_key
 
                 new_config[name][inst_name] = {
                     "url": url,
@@ -461,10 +462,11 @@ async def save_settings(request: Request) -> RedirectResponse:
                 }
         else:
             # No multi-instance form data -- preserve all existing instances unchanged
+            # Keep SecretStr objects; _settings_to_dict extracts for TOML write
             for inst_name, existing_cfg in current_instances.items():
                 new_config[name][inst_name] = {
                     "url": existing_cfg.url,
-                    "api_key": existing_cfg.api_key.get_secret_value(),
+                    "api_key": existing_cfg.api_key,
                     "enabled": existing_cfg.enabled,
                     "search_interval": existing_cfg.search_interval,
                     "search_missing_count": existing_cfg.search_missing_count,
@@ -480,8 +482,8 @@ async def save_settings(request: Request) -> RedirectResponse:
         logger.warning("Invalid settings rejected: {exc}", exc=exc)
         return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
-    # Config is valid -- write to disk using shared atomic helper (BUG-05 dedup)
-    _atomic_toml_write(config_path, new_config)
+    # Config is valid -- serialize from validated model (SecretStr extraction in _settings_to_dict)
+    _atomic_toml_write(config_path, _settings_to_dict(new_settings))
     os.chmod(config_path, 0o600)
     request.app.state.settings = new_settings
 

@@ -107,7 +107,8 @@ async def test_app(tmp_path):
     app.state.search_lock = asyncio.Lock()
     app.state.last_search_time = {}
 
-    return app
+    yield app
+    await db.close()
 
 
 @pytest.fixture
@@ -205,7 +206,7 @@ def test_nav_has_no_blocked_class_overrides():
 # ---------------------------------------------------------------------------
 
 
-def test_update_chip_pulse_dot_when_update_available(client, monkeypatch):
+def test_update_chip_pulse_dot_when_update_available(client):
     """When an update is available, the nav renders a dot-pulse span."""
     import triggarr.web.routes as routes_module
 
@@ -251,4 +252,6 @@ def test_output_css_contains_elevation_token_and_dot_pulse():
     css_content = css_path.read_text()
     assert "#233346" in css_content, "Elevation token #233346 missing from output.css"
     assert "dot-pulse" in css_content, "dot-pulse class missing from output.css"
+    assert "dot-ring-pulse" in css_content, "ring-expansion keyframes missing from output.css"
+    assert "0 0 0 6px" in css_content, "ring-expansion box-shadow stop missing from output.css"
     assert "Geist Mono" in css_content, "Geist Mono font reference missing from output.css"

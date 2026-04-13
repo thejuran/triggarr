@@ -367,8 +367,9 @@ def test_state_wrong_structure_list_crashes(tmp_path: Path) -> None:
 
     load_state catches JSONDecodeError and OSError but not AttributeError.
     A list is valid JSON but wrong structure -- .get() fails on list objects.
-    This documents the current behavior (not ideal but acceptable for a
-    single-user daemon where state.json is never hand-edited).
+    This is a known gap (not ideal but acceptable for a single-user daemon).
+    When load_state is hardened to handle non-dict roots, convert this test
+    to assert recovery to defaults instead.
     """
     state_file = tmp_path / "state.json"
     state_file.write_text("[1, 2, 3]")

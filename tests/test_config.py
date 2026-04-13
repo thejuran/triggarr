@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+import tomli_w
+from pydantic import ValidationError
 
 from triggarr.config import (
+    _atomic_toml_write,
     _is_v22_format,
     _migrate_v22_to_v23,
     detect_and_migrate_v22,
@@ -116,7 +120,6 @@ def test_api_key_never_in_str() -> None:
 
 def test_instance_config_rejects_both_counts_zero_when_enabled_legacy() -> None:
     """InstanceConfig rejects both search counts = 0 when enabled."""
-    from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="At least one"):
         InstanceConfig(
@@ -197,7 +200,6 @@ def test_instance_config_valid_fields() -> None:
 
 def test_instance_config_rejects_both_counts_zero_when_enabled() -> None:
     """InstanceConfig rejects both search counts = 0 when enabled."""
-    from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="At least one"):
         InstanceConfig(
@@ -256,7 +258,6 @@ def test_settings_empty_dicts() -> None:
 
 def test_max_instances_radarr() -> None:
     """Settings rejects more than 5 radarr instances."""
-    from pydantic import ValidationError
 
     instances = {
         f"Instance {i}": InstanceConfig(url=f"http://radarr{i}:7878", api_key=f"key{i}", enabled=False)
@@ -268,7 +269,6 @@ def test_max_instances_radarr() -> None:
 
 def test_max_instances_sonarr() -> None:
     """Settings rejects more than 5 sonarr instances."""
-    from pydantic import ValidationError
 
     instances = {
         f"Instance {i}": InstanceConfig(url=f"http://sonarr{i}:8989", api_key=f"key{i}", enabled=False)
@@ -625,8 +625,6 @@ def test_ensure_config_calls_migration(tmp_path: Path) -> None:
 
 def test_toml_round_trip(tmp_path: Path) -> None:
     """TOML round-trip: load migrated config, serialize back, reload -- same values."""
-    import tomli_w
-
     config_file = tmp_path / "triggarr.toml"
     config_file.write_text(V22_RADARR_SONARR_TOML)
 
@@ -658,8 +656,6 @@ def test_toml_round_trip(tmp_path: Path) -> None:
 
 def test_atomic_toml_write_succeeds(tmp_path: Path) -> None:
     """_atomic_toml_write writes valid TOML data to disk (no regression)."""
-    from triggarr.config import _atomic_toml_write
-
     config_file = tmp_path / "test.toml"
     data = {"general": {"log_level": "info"}, "radarr": {"Default": {"url": "http://radarr:7878"}}}
     _atomic_toml_write(config_file, data)
@@ -669,6 +665,19 @@ def test_atomic_toml_write_succeeds(tmp_path: Path) -> None:
         written = tomllib.load(f)
     assert written["general"]["log_level"] == "info"
     assert written["radarr"]["Default"]["url"] == "http://radarr:7878"
+
+
+def test_atomic_toml_write_cleans_temp_on_failure(tmp_path: Path) -> None:
+    """_atomic_toml_write removes temp file when tomli_w.dump raises (BUG-06)."""
+    config_file = tmp_path / "test.toml"
+
+    with patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")), \
+         pytest.raises(TypeError):
+        _atomic_toml_write(config_file, {"key": "value"})
+
+    # No temp files should remain in the directory
+    remaining = list(tmp_path.glob("*.tmp"))
+    assert remaining == [], f"Temp files should be cleaned up, found: {remaining}"
 
 
 # ---------------------------------------------------------------------------
@@ -685,9 +694,8 @@ def test_toml_syntax_error_raises_decode_error(tmp_path: Path) -> None:
         load_settings(config_file)
 
 
-def test_toml_negative_search_interval_raises_validation_error(tmp_path: Path) -> None:
+def test_toml_both_search_counts_zero_raises_validation_error(tmp_path: Path) -> None:
     """TOML with both search counts at 0 when enabled raises ValidationError."""
-    import pydantic
 
     config_file = tmp_path / "triggarr.toml"
     config_file.write_text("""\
@@ -699,13 +707,12 @@ search_missing_count = 0
 search_cutoff_count = 0
 """)
 
-    with pytest.raises(pydantic.ValidationError):
+    with pytest.raises(ValidationError):
         load_settings(config_file)
 
 
 def test_toml_wrong_type_raises_validation_error(tmp_path: Path) -> None:
     """TOML with wrong field type (array instead of string for url) raises ValidationError."""
-    import pydantic
 
     config_file = tmp_path / "triggarr.toml"
     config_file.write_text("""\
@@ -715,7 +722,7 @@ api_key = "key"
 enabled = true
 """)
 
-    with pytest.raises(pydantic.ValidationError):
+    with pytest.raises(ValidationError):
         load_settings(config_file)
 
 
@@ -765,25 +772,3 @@ def test_migrate_v22_mixed_nested_and_flat_only_detects_flat() -> None:
         "sonarr": {"url": "http://s:8989"},
     }
     assert _is_v22_format(data) is True
-
-
-# ---------------------------------------------------------------------------
-# BUG-06: _atomic_toml_write temp file cleanup on failure
-# ---------------------------------------------------------------------------
-
-
-def test_atomic_toml_write_cleans_temp_on_failure(tmp_path: Path) -> None:
-    """_atomic_toml_write removes temp file when tomli_w.dump raises (BUG-06)."""
-    from unittest.mock import patch
-
-    from triggarr.config import _atomic_toml_write
-
-    config_file = tmp_path / "test.toml"
-
-    with pytest.raises(TypeError), \
-         patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")):
-        _atomic_toml_write(config_file, {"key": "value"})
-
-    # No temp files should remain in the directory
-    remaining = list(tmp_path.glob("*.tmp"))
-    assert remaining == [], f"Temp files should be cleaned up, found: {remaining}"

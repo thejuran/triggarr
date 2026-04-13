@@ -1023,7 +1023,7 @@ async def test_row_factory_persists_after_instance_scoped_queries(tmp_path):
 # --- Corrupt/invalid database tests ---
 
 
-async def test_init_db_corrupt_file_raises_database_error(tmp_path):
+async def test_init_db_corrupt_file_raises_database_error(tmp_path: Path) -> None:
     """Corrupt SQLite file (random bytes) raises DatabaseError on first SQL execution."""
     import sqlite3
 
@@ -1038,7 +1038,7 @@ async def test_init_db_corrupt_file_raises_database_error(tmp_path):
         await db.close()
 
 
-async def test_init_db_locked_database(tmp_path):
+async def test_init_db_locked_database(tmp_path: Path) -> None:
     """Locked database raises OperationalError with zero busy_timeout."""
     import sqlite3
 
@@ -1051,26 +1051,28 @@ async def test_init_db_locked_database(tmp_path):
 
     # Hold an exclusive lock with a second connection
     db2 = await aiosqlite.connect(db_path)
-    await db2.execute("BEGIN EXCLUSIVE")
-
-    # Third connection with zero timeout should fail immediately
-    db3 = await aiosqlite.connect(db_path)
-    await db3.execute("PRAGMA busy_timeout = 0")
-
     try:
-        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
-            await init_db(db3, db_path)
+        await db2.execute("BEGIN EXCLUSIVE")
+
+        # Third connection with zero timeout should fail immediately
+        db3 = await aiosqlite.connect(db_path)
+        try:
+            await db3.execute("PRAGMA busy_timeout = 0")
+            with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                await init_db(db3, db_path)
+        finally:
+            await db3.close()
     finally:
-        await db3.close()
+        await db2.execute("ROLLBACK")
         await db2.close()
 
 
-async def test_get_schema_version_on_empty_db(tmp_path):
+async def test_get_schema_version_on_empty_db(tmp_path: Path) -> None:
     """get_schema_version on fresh DB creates table and returns 0."""
     db_path = tmp_path / "empty.db"
     db = await aiosqlite.connect(db_path)
-
-    version = await get_schema_version(db)
-
-    assert version == 0
-    await db.close()
+    try:
+        version = await get_schema_version(db)
+        assert version == 0
+    finally:
+        await db.close()
