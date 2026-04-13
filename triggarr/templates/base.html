@@ -16,7 +16,7 @@
   <nav class="sticky top-0 z-30 backdrop-blur-md bg-triggarr-card/80 border-b border-triggarr-border">
     <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
+        <span class="text-triggarr-green font-bold text-xl tracking-tight">Triggarr</span>
         <button onclick="openChangelog()" type="button"
                 class="text-xs text-triggarr-muted hover:text-white transition-colors cursor-pointer"
                 title="View changelog">
@@ -59,7 +59,8 @@
       <div class="flex items-center justify-between px-6 py-4 border-b border-triggarr-border shrink-0">
         <h2 class="text-lg font-semibold text-white">Changelog</h2>
         <button onclick="closeChangelog()" type="button"
-                class="text-triggarr-muted hover:text-white transition-colors text-xl leading-none">&times;</button>
+                class="text-triggarr-muted hover:text-white transition-colors text-xl leading-none"
+                aria-label="Close changelog">&times;</button>
       </div>
       <div id="changelog-body" class="px-6 py-4 overflow-y-auto"></div>
     </div>

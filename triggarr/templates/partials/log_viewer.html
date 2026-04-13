@@ -7,7 +7,7 @@
   {% if not log_entries %}
   <p class="text-triggarr-muted text-sm">No log messages yet.</p>
   {% else %}
-  <div class="space-y-0 max-h-64 overflow-y-auto font-mono text-xs">
+  <div class="space-y-0 max-h-64 overflow-y-auto font-geist-mono text-xs">
     {% for entry in log_entries[:30] %}
     <div class="flex items-start gap-2 py-1 {% if not loop.last %}border-b border-triggarr-border/30{% endif %}">
         <span class="text-triggarr-muted whitespace-nowrap">{{ entry.timestamp }}</span>
