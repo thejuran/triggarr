@@ -13,8 +13,8 @@
   <script src="{{ request.url_for('static', path='js/htmx.min.js') }}"></script>
 </head>
 <body class="bg-triggarr-bg text-triggarr-text min-h-screen">
-  <nav class="bg-triggarr-card border-b border-triggarr-border">
-    <div class="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+  <nav class="sticky top-0 z-30 backdrop-blur-md bg-triggarr-card/80 border-b border-triggarr-border">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <span class="text-triggarr-green font-bold text-xl">Triggarr</span>
         <button onclick="openChangelog()" type="button"
@@ -24,23 +24,28 @@
         </button>
         {% if update_info and update_info.update_available %}
         <a href="{{ update_info.html_url }}" target="_blank" rel="noopener"
-           class="text-xs bg-triggarr-green/15 text-triggarr-green px-2 py-0.5 rounded-full hover:bg-triggarr-green/25 transition-colors"
+           class="inline-flex items-center gap-1.5 text-xs bg-triggarr-green/15 text-triggarr-green px-2 py-0.5 rounded-full hover:bg-triggarr-green/25 transition-colors"
            title="Update available — click to view release">
-          ↑ v{{ update_info.latest_version }}
+          <span class="w-1.5 h-1.5 rounded-full bg-triggarr-green dot-pulse"></span>
+          v{{ update_info.latest_version }} available
         </a>
         {% endif %}
       </div>
-      <div class="flex items-center gap-6">
-        <a href="{{ request.url_for('dashboard') }}"
-           class="{% block nav_dashboard_class %}text-white{% endblock %} hover:text-white text-sm">
+      {% set current_path = request.url.path %}
+      {% set dashboard_url = request.url_for('dashboard') %}
+      {% set history_url = request.url_for('history_page') %}
+      {% set settings_url = request.url_for('settings_page') %}
+      <div class="flex items-center gap-6 text-sm">
+        <a href="{{ dashboard_url }}"
+           class="{% if current_path == dashboard_url.path %}text-white border-b-2 border-triggarr-green pb-1 -mb-[7px]{% else %}text-triggarr-muted hover:text-white{% endif %}">
           Dashboard
         </a>
-        <a href="{{ request.url_for('history_page') }}"
-           class="{% block nav_history_class %}text-triggarr-muted{% endblock %} hover:text-white text-sm">
+        <a href="{{ history_url }}"
+           class="{% if current_path == history_url.path %}text-white border-b-2 border-triggarr-green pb-1 -mb-[7px]{% else %}text-triggarr-muted hover:text-white{% endif %}">
           History
         </a>
-        <a href="{{ request.url_for('settings_page') }}"
-           class="{% block nav_settings_class %}text-triggarr-muted{% endblock %} hover:text-white text-sm">
+        <a href="{{ settings_url }}"
+           class="{% if current_path == settings_url.path %}text-white border-b-2 border-triggarr-green pb-1 -mb-[7px]{% else %}text-triggarr-muted hover:text-white{% endif %}">
           Settings
         </a>
       </div>
@@ -78,7 +83,7 @@
     });
   </script>
 
-  <main class="max-w-5xl mx-auto px-6 py-6">
+  <main class="max-w-7xl mx-auto px-6 py-6">
     {% block content %}{% endblock %}
   </main>
 </body>
