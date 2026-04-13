@@ -152,7 +152,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   2. User sees the Grab Rate card spanning 2 grid columns with a `text-4xl` headline percentage and a Healthy/Warn/Critical badge thresholded against the overall rate
   3. User sees per-app grab rates rendered as color-coded horizontal bars inside the Grab Rate card (one bar per configured *arr type), replacing the previous `R: 85% S: 72% L: --%` text line
   4. User sees subtle `shadow-sm` elevation on every stat card giving the stats row a layered, tactile feel
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 49-01-PLAN.md — Health strip replacement + mini-bar CSS: replace health_summary.html card with compact strip, add _relative_time helper to routes.py, add .mini-bar CSS to input.css, rebuild output.css (STATS-01, STATS-04)
+- [ ] 49-02-PLAN.md — Hero Grab Rate card + card elevation: restructure stats_row.html with col-span-2 hero card, gradient overlay, health badge, per-app color-coded mini-bars, shadow-sm on all stat cards (STATS-02, STATS-03, STATS-04, STATS-05)
+- [ ] 49-03-PLAN.md — Tests: test_stats_health.py validating health strip structure, hero card layout, badge rendering, bar colors, and shadow-sm elevation (STATS-01..05)
 **UI hint**: yes
 
 ### Phase 50: App Cards & Services Grid
@@ -212,7 +215,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 48. Foundations & Navigation Chrome | 3/3 | Complete | 2026-04-13 |
-| 49. Stats & Health Strip | 0/0 | Not started | - |
+| 49. Stats & Health Strip | 0/3 | Planning complete | - |
 | 50. App Cards & Services Grid | 0/0 | Not started | - |
 | 51. Application Log Redesign | 0/0 | Not started | - |
 | 52. Recent Activity Rail | 0/0 | Not started | - |
