@@ -169,7 +169,9 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   3. User hovering any app card sees it transition to the elevated background and shadow; user sees a pulsing green dot inside the connection pill while the card live-refreshes via htmx polling
   4. User sees app cards for unreachable instances rendered with diagonal red danger stripes and a red "Retry" button replacing the "Search Now" button
   5. User with 3+ configured instances on a viewport ≥1280px sees the Services grid switch from 2 columns to 3 columns
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 50-01-PLAN.md — CSS additions (.card-hover, .danger-stripes) + complete app_card.html rewrite with unified pills, schedule row, pass pills, danger stripes, Retry button + dashboard.html xl:grid-cols-3 (CARD-01..07, LAYOUT-01)
+- [ ] 50-02-PLAN.md — Tests: test_app_cards.py validating connection pills, schedule row, pass pills, hover classes, danger stripes, Retry button, dot-pulse, and 3-col grid (CARD-01..07, LAYOUT-01)
 **UI hint**: yes
 
 ### Phase 51: Application Log Redesign
@@ -216,7 +218,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 |-------|----------------|--------|-----------|
 | 48. Foundations & Navigation Chrome | 3/3 | Complete | 2026-04-13 |
 | 49. Stats & Health Strip | 0/3 | Planning complete | - |
-| 50. App Cards & Services Grid | 0/0 | Not started | - |
+| 50. App Cards & Services Grid | 0/2 | Planning complete | - |
 | 51. Application Log Redesign | 0/0 | Not started | - |
 | 52. Recent Activity Rail | 0/0 | Not started | - |
 | 53. Docs & Metadata | 0/0 | Not started | - |
