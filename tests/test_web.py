@@ -32,89 +32,90 @@ async def test_app(tmp_path):
 
     # Initialize SQLite search history database with shared connection
     db_path = tmp_path / "test.db"
-    db = await aiosqlite.connect(db_path)
-    await init_db(db, db_path)
-    await insert_search_entry(db, "Radarr", "missing", "Test Movie")
-    app.state.db = db
+    async with aiosqlite.connect(db_path) as db:
+        await init_db(db, db_path)
+        await insert_search_entry(db, "Radarr", "missing", "Test Movie")
+        app.state.db = db
 
-    # Mock triggarr state (nested per-instance format)
-    app.state.triggarr_state = {
-        "radarr": {
-            "Default": {
-                "missing_cursor": 3,
-                "cutoff_cursor": 1,
-                "last_run": "2026-01-15T10:30:00Z",
-                "connected": True,
-                "unreachable_since": None,
-                "missing_count": 42,
-                "cutoff_count": 7,
+        # Mock triggarr state (nested per-instance format)
+        app.state.triggarr_state = {
+            "radarr": {
+                "Default": {
+                    "missing_cursor": 3,
+                    "cutoff_cursor": 1,
+                    "last_run": "2026-01-15T10:30:00Z",
+                    "connected": True,
+                    "unreachable_since": None,
+                    "missing_count": 42,
+                    "cutoff_count": 7,
+                },
             },
-        },
-        "sonarr": {
-            "Default": {
-                "missing_cursor": 0,
-                "cutoff_cursor": 0,
-                "last_run": None,
-                "connected": None,
-                "unreachable_since": None,
-                "missing_count": None,
-                "cutoff_count": None,
+            "sonarr": {
+                "Default": {
+                    "missing_cursor": 0,
+                    "cutoff_cursor": 0,
+                    "last_run": None,
+                    "connected": None,
+                    "unreachable_since": None,
+                    "missing_count": None,
+                    "cutoff_count": None,
+                },
             },
-        },
-        "lidarr": {
-            "Default": {
-                "missing_cursor": 0,
-                "cutoff_cursor": 0,
-                "last_run": None,
-                "connected": None,
-                "unreachable_since": None,
-                "missing_count": None,
-                "cutoff_count": None,
+            "lidarr": {
+                "Default": {
+                    "missing_cursor": 0,
+                    "cutoff_cursor": 0,
+                    "last_run": None,
+                    "connected": None,
+                    "unreachable_since": None,
+                    "missing_count": None,
+                    "cutoff_count": None,
+                },
             },
-        },
-        "search_log": [],
-    }
+            "search_log": [],
+        }
 
-    # Real Settings with dict-based instances
-    app.state.settings = make_settings(
-        radarr_url="http://radarr:7878",
-        radarr_api_key="test-radarr-key",
-        radarr_enabled=True,
-        sonarr_url="http://sonarr:8989",
-        sonarr_api_key="test-sonarr-key",
-        sonarr_enabled=True,
-        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
-    )
+        # Real Settings with dict-based instances
+        app.state.settings = make_settings(
+            radarr_url="http://radarr:7878",
+            radarr_api_key="test-radarr-key",
+            radarr_enabled=True,
+            sonarr_url="http://sonarr:8989",
+            sonarr_api_key="test-sonarr-key",
+            sonarr_enabled=True,
+            general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+        )
 
-    # Mock scheduler
-    mock_scheduler = MagicMock()
-    mock_job = MagicMock()
-    mock_job.next_run_time = None
-    mock_scheduler.get_job.return_value = mock_job
-    app.state.scheduler = mock_scheduler
+        # Mock scheduler
+        mock_scheduler = MagicMock()
+        mock_job = MagicMock()
+        mock_job.next_run_time = None
+        mock_scheduler.get_job.return_value = mock_job
+        app.state.scheduler = mock_scheduler
 
-    # Mock clients (close() is async, so needs AsyncMock) -- per-instance dicts
-    radarr_client = MagicMock()
-    radarr_client.close = AsyncMock()
-    sonarr_client = MagicMock()
-    sonarr_client.close = AsyncMock()
-    lidarr_client = MagicMock()
-    lidarr_client.close = AsyncMock()
-    app.state.radarr_clients = {"Default": radarr_client}
-    app.state.sonarr_clients = {"Default": sonarr_client}
-    app.state.lidarr_clients = {"Default": lidarr_client}
+        # Mock clients (close() is async, so needs AsyncMock) -- per-instance dicts
+        radarr_client = MagicMock()
+        radarr_client.close = AsyncMock()
+        sonarr_client = MagicMock()
+        sonarr_client.close = AsyncMock()
+        lidarr_client = MagicMock()
+        lidarr_client.close = AsyncMock()
+        app.state.radarr_clients = {"Default": radarr_client}
+        app.state.sonarr_clients = {"Default": sonarr_client}
+        app.state.lidarr_clients = {"Default": lidarr_client}
 
-    # Paths
-    app.state.config_path = tmp_path / "triggarr.toml"
-    app.state.state_path = tmp_path / "state.json"
+        # Paths
+        app.state.config_path = tmp_path / "triggarr.toml"
+        app.state.state_path = tmp_path / "state.json"
 
-    # Search lock (needed by search_now endpoint)
-    app.state.search_lock = asyncio.Lock()
+        # Search lock (needed by search_now endpoint)
+        app.state.search_lock = asyncio.Lock()
 
-    # Rate limit state (needed by search_now rate limiter — DEBT-01)
-    app.state.last_search_time = {}
+        # Rate limit state (needed by search_now rate limiter — DEBT-01)
+        app.state.last_search_time = {}
+        app.state.last_health_check = None
 
-    return app
+        yield app
 
 
 @pytest.fixture
@@ -130,11 +131,12 @@ def test_dashboard_returns_200(client):
     assert "Radarr" in response.text, "Dashboard should display Radarr card"
 
 
-def test_dashboard_shows_search_log(client):
-    """GET / response contains search log entry."""
+def test_dashboard_shows_activity_rail(client):
+    """GET / response contains activity rail with search entries (RAIL-07)."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "Test Movie" in response.text, "Dashboard should show search log entry"
+    assert "activity-rail" in response.text, "Dashboard should include activity rail"
+    assert "Test Movie" in response.text, "Dashboard activity rail should show search entries"
 
 
 def test_settings_page_returns_200(client):
@@ -169,9 +171,9 @@ def test_app_card_partial_has_htmx_attributes(client):
     assert "every 5s" in response.text, "Card should poll every 5 seconds"
 
 
-def test_search_log_partial_returns_200(client):
-    """GET /partials/search-log returns 200."""
-    response = client.get("/partials/search-log")
+def test_activity_rail_partial_returns_200(client):
+    """GET /partials/activity-rail returns 200."""
+    response = client.get("/partials/activity-rail")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
 
 
@@ -374,8 +376,8 @@ def test_dashboard_shows_position_x_of_y(client):
     assert "1 of 7" in response.text, "Cutoff position should show 'X of Y' format"
 
 
-async def test_search_log_shows_outcome_badge(test_app, tmp_path):
-    """Search log partial shows outcome badge for entries (WEBU-11)."""
+async def test_activity_rail_shows_outcome_badge(test_app, tmp_path):
+    """Activity rail partial shows outcome badge for entries (WEBU-11)."""
     # Insert a failed search entry
     db = test_app.state.db
     await insert_search_entry(
@@ -384,10 +386,10 @@ async def test_search_log_shows_outcome_badge(test_app, tmp_path):
     )
 
     with TestClient(test_app) as tc:
-        response = tc.get("/partials/search-log")
+        response = tc.get("/partials/activity-rail")
     assert response.status_code == 200
-    assert "failed" in response.text, "Search log should show failed outcome badge"
-    assert "bg-red-500/20" in response.text, "Failed outcome should use red styling"
+    assert "failed" in response.text, "Activity rail should show failed outcome badge"
+    assert "bg-red-500" in response.text, "Failed outcome should use red styling"
 
 
 def test_dashboard_shows_log_viewer_section(client):
@@ -491,14 +493,14 @@ async def test_history_page_empty_state(test_app, tmp_path):
     """GET /history with empty DB shows 'No search history yet' message."""
     # Create a fresh empty DB at a different tmp_path
     empty_db_path = tmp_path / "empty.db"
-    empty_db = await aiosqlite.connect(empty_db_path)
-    await init_db(empty_db, empty_db_path)
-    test_app.state.db = empty_db
+    async with aiosqlite.connect(empty_db_path) as empty_db:
+        await init_db(empty_db, empty_db_path)
+        test_app.state.db = empty_db
 
-    with TestClient(test_app) as tc:
-        response = tc.get("/history")
-    assert response.status_code == 200
-    assert "No search history yet" in response.text
+        with TestClient(test_app) as tc:
+            response = tc.get("/history")
+        assert response.status_code == 200
+        assert "No search history yet" in response.text
 
 
 def test_dashboard_nav_has_history_link(client):
@@ -695,14 +697,14 @@ def test_stats_row_partial_returns_200(client):
 async def test_stats_empty_db_shows_dashes(test_app, tmp_path):
     """Stats cards show dash values when no tracking data exists (STATS-03)."""
     empty_db_path = tmp_path / "empty_stats.db"
-    empty_db = await aiosqlite.connect(empty_db_path)
-    await init_db(empty_db, empty_db_path)
-    test_app.state.db = empty_db
+    async with aiosqlite.connect(empty_db_path) as empty_db:
+        await init_db(empty_db, empty_db_path)
+        test_app.state.db = empty_db
 
-    with TestClient(test_app) as tc:
-        response = tc.get("/partials/stats-row")
-    assert response.status_code == 200
-    assert "---" in response.text, "Empty state should show dash values for time-to-grab"
+        with TestClient(test_app) as tc:
+            response = tc.get("/partials/stats-row")
+        assert response.status_code == 200
+        assert "---" in response.text, "Empty state should show dash values for time-to-grab"
 
 
 # ---------------------------------------------------------------------------
@@ -957,69 +959,76 @@ async def multi_instance_app(tmp_path):
     app.include_router(router)
 
     db_path = tmp_path / "test.db"
-    db = await aiosqlite.connect(db_path)
-    await init_db(db, db_path)
-    app.state.db = db
+    async with aiosqlite.connect(db_path) as db:
+        await init_db(db, db_path)
+        app.state.db = db
 
-    app.state.triggarr_state = {
-        "radarr": {
-            "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
-            "4K": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
-        },
-        "sonarr": {
-            "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
-        },
-        "search_log": [],
-    }
+        app.state.triggarr_state = {
+            "radarr": {
+                "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+                "4K": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+            },
+            "sonarr": {
+                "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+            },
+            "lidarr": {
+                "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": None},
+            },
+            "search_log": [],
+        }
 
-    app.state.settings = Settings(
-        general=GeneralConfig(),
-        radarr={
-            "Default": InstanceConfig(
-                url="http://radarr:7878",
-                api_key="radarr-default-key",
-                enabled=True,
-                missing_tag="wanted",
-                cutoff_tag="upgrade",
-            ),
-            "4K": InstanceConfig(
-                url="http://radarr4k:7878",
-                api_key="radarr-4k-key",
-                enabled=False,
-                missing_tag="wanted-4k",
-                cutoff_tag="",
-            ),
-        },
-        sonarr={
-            "Default": InstanceConfig(
-                url="http://sonarr:8989",
-                api_key="sonarr-key",
-                enabled=True,
-            ),
-        },
-    )
+        app.state.settings = Settings(
+            general=GeneralConfig(),
+            radarr={
+                "Default": InstanceConfig(
+                    url="http://radarr:7878",
+                    api_key="radarr-default-key",
+                    enabled=True,
+                    missing_tag="wanted",
+                    cutoff_tag="upgrade",
+                ),
+                "4K": InstanceConfig(
+                    url="http://radarr4k:7878",
+                    api_key="radarr-4k-key",
+                    enabled=False,
+                    missing_tag="wanted-4k",
+                    cutoff_tag="",
+                ),
+            },
+            sonarr={
+                "Default": InstanceConfig(
+                    url="http://sonarr:8989",
+                    api_key="sonarr-key",
+                    enabled=True,
+                ),
+            },
+        )
 
-    mock_scheduler = MagicMock()
-    mock_job = MagicMock()
-    mock_job.next_run_time = None
-    mock_scheduler.get_job.return_value = mock_job
-    app.state.scheduler = mock_scheduler
+        mock_scheduler = MagicMock()
+        mock_job = MagicMock()
+        mock_job.next_run_time = None
+        mock_scheduler.get_job.return_value = mock_job
+        app.state.scheduler = mock_scheduler
 
-    radarr_default_client = MagicMock()
-    radarr_default_client.close = AsyncMock()
-    radarr_4k_client = MagicMock()
-    radarr_4k_client.close = AsyncMock()
-    sonarr_client = MagicMock()
-    sonarr_client.close = AsyncMock()
-    app.state.radarr_clients = {"Default": radarr_default_client, "4K": radarr_4k_client}
-    app.state.sonarr_clients = {"Default": sonarr_client}
+        radarr_default_client = MagicMock()
+        radarr_default_client.close = AsyncMock()
+        radarr_4k_client = MagicMock()
+        radarr_4k_client.close = AsyncMock()
+        sonarr_client = MagicMock()
+        sonarr_client.close = AsyncMock()
+        app.state.radarr_clients = {"Default": radarr_default_client, "4K": radarr_4k_client}
+        app.state.sonarr_clients = {"Default": sonarr_client}
+        lidarr_client = MagicMock()
+        lidarr_client.close = AsyncMock()
+        app.state.lidarr_clients = {"Default": lidarr_client}
 
-    app.state.config_path = tmp_path / "triggarr.toml"
-    app.state.state_path = tmp_path / "state.json"
-    app.state.search_lock = asyncio.Lock()
-    app.state.last_search_time = {}
+        app.state.config_path = tmp_path / "triggarr.toml"
+        app.state.state_path = tmp_path / "state.json"
+        app.state.search_lock = asyncio.Lock()
+        app.state.last_search_time = {}
+        app.state.last_health_check = None
 
-    return app
+        yield app
 
 
 @pytest.fixture

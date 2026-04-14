@@ -2,6 +2,10 @@
 
 {% block title %}Dashboard - Triggarr{% endblock %}
 
+{% block sidebar %}
+{% include "partials/activity_rail.html" %}
+{% endblock %}
+
 {% block content %}
 {% if apps %}
 {% if show_migration_banner %}
@@ -27,7 +31,6 @@
   {% include "partials/app_card.html" %}
   {% endfor %}
 </div>
-{% include "partials/search_log.html" %}
 <div class="mt-4">
   {% include "partials/log_viewer.html" %}
 </div>

@@ -818,18 +818,6 @@ async def partial_app_card(request: Request, app_name: str, instance_name: str) 
     )
 
 
-@router.get("/partials/search-log", response_class=HTMLResponse)
-async def partial_search_log(request: Request) -> HTMLResponse:
-    """Return an HTML fragment for the search log (htmx partial)."""
-    search_log = await get_recent_searches(request.app.state.db)
-
-    return templates.TemplateResponse(
-        request=request,
-        name="partials/search_log.html",
-        context={"search_log": search_log},
-    )
-
-
 @router.get("/partials/activity-rail", response_class=HTMLResponse)
 async def partial_activity_rail(request: Request) -> HTMLResponse:
     """Return an HTML fragment for the activity rail timeline (htmx partial)."""
