@@ -36,4 +36,63 @@
   <p class="text-triggarr-muted">No apps configured. Visit <a href="{{ request.url_for('settings_page') }}" class="text-triggarr-green hover:underline">Settings</a> to add Radarr, Sonarr, or Lidarr.</p>
 </div>
 {% endif %}
+<script>
+/* Log viewer controls — lives outside partial to survive htmx outerHTML swaps */
+
+/* D-04: Auto-scroll log body to bottom after every htmx swap */
+document.addEventListener('htmx:afterSwap', function(evt) {
+  if (evt.detail.target && evt.detail.target.id === 'log-viewer') {
+    var logBody = evt.detail.target.querySelector('.log-body');
+    if (logBody) logBody.scrollTop = logBody.scrollHeight;
+    /* Re-apply expanded state from body if needed (per D-02, LOG-05/LOG-06) */
+    if (document.body.classList.contains('log-expanded')) {
+      evt.detail.target.classList.add('expanded');
+    }
+    /* Re-apply paused state from body (per D-05) */
+    if (document.body.hasAttribute('data-log-paused')) {
+      var viewer = evt.detail.target;
+      viewer.setAttribute('hx-trigger', 'none');
+      htmx.process(viewer);
+      var pauseBtn = viewer.querySelector('[data-pause-btn]');
+      if (pauseBtn) pauseBtn.classList.add('text-yellow-400');
+    }
+  }
+});
+
+/* D-02, D-03: Toggle expand/collapse terminal pane */
+function toggleLogExpand() {
+  var viewer = document.getElementById('log-viewer');
+  if (!viewer) return;
+  viewer.classList.toggle('expanded');
+  document.body.classList.toggle('log-expanded');
+  var logBody = viewer.querySelector('.log-body');
+  if (logBody) logBody.scrollTop = logBody.scrollHeight;
+}
+
+/* D-05: Toggle pause/resume htmx polling */
+function toggleLogPause(btn) {
+  var viewer = document.getElementById('log-viewer');
+  if (!viewer) return;
+  var isPaused = document.body.hasAttribute('data-log-paused');
+  if (isPaused) {
+    document.body.removeAttribute('data-log-paused');
+    viewer.setAttribute('hx-trigger', 'every 5s');
+    htmx.process(viewer);
+    btn.classList.remove('text-yellow-400');
+    btn.title = 'Pause stream';
+  } else {
+    document.body.setAttribute('data-log-paused', '');
+    viewer.setAttribute('hx-trigger', 'none');
+    htmx.process(viewer);
+    btn.classList.add('text-yellow-400');
+    btn.title = 'Resume stream';
+  }
+}
+
+/* Auto-scroll on initial page load */
+document.addEventListener('DOMContentLoaded', function() {
+  var logBody = document.querySelector('#log-viewer .log-body');
+  if (logBody) logBody.scrollTop = logBody.scrollHeight;
+});
+</script>
 {% endblock %}

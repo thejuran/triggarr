@@ -32,12 +32,12 @@ from triggarr.config import _atomic_toml_write
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
-from triggarr.models.config import APP_TYPES, CONFIG_DIR
+from triggarr.models.config import APP_TYPES, CONFIG_DIR, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.search.engine import run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
-from triggarr.state import save_state
+from triggarr.state import _default_instance_state, save_state
 from triggarr.version import get_display_version
 from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url, validate_instance_name
 
@@ -573,14 +573,12 @@ async def save_settings(request: Request) -> RedirectResponse:
         triggarr_state.setdefault(name, {})
         for inst_name, new_cfg in new_instances.items():
             if new_cfg.enabled and inst_name not in triggarr_state[name]:
-                from triggarr.state import _default_instance_state
-
                 triggarr_state[name][inst_name] = _default_instance_state()
 
         setattr(request.app.state, f"{name}_clients", clients_dict)
 
     # Persist state with any new instance entries
-    await asyncio.get_event_loop().run_in_executor(
+    await asyncio.get_running_loop().run_in_executor(
         None, save_state, request.app.state.triggarr_state, state_path
     )
 
@@ -640,8 +638,6 @@ async def add_instance(request: Request):
         return HTMLResponse("Maximum 5 instances per app type", status_code=400)
 
     # Build new config dict, add instance, and validate before mutating live state
-    from triggarr.models.config import InstanceConfig
-
     config_path = request.app.state.config_path
     config_dict = _settings_to_dict(settings)
     config_dict[app_name][instance_name] = InstanceConfig().model_dump()
@@ -655,8 +651,6 @@ async def add_instance(request: Request):
     request.app.state.settings = new_settings
 
     # Create state entry for the new instance
-    from triggarr.state import _default_instance_state
-
     triggarr_state = request.app.state.triggarr_state
     triggarr_state.setdefault(app_name, {})
     triggarr_state[app_name][instance_name] = _default_instance_state()
@@ -762,7 +756,7 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
                 request.app.state.settings,
                 request.app.state.db,
             )
-            await asyncio.get_event_loop().run_in_executor(
+            await asyncio.get_running_loop().run_in_executor(
                 None, save_state, request.app.state.triggarr_state, request.app.state.state_path
             )
             logger.info("{name}/{inst}: Manual search triggered", name=app_name.title(), inst=instance_name)
@@ -816,10 +810,9 @@ async def partial_health_summary(request: Request) -> HTMLResponse:
     """Return an HTML fragment for the health summary (htmx partial)."""
     health = _build_health_summary(request)
     # Track last health check time for "Last sync" display
-    now = datetime.now(UTC)
-    request.app.state.triggarr_state["last_health_check"] = now
-    last_check = request.app.state.triggarr_state.get("last_health_check")
+    last_check = getattr(request.app.state, "last_health_check", None)
     last_sync = _relative_time(last_check)
+    request.app.state.last_health_check = datetime.now(UTC)
     return templates.TemplateResponse(
         request=request,
         name="partials/health_summary.html",
@@ -835,12 +828,19 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
     specific instance. Also builds all_instances list for dropdown filter.
     """
     instance_param = request.query_params.get("instance")
+    if instance_param and len(instance_param) > 128:
+        return HTMLResponse("Invalid instance parameter", status_code=400)
     instance_id: str | None = None
     instance_app_type: str | None = None
 
     if instance_param:
         if "/" in instance_param:
             app_type, inst_name = instance_param.split("/", 1)
+            if app_type not in APP_TYPES:
+                return HTMLResponse("Invalid instance parameter", status_code=400)
+            enabled = request.app.state.settings.get_enabled_instances(app_type)
+            if inst_name not in enabled:
+                return HTMLResponse("Invalid instance parameter", status_code=400)
             instance_id = inst_name
             instance_app_type = app_type
         else:
@@ -869,13 +869,20 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
 
 
 @router.get("/partials/log-viewer", response_class=HTMLResponse)
-async def partial_log_viewer(request: Request) -> HTMLResponse:
+async def partial_log_viewer(request: Request, level: str = "") -> HTMLResponse:
     """Return an HTML fragment for the application log viewer (htmx partial)."""
+    _VALID_LEVELS = {"ERROR", "WARNING", "INFO", "DEBUG"}
     log_entries = log_buffer.get_recent(30)
+    # Server-side level filter (per D-06, T-51-01)
+    if level.upper() in _VALID_LEVELS:
+        level = level.upper()
+        log_entries = [e for e in log_entries if e.level == level]
+    else:
+        level = ""
     return templates.TemplateResponse(
         request=request,
         name="partials/log_viewer.html",
-        context={"log_entries": log_entries},
+        context={"log_entries": log_entries, "selected_level": level},
     )
 
 
