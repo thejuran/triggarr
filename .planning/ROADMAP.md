@@ -210,13 +210,15 @@ Plans:
 ### Phase 53: Docs & Metadata
 
 **Goal**: User reading the README sees Lidarr documented as a first-class supported *arr alongside Radarr and Sonarr, with dashboard screenshots refreshed to reflect the v2.5 visual direction, and the architecture decision for the new rail + expandable log recorded in PROJECT.md Key Decisions.
-**Depends on**: Phases 48–52 (screenshots must capture the finished v2.5 UI)
+**Depends on**: Phases 48-52 (screenshots must capture the finished v2.5 UI)
 **Requirements**: DOCS-01, DOCS-02, DOCS-03
 **Success Criteria** (what must be TRUE):
   1. User reading the README sees Lidarr documented alongside Radarr and Sonarr — install notes, config reference, and at least one screenshot include Lidarr as a first-class instance type
   2. User sees README dashboard screenshots refreshed to match the v2.5 visuals (sticky nav, hero Grab Rate card, unified app cards, Recent Activity rail, new Application Log)
   3. User reading PROJECT.md Key Decisions finds a new entry explaining the rationale for the sticky rail + expandable log architecture (sticky positioning, data reuse from existing search_log, vanilla JS only)
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 53-01-PLAN.md — PROJECT.md Key Decisions entry for rail + expandable log architecture (DOCS-03)
+- [ ] 53-02-PLAN.md — README Lidarr audit, screenshot alt text updates, user captures v2.5 screenshots (DOCS-01, DOCS-02)
 
 ## Progress
 
@@ -227,4 +229,4 @@ Plans:
 | 50. App Cards & Services Grid | 0/2 | Planning complete | - |
 | 51. Application Log Redesign | 0/0 | Not started | - |
 | 52. Recent Activity Rail | 0/2 | Planning complete | - |
-| 53. Docs & Metadata | 0/0 | Not started | - |
+| 53. Docs & Metadata | 0/2 | Planning complete | - |
