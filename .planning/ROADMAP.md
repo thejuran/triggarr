@@ -15,6 +15,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v2.3 Multi-Instance & Tag Filtering -- Phases 33-44 (shipped 2026-03-14) -- [archive](milestones/v2.3-ROADMAP.md)
 - ✅ v2.4 Community Polish & Test Hardening -- Phases 45-47 (shipped 2026-04-09) -- [archive](milestones/v2.4-ROADMAP.md)
 - ✅ v2.5 Dashboard UI Refresh -- Phases 48-53 (shipped 2026-04-13)
+- 🚧 **v2.6 Built-In Authentication** -- Phases 54-58 (in progress)
 
 ## Phases
 
@@ -123,109 +124,89 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 </details>
 
+### v2.6 Built-In Authentication (In Progress)
+
+**Milestone Goal:** Add *arr-style built-in authentication -- secure by default with Forms/Basic/External/Disabled modes, first-run setup, API key, and signed session cookies.
+
+- [ ] **Phase 54: Auth Config & Helpers** - Pydantic AuthConfig model, bcrypt password hashing, itsdangerous cookie signing, API key generation
+- [ ] **Phase 55: Auth Middleware & Health Endpoint** - Deny-all middleware with path whitelist, API key validation, unauthenticated /health, redirect vs 401 logic
+- [ ] **Phase 56: First-Run Setup & Login** - Setup page with credential creation, login page with Forms/Basic modes, session cookie management, first-run redirect guard
+- [ ] **Phase 57: Settings Security & Nav Logout** - Settings security section for password/auth-mode/API-key management, nav bar logout, disabled-auth warning
+- [ ] **Phase 58: Auth Test Suite** - Comprehensive tests for all auth paths, middleware enforcement, session lifecycle, and edge cases
+
 ## Phase Details
 
-### Phase 48: Foundations & Navigation Chrome
-
-**Goal**: User sees the design-system scaffolding for v2.5 — accessibility primitives, new typography, wider layout container, new elevation token, and a sticky navigation bar with clear active-state feedback — applied globally across every page.
-**Depends on**: Nothing (first phase of v2.5, foundational for all subsequent phases)
-**Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04, FOUND-05, NAV-01, NAV-02, NAV-03
+### Phase 54: Auth Config & Helpers
+**Goal**: Auth primitives exist in the codebase -- config model, password hashing, cookie signing, and API key generation -- ready for the middleware and UI layers to consume
+**Depends on**: Nothing (first phase of v2.6, foundation for all subsequent phases)
+**Requirements**: SETUP-03 (API key generation), LOGIN-02 (cookie signing primitives), LOGIN-05 (disabled mode config)
 **Success Criteria** (what must be TRUE):
-  1. Keyboard user tabbing through any page sees a consistent triggarr-green focus ring around every focused interactive element (buttons, inputs, selects, links)
-  2. User with OS-level reduced-motion enabled loads the dashboard and observes that hover transitions, pulses, and animations are effectively flattened
-  3. User sees monospace surfaces across the site rendered in Geist Mono loaded from Google Fonts, and the main dashboard column extends to `max-w-7xl` on desktop
-  4. User scrolling the Dashboard, History, or Settings page sees the top nav bar remain pinned with a backdrop-blur effect and a green underline under the active tab
-  5. When an update is available, user sees a pulsing green dot next to the update-available chip in the nav
-**Plans**: 3 plans
-- [x] 48-01-PLAN.md — CSS foundations: tokens, focus-visible, reduced-motion, self-hosted Geist Mono, dot-pulse utility, rebuilt output.css (FOUND-01, FOUND-02, FOUND-03, FOUND-05)
-- [x] 48-02-PLAN.md — base.html chrome: sticky nav, max-w-7xl container, centralized active-tab via request.url.path, pulsing dot inside update chip, remove nav_*_class blocks from child templates (FOUND-04, NAV-01, NAV-02, NAV-03)
-- [x] 48-03-PLAN.md — Verification: tests/test_ui_foundations.py with template smoke tests + CSS-compilation assertion (no new deps)
+  1. triggarr.toml supports an `[auth]` section with fields for auth_method, username, password_hash, api_key, and session_secret, validated by an AuthConfig pydantic model
+  2. A helper function accepts a plaintext password and returns a bcrypt hash, and a verify function confirms a plaintext password against a stored hash
+  3. A helper function generates a cryptographically random API key string suitable for X-Api-Key authentication
+  4. A helper function creates a signed session cookie value using itsdangerous with a configurable 30-day expiry, and a corresponding function validates/decodes it
+  5. When auth_method is set to "disabled" in config, the AuthConfig model accepts it and the value persists through config save/load round-trips
+**Plans**: TBD
+
+### Phase 55: Auth Middleware & Health Endpoint
+**Goal**: Every route in the application requires authentication by default, with correct handling for API keys, unauthenticated health checks, and browser vs API redirect behavior
+**Depends on**: Phase 54 (consumes AuthConfig, cookie validation, API key check, password verify)
+**Requirements**: MID-01, MID-02, MID-03, MID-04, LOGIN-03, LOGIN-04
+**Success Criteria** (what must be TRUE):
+  1. An unauthenticated browser request to any protected route (e.g., `/`, `/settings`, `/history`) receives a 302 redirect to `/login`
+  2. An unauthenticated API request (Accept: application/json or X-Api-Key header present but invalid) to any protected route receives a 401 JSON response
+  3. A request with a valid `X-Api-Key` header passes through the middleware and reaches the protected route
+  4. `GET /health` returns `{"status": "ok"}` with 200 without any authentication
+  5. When auth_method is "basic", the middleware returns a 401 with `WWW-Authenticate: Basic` header instead of redirecting to `/login`; when auth_method is "external", the middleware trusts the request as authenticated (reverse proxy delegation)
+**Plans**: TBD
+
+### Phase 56: First-Run Setup & Login
+**Goal**: Users launching Triggarr for the first time are guided through credential creation, and returning users can log in via the Forms login page with persistent sessions
+**Depends on**: Phase 55 (middleware allows setup/login routes through whitelist)
+**Requirements**: SETUP-01, SETUP-02, SETUP-03, SETUP-04, LOGIN-01, LOGIN-02, LOGIN-06, UI-01, UI-02
+**Success Criteria** (what must be TRUE):
+  1. User launching Triggarr with no credentials configured is redirected from every route to the `/setup` page, where they create a username, password (with confirmation), and see an auto-generated API key with a copy button
+  2. After completing setup, the user is automatically logged in and redirected to the dashboard; subsequent visits to `/setup` return 404
+  3. User can log in at `/login` with username and password; a valid login creates a signed session cookie that persists across browser restarts for 30 days
+  4. User can click a logout button in the nav bar that clears the session cookie and redirects to `/login`
+  5. Login and setup pages match AIDesigner HTML artifacts pixel-exact (design generated via AIDesigner, implemented faithfully in Jinja2 templates)
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 49: Stats & Health Strip
-
-**Goal**: User sees the top of the dashboard restructured around a compact instance-health strip and a hero Grab Rate card that dominates the stats row with a large percentage, a health badge, and per-app color-coded bars.
-**Depends on**: Phase 48 (uses elevation token, wider container, Geist Mono for timestamps)
-**Requirements**: STATS-01, STATS-02, STATS-03, STATS-04, STATS-05
+### Phase 57: Settings Security & Nav Logout
+**Goal**: Users can manage their authentication settings -- change password, switch auth mode, view/copy/regenerate API key -- from a dedicated security section in Settings
+**Depends on**: Phase 56 (user must be logged in to access settings; nav logout already wired)
+**Requirements**: SET-01, SET-02, SET-03, SET-04, LOGIN-05, UI-03
 **Success Criteria** (what must be TRUE):
-  1. User sees a single-line health strip at the top of the dashboard showing `N connected / N disconnected / N pending / Last sync {timestamp}`, replacing the previous full-width health card
-  2. User sees the Grab Rate card spanning 2 grid columns with a `text-4xl` headline percentage and a Healthy/Warn/Critical badge thresholded against the overall rate
-  3. User sees per-app grab rates rendered as color-coded horizontal bars inside the Grab Rate card (one bar per configured *arr type), replacing the previous `R: 85% S: 72% L: --%` text line
-  4. User sees subtle `shadow-sm` elevation on every stat card giving the stats row a layered, tactile feel
-**Plans**: 3 plans
-- [x] 49-01-PLAN.md — Health strip replacement + mini-bar CSS: replace health_summary.html card with compact strip, add _relative_time helper to routes.py, add .mini-bar CSS to input.css, rebuild output.css (STATS-01, STATS-04)
-- [x] 49-02-PLAN.md — Hero Grab Rate card + card elevation: restructure stats_row.html with col-span-2 hero card, gradient overlay, health badge, per-app color-coded mini-bars, shadow-sm on all stat cards (STATS-02, STATS-03, STATS-04, STATS-05)
-- [x] 49-03-PLAN.md — Tests: test_stats_health.py validating health strip structure, hero card layout, badge rendering, bar colors, and shadow-sm elevation (STATS-01..05)
+  1. User sees a Security section on the Settings page with controls for auth method (Forms/Basic/External dropdown), password change (current + new + confirm), and API key management (masked display, copy button, regenerate button)
+  2. User can change auth method from Settings and the change takes effect on next request (e.g., switching to Basic causes subsequent unauthenticated requests to get WWW-Authenticate popup)
+  3. User can change password by entering current password, new password, and confirmation; incorrect current password is rejected with a clear error
+  4. User sees a warning banner in the Settings security section when auth is disabled via config file, explaining that auth mode can only be changed back from the config file
+  5. Settings security section matches AIDesigner HTML artifact pixel-exact
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 50: App Cards & Services Grid
-
-**Goal**: User sees every Services card refreshed with a unified connection pill, a dedicated schedule row, compact pass pills, hover elevation, unreachable-state visual treatment (danger stripes + Retry button), a live-refresh dot, and a 3-column grid on wide screens.
-**Depends on**: Phase 48 (elevation token, focus ring, wider container)
-**Requirements**: CARD-01, CARD-02, CARD-03, CARD-04, CARD-05, CARD-06, CARD-07, LAYOUT-01
+### Phase 58: Auth Test Suite
+**Goal**: All authentication paths are covered by automated tests -- middleware enforcement, session lifecycle, setup flow, login/logout, API key auth, auth mode switching, and edge cases
+**Depends on**: Phase 57 (all auth features implemented)
+**Requirements**: (verification phase -- validates all requirements indirectly)
 **Success Criteria** (what must be TRUE):
-  1. User sees a single unified connection pill shape in the header of every app card for all states (Connected / Unreachable / Waiting), with state and context readable at a glance
-  2. User sees Last Run and Next Run timestamps in a dedicated schedule row directly below the card header, and queue pass counts rendered as compact `pass 2` pill badges next to the cursor position
-  3. User hovering any app card sees it transition to the elevated background and shadow; user sees a pulsing green dot inside the connection pill while the card live-refreshes via htmx polling
-  4. User sees app cards for unreachable instances rendered with diagonal red danger stripes and a red "Retry" button replacing the "Search Now" button
-  5. User with 3+ configured instances on a viewport ≥1280px sees the Services grid switch from 2 columns to 3 columns
-**Plans**: 2 plans
-- [x] 50-01-PLAN.md — CSS additions (.card-hover, .danger-stripes) + complete app_card.html rewrite with unified pills, schedule row, pass pills, danger stripes, Retry button + dashboard.html xl:grid-cols-3 (CARD-01..07, LAYOUT-01)
-- [x] 50-02-PLAN.md — Tests: test_app_cards.py validating connection pills, schedule row, pass pills, hover classes, danger stripes, Retry button, dot-pulse, and 3-col grid (CARD-01..07, LAYOUT-01)
-**UI hint**: yes
-
-### Phase 51: Application Log Redesign
-
-**Goal**: User sees the Application Log panel rebuilt around a Geist Mono monospace grid with a live TAILING indicator, level-coloured rows, colored per-app source tags, and the ability to expand the log into a fixed bottom-pinned terminal pane that stays visible while the dashboard scrolls.
-**Depends on**: Phase 48 (Geist Mono font, elevation token, wider container)
-**Requirements**: LOG-01, LOG-02, LOG-03, LOG-04, LOG-05, LOG-06
-**Success Criteria** (what must be TRUE):
-  1. User sees Application Log rows rendered in Geist Mono with column-aligned timestamp, level, source, and message fields
-  2. User sees an always-visible `TAILING` indicator (Geist Mono label + pulsing green dot) in the log header, confirming live polling
-  3. User sees ERROR rows with a red-tinted background and red left border, DEBUG rows dimmed, and `[Radarr]` / `[Sonarr]` / `[Lidarr]` source tags in their signature colors
-  4. User can click an expand icon in the log header to promote the log to a fixed bottom-pinned terminal pane with a subtle scanline effect, and click a collapse icon to return it to its inline dashboard position
-**Plans**: 3 plans
-- [x] 51-00-PLAN.md — Wave 0 test stubs: tests/test_log_viewer.py with 12 tests covering LOG-01 through LOG-06
-- [x] 51-01-PLAN.md — CSS terminal-pane/scanline/expanded classes + full log_viewer.html rewrite with monospace grid, source tags, TAILING, buttons (LOG-01..06)
-- [x] 51-02-PLAN.md — Route level filter param + dashboard.html JS for expand/collapse, pause, auto-scroll (LOG-04..06)
-**UI hint**: yes
-
-### Phase 52: Recent Activity Rail
-
-**Goal**: User on wide screens sees a new sticky Recent Activity rail docked on the right of the dashboard — a vertical timeline of recent searches with colored dots, per-app badges, outcome pills, queue type, and relative timestamps — fed by the existing search-log data and hidden entirely on narrow screens. The previous inline Search Log partial is removed.
-**Depends on**: Phase 48 (wider container needed to fit the rail), Phase 49 (stats layout), Phase 50 (grid layout)
-**Requirements**: RAIL-01, RAIL-02, RAIL-03, RAIL-04, RAIL-05, RAIL-06, RAIL-07
-**Success Criteria** (what must be TRUE):
-  1. User on a viewport ≥1280px wide sees a sticky Recent Activity rail on the right side of the dashboard that stays in place while the main content scrolls
-  2. User sees recent searches rendered as a vertical timeline in the rail, with colored dots (green/amber/blue/gray/red) connected by a vertical line
-  3. User sees each rail entry showing a per-app badge, title, outcome pill with icon (grabbed/partial/searched/unresolved/failed), queue type, and relative timestamp; rail header shows a LIVE indicator and filter button, footer shows a "View full history →" link to the History page
-  4. User on a viewport narrower than `xl:` sees the main dashboard full-width with the rail hidden entirely
-  5. User sees no inline Search Log section on the dashboard anymore — the rail replaces it on wide screens and the History page serves narrow screens — and the rail is populated from the same `search_log` data via a dedicated `/partials/activity-rail` endpoint (reuses existing DB helper, no schema changes)
-**Plans**: 2 plans
-- [x] 52-01-PLAN.md — Timeline CSS, relative_time Jinja filter, /partials/activity-rail route, activity_rail.html partial template, test stubs (RAIL-01..06)
-- [x] 52-02-PLAN.md — base.html flex wrapper with sidebar block, dashboard.html rail wiring, search_log.html removal, route cleanup, test updates (RAIL-01, RAIL-05, RAIL-06, RAIL-07)
-**UI hint**: yes
-
-### Phase 53: Docs & Metadata
-
-**Goal**: User reading the README sees Lidarr documented as a first-class supported *arr alongside Radarr and Sonarr, with dashboard screenshots refreshed to reflect the v2.5 visual direction, and the architecture decision for the new rail + expandable log recorded in PROJECT.md Key Decisions.
-**Depends on**: Phases 48-52 (screenshots must capture the finished v2.5 UI)
-**Requirements**: DOCS-01, DOCS-02, DOCS-03
-**Success Criteria** (what must be TRUE):
-  1. User reading the README sees Lidarr documented alongside Radarr and Sonarr — install notes, config reference, and at least one screenshot include Lidarr as a first-class instance type
-  2. User sees README dashboard screenshots refreshed to match the v2.5 visuals (sticky nav, hero Grab Rate card, unified app cards, Recent Activity rail, new Application Log)
-  3. User reading PROJECT.md Key Decisions finds a new entry explaining the rationale for the sticky rail + expandable log architecture (sticky positioning, data reuse from existing search_log, vanilla JS only)
-**Plans**: 2 plans
-- [x] 53-01-PLAN.md — PROJECT.md Key Decisions entry for rail + expandable log architecture (DOCS-03)
-- [x] 53-02-PLAN.md — README Lidarr audit, screenshot alt text updates, user captures v2.5 screenshots (DOCS-01, DOCS-02)
+  1. Tests verify that unauthenticated requests to protected routes get redirected (browser) or receive 401 (API), and that /health is always accessible
+  2. Tests verify the complete first-run setup flow: redirect to /setup, credential creation, API key display, /setup returns 404 after configuration
+  3. Tests verify login with valid/invalid credentials, session cookie creation and validation, 30-day expiry, and logout clearing the cookie
+  4. Tests verify all four auth modes (Forms redirect, Basic WWW-Authenticate, External pass-through, Disabled with warning log) behave correctly
+  5. Tests verify API key authentication via X-Api-Key header, including valid key, invalid key, and missing key scenarios
+**Plans**: TBD
 
 ## Progress
 
+**Execution Order:**
+Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
+
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 48. Foundations & Navigation Chrome | 3/3 | Complete | 2026-04-13 |
-| 49. Stats & Health Strip | 3/3 | Complete | 2026-04-13 |
-| 50. App Cards & Services Grid | 2/2 | Complete | 2026-04-13 |
-| 51. Application Log Redesign | 3/3 | Complete | 2026-04-13 |
-| 52. Recent Activity Rail | 2/2 | Complete | 2026-04-13 |
-| 53. Docs & Metadata | 2/2 | Complete | 2026-04-13 |
+| 54. Auth Config & Helpers | 0/? | Not started | - |
+| 55. Auth Middleware & Health Endpoint | 0/? | Not started | - |
+| 56. First-Run Setup & Login | 0/? | Not started | - |
+| 57. Settings Security & Nav Logout | 0/? | Not started | - |
+| 58. Auth Test Suite | 0/? | Not started | - |

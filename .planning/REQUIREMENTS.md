@@ -1,14 +1,14 @@
 # Requirements: Triggarr v2.6 Built-In Authentication
 
 **Defined:** 2026-04-14
-**Core Value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
+**Core Value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
 
 **Design spec:** `docs/superpowers/specs/2026-04-14-built-in-auth-design.md`
 **UI approach:** AIDesigner generates HTML artifacts for login, setup, and settings security pages; implementation matches pixel-exact.
 
 ## v2.6 Requirements
 
-Requirements for the Built-In Authentication milestone. Each maps to exactly one roadmap phase. Adds *arr-style auth — secure by default with Forms/Basic/External/Disabled modes.
+Requirements for the Built-In Authentication milestone. Each maps to exactly one roadmap phase. Adds *arr-style auth -- secure by default with Forms/Basic/External/Disabled modes.
 
 ### First-Run Setup
 
@@ -63,10 +63,10 @@ Explicitly excluded from v2.6 to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| Multi-user accounts | Single-user app — one set of credentials sufficient |
+| Multi-user accounts | Single-user app -- one set of credentials sufficient |
 | OAuth / SSO | Forms/Basic/External modes cover all homelab auth patterns |
 | Rate limiting on login | Reverse proxy handles this; defer to future if needed |
-| Password complexity rules | Single-user self-hosted — user manages their own security |
+| Password complexity rules | Single-user self-hosted -- user manages their own security |
 | Email-based password reset | No email infrastructure; single-user resets via config file |
 | Two-factor authentication | Overkill for single-user homelab tool; External mode delegates to 2FA-capable proxies |
 | Session revocation UI | Single-user; changing password or session secret invalidates all sessions |
@@ -77,33 +77,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | — | Pending |
-| SETUP-02 | — | Pending |
-| SETUP-03 | — | Pending |
-| SETUP-04 | — | Pending |
-| LOGIN-01 | — | Pending |
-| LOGIN-02 | — | Pending |
-| LOGIN-03 | — | Pending |
-| LOGIN-04 | — | Pending |
-| LOGIN-05 | — | Pending |
-| LOGIN-06 | — | Pending |
-| MID-01 | — | Pending |
-| MID-02 | — | Pending |
-| MID-03 | — | Pending |
-| MID-04 | — | Pending |
-| SET-01 | — | Pending |
-| SET-02 | — | Pending |
-| SET-03 | — | Pending |
-| SET-04 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
+| SETUP-01 | Phase 56 | Pending |
+| SETUP-02 | Phase 56 | Pending |
+| SETUP-03 | Phase 54, 56 | Pending |
+| SETUP-04 | Phase 56 | Pending |
+| LOGIN-01 | Phase 56 | Pending |
+| LOGIN-02 | Phase 54, 56 | Pending |
+| LOGIN-03 | Phase 55 | Pending |
+| LOGIN-04 | Phase 55 | Pending |
+| LOGIN-05 | Phase 54, 57 | Pending |
+| LOGIN-06 | Phase 56 | Pending |
+| MID-01 | Phase 55 | Pending |
+| MID-02 | Phase 55 | Pending |
+| MID-03 | Phase 55 | Pending |
+| MID-04 | Phase 55 | Pending |
+| SET-01 | Phase 57 | Pending |
+| SET-02 | Phase 57 | Pending |
+| SET-03 | Phase 57 | Pending |
+| SET-04 | Phase 57 | Pending |
+| UI-01 | Phase 56 | Pending |
+| UI-02 | Phase 56 | Pending |
+| UI-03 | Phase 57 | Pending |
 
 **Coverage:**
 - v2.6 requirements: 21 total
-- Mapped to phases: 0
-- Unmapped: 21 ⚠️
+- Mapped to phases: 21
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-14*
-*Last updated: 2026-04-14 after initial definition*
+*Last updated: 2026-04-14 after roadmap creation*

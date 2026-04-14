@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: Built-In Authentication
-status: defining_requirements
+status: ready_to_plan
 last_updated: "2026-04-14"
 last_activity: 2026-04-14
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-14)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** v2.6 Built-In Authentication — defining requirements
+**Current focus:** v2.6 Built-In Authentication -- Phase 54 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-14 — Milestone v2.6 started
+Phase: 54 of 58 (Auth Config & Helpers)
+Plan: 0 of ? in current phase
+Status: Ready to plan
+Last activity: 2026-04-14 -- Roadmap created for v2.6
+
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -42,6 +44,11 @@ Last activity: 2026-04-14 — Milestone v2.6 started
 
 Full decision log in PROJECT.md Key Decisions table.
 
+- Design spec validated: `docs/superpowers/specs/2026-04-14-built-in-auth-design.md`
+- bcrypt for password hashing, itsdangerous for signed cookies
+- Four auth modes: Forms (default), Basic, External, Disabled
+- UI pages designed via AIDesigner, implemented pixel-exact
+
 ### Pending Todos
 
 None.
@@ -52,6 +59,12 @@ None.
 
 ### Reference Artifacts
 
-- `docs/superpowers/specs/2026-04-14-built-in-auth-design.md` — validated design spec for v2.6 auth feature
-- `.planning/ROADMAP.md` — will be updated with v2.6 phases after requirements defined
-- `.planning/REQUIREMENTS.md` — will be updated with v2.6 auth requirements
+- `docs/superpowers/specs/2026-04-14-built-in-auth-design.md` -- validated design spec
+- `.planning/ROADMAP.md` -- v2.6 phases 54-58
+- `.planning/REQUIREMENTS.md` -- 21 requirements across 5 categories
+
+## Session Continuity
+
+Last session: 2026-04-14
+Stopped at: Roadmap created for v2.6 Built-In Authentication
+Resume file: None
