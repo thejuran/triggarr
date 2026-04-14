@@ -8,20 +8,9 @@ A lightweight Docker-based tool that automates searches in Radarr, Sonarr, and L
 
 Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback showing what was actually grabbed — without exposing credentials or expanding attack surface.
 
-## Current Milestone: v2.5 Dashboard UI Refresh
+## Current Milestone: Planning next milestone
 
-**Goal:** Refresh the web dashboard visual language without changing backend data shapes — tighter hierarchy, clearer instance health, and a sticky Recent Activity rail — using `.aidesigner/enhanced-mockup-v3.html` as the design contract.
-
-**Target features:**
-- Foundations: new elevation token, `focus-visible` rings, `prefers-reduced-motion`, Geist Mono, wider `max-w-7xl` container
-- Sticky nav with active-tab underline and pulsing update-available dot
-- Compact one-line health strip + hero Grab Rate card with per-app bar chart
-- Tightened app cards: unified connection pill, schedule row, pass pills, hover elevation
-- Diagonal danger stripes + Retry button on unreachable cards
-- 3-column Services grid on `xl:` breakpoint
-- Application Log: Geist Mono, TAILING indicator, level-colored rows, expandable bottom-terminal mode
-- New sticky **Recent Activity** rail on the right (timeline view, replaces inline Search Log)
-- Docs drift: move Lidarr out of Out of Scope, document existing Lidarr support
+v2.5 Dashboard UI Refresh shipped 2026-04-14. All 37 requirements satisfied, 45 UAT scenarios passed.
 
 ## Requirements
 
@@ -106,17 +95,23 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 - ✓ Unhappy-path tests for corrupt state/config (broken TOML, SQLite, JSON, migration) — v2.4
 - ✓ Unhappy-path tests for search logic edge cases (empty queues, tag filtering, cursors) — v2.4
 
+- ✓ Design-system foundations: focus-visible rings, reduced-motion, Geist Mono, elevation token, wider container — v2.5
+- ✓ Sticky nav with active-tab underline and pulsing update dot — v2.5
+- ✓ Compact health strip + hero Grab Rate card with per-app bars and health badge — v2.5
+- ✓ Redesigned app cards: unified connection pill, schedule row, pass pills, danger stripes, hover elevation, 3-col grid — v2.5
+- ✓ Terminal-style application log: Geist Mono, TAILING, level-colored rows, expandable bottom pane — v2.5
+- ✓ Sticky Recent Activity rail with timeline, outcome pills, LIVE indicator — v2.5
+- ✓ Lidarr documented as first-class supported *arr alongside Radarr and Sonarr — v2.5
+- ✓ Deep code review: 26 fixes (PaginatedResponse resilience, concurrency, security headers, Dockerfile) — v2.5
+- ✓ Conditional stat tiles: Movies/Episodes/Albums tiles only shown when respective app is enabled — v2.5
+
 ### Active
 
-**v2.5 Dashboard UI Refresh** — see Current Milestone section above. Requirements in `.planning/REQUIREMENTS.md`.
-
-### Undocumented shipped capability (discovered during v2.5 planning)
-
-- ✓ Lidarr support across search engine, settings UI, stats row, app cards, and history filters — shipped in v2.3 multi-instance work but never documented as a first-class requirement
+No active requirements. Planning next milestone.
 
 ## Current State
 
-Starting v2.5 Dashboard UI Refresh. Previous milestone v2.4 shipped open-source community health files and comprehensive unhappy-path test coverage.
+Shipped v2.5 Dashboard UI Refresh. Complete visual overhaul with design-system foundations, redesigned stats/cards/log, sticky activity rail, and deep code review.
 
 ### Out of Scope
 
@@ -139,7 +134,7 @@ Starting v2.5 Dashboard UI Refresh. Previous milestone v2.4 shipped open-source 
 
 ## Context
 
-Shipped v2.4 with ~15,979 Python LOC (5,308 source + 10,671 test). 606 tests passing. 47 phases, 77 plans completed across 10 milestones.
+Shipped v2.5 with ~17,361 Python LOC (5,406 source + 11,955 test). 668 tests passing. 53 phases, 92 plans completed across 11 milestones.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
@@ -214,4 +209,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-10 — started v2.5 Dashboard UI Refresh milestone*
+*Last updated: 2026-04-14 after v2.5 milestone*

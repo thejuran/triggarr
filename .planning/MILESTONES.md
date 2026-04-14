@@ -1,5 +1,27 @@
 # Milestones
 
+## v2.5 Dashboard UI Refresh (Shipped: 2026-04-14)
+
+**Phases completed:** 6 phases, 15 plans
+**Timeline:** 4 days (Apr 10-13, 2026)
+**LOC:** ~17,361 Python (5,406 source + 11,955 test) | 668 tests
+**Git range:** 87da2a9..fb8f3ef (49 commits, 116 files changed, +10,696 -2,964 lines)
+**Requirements:** 37/37 satisfied | **UAT:** 45/45 passed
+
+**Delivered:** Complete dashboard visual refresh with design-system foundations, redesigned stats/cards/log components, a new sticky activity rail, and a 26-issue deep code review.
+
+**Key accomplishments:**
+
+- Design-system foundations: focus-visible rings, reduced-motion, Geist Mono typography, elevation token, wider max-w-7xl container
+- Sticky navigation with active-tab underline and pulsing update-available dot
+- Compact health strip + hero Grab Rate card with per-app color-coded bars and Healthy/Warn/Critical badge
+- Redesigned app cards: unified connection pill, schedule row, pass pills, danger stripes + Retry button, hover elevation, 3-col xl grid
+- Terminal-style application log: Geist Mono, TAILING indicator, level-colored rows, expandable bottom-pinned pane with scanline effect
+- Sticky Recent Activity rail with vertical timeline, outcome pills, LIVE indicator, and app filter (replaces inline search log)
+- Deep code review: 26 issues fixed across 3 rounds — PaginatedResponse resilience, search_lock concurrency, security headers, Lidarr pagination, event loop blocking, Dockerfile hardening
+
+---
+
 ## v2.4 Community Polish & Test Hardening (Shipped: 2026-04-09)
 
 **Phases completed:** 3 phases, 6 plans
