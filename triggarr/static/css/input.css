@@ -82,3 +82,62 @@
     transparent 12px
   );
 }
+
+/* Scanline animation for terminal pane — LOG-05 D-07 */
+@keyframes scanline {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+/* Terminal pane background — LOG-05 D-07 */
+.terminal-pane {
+  background-color: #050505;
+  background-image:
+    radial-gradient(circle at center, transparent 0%, #000 120%),
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 4px;
+}
+
+/* Scanline overlay — LOG-05 D-07 */
+.scanline-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  mix-blend-mode: overlay;
+  opacity: 0.25;
+}
+.scanline-overlay::before {
+  content: '';
+  position: absolute;
+  inset: -100% 0 0 0;
+  background: linear-gradient(to bottom, transparent, rgba(34, 197, 94, 0.15), transparent);
+  animation: scanline 8s linear infinite;
+}
+
+/* Expanded log pane — LOG-05 D-02 D-03 */
+#log-viewer.expanded {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 320px;
+  z-index: 40;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-top: 1px solid #334155;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+#log-viewer.expanded .log-body {
+  flex: 1;
+  max-height: none;
+  padding: 0 1.25rem 1.25rem 1.25rem;
+}
+body.log-expanded {
+  padding-bottom: 320px;
+}
