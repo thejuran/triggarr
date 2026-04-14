@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Literal
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, SecretStr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource

@@ -47,7 +47,7 @@ def check_localhost_urls(settings: Settings) -> None:
 
 
 def collect_secrets(settings: Settings) -> list[str]:
-    """Extract API key values from all configured instances.
+    """Extract API key values from all configured instances and auth secrets.
 
     This is the ONLY place where ``get_secret_value()`` is called for
     logging purposes.  The returned list is passed to the redaction
@@ -65,6 +65,13 @@ def collect_secrets(settings: Settings) -> list[str]:
             value = cfg.api_key.get_secret_value()
             if value:
                 secrets.append(value)
+
+    # Auth secrets (D-07: password_hash, api_key, session_secret)
+    for field in (settings.auth.password_hash, settings.auth.api_key, settings.auth.session_secret):
+        value = field.get_secret_value()
+        if value:
+            secrets.append(value)
+
     return secrets
 
 
