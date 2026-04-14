@@ -48,8 +48,8 @@
     </div>
   </div>
 
-  <!-- Movies card (hidden when filtered to Sonarr or Lidarr) -->
-  {% if instance_app_type not in ('sonarr', 'lidarr') %}
+  <!-- Movies card (only shown when Radarr is enabled and not filtered to Sonarr or Lidarr) -->
+  {% if radarr_enabled and instance_app_type not in ('sonarr', 'lidarr') %}
   <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 shadow-sm">
     <span class="text-xs uppercase tracking-wide text-triggarr-muted">Movies</span>
     <p class="text-lg font-bold mt-1">{{ stats.movies_found + stats.movies_updated }}</p>
@@ -57,8 +57,8 @@
   </div>
   {% endif %}
 
-  <!-- Episodes card (hidden when filtered to Radarr or Lidarr) -->
-  {% if instance_app_type not in ('radarr', 'lidarr') %}
+  <!-- Episodes card (only shown when Sonarr is enabled and not filtered to Radarr or Lidarr) -->
+  {% if sonarr_enabled and instance_app_type not in ('radarr', 'lidarr') %}
   <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 shadow-sm">
     <span class="text-xs uppercase tracking-wide text-triggarr-muted">Episodes</span>
     <p class="text-lg font-bold mt-1">{{ stats.episodes_found + stats.episodes_updated }}</p>
@@ -66,8 +66,8 @@
   </div>
   {% endif %}
 
-  <!-- Albums card (hidden when filtered to Radarr or Sonarr) -->
-  {% if instance_app_type not in ('radarr', 'sonarr') %}
+  <!-- Albums card (only shown when Lidarr is enabled and not filtered to Radarr or Sonarr) -->
+  {% if lidarr_enabled and instance_app_type not in ('radarr', 'sonarr') %}
   <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 shadow-sm">
     <span class="text-xs uppercase tracking-wide text-triggarr-muted">Albums</span>
     <p class="text-lg font-bold mt-1">{{ stats.albums_found + stats.albums_updated }}</p>

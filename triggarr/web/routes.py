@@ -320,6 +320,9 @@ async def dashboard(request: Request) -> HTMLResponse:
             "selected_instance": "",
             "instance_app_type": None,
             "show_migration_banner": (CONFIG_DIR / ".migrated").exists(),
+            "radarr_enabled": bool(settings.get_enabled_instances("radarr")),
+            "sonarr_enabled": bool(settings.get_enabled_instances("sonarr")),
+            "lidarr_enabled": bool(settings.get_enabled_instances("lidarr")),
         },
     )
 
@@ -895,6 +898,7 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
     stats = await get_dashboard_stats(request.app.state.db, instance_id=instance_id)
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
     all_instances = _build_all_instances(request.app.state.settings)
+    settings = request.app.state.settings
     return templates.TemplateResponse(
         request=request,
         name="partials/stats_row.html",
@@ -904,6 +908,9 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
             "all_instances": all_instances,
             "selected_instance": instance_param or "",
             "instance_app_type": instance_app_type,
+            "radarr_enabled": bool(settings.get_enabled_instances("radarr")),
+            "sonarr_enabled": bool(settings.get_enabled_instances("sonarr")),
+            "lidarr_enabled": bool(settings.get_enabled_instances("lidarr")),
         },
     )
 
