@@ -87,7 +87,7 @@ def make_search_job(
                     app.state.settings,
                     app.state.db,
                 )
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None, save_state, app.state.triggarr_state, state_path
                 )
                 # --- Tracking check: resolve pending search outcomes for this instance ---
@@ -209,6 +209,7 @@ def create_lifespan(
         app.state.state_path = state_path
         app.state.search_lock = asyncio.Lock()
         app.state.last_search_time: dict[str, float] = {}
+        app.state.last_health_check = None
 
         # Import update_info dict once at lifespan start (not inside job)
         # to avoid circular import during scheduler ticks.

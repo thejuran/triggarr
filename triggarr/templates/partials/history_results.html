@@ -140,7 +140,7 @@
             {{ entry.instance_id }}
           </span>
           {% endif %}
-          <span class="text-sm flex-1 truncate" {% if entry.detail %}title="{{ entry.detail }}"{% endif %}>{{ entry.name }}</span>
+          <span class="text-sm flex-1 truncate" {% if entry.detail %}title="{{ entry.detail | e }}"{% endif %}>{{ entry.name }}</span>
           <span class="text-xs text-triggarr-muted">{{ entry.queue_type }}</span>
           <span class="text-xs px-1.5 py-0.5 rounded
                  {% if entry.outcome == 'grabbed' %}bg-green-500/20 text-green-400

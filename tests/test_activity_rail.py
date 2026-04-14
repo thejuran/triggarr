@@ -63,7 +63,7 @@ async def rail_app(tmp_path):
         }
 
         app.state.settings = make_settings()
-        app.state.last_search_times = {}
+        app.state.last_search_time = {}
         app.state.update_info = {}
         app.state.last_health_check = None
 
@@ -96,7 +96,7 @@ async def empty_rail_app(tmp_path):
         }
 
         app.state.settings = make_settings()
-        app.state.last_search_times = {}
+        app.state.last_search_time = {}
         app.state.update_info = {}
         app.state.last_health_check = None
 

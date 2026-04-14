@@ -60,17 +60,29 @@ templates.env.globals["update_info"] = update_info
 
 def _relative_time_filter(iso_timestamp: str) -> str:
     """Jinja2 filter: ISO timestamp string -> 'Just now' / '3m ago' style."""
+    if not iso_timestamp:
+        return ""
     try:
         dt = datetime.fromisoformat(iso_timestamp)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
     except (ValueError, TypeError):
         return iso_timestamp[:19].replace("T", " ")
+    return _relative_time(dt, short_threshold=True)
+
+
+def _relative_time(dt: datetime | None, *, short_threshold: bool = False) -> str:
+    """Format a datetime as a short relative string (e.g. '2s ago', '1m ago').
+
+    When *short_threshold* is True, deltas under 10 seconds return 'Just now'.
+    """
+    if dt is None:
+        return "never"
     delta = datetime.now(UTC) - dt
     seconds = int(delta.total_seconds())
-    if seconds < 10:
+    if seconds < 0 or (short_threshold and seconds < 10):
         return "Just now"
-    elif seconds < 60:
+    if seconds < 60:
         return f"{seconds}s ago"
     elif seconds < 3600:
         return f"{seconds // 60}m ago"
@@ -225,20 +237,6 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
     }
 
 
-def _relative_time(dt: datetime | None) -> str:
-    """Format a datetime as a short relative string (e.g. '2s ago', '1m ago')."""
-    if dt is None:
-        return "never"
-    delta = datetime.now(UTC) - dt
-    seconds = int(delta.total_seconds())
-    if seconds < 60:
-        return f"{seconds}s ago"
-    elif seconds < 3600:
-        return f"{seconds // 60}m ago"
-    else:
-        return f"{seconds // 3600}h ago"
-
-
 def _build_health_summary(request: Request) -> dict:
     """Compute health summary counts from enabled instances in triggarr_state.
 
@@ -303,7 +301,6 @@ async def dashboard(request: Request) -> HTMLResponse:
             if ctx is not None:
                 apps.append(ctx)
 
-    search_log = await get_recent_searches(request.app.state.db)
     log_entries = log_buffer.get_recent(30)
     stats = await get_dashboard_stats(request.app.state.db)
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
@@ -315,7 +312,6 @@ async def dashboard(request: Request) -> HTMLResponse:
         name="dashboard.html",
         context={
             "apps": apps,
-            "search_log": search_log,
             "log_entries": log_entries,
             "stats": stats,
             "time_to_grab": time_to_grab,

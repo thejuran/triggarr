@@ -6,7 +6,7 @@
      class="grid grid-cols-2 {% if instance_app_type %}md:grid-cols-3{% else %}md:grid-cols-5{% endif %} gap-3 mb-4">
 
   <!-- Hero Grab Rate card — STATS-02, STATS-03, STATS-04 -->
-  <div class="md:col-span-2 bg-triggarr-card rounded-lg border border-triggarr-border p-5 shadow-sm relative overflow-hidden">
+  <div class="{% if instance_app_type %}md:col-span-1{% else %}md:col-span-2{% endif %} bg-triggarr-card rounded-lg border border-triggarr-border p-5 shadow-sm relative overflow-hidden">
     <div class="absolute inset-0 bg-gradient-to-br from-triggarr-green/5 to-transparent pointer-events-none"></div>
     <div class="relative">
       <div class="flex items-center justify-between">

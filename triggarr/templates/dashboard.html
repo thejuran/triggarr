@@ -3,7 +3,13 @@
 {% block title %}Dashboard - Triggarr{% endblock %}
 
 {% block sidebar %}
-{% include "partials/activity_rail.html" %}
+<aside id="activity-rail"
+       hx-get="{{ request.url_for('partial_activity_rail') }}"
+       hx-trigger="load, every 5s"
+       hx-swap="outerHTML"
+       class="hidden xl:flex w-80 shrink-0 flex-col bg-triggarr-card rounded-lg border border-triggarr-border shadow-sm overflow-hidden sticky top-20 max-h-[calc(100vh-6rem)]">
+  <div class="px-4 py-3 text-sm text-triggarr-muted text-center">Loading activity&hellip;</div>
+</aside>
 {% endblock %}
 
 {% block content %}

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../templates/**/*.html";
 
 @theme {
   --color-triggarr-green: #22c55e;

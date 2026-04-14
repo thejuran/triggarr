@@ -132,11 +132,11 @@ def test_dashboard_returns_200(client):
 
 
 def test_dashboard_shows_activity_rail(client):
-    """GET / response contains activity rail with search entries (RAIL-07)."""
+    """GET / response contains activity rail placeholder that loads via htmx (RAIL-07)."""
     response = client.get("/")
     assert response.status_code == 200
     assert "activity-rail" in response.text, "Dashboard should include activity rail"
-    assert "Test Movie" in response.text, "Dashboard activity rail should show search entries"
+    assert 'hx-trigger="load, every 5s"' in response.text, "Activity rail should load via htmx"
 
 
 def test_settings_page_returns_200(client):

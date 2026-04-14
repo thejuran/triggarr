@@ -38,88 +38,88 @@ async def test_app(tmp_path):
     app.include_router(router)
 
     db_path = tmp_path / "test.db"
-    db = await aiosqlite.connect(db_path)
-    await init_db(db, db_path)
+    async with aiosqlite.connect(db_path) as db:
+        await init_db(db, db_path)
 
-    # Insert Radarr entries: 2 searched, 1 grabbed -> 50% rate
-    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched")
-    await insert_search_entry(db, "Radarr", "missing", "Movie B", outcome="grabbed")
+        # Insert Radarr entries: 2 searched, 1 grabbed -> 50% rate
+        await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched")
+        await insert_search_entry(db, "Radarr", "missing", "Movie B", outcome="grabbed")
 
-    # Insert Sonarr entries: 1 searched, 1 grabbed -> 100% rate (but partial counts)
-    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")
+        # Insert Sonarr entries: 1 searched, 1 grabbed -> 100% rate (but partial counts)
+        await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")
 
-    app.state.db = db
+        app.state.db = db
 
-    app.state.triggarr_state = {
-        "radarr": {
-            "Default": {
-                "missing_cursor": 3,
-                "cutoff_cursor": 1,
-                "last_run": "2026-01-15T10:30:00Z",
-                "connected": True,
-                "unreachable_since": None,
-                "missing_count": 42,
-                "cutoff_count": 7,
+        app.state.triggarr_state = {
+            "radarr": {
+                "Default": {
+                    "missing_cursor": 3,
+                    "cutoff_cursor": 1,
+                    "last_run": "2026-01-15T10:30:00Z",
+                    "connected": True,
+                    "unreachable_since": None,
+                    "missing_count": 42,
+                    "cutoff_count": 7,
+                },
             },
-        },
-        "sonarr": {
-            "Default": {
-                "missing_cursor": 0,
-                "cutoff_cursor": 0,
-                "last_run": None,
-                "connected": None,
-                "unreachable_since": None,
-                "missing_count": None,
-                "cutoff_count": None,
+            "sonarr": {
+                "Default": {
+                    "missing_cursor": 0,
+                    "cutoff_cursor": 0,
+                    "last_run": None,
+                    "connected": None,
+                    "unreachable_since": None,
+                    "missing_count": None,
+                    "cutoff_count": None,
+                },
             },
-        },
-        "lidarr": {
-            "Default": {
-                "missing_cursor": 0,
-                "cutoff_cursor": 0,
-                "last_run": None,
-                "connected": None,
-                "unreachable_since": None,
-                "missing_count": None,
-                "cutoff_count": None,
+            "lidarr": {
+                "Default": {
+                    "missing_cursor": 0,
+                    "cutoff_cursor": 0,
+                    "last_run": None,
+                    "connected": None,
+                    "unreachable_since": None,
+                    "missing_count": None,
+                    "cutoff_count": None,
+                },
             },
-        },
-        "search_log": [],
-    }
+            "search_log": [],
+        }
 
-    app.state.settings = make_settings(
-        radarr_url="http://radarr:7878",
-        radarr_api_key="test-radarr-key",
-        radarr_enabled=True,
-        sonarr_url="http://sonarr:8989",
-        sonarr_api_key="test-sonarr-key",
-        sonarr_enabled=True,
-        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
-    )
+        app.state.settings = make_settings(
+            radarr_url="http://radarr:7878",
+            radarr_api_key="test-radarr-key",
+            radarr_enabled=True,
+            sonarr_url="http://sonarr:8989",
+            sonarr_api_key="test-sonarr-key",
+            sonarr_enabled=True,
+            general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+        )
 
-    mock_scheduler = MagicMock()
-    mock_job = MagicMock()
-    mock_job.next_run_time = None
-    mock_scheduler.get_job.return_value = mock_job
-    app.state.scheduler = mock_scheduler
+        mock_scheduler = MagicMock()
+        mock_job = MagicMock()
+        mock_job.next_run_time = None
+        mock_scheduler.get_job.return_value = mock_job
+        app.state.scheduler = mock_scheduler
 
-    radarr_client = MagicMock()
-    radarr_client.close = AsyncMock()
-    sonarr_client = MagicMock()
-    sonarr_client.close = AsyncMock()
-    lidarr_client = MagicMock()
-    lidarr_client.close = AsyncMock()
-    app.state.radarr_clients = {"Default": radarr_client}
-    app.state.sonarr_clients = {"Default": sonarr_client}
-    app.state.lidarr_clients = {"Default": lidarr_client}
+        radarr_client = MagicMock()
+        radarr_client.close = AsyncMock()
+        sonarr_client = MagicMock()
+        sonarr_client.close = AsyncMock()
+        lidarr_client = MagicMock()
+        lidarr_client.close = AsyncMock()
+        app.state.radarr_clients = {"Default": radarr_client}
+        app.state.sonarr_clients = {"Default": sonarr_client}
+        app.state.lidarr_clients = {"Default": lidarr_client}
 
-    app.state.config_path = tmp_path / "triggarr.toml"
-    app.state.state_path = tmp_path / "state.json"
-    app.state.search_lock = asyncio.Lock()
-    app.state.last_search_time = {}
+        app.state.config_path = tmp_path / "triggarr.toml"
+        app.state.state_path = tmp_path / "state.json"
+        app.state.search_lock = asyncio.Lock()
+        app.state.last_search_time = {}
+        app.state.last_health_check = None
 
-    yield app
-    await db.close()
+        yield app
 
 
 @pytest.fixture
