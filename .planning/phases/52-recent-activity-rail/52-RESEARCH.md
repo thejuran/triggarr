@@ -325,14 +325,14 @@ def relative_time_filter(iso_timestamp: str) -> str:
 | A2 | htmx outerHTML swap scroll-reset is acceptable for the rail | Pitfalls | Users may find it jarring -- switch to innerHTML swap on inner container |
 | A3 | Filter button in rail header is decorative for this phase (no filter logic) | Requirements | If filter is expected to work, needs additional JS + route params |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Filter button behavior**
+1. **Filter button behavior** — RESOLVED: Decorative only for Phase 52. Render visually but no click handler. Aligns with FUT-04/FUT-06 being deferred.
    - What we know: The mockup shows a filter icon button in the rail header. RAIL-04 says "filter button" but no requirement specifies what it filters or how.
    - What's unclear: Is the filter functional in Phase 52, or a placeholder for FUT-06?
    - Recommendation: Render the button visually but make it non-functional (no click handler). Document as future enhancement. This aligns with FUT-04/FUT-06 being deferred.
 
-2. **Number of entries to show in rail**
+2. **Number of entries to show in rail** — RESOLVED: Keep 20 entries (scrollable). Rail has overflow-y-auto; mockup naturally fits ~7 visible.
    - What we know: Current `search_log.html` shows 20 entries (`search_log[:20]`). The mockup shows ~7 entries in the visible area.
    - What's unclear: Should the rail show all 20 (scrollable) or fewer?
    - Recommendation: Keep 20 entries. The rail has `overflow-y-auto` so users can scroll. The mockup naturally fits ~7 visible entries in the `max-h` constraint.
