@@ -584,7 +584,8 @@ async def update_outcome_and_stats(
 
     Raises:
         ValueError: If *stat_increments* contains a column name not in
-            ``{movies_found, movies_updated, episodes_found, episodes_updated}``.
+            ``{movies_found, movies_updated, episodes_found, episodes_updated,
+            albums_found, albums_updated}``.
     """
     if stat_increments:
         unknown = set(stat_increments.keys()) - _ALLOWED_STAT_COLUMNS

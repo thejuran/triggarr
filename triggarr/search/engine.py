@@ -302,7 +302,7 @@ async def run_radarr_cycle(
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
-    if instance_name not in state["radarr"]:
+    if instance_name not in state.get("radarr", {}):
         logger.warning("Radarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["radarr"][instance_name]
@@ -518,7 +518,7 @@ async def run_sonarr_cycle(
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
-    if instance_name not in state["sonarr"]:
+    if instance_name not in state.get("sonarr", {}):
         logger.warning("Sonarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["sonarr"][instance_name]
@@ -743,7 +743,7 @@ async def run_lidarr_cycle(
         Updated state with new cursor positions and last_run timestamp.
     """
     cycle_start = time.monotonic()
-    if instance_name not in state["lidarr"]:
+    if instance_name not in state.get("lidarr", {}):
         logger.warning("Lidarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["lidarr"][instance_name]

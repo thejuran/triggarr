@@ -70,26 +70,21 @@ class LidarrClient(ArrClient):
         """Fetch grab history for a specific album from Lidarr.
 
         Uses the ``/api/v1/history`` endpoint filtered to grabbed events
-        for the given album ID.  Lidarr's history is paginated, so we
-        fetch page 1 with a reasonable size to capture recent grabs.
+        for the given album ID.  Fetches all pages via ``get_paginated``
+        to avoid missing older grabs in active libraries.
 
         Note: Lidarr's ``eventType`` query parameter accepts **integers**
         (not strings like Radarr/Sonarr v3).  The enum value for
         ``grabbed`` is ``1`` (Unknown=0, Grabbed=1, ...).
         """
-        response = await self.get(
+        records = await self.get_paginated(
             "/api/v1/history",
-            params={
+            extra_params={
                 "albumId": album_id,
                 "eventType": 1,
-                "page": 1,
-                "pageSize": self._page_size,
                 "sortKey": "date",
-                "sortDirection": "descending",
             },
         )
-        data = response.json()
-        records = data.get("records", []) if isinstance(data, dict) else data
         return [GrabEvent.model_validate(r) for r in records]
 
     async def search_albums(self, album_ids: list[int]) -> httpx.Response:

@@ -170,7 +170,7 @@ def load_state(state_path: Path = STATE_PATH) -> TriggarrState:
         with open(state_path, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
-        logger.warning("Corrupt state file at {} -- resetting to defaults", state_path)
+        logger.warning("Corrupt state file at {path} -- resetting to defaults", path=state_path)
         return _default_state()
 
     if _is_v22_state_format(data):

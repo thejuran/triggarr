@@ -408,7 +408,7 @@ async def partial_history_results(request: Request) -> HTMLResponse:
         instance_filter = [v.rstrip("/") for v in instance_filter if v.rstrip("/")]
         if not instance_filter:
             instance_filter = None
-    search_text = params.get("search", "")
+    search_text = (params.get("search", "") or "")[:200]
 
     result = await get_search_history(
         request.app.state.db,
@@ -518,90 +518,100 @@ async def save_settings(request: Request) -> RedirectResponse:
         return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
     # Config is valid -- serialize from validated model (SecretStr extraction in _settings_to_dict)
-    _atomic_toml_write(config_path, _settings_to_dict(new_settings))
-    os.chmod(config_path, 0o600)
-    request.app.state.settings = new_settings
+    # Acquire search_lock to prevent races with in-flight search jobs during mutation.
+    # Collect stale clients to close AFTER releasing the lock (avoid holding lock during TCP teardown).
+    clients_to_close: list = []
+    async with request.app.state.search_lock:
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
+        )
+        os.chmod(config_path, 0o600)
+        request.app.state.settings = new_settings
 
-    # Refresh log redaction with new secrets (QUAL-05)
-    secrets = collect_secrets(new_settings)
-    setup_logging(new_settings.general.log_level, secrets)
+        # Refresh log redaction with new secrets (QUAL-05)
+        secrets = collect_secrets(new_settings)
+        setup_logging(new_settings.general.log_level, secrets)
 
-    # Handle scheduler updates for each app's instances
-    for name in APP_TYPES:
-        new_instances = getattr(new_settings, name)
-        old_instances = getattr(current_settings, name)
-        clients_dict = getattr(request.app.state, f"{name}_clients", {})
-        client_class = {"radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient}[name]
+        # Handle scheduler updates for each app's instances
+        for name in APP_TYPES:
+            new_instances = getattr(new_settings, name)
+            old_instances = getattr(current_settings, name)
+            clients_dict = getattr(request.app.state, f"{name}_clients", {})
+            client_class = {"radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient}[name]
 
-        # Close clients for removed/disabled instances
-        for inst_name in list(clients_dict.keys()):
-            new_cfg = new_instances.get(inst_name)
-            if new_cfg is None or not new_cfg.enabled:
+            # Remove clients for removed/disabled instances (close deferred)
+            for inst_name in list(clients_dict.keys()):
+                new_cfg = new_instances.get(inst_name)
+                if new_cfg is None or not new_cfg.enabled:
+                    job_id = f"{name}_{inst_name}_search"
+                    if scheduler.get_job(job_id):
+                        scheduler.remove_job(job_id)
+                    client = clients_dict.pop(inst_name, None)
+                    if client:
+                        clients_to_close.append(client)
+
+            # Update/create clients for enabled instances
+            for inst_name, new_cfg in new_instances.items():
+                if not new_cfg.enabled:
+                    continue
                 job_id = f"{name}_{inst_name}_search"
-                if scheduler.get_job(job_id):
-                    scheduler.remove_job(job_id)
-                client = clients_dict.pop(inst_name, None)
-                if client:
-                    await client.close()
+                old_cfg = old_instances.get(inst_name)
 
-        # Update/create clients for enabled instances
-        for inst_name, new_cfg in new_instances.items():
-            if not new_cfg.enabled:
-                continue
-            job_id = f"{name}_{inst_name}_search"
-            old_cfg = old_instances.get(inst_name)
+                # Check if client needs recreation
+                url_changed = old_cfg is None or new_cfg.url != old_cfg.url
+                key_changed = old_cfg is None or new_cfg.api_key != old_cfg.api_key
 
-            # Check if client needs recreation
-            url_changed = old_cfg is None or new_cfg.url != old_cfg.url
-            key_changed = old_cfg is None or new_cfg.api_key != old_cfg.api_key
+                if url_changed or key_changed or inst_name not in clients_dict:
+                    old_client = clients_dict.pop(inst_name, None)
+                    if old_client:
+                        clients_to_close.append(old_client)
+                    clients_dict[inst_name] = client_class(
+                        base_url=new_cfg.url,
+                        api_key=new_cfg.api_key.get_secret_value(),
+                        timeout=new_settings.general.request_timeout,
+                        page_size=new_settings.general.page_size,
+                    )
 
-            if url_changed or key_changed or inst_name not in clients_dict:
-                old_client = clients_dict.pop(inst_name, None)
-                if old_client:
-                    await old_client.close()
-                clients_dict[inst_name] = client_class(
-                    base_url=new_cfg.url,
-                    api_key=new_cfg.api_key.get_secret_value(),
-                    timeout=new_settings.general.request_timeout,
-                    page_size=new_settings.general.page_size,
-                )
+                existing_job = scheduler.get_job(job_id)
+                if existing_job:
+                    scheduler.reschedule_job(
+                        job_id,
+                        trigger="interval",
+                        minutes=new_cfg.search_interval,
+                    )
+                else:
+                    job_fn = make_search_job(request.app, name, inst_name, state_path)
+                    scheduler.add_job(
+                        job_fn,
+                        "interval",
+                        minutes=new_cfg.search_interval,
+                        id=job_id,
+                        next_run_time=datetime.now(UTC),
+                    )
+                    logger.info(
+                        "Enabled {name}/{inst} search every {interval}m",
+                        name=name.title(),
+                        inst=inst_name,
+                        interval=new_cfg.search_interval,
+                    )
 
-            existing_job = scheduler.get_job(job_id)
-            if existing_job:
-                scheduler.reschedule_job(
-                    job_id,
-                    trigger="interval",
-                    minutes=new_cfg.search_interval,
-                )
-            else:
-                job_fn = make_search_job(request.app, name, inst_name, state_path)
-                scheduler.add_job(
-                    job_fn,
-                    "interval",
-                    minutes=new_cfg.search_interval,
-                    id=job_id,
-                    next_run_time=datetime.now(UTC),
-                )
-                logger.info(
-                    "Enabled {name}/{inst} search every {interval}m",
-                    name=name.title(),
-                    inst=inst_name,
-                    interval=new_cfg.search_interval,
-                )
+            # Ensure state entry exists for newly enabled instances (BUG-03)
+            triggarr_state = request.app.state.triggarr_state
+            triggarr_state.setdefault(name, {})
+            for inst_name, new_cfg in new_instances.items():
+                if new_cfg.enabled and inst_name not in triggarr_state[name]:
+                    triggarr_state[name][inst_name] = _default_instance_state()
 
-        # Ensure state entry exists for newly enabled instances (BUG-03)
-        triggarr_state = request.app.state.triggarr_state
-        triggarr_state.setdefault(name, {})
-        for inst_name, new_cfg in new_instances.items():
-            if new_cfg.enabled and inst_name not in triggarr_state[name]:
-                triggarr_state[name][inst_name] = _default_instance_state()
+            setattr(request.app.state, f"{name}_clients", clients_dict)
 
-        setattr(request.app.state, f"{name}_clients", clients_dict)
+        # Persist state with any new instance entries
+        await asyncio.get_running_loop().run_in_executor(
+            None, save_state, request.app.state.triggarr_state, state_path
+        )
 
-    # Persist state with any new instance entries
-    await asyncio.get_running_loop().run_in_executor(
-        None, save_state, request.app.state.triggarr_state, state_path
-    )
+    # Close stale clients outside the lock (TCP teardown doesn't need lock protection)
+    for c in clients_to_close:
+        await c.close()
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
@@ -632,7 +642,7 @@ async def tag_autocomplete(request: Request, app_name: str, instance_name: str) 
 
 
 @router.post("/api/instance/add", response_model=None)
-async def add_instance(request: Request):
+async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
     """Add a new instance for an app type with default settings.
 
     Validates the instance name, enforces the max-5-per-app limit,
@@ -668,19 +678,25 @@ async def add_instance(request: Request):
     except pydantic.ValidationError as exc:
         logger.warning("Invalid settings rejected on add_instance: {exc}", exc=exc)
         return HTMLResponse("Validation error: invalid configuration", status_code=400)
-    _atomic_toml_write(config_path, config_dict)
-    request.app.state.settings = new_settings
 
-    # Create state entry for the new instance
-    triggarr_state = request.app.state.triggarr_state
-    triggarr_state.setdefault(app_name, {})
-    triggarr_state[app_name][instance_name] = _default_instance_state()
+    # Acquire search_lock to prevent races with in-flight search jobs
+    async with request.app.state.search_lock:
+        # Serialize from validated model to guarantee SecretStr extraction
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
+        )
+        request.app.state.settings = new_settings
+
+        # Create state entry for the new instance
+        triggarr_state = request.app.state.triggarr_state
+        triggarr_state.setdefault(app_name, {})
+        triggarr_state[app_name][instance_name] = _default_instance_state()
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
 
 @router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
-async def remove_instance(request: Request, app_name: str, instance_name: str):
+async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
 
     Cleans up the scheduler job, client connection, and state entry.
@@ -702,10 +718,12 @@ async def remove_instance(request: Request, app_name: str, instance_name: str):
         # Remove instance from settings
         del instances[instance_name]
 
-        # Write updated config to TOML
+        # Write updated config to TOML (offloaded to thread — blocking I/O)
         config_path = request.app.state.config_path
         config_dict = _settings_to_dict(settings)
-        _atomic_toml_write(config_path, config_dict)
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, config_dict
+        )
 
         # Clean up scheduler job
         scheduler = request.app.state.scheduler
@@ -713,16 +731,18 @@ async def remove_instance(request: Request, app_name: str, instance_name: str):
         if scheduler.get_job(job_id):
             scheduler.remove_job(job_id)
 
-        # Clean up client
+        # Pop client from dict (close deferred to after lock release)
         clients_dict = getattr(request.app.state, f"{app_name}_clients", {})
         client = clients_dict.pop(instance_name, None)
-        if client:
-            await client.close()
 
         # Clean up state entry
         triggarr_state = request.app.state.triggarr_state
         if app_name in triggarr_state:
             triggarr_state[app_name].pop(instance_name, None)
+
+    # Close stale client outside the lock (TCP teardown doesn't need lock protection)
+    if client:
+        await client.close()
 
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 

@@ -13,7 +13,7 @@ from loguru import logger
 from triggarr.models.config import CONFIG_PATH
 from triggarr.search.scheduler import create_lifespan
 from triggarr.state import STATE_PATH
-from triggarr.web.middleware import OriginCheckMiddleware
+from triggarr.web.middleware import OriginCheckMiddleware, SecurityHeadersMiddleware
 from triggarr.web.routes import STATIC_DIR, router
 
 
@@ -56,7 +56,15 @@ async def _run() -> None:
     if root_path:
         logger.info("Root path: {path}", path=root_path)
 
+    trusted = get_trusted_proxy_ips()
+    if trusted == "*":
+        logger.warning(
+            "TRUSTED_PROXY_IPS=* trusts ALL proxies — only use this if Triggarr is "
+            "behind a controlled reverse proxy with no direct external access"
+        )
+
     app = FastAPI(lifespan=create_lifespan(settings, STATE_PATH, CONFIG_PATH))
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(OriginCheckMiddleware)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)

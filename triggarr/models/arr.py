@@ -14,6 +14,8 @@ class PaginatedResponse(BaseModel):
     for wanted/missing and wanted/cutoff endpoints.
     """
 
+    model_config = ConfigDict(extra="ignore")
+
     page: int
     pageSize: int
     sortKey: str

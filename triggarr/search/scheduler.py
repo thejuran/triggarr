@@ -177,7 +177,7 @@ def create_lifespan(
             migrated = await migrate_from_state(db, state["search_log"])
             if migrated > 0:
                 state["search_log"] = []
-                save_state(state, state_path)
+                await asyncio.get_running_loop().run_in_executor(None, save_state, state, state_path)
 
         # --- Create long-lived clients for enabled instances ---
         client_classes: dict[str, type[ArrClient]] = {

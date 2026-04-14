@@ -9,6 +9,22 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add standard security response headers to every response.
+
+    Sets X-Frame-Options (clickjacking), X-Content-Type-Options (MIME sniffing),
+    and Referrer-Policy headers.
+    """
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Add security headers to the response."""
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "same-origin"
+        return response
+
+
 class OriginCheckMiddleware(BaseHTTPMiddleware):
     """Reject cross-origin mutating requests via Origin/Referer header validation.
 

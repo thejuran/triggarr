@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from typing import IO
+from typing import IO, Any
 
 from loguru import logger
 
@@ -33,7 +33,7 @@ def create_redacting_sink(secrets: list[str], stream: IO[str] = sys.stderr) -> C
         A loguru-compatible sink function.
     """
 
-    def sink(message):
+    def sink(message: Any) -> None:
         text = str(message)
         for secret in secrets:
             if secret:
@@ -69,7 +69,7 @@ def setup_logging(level: str, secrets: list[str]) -> None:
 
     # Buffer sink: captures log messages for the web UI log viewer.
     # Secrets are redacted before storing in the buffer.
-    def buffer_sink(message) -> None:
+    def buffer_sink(message: Any) -> None:
         text = message.record["message"]
         for secret in secrets:
             if secret:

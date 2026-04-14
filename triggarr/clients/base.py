@@ -277,7 +277,7 @@ class ArrClient(ABC):
         await self._client.aclose()
 
     async def __aenter__(self) -> ArrClient:
-        return self
+        return self  # type: ignore[return-value]  # returns Self at runtime; use Self when 3.11 is min
 
     async def __aexit__(self, *args: Any) -> None:
         await self.close()

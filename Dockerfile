@@ -37,6 +37,10 @@ COPY --from=builder /build/triggarr/static/css/output.css triggarr/static/css/ou
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Create a non-root fallback user for security scanners and in case
+# entrypoint.sh fails before its own setpriv privilege drop.
+RUN useradd -r -s /sbin/nologin -d /config triggarr_default
+
 EXPOSE 8484
 
 VOLUME /config
