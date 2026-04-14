@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Literal
 from pathlib import Path
 
 from pydantic import BaseModel, SecretStr, model_validator
@@ -79,10 +80,34 @@ class GeneralConfig(BaseModel):
     skip_unreleased: bool = True
 
 
+class AuthConfig(BaseModel):
+    """Authentication configuration for Triggarr.
+
+    When username is empty, the app is in 'needs setup' state.
+    When method is 'Disabled', all endpoints are accessible without auth.
+    """
+
+    method: Literal["Forms", "Basic", "External", "Disabled"] = "Forms"
+    username: str = ""
+    password_hash: SecretStr = SecretStr("")
+    api_key: SecretStr = SecretStr("")
+    session_secret: SecretStr = SecretStr("")
+
+    @property
+    def needs_setup(self) -> bool:
+        """True when credentials have not been configured yet."""
+        return not self.username
+
+    @property
+    def is_disabled(self) -> bool:
+        """True when auth is explicitly disabled via config."""
+        return self.method == "Disabled"
+
+
 class Settings(BaseSettings):
     """Application settings loaded from TOML config file.
 
-    Sections: [general], [radarr], [sonarr].
+    Sections: [general], [auth], [radarr], [sonarr].
     Radarr and sonarr hold dict[str, InstanceConfig] mapping instance names
     to their configurations (e.g., {"4K Radarr": InstanceConfig(...)}).
     """
@@ -92,6 +117,7 @@ class Settings(BaseSettings):
     }
 
     general: GeneralConfig = GeneralConfig()
+    auth: AuthConfig = AuthConfig()
     radarr: dict[str, InstanceConfig] = {}
     sonarr: dict[str, InstanceConfig] = {}
     lidarr: dict[str, InstanceConfig] = {}

@@ -19,6 +19,8 @@ dependencies = [
     "aiofiles",
     "aiosqlite",
     "python-multipart",
+    "bcrypt",
+    "itsdangerous",
 ]
 
 [project.optional-dependencies]
