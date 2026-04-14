@@ -1,107 +1,75 @@
-# Requirements: Triggarr v2.5 Dashboard UI Refresh
+# Requirements: Triggarr v2.6 Built-In Authentication
 
-**Defined:** 2026-04-10
+**Defined:** 2026-04-14
 **Core Value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
 
-**Design contract:** `.aidesigner/enhanced-mockup-v3.html` — treat as spec. Extract tokens precisely, replace illustrative content with real Jinja data.
+**Design spec:** `docs/superpowers/specs/2026-04-14-built-in-auth-design.md`
+**UI approach:** AIDesigner generates HTML artifacts for login, setup, and settings security pages; implementation matches pixel-exact.
 
-## v2.5 Requirements
+## v2.6 Requirements
 
-Requirements for the Dashboard UI Refresh milestone. Each maps to exactly one roadmap phase. This is a pure presentation refresh — no backend data shapes change, no new endpoints, no schema migration.
+Requirements for the Built-In Authentication milestone. Each maps to exactly one roadmap phase. Adds *arr-style auth — secure by default with Forms/Basic/External/Disabled modes.
 
-### Foundations
+### First-Run Setup
 
-- [x] **FOUND-01**: Keyboard user sees a consistent triggarr-green focus ring around every focused interactive element (buttons, inputs, selects, links) via a global `:focus-visible` outline
-- [x] **FOUND-02**: User with OS-level `prefers-reduced-motion` enabled sees all transitions and animations reduced to near-zero duration via a global CSS media query
-- [x] **FOUND-03**: User sees monospace surfaces (application log rows, timestamps, TAILING indicators) rendered in Geist Mono loaded from Google Fonts
-- [x] **FOUND-04**: User sees the main page content container widened from `max-w-5xl` to `max-w-7xl` on desktop to accommodate the new activity rail without cramping the main column
-- [x] **FOUND-05**: User sees a new elevation token (`--color-triggarr-card-elevated` = #233346) applied on hover states of interactive cards
+- [ ] **SETUP-01**: User launching Triggarr for the first time is redirected to a setup page from all routes
+- [ ] **SETUP-02**: User can create credentials (username + password with confirmation) via the setup form
+- [ ] **SETUP-03**: User sees an auto-generated API key with a copy button after completing setup
+- [ ] **SETUP-04**: Setup page returns 404 after auth is configured (one-time only)
 
-### Navigation
+### Login & Sessions
 
-- [x] **NAV-01**: User sees the top navigation bar remain visible with a backdrop-blur effect while scrolling long pages (Dashboard, History, Settings)
-- [x] **NAV-02**: User sees a green underline beneath the active page tab (Dashboard / History / Settings) so the current location is unambiguous
-- [x] **NAV-03**: User sees a pulsing green dot next to the "update available" chip in the nav when a new Triggarr release is detected
+- [ ] **LOGIN-01**: User can log in via a Forms login page with username and password
+- [ ] **LOGIN-02**: User session persists via signed cookie with 30-day expiry across browser restarts
+- [ ] **LOGIN-03**: User can switch auth method to Basic (browser native WWW-Authenticate popup)
+- [ ] **LOGIN-04**: User can switch auth method to External for reverse proxy delegation (Authelia/Authentik)
+- [ ] **LOGIN-05**: User can disable auth via config file only (not UI), with startup warning logged every 60s
+- [ ] **LOGIN-06**: User can log out via a button in the nav bar, clearing the session cookie
 
-### Stats & Health
+### Middleware & API
 
-- [x] **STATS-01**: User sees a compact one-line health strip showing `N connected / N disconnected / N pending / Last sync {timestamp}` at the top of the dashboard, replacing the previous full-width health card
-- [x] **STATS-02**: User sees the Grab Rate card occupy 2 grid columns (vs 1 for other stat cards) with a large `text-4xl` percentage as the headline number
-- [x] **STATS-03**: User sees a colored health badge (Healthy / Warn / Critical) on the Grab Rate card, thresholded against the overall grab rate
-- [x] **STATS-04**: User sees per-app grab rates as color-coded horizontal bars (one bar per configured *arr type) inside the Grab Rate card, replacing the previous `R: 85% S: 72% L: --%` text line
-- [x] **STATS-05**: User sees subtle shadow elevation (`shadow-sm`) on all stat cards and app cards
+- [ ] **MID-01**: All routes require authentication by default (deny-all middleware with path whitelist)
+- [ ] **MID-02**: User can authenticate API requests via `X-Api-Key` header
+- [ ] **MID-03**: `GET /health` returns `{"status": "ok"}` without authentication for uptime monitors
+- [ ] **MID-04**: Unauthenticated browser requests redirect to `/login`; unauthenticated API requests return 401 JSON
 
-### App Cards
+### Settings UI
 
-- [x] **CARD-01**: User sees a single unified connection pill shape for every state (Connected / Unreachable / Waiting) in the header of each app card, with the state and context readable at a glance
-- [x] **CARD-02**: User sees the Last Run and Next Run timestamps in a dedicated schedule row directly below the card header, above the missing/cutoff stats grid
-- [x] **CARD-03**: User sees queue pass counts displayed as compact pill badges (e.g. `pass 2`) next to the cursor position, replacing the previous parenthetical ordinal text (e.g. `(2nd pass)`)
-- [x] **CARD-04**: User sees app cards transition to an elevated background (`triggarr-card-elevated`) and shadow on hover
-- [x] **CARD-05**: User sees diagonal red danger stripes as a subtle background pattern on app cards whose instance is unreachable
-- [x] **CARD-06**: User sees a red "Retry" button replacing the "Search Now" button on unreachable instance cards
-- [x] **CARD-07**: User sees a pulsing green dot inside the connection pill while the card is live-refreshing via htmx polling
+- [ ] **SET-01**: User can change auth method (Forms/Basic/External) from the Settings security section
+- [ ] **SET-02**: User can change password via current + new + confirm form in Settings
+- [ ] **SET-03**: User can view (masked), copy, and regenerate the API key from Settings
+- [ ] **SET-04**: User sees a warning banner in Settings if auth is disabled via config file
 
-### Layout
+### UI Design
 
-- [x] **LAYOUT-01**: User with 3+ configured instances sees the services grid switch from 2 columns to 3 columns at the `xl:` breakpoint (≥1280px)
-
-### Application Log
-
-- [x] **LOG-01**: User sees Application Log rows rendered in Geist Mono with column-aligned timestamp, level, source, and message fields
-- [x] **LOG-02**: User sees an always-visible `TAILING` indicator (Geist Mono label + pulsing green dot) in the log header to signal live updates
-- [x] **LOG-03**: User sees ERROR log rows with a red-tinted background and a red left border, and DEBUG log rows dimmed with reduced opacity
-- [x] **LOG-04**: User sees colored per-app source tags (`[Radarr]` orange, `[Sonarr]` blue, `[Lidarr]` green) in each log row where the source is identifiable
-- [x] **LOG-05**: User can click an expand icon in the log header to transform the Application Log into a fixed bottom-pinned terminal pane that stays visible while the dashboard scrolls, with a subtle scanline effect
-- [x] **LOG-06**: User can click a collapse icon from the expanded terminal pane to return the log to its inline position in the dashboard
-
-### Recent Activity Rail
-
-- [x] **RAIL-01**: User on a viewport ≥1280px wide sees a new sticky Recent Activity rail docked on the right side of the dashboard; the rail stays in place while the main content scrolls
-- [x] **RAIL-02**: User sees recent search activity as a vertical timeline in the rail, with colored dots (green/amber/blue/gray/red) connected by a vertical line
-- [x] **RAIL-03**: User sees each rail entry showing: per-app badge (colored), title, outcome pill with icon (grabbed/partial/searched/unresolved/failed), queue type, and relative timestamp
-- [x] **RAIL-04**: User sees a "LIVE" indicator and filter button in the rail header, and a "View full history →" link in the footer that navigates to the History page
-- [x] **RAIL-05**: User on a viewport narrower than `xl:` sees the main dashboard full-width with the rail hidden entirely
-- [x] **RAIL-06**: The rail is populated by the same `search_log` / search-history data as the current inline Search Log — no new backend endpoint is introduced
-- [x] **RAIL-07**: The previous inline `partials/search_log.html` section is removed from the dashboard; its role is served by the rail on wide screens and by the History page on narrow screens
-
-### Docs & Metadata
-
-- [x] **DOCS-01**: README documents Lidarr as a first-class supported *arr alongside Radarr and Sonarr (install notes, config reference, screenshots)
-- [x] **DOCS-02**: README dashboard screenshots are refreshed to reflect the v2.5 visual direction
-- [x] **DOCS-03**: Key Decisions in PROJECT.md records the rationale for the new rail + expandable log architecture (sticky positioning, data reuse, vanilla JS)
+- [ ] **UI-01**: Login page generated via AIDesigner as HTML artifact; implementation matches pixel-exact
+- [ ] **UI-02**: Setup page generated via AIDesigner as HTML artifact; implementation matches pixel-exact
+- [ ] **UI-03**: Settings security section generated via AIDesigner as HTML artifact; implementation matches pixel-exact
 
 ## Future Requirements
 
 Deferred to a later milestone. Tracked but not in this roadmap.
 
-### Visual polish
+### Auth enhancements
 
-- **FUT-01**: Small sparkline chart showing grab rate trend (7-day) inside the hero Grab Rate card
-- **FUT-02**: Keyboard shortcut overlay (`?` opens help modal listing shortcuts)
-- **FUT-03**: Optional `prefers-color-scheme: light` variant for users who prefer light themes
-
-### Interaction
-
-- **FUT-04**: Log filter panel (by level, by source app) inside the expanded terminal pane
-- **FUT-05**: Click-to-pin individual log rows (keeps them visible while new entries stream in)
-- **FUT-06**: Mobile-specific bottom sheet for the Recent Activity feed when the rail is hidden
+- **FUT-01**: Rate limiting on login endpoint (brute-force protection)
+- **FUT-02**: Remember-me checkbox with configurable session duration
+- **FUT-03**: Session activity log (last login time, IP)
+- **FUT-04**: LDAP/OIDC integration for enterprise environments
 
 ## Out of Scope
 
-Explicitly excluded from v2.5 to prevent scope creep.
+Explicitly excluded from v2.6 to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| Backend data-shape changes | Pure presentation refresh — data model unchanged |
-| New API endpoints | Reuse existing `search_log`, stats, and health endpoints |
-| Database schema changes | None required for this milestone |
-| New Python dependencies | Vanilla JS + CSS are sufficient; Geist Mono is a Google Fonts import only |
-| JavaScript framework (React/Vue/Alpine) | htmx + vanilla JS handles the expandable log and rail |
-| Real-time WebSocket log streaming | htmx polling is sufficient; WebSocket would add failure modes and deployment complexity |
-| Grafana/Linear-style overhaul | Kept existing slate-900/triggarr-green palette intentionally — the AIDesigner full-redesign reference (`mcp-latest.html`) was deliberately not adopted |
-| Header CPU/RAM sparklines | Not actionable for users, adds a polling endpoint |
-| User avatar / account chip | Triggarr has no user accounts; adding one would violate the no-auth core decision |
-| Queue Rules tab | No such feature in Triggarr; the redesign's nav entry was an AIDesigner invention |
+| Multi-user accounts | Single-user app — one set of credentials sufficient |
+| OAuth / SSO | Forms/Basic/External modes cover all homelab auth patterns |
+| Rate limiting on login | Reverse proxy handles this; defer to future if needed |
+| Password complexity rules | Single-user self-hosted — user manages their own security |
+| Email-based password reset | No email infrastructure; single-user resets via config file |
+| Two-factor authentication | Overkill for single-user homelab tool; External mode delegates to 2FA-capable proxies |
+| Session revocation UI | Single-user; changing password or session secret invalidates all sessions |
 
 ## Traceability
 
@@ -109,57 +77,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 48 | Done |
-| FOUND-02 | Phase 48 | Done |
-| FOUND-03 | Phase 48 | Done |
-| FOUND-04 | Phase 48 | Done |
-| FOUND-05 | Phase 48 | Done |
-| NAV-01 | Phase 48 | Done |
-| NAV-02 | Phase 48 | Done |
-| NAV-03 | Phase 48 | Done |
-| STATS-01 | Phase 49 | Done |
-| STATS-02 | Phase 49 | Done |
-| STATS-03 | Phase 49 | Done |
-| STATS-04 | Phase 49 | Done |
-| STATS-05 | Phase 49 | Done |
-| CARD-01 | Phase 50 | Done |
-| CARD-02 | Phase 50 | Done |
-| CARD-03 | Phase 50 | Done |
-| CARD-04 | Phase 50 | Done |
-| CARD-05 | Phase 50 | Done |
-| CARD-06 | Phase 50 | Done |
-| CARD-07 | Phase 50 | Done |
-| LAYOUT-01 | Phase 50 | Done |
-| LOG-01 | Phase 51 | Done |
-| LOG-02 | Phase 51 | Done |
-| LOG-03 | Phase 51 | Done |
-| LOG-04 | Phase 51 | Done |
-| LOG-05 | Phase 51 | Done |
-| LOG-06 | Phase 51 | Done |
-| RAIL-01 | Phase 52 | Done |
-| RAIL-02 | Phase 52 | Done |
-| RAIL-03 | Phase 52 | Done |
-| RAIL-04 | Phase 52 | Done |
-| RAIL-05 | Phase 52 | Done |
-| RAIL-06 | Phase 52 | Done |
-| RAIL-07 | Phase 52 | Done |
-| DOCS-01 | Phase 53 | Done |
-| DOCS-02 | Phase 53 | Done |
-| DOCS-03 | Phase 53 | Done |
+| SETUP-01 | — | Pending |
+| SETUP-02 | — | Pending |
+| SETUP-03 | — | Pending |
+| SETUP-04 | — | Pending |
+| LOGIN-01 | — | Pending |
+| LOGIN-02 | — | Pending |
+| LOGIN-03 | — | Pending |
+| LOGIN-04 | — | Pending |
+| LOGIN-05 | — | Pending |
+| LOGIN-06 | — | Pending |
+| MID-01 | — | Pending |
+| MID-02 | — | Pending |
+| MID-03 | — | Pending |
+| MID-04 | — | Pending |
+| SET-01 | — | Pending |
+| SET-02 | — | Pending |
+| SET-03 | — | Pending |
+| SET-04 | — | Pending |
+| UI-01 | — | Pending |
+| UI-02 | — | Pending |
+| UI-03 | — | Pending |
 
 **Coverage:**
-- v2.5 requirements: 37 total
-- Mapped to phases: 37 ✓
-- Unmapped: 0
-
-**Phase distribution:**
-- Phase 48 (Foundations & Navigation Chrome): 8 requirements (FOUND-01..05, NAV-01..03)
-- Phase 49 (Stats & Health Strip): 5 requirements (STATS-01..05)
-- Phase 50 (App Cards & Services Grid): 8 requirements (CARD-01..07, LAYOUT-01)
-- Phase 51 (Application Log Redesign): 6 requirements (LOG-01..06)
-- Phase 52 (Recent Activity Rail): 7 requirements (RAIL-01..07)
-- Phase 53 (Docs & Metadata): 3 requirements (DOCS-01..03)
+- v2.6 requirements: 21 total
+- Mapped to phases: 0
+- Unmapped: 21 ⚠️
 
 ---
-*Requirements defined: 2026-04-10*
-*Last updated: 2026-04-14 — all 37/37 requirements marked Done*
+*Requirements defined: 2026-04-14*
+*Last updated: 2026-04-14 after initial definition*
