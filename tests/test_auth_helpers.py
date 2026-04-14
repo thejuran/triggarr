@@ -146,12 +146,13 @@ def test_validate_session_expired_returns_none() -> None:
     secret = generate_session_secret()
     signed = sign_session("admin", secret)
 
-    # Patch time to simulate 31 days in the future
-    signer = TimestampSigner(secret)
-    with patch("itsdangerous.signer.time") as mock_time:
-        # itsdangerous uses time.time() internally; advance by 31 days
-        import time
+    # Patch get_timestamp on TimestampSigner to simulate 31 days in the future.
+    # itsdangerous 2.x uses self.get_timestamp() to get current epoch seconds.
+    original_get_timestamp = TimestampSigner.get_timestamp
 
-        mock_time.time.return_value = time.time() + (31 * 24 * 60 * 60)
+    def future_timestamp(self: TimestampSigner) -> int:
+        return original_get_timestamp(self) + (31 * 24 * 60 * 60)
+
+    with patch.object(TimestampSigner, "get_timestamp", future_timestamp):
         result = validate_session(signed, secret)
     assert result is None
