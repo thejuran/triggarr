@@ -141,3 +141,26 @@
 body.log-expanded {
   padding-bottom: 320px;
 }
+
+/* Activity timeline rail — RAIL-02 */
+.timeline-item { position: relative; padding-left: 1.25rem; }
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: 0.3rem;
+  top: 0.5rem;
+  bottom: -1rem;
+  width: 2px;
+  background: #334155;
+  border-radius: 1px;
+}
+.timeline-item:last-child::before { bottom: auto; height: 0.5rem; }
+.timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 0.4rem;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 9999px;
+  border: 2px solid #1e293b;
+}

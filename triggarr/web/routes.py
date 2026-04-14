@@ -56,6 +56,31 @@ templates.env.globals["triggarr_version"] = get_display_version()
 # the scheduler needing to import from routes.
 update_info: dict = {}
 templates.env.globals["update_info"] = update_info
+
+
+def _relative_time_filter(iso_timestamp: str) -> str:
+    """Jinja2 filter: ISO timestamp string -> 'Just now' / '3m ago' style."""
+    try:
+        dt = datetime.fromisoformat(iso_timestamp)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+    except (ValueError, TypeError):
+        return iso_timestamp[:19].replace("T", " ")
+    delta = datetime.now(UTC) - dt
+    seconds = int(delta.total_seconds())
+    if seconds < 10:
+        return "Just now"
+    elif seconds < 60:
+        return f"{seconds}s ago"
+    elif seconds < 3600:
+        return f"{seconds // 60}m ago"
+    elif seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    else:
+        return f"{seconds // 86400}d ago"
+
+
+templates.env.filters["relative_time"] = _relative_time_filter
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
@@ -801,6 +826,17 @@ async def partial_search_log(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="partials/search_log.html",
+        context={"search_log": search_log},
+    )
+
+
+@router.get("/partials/activity-rail", response_class=HTMLResponse)
+async def partial_activity_rail(request: Request) -> HTMLResponse:
+    """Return an HTML fragment for the activity rail timeline (htmx partial)."""
+    search_log = await get_recent_searches(request.app.state.db)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/activity_rail.html",
         context={"search_log": search_log},
     )
 
