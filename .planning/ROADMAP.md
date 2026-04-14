@@ -184,7 +184,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   2. User sees an always-visible `TAILING` indicator (Geist Mono label + pulsing green dot) in the log header, confirming live polling
   3. User sees ERROR rows with a red-tinted background and red left border, DEBUG rows dimmed, and `[Radarr]` / `[Sonarr]` / `[Lidarr]` source tags in their signature colors
   4. User can click an expand icon in the log header to promote the log to a fixed bottom-pinned terminal pane with a subtle scanline effect, and click a collapse icon to return it to its inline dashboard position
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 51-00-PLAN.md — Wave 0 test stubs: tests/test_log_viewer.py with 12 tests covering LOG-01 through LOG-06
+- [ ] 51-01-PLAN.md — CSS terminal-pane/scanline/expanded classes + full log_viewer.html rewrite with monospace grid, source tags, TAILING, buttons (LOG-01..06)
+- [ ] 51-02-PLAN.md — Route level filter param + dashboard.html JS for expand/collapse, pause, auto-scroll (LOG-04..06)
 **UI hint**: yes
 
 ### Phase 52: Recent Activity Rail
