@@ -128,7 +128,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 **Milestone Goal:** Add *arr-style built-in authentication -- secure by default with Forms/Basic/External/Disabled modes, first-run setup, API key, and signed session cookies.
 
-- [ ] **Phase 54: Auth Config & Helpers** - Pydantic AuthConfig model, bcrypt password hashing, itsdangerous cookie signing, API key generation
+- [x] **Phase 54: Auth Config & Helpers** - Pydantic AuthConfig model, bcrypt password hashing, itsdangerous cookie signing, API key generation (completed 2026-04-14)
 - [ ] **Phase 55: Auth Middleware & Health Endpoint** - Deny-all middleware with path whitelist, API key validation, unauthenticated /health, redirect vs 401 logic
 - [ ] **Phase 56: First-Run Setup & Login** - Setup page with credential creation, login page with Forms/Basic modes, session cookie management, first-run redirect guard
 - [ ] **Phase 57: Settings Security & Nav Logout** - Settings security section for password/auth-mode/API-key management, nav bar logout, disabled-auth warning
@@ -140,10 +140,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Goal**: Auth primitives exist in the codebase -- config model, password hashing, cookie signing, and API key generation -- ready for the middleware and UI layers to consume
 **Depends on**: Nothing (first phase of v2.6, foundation for all subsequent phases)
 **Requirements**: SETUP-03 (API key generation), LOGIN-02 (cookie signing primitives), LOGIN-05 (disabled mode config)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 54-01-PLAN.md -- AuthConfig model, dependencies, collect_secrets extension
-- [ ] 54-02-PLAN.md -- Auth helper functions (TDD: password hashing, cookie signing, token generation)
+- [x] 54-02-PLAN.md -- Auth helper functions (TDD: password hashing, cookie signing, token generation)
 **Success Criteria** (what must be TRUE):
   1. triggarr.toml supports an `[auth]` section with fields for auth_method, username, password_hash, api_key, and session_secret, validated by an AuthConfig pydantic model
   2. A helper function accepts a plaintext password and returns a bcrypt hash, and a verify function confirms a plaintext password against a stored hash
@@ -208,7 +208,7 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 54. Auth Config & Helpers | 1/2 | In Progress|  |
+| 54. Auth Config & Helpers | 2/2 | Complete   | 2026-04-14 |
 | 55. Auth Middleware & Health Endpoint | 0/? | Not started | - |
 | 56. First-Run Setup & Login | 0/? | Not started | - |
 | 57. Settings Security & Nav Logout | 0/? | Not started | - |
