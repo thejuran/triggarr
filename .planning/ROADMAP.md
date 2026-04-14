@@ -201,7 +201,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   3. User sees each rail entry showing a per-app badge, title, outcome pill with icon (grabbed/partial/searched/unresolved/failed), queue type, and relative timestamp; rail header shows a LIVE indicator and filter button, footer shows a "View full history →" link to the History page
   4. User on a viewport narrower than `xl:` sees the main dashboard full-width with the rail hidden entirely
   5. User sees no inline Search Log section on the dashboard anymore — the rail replaces it on wide screens and the History page serves narrow screens — and the rail is populated from the same `search_log` data with no new backend endpoint
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 52-01-PLAN.md — Timeline CSS, relative_time Jinja filter, /partials/activity-rail route, activity_rail.html partial template, test stubs (RAIL-01..06)
+- [ ] 52-02-PLAN.md — base.html flex wrapper with sidebar block, dashboard.html rail wiring, search_log.html removal, route cleanup, test updates (RAIL-01, RAIL-05, RAIL-06, RAIL-07)
 **UI hint**: yes
 
 ### Phase 53: Docs & Metadata
@@ -223,5 +226,5 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 | 49. Stats & Health Strip | 0/3 | Planning complete | - |
 | 50. App Cards & Services Grid | 0/2 | Planning complete | - |
 | 51. Application Log Redesign | 0/0 | Not started | - |
-| 52. Recent Activity Rail | 0/0 | Not started | - |
+| 52. Recent Activity Rail | 0/2 | Planning complete | - |
 | 53. Docs & Metadata | 0/0 | Not started | - |
