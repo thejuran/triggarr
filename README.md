@@ -33,11 +33,11 @@ Radarr, Sonarr, and Lidarr don't auto-search for missing and upgrade-eligible me
 
 ## Screenshots
 
-![Dashboard showing connection status for Radarr, Sonarr, and Lidarr instances, grab rate stats, and recent activity](docs/screenshots/dashboard.png)
+![Dashboard showing connection status for Radarr and Sonarr instances, grab rate stats, and recent activity rail](docs/screenshots/dashboard.png)
 
 ![Search history with filtering by app (Radarr, Sonarr, Lidarr), queue type, and outcome](docs/screenshots/history.png)
 
-![Settings page with per-instance configuration for Radarr, Sonarr, and Lidarr](docs/screenshots/settings.png)
+![Settings page with per-instance configuration for Radarr, Sonarr, and Lidarr sections](docs/screenshots/settings.png)
 
 ## Install
 

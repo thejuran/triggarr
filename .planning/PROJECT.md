@@ -194,7 +194,7 @@ Known tech debt: _update_info as module-level mutable dict (should move to app.s
 | Tag resolution per-cycle (not cached) | Tags may change in *arr; fresh resolution ensures correctness | ✓ Good — v2.3 |
 | Mutable dict for _update_info Jinja2 global | In-place update avoids re-registration; no .clear() for atomicity | ✓ Good — v2.3 |
 | HX-Request header check for CSRF on DELETE endpoints | Htmx sends custom header; cross-origin requests blocked by CORS preflight | ✓ Good — v2.3 |
-| Sticky Recent Activity rail + expandable terminal log (vanilla JS, no framework) | Rail reuses existing search_log data via htmx polling — no new backend endpoint. Sticky positioning keeps activity visible during scroll. Expandable log uses fixed bottom-pinned pane with vanilla JS toggle — avoids Alpine/React dependency. Data reuse from search_log means zero schema changes. Rail hidden below xl: breakpoint so narrow screens use History page instead. | Pending — v2.5 |
+| Sticky Recent Activity rail + expandable terminal log (vanilla JS, no framework) | Rail queries existing SQLite search history via a dedicated `/partials/activity-rail` polling endpoint — reuses `get_recent_searches()` DB helper with no new schema changes. Sticky positioning keeps activity visible during scroll. Expandable log uses fixed bottom-pinned pane with vanilla JS toggle — avoids Alpine/React dependency. Rail hidden below xl: breakpoint so narrow screens use History page instead. | ✓ Good — v2.5 |
 
 ## Evolution
 
