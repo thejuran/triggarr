@@ -140,13 +140,16 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Goal**: Auth primitives exist in the codebase -- config model, password hashing, cookie signing, and API key generation -- ready for the middleware and UI layers to consume
 **Depends on**: Nothing (first phase of v2.6, foundation for all subsequent phases)
 **Requirements**: SETUP-03 (API key generation), LOGIN-02 (cookie signing primitives), LOGIN-05 (disabled mode config)
+**Plans:** 2 plans
+Plans:
+- [ ] 54-01-PLAN.md -- AuthConfig model, dependencies, collect_secrets extension
+- [ ] 54-02-PLAN.md -- Auth helper functions (TDD: password hashing, cookie signing, token generation)
 **Success Criteria** (what must be TRUE):
   1. triggarr.toml supports an `[auth]` section with fields for auth_method, username, password_hash, api_key, and session_secret, validated by an AuthConfig pydantic model
   2. A helper function accepts a plaintext password and returns a bcrypt hash, and a verify function confirms a plaintext password against a stored hash
   3. A helper function generates a cryptographically random API key string suitable for X-Api-Key authentication
   4. A helper function creates a signed session cookie value using itsdangerous with a configurable 30-day expiry, and a corresponding function validates/decodes it
   5. When auth_method is set to "disabled" in config, the AuthConfig model accepts it and the value persists through config save/load round-trips
-**Plans**: TBD
 
 ### Phase 55: Auth Middleware & Health Endpoint
 **Goal**: Every route in the application requires authentication by default, with correct handling for API keys, unauthenticated health checks, and browser vs API redirect behavior
@@ -205,7 +208,7 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 54. Auth Config & Helpers | 0/? | Not started | - |
+| 54. Auth Config & Helpers | 0/2 | Not started | - |
 | 55. Auth Middleware & Health Endpoint | 0/? | Not started | - |
 | 56. First-Run Setup & Login | 0/? | Not started | - |
 | 57. Settings Security & Nav Logout | 0/? | Not started | - |
