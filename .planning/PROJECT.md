@@ -8,9 +8,24 @@ A lightweight Docker-based tool that automates searches in Radarr, Sonarr, and L
 
 Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback showing what was actually grabbed — without exposing credentials or expanding attack surface.
 
-## Current Milestone: Planning next milestone
+## Current Milestone: v2.6 Built-In Authentication
 
-v2.5 Dashboard UI Refresh shipped 2026-04-14. All 37 requirements satisfied, 45 UAT scenarios passed.
+**Goal:** Add *arr-style built-in authentication — secure by default with Forms/Basic/External/Disabled modes, first-run setup, API key, and signed session cookies.
+
+**Target features:**
+- First-run setup page (create credentials + auto-generated API key)
+- Forms login with signed session cookies (30-day expiry)
+- Basic auth mode (browser native popup)
+- External auth mode (reverse proxy delegation)
+- Disabled mode (config-file only, with startup warnings)
+- API key authentication via X-Api-Key header
+- Unauthenticated /health endpoint for uptime monitors
+- Auth middleware (deny-all + whitelist)
+- Settings UI security section (change password, auth mode, API key management)
+- Nav bar logout link
+
+**Design spec:** `docs/superpowers/specs/2026-04-14-built-in-auth-design.md`
+**UI approach:** AIDesigner for login, setup, and settings security pages
 
 ## Requirements
 
@@ -107,21 +122,21 @@ v2.5 Dashboard UI Refresh shipped 2026-04-14. All 37 requirements satisfied, 45 
 
 ### Active
 
-No active requirements. Planning next milestone.
+Defining requirements for v2.6 Built-In Authentication.
 
 ## Current State
 
-Shipped v2.5 Dashboard UI Refresh. Complete visual overhaul with design-system foundations, redesigned stats/cards/log, sticky activity rail, and deep code review.
+Starting v2.6 Built-In Authentication. Adding *arr-style auth to close the last major security gap. Design spec validated.
 
 ### Out of Scope
 
-- User accounts / authentication — local network tool, no auth needed
+- User accounts / multi-user — single-user auth only, no user management
 - Readarr / other *arr support — Radarr + Sonarr + Lidarr only
 - Notifications (Discord, Telegram, Apprise) — web UI log sufficient
 - Prowlarr / indexer management — uses existing *arr search infrastructure
 - Download queue management — *arr apps handle this
 - Media discovery / TMDB browsing — Overseerr's job
-- OAuth / SSO — no accounts means no auth flows
+- OAuth / SSO — single-user app; Forms/Basic/External sufficient
 - Mobile app — web UI sufficient
 - Download client integration (qBit/SAB polling) — *arr apps manage download clients
 - Webhook receiver for *arr grab notifications — adds coupling, network config, and attack surface
@@ -129,7 +144,7 @@ Shipped v2.5 Dashboard UI Refresh. Complete visual overhaul with design-system f
 - Per-indexer effectiveness stats — Prowlarr's job
 - Automated re-search of unresolved items — round-robin handles naturally
 - Historical backfill of pre-triggarr grabs — impossible to attribute correctly
-- Cookie-based CSRF tokens — sessionless app; Origin/Referer validation is correct approach
+- Cookie-based CSRF tokens — Origin/Referer validation sufficient alongside session cookies
 - slowapi/Redis for rate limiting — single-user local tool; in-memory check sufficient
 
 ## Context
@@ -158,7 +173,7 @@ Known tech debt: _update_info as module-level mutable dict (should move to app.s
 | htmx/Jinja2 over React SPA | Lightweight, no build step, server-rendered | ✓ Good — simple, fast |
 | Season-level Sonarr search | Avoids hammering indexers with full-show searches | ✓ Good |
 | Round-robin over random | Ensures every item gets searched eventually | ✓ Good |
-| No auth | No user accounts = no passwords to store | ✓ Good — core security decision |
+| No auth (v1.0–v2.5) | No user accounts = no passwords to store | ⚠️ Revisit — adding auth in v2.6 |
 | Single instance per app | Simpler config, matches user's setup | ✓ Good |
 | APScheduler 3.x over 4.x | 4.x still alpha, 3.x stable with AsyncIOScheduler | ✓ Good |
 | Origin/Referer CSRF over tokens | No auth/sessions means no cookies to protect | ✓ Good |
@@ -209,4 +224,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-14 after v2.5 milestone*
+*Last updated: 2026-04-14 after v2.6 milestone start*
