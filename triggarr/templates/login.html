@@ -7,6 +7,10 @@
   <p class="text-triggarr-green text-xl font-medium text-center">Triggarr</p>
   <h1 class="text-xl font-medium text-triggarr-text text-center mt-4">Sign In</h1>
 
+  {% if info %}
+  <p class="text-triggarr-muted text-sm text-center mt-4" aria-live="polite">{{ info }}</p>
+  {% endif %}
+
   {% if error %}
   <p class="text-red-500 text-sm text-center mt-4" aria-live="polite">{{ error }}</p>
   {% endif %}

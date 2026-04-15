@@ -3,8 +3,9 @@
 Traceability:
   SC-2 (setup flow): test_setup_page_renders_when_needs_setup, test_setup_post_creates_credentials,
       test_setup_post_password_mismatch_shows_error, test_setup_post_empty_password_shows_error,
-      test_setup_post_empty_username_shows_error, test_setup_page_returns_404_when_configured,
-      test_setup_post_returns_404_when_configured, test_setup_post_sets_session_cookie
+      test_setup_post_empty_username_shows_error, test_setup_redirects_to_login_when_configured,
+      test_setup_post_redirects_to_login_when_configured, test_setup_post_sets_session_cookie,
+      test_setup_redirect_shows_info_on_login_page
   SC-3 (login/session): test_login_page_renders, test_login_post_valid_credentials_redirects,
       test_login_post_invalid_credentials_shows_error, test_login_post_respects_next_param,
       test_login_post_rejects_open_redirect_next, test_logout_clears_cookie_and_redirects,
@@ -263,12 +264,25 @@ def test_setup_page_renders_when_needs_setup():
     assert "Welcome to Triggarr" in response.text
 
 
-def test_setup_page_returns_404_when_configured():
-    """GET /setup with configured auth returns 404 (SETUP-04)."""
+def test_setup_redirects_to_login_when_configured():
+    """GET /setup with configured auth redirects to /login?setup=done (not bare 404)."""
     app = _make_route_app(auth_config=_configured_auth())
     client = TestClient(app, follow_redirects=False)
     response = client.get("/setup")
-    assert response.status_code == 404
+    assert response.status_code == 302
+    location = response.headers["location"]
+    assert "/login" in location
+    assert "setup=done" in location
+
+
+def test_setup_redirect_shows_info_on_login_page():
+    """GET /setup when configured redirects to login with informational message."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=True)
+    response = client.get("/setup")
+    assert response.status_code == 200
+    assert "setup has already been completed" in response.text.lower()
+    assert "Sign In" in response.text
 
 
 def test_setup_post_creates_credentials(tmp_path: Path):
@@ -341,15 +355,18 @@ def test_setup_post_sets_session_cookie(tmp_path: Path):
     assert "triggarr_session" in set_cookie
 
 
-def test_setup_post_returns_404_when_configured():
-    """POST /setup with configured auth returns 404."""
+def test_setup_post_redirects_to_login_when_configured():
+    """POST /setup with configured auth redirects to /login?setup=done (not bare 404)."""
     app = _make_route_app(auth_config=_configured_auth())
     client = TestClient(app, follow_redirects=False)
     response = client.post(
         "/setup",
         data={"username": "admin", "password": "test123", "confirm_password": "test123"},
     )
-    assert response.status_code == 404
+    assert response.status_code == 302
+    location = response.headers["location"]
+    assert "/login" in location
+    assert "setup=done" in location
 
 
 # ---------------------------------------------------------------------------
@@ -994,7 +1011,7 @@ def test_login_failure_log_is_generic_no_username(tmp_path: Path):
         call_args = mock_logger.warning.call_args
         log_msg = call_args[0][0] if call_args[0] else ""
 
-        # Must be generic — no username and no boolean oracle
+        # Must be generic -- no username and no boolean oracle
         assert "invalid credentials" in log_msg.lower()
         assert "attacker_name" not in log_msg
         assert "username_match" not in log_msg

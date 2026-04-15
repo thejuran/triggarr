@@ -195,7 +195,7 @@ def _safe_next_url(next_param: str | None) -> str:
 def _settings_to_dict(settings: SettingsModel) -> dict:
     """Convert Settings to a plain dict suitable for TOML serialization.
 
-    This is the sole extraction point for SecretStr → plain string outside of
+    This is the sole extraction point for SecretStr -> plain string outside of
     HTTP client init (see CLAUDE.md SecretStr convention).
     """
     result: dict = {"general": settings.general.model_dump()}
@@ -769,7 +769,7 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         # Remove instance from settings
         del instances[instance_name]
 
-        # Write updated config to TOML (offloaded to thread — blocking I/O)
+        # Write updated config to TOML (offloaded to thread -- blocking I/O)
         config_path = request.app.state.config_path
         config_dict = _settings_to_dict(settings)
         await asyncio.get_running_loop().run_in_executor(
@@ -819,7 +819,7 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
     last = request.app.state.last_search_time.get(rate_key, 0.0)
     if now - last < SEARCH_RATE_LIMIT_SECONDS:
         logger.info("{name}/{inst}: Manual search rate-limited", name=app_name.title(), inst=instance_name)
-        return HTMLResponse("Rate limited — try again shortly", status_code=429)
+        return HTMLResponse("Rate limited -- try again shortly", status_code=429)
 
     cycle_fns = {"radarr": run_radarr_cycle, "sonarr": run_sonarr_cycle, "lidarr": run_lidarr_cycle}
     cycle_fn = cycle_fns.get(app_name)
@@ -836,7 +836,7 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
                 "{name}/{inst}: Manual search rate-limited (after lock)",
                 name=app_name.title(), inst=instance_name,
             )
-            return HTMLResponse("Rate limited — try again shortly", status_code=429)
+            return HTMLResponse("Rate limited -- try again shortly", status_code=429)
         request.app.state.last_search_time[rate_key] = now
 
         try:
@@ -1010,12 +1010,17 @@ async def changelog(request: Request) -> HTMLResponse:
 # --- Auth routes ---
 
 
-@router.get("/setup", response_class=HTMLResponse)
-async def setup_page(request: Request) -> HTMLResponse:
-    """Render the first-run setup page, or 404 if already configured."""
+@router.get("/setup", response_class=HTMLResponse, response_model=None)
+async def setup_page(request: Request) -> HTMLResponse | RedirectResponse:
+    """Render the first-run setup page, or redirect to login if already configured.
+
+    When auth is already configured (needs_setup=False), redirects to /login
+    with ?setup=done so the login page can show a helpful message instead of
+    returning a bare 404 that gives the user no guidance.
+    """
     auth = request.app.state.settings.auth
     if not auth.needs_setup:
-        return HTMLResponse(status_code=404, content="Not Found")
+        return RedirectResponse(url=str(request.url_for("login_page")) + "?setup=done", status_code=302)
     return templates.TemplateResponse(
         request=request,
         name="setup.html",
@@ -1023,12 +1028,16 @@ async def setup_page(request: Request) -> HTMLResponse:
     )
 
 
-@router.post("/setup")
-async def setup_post(request: Request) -> HTMLResponse:
-    """Process first-run setup: validate credentials, persist config, auto-login."""
+@router.post("/setup", response_model=None)
+async def setup_post(request: Request) -> HTMLResponse | RedirectResponse:
+    """Process first-run setup: validate credentials, persist config, auto-login.
+
+    If auth is already configured (race condition or stale form submission),
+    redirects to /login instead of returning a bare 404.
+    """
     auth = request.app.state.settings.auth
     if not auth.needs_setup:
-        return HTMLResponse(status_code=404, content="Not Found")
+        return RedirectResponse(url=str(request.url_for("login_page")) + "?setup=done", status_code=302)
 
     form = await request.form()
     username = form.get("username", "").strip()
@@ -1069,7 +1078,7 @@ async def setup_post(request: Request) -> HTMLResponse:
         # Re-check inside lock to prevent race condition (Pitfall 5)
         current_settings = request.app.state.settings
         if not current_settings.auth.needs_setup:
-            return HTMLResponse(status_code=404, content="Not Found")
+            return RedirectResponse(url=str(request.url_for("login_page")) + "?setup=done", status_code=302)
 
         # Build new settings with auth configured
         updated = current_settings.model_copy(update={"auth": new_auth})
@@ -1122,10 +1131,16 @@ async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
 
     raw_next = request.query_params.get("next", "")
     next_url = _safe_next_url(raw_next) if raw_next else ""
+
+    # Show info message when redirected from /setup (setup already completed)
+    info = None
+    if request.query_params.get("setup") == "done":
+        info = "Account setup has already been completed. Please sign in."
+
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={"error": None, "username": "", "next_url": next_url},
+        context={"error": None, "info": info, "username": "", "next_url": next_url},
     )
 
 
@@ -1205,6 +1220,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
             name="login.html",
             context={
                 "error": f"Too many login attempts, try again in {minutes} minute{'s' if minutes != 1 else ''}",
+                "info": None,
                 "username": username,
                 "next_url": _safe_next_url(next_url) if next_url else "",
             },
@@ -1243,6 +1259,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
         name="login.html",
         context={
             "error": "Invalid username or password",
+            "info": None,
             "username": username,
             "next_url": _safe_next_url(next_url) if next_url else "",
         },
@@ -1307,7 +1324,7 @@ async def change_password(request: Request) -> HTMLResponse:
                 context={"errors": {"current_password": "Current password is incorrect"}},
             )
 
-        # Hash and persist — catch bcrypt 72-byte limit
+        # Hash and persist -- catch bcrypt 72-byte limit
         try:
             new_hash = hash_password(new_password)
         except ValueError:
