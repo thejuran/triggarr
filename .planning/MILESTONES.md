@@ -1,5 +1,32 @@
 # Milestones
 
+## v2.6 Built-In Authentication (Shipped: 2026-04-15)
+
+**Phases completed:** 6 phases, 16 plans
+**Timeline:** 2 days (Apr 14-15, 2026)
+**LOC:** ~20,225 Python (source + test) | 805 tests
+**Git range:** adf69e3..0f6fa94 (148 commits, 152 files changed, +19,360 -6,323 lines)
+**Requirements:** 18/21 satisfied, 3 deferred (UI pixel-exact visual verification)
+
+**Delivered:** *arr-style built-in authentication — secure by default with Forms/Basic/External/Disabled modes, first-run setup, API key, signed session cookies, settings security section, and security hardening addressing 11 Shield findings.
+
+**Key accomplishments:**
+
+- Deny-all auth middleware with Forms/Basic/External/Disabled modes, timing-safe API key validation via `secrets.compare_digest`, and browser redirect vs API 401 dispatch
+- First-run setup flow with credential creation (bcrypt hashing), auto-generated CSPRNG API key with clipboard copy, and auto-login on completion
+- Forms login with itsdangerous signed session cookies (30-day expiry), `?next=` redirect preservation with open redirect prevention, and nav bar logout
+- Settings security section with password change (htmx inline), auth mode switching (dropdown with contextual warnings), and API key mask/copy/regenerate
+- 109 auth-specific tests covering all middleware paths, session lifecycle, setup flow, login/logout, API key auth, mode switching, and 3 cross-cutting E2E integration tests
+- Security hardening: login rate limiter (10 attempts/5 min per IP with LRU eviction), CSP headers, API key exposure fix (boolean not raw key), SSRF IPv4-mapped IPv6 + multicast blocking, log sanitization, periodic auth-disabled warning
+
+**Known gaps at close:**
+
+- UI-01, UI-02, UI-03: Pixel-exact visual verification of login/setup/settings pages against AIDesigner artifacts (requires human comparison)
+- Nyquist validation non-compliant for phases 54, 55, 56
+- Most SUMMARY.md files missing `requirements_completed` frontmatter
+
+---
+
 ## v2.5 Dashboard UI Refresh (Shipped: 2026-04-14)
 
 **Phases completed:** 6 phases, 15 plans

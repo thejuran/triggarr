@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: Built-In Authentication
-status: executing
-stopped_at: Phase 59 context gathered
-last_updated: "2026-04-15T21:27:36.443Z"
+status: shipped
+stopped_at: Milestone complete
+last_updated: "2026-04-15T23:30:00.000Z"
 last_activity: 2026-04-15
 progress:
   total_phases: 6
@@ -18,26 +18,26 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-14)
+See: .planning/PROJECT.md (updated 2026-04-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Phase 59 — security-hardening-address-shield-findings-shield-001-throug
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 59
-Plan: Not started
-Status: Executing Phase 59
+Phase: All complete
+Plan: N/A
+Status: v2.6 milestone shipped
 Last activity: 2026-04-15
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Overall:**
 
-- Total plans completed: 108 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 5, v2.3: 15, v2.4: 6, v2.5: 15)
-- Milestones shipped: 11 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5)
+- Total plans completed: 124 (v1.0: 18, v1.1: 5, v1.2: 8, v2.0: 18, v2.1: 2, v2.2: 5, v2.3: 15, v2.4: 6, v2.5: 15, v2.6: 16)
+- Milestones shipped: 12 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6)
 
 ## Accumulated Context
 
@@ -45,32 +45,40 @@ Progress: [░░░░░░░░░░] 0%
 
 Full decision log in PROJECT.md Key Decisions table.
 
-- Design spec validated: `docs/superpowers/specs/2026-04-14-built-in-auth-design.md`
-- bcrypt for password hashing, itsdangerous for signed cookies
-- Four auth modes: Forms (default), Basic, External, Disabled
-- UI pages designed via AIDesigner, implemented pixel-exact
-- [Phase 58]: Used /settings as protected route in integration tests (dashboard requires DB state)
-
 ### Pending Todos
 
 None.
 
 ### Roadmap Evolution
 
-- Phase 59 added: Security Hardening — Address Shield findings (SHIELD-001 through SHIELD-011)
+v2.6 milestone archived.
 
 ### Blockers/Concerns
 
 None.
 
+### Deferred Items
+
+Items acknowledged and deferred at milestone close on 2026-04-15:
+
+| Category | Item | Status |
+|----------|------|--------|
+| requirement | UI-01: Login page pixel-exact visual verification | human_needed |
+| requirement | UI-02: Setup page pixel-exact visual verification | human_needed |
+| requirement | UI-03: Settings security pixel-exact visual verification | human_needed |
+| nyquist | Phase 54 VALIDATION.md non-compliant | draft |
+| nyquist | Phase 55 VALIDATION.md non-compliant | draft |
+| nyquist | Phase 56 VALIDATION.md non-compliant | draft |
+
 ### Reference Artifacts
 
 - `docs/superpowers/specs/2026-04-14-built-in-auth-design.md` -- validated design spec
-- `.planning/ROADMAP.md` -- v2.6 phases 54-58
-- `.planning/REQUIREMENTS.md` -- 21 requirements across 5 categories
+- `.planning/milestones/v2.6-ROADMAP.md` -- archived v2.6 roadmap
+- `.planning/milestones/v2.6-REQUIREMENTS.md` -- archived v2.6 requirements
+- `.planning/milestones/v2.6-MILESTONE-AUDIT.md` -- archived v2.6 audit
 
 ## Session Continuity
 
-Last session: 2026-04-15T19:50:31.634Z
-Stopped at: Phase 59 context gathered
-Resume file: .planning/phases/59-security-hardening-address-shield-findings-shield-001-throug/59-CONTEXT.md
+Last session: 2026-04-15
+Stopped at: Milestone v2.6 complete
+Resume file: N/A

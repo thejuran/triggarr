@@ -8,24 +8,17 @@ A lightweight Docker-based tool that automates searches in Radarr, Sonarr, and L
 
 Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback showing what was actually grabbed — without exposing credentials or expanding attack surface.
 
-## Current Milestone: v2.6 Built-In Authentication
+## Current State
 
-**Goal:** Add *arr-style built-in authentication — secure by default with Forms/Basic/External/Disabled modes, first-run setup, API key, and signed session cookies.
+v2.6 Built-In Authentication shipped 2026-04-15. 805 tests passing, 20,225 Python LOC. 59 phases, 124 plans completed across 12 milestones.
 
-**Target features:**
-- First-run setup page (create credentials + auto-generated API key)
+**Latest milestone delivered:**
+- Deny-all auth middleware with Forms/Basic/External/Disabled modes
+- First-run setup flow with credential creation and auto-generated API key
 - Forms login with signed session cookies (30-day expiry)
-- Basic auth mode (browser native popup)
-- External auth mode (reverse proxy delegation)
-- Disabled mode (config-file only, with startup warnings)
-- API key authentication via X-Api-Key header
-- Unauthenticated /health endpoint for uptime monitors
-- Auth middleware (deny-all + whitelist)
-- Settings UI security section (change password, auth mode, API key management)
-- Nav bar logout link
-
-**Design spec:** `docs/superpowers/specs/2026-04-14-built-in-auth-design.md`
-**UI approach:** AIDesigner for login, setup, and settings security pages
+- Settings security section (password change, auth mode switching, API key management)
+- Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
+- 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
 ## Requirements
 
@@ -120,9 +113,22 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 - ✓ Deep code review: 26 fixes (PaginatedResponse resilience, concurrency, security headers, Dockerfile) — v2.5
 - ✓ Conditional stat tiles: Movies/Episodes/Albums tiles only shown when respective app is enabled — v2.5
 
+- ✓ First-run setup page redirects from all routes, credential creation with bcrypt hashing — v2.6
+- ✓ Auto-generated CSPRNG API key with clipboard copy on setup completion — v2.6
+- ✓ Forms login with itsdangerous signed session cookies (30-day expiry) — v2.6
+- ✓ Basic auth mode (WWW-Authenticate popup) and External mode (reverse proxy delegation) — v2.6
+- ✓ Disabled auth mode via config file only, with periodic startup warning every 60s — v2.6
+- ✓ API key authentication via X-Api-Key header with timing-safe comparison — v2.6
+- ✓ Deny-all auth middleware with path whitelist, unauthenticated /health endpoint — v2.6
+- ✓ Settings security section: password change, auth mode switching, API key mask/copy/regenerate — v2.6
+- ✓ Nav bar logout button clearing session cookie — v2.6
+- ✓ Login rate limiter (10 attempts/5 min per IP with LRU eviction) — v2.6
+- ✓ CSP headers with frame-ancestors 'none', SSRF IPv4-mapped IPv6 + multicast blocking — v2.6
+- ✓ Log sanitization (no user-supplied data in login/setup logs) — v2.6
+
 ### Active
 
-Defining requirements for v2.6 Built-In Authentication.
+Planning next milestone.
 
 ## Current State
 
@@ -149,14 +155,14 @@ v2.6 Built-In Authentication in progress. Phase 59 complete — security hardeni
 
 ## Context
 
-Shipped v2.5 with ~17,361 Python LOC (5,406 source + 11,955 test). 668 tests passing. 53 phases, 92 plans completed across 11 milestones.
-Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff.
+Shipped v2.6 with ~20,225 Python LOC. 805 tests passing. 59 phases, 124 plans completed across 12 milestones.
+Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff, bcrypt, itsdangerous.
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted); test_state_wrong_structure_list_crashes documents a limitation in _merge_defaults (list JSON).
+Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted); test_state_wrong_structure_list_crashes documents a limitation in _merge_defaults (list JSON). UI-01/UI-02/UI-03 pixel-exact visual verification pending human review.
 
 ## Constraints
 
@@ -164,6 +170,7 @@ Known tech debt: _update_info as module-level mutable dict (should move to app.s
 - **Deployment**: Docker container with docker-compose support
 - **Security**: API keys must never be exposed via any HTTP endpoint
 - **Scope**: Search automation only — deliberately minimal to reduce attack surface
+- **Auth**: Single-user only — no multi-user accounts, OAuth, or SSO
 
 ## Key Decisions
 
@@ -173,7 +180,12 @@ Known tech debt: _update_info as module-level mutable dict (should move to app.s
 | htmx/Jinja2 over React SPA | Lightweight, no build step, server-rendered | ✓ Good — simple, fast |
 | Season-level Sonarr search | Avoids hammering indexers with full-show searches | ✓ Good |
 | Round-robin over random | Ensures every item gets searched eventually | ✓ Good |
-| No auth (v1.0–v2.5) | No user accounts = no passwords to store | ⚠️ Revisit — adding auth in v2.6 |
+| No auth (v1.0–v2.5) → built-in auth (v2.6) | Single-user *arr-style auth with Forms/Basic/External/Disabled modes | ✓ Good — v2.6 shipped |
+| bcrypt for password hashing | Industry standard, constant-time verification | ✓ Good — v2.6 |
+| itsdangerous for signed cookies | Lightweight, no Redis/DB dependency, 30-day expiry | ✓ Good — v2.6 |
+| In-memory rate limiter (no Redis) | Single-user homelab tool; resets on restart acceptable | ✓ Good — v2.6 |
+| API key boolean in template (not raw key) | Prevents accidental exposure in HTML; reveal-on-regen only | ✓ Good — v2.6 |
+| SameSite=Lax + Origin check for CSRF | No CSRF tokens needed; double-submit pattern sufficient | ✓ Good — v2.6 |
 | Single instance per app | Simpler config, matches user's setup | ✓ Good |
 | APScheduler 3.x over 4.x | 4.x still alpha, 3.x stable with AsyncIOScheduler | ✓ Good |
 | Origin/Referer CSRF over tokens | No auth/sessions means no cookies to protect | ✓ Good |
@@ -224,4 +236,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after Phase 55 (auth-middleware-health-endpoint) complete — AuthMiddleware deny-all gate, /health endpoint, middleware wired into app*
+*Last updated: 2026-04-15 after v2.6 Built-In Authentication milestone complete*
