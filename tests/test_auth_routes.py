@@ -423,3 +423,248 @@ def test_logout_clears_cookie_and_redirects():
     assert "triggarr_session" in set_cookie
     # Deletion indicated by max-age=0 or empty value
     assert 'max-age=0' in set_cookie.lower() or '="";' in set_cookie
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: Security settings endpoints (57-01)
+# ---------------------------------------------------------------------------
+
+
+def test_change_password_success(tmp_path: Path):
+    """POST /settings/password with valid credentials updates password and returns success partial."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": _TEST_PASSWORD,
+            "new_password": "newpass456",
+            "confirm_password": "newpass456",
+        },
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+    assert "Password updated" in response.text
+    # D-05: password inputs should NOT be pre-filled after success
+    assert 'value="newpass456"' not in response.text
+    assert 'value="' + _TEST_PASSWORD + '"' not in response.text
+
+
+def test_change_password_wrong_current(tmp_path: Path):
+    """POST /settings/password with wrong current password returns error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": "wrongpassword",
+            "new_password": "newpass456",
+            "confirm_password": "newpass456",
+        },
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+    assert "Current password is incorrect" in response.text
+
+
+def test_change_password_mismatch(tmp_path: Path):
+    """POST /settings/password with mismatched new/confirm returns error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": _TEST_PASSWORD,
+            "new_password": "newpass456",
+            "confirm_password": "different789",
+        },
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+    assert "Passwords do not match" in response.text
+
+
+def test_change_password_empty_new(tmp_path: Path):
+    """POST /settings/password with empty new password returns error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": _TEST_PASSWORD,
+            "new_password": "",
+            "confirm_password": "",
+        },
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+    assert "New password is required" in response.text
+
+
+def test_security_save_method_basic(tmp_path: Path):
+    """POST /settings/security with method=Basic updates config and redirects."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/security",
+        data={"auth_method": "Basic"},
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 303
+
+    # Verify config was updated
+    with open(config_file, "rb") as f:
+        toml_data = tomllib.load(f)
+    assert toml_data["auth"]["method"] == "Basic"
+
+
+def test_security_save_method_external(tmp_path: Path):
+    """POST /settings/security with method=External updates config and redirects."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/security",
+        data={"auth_method": "External"},
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 303
+
+
+def test_security_save_rejects_disabled(tmp_path: Path):
+    """POST /settings/security with method=Disabled is rejected; config unchanged."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n[auth]\nmethod = "Forms"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/security",
+        data={"auth_method": "Disabled"},
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 303
+
+    # Config should NOT have changed to Disabled
+    with open(config_file, "rb") as f:
+        toml_data = tomllib.load(f)
+    assert toml_data["auth"]["method"] == "Forms"
+
+
+def test_security_save_rejects_invalid(tmp_path: Path):
+    """POST /settings/security with invalid method is rejected; config unchanged."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n[auth]\nmethod = "Forms"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/security",
+        data={"auth_method": "InvalidXYZ"},
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 303
+
+    # Config should NOT have changed
+    with open(config_file, "rb") as f:
+        toml_data = tomllib.load(f)
+    assert toml_data["auth"]["method"] == "Forms"
+
+
+def test_regenerate_api_key(tmp_path: Path):
+    """POST /settings/api-key/regenerate returns new key that differs from original."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/api-key/regenerate",
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+    assert "Key regenerated" in response.text
+    # New key should be 32-char hex and differ from original
+    import re as _re
+
+    hex_match = _re.search(r"[0-9a-f]{32}", response.text)
+    assert hex_match is not None, "Response should contain a 32-char hex key"
+    new_key = hex_match.group()
+    assert new_key != _TEST_API_KEY
+
+
+def test_settings_page_auth_context(tmp_path: Path):
+    """GET /settings includes auth method and username in response."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth(method="Forms", username="admin")
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.get("/settings", cookies={"triggarr_session": cookie})
+    assert response.status_code == 200
+    # Auth context should be present -- check for the auth method and username text
+    assert "Forms" in response.text
+    assert "admin" in response.text
+
+
+def test_settings_page_disabled_banner(tmp_path: Path):
+    """GET /settings with method=Disabled includes warning banner (SET-04)."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth(method="Disabled")
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    # With Disabled auth, middleware should let request through without cookie
+    response = client.get("/settings")
+    assert response.status_code == 200
+    # Should contain warning banner text about disabled auth
+    text_lower = response.text.lower()
+    assert "disabled" in text_lower or "authentication" in text_lower
