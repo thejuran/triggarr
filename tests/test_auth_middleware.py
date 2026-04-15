@@ -1,8 +1,18 @@
-"""Test suite for AuthMiddleware deny-all dispatch with D-10 check order.
+"""AuthMiddleware tests -- includes Phase 58 gap-fill.
 
-Covers exempt path passthrough, needs-setup redirect, disabled/external passthrough,
-session cookie validation, API key validation, Basic auth inline validation with
-cookie setting, and browser vs API fallback responses.
+Traceability:
+  SC-1 (middleware enforcement): test_health_no_auth, test_health_returns_ok_body,
+      test_unauth_browser_redirect_includes_next_deep_path
+  SC-3 (session lifecycle): test_wrong_secret_cookie_rejected_by_middleware,
+      test_expired_cookie_rejected_by_middleware
+  SC-4 (auth modes): test_forms_to_basic_transition_session_still_valid,
+      test_any_to_disabled_transition_passes_through,
+      test_disabled_to_forms_transition_requires_login,
+      test_api_key_works_in_basic_mode, test_api_key_works_in_external_mode,
+      test_disabled_mode_logs_warning
+  SC-5 (API key): test_missing_api_key_api_returns_401_json,
+      test_empty_api_key_does_not_pass, test_whitespace_api_key_does_not_pass,
+      test_invalid_api_key_returns_401_json_not_redirect
 """
 
 from __future__ import annotations
@@ -47,6 +57,10 @@ def _make_auth_app(auth_config: AuthConfig | None = None) -> FastAPI:
     @app.get("/setup")
     async def setup():
         return {"page": "setup"}
+
+    @app.get("/settings")
+    async def settings_page():
+        return {"page": "settings"}
 
     return app
 
@@ -315,3 +329,168 @@ def test_session_cookie_works_in_basic_mode():
     response = client.get("/", cookies={"triggarr_session": cookie})
     assert response.status_code == 200
     assert response.json() == {"page": "home"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 58 gap-fill: SC-1 additional tests
+# ---------------------------------------------------------------------------
+
+
+def test_health_returns_ok_body():
+    """GET /health returns JSON body {"status": "ok"} (not just 200 status)."""
+    client = TestClient(_make_auth_app())
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_unauth_browser_redirect_includes_next_deep_path():
+    """Unauthenticated browser redirect preserves deeper paths like /settings."""
+    auth = _configured_auth()
+    client = TestClient(_make_auth_app(auth), follow_redirects=False)
+    response = client.get("/settings", headers={"Accept": "text/html"})
+    assert response.status_code == 302
+    assert response.headers["location"] == "/login?next=/settings"
+
+
+# ---------------------------------------------------------------------------
+# Phase 58 gap-fill: SC-3 session edge cases at middleware level
+# ---------------------------------------------------------------------------
+
+
+def test_wrong_secret_cookie_rejected_by_middleware():
+    """Cookie signed with a different secret is rejected at the middleware level (D-07)."""
+    different_secret = generate_session_secret()
+    auth = _configured_auth()
+    client = TestClient(_make_auth_app(auth), follow_redirects=False)
+    wrong_cookie = sign_session("admin", different_secret)
+    response = client.get("/", cookies={"triggarr_session": wrong_cookie}, headers={"Accept": "text/html"})
+    assert response.status_code == 302
+    assert "/login" in response.headers["location"]
+
+
+def test_expired_cookie_rejected_by_middleware():
+    """Expired session cookie is rejected at the middleware level."""
+    from unittest.mock import patch
+
+    from itsdangerous import TimestampSigner
+
+    auth = _configured_auth()
+    cookie = _valid_session_cookie()
+    original_get_timestamp = TimestampSigner.get_timestamp
+
+    def future_timestamp(self):
+        return original_get_timestamp(self) + (31 * 24 * 60 * 60)
+
+    app = _make_auth_app(auth)
+    client = TestClient(app, follow_redirects=False)
+    with patch.object(TimestampSigner, "get_timestamp", future_timestamp):
+        response = client.get("/", cookies={"triggarr_session": cookie}, headers={"Accept": "text/html"})
+    assert response.status_code == 302
+    assert "/login" in response.headers["location"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 58 gap-fill: SC-4 auth mode transitions (D-10)
+# ---------------------------------------------------------------------------
+
+
+def test_forms_to_basic_transition_session_still_valid():
+    """Session cookie created in Forms mode still authenticates in Basic mode."""
+    cookie = _valid_session_cookie()
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", cookies={"triggarr_session": cookie})
+    assert response.status_code == 200
+    assert response.json() == {"page": "home"}
+
+
+def test_any_to_disabled_transition_passes_through():
+    """Switching to Disabled mode passes requests through without auth."""
+    auth = _configured_auth(method="Disabled")
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"page": "home"}
+
+
+def test_disabled_to_forms_transition_requires_login():
+    """Switching from Disabled back to Forms re-requires login."""
+    auth = _configured_auth(method="Forms")
+    client = TestClient(_make_auth_app(auth), follow_redirects=False)
+    response = client.get("/", headers={"Accept": "text/html"})
+    assert response.status_code == 302
+    assert "/login" in response.headers["location"]
+
+
+def test_api_key_works_in_basic_mode():
+    """X-Api-Key header authenticates when method is Basic."""
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", headers={"X-Api-Key": _API_KEY})
+    assert response.status_code == 200
+
+
+def test_api_key_works_in_external_mode():
+    """X-Api-Key still works in External mode (External passes through anyway)."""
+    auth = _configured_auth(method="External")
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", headers={"X-Api-Key": _API_KEY})
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Phase 58 gap-fill: SC-5 API key edge cases (D-06)
+# ---------------------------------------------------------------------------
+
+
+def test_missing_api_key_api_returns_401_json():
+    """API request with no key, no cookie, no basic auth returns 401 JSON."""
+    auth = _configured_auth()
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", headers={"Accept": "application/json"})
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Authentication required"}
+
+
+def test_empty_api_key_does_not_pass():
+    """Empty string X-Api-Key header does not authenticate."""
+    auth = _configured_auth()
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", headers={"X-Api-Key": "", "Accept": "application/json"})
+    assert response.status_code == 401
+
+
+def test_whitespace_api_key_does_not_pass():
+    """Whitespace-only X-Api-Key header does not authenticate."""
+    auth = _configured_auth()
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", headers={"X-Api-Key": "   ", "Accept": "application/json"})
+    assert response.status_code == 401
+
+
+def test_invalid_api_key_returns_401_json_not_redirect():
+    """Invalid API key with Accept: application/json returns 401 JSON, not redirect."""
+    auth = _configured_auth()
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", headers={"X-Api-Key": "wrong-key-value", "Accept": "application/json"})
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Authentication required"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 58 gap-fill: SC-4 disabled mode warning log (D-11 / LOGIN-05)
+# ---------------------------------------------------------------------------
+
+
+def test_disabled_mode_logs_warning():
+    """Disabled mode logs a warning at startup (first request)."""
+    from unittest.mock import patch
+
+    auth = _configured_auth(method="Disabled")
+    AuthMiddleware._disabled_warned = False  # reset flag
+    client = TestClient(_make_auth_app(auth))
+    with patch("triggarr.web.middleware.logger") as mock_logger:
+        client.get("/")
+        mock_logger.warning.assert_called_once()
+        assert "disabled" in mock_logger.warning.call_args[0][0].lower()

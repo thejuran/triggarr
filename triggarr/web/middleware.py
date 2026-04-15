@@ -6,6 +6,7 @@ import base64
 import secrets
 from urllib.parse import quote, urlparse
 
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
@@ -78,6 +79,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
       7. fallback -> redirect to /login (browser) or 401 JSON (API)
     """
 
+    _disabled_warned: bool = False
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Gate every non-exempt route through authentication checks."""
         path = request.url.path
@@ -94,8 +97,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return RedirectResponse("/setup", status_code=302)
             return JSONResponse({"detail": "Setup required", "setup_url": "/setup"}, status_code=401)
 
-        # Step 2: Disabled -> pass through
+        # Step 2: Disabled -> pass through + warning
         if auth.is_disabled:
+            if not AuthMiddleware._disabled_warned:
+                logger.warning(
+                    "Authentication is disabled -- all requests are unauthenticated. "
+                    "Set auth.method in triggarr.toml to enable."
+                )
+                AuthMiddleware._disabled_warned = True
             return await call_next(request)
 
         # Step 3: External -> pass through
