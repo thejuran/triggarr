@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import base64
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -372,8 +372,6 @@ def test_wrong_secret_cookie_rejected_by_middleware():
 
 def test_expired_cookie_rejected_by_middleware():
     """Expired session cookie is rejected at the middleware level."""
-    from unittest.mock import patch
-
     auth = _configured_auth()
     cookie = _valid_session_cookie()
 
@@ -481,8 +479,6 @@ def test_invalid_api_key_returns_401_json_not_redirect():
 
 def test_disabled_mode_logs_warning():
     """Disabled mode logs a warning at startup (first request)."""
-    from unittest.mock import patch
-
     auth = _configured_auth(method="Disabled")
     client = TestClient(_make_auth_app(auth))
     with patch("triggarr.web.middleware.logger") as mock_logger:
