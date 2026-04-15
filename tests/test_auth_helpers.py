@@ -1,4 +1,11 @@
-"""Tests for auth helper functions: password hashing, cookie signing, token generation."""
+"""Auth helper function tests -- Phase 58 traceability added.
+
+Traceability:
+  SC-3 (session lifecycle): test_sign_session_returns_nonempty_string, test_sign_session_validate_roundtrip,
+      test_validate_session_tampered_returns_none, test_validate_session_wrong_secret_returns_none,
+      test_validate_session_expired_returns_none, test_cookie_max_age_is_30_days
+  SC-5 (API key): test_generate_api_key_length, test_generate_api_key_hex_chars
+"""
 
 from __future__ import annotations
 

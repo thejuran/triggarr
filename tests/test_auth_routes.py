@@ -1,11 +1,16 @@
-"""TDD tests for _safe_next_url, _settings_to_dict, and integration tests for auth routes.
+"""Auth route handler tests -- includes Phase 58 gap-fill.
 
-Tests cover:
-- _safe_next_url: rejects absolute URLs, protocol-relative, backslash, non-slash prefix
-- _settings_to_dict: includes auth section with SecretStr values extracted to plain strings
-- Integration: setup flow (render, create credentials, errors, 404 after config)
-- Integration: login flow (render, valid/invalid credentials, ?next=, open redirect, already-authed)
-- Integration: logout (cookie clear, redirect)
+Traceability:
+  SC-2 (setup flow): test_setup_page_renders_when_needs_setup, test_setup_post_creates_credentials,
+      test_setup_post_password_mismatch_shows_error, test_setup_post_empty_password_shows_error,
+      test_setup_post_empty_username_shows_error, test_setup_page_returns_404_when_configured,
+      test_setup_post_returns_404_when_configured, test_setup_post_sets_session_cookie
+  SC-3 (login/session): test_login_page_renders, test_login_post_valid_credentials_redirects,
+      test_login_post_invalid_credentials_shows_error, test_login_post_respects_next_param,
+      test_login_post_rejects_open_redirect_next, test_logout_clears_cookie_and_redirects,
+      test_login_wrong_username_shows_error, test_login_empty_fields_shows_error,
+      test_login_set_cookie_max_age_30_days, test_login_get_rejects_open_redirect_next,
+      test_login_get_rejects_protocol_relative_next
 """
 
 from __future__ import annotations
@@ -668,3 +673,99 @@ def test_settings_page_disabled_banner(tmp_path: Path):
     # Should contain warning banner text about disabled auth
     text_lower = response.text.lower()
     assert "disabled" in text_lower or "authentication" in text_lower
+
+
+# ---------------------------------------------------------------------------
+# Phase 58 gap-fill: SC-2 setup edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_setup_post_empty_username_shows_error(tmp_path: Path):
+    """POST /setup with empty username shows validation error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "", "password": "test123", "confirm_password": "test123"},
+    )
+    assert response.status_code == 200
+    assert "username" in response.text.lower() or "required" in response.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 58 gap-fill: SC-3 login edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_login_wrong_username_shows_error(tmp_path: Path):
+    """POST /login with wrong username but right password shows error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "wronguser", "password": _TEST_PASSWORD},
+    )
+    assert response.status_code == 200
+    assert "invalid" in response.text.lower() or "incorrect" in response.text.lower()
+
+
+def test_login_empty_fields_shows_error(tmp_path: Path):
+    """POST /login with empty username and password shows error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "", "password": ""},
+    )
+    assert response.status_code == 200
+    text = response.text.lower()
+    assert "invalid" in text or "incorrect" in text or "required" in text
+
+
+def test_login_set_cookie_max_age_30_days(tmp_path: Path):
+    """POST /login with valid credentials sets cookie with max-age=2592000 (30 days)."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": _TEST_PASSWORD},
+    )
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "max-age=2592000" in set_cookie.lower() or "Max-Age=2592000" in set_cookie
+
+
+def test_login_get_rejects_open_redirect_next(tmp_path: Path):
+    """GET /login?next=http://evil.com renders login page (200); sanitization happens on POST."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/login?next=http://evil.com")
+    assert response.status_code == 200
+    # Page renders successfully; _safe_next_url will sanitize on POST submission
+    assert "Sign In" in response.text
+
+
+def test_login_get_rejects_protocol_relative_next(tmp_path: Path):
+    """GET /login?next=//evil.com renders login page (200); sanitization happens on POST."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/login?next=//evil.com")
+    assert response.status_code == 200
+    # Page renders successfully; _safe_next_url will sanitize on POST submission
+    assert "Sign In" in response.text

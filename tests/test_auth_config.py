@@ -1,4 +1,14 @@
-"""Tests for AuthConfig model, Settings integration, and auth secret collection."""
+"""AuthConfig model tests -- Phase 58 traceability added.
+
+Traceability:
+  SC-4 (auth modes): test_auth_config_default_method, test_auth_config_accepts_all_methods,
+      test_auth_config_rejects_invalid_method, test_auth_config_disabled,
+      test_auth_config_forms_not_disabled, test_auth_config_default_needs_setup,
+      test_auth_config_configured_not_needs_setup
+  SC-5 (secret masking): test_auth_config_secretstr_masking
+  Settings integration: test_settings_has_auth_field
+  Startup secrets: test_collect_secrets_includes_auth_secrets, test_collect_secrets_skips_empty_auth_secrets
+"""
 
 from __future__ import annotations
 
