@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -27,6 +28,14 @@ from pydantic import SecretStr
 from triggarr.auth import generate_session_secret, hash_password, sign_session
 from triggarr.models.config import AuthConfig
 from triggarr.web.middleware import AuthMiddleware
+
+
+@pytest.fixture(autouse=True)
+def _reset_disabled_warned():
+    """Reset AuthMiddleware._disabled_warned before each test to avoid order-dependent failures."""
+    AuthMiddleware._disabled_warned = False
+    yield
+    AuthMiddleware._disabled_warned = False
 
 
 def _make_auth_app(auth_config: AuthConfig | None = None) -> FastAPI:
@@ -371,20 +380,16 @@ def test_wrong_secret_cookie_rejected_by_middleware():
 
 def test_expired_cookie_rejected_by_middleware():
     """Expired session cookie is rejected at the middleware level."""
+    import time
     from unittest.mock import patch
-
-    from itsdangerous import TimestampSigner
 
     auth = _configured_auth()
     cookie = _valid_session_cookie()
-    original_get_timestamp = TimestampSigner.get_timestamp
-
-    def future_timestamp(self):
-        return original_get_timestamp(self) + (31 * 24 * 60 * 60)
 
     app = _make_auth_app(auth)
     client = TestClient(app, follow_redirects=False)
-    with patch.object(TimestampSigner, "get_timestamp", future_timestamp):
+    # Patch time.time used by itsdangerous during unsign to simulate 31 days elapsed
+    with patch("time.time", return_value=time.time() + 31 * 24 * 60 * 60):
         response = client.get("/", cookies={"triggarr_session": cookie}, headers={"Accept": "text/html"})
     assert response.status_code == 302
     assert "/login" in response.headers["location"]
@@ -488,9 +493,8 @@ def test_disabled_mode_logs_warning():
     from unittest.mock import patch
 
     auth = _configured_auth(method="Disabled")
-    AuthMiddleware._disabled_warned = False  # reset flag
     client = TestClient(_make_auth_app(auth))
     with patch("triggarr.web.middleware.logger") as mock_logger:
         client.get("/")
         mock_logger.warning.assert_called_once()
-        assert "disabled" in mock_logger.warning.call_args[0][0].lower()
+        assert "disabled" in mock_logger.warning.call_args.args[0].lower()

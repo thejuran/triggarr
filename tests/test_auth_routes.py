@@ -742,11 +742,11 @@ def test_login_set_cookie_max_age_30_days(tmp_path: Path):
         data={"username": "admin", "password": _TEST_PASSWORD},
     )
     set_cookie = response.headers.get("set-cookie", "")
-    assert "max-age=2592000" in set_cookie.lower() or "Max-Age=2592000" in set_cookie
+    assert "max-age=2592000" in set_cookie.lower()
 
 
 def test_login_get_rejects_open_redirect_next(tmp_path: Path):
-    """GET /login?next=http://evil.com renders login page (200); sanitization happens on POST."""
+    """GET /login?next=http://evil.com sanitizes next_url to '/' on input."""
     config_file = tmp_path / "triggarr.toml"
     config_file.write_text('[general]\nlog_level = "info"\n')
     auth_cfg = _configured_auth()
@@ -754,12 +754,12 @@ def test_login_get_rejects_open_redirect_next(tmp_path: Path):
     client = TestClient(app, follow_redirects=False)
     response = client.get("/login?next=http://evil.com")
     assert response.status_code == 200
-    # Page renders successfully; _safe_next_url will sanitize on POST submission
-    assert "Sign In" in response.text
+    assert "evil.com" not in response.text
+    assert 'value="/"' in response.text
 
 
 def test_login_get_rejects_protocol_relative_next(tmp_path: Path):
-    """GET /login?next=//evil.com renders login page (200); sanitization happens on POST."""
+    """GET /login?next=//evil.com sanitizes next_url to '/' on input."""
     config_file = tmp_path / "triggarr.toml"
     config_file.write_text('[general]\nlog_level = "info"\n')
     auth_cfg = _configured_auth()
@@ -767,5 +767,5 @@ def test_login_get_rejects_protocol_relative_next(tmp_path: Path):
     client = TestClient(app, follow_redirects=False)
     response = client.get("/login?next=//evil.com")
     assert response.status_code == 200
-    # Page renders successfully; _safe_next_url will sanitize on POST submission
-    assert "Sign In" in response.text
+    assert "evil.com" not in response.text
+    assert 'value="/"' in response.text
