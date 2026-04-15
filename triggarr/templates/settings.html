@@ -185,6 +185,30 @@
     </div>
 </form>
 
+<!-- Security section (outside main settings form) -->
+{% if auth_is_disabled is defined %}
+<section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5 mt-8">
+    <h2 class="text-lg font-semibold mb-4">Security</h2>
+
+    {% if auth_is_disabled %}
+    <div class="bg-amber-900/50 border border-amber-700 text-amber-300 px-4 py-3 rounded mb-4">
+        Authentication is disabled. All endpoints are accessible without credentials.
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 gap-4 max-w-md mb-6">
+        <div>
+            <span class="text-sm text-triggarr-muted">Auth Method:</span>
+            <span class="text-sm text-zinc-100 ml-2">{{ auth_method }}</span>
+        </div>
+        <div>
+            <span class="text-sm text-triggarr-muted">Username:</span>
+            <span class="text-sm text-zinc-100 ml-2">{{ auth_username }}</span>
+        </div>
+    </div>
+</section>
+{% endif %}
+
 <!-- Add-instance forms must live outside the main settings form to avoid nested <form> (illegal in HTML) -->
 {% for app_name in apps %}
 <form id="add-{{ app_name }}" method="post" action="{{ request.url_for('add_instance') }}"></form>

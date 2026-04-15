@@ -1,0 +1,15 @@
+<div id="apikey-section">
+  {% if success %}
+  <div class="bg-green-900/50 border border-green-700 text-green-300 px-4 py-3 rounded mb-4">
+    {{ success }}
+  </div>
+  {% endif %}
+  <div class="flex items-center gap-3">
+    <code class="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 font-mono text-sm flex-1{% if not revealed %} blur-sm select-none{% endif %}">{{ api_key }}</code>
+    <form hx-post="/settings/api-key/regenerate" hx-target="#apikey-section" hx-swap="outerHTML">
+      <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded text-sm">
+        Regenerate
+      </button>
+    </form>
+  </div>
+</div>

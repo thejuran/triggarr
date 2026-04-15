@@ -396,6 +396,10 @@ async def settings_page(request: Request) -> HTMLResponse:
             "tracking_window_minutes": settings.general.tracking_window_minutes,
             "tracking_delay_seconds": settings.general.tracking_delay_seconds,
             "skip_unreleased": settings.general.skip_unreleased,
+            "auth_method": settings.auth.method,
+            "auth_is_disabled": settings.auth.is_disabled,
+            "auth_api_key": settings.auth.api_key.get_secret_value(),
+            "auth_username": settings.auth.username,
         },
     )
 
@@ -1175,3 +1179,123 @@ async def logout(request: Request) -> RedirectResponse:
     )
     logger.info("User logged out")
     return response
+
+
+# ---------------------------------------------------------------------------
+# Security settings endpoints (57-01)
+# ---------------------------------------------------------------------------
+
+_ALLOWED_AUTH_METHODS = {"Forms", "Basic", "External"}
+
+
+@router.post("/settings/password")
+async def change_password(request: Request) -> HTMLResponse:
+    """Change user password with current-password verification."""
+    settings = request.app.state.settings
+    form = await request.form()
+    current_password = form.get("current_password", "")
+    new_password = form.get("new_password", "")
+    confirm_password = form.get("confirm_password", "")
+
+    errors: dict[str, str] = {}
+
+    # Validate current password (T-57-01: always verify before accepting new hash)
+    if not verify_password(current_password, settings.auth.password_hash.get_secret_value()):
+        errors["current_password"] = "Current password is incorrect"
+    elif not new_password:
+        errors["new_password"] = "New password is required"
+    elif new_password != confirm_password:
+        errors["confirm_password"] = "Passwords do not match"
+
+    if errors:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/security_password.html",
+            context={"errors": errors},
+        )
+
+    # Hash and persist
+    new_hash = hash_password(new_password)
+    new_auth = settings.auth.model_copy(update={"password_hash": SecretStr(new_hash)})
+
+    config_path = request.app.state.config_path
+    async with request.app.state.search_lock:
+        current_settings = request.app.state.settings
+        updated = current_settings.model_copy(update={"auth": new_auth})
+        config_dict = _settings_to_dict(updated)
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, config_dict
+        )
+        os.chmod(config_path, 0o600)
+        request.app.state.settings = load_settings(config_path)
+
+    _sync_auth_state(request.app.state.settings)
+    _new_secrets = collect_secrets(request.app.state.settings)
+    setup_logging(request.app.state.settings.general.log_level, _new_secrets)
+
+    # D-05: return fresh partial with empty password inputs (no value= attributes)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/security_password.html",
+        context={"success": "Password updated"},
+    )
+
+
+@router.post("/settings/security")
+async def save_security(request: Request) -> RedirectResponse:
+    """Save auth method selection. Rejects Disabled and unknown values (T-57-02, D-13)."""
+    form = await request.form()
+    auth_method = form.get("auth_method", "")
+
+    if auth_method not in _ALLOWED_AUTH_METHODS:
+        # Reject invalid/disabled method -- redirect without change
+        return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+
+    settings = request.app.state.settings
+    new_auth = settings.auth.model_copy(update={"method": auth_method})
+
+    config_path = request.app.state.config_path
+    async with request.app.state.search_lock:
+        current_settings = request.app.state.settings
+        updated = current_settings.model_copy(update={"auth": new_auth})
+        config_dict = _settings_to_dict(updated)
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, config_dict
+        )
+        os.chmod(config_path, 0o600)
+        request.app.state.settings = load_settings(config_path)
+
+    _sync_auth_state(request.app.state.settings)
+    _new_secrets = collect_secrets(request.app.state.settings)
+    setup_logging(request.app.state.settings.general.log_level, _new_secrets)
+
+    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+
+
+@router.post("/settings/api-key/regenerate")
+async def regenerate_api_key_endpoint(request: Request) -> HTMLResponse:
+    """Generate a new API key and return the revealed partial."""
+    new_key = generate_api_key()
+    settings = request.app.state.settings
+    new_auth = settings.auth.model_copy(update={"api_key": SecretStr(new_key)})
+
+    config_path = request.app.state.config_path
+    async with request.app.state.search_lock:
+        current_settings = request.app.state.settings
+        updated = current_settings.model_copy(update={"auth": new_auth})
+        config_dict = _settings_to_dict(updated)
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, config_dict
+        )
+        os.chmod(config_path, 0o600)
+        request.app.state.settings = load_settings(config_path)
+
+    _sync_auth_state(request.app.state.settings)
+    _new_secrets = collect_secrets(request.app.state.settings)
+    setup_logging(request.app.state.settings.general.log_level, _new_secrets)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/security_apikey.html",
+        context={"api_key": new_key, "revealed": True, "success": "Key regenerated"},
+    )
