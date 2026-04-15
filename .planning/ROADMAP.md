@@ -193,7 +193,10 @@ Plans:
   3. User can change password by entering current password, new password, and confirmation; incorrect current password is rejected with a clear error
   4. User sees a warning banner in the Settings security section when auth is disabled via config file, explaining that auth mode can only be changed back from the config file
   5. Settings security section matches AIDesigner HTML artifact pixel-exact
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
+- [ ] 57-02-PLAN.md -- Settings Security section templates + visual verification
 **UI hint**: yes
 
 ### Phase 58: Auth Test Suite
@@ -206,7 +209,10 @@ Plans:
   3. Tests verify login with valid/invalid credentials, session cookie creation and validation, 30-day expiry, and logout clearing the cookie
   4. Tests verify all four auth modes (Forms redirect, Basic WWW-Authenticate, External pass-through, Disabled with warning log) behave correctly
   5. Tests verify API key authentication via X-Api-Key header, including valid key, invalid key, and missing key scenarios
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
+- [ ] 57-02-PLAN.md -- Settings Security section templates + visual verification
 
 ## Progress
 
