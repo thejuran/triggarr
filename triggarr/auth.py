@@ -18,8 +18,15 @@ def hash_password(plaintext: str) -> str:
 
     Returns:
         Bcrypt hash string suitable for storage.
+
+    Raises:
+        ValueError: If password exceeds 72 bytes (bcrypt limit).
     """
-    return bcrypt.hashpw(plaintext.encode(), bcrypt.gensalt(rounds=12)).decode()
+    raw = plaintext.encode()
+    if len(raw) > 72:
+        msg = "Password must be 72 bytes or fewer"
+        raise ValueError(msg)
+    return bcrypt.hashpw(raw, bcrypt.gensalt(rounds=12)).decode()
 
 
 def verify_password(plaintext: str, hashed: str) -> bool:
@@ -32,7 +39,10 @@ def verify_password(plaintext: str, hashed: str) -> bool:
     Returns:
         True if the password matches the hash.
     """
-    return bcrypt.checkpw(plaintext.encode(), hashed.encode())
+    try:
+        return bcrypt.checkpw(plaintext.encode(), hashed.encode())
+    except (ValueError, TypeError):
+        return False
 
 
 def generate_api_key() -> str:
@@ -63,6 +73,8 @@ def sign_session(username: str, secret: str) -> str:
     Returns:
         Signed cookie string safe for HTTP Set-Cookie.
     """
+    if not secret:
+        raise ValueError("session_secret must not be empty")
     signer = TimestampSigner(secret)
     return signer.sign(username).decode()
 
@@ -77,6 +89,8 @@ def validate_session(cookie_value: str, secret: str) -> str | None:
     Returns:
         The username if valid and not expired, None otherwise.
     """
+    if not secret:
+        return None
     signer = TimestampSigner(secret)
     try:
         return signer.unsign(cookie_value, max_age=COOKIE_MAX_AGE).decode()
