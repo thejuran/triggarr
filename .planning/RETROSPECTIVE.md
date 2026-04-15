@@ -200,6 +200,89 @@
 
 ---
 
+## Milestone: v2.5 — Dashboard UI Refresh
+
+**Shipped:** 2026-04-13
+**Phases:** 6 | **Plans:** 15
+
+### What Was Built
+- Design-system foundations: focus-visible rings, reduced-motion, Geist Mono, elevation tokens
+- Sticky nav with active-tab underline and pulsing update dot
+- Compact health strip + hero Grab Rate card with per-app bars
+- Redesigned app cards with connection pills, danger stripes, hover elevation, 3-col grid
+- Terminal-style application log with TAILING indicator and expandable bottom pane
+- Sticky Recent Activity rail with timeline, outcome pills, LIVE indicator
+
+### What Worked
+- AIDesigner HTML artifacts as design spec worked well for pixel-exact implementation
+- 6 phases shipped in 4 days with minimal rework
+- Deep code review caught 26 real issues across 3 rounds
+
+### What Was Inefficient
+- Summary one-liner extraction still failing due to format inconsistency across summaries
+
+### Patterns Established
+- AIDesigner HTML artifacts as hard design spec for UI phases
+- Vanilla JS for interactive components (no framework dependency)
+- Conditional stat tiles (only show when respective app is enabled)
+
+### Key Lessons
+1. AIDesigner + GSD workflow: generate HTML artifacts first, use as binding spec for implementation
+2. Vanilla JS interactive components avoid framework dependency for a server-rendered htmx app
+3. Deep review across 3 rounds catches progressively deeper issues
+
+### Cost Observations
+- Model mix: ~50% opus (planning, review), ~50% sonnet (execution)
+- Sessions: ~3 sessions across 4 days
+
+---
+
+## Milestone: v2.6 — Built-In Authentication
+
+**Shipped:** 2026-04-15
+**Phases:** 6 | **Plans:** 16
+
+### What Was Built
+- Deny-all auth middleware with Forms/Basic/External/Disabled modes
+- First-run setup flow with credential creation and auto-generated API key
+- Forms login with signed session cookies (30-day expiry) and ?next= redirect
+- Settings security section with password change, auth mode switching, API key management
+- 109 auth-specific tests (805 total) covering all middleware paths and edge cases
+- Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
+
+### What Worked
+- TDD approach in every phase caught integration bugs early (e.g., itsdangerous 2.x mock target)
+- Shield security scan as input to Phase 59 provided structured, actionable findings
+- Code review → fix cycles (multiple rounds in Phase 59) drove quality up significantly
+- Design spec upfront (`built-in-auth-design.md`) prevented scope creep across 6 phases
+- bcrypt + itsdangerous: lightweight deps that handle auth correctly without over-engineering
+
+### What Was Inefficient
+- SUMMARY.md requirements_completed frontmatter was only populated in 1 of 16 summaries — audit had to rely on VERIFICATION.md cross-reference
+- Phase 59 was added mid-milestone after Shield scan — correct decision, but broke the original 54-58 scope
+- Visual verification (UI-01/UI-02/UI-03) couldn't be automated — 3 requirements left as human_needed
+- Nyquist VALIDATION.md files for phases 54-56 were generated during planning but never updated during execution
+
+### Patterns Established
+- Shield security scan → dedicated hardening phase as a quality gate before milestone close
+- In-memory rate limiter with LRU eviction for single-user homelab tools
+- API key as boolean in template context (never raw key) to prevent accidental exposure
+- `_sync_auth_state` pattern: centralized auth state refresh called from all config-mutating endpoints
+
+### Key Lessons
+1. Shield scan before milestone close finds real vulnerabilities — Phase 59's 11 findings were all actionable
+2. In-memory rate limiters need eviction caps — unbounded dicts are a DoS vector
+3. Always populate SUMMARY.md requirements_completed — audit 3-source cross-reference breaks without it
+4. Visual verification requirements should be flagged early as human-only — automated verification can't assess pixel fidelity
+5. Security-hardening phases are efficient when findings are structured (SHIELD-001 through SHIELD-011 format)
+
+### Cost Observations
+- Model mix: ~40% opus (planning, verification, audit), ~60% sonnet (execution, code review)
+- Sessions: ~4 sessions across 2 days
+- Notable: 16 plans in 2 days; TDD approach kept rework minimal despite complex auth logic
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -214,6 +297,8 @@
 | v2.2 | 4 | 5 | TDD approach, code review as dedicated phase |
 | v2.3 | 12 | 15 | Milestone audit + gap-closure pattern, deep review as final phase |
 | v2.4 | 3 | 6 | Test-only milestone, community health files, single-session ship |
+| v2.5 | 6 | 15 | AIDesigner HTML artifacts as design spec, vanilla JS components |
+| v2.6 | 6 | 16 | Shield scan → hardening phase, TDD auth, in-memory rate limiter |
 
 ### Cumulative Quality
 
@@ -227,11 +312,15 @@
 | v2.2 | 302 | ~8,964 | 0 |
 | v2.3 | 466 | ~15,079 | 0 (pydantic-settings added for config, already in deps) |
 | v2.4 | 606 | ~15,979 | 0 |
+| v2.5 | 668 | ~17,361 | 0 |
+| v2.6 | 805 | ~20,225 | 2 (bcrypt, itsdangerous — necessary for auth) |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. Deep code review as a formal phase catches real bugs — validated in v1.2 (7 fixes), v2.0 (20 fixes), and v2.2 (5 fixes)
-2. Zero-dependency policy keeps the stack simple and Docker images small
+1. Deep code review as a formal phase catches real bugs — validated in v1.2 (7 fixes), v2.0 (20 fixes), v2.2 (5 fixes), v2.5 (26 fixes)
+2. Zero-dependency policy keeps the stack simple and Docker images small — v2.6 added 2 deps (bcrypt, itsdangerous) only because auth requires real crypto
 3. Fix test breakage immediately — deferred test debt compounds across phases
-4. Always populate requirements-completed in SUMMARY frontmatter — audit depends on it (v2.2)
+4. Always populate requirements-completed in SUMMARY frontmatter — audit depends on it (v2.2, v2.6)
 5. Pure functions are easy to test and verify — keep pipeline steps pure (v2.2)
+6. Shield security scan before milestone close finds real vulnerabilities — v2.6 hardening phase addressed all 11 findings
+7. AIDesigner HTML artifacts as binding spec for UI phases prevents design drift (v2.5, v2.6)
