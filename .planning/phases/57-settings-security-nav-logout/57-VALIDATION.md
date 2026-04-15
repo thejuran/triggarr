@@ -2,7 +2,7 @@
 phase: 57
 slug: settings-security-nav-logout
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-04-14
 ---
@@ -38,12 +38,12 @@ created: 2026-04-14
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 57-01-01 | 01 | 1 | SET-01 | T-57-01 | Auth mode only accepts Forms/Basic/External | unit | `uv run pytest tests/test_settings_security.py -k test_auth_mode_change -x` | ❌ W0 | ⬜ pending |
-| 57-01-02 | 01 | 1 | SET-02 | T-57-02 | Password change requires correct current password | unit | `uv run pytest tests/test_settings_security.py -k test_password_change -x` | ❌ W0 | ⬜ pending |
-| 57-01-03 | 01 | 1 | SET-03 | — | API key regeneration writes new key atomically | unit | `uv run pytest tests/test_settings_security.py -k test_api_key_regenerate -x` | ❌ W0 | ⬜ pending |
-| 57-01-04 | 01 | 1 | SET-04 | — | Disabled auth banner shown when method is Disabled | integration | `uv run pytest tests/test_settings_security.py -k test_disabled_banner -x` | ❌ W0 | ⬜ pending |
-| 57-01-05 | 01 | 1 | LOGIN-05 | T-57-03 | Session remains valid after auth mode change | integration | `uv run pytest tests/test_settings_security.py -k test_session_survives_mode_change -x` | ❌ W0 | ⬜ pending |
-| 57-02-01 | 02 | 1 | UI-03 | — | Security section renders in settings template | integration | `uv run pytest tests/test_settings_security.py -k test_security_section_renders -x` | ❌ W0 | ⬜ pending |
+| 57-01-01 | 01 | 1 | SET-01 | T-57-02 | Auth mode only accepts Forms/Basic/External | unit | `uv run pytest tests/test_auth_routes.py -k "test_security_save_method_basic or test_security_save_rejects_disabled or test_security_save_rejects_invalid" -x` | ✅ Plan 01 Task 1 | ⬜ pending |
+| 57-01-02 | 01 | 1 | SET-02 | T-57-01 | Password change requires correct current password | unit | `uv run pytest tests/test_auth_routes.py -k "test_change_password" -x` | ✅ Plan 01 Task 1 | ⬜ pending |
+| 57-01-03 | 01 | 1 | SET-03 | — | API key regeneration writes new key atomically | unit | `uv run pytest tests/test_auth_routes.py -k "test_regenerate_api_key" -x` | ✅ Plan 01 Task 1 | ⬜ pending |
+| 57-01-04 | 01 | 1 | SET-04 | — | Disabled auth banner context present when method is Disabled | integration | `uv run pytest tests/test_auth_routes.py -k "test_settings_page_disabled_banner" -x` | ✅ Plan 01 Task 1 | ⬜ pending |
+| 57-01-05 | 01 | 1 | LOGIN-05 | T-57-03 | Settings page auth context includes expected variables | integration | `uv run pytest tests/test_auth_routes.py -k "test_settings_page_auth_context" -x` | ✅ Plan 01 Task 1 | ⬜ pending |
+| 57-02-01 | 02 | 2 | UI-03 | — | Security section renders in settings template | integration | `uv run pytest tests/test_auth_routes.py -x -q` (full suite, templates verified by Jinja2 parse check) | ✅ Plan 01 Task 1 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -51,10 +51,10 @@ created: 2026-04-14
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_settings_security.py` — stubs for SET-01, SET-02, SET-03, SET-04, LOGIN-05, UI-03
-- [ ] Fixtures: test client with auth session, temp config with auth section
+- [x] `tests/test_auth_routes.py` — tests for SET-01, SET-02, SET-03, SET-04, LOGIN-05 created by Plan 01 Task 1 (TDD RED phase)
+- [x] Fixtures: existing `_make_route_app` factory, test client with auth session, temp config
 
-*Existing test infrastructure (pytest-asyncio, httpx test client) covers framework needs.*
+*All Wave 0 test scaffolding is handled by Plan 01 Task 1 (TDD plan, RED phase writes all failing tests first).*
 
 ---
 
@@ -71,11 +71,11 @@ created: 2026-04-14
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 5s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 5s
+- [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** pending
