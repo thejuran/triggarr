@@ -252,6 +252,15 @@ def test_basic_auth_invalid_credentials_returns_401():
     assert response.headers.get("www-authenticate") == 'Basic realm="Triggarr"'
 
 
+def test_basic_auth_wrong_username_returns_401():
+    """Basic mode with wrong username returns 401 with WWW-Authenticate."""
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+    response = client.get("/", headers={"Authorization": _basic_auth_header(username="notadmin")})
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == 'Basic realm="Triggarr"'
+
+
 def test_basic_auth_malformed_header_returns_401():
     """Basic mode with malformed Authorization header returns 401 (not 500)."""
     auth = _configured_auth(method="Basic")
