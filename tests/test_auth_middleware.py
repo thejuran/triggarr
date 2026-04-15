@@ -477,11 +477,26 @@ def test_invalid_api_key_returns_401_json_not_redirect():
 # ---------------------------------------------------------------------------
 
 
-def test_disabled_mode_logs_warning():
-    """Disabled mode logs a warning at startup (first request)."""
+def test_disabled_mode_logs_warning_periodically():
+    """Disabled mode logs a warning periodically (every 60s), not just once."""
     auth = _configured_auth(method="Disabled")
     client = TestClient(_make_auth_app(auth))
-    with patch("triggarr.web.middleware.logger") as mock_logger:
+    with (
+        patch("triggarr.web.middleware.logger") as mock_logger,
+        patch("triggarr.web.middleware.time") as mock_time,
+    ):
+        # First request at t=100 -> should log (0.0 + 60 <= 100)
+        mock_time.monotonic.return_value = 100.0
         client.get("/")
-        mock_logger.warning.assert_called_once()
+        assert mock_logger.warning.call_count == 1
         assert "disabled" in mock_logger.warning.call_args.args[0].lower()
+
+        # Second request at t=110 -> should NOT log (only 10s since last)
+        mock_time.monotonic.return_value = 110.0
+        client.get("/")
+        assert mock_logger.warning.call_count == 1
+
+        # Third request at t=200 -> should log again (100s since last > 60s)
+        mock_time.monotonic.return_value = 200.0
+        client.get("/")
+        assert mock_logger.warning.call_count == 2

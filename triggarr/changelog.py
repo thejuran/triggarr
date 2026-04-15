@@ -70,10 +70,16 @@ def read_changelog(
 def parse_changelog(text: str, *, latest_only: bool = False) -> str:
     """Parse changelog markdown text into HTML.
 
+    Security boundary: All user-visible text is passed through ``html.escape()``
+    before insertion into HTML output. This function returns content used in
+    ``HTMLResponse`` that bypasses Jinja2 autoescape, so the ``html.escape()``
+    calls within this function are the sole XSS defense. Any new text insertion
+    MUST also use ``html.escape()``.
+
     Handles:
-    - ``## vX.Y.Z (date)`` → version header
-    - ``* Category:`` → category subheading
-    - ``  * Item text`` → bullet list item
+    - ``## vX.Y.Z (date)`` -> version header
+    - ``* Category:`` -> category subheading
+    - ``  * Item text`` -> bullet list item
     """
     lines = text.splitlines()
     parts: list[str] = []

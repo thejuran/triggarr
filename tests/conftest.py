@@ -12,10 +12,10 @@ from triggarr.web.routes import _reset_rate_limiter
 
 @pytest.fixture(autouse=True)
 def _reset_disabled_warned():
-    """Reset AuthMiddleware._disabled_warned before each test to avoid order-dependent failures."""
-    AuthMiddleware._disabled_warned = False
+    """Reset AuthMiddleware._disabled_warned_at before each test to avoid order-dependent failures."""
+    AuthMiddleware._disabled_warned_at = 0.0
     yield
-    AuthMiddleware._disabled_warned = False
+    AuthMiddleware._disabled_warned_at = 0.0
 
 
 @pytest.fixture(autouse=True)

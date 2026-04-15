@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import secrets
+import time
 from urllib.parse import quote, urlparse
 
 from loguru import logger
@@ -87,7 +88,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
       7. fallback -> redirect to /login (browser) or 401 JSON (API)
     """
 
-    _disabled_warned: bool = False
+    _disabled_warned_at: float = 0.0
+    _DISABLED_WARN_INTERVAL: float = 60.0  # seconds
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Gate every non-exempt route through authentication checks."""
@@ -107,12 +109,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Step 2: Disabled -> pass through + warning
         if auth.is_disabled:
-            if not AuthMiddleware._disabled_warned:
+            now = time.monotonic()
+            if now - AuthMiddleware._disabled_warned_at >= AuthMiddleware._DISABLED_WARN_INTERVAL:
                 logger.warning(
                     "Authentication is disabled -- all requests are unauthenticated. "
                     "Set auth.method in triggarr.toml to enable."
                 )
-                AuthMiddleware._disabled_warned = True
+                AuthMiddleware._disabled_warned_at = now
             return await call_next(request)
 
         # Step 3: External -> pass through
