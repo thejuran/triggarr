@@ -11,6 +11,7 @@ import asyncio
 import html
 import os
 import re
+import secrets
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,7 +76,7 @@ templates.env.globals["auth_state"] = auth_state
 
 def _sync_auth_state(settings: SettingsModel) -> None:
     """Update auth_state dict for template conditional rendering (D-11)."""
-    auth_state["active"] = settings.auth.method in ("Forms", "Basic")
+    auth_state["active"] = settings.auth.method in ("Forms", "Basic") and not settings.auth.needs_setup
     auth_state["method"] = settings.auth.method
 
 
@@ -1116,7 +1117,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
     if (
         username
         and password
-        and username == auth.username
+        and secrets.compare_digest(username, auth.username)
         and verify_password(password, auth.password_hash.get_secret_value())
     ):
         # Success: set session cookie and redirect

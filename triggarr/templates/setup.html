@@ -80,6 +80,7 @@
             range.selectNodeContents(document.getElementById('api-key-display'));
             window.getSelection().removeAllRanges();
             window.getSelection().addRange(range);
+            document.execCommand('copy');
             btn.textContent = 'Copied!';
             setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
         }
