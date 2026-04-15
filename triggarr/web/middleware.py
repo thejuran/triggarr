@@ -150,6 +150,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         max_age=COOKIE_MAX_AGE,
                         httponly=True,
                         samesite="lax",
+                        secure=True,
                     )
                     return response
             except (ValueError, UnicodeDecodeError):
