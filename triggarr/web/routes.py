@@ -1142,7 +1142,10 @@ _WINDOW_SECONDS = 300
 
 
 def _check_rate_limit(ip: str) -> tuple[bool, int]:
-    """Check if IP is rate-limited. Returns (is_limited, retry_after_seconds)."""
+    """Check if IP is rate-limited. Prunes expired entries as a side effect.
+
+    Returns (is_limited, retry_after_seconds).
+    """
     now = time.monotonic()
     raw = _login_failures.get(ip)
     if raw is None:
@@ -1166,7 +1169,10 @@ def _record_failure(ip: str) -> None:
     if ip not in _login_failures:
         # Evict oldest entry if at capacity
         if len(_login_failures) >= _MAX_TRACKED_IPS:
-            oldest_ip = min(_login_failures, key=lambda k: _login_failures[k][0] if _login_failures[k] else float("inf"))
+            oldest_ip = min(
+                _login_failures,
+                key=lambda k: _login_failures[k][0] if _login_failures[k] else float("inf"),
+            )
             del _login_failures[oldest_ip]
         _login_failures[ip] = []
     _login_failures[ip].append(now)
