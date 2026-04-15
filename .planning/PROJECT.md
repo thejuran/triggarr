@@ -126,7 +126,7 @@ Defining requirements for v2.6 Built-In Authentication.
 
 ## Current State
 
-v2.6 Built-In Authentication in progress. Phase 55 complete — AuthMiddleware deny-all gate with D-10 check order (needs-setup, disabled, external, session, API key, Basic auth) and /health endpoint wired into application. Next: first-run setup and login pages.
+v2.6 Built-In Authentication in progress. Phase 58 complete — comprehensive auth test suite with 23 new tests (middleware gap-fill, route edge cases, cross-cutting integration flows), traceability blocks mapping all tests to SC-1 through SC-5, and defense-in-depth open redirect fix. 774 total tests passing. All auth phases (54-58) complete for this milestone.
 
 ### Out of Scope
 
