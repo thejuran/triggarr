@@ -155,29 +155,8 @@ def _settings_to_dict(settings: SettingsModel) -> dict:
 
 
 @router.get("/health")
-async def health(request: Request) -> JSONResponse:
-    """Health probe for container orchestrators.
-
-    Returns 200 when all enabled instances are reachable (connected=True),
-    503 when any enabled instance is unreachable or not yet verified.
-    If no apps are enabled, returns 200 (valid configuration, waiting for setup).
-    """
-    settings = request.app.state.settings
-    state = request.app.state.triggarr_state
-    problems: list[str] = []
-
-    for app_name in APP_TYPES:
-        for inst_name, _cfg in settings.get_enabled_instances(app_name).items():
-            inst_state = state.get(app_name, {}).get(inst_name, {})
-            connected = inst_state.get("connected")
-            if connected is not True:  # None (never run) or False (unreachable) -> unhealthy
-                problems.append(app_name)
-
-    if problems:
-        return JSONResponse(
-            {"status": "unhealthy", "unreachable": problems},
-            status_code=503,
-        )
+async def health() -> JSONResponse:
+    """Health check endpoint for uptime monitors."""
     return JSONResponse({"status": "ok"})
 
 
