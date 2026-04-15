@@ -424,17 +424,19 @@ Housekeeping (do last):
 | A2 | `unsafe-inline` is needed for Tailwind v4 inline styles | Architecture Patterns (CSP) | Styles might not render; easily testable |
 | A3 | X-Frame-Options should change from SAMEORIGIN to DENY to match frame-ancestors 'none' | Pitfall 5 | Minor inconsistency if wrong; browsers prefer CSP anyway |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Copy button behavior after API key masking**
    - What we know: Currently `copyApiKey()` copies `input.value` which is the real key. After fix, value will be a placeholder.
    - What's unclear: Should the copy button be hidden entirely when key is not revealed, or show a "not available" tooltip?
    - Recommendation: Hide the copy and eye-toggle buttons when `auth_api_key_set` is true but no revealed key. Show text like "Key hidden. Regenerate to reveal." This matches D-05 (reveal-on-regen only).
+   - RESOLVED: Plan 59-04, Task 2 hides copy and eye-toggle buttons via `{% if is_revealed %}` conditional wrapping, and adds "Key hidden. Regenerate to reveal." helper text below the input when not revealed.
 
 2. **Rate limiter test isolation**
    - What we know: Module-level dict persists between tests.
    - What's unclear: Best way to expose reset for testing -- function, or direct dict clear?
    - Recommendation: Add `_reset_rate_limiter()` function, call from conftest autouse fixture.
+   - RESOLVED: Plan 59-01 adds `_reset_rate_limiter()` function to routes.py that calls `_login_failures.clear()`, plus a conftest.py autouse fixture `_reset_rate_limit_state` that calls it before and after each test.
 
 ## Validation Architecture
 
@@ -467,6 +469,7 @@ Housekeeping (do last):
 ### Wave 0 Gaps
 - [ ] Rate limiter test fixtures (reset function + conftest autouse)
 - [ ] conftest.py update for `_disabled_warned_at` reset
+- [ ] `.gitleaksignore` file for test fixture false positives
 
 ## Security Domain
 
