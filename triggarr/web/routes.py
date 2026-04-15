@@ -398,7 +398,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "skip_unreleased": settings.general.skip_unreleased,
             "auth_method": settings.auth.method,
             "auth_is_disabled": settings.auth.is_disabled,
-            "auth_api_key": settings.auth.api_key.get_secret_value(),
+            "auth_api_key_set": bool(settings.auth.api_key.get_secret_value()),
             "auth_username": settings.auth.username,
         },
     )
@@ -1096,7 +1096,7 @@ async def setup_post(request: Request) -> HTMLResponse:
         samesite="lax",
         secure=_is_secure_context(request),
     )
-    logger.info("Setup completed for user {username}", username=username)
+    logger.info("Setup completed")
     return response
 
 
@@ -1206,7 +1206,10 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
 
     # Failure: record for rate limiting, then re-render with error (D-04)
     _record_failure(client_ip)
-    logger.warning("Login failed for user {username}", username=username)
+    logger.warning(
+        "Login failed: username_match={matched}",
+        matched=bool(username and secrets.compare_digest(username, auth.username)),
+    )
     return templates.TemplateResponse(
         request=request,
         name="login.html",

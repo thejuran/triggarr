@@ -924,3 +924,94 @@ class TestRateLimiterIntegration:
         )
         assert response.status_code == 200
         assert "Too many login attempts" in response.text
+
+
+# ---------------------------------------------------------------------------
+# SHIELD-002: Settings page passes boolean, not raw API key (D-04)
+# SHIELD-005: Login failure log sanitized (D-11)
+# SHIELD-011: Setup completion log sanitized (D-12)
+# ---------------------------------------------------------------------------
+
+
+def test_settings_page_context_uses_api_key_set_boolean():
+    """Settings page context contains auth_api_key_set (boolean), NOT auth_api_key (raw key)."""
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.get("/settings", cookies={"triggarr_session": cookie})
+    assert response.status_code == 200
+    # The raw API key value should NOT appear in the HTML
+    assert _TEST_API_KEY not in response.text
+    # The page should still function (settings page renders)
+    assert "Settings" in response.text
+
+
+def test_settings_page_does_not_leak_raw_api_key():
+    """Settings page HTML must not contain the raw API key string anywhere."""
+    auth_cfg = _configured_auth(api_key="unique_secret_key_12345678901234")
+    app = _make_route_app(auth_config=auth_cfg)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", auth_cfg.session_secret.get_secret_value())
+
+    response = client.get("/settings", cookies={"triggarr_session": cookie})
+    assert response.status_code == 200
+    assert "unique_secret_key_12345678901234" not in response.text
+
+
+def test_login_failure_log_contains_username_match_not_raw_username(tmp_path: Path):
+    """Login failure log uses username_match boolean, not the raw attempted username (D-11)."""
+    from unittest.mock import patch
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=tmp_path / "triggarr.toml")
+    client = TestClient(app, follow_redirects=False)
+
+    with patch("triggarr.web.routes.logger") as mock_logger:
+        client.post(
+            "/login",
+            data={"username": "attacker_name", "password": "wrongpassword", "next": ""},
+        )
+        # Should have logged a warning
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        log_msg = call_args[0][0] if call_args[0] else ""
+        log_kwargs = call_args[1] if call_args[1] else {}
+
+        # Must contain username_match indicator
+        assert "username_match" in log_msg
+        # Must NOT contain the raw attempted username
+        assert "attacker_name" not in log_msg
+        assert "attacker_name" not in str(log_kwargs)
+
+
+def test_setup_completion_log_is_generic(tmp_path: Path):
+    """Setup completion log is generic 'Setup completed' without username parameter (D-12)."""
+    from unittest.mock import patch
+
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+
+    with patch("triggarr.web.routes.logger") as mock_logger:
+        client.post(
+            "/setup",
+            data={"username": "newadmin", "password": "test123", "confirm_password": "test123"},
+        )
+        # Find the "Setup completed" info call
+        setup_calls = [
+            c for c in mock_logger.info.call_args_list
+            if c[0] and "Setup completed" in c[0][0]
+        ]
+        assert len(setup_calls) >= 1, "Expected 'Setup completed' log message"
+        call = setup_calls[0]
+        log_msg = call[0][0]
+        log_kwargs = call[1] if call[1] else {}
+
+        # Must be exactly "Setup completed" with no username parameter
+        assert log_msg == "Setup completed"
+        assert "username" not in log_kwargs
+        assert "newadmin" not in str(log_kwargs)
