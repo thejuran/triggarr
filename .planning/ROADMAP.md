@@ -193,9 +193,9 @@ Plans:
   3. User can change password by entering current password, new password, and confirmation; incorrect current password is rejected with a clear error
   4. User sees a warning banner in the Settings security section when auth is disabled via config file, explaining that auth mode can only be changed back from the config file
   5. Settings security section matches AIDesigner HTML artifact pixel-exact
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
+- [x] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
 - [ ] 57-02-PLAN.md -- Settings Security section templates + visual verification
 **UI hint**: yes
 
@@ -224,5 +224,5 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 | 54. Auth Config & Helpers | 2/2 | Complete    | 2026-04-15 |
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
 | 56. First-Run Setup & Login | 4/4 | Complete    | 2026-04-15 |
-| 57. Settings Security & Nav Logout | 0/? | Not started | - |
+| 57. Settings Security & Nav Logout | 1/2 | In Progress|  |
 | 58. Auth Test Suite | 0/? | Not started | - |
