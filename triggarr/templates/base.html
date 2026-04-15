@@ -48,6 +48,15 @@
            class="{% if current_path == settings_url.path %}text-white border-b-2 border-triggarr-green pb-1 -mb-[7px]{% else %}text-triggarr-muted hover:text-white{% endif %}">
           Settings
         </a>
+        {% if auth_state.active %}
+        <span class="text-triggarr-border">|</span>
+        <form method="post" action="{{ request.url_for('logout') }}" class="inline">
+          <button type="submit"
+                  class="text-triggarr-muted hover:text-white text-sm transition-colors cursor-pointer">
+            Logout
+          </button>
+        </form>
+        {% endif %}
       </div>
     </div>
   </nav>

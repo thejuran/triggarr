@@ -56,6 +56,11 @@ templates.env.globals["triggarr_version"] = get_display_version()
 # the scheduler needing to import from routes.
 update_info: dict = {}
 templates.env.globals["update_info"] = update_info
+# Shared mutable dict for auth display state. Plan 03's route handlers populate it
+# from settings on startup and after config changes. Templates use auth_state.active
+# for conditional logout link visibility (D-11).
+auth_state: dict = {"active": False}
+templates.env.globals["auth_state"] = auth_state
 
 
 def _relative_time_filter(iso_timestamp: str) -> str:
