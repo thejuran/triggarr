@@ -131,7 +131,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 54: Auth Config & Helpers** - Pydantic AuthConfig model, bcrypt password hashing, itsdangerous cookie signing, API key generation (completed 2026-04-14)
 - [x] **Phase 55: Auth Middleware & Health Endpoint** - Deny-all middleware with path whitelist, API key validation, unauthenticated /health, redirect vs 401 logic (completed 2026-04-15)
 - [x] **Phase 56: First-Run Setup & Login** - Setup page with credential creation, login page with Forms/Basic modes, session cookie management, first-run redirect guard (completed 2026-04-15)
-- [ ] **Phase 57: Settings Security & Nav Logout** - Settings security section for password/auth-mode/API-key management, nav bar logout, disabled-auth warning
+- [x] **Phase 57: Settings Security & Nav Logout** - Settings security section for password/auth-mode/API-key management, nav bar logout, disabled-auth warning (completed 2026-04-15)
 - [ ] **Phase 58: Auth Test Suite** - Comprehensive tests for all auth paths, middleware enforcement, session lifecycle, and edge cases
 
 ## Phase Details
@@ -193,10 +193,10 @@ Plans:
   3. User can change password by entering current password, new password, and confirmation; incorrect current password is rejected with a clear error
   4. User sees a warning banner in the Settings security section when auth is disabled via config file, explaining that auth mode can only be changed back from the config file
   5. Settings security section matches AIDesigner HTML artifact pixel-exact
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
-- [ ] 57-02-PLAN.md -- Settings Security section templates + visual verification
+- [x] 57-02-PLAN.md -- Settings Security section templates + visual verification
 **UI hint**: yes
 
 ### Phase 58: Auth Test Suite
@@ -211,7 +211,7 @@ Plans:
   5. Tests verify API key authentication via X-Api-Key header, including valid key, invalid key, and missing key scenarios
 **Plans:** 2 plans
 Plans:
-- [ ] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
+- [x] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
 - [ ] 57-02-PLAN.md -- Settings Security section templates + visual verification
 
 ## Progress
@@ -224,5 +224,5 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 | 54. Auth Config & Helpers | 2/2 | Complete    | 2026-04-15 |
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
 | 56. First-Run Setup & Login | 4/4 | Complete    | 2026-04-15 |
-| 57. Settings Security & Nav Logout | 1/2 | In Progress|  |
+| 57. Settings Security & Nav Logout | 2/2 | Complete   | 2026-04-15 |
 | 58. Auth Test Suite | 0/? | Not started | - |
