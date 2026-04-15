@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Triggarr{% endblock %}</title>
+  <link rel="icon" type="image/x-icon" href="{{ request.url_for('static', path='favicon.ico') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ request.url_for('static', path='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ request.url_for('static', path='favicon-16x16.png') }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='apple-touch-icon.png') }}">
+  <link rel="manifest" href="{{ request.url_for('static', path='site.webmanifest') }}">
+  <link rel="stylesheet" href="{{ request.url_for('static', path='css/output.css') }}">
+</head>
+<body class="bg-triggarr-bg text-triggarr-text min-h-screen flex items-center justify-center">
+  {% block content %}{% endblock %}
+</body>
+</html>

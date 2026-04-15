@@ -1,0 +1,39 @@
+{% extends "base-auth.html" %}
+
+{% block title %}Login - Triggarr{% endblock %}
+
+{% block content %}
+<div class="max-w-[420px] w-full bg-triggarr-card border border-triggarr-border rounded-lg p-6">
+  <p class="text-triggarr-green text-xl font-medium text-center">Triggarr</p>
+  <h1 class="text-xl font-medium text-triggarr-text text-center mt-4">Sign In</h1>
+
+  {% if error %}
+  <p class="text-red-500 text-sm text-center mt-4" aria-live="polite">{{ error }}</p>
+  {% endif %}
+
+  <form method="post" action="{{ request.url_for('login_post') }}" class="mt-6">
+    <input type="hidden" name="next" value="{{ next_url | default('', true) }}">
+    <div class="space-y-4">
+      <div>
+        <label for="username" class="block text-sm font-medium text-triggarr-muted mb-1">Username</label>
+        <input type="text" id="username" name="username"
+               value="{{ username | default('', true) }}"
+               autocomplete="username"
+               {% if not username %}autofocus{% endif %}
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+      </div>
+      <div>
+        <label for="password" class="block text-sm font-medium text-triggarr-muted mb-1">Password</label>
+        <input type="password" id="password" name="password"
+               autocomplete="current-password"
+               {% if username %}autofocus{% endif %}
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+      </div>
+    </div>
+    <button type="submit"
+            class="w-full bg-triggarr-green hover:bg-triggarr-green-dark text-white text-sm font-medium rounded py-2 mt-6 transition-colors cursor-pointer">
+      Sign In
+    </button>
+  </form>
+</div>
+{% endblock %}
