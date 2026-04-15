@@ -14,6 +14,7 @@ import asyncio
 import tomllib
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
@@ -24,6 +25,16 @@ from triggarr.models.config import AuthConfig, GeneralConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.web.middleware import AuthMiddleware
 from triggarr.web.routes import _safe_next_url, _settings_to_dict, auth_state, router
+
+
+@pytest.fixture(autouse=True)
+def _reset_auth_state():
+    """Reset module-level auth_state between tests to prevent order dependency."""
+    original = dict(auth_state)
+    yield
+    auth_state.clear()
+    auth_state.update(original)
+
 
 # ---------------------------------------------------------------------------
 # Integration test helpers

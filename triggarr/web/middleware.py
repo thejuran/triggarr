@@ -147,13 +147,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     session_value = sign_session(
                         username, auth.session_secret.get_secret_value()
                     )
+                    _secure = request.url.scheme == "https" or request.headers.get(
+                        "x-forwarded-proto", ""
+                    ) == "https"
                     response.set_cookie(
                         "triggarr_session",
                         session_value,
                         max_age=COOKIE_MAX_AGE,
                         httponly=True,
                         samesite="lax",
-                        secure=True,
+                        secure=_secure,
                     )
                     return response
             except (ValueError, UnicodeDecodeError):

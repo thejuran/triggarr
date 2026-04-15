@@ -217,6 +217,12 @@ def create_lifespan(
 
         app.state.update_info = _update_info
 
+        # Sync auth_state at startup so the nav bar logout link renders
+        # correctly for users whose session cookie is still valid after restart.
+        from triggarr.web.routes import _sync_auth_state
+
+        _sync_auth_state(settings)
+
         # --- Schedule jobs for enabled instances using make_search_job ---
         for app_name in APP_TYPES:
             for inst_name, cfg in settings.get_enabled_instances(app_name).items():

@@ -74,6 +74,13 @@ auth_state: dict = {"active": False}
 templates.env.globals["auth_state"] = auth_state
 
 
+def _is_secure_context(request: Request) -> bool:
+    """True when the request arrived over HTTPS (direct or via reverse proxy)."""
+    if request.url.scheme == "https":
+        return True
+    return request.headers.get("x-forwarded-proto", "") == "https"
+
+
 def _sync_auth_state(settings: SettingsModel) -> None:
     """Update auth_state dict for template conditional rendering (D-11)."""
     auth_state["active"] = settings.auth.method in ("Forms", "Basic") and not settings.auth.needs_setup
@@ -172,6 +179,13 @@ def _safe_next_url(next_param: str | None) -> str:
     if "\\" in next_param:
         return "/"
     if not next_param.startswith("/"):
+        return "/"
+    # Block javascript:/data:/vbscript: scheme injections that begin with a path segment
+    lower = next_param.lower().lstrip("/")
+    if lower.startswith(("javascript:", "data:", "vbscript:")):
+        return "/"
+    # Reject null bytes which can confuse routing and logging
+    if "\x00" in next_param:
         return "/"
     return next_param
 
@@ -1063,6 +1077,10 @@ async def setup_post(request: Request) -> HTMLResponse:
     # Update auth_state for nav bar logout visibility
     _sync_auth_state(request.app.state.settings)
 
+    # Refresh redacting sink so new credentials are never logged in cleartext
+    _new_secrets = collect_secrets(request.app.state.settings)
+    setup_logging(request.app.state.settings.general.log_level, _new_secrets)
+
     # Auto-login: set session cookie (D-01)
     session_value = sign_session(username, session_secret)
     response = templates.TemplateResponse(
@@ -1076,7 +1094,7 @@ async def setup_post(request: Request) -> HTMLResponse:
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=True,
+        secure=_is_secure_context(request),
     )
     logger.info("Setup completed for user {username}", username=username)
     return response
@@ -1130,7 +1148,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
             max_age=COOKIE_MAX_AGE,
             httponly=True,
             samesite="lax",
-            secure=True,
+            secure=_is_secure_context(request),
         )
         logger.info("Login successful for user {username}", username=username)
         return response
@@ -1143,7 +1161,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
         context={
             "error": "Invalid username or password",
             "username": username,
-            "next_url": form.get("next", ""),
+            "next_url": next_url,
         },
     )
 
@@ -1152,6 +1170,12 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
 async def logout(request: Request) -> RedirectResponse:
     """Clear session cookie and redirect to login page (D-09)."""
     response = RedirectResponse(url=request.url_for("login_page"), status_code=303)
-    response.delete_cookie("triggarr_session", path="/")
+    response.delete_cookie(
+        "triggarr_session",
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=_is_secure_context(request),
+    )
     logger.info("User logged out")
     return response
