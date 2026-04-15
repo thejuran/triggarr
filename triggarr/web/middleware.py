@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import base64
+import secrets
 from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
+
+from triggarr.auth import COOKIE_MAX_AGE, sign_session, validate_session, verify_password
+
+# Paths that bypass authentication entirely.
+# Prefix matching is intentional: /static covers all static assets,
+# /login covers GET and POST, /setup covers the setup flow.
+EXEMPT_PREFIXES = ("/health", "/static", "/login", "/setup")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -51,3 +60,101 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
             # Neither header present: allow (same-origin browser behavior)
 
         return await call_next(request)
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Deny-all authentication middleware with path whitelist.
+
+    Every non-exempt request must pass one of the authentication checks
+    defined in the dispatch method. Check order follows D-10 from the
+    phase context:
+      1. needs_setup -> redirect to /setup
+      2. is_disabled -> pass through
+      3. method == External -> pass through
+      4. valid session cookie -> pass through
+      5. valid X-Api-Key -> pass through
+      6. method == Basic -> check Authorization header
+      7. fallback -> redirect to /login (browser) or 401 JSON (API)
+    """
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Gate every non-exempt route through authentication checks."""
+        path = request.url.path
+
+        # Exempt paths pass through without auth
+        if any(path.startswith(prefix) for prefix in EXEMPT_PREFIXES):
+            return await call_next(request)
+
+        auth = request.app.state.settings.auth
+
+        # Step 1: needs_setup -> redirect to /setup
+        if auth.needs_setup:
+            if self._is_browser(request):
+                return RedirectResponse("/setup", status_code=302)
+            return JSONResponse({"detail": "Setup required", "setup_url": "/setup"}, status_code=401)
+
+        # Step 2: Disabled -> pass through
+        if auth.is_disabled:
+            return await call_next(request)
+
+        # Step 3: External -> pass through
+        if auth.method == "External":
+            return await call_next(request)
+
+        # Step 4: Valid session cookie -> pass through
+        cookie = request.cookies.get("triggarr_session")
+        username = validate_session(cookie, auth.session_secret.get_secret_value())
+        if username:
+            return await call_next(request)
+
+        # Step 5: Valid X-Api-Key -> pass through (timing-safe comparison)
+        api_key = request.headers.get("x-api-key")
+        if api_key and secrets.compare_digest(api_key, auth.api_key.get_secret_value()):
+            return await call_next(request)
+
+        # Step 6: Basic auth mode -> check Authorization header
+        if auth.method == "Basic":
+            return await self._handle_basic_auth(request, auth, call_next)
+
+        # Step 7: Fallback -> redirect or 401
+        if self._is_browser(request):
+            return RedirectResponse("/login", status_code=302)
+        return JSONResponse({"detail": "Authentication required"}, status_code=401)
+
+    @staticmethod
+    def _is_browser(request: Request) -> bool:
+        """Check if the request comes from a browser based on Accept header."""
+        accept = request.headers.get("accept", "")
+        return "text/html" in accept
+
+    @staticmethod
+    async def _handle_basic_auth(
+        request: Request, auth: object, call_next: RequestResponseEndpoint
+    ) -> Response:
+        """Decode Basic auth header, verify credentials, set session cookie on success."""
+        authorization = request.headers.get("authorization", "")
+        if authorization.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(authorization[6:]).decode("utf-8")
+                username, _, password = decoded.partition(":")
+                if username == auth.username and verify_password(
+                    password, auth.password_hash.get_secret_value()
+                ):
+                    response = await call_next(request)
+                    session_value = sign_session(
+                        username, auth.session_secret.get_secret_value()
+                    )
+                    response.set_cookie(
+                        "triggarr_session",
+                        session_value,
+                        max_age=COOKIE_MAX_AGE,
+                        httponly=True,
+                        samesite="lax",
+                    )
+                    return response
+            except (ValueError, UnicodeDecodeError):
+                pass
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Triggarr"'},
+        )
