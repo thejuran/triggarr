@@ -130,7 +130,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 - [x] **Phase 54: Auth Config & Helpers** - Pydantic AuthConfig model, bcrypt password hashing, itsdangerous cookie signing, API key generation (completed 2026-04-14)
 - [x] **Phase 55: Auth Middleware & Health Endpoint** - Deny-all middleware with path whitelist, API key validation, unauthenticated /health, redirect vs 401 logic (completed 2026-04-15)
-- [ ] **Phase 56: First-Run Setup & Login** - Setup page with credential creation, login page with Forms/Basic modes, session cookie management, first-run redirect guard
+- [x] **Phase 56: First-Run Setup & Login** - Setup page with credential creation, login page with Forms/Basic modes, session cookie management, first-run redirect guard (completed 2026-04-15)
 - [ ] **Phase 57: Settings Security & Nav Logout** - Settings security section for password/auth-mode/API-key management, nav bar logout, disabled-auth warning
 - [ ] **Phase 58: Auth Test Suite** - Comprehensive tests for all auth paths, middleware enforcement, session lifecycle, and edge cases
 
@@ -176,12 +176,12 @@ Plans:
   3. User can log in at `/login` with username and password; a valid login creates a signed session cookie that persists across browser restarts for 30 days
   4. User can click a logout button in the nav bar that clears the session cookie and redirects to `/login`
   5. Login and setup pages match AIDesigner HTML artifacts pixel-exact (design generated via AIDesigner, implemented faithfully in Jinja2 templates)
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 Plans:
 - [x] 56-01-PLAN.md -- TDD: _safe_next_url open redirect prevention + _settings_to_dict auth extension
 - [x] 56-02-PLAN.md -- Jinja2 templates (base-auth.html, login.html, setup.html) + nav bar logout
 - [x] 56-03-PLAN.md -- Route handlers (setup, login, logout) + middleware ?next= update
-- [ ] 56-04-PLAN.md -- TDD: Integration tests for all auth route handlers
+- [x] 56-04-PLAN.md -- TDD: Integration tests for all auth route handlers
 
 ### Phase 57: Settings Security & Nav Logout
 **Goal**: Users can manage their authentication settings -- change password, switch auth mode, view/copy/regenerate API key -- from a dedicated security section in Settings
@@ -217,6 +217,6 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 |-------|----------------|--------|-----------|
 | 54. Auth Config & Helpers | 2/2 | Complete    | 2026-04-15 |
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
-| 56. First-Run Setup & Login | 3/4 | In Progress|  |
+| 56. First-Run Setup & Login | 4/4 | Complete   | 2026-04-15 |
 | 57. Settings Security & Nav Logout | 0/? | Not started | - |
 | 58. Auth Test Suite | 0/? | Not started | - |
