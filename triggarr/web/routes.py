@@ -137,6 +137,23 @@ def _format_duration(seconds: float | None) -> str:
     return f"{hours}h {remaining_minutes}m"
 
 
+def _safe_next_url(next_param: str | None) -> str:
+    """Validate ?next= param, rejecting open redirects. Returns safe URL or '/'.
+
+    Rejects absolute URLs (http/https), protocol-relative URLs (//),
+    backslash URLs, and paths not starting with '/'.
+    """
+    if not next_param:
+        return "/"
+    if next_param.startswith(("http://", "https://", "//")):
+        return "/"
+    if "\\" in next_param:
+        return "/"
+    if not next_param.startswith("/"):
+        return "/"
+    return next_param
+
+
 def _settings_to_dict(settings: SettingsModel) -> dict:
     """Convert Settings to a plain dict suitable for TOML serialization.
 
@@ -151,6 +168,15 @@ def _settings_to_dict(settings: SettingsModel) -> dict:
             d = cfg.model_dump()
             d["api_key"] = cfg.api_key.get_secret_value()  # TOML serialization extraction
             result[app_name][inst_name] = d
+    # Auth section: extract SecretStr values for TOML serialization
+    auth = settings.auth
+    result["auth"] = {
+        "method": auth.method,
+        "username": auth.username,
+        "password_hash": auth.password_hash.get_secret_value(),
+        "api_key": auth.api_key.get_secret_value(),
+        "session_secret": auth.session_secret.get_secret_value(),
+    }
     return result
 
 

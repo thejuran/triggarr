@@ -13,7 +13,6 @@ from triggarr.models.config import AuthConfig, GeneralConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.web.routes import _safe_next_url, _settings_to_dict
 
-
 # ---------------------------------------------------------------------------
 # _safe_next_url tests
 # ---------------------------------------------------------------------------
