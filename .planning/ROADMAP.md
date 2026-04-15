@@ -226,18 +226,18 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58 -> 59
 | 56. First-Run Setup & Login | 4/4 | Complete    | 2026-04-15 |
 | 57. Settings Security & Nav Logout | 2/2 | Complete    | 2026-04-15 |
 | 58. Auth Test Suite | 2/2 | Complete    | 2026-04-15 |
-| 59. Security Hardening | 0/4 | Planning    | -- |
+| 59. Security Hardening | 2/4 | In Progress|  |
 
 ### Phase 59: Security Hardening — Address Shield findings (SHIELD-001 through SHIELD-011)
 
 **Goal:** All actionable Shield security findings (SHIELD-001 through SHIELD-011) are resolved -- rate limiting on login, CSP headers, API key exposure fixed, SSRF IPv6 hardening, log sanitization, and auth-disabled periodic warning -- with remaining findings risk-accepted
 **Requirements**: D-01 through D-17 (CONTEXT.md decisions mapping to SHIELD-001 through SHIELD-011)
 **Depends on:** Phase 58
-**Plans:** 4 plans
+**Plans:** 2/4 plans executed
 
 Plans:
-- [ ] 59-01-PLAN.md -- TDD: In-memory sliding window rate limiter on POST /login (SHIELD-003)
-- [ ] 59-02-PLAN.md -- TDD: SSRF IPv6 hardening -- IPv4-mapped and multicast blocking (SHIELD-007)
+- [x] 59-01-PLAN.md -- TDD: In-memory sliding window rate limiter on POST /login (SHIELD-003)
+- [x] 59-02-PLAN.md -- TDD: SSRF IPv6 hardening -- IPv4-mapped and multicast blocking (SHIELD-007)
 - [ ] 59-03-PLAN.md -- CSP header, auth-disabled periodic warning, changelog comment (SHIELD-001, SHIELD-009, SHIELD-010)
 - [ ] 59-04-PLAN.md -- API key exposure fix, log sanitization, .gitleaksignore (SHIELD-002, SHIELD-005, SHIELD-011, SHIELD-004)
 **Success Criteria** (what must be TRUE):
