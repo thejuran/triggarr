@@ -126,7 +126,7 @@ Defining requirements for v2.6 Built-In Authentication.
 
 ## Current State
 
-Starting v2.6 Built-In Authentication. Adding *arr-style auth to close the last major security gap. Design spec validated.
+v2.6 Built-In Authentication in progress. Phase 55 complete — AuthMiddleware deny-all gate with D-10 check order (needs-setup, disabled, external, session, API key, Basic auth) and /health endpoint wired into application. Next: first-run setup and login pages.
 
 ### Out of Scope
 
@@ -224,4 +224,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after Phase 54 (auth-config-helpers) complete — AuthConfig model, bcrypt/itsdangerous helpers, secret redaction*
+*Last updated: 2026-04-15 after Phase 55 (auth-middleware-health-endpoint) complete — AuthMiddleware deny-all gate, /health endpoint, middleware wired into app*
