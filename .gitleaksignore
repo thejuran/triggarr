@@ -1,0 +1,5 @@
+# Test fixture API keys -- not real credentials
+tests/test_auth_middleware.py
+tests/test_auth_routes.py
+tests/test_auth_integration.py
+tests/test_auth_config.py
