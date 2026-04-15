@@ -1191,7 +1191,6 @@ _ALLOWED_AUTH_METHODS = {"Forms", "Basic", "External"}
 @router.post("/settings/password")
 async def change_password(request: Request) -> HTMLResponse:
     """Change user password with current-password verification."""
-    settings = request.app.state.settings
     form = await request.form()
     current_password = form.get("current_password", "")
     new_password = form.get("new_password", "")
@@ -1199,10 +1198,7 @@ async def change_password(request: Request) -> HTMLResponse:
 
     errors: dict[str, str] = {}
 
-    # Validate current password (T-57-01: always verify before accepting new hash)
-    if not verify_password(current_password, settings.auth.password_hash.get_secret_value()):
-        errors["current_password"] = "Current password is incorrect"
-    elif not new_password:
+    if not new_password:
         errors["new_password"] = "New password is required"
     elif new_password != confirm_password:
         errors["confirm_password"] = "Passwords do not match"
@@ -1214,13 +1210,20 @@ async def change_password(request: Request) -> HTMLResponse:
             context={"errors": errors},
         )
 
-    # Hash and persist
-    new_hash = hash_password(new_password)
-    new_auth = settings.auth.model_copy(update={"password_hash": SecretStr(new_hash)})
-
     config_path = request.app.state.config_path
     async with request.app.state.search_lock:
+        # Verify current password inside lock to prevent TOCTOU race (WR-01)
         current_settings = request.app.state.settings
+        if not verify_password(current_password, current_settings.auth.password_hash.get_secret_value()):
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/security_password.html",
+                context={"errors": {"current_password": "Current password is incorrect"}},
+            )
+
+        # Hash and persist
+        new_hash = hash_password(new_password)
+        new_auth = current_settings.auth.model_copy(update={"password_hash": SecretStr(new_hash)})
         updated = current_settings.model_copy(update={"auth": new_auth})
         config_dict = _settings_to_dict(updated)
         await asyncio.get_running_loop().run_in_executor(

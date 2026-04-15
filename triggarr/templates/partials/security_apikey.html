@@ -9,7 +9,6 @@
     <div class="relative flex-1">
       <input type="{{ 'text' if is_revealed else 'password' }}" value="{{ key }}" readonly
              id="api-key-input"
-             data-key="{{ key }}"
              class="w-full bg-[#0f172a] border border-[#334155] rounded px-3 py-2 text-sm tracking-widest pr-10">
       <button type="button" onclick="toggleApiKeyVisibility()"
               class="absolute right-2 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-white transition-colors cursor-pointer"

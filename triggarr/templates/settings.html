@@ -278,7 +278,7 @@ function toggleApiKeyVisibility() {
 }
 
 function copyApiKey(btn) {
-    var key = document.getElementById('api-key-input').dataset.key;
+    var key = document.getElementById('api-key-input').value;
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(key).then(function() {
             btn.innerHTML = '<span class="text-sm">Copied!</span>';
