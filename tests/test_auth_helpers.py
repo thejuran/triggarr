@@ -129,6 +129,12 @@ def test_validate_session_tampered_returns_none() -> None:
     assert validate_session("tampered-value", secret) is None
 
 
+def test_validate_session_none_cookie_returns_none() -> None:
+    """validate_session returns None when cookie_value is None (missing cookie)."""
+    secret = generate_session_secret()
+    assert validate_session(None, secret) is None
+
+
 def test_validate_session_wrong_secret_returns_none() -> None:
     """validate_session rejects a cookie signed with a different secret."""
     secret1 = generate_session_secret()

@@ -37,10 +37,14 @@ def verify_password(plaintext: str, hashed: str) -> bool:
         hashed: The stored bcrypt hash.
 
     Returns:
-        True if the password matches the hash.
+        True if the password matches the hash, False for mismatches
+        or invalid inputs (empty hash, malformed hash, >72-byte password).
     """
+    raw = plaintext.encode()
+    if len(raw) > 72:
+        return False
     try:
-        return bcrypt.checkpw(plaintext.encode(), hashed.encode())
+        return bcrypt.checkpw(raw, hashed.encode())
     except (ValueError, TypeError):
         return False
 
@@ -73,6 +77,8 @@ def sign_session(username: str, secret: str) -> str:
     Returns:
         Signed cookie string safe for HTTP Set-Cookie.
     """
+    if not username:
+        raise ValueError("username must not be empty")
     if not secret:
         raise ValueError("session_secret must not be empty")
     signer = TimestampSigner(secret)
@@ -94,5 +100,5 @@ def validate_session(cookie_value: str, secret: str) -> str | None:
     signer = TimestampSigner(secret)
     try:
         return signer.unsign(cookie_value, max_age=COOKIE_MAX_AGE).decode()
-    except (SignatureExpired, BadSignature):
+    except (SignatureExpired, BadSignature, TypeError):
         return None

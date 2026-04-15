@@ -96,12 +96,12 @@ def test_settings_has_auth_field() -> None:
 
 def test_collect_secrets_includes_auth_secrets() -> None:
     """collect_secrets gathers auth password_hash, api_key, and session_secret."""
-    settings = Settings()
-    # Override auth with known secret values
-    settings.auth = AuthConfig(
-        password_hash="hash123",
-        api_key="apikey456",
-        session_secret="secret789",
+    settings = Settings(
+        auth=AuthConfig(
+            password_hash="hash123",
+            api_key="apikey456",
+            session_secret="secret789",
+        ),
     )
     secrets = collect_secrets(settings)
     assert "hash123" in secrets
