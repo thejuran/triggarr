@@ -13,7 +13,7 @@ from loguru import logger
 from triggarr.models.config import CONFIG_PATH
 from triggarr.search.scheduler import create_lifespan
 from triggarr.state import STATE_PATH
-from triggarr.web.middleware import OriginCheckMiddleware, SecurityHeadersMiddleware
+from triggarr.web.middleware import AuthMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware
 from triggarr.web.routes import STATIC_DIR, router
 
 
@@ -64,8 +64,9 @@ async def _run() -> None:
         )
 
     app = FastAPI(lifespan=create_lifespan(settings, STATE_PATH, CONFIG_PATH))
-    app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(OriginCheckMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)   # runs 3rd (response headers)
+    app.add_middleware(OriginCheckMiddleware)        # runs 2nd (CSRF)
+    app.add_middleware(AuthMiddleware)               # runs 1st (auth gate) -- MUST BE LAST
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)
 
