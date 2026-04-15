@@ -478,17 +478,11 @@ def _make_auth_app(auth_config: AuthConfig | None = None) -> FastAPI:
 | A1 | `path.startswith()` prefix matching for EXEMPT_PREFIXES is sufficient (no need for exact match or regex) | Architecture Patterns | LOW -- only risk is an accidentally matching route like `/healthcheck`, which doesn't exist |
 | A2 | `samesite="lax"` is the correct cookie attribute (not "strict") | Code Examples | LOW -- "lax" allows top-level navigation which is needed for login redirects; "strict" would break redirect-then-cookie flow |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should `/favicon.ico` be exempt?**
-   - What we know: Browsers request favicon on every page load. If not exempt, it will trigger auth checks on every request.
-   - What's unclear: Whether the existing `/static` prefix covers favicon (it does if favicon is served from `/static/`).
-   - Recommendation: Check if favicon is served from `/static/` -- if so, already covered. If served from root `/favicon.ico`, add it to EXEMPT_PREFIXES or ensure it's a static mount.
+1. **Should `/favicon.ico` be exempt?** — RESOLVED: favicon is served from `/static/`, already covered by the `/static` prefix in EXEMPT_PREFIXES. No change needed.
 
-2. **Should `secure=True` be set on the session cookie?**
-   - What we know: Docker-first homelab deployment. Many users access via HTTP on local network. `secure=True` would break HTTP-only setups.
-   - What's unclear: Whether to auto-detect HTTPS or leave it to the user.
-   - Recommendation: Omit `secure=True` for now (homelab context). Can be added later as an option or auto-detected from the request scheme.
+2. **Should `secure=True` be set on the session cookie?** — RESOLVED: Omit `secure=True` for homelab Docker context (many users on HTTP local network). Can be added later or auto-detected from request scheme.
 
 ## Validation Architecture
 
