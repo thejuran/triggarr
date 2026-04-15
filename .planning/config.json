@@ -8,7 +8,8 @@
     "plan_check": true,
     "verifier": true,
     "code_review": true,
-    "_auto_chain_active": false
+    "_auto_chain_active": false,
+    "tdd_mode": true
   },
   "granularity": "standard"
 }
