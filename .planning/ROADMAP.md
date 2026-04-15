@@ -211,8 +211,8 @@ Plans:
   5. Tests verify API key authentication via X-Api-Key header, including valid key, invalid key, and missing key scenarios
 **Plans:** 2 plans
 Plans:
-- [x] 57-01-PLAN.md -- TDD: Security settings POST endpoints + GET auth context
-- [x] 57-02-PLAN.md -- Settings Security section templates + visual verification
+- [ ] 58-01-PLAN.md -- Gap-fill existing test files (middleware, routes, config, helpers) + disabled warning log
+- [ ] 58-02-PLAN.md -- Cross-cutting integration tests (setup->login->use->logout flows)
 
 ## Progress
 
@@ -225,4 +225,4 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
 | 56. First-Run Setup & Login | 4/4 | Complete    | 2026-04-15 |
 | 57. Settings Security & Nav Logout | 2/2 | Complete    | 2026-04-15 |
-| 58. Auth Test Suite | 0/? | Not started | - |
+| 58. Auth Test Suite | 0/2 | Not started | - |
