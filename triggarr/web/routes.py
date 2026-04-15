@@ -1081,7 +1081,7 @@ async def setup_post(request: Request) -> HTMLResponse:
     return response
 
 
-@router.get("/login", response_class=HTMLResponse)
+@router.get("/login", response_class=HTMLResponse, response_model=None)
 async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
     """Render login form, or redirect to dashboard if already authenticated (D-06)."""
     auth = request.app.state.settings.auth
@@ -1103,7 +1103,7 @@ async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
     )
 
 
-@router.post("/login")
+@router.post("/login", response_model=None)
 async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
     """Authenticate credentials, set session cookie, redirect to ?next= or dashboard."""
     auth = request.app.state.settings.auth
