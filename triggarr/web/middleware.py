@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from triggarr.auth import COOKIE_MAX_AGE, sign_session, validate_session, verify_password
+from triggarr.models.config import AuthConfig
 
 # Paths that bypass authentication entirely.
 # Prefix matching is intentional: /static covers all static assets,
@@ -129,7 +130,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     async def _handle_basic_auth(
-        request: Request, auth: object, call_next: RequestResponseEndpoint
+        request: Request, auth: AuthConfig, call_next: RequestResponseEndpoint
     ) -> Response:
         """Decode Basic auth header, verify credentials, set session cookie on success."""
         authorization = request.headers.get("authorization", "")
