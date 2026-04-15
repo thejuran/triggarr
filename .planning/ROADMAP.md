@@ -209,9 +209,9 @@ Plans:
   3. Tests verify login with valid/invalid credentials, session cookie creation and validation, 30-day expiry, and logout clearing the cookie
   4. Tests verify all four auth modes (Forms redirect, Basic WWW-Authenticate, External pass-through, Disabled with warning log) behave correctly
   5. Tests verify API key authentication via X-Api-Key header, including valid key, invalid key, and missing key scenarios
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 58-01-PLAN.md -- Gap-fill existing test files (middleware, routes, config, helpers) + disabled warning log
+- [x] 58-01-PLAN.md -- Gap-fill existing test files (middleware, routes, config, helpers) + disabled warning log
 - [ ] 58-02-PLAN.md -- Cross-cutting integration tests (setup->login->use->logout flows)
 
 ## Progress
@@ -225,4 +225,4 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
 | 56. First-Run Setup & Login | 4/4 | Complete    | 2026-04-15 |
 | 57. Settings Security & Nav Logout | 2/2 | Complete    | 2026-04-15 |
-| 58. Auth Test Suite | 0/2 | Not started | - |
+| 58. Auth Test Suite | 1/2 | In Progress|  |
