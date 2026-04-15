@@ -7,6 +7,7 @@ import pytest
 from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 from triggarr.state import TriggarrState, _default_state
 from triggarr.web.middleware import AuthMiddleware
+from triggarr.web.routes import _reset_rate_limiter
 
 
 @pytest.fixture(autouse=True)
@@ -15,6 +16,14 @@ def _reset_disabled_warned():
     AuthMiddleware._disabled_warned = False
     yield
     AuthMiddleware._disabled_warned = False
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit_state():
+    """Reset rate limiter state before each test to prevent order dependency."""
+    _reset_rate_limiter()
+    yield
+    _reset_rate_limiter()
 
 
 def make_settings(

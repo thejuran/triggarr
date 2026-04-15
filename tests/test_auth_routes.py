@@ -30,7 +30,15 @@ from triggarr.auth import generate_session_secret, hash_password, sign_session
 from triggarr.models.config import AuthConfig, GeneralConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.web.middleware import AuthMiddleware
-from triggarr.web.routes import _safe_next_url, _settings_to_dict, auth_state, router
+from triggarr.web.routes import (
+    _check_rate_limit,
+    _record_failure,
+    _reset_rate_limiter,
+    _safe_next_url,
+    _settings_to_dict,
+    auth_state,
+    router,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -769,3 +777,151 @@ def test_login_get_rejects_protocol_relative_next(tmp_path: Path):
     assert response.status_code == 200
     assert "evil.com" not in response.text
     assert 'value="/"' in response.text
+
+
+# ---------------------------------------------------------------------------
+# Rate limiter unit tests (SHIELD-003 / D-01, D-02, D-03)
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimiterHelpers:
+    """Unit tests for _check_rate_limit, _record_failure, _reset_rate_limiter."""
+
+    def test_check_rate_limit_no_failures_not_limited(self):
+        """_check_rate_limit returns (False, 0) when no failures recorded."""
+        is_limited, retry_after = _check_rate_limit("1.2.3.4")
+        assert is_limited is False
+        assert retry_after == 0
+
+    def test_record_failure_increments(self):
+        """_record_failure adds a timestamp for the given IP."""
+        _record_failure("1.2.3.4")
+        is_limited, _ = _check_rate_limit("1.2.3.4")
+        assert is_limited is False  # 1 failure < 10
+
+    def test_nine_failures_not_limited(self):
+        """9 failed attempts from same IP should not trigger rate limit."""
+        for _ in range(9):
+            _record_failure("1.2.3.4")
+        is_limited, retry_after = _check_rate_limit("1.2.3.4")
+        assert is_limited is False
+        assert retry_after == 0
+
+    def test_ten_failures_triggers_rate_limit(self):
+        """10 failed attempts from same IP within window triggers rate limit."""
+        for _ in range(10):
+            _record_failure("1.2.3.4")
+        is_limited, retry_after = _check_rate_limit("1.2.3.4")
+        assert is_limited is True
+        assert retry_after > 0
+
+    def test_rate_limit_retry_after_within_window(self):
+        """retry_after should be <= 301 seconds (window + 1s rounding)."""
+        for _ in range(10):
+            _record_failure("1.2.3.4")
+        _, retry_after = _check_rate_limit("1.2.3.4")
+        assert 0 < retry_after <= 301
+
+    def test_different_ips_tracked_independently(self):
+        """IP A at limit does not affect IP B."""
+        for _ in range(10):
+            _record_failure("1.2.3.4")
+        is_limited_a, _ = _check_rate_limit("1.2.3.4")
+        is_limited_b, _ = _check_rate_limit("5.6.7.8")
+        assert is_limited_a is True
+        assert is_limited_b is False
+
+    def test_reset_rate_limiter_clears_state(self):
+        """_reset_rate_limiter clears all tracked failures."""
+        for _ in range(10):
+            _record_failure("1.2.3.4")
+        _reset_rate_limiter()
+        is_limited, _ = _check_rate_limit("1.2.3.4")
+        assert is_limited is False
+
+    def test_window_expiry_allows_retry(self, monkeypatch):
+        """After 5-minute window expires, IP is no longer rate-limited."""
+        import triggarr.web.routes as routes_mod
+
+        # Record 10 failures at a "past" time
+        fake_time = 1000.0
+        monkeypatch.setattr(time, "monotonic", lambda: fake_time)
+        for _ in range(10):
+            _record_failure("1.2.3.4")
+
+        # Advance time past the 5-minute window
+        fake_time = 1000.0 + 301.0
+        monkeypatch.setattr(time, "monotonic", lambda: fake_time)
+        is_limited, retry_after = _check_rate_limit("1.2.3.4")
+        assert is_limited is False
+        assert retry_after == 0
+
+
+# ---------------------------------------------------------------------------
+# Rate limiter integration tests (login route with rate limiting)
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimiterIntegration:
+    """Integration tests for rate limiting on POST /login."""
+
+    def _make_client(self, tmp_path: Path) -> TestClient:
+        """Create a test client with configured auth for rate limit testing."""
+        config_file = tmp_path / "triggarr.toml"
+        config_file.write_text('[general]\nlog_level = "info"\n')
+        auth_cfg = _configured_auth()
+        app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+        return TestClient(app, follow_redirects=False)
+
+    def test_login_rate_limited_after_10_failures(self, tmp_path: Path):
+        """POST /login returns rate limit error after 10 failed attempts from same IP."""
+        client = self._make_client(tmp_path)
+        # Make 10 failed login attempts
+        for _ in range(10):
+            client.post("/login", data={"username": "admin", "password": "wrong"})
+
+        # 11th attempt should be rate-limited
+        response = client.post("/login", data={"username": "admin", "password": "wrong"})
+        assert response.status_code == 200
+        assert "Too many login attempts" in response.text
+        assert "minute" in response.text
+
+    def test_login_not_limited_under_threshold(self, tmp_path: Path):
+        """POST /login with fewer than 10 failures still processes normally."""
+        client = self._make_client(tmp_path)
+        for _ in range(9):
+            client.post("/login", data={"username": "admin", "password": "wrong"})
+
+        # 10th attempt should still process (shows invalid password, not rate limit)
+        response = client.post("/login", data={"username": "admin", "password": "wrong"})
+        assert response.status_code == 200
+        assert "Invalid username or password" in response.text
+
+    def test_successful_login_not_counted(self, tmp_path: Path):
+        """Successful login does not increment rate limit counter."""
+        client = self._make_client(tmp_path)
+        # Make 9 failed attempts
+        for _ in range(9):
+            client.post("/login", data={"username": "admin", "password": "wrong"})
+
+        # Successful login
+        client.post("/login", data={"username": "admin", "password": _TEST_PASSWORD})
+
+        # Next failed attempt should be the 10th failure, not rate-limited yet
+        response = client.post("/login", data={"username": "admin", "password": "wrong"})
+        assert response.status_code == 200
+        assert "Invalid username or password" in response.text
+
+    def test_rate_limited_request_blocked_before_credential_check(self, tmp_path: Path):
+        """Rate-limited POST /login with correct credentials still blocked."""
+        client = self._make_client(tmp_path)
+        # Make 10 failed attempts
+        for _ in range(10):
+            client.post("/login", data={"username": "admin", "password": "wrong"})
+
+        # Try with correct credentials -- should still be blocked
+        response = client.post(
+            "/login", data={"username": "admin", "password": _TEST_PASSWORD}
+        )
+        assert response.status_code == 200
+        assert "Too many login attempts" in response.text
