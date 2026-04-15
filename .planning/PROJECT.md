@@ -126,7 +126,7 @@ Defining requirements for v2.6 Built-In Authentication.
 
 ## Current State
 
-v2.6 Built-In Authentication in progress. Phase 58 complete — comprehensive auth test suite with 23 new tests (middleware gap-fill, route edge cases, cross-cutting integration flows), traceability blocks mapping all tests to SC-1 through SC-5, and defense-in-depth open redirect fix. 774 total tests passing. All auth phases (54-58) complete for this milestone.
+v2.6 Built-In Authentication in progress. Phase 59 complete — security hardening addressing all SHIELD findings (SHIELD-001 through SHIELD-011). Login rate limiter (10 attempts/5 min per IP with HTTP 429), CSP headers, API key exposure fixed (boolean instead of raw key), SSRF IPv4-mapped IPv6 + multicast hardening, log sanitization, periodic auth-disabled warning, and open redirect percent-encoding defense. 805 total tests passing. All auth + security phases (54-59) complete for this milestone.
 
 ### Out of Scope
 
