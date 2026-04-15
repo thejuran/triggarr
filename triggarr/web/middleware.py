@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import secrets
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -120,7 +120,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Step 7: Fallback -> redirect or 401
         if self._is_browser(request):
-            return RedirectResponse("/login", status_code=302)
+            next_url = quote(str(request.url.path), safe="/")
+            return RedirectResponse(f"/login?next={next_url}", status_code=302)
         return JSONResponse({"detail": "Authentication required"}, status_code=401)
 
     @staticmethod

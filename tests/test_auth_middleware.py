@@ -290,7 +290,7 @@ def test_unauth_browser_redirects_to_login():
     client = TestClient(_make_auth_app(auth), follow_redirects=False)
     response = client.get("/", headers={"Accept": "text/html"})
     assert response.status_code == 302
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/login?next=/"
 
 
 def test_unauth_api_returns_401():
