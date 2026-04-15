@@ -1,5 +1,11 @@
-{% set key = api_key if api_key is defined else auth_api_key %}
 {% set is_revealed = revealed if revealed is defined else false %}
+{% if is_revealed and api_key is defined %}
+  {% set display_key = api_key %}
+{% elif auth_api_key is defined %}
+  {% set display_key = "••••••••••••••••••••••••••••" ~ auth_api_key %}
+{% else %}
+  {% set display_key = "" %}
+{% endif %}
 <h3 class="text-base font-semibold mb-4">API Key</h3>
 {% if success %}
 <p class="text-green-500 text-sm mb-3">{{ success }}</p>
@@ -7,11 +13,11 @@
 <div class="max-w-md">
   <div class="flex items-center gap-2">
     <div class="relative flex-1">
-      <input type="{{ 'text' if is_revealed else 'password' }}" value="{{ key }}" readonly
+      <input type="text" value="{{ display_key }}" readonly
              id="api-key-input"
-             class="w-full bg-[#0f172a] border border-[#334155] rounded px-3 py-2 text-sm tracking-widest pr-10">
+             class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm tracking-widest pr-10">
       <button type="button" onclick="toggleApiKeyVisibility()"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-white transition-colors cursor-pointer"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-triggarr-muted hover:text-white transition-colors cursor-pointer"
               title="Toggle visibility">
         <!-- Eye SVG icon (visible when masked) -->
         <svg id="eye-icon-show" class="{{ 'hidden' if is_revealed else '' }}" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -20,7 +26,7 @@
       </button>
     </div>
     <button type="button" onclick="copyApiKey(this)"
-            class="bg-[#0f172a] border border-[#334155] rounded px-3 py-2 text-sm text-[#94a3b8] hover:text-white transition-colors cursor-pointer"
+            class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-muted hover:text-white transition-colors cursor-pointer"
             title="Copy to clipboard">
       <!-- Copy SVG icon -->
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -35,7 +41,7 @@
   </div>
   <!-- Regeneration confirmation (D-08) -->
   <div id="regen-confirm" class="hidden mt-3">
-    <div class="bg-[#0f172a] border border-red-900/40 rounded p-4 flex gap-3">
+    <div class="bg-triggarr-bg border border-red-900/40 rounded p-4 flex gap-3">
       <div class="w-1 bg-red-600 rounded-full flex-shrink-0"></div>
       <div class="flex-1">
         <p class="text-red-400 text-sm">This will invalidate the current API key. Any integrations using it will stop working immediately.</p>
@@ -45,7 +51,7 @@
             Confirm
           </button>
           <button type="button" onclick="cancelRegen()"
-                  class="text-[#94a3b8] hover:text-[#e2e8f0] font-medium px-3 py-1.5 text-sm cursor-pointer">
+                  class="text-triggarr-muted hover:text-triggarr-text font-medium px-3 py-1.5 text-sm cursor-pointer">
             Cancel
           </button>
         </div>

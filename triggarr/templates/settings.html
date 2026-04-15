@@ -83,15 +83,15 @@
 </form>
 
 <!-- Security section (D-01: after General, D-02: separate form) -->
-<section class="bg-[#1e293b] rounded-lg border border-[#334155] p-5 mt-8">
+<section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5 mt-8">
   <h2 class="text-lg font-semibold mb-4">Security</h2>
 
   <!-- Auth Method (D-10, D-11, D-12, D-13) -->
   <form method="post" action="{{ request.url_for('save_security') }}">
     <div class="max-w-md">
-      <label class="block text-sm text-[#94a3b8] mb-1">Authentication Method</label>
+      <label class="block text-sm text-triggarr-muted mb-1">Authentication Method</label>
       <select name="auth_method" onchange="updateMethodWarning(this.value)"
-              class="w-full bg-[#0f172a] border border-[#334155] rounded px-3 py-2 text-sm">
+              class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
         {% for mode in ['Forms', 'Basic', 'External'] %}
         <option value="{{ mode }}" {% if auth_method == mode %}selected{% endif %}>{{ mode }}</option>
         {% endfor %}
@@ -100,20 +100,20 @@
     </div>
     <div class="flex justify-end mt-4">
       <button type="submit"
-              class="bg-[#22c55e] hover:bg-[#16a34a] text-white font-medium px-6 py-2 rounded text-sm transition-colors cursor-pointer">
+              class="bg-triggarr-green hover:bg-triggarr-green-dark text-white font-medium px-6 py-2 rounded text-sm transition-colors cursor-pointer">
         Save
       </button>
     </div>
   </form>
 
-  <div class="border-t border-[#334155] my-6"></div>
+  <div class="border-t border-triggarr-border my-6"></div>
 
   <!-- Password Change (D-04, D-05, D-06) -->
   <div id="password-section">
     {% include "partials/security_password.html" %}
   </div>
 
-  <div class="border-t border-[#334155] my-6"></div>
+  <div class="border-t border-triggarr-border my-6"></div>
 
   <!-- API Key Management (D-07, D-08, D-09) -->
   <div id="apikey-section"

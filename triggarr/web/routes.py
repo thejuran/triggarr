@@ -398,7 +398,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "skip_unreleased": settings.general.skip_unreleased,
             "auth_method": settings.auth.method,
             "auth_is_disabled": settings.auth.is_disabled,
-            "auth_api_key": settings.auth.api_key.get_secret_value(),
+            "auth_api_key": (k[-4:] if (k := settings.auth.api_key.get_secret_value()) else ""),
             "auth_username": settings.auth.username,
         },
     )
@@ -1192,12 +1192,14 @@ _ALLOWED_AUTH_METHODS = {"Forms", "Basic", "External"}
 async def change_password(request: Request) -> HTMLResponse:
     """Change user password with current-password verification."""
     form = await request.form()
-    current_password = form.get("current_password", "")
-    new_password = form.get("new_password", "")
-    confirm_password = form.get("confirm_password", "")
+    current_password = str(form.get("current_password", ""))
+    new_password = str(form.get("new_password", ""))
+    confirm_password = str(form.get("confirm_password", ""))
 
     errors: dict[str, str] = {}
 
+    if not current_password:
+        errors["current_password"] = "Current password is required"
     if not new_password:
         errors["new_password"] = "New password is required"
     elif new_password != confirm_password:
@@ -1215,14 +1217,22 @@ async def change_password(request: Request) -> HTMLResponse:
         # Verify current password inside lock to prevent TOCTOU race (WR-01)
         current_settings = request.app.state.settings
         if not verify_password(current_password, current_settings.auth.password_hash.get_secret_value()):
+            logger.warning("Password change failed: incorrect current password")
             return templates.TemplateResponse(
                 request=request,
                 name="partials/security_password.html",
                 context={"errors": {"current_password": "Current password is incorrect"}},
             )
 
-        # Hash and persist
-        new_hash = hash_password(new_password)
+        # Hash and persist — catch bcrypt 72-byte limit
+        try:
+            new_hash = hash_password(new_password)
+        except ValueError:
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/security_password.html",
+                context={"errors": {"new_password": "Password must be 72 characters or fewer"}},
+            )
         new_auth = current_settings.auth.model_copy(update={"password_hash": SecretStr(new_hash)})
         updated = current_settings.model_copy(update={"auth": new_auth})
         config_dict = _settings_to_dict(updated)
@@ -1248,18 +1258,16 @@ async def change_password(request: Request) -> HTMLResponse:
 async def save_security(request: Request) -> RedirectResponse:
     """Save auth method selection. Rejects Disabled and unknown values (T-57-02, D-13)."""
     form = await request.form()
-    auth_method = form.get("auth_method", "")
+    auth_method = str(form.get("auth_method", ""))
 
     if auth_method not in _ALLOWED_AUTH_METHODS:
         # Reject invalid/disabled method -- redirect without change
         return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
-    settings = request.app.state.settings
-    new_auth = settings.auth.model_copy(update={"method": auth_method})
-
     config_path = request.app.state.config_path
     async with request.app.state.search_lock:
         current_settings = request.app.state.settings
+        new_auth = current_settings.auth.model_copy(update={"method": auth_method})
         updated = current_settings.model_copy(update={"auth": new_auth})
         config_dict = _settings_to_dict(updated)
         await asyncio.get_running_loop().run_in_executor(
@@ -1279,12 +1287,11 @@ async def save_security(request: Request) -> RedirectResponse:
 async def regenerate_api_key_endpoint(request: Request) -> HTMLResponse:
     """Generate a new API key and return the revealed partial."""
     new_key = generate_api_key()
-    settings = request.app.state.settings
-    new_auth = settings.auth.model_copy(update={"api_key": SecretStr(new_key)})
 
     config_path = request.app.state.config_path
     async with request.app.state.search_lock:
         current_settings = request.app.state.settings
+        new_auth = current_settings.auth.model_copy(update={"api_key": SecretStr(new_key)})
         updated = current_settings.model_copy(update={"auth": new_auth})
         config_dict = _settings_to_dict(updated)
         await asyncio.get_running_loop().run_in_executor(

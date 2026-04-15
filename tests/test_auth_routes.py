@@ -11,6 +11,7 @@ Tests cover:
 from __future__ import annotations
 
 import asyncio
+import re
 import tomllib
 from pathlib import Path
 
@@ -629,9 +630,7 @@ def test_regenerate_api_key(tmp_path: Path):
     assert response.status_code == 200
     assert "Key regenerated" in response.text
     # New key should be 32-char hex and differ from original
-    import re as _re
-
-    hex_match = _re.search(r"[0-9a-f]{32}", response.text)
+    hex_match = re.search(r"[0-9a-f]{32}", response.text)
     assert hex_match is not None, "Response should contain a 32-char hex key"
     new_key = hex_match.group()
     assert new_key != _TEST_API_KEY
