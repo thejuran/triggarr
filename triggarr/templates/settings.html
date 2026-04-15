@@ -5,6 +5,16 @@
 {% block content %}
 <h1 class="text-2xl font-bold mb-6">Settings</h1>
 
+{% if auth_is_disabled %}
+<div class="bg-red-900/30 border border-red-900/80 rounded-lg p-4 mb-6 flex items-start gap-3">
+  <svg class="text-red-500 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-2h2v2h-2zm0-4V7h2v6h-2z"/></svg>
+  <div>
+    <p class="text-sm font-semibold text-red-200">Authentication Override</p>
+    <p class="text-sm text-red-200/90 mt-0.5">Authentication is disabled. Auth mode can only be changed back from the config file.</p>
+  </div>
+</div>
+{% endif %}
+
 <form method="post" action="{{ request.url_for('save_settings') }}" class="space-y-8">
     <!-- General section -->
     <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
@@ -70,8 +80,51 @@
             </div>
         </div>
     </section>
+</form>
 
-    <!-- Per-app sections: Radarr, Sonarr, Lidarr -->
+<!-- Security section (D-01: after General, D-02: separate form) -->
+<section class="bg-[#1e293b] rounded-lg border border-[#334155] p-5 mt-8">
+  <h2 class="text-lg font-semibold mb-4">Security</h2>
+
+  <!-- Auth Method (D-10, D-11, D-12, D-13) -->
+  <form method="post" action="{{ request.url_for('save_security') }}">
+    <div class="max-w-md">
+      <label class="block text-sm text-[#94a3b8] mb-1">Authentication Method</label>
+      <select name="auth_method" onchange="updateMethodWarning(this.value)"
+              class="w-full bg-[#0f172a] border border-[#334155] rounded px-3 py-2 text-sm">
+        {% for mode in ['Forms', 'Basic', 'External'] %}
+        <option value="{{ mode }}" {% if auth_method == mode %}selected{% endif %}>{{ mode }}</option>
+        {% endfor %}
+      </select>
+      <div id="method-warning" class="text-amber-500 text-sm mt-2" style="display:none"></div>
+    </div>
+    <div class="flex justify-end mt-4">
+      <button type="submit"
+              class="bg-[#22c55e] hover:bg-[#16a34a] text-white font-medium px-6 py-2 rounded text-sm transition-colors cursor-pointer">
+        Save
+      </button>
+    </div>
+  </form>
+
+  <div class="border-t border-[#334155] my-6"></div>
+
+  <!-- Password Change (D-04, D-05, D-06) -->
+  <div id="password-section">
+    {% include "partials/security_password.html" %}
+  </div>
+
+  <div class="border-t border-[#334155] my-6"></div>
+
+  <!-- API Key Management (D-07, D-08, D-09) -->
+  <div id="apikey-section"
+       hx-target="this"
+       hx-swap="innerHTML">
+    {% include "partials/security_apikey.html" %}
+  </div>
+</section>
+
+<!-- Per-app sections: Radarr, Sonarr, Lidarr -->
+<form method="post" action="{{ request.url_for('save_settings') }}" class="space-y-8 mt-8">
     {% for app_name, instances in apps.items() %}
     <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
         <h2 class="text-lg font-semibold capitalize mb-4">{{ app_name }}</h2>
@@ -185,32 +238,72 @@
     </div>
 </form>
 
-<!-- Security section (outside main settings form) -->
-{% if auth_is_disabled is defined %}
-<section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5 mt-8">
-    <h2 class="text-lg font-semibold mb-4">Security</h2>
-
-    {% if auth_is_disabled %}
-    <div class="bg-amber-900/50 border border-amber-700 text-amber-300 px-4 py-3 rounded mb-4">
-        Authentication is disabled. All endpoints are accessible without credentials.
-    </div>
-    {% endif %}
-
-    <div class="grid grid-cols-1 gap-4 max-w-md mb-6">
-        <div>
-            <span class="text-sm text-triggarr-muted">Auth Method:</span>
-            <span class="text-sm text-zinc-100 ml-2">{{ auth_method }}</span>
-        </div>
-        <div>
-            <span class="text-sm text-triggarr-muted">Username:</span>
-            <span class="text-sm text-zinc-100 ml-2">{{ auth_username }}</span>
-        </div>
-    </div>
-</section>
-{% endif %}
-
 <!-- Add-instance forms must live outside the main settings form to avoid nested <form> (illegal in HTML) -->
 {% for app_name in apps %}
 <form id="add-{{ app_name }}" method="post" action="{{ request.url_for('add_instance') }}"></form>
 {% endfor %}
+
+<script>
+function updateMethodWarning(value) {
+    var el = document.getElementById('method-warning');
+    if (value === 'External') {
+        el.textContent = 'Login page will be bypassed. Ensure your reverse proxy handles auth.';
+        el.style.display = 'block';
+    } else if (value === 'Basic') {
+        el.textContent = 'Browser will show a native popup instead of the login page.';
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+// Initialize warning on page load if a non-Forms method is already selected
+(function() {
+    var select = document.querySelector('select[name="auth_method"]');
+    if (select) updateMethodWarning(select.value);
+})();
+
+function toggleApiKeyVisibility() {
+    var input = document.getElementById('api-key-input');
+    var showIcon = document.getElementById('eye-icon-show');
+    var hideIcon = document.getElementById('eye-icon-hide');
+    if (input.type === 'password') {
+        input.type = 'text';
+        showIcon.classList.add('hidden');
+        hideIcon.classList.remove('hidden');
+    } else {
+        input.type = 'password';
+        showIcon.classList.remove('hidden');
+        hideIcon.classList.add('hidden');
+    }
+}
+
+function copyApiKey(btn) {
+    var key = document.getElementById('api-key-input').dataset.key;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(key).then(function() {
+            btn.innerHTML = '<span class="text-sm">Copied!</span>';
+            setTimeout(function() {
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+            }, 2000);
+        });
+    }
+}
+
+function showRegenConfirm() {
+    document.getElementById('regen-confirm').classList.remove('hidden');
+    document.getElementById('regen-btn').classList.add('hidden');
+}
+
+function cancelRegen() {
+    document.getElementById('regen-confirm').classList.add('hidden');
+    document.getElementById('regen-btn').classList.remove('hidden');
+}
+
+function confirmRegen() {
+    htmx.ajax('POST', '{{ request.url_for("regenerate_api_key_endpoint") }}', {
+        target: '#apikey-section',
+        swap: 'innerHTML'
+    });
+}
+</script>
 {% endblock %}

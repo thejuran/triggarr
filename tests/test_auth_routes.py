@@ -649,9 +649,10 @@ def test_settings_page_auth_context(tmp_path: Path):
 
     response = client.get("/settings", cookies={"triggarr_session": cookie})
     assert response.status_code == 200
-    # Auth context should be present -- check for the auth method and username text
+    # Auth context should be present -- check for security section elements
     assert "Forms" in response.text
-    assert "admin" in response.text
+    assert "password-section" in response.text
+    assert "apikey-section" in response.text
 
 
 def test_settings_page_disabled_banner(tmp_path: Path):
