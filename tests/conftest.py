@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
+import pytest
+
 from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 from triggarr.state import TriggarrState, _default_state
+from triggarr.web.middleware import AuthMiddleware
+
+
+@pytest.fixture(autouse=True)
+def _reset_disabled_warned():
+    """Reset AuthMiddleware._disabled_warned before each test to avoid order-dependent failures."""
+    AuthMiddleware._disabled_warned = False
+    yield
+    AuthMiddleware._disabled_warned = False
 
 
 def make_settings(

@@ -1114,7 +1114,8 @@ async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
     if username:
         return RedirectResponse(url=request.url_for("dashboard"), status_code=302)
 
-    next_url = _safe_next_url(request.query_params.get("next", ""))
+    raw_next = request.query_params.get("next", "")
+    next_url = _safe_next_url(raw_next) if raw_next else ""
     return templates.TemplateResponse(
         request=request,
         name="login.html",
@@ -1161,7 +1162,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
         context={
             "error": "Invalid username or password",
             "username": username,
-            "next_url": _safe_next_url(next_url),
+            "next_url": _safe_next_url(next_url) if next_url else "",
         },
     )
 

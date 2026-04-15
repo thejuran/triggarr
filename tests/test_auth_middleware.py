@@ -18,9 +18,9 @@ Traceability:
 from __future__ import annotations
 
 import base64
+import time
 from unittest.mock import MagicMock
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -28,14 +28,6 @@ from pydantic import SecretStr
 from triggarr.auth import generate_session_secret, hash_password, sign_session
 from triggarr.models.config import AuthConfig
 from triggarr.web.middleware import AuthMiddleware
-
-
-@pytest.fixture(autouse=True)
-def _reset_disabled_warned():
-    """Reset AuthMiddleware._disabled_warned before each test to avoid order-dependent failures."""
-    AuthMiddleware._disabled_warned = False
-    yield
-    AuthMiddleware._disabled_warned = False
 
 
 def _make_auth_app(auth_config: AuthConfig | None = None) -> FastAPI:
@@ -380,7 +372,6 @@ def test_wrong_secret_cookie_rejected_by_middleware():
 
 def test_expired_cookie_rejected_by_middleware():
     """Expired session cookie is rejected at the middleware level."""
-    import time
     from unittest.mock import patch
 
     auth = _configured_auth()
