@@ -112,7 +112,7 @@ def test_collect_secrets_includes_auth_secrets() -> None:
 def test_collect_secrets_skips_empty_auth_secrets() -> None:
     """collect_secrets does not include empty auth secret values."""
     settings = Settings()
-    # Default AuthConfig has all empty secrets
+    # Default AuthConfig has empty radarr/sonarr + empty auth secrets
     secrets = collect_secrets(settings)
-    # No auth secrets should be present (all empty)
-    assert len([s for s in secrets if s in ("",)]) == 0
+    # With no instances and default (empty) auth, there should be zero secrets
+    assert secrets == []
