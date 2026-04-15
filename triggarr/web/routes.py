@@ -180,10 +180,6 @@ def _safe_next_url(next_param: str | None) -> str:
         return "/"
     if not next_param.startswith("/"):
         return "/"
-    # Block javascript:/data:/vbscript: scheme injections that begin with a path segment
-    lower = next_param.lower().lstrip("/")
-    if lower.startswith(("javascript:", "data:", "vbscript:")):
-        return "/"
     # Reject null bytes which can confuse routing and logging
     if "\x00" in next_param:
         return "/"
