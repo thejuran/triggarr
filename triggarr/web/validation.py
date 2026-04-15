@@ -79,8 +79,13 @@ def validate_arr_url(url: str) -> tuple[bool, str]:
 
     try:
         addr = ipaddress.ip_address(hostname)
-        if addr.is_link_local or addr.is_loopback or addr.is_unspecified:
+        if addr.is_link_local or addr.is_loopback or addr.is_unspecified or addr.is_multicast:
             return (False, "Blocked address")
+        # Check IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1) per D-10
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            mapped = addr.ipv4_mapped
+            if mapped.is_link_local or mapped.is_loopback or mapped.is_unspecified or mapped.is_multicast:
+                return (False, "Blocked address")
     except ValueError:
         # Not an IP literal (e.g. "radarr") -- perfectly fine.
         pass

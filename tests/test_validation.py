@@ -88,6 +88,52 @@ class TestValidateArrUrl:
         ok, err = validate_arr_url("http://100.100.100.200")
         assert ok is False
 
+    # SHIELD-007: IPv4-mapped IPv6 SSRF bypass prevention
+
+    def test_ipv4_mapped_ipv6_loopback_blocked(self) -> None:
+        ok, err = validate_arr_url("http://[::ffff:127.0.0.1]:7878")
+        assert ok is False
+        assert "blocked" in err.lower()
+
+    def test_ipv4_mapped_ipv6_link_local_blocked(self) -> None:
+        ok, err = validate_arr_url("http://[::ffff:169.254.169.254]:7878")
+        assert ok is False
+        assert "blocked" in err.lower()
+
+    def test_ipv4_mapped_ipv6_unspecified_blocked(self) -> None:
+        ok, err = validate_arr_url("http://[::ffff:0.0.0.0]:7878")
+        assert ok is False
+        assert "blocked" in err.lower()
+
+    def test_ipv4_mapped_ipv6_multicast_blocked(self) -> None:
+        ok, err = validate_arr_url("http://[::ffff:224.0.0.1]:7878")
+        assert ok is False
+        assert "blocked" in err.lower()
+
+    # SHIELD-007: Multicast address blocking
+
+    def test_multicast_ipv4_blocked(self) -> None:
+        ok, err = validate_arr_url("http://224.0.0.1:7878")
+        assert ok is False
+        assert "blocked" in err.lower()
+
+    def test_multicast_ipv6_blocked(self) -> None:
+        ok, err = validate_arr_url("http://[ff02::1]:7878")
+        assert ok is False
+        assert "blocked" in err.lower()
+
+    # SHIELD-007: Private IPs via IPv4-mapped IPv6 still allowed
+
+    def test_ipv4_mapped_ipv6_private_192_allowed(self) -> None:
+        ok, err = validate_arr_url("http://[::ffff:192.168.1.100]:7878")
+        assert ok is True
+        assert err == ""
+
+    def test_ipv4_mapped_ipv6_private_10_allowed(self) -> None:
+        ok, err = validate_arr_url("http://[::ffff:10.0.0.1]:7878")
+        assert ok is True
+        assert err == ""
+
 
 # ---------------------------------------------------------------------------
 # safe_int
