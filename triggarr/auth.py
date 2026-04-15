@@ -85,11 +85,11 @@ def sign_session(username: str, secret: str) -> str:
     return signer.sign(username).decode()
 
 
-def validate_session(cookie_value: str, secret: str) -> str | None:
+def validate_session(cookie_value: str | None, secret: str) -> str | None:
     """Validate a signed session cookie and extract the username.
 
     Args:
-        cookie_value: The raw cookie value from the request.
+        cookie_value: The raw cookie value from the request, or None if missing.
         secret: The session secret from config.
 
     Returns:
@@ -97,8 +97,10 @@ def validate_session(cookie_value: str, secret: str) -> str | None:
     """
     if not secret:
         return None
+    if cookie_value is None:
+        return None
     signer = TimestampSigner(secret)
     try:
         return signer.unsign(cookie_value, max_age=COOKIE_MAX_AGE).decode()
-    except (SignatureExpired, BadSignature, TypeError):
+    except (SignatureExpired, BadSignature):
         return None
