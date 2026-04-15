@@ -1,0 +1,90 @@
+{% extends "base-auth.html" %}
+
+{% block title %}Setup - Triggarr{% endblock %}
+
+{% block content %}
+<div class="max-w-[420px] w-full bg-triggarr-card border border-triggarr-border rounded-lg p-6">
+  <p class="text-triggarr-green text-xl font-medium text-center">Triggarr</p>
+
+  {% if not setup_complete %}
+  {# --- Setup form state --- #}
+  <h1 class="text-xl font-medium text-triggarr-text text-center mt-4">Welcome to Triggarr</h1>
+  <p class="text-sm text-triggarr-muted text-center mt-1">Create your account to get started</p>
+
+  <form method="post" action="{{ request.url_for('setup_post') }}" class="mt-6">
+    <div class="space-y-4">
+      <div>
+        <label for="username" class="block text-sm font-medium text-triggarr-muted mb-1">Username</label>
+        <input type="text" id="username" name="username"
+               value="{{ username | default('admin', true) }}"
+               autocomplete="username"
+               autofocus
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+        {% if errors and errors.username %}
+        <p class="text-red-500 text-sm mt-1" aria-live="polite">{{ errors.username }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <label for="password" class="block text-sm font-medium text-triggarr-muted mb-1">Password</label>
+        <input type="password" id="password" name="password"
+               autocomplete="new-password"
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+        {% if errors and errors.password %}
+        <p class="text-red-500 text-sm mt-1" aria-live="polite">{{ errors.password }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <label for="confirm_password" class="block text-sm font-medium text-triggarr-muted mb-1">Confirm Password</label>
+        <input type="password" id="confirm_password" name="confirm_password"
+               autocomplete="new-password"
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+        {% if errors and errors.confirm_password %}
+        <p class="text-red-500 text-sm mt-1" aria-live="polite">{{ errors.confirm_password }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <button type="submit"
+            class="w-full bg-triggarr-green hover:bg-triggarr-green-dark text-white text-sm font-medium rounded py-2 mt-6 transition-colors cursor-pointer">
+      Create Account
+    </button>
+  </form>
+
+  {% else %}
+  {# --- Setup success state --- #}
+  <h1 class="text-xl font-medium text-triggarr-text text-center mt-4">Account Created</h1>
+  <p class="text-sm text-triggarr-muted text-center mt-1">Save your API key -- you will not be able to see it again.</p>
+
+  <code id="api-key-display"
+        class="block w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text select-all mt-6">{{ api_key }}</code>
+
+  <button type="button" onclick="copyApiKey(this)"
+          class="mt-2 bg-triggarr-card-elevated border border-triggarr-border rounded px-3 py-1 text-sm text-triggarr-text hover:text-white transition-colors cursor-pointer">
+    Copy
+  </button>
+
+  <a href="{{ request.url_for('dashboard') }}"
+     class="block w-full text-center bg-triggarr-green hover:bg-triggarr-green-dark text-white text-sm font-medium rounded py-2 mt-6 transition-colors">
+    Continue to Dashboard
+  </a>
+
+  <script>
+    function copyApiKey(btn) {
+        var text = document.getElementById('api-key-display').textContent;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                btn.textContent = 'Copied!';
+                setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+            });
+        } else {
+            var range = document.createRange();
+            range.selectNodeContents(document.getElementById('api-key-display'));
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+        }
+    }
+  </script>
+  {% endif %}
+</div>
+{% endblock %}
