@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from triggarr.web.middleware import OriginCheckMiddleware
+from triggarr.web.middleware import OriginCheckMiddleware, SecurityHeadersMiddleware
 
 
 def _make_app() -> FastAPI:
@@ -170,3 +170,51 @@ def test_settings_post_same_origin_passes():
     assert response.status_code != 403, (
         f"POST /settings with same-origin Origin should not return 403, got {response.status_code}"
     )
+
+
+# ---------------------------------------------------------------------------
+# SecurityHeadersMiddleware tests (Phase 59 Plan 03, D-07/D-08/D-09)
+# ---------------------------------------------------------------------------
+
+
+def _make_security_headers_app() -> FastAPI:
+    """Build a minimal FastAPI app with SecurityHeadersMiddleware for testing."""
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"status": "ok"}
+
+    return app
+
+
+def test_security_headers_csp_present():
+    """Response includes Content-Security-Policy header with correct directives."""
+    client = TestClient(_make_security_headers_app())
+    response = client.get("/test")
+    assert response.status_code == 200
+    expected_csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
+    )
+    assert response.headers["Content-Security-Policy"] == expected_csp
+
+
+def test_security_headers_x_frame_options_deny():
+    """X-Frame-Options is DENY (not SAMEORIGIN)."""
+    client = TestClient(_make_security_headers_app())
+    response = client.get("/test")
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+def test_security_headers_existing_headers_unchanged():
+    """X-Content-Type-Options and Referrer-Policy remain correct."""
+    client = TestClient(_make_security_headers_app())
+    response = client.get("/test")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "same-origin"
