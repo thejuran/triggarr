@@ -1,9 +1,9 @@
 ---
 phase: 58
 slug: auth-test-suite
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: verified
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-04-15
 ---
 
@@ -38,13 +38,13 @@ created: 2026-04-15
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 58-01-01 | 01 | 1 | SC-1 | — | Middleware denies unauth | unit | `uv run pytest tests/test_auth_middleware.py -x -q` | Yes | pending |
-| 58-01-02 | 01 | 1 | SC-3 | — | Wrong-secret cookie rejected | unit | `uv run pytest tests/test_auth_middleware.py -x -q -k wrong_secret` | No -- gap-fill | pending |
-| 58-01-03 | 01 | 1 | SC-5 | — | Invalid API keys rejected | unit | `uv run pytest tests/test_auth_middleware.py -x -q -k api_key` | No -- gap-fill | pending |
-| 58-02-01 | 02 | 1 | SC-2 | — | Setup creates creds | integration | `uv run pytest tests/test_auth_routes.py -x -q -k setup` | Yes | pending |
-| 58-02-02 | 02 | 1 | SC-3 | — | Login/logout lifecycle | integration | `uv run pytest tests/test_auth_routes.py -x -q -k login` | Yes -- gap-fill | pending |
-| 58-02-03 | 02 | 1 | SC-4 | — | Auth mode isolation | unit | `uv run pytest tests/test_auth_middleware.py -x -q -k mode` | No -- gap-fill | pending |
-| 58-03-01 | 03 | 2 | Cross | — | E2E auth flows | integration | `uv run pytest tests/test_auth_integration.py -x -q` | No -- Wave 0 | pending |
+| 58-01-01 | 01 | 1 | SC-1 | T-58-01 | Middleware denies unauth | unit | `uv run pytest tests/test_auth_middleware.py -x -q` | Yes | green |
+| 58-01-02 | 01 | 1 | SC-3 | T-58-01 | Wrong-secret cookie rejected | unit | `uv run pytest tests/test_auth_middleware.py -x -q -k wrong_secret` | Yes | green |
+| 58-01-03 | 01 | 1 | SC-5 | T-58-02 | Invalid API keys rejected | unit | `uv run pytest tests/test_auth_middleware.py -x -q -k api_key` | Yes | green |
+| 58-02-01 | 01 | 1 | SC-2 | — | Setup creates creds | integration | `uv run pytest tests/test_auth_routes.py -x -q -k setup` | Yes | green |
+| 58-02-02 | 01 | 1 | SC-3 | T-58-03 | Login/logout lifecycle + open redirect defense | integration | `uv run pytest tests/test_auth_routes.py -x -q -k login` | Yes | green |
+| 58-02-03 | 01 | 1 | SC-4 | T-58-04 | Auth mode isolation + disabled warning | unit | `uv run pytest tests/test_auth_middleware.py -x -q -k "mode or transition or disabled"` | Yes | green |
+| 58-03-01 | 02 | 2 | Cross | T-58-05,T-58-06,T-58-07 | E2E auth flows (setup->login->use->logout) | integration | `uv run pytest tests/test_auth_integration.py -x -q` | Yes | green |
 
 *Status: pending / green / red / flaky*
 
@@ -52,8 +52,8 @@ created: 2026-04-15
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_auth_integration.py` — new file for cross-cutting flows (D-02)
-- [ ] Traceability comment blocks in all 5 test files (D-03)
+- [x] `tests/test_auth_integration.py` — new file for cross-cutting flows (D-02) — 3 tests green
+- [x] Traceability comment blocks in all 5 test files (D-03) — verified in all auth test files
 
 ---
 
@@ -67,13 +67,25 @@ created: 2026-04-15
 
 ---
 
+## Validation Audit 2026-04-15
+
+| Metric | Count |
+|--------|-------|
+| Tasks audited | 7 |
+| COVERED | 7 |
+| PARTIAL | 0 |
+| MISSING | 0 |
+| Total auth tests | 109 |
+
+---
+
 ## Validation Sign-Off
 
-- [ ] All tasks have automated verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 10s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 10s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** verified 2026-04-15
