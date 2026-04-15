@@ -170,18 +170,23 @@ def _safe_next_url(next_param: str | None) -> str:
     """Validate ?next= param, rejecting open redirects. Returns safe URL or '/'.
 
     Rejects absolute URLs (http/https), protocol-relative URLs (//),
-    backslash URLs, and paths not starting with '/'.
+    backslash URLs, and paths not starting with '/'. Checks both raw and
+    percent-decoded forms to prevent bypass via URL encoding.
     """
     if not next_param:
         return "/"
-    if next_param.startswith(("http://", "https://", "//")):
-        return "/"
-    if "\\" in next_param:
-        return "/"
+    # Check both raw and decoded forms to prevent percent-encoding bypass
+    from urllib.parse import unquote
+
+    decoded = unquote(next_param)
+    for value in (next_param, decoded):
+        if value.startswith(("http://", "https://", "//")):
+            return "/"
+        if "\\" in value:
+            return "/"
+        if "\x00" in value:
+            return "/"
     if not next_param.startswith("/"):
-        return "/"
-    # Reject null bytes which can confuse routing and logging
-    if "\x00" in next_param:
         return "/"
     return next_param
 
@@ -1136,9 +1141,15 @@ _WINDOW_SECONDS = 300
 def _check_rate_limit(ip: str) -> tuple[bool, int]:
     """Check if IP is rate-limited. Returns (is_limited, retry_after_seconds)."""
     now = time.monotonic()
-    timestamps = _login_failures.get(ip, [])
-    timestamps = [t for t in timestamps if now - t < _WINDOW_SECONDS]
-    _login_failures[ip] = timestamps
+    raw = _login_failures.get(ip)
+    if raw is None:
+        return (False, 0)
+    timestamps = [t for t in raw if now - t < _WINDOW_SECONDS]
+    if timestamps:
+        _login_failures[ip] = timestamps
+    else:
+        del _login_failures[ip]
+        return (False, 0)
     if len(timestamps) >= _MAX_ATTEMPTS:
         oldest = min(timestamps)
         retry_after = int(_WINDOW_SECONDS - (now - oldest)) + 1
@@ -1152,7 +1163,7 @@ def _record_failure(ip: str) -> None:
     if ip not in _login_failures:
         # Evict oldest entry if at capacity
         if len(_login_failures) >= _MAX_TRACKED_IPS:
-            oldest_ip = min(_login_failures, key=lambda k: _login_failures[k][-1] if _login_failures[k] else 0)
+            oldest_ip = min(_login_failures, key=lambda k: _login_failures[k][0] if _login_failures[k] else 0)
             del _login_failures[oldest_ip]
         _login_failures[ip] = []
     _login_failures[ip].append(now)

@@ -34,6 +34,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
+        # NOTE: 'unsafe-inline' for script-src is required by htmx hx-* attribute
+        # handlers and inline <script> blocks in templates. Nonce-based CSP is a
+        # future hardening step that requires moving inline scripts to static JS files.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
