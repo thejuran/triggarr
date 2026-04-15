@@ -217,6 +217,6 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 |-------|----------------|--------|-----------|
 | 54. Auth Config & Helpers | 2/2 | Complete    | 2026-04-15 |
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
-| 56. First-Run Setup & Login | 4/4 | Complete   | 2026-04-15 |
+| 56. First-Run Setup & Login | 4/4 | Complete    | 2026-04-15 |
 | 57. Settings Security & Nav Logout | 0/? | Not started | - |
 | 58. Auth Test Suite | 0/? | Not started | - |
