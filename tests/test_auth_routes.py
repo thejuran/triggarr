@@ -881,9 +881,10 @@ class TestRateLimiterIntegration:
 
         # 11th attempt should be rate-limited
         response = client.post("/login", data={"username": "admin", "password": "wrong"})
-        assert response.status_code == 200
+        assert response.status_code == 429
         assert "Too many login attempts" in response.text
         assert "minute" in response.text
+        assert "Retry-After" in response.headers
 
     def test_login_not_limited_under_threshold(self, tmp_path: Path):
         """POST /login with fewer than 10 failures still processes normally."""
@@ -922,7 +923,7 @@ class TestRateLimiterIntegration:
         response = client.post(
             "/login", data={"username": "admin", "password": _TEST_PASSWORD}
         )
-        assert response.status_code == 200
+        assert response.status_code == 429
         assert "Too many login attempts" in response.text
 
 
@@ -960,8 +961,8 @@ def test_settings_page_does_not_leak_raw_api_key():
     assert "unique_secret_key_12345678901234" not in response.text
 
 
-def test_login_failure_log_contains_username_match_not_raw_username(tmp_path: Path):
-    """Login failure log uses username_match boolean, not the raw attempted username (D-11)."""
+def test_login_failure_log_is_generic_no_username(tmp_path: Path):
+    """Login failure log is generic without username or boolean oracle (D-11)."""
     from unittest.mock import patch
 
     auth_cfg = _configured_auth()
@@ -977,13 +978,11 @@ def test_login_failure_log_contains_username_match_not_raw_username(tmp_path: Pa
         mock_logger.warning.assert_called_once()
         call_args = mock_logger.warning.call_args
         log_msg = call_args[0][0] if call_args[0] else ""
-        log_kwargs = call_args[1] if call_args[1] else {}
 
-        # Must contain username_match indicator
-        assert "username_match" in log_msg
-        # Must NOT contain the raw attempted username
+        # Must be generic — no username and no boolean oracle
+        assert "invalid credentials" in log_msg.lower()
         assert "attacker_name" not in log_msg
-        assert "attacker_name" not in str(log_kwargs)
+        assert "username_match" not in log_msg
 
 
 def test_setup_completion_log_is_generic(tmp_path: Path):

@@ -1132,6 +1132,8 @@ async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
 # Login rate limiter (SHIELD-003 / D-01, D-02, D-03)
 # ---------------------------------------------------------------------------
 
+# Thread safety: safe under single-worker asyncio (GIL + cooperative scheduling).
+# If multiple workers are used, rate limiting should move to shared storage (e.g., Redis).
 _login_failures: dict[str, list[float]] = {}
 _MAX_TRACKED_IPS = 10_000
 _MAX_ATTEMPTS = 10
@@ -1184,11 +1186,14 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
     next_url = form.get("next", "")
 
     # Rate limit check (D-01, D-02) -- before credential verification
+    # NOTE: client.host is resolved from X-Forwarded-For by uvicorn when proxy_headers=True.
+    # If TRUSTED_PROXY_IPS=*, rate limiting can be bypassed by spoofing X-Forwarded-For.
+    # In that configuration, rate limiting should be applied at the reverse proxy layer.
     client_ip = request.client.host if request.client else "unknown"
     is_limited, retry_after = _check_rate_limit(client_ip)
     if is_limited:
         minutes = (retry_after + 59) // 60  # round up to nearest minute
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request=request,
             name="login.html",
             context={
@@ -1196,7 +1201,10 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
                 "username": username,
                 "next_url": _safe_next_url(next_url) if next_url else "",
             },
+            status_code=429,
         )
+        resp.headers["Retry-After"] = str(retry_after)
+        return resp
 
     # Verify credentials
     if (
@@ -1222,10 +1230,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
 
     # Failure: record for rate limiting, then re-render with error (D-04)
     _record_failure(client_ip)
-    logger.warning(
-        "Login failed: username_match={matched}",
-        matched=bool(username and secrets.compare_digest(username, auth.username)),
-    )
+    logger.warning("Login failed: invalid credentials")
     return templates.TemplateResponse(
         request=request,
         name="login.html",

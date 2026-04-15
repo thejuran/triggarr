@@ -17,6 +17,12 @@ _INSTANCE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9 _.\-]*$")
 # Hostnames explicitly blocked to prevent SSRF against cloud metadata services.
 BLOCKED_HOSTS: set[str] = {"169.254.169.254", "metadata.google.internal", "metadata.azure.com", "100.100.100.200"}
 
+# Networks blocked for IPv4-mapped IPv6 SSRF bypass (e.g., ::ffff:100.100.100.200).
+# IANA Shared Address Space includes Alibaba cloud metadata (100.100.100.200).
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("100.64.0.0/10"),
+]
+
 # Only these log levels are accepted; anything else defaults to "info".
 ALLOWED_LOG_LEVELS: set[str] = {"debug", "info", "warning", "error"}
 
@@ -84,10 +90,19 @@ def validate_arr_url(url: str) -> tuple[bool, str]:
         # Check IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1) per D-10
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
             mapped = addr.ipv4_mapped
-            if mapped.is_link_local or mapped.is_loopback or mapped.is_unspecified or mapped.is_multicast:
+            if (
+                mapped.is_link_local
+                or mapped.is_loopback
+                or mapped.is_unspecified
+                or mapped.is_multicast
+                or any(mapped in net for net in _BLOCKED_NETWORKS)
+            ):
                 return (False, "Blocked address")
     except ValueError:
-        # Not an IP literal (e.g. "radarr") -- perfectly fine.
+        # Not an IP literal (e.g. "radarr") -- DNS rebinding is an accepted residual
+        # risk. Triggarr runs on trusted internal networks; hostnames are not resolved
+        # at validation time. Network-layer controls (firewall, egress filtering) are
+        # the appropriate mitigation for DNS rebinding in this deployment model.
         pass
 
     return (True, "")

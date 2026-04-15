@@ -110,6 +110,11 @@ class TestValidateArrUrl:
         assert ok is False
         assert "blocked" in err.lower()
 
+    def test_ipv4_mapped_ipv6_alibaba_metadata_blocked(self) -> None:
+        ok, err = validate_arr_url("http://[::ffff:100.100.100.200]:7878")
+        assert ok is False
+        assert "blocked" in err.lower()
+
     # SHIELD-007: Multicast address blocking
 
     def test_multicast_ipv4_blocked(self) -> None:
