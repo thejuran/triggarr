@@ -620,52 +620,10 @@ def test_search_now_not_rate_limited_after_window(client, test_app):
 # ---------------------------------------------------------------------------
 
 
-def test_health_all_connected_returns_200(client, test_app):
-    """GET /health returns 200 when all enabled instances have connected=True."""
-    test_app.state.triggarr_state = {
-        "radarr": {"Default": {"connected": True}},
-        "sonarr": {"Default": {"connected": True}},
-        "lidarr": {"Default": {"connected": True}},
-    }
+def test_health_returns_200(client):
+    """GET /health always returns 200 with status ok (simplified per D-06)."""
     response = client.get("/health")
     assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-    data = response.json()
-    assert data["status"] == "ok"
-
-
-def test_health_unreachable_app_returns_503(client, test_app):
-    """GET /health returns 503 when an enabled instance has connected=False."""
-    test_app.state.triggarr_state = {
-        "radarr": {"Default": {"connected": False}},
-        "sonarr": {"Default": {"connected": True}},
-        "lidarr": {"Default": {"connected": True}},
-    }
-    response = client.get("/health")
-    assert response.status_code == 503, f"Expected 503, got {response.status_code}"
-    data = response.json()
-    assert data["status"] == "unhealthy"
-    assert "radarr" in data["unreachable"]
-
-
-def test_health_not_yet_verified_returns_503(client, test_app):
-    """GET /health returns 503 when an enabled instance has connected=None (never run)."""
-    test_app.state.triggarr_state = {
-        "radarr": {"Default": {"connected": True}},
-        "sonarr": {"Default": {"connected": None}},
-        "lidarr": {"Default": {"connected": True}},
-    }
-    response = client.get("/health")
-    assert response.status_code == 503, f"Expected 503, got {response.status_code}"
-    data = response.json()
-    assert "sonarr" in data["unreachable"]
-
-
-def test_health_no_apps_enabled_returns_200(client, test_app):
-    """GET /health returns 200 when no apps are enabled (valid awaiting-setup state)."""
-    test_app.state.settings = make_settings(radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False)
-    test_app.state.triggarr_state = {"radarr": {}, "sonarr": {}, "lidarr": {}}
-    response = client.get("/health")
-    assert response.status_code == 200, f"Expected 200 for no-apps-configured, got {response.status_code}"
     data = response.json()
     assert data["status"] == "ok"
 
