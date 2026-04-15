@@ -23,16 +23,26 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from loguru import logger
+from pydantic import SecretStr
 
+from triggarr.auth import (
+    COOKIE_MAX_AGE,
+    generate_api_key,
+    generate_session_secret,
+    hash_password,
+    sign_session,
+    validate_session,
+    verify_password,
+)
 from triggarr.changelog import read_changelog
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.config import _atomic_toml_write
+from triggarr.config import _atomic_toml_write, load_settings
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
-from triggarr.models.config import APP_TYPES, CONFIG_DIR, InstanceConfig
+from triggarr.models.config import APP_TYPES, CONFIG_DIR, AuthConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.search.engine import run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
@@ -61,6 +71,12 @@ templates.env.globals["update_info"] = update_info
 # for conditional logout link visibility (D-11).
 auth_state: dict = {"active": False}
 templates.env.globals["auth_state"] = auth_state
+
+
+def _sync_auth_state(settings: SettingsModel) -> None:
+    """Update auth_state dict for template conditional rendering (D-11)."""
+    auth_state["active"] = settings.auth.method in ("Forms", "Basic")
+    auth_state["method"] = settings.auth.method
 
 
 def _relative_time_filter(iso_timestamp: str) -> str:
@@ -540,6 +556,7 @@ async def save_settings(request: Request) -> RedirectResponse:
         )
         os.chmod(config_path, 0o600)
         request.app.state.settings = new_settings
+        _sync_auth_state(new_settings)
 
         # Refresh log redaction with new secrets (QUAL-05)
         secrets = collect_secrets(new_settings)
@@ -967,3 +984,173 @@ async def changelog(request: Request) -> HTMLResponse:
     latest_only = request.query_params.get("latest", "").lower() == "true"
     html_content = read_changelog(latest_only=latest_only)
     return HTMLResponse(html_content)
+
+
+# --- Auth routes ---
+
+
+@router.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request) -> HTMLResponse:
+    """Render the first-run setup page, or 404 if already configured."""
+    auth = request.app.state.settings.auth
+    if not auth.needs_setup:
+        return HTMLResponse(status_code=404, content="Not Found")
+    return templates.TemplateResponse(
+        request=request,
+        name="setup.html",
+        context={"setup_complete": False, "errors": {}, "username": "admin"},
+    )
+
+
+@router.post("/setup")
+async def setup_post(request: Request) -> HTMLResponse:
+    """Process first-run setup: validate credentials, persist config, auto-login."""
+    auth = request.app.state.settings.auth
+    if not auth.needs_setup:
+        return HTMLResponse(status_code=404, content="Not Found")
+
+    form = await request.form()
+    username = form.get("username", "").strip()
+    password = form.get("password", "")
+    confirm = form.get("confirm_password", "")
+
+    errors: dict[str, str] = {}
+    if not username:
+        errors["username"] = "Username is required"
+    if not password:
+        errors["password"] = "Password is required"
+    elif password != confirm:
+        errors["confirm_password"] = "Passwords do not match"
+
+    if errors:
+        return templates.TemplateResponse(
+            request=request,
+            name="setup.html",
+            context={"setup_complete": False, "errors": errors, "username": username},
+        )
+
+    # Create credentials
+    password_hash = hash_password(password)
+    api_key = generate_api_key()
+    session_secret = generate_session_secret()
+
+    new_auth = AuthConfig(
+        method="Forms",
+        username=username,
+        password_hash=SecretStr(password_hash),
+        api_key=SecretStr(api_key),
+        session_secret=SecretStr(session_secret),
+    )
+
+    # Persist to TOML -- merge auth with existing config
+    config_path = request.app.state.config_path
+    async with request.app.state.search_lock:
+        # Re-check inside lock to prevent race condition (Pitfall 5)
+        current_settings = request.app.state.settings
+        if not current_settings.auth.needs_setup:
+            return HTMLResponse(status_code=404, content="Not Found")
+
+        # Build new settings with auth configured
+        updated = current_settings.model_copy(update={"auth": new_auth})
+        config_dict = _settings_to_dict(updated)
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, config_dict
+        )
+        os.chmod(config_path, 0o600)
+        request.app.state.settings = load_settings(config_path)
+
+    # Update auth_state for nav bar logout visibility
+    _sync_auth_state(request.app.state.settings)
+
+    # Auto-login: set session cookie (D-01)
+    session_value = sign_session(username, session_secret)
+    response = templates.TemplateResponse(
+        request=request,
+        name="setup.html",
+        context={"setup_complete": True, "api_key": api_key, "username": username},
+    )
+    response.set_cookie(
+        "triggarr_session",
+        session_value,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+    )
+    logger.info("Setup completed for user {username}", username=username)
+    return response
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
+    """Render login form, or redirect to dashboard if already authenticated (D-06)."""
+    auth = request.app.state.settings.auth
+
+    # Sync auth_state on page load (handles app restart without explicit sync)
+    _sync_auth_state(request.app.state.settings)
+
+    # D-06: already authenticated -> redirect to dashboard
+    cookie = request.cookies.get("triggarr_session")
+    username = validate_session(cookie, auth.session_secret.get_secret_value())
+    if username:
+        return RedirectResponse(url=request.url_for("dashboard"), status_code=302)
+
+    next_url = request.query_params.get("next", "")
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"error": None, "username": "", "next_url": next_url},
+    )
+
+
+@router.post("/login")
+async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
+    """Authenticate credentials, set session cookie, redirect to ?next= or dashboard."""
+    auth = request.app.state.settings.auth
+    form = await request.form()
+    username = form.get("username", "").strip()
+    password = form.get("password", "")
+    next_url = form.get("next", "")
+
+    # Verify credentials
+    if (
+        username
+        and password
+        and username == auth.username
+        and verify_password(password, auth.password_hash.get_secret_value())
+    ):
+        # Success: set session cookie and redirect
+        session_value = sign_session(username, auth.session_secret.get_secret_value())
+        redirect_url = _safe_next_url(next_url) if next_url else str(request.url_for("dashboard"))
+        response = RedirectResponse(url=redirect_url, status_code=303)
+        response.set_cookie(
+            "triggarr_session",
+            session_value,
+            max_age=COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            secure=True,
+        )
+        logger.info("Login successful for user {username}", username=username)
+        return response
+
+    # Failure: re-render with error (D-04)
+    logger.warning("Login failed for user {username}", username=username)
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "error": "Invalid username or password",
+            "username": username,
+            "next_url": form.get("next", ""),
+        },
+    )
+
+
+@router.post("/logout")
+async def logout(request: Request) -> RedirectResponse:
+    """Clear session cookie and redirect to login page (D-09)."""
+    response = RedirectResponse(url=request.url_for("login_page"), status_code=303)
+    response.delete_cookie("triggarr_session", path="/")
+    logger.info("User logged out")
+    return response
