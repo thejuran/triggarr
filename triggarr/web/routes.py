@@ -1123,6 +1123,41 @@ async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
     )
 
 
+# ---------------------------------------------------------------------------
+# Login rate limiter (SHIELD-003 / D-01, D-02, D-03)
+# ---------------------------------------------------------------------------
+
+_login_failures: dict[str, list[float]] = {}
+_MAX_ATTEMPTS = 10
+_WINDOW_SECONDS = 300
+
+
+def _check_rate_limit(ip: str) -> tuple[bool, int]:
+    """Check if IP is rate-limited. Returns (is_limited, retry_after_seconds)."""
+    now = time.monotonic()
+    timestamps = _login_failures.get(ip, [])
+    timestamps = [t for t in timestamps if now - t < _WINDOW_SECONDS]
+    _login_failures[ip] = timestamps
+    if len(timestamps) >= _MAX_ATTEMPTS:
+        oldest = min(timestamps)
+        retry_after = int(_WINDOW_SECONDS - (now - oldest)) + 1
+        return (True, retry_after)
+    return (False, 0)
+
+
+def _record_failure(ip: str) -> None:
+    """Record a failed login attempt for rate limiting."""
+    now = time.monotonic()
+    if ip not in _login_failures:
+        _login_failures[ip] = []
+    _login_failures[ip].append(now)
+
+
+def _reset_rate_limiter() -> None:
+    """Clear all rate limit state. Used by test fixtures."""
+    _login_failures.clear()
+
+
 @router.post("/login", response_model=None)
 async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
     """Authenticate credentials, set session cookie, redirect to ?next= or dashboard."""
@@ -1131,6 +1166,21 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
     username = form.get("username", "").strip()
     password = form.get("password", "")
     next_url = form.get("next", "")
+
+    # Rate limit check (D-01, D-02) -- before credential verification
+    client_ip = request.client.host if request.client else "unknown"
+    is_limited, retry_after = _check_rate_limit(client_ip)
+    if is_limited:
+        minutes = (retry_after + 59) // 60  # round up to nearest minute
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "error": f"Too many login attempts, try again in {minutes} minute{'s' if minutes != 1 else ''}",
+                "username": username,
+                "next_url": _safe_next_url(next_url) if next_url else "",
+            },
+        )
 
     # Verify credentials
     if (
@@ -1154,7 +1204,8 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
         logger.info("Login successful for user {username}", username=username)
         return response
 
-    # Failure: re-render with error (D-04)
+    # Failure: record for rate limiting, then re-render with error (D-04)
+    _record_failure(client_ip)
     logger.warning("Login failed for user {username}", username=username)
     return templates.TemplateResponse(
         request=request,

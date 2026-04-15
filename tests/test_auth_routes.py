@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 import tomllib
 from pathlib import Path
 
@@ -841,8 +842,6 @@ class TestRateLimiterHelpers:
 
     def test_window_expiry_allows_retry(self, monkeypatch):
         """After 5-minute window expires, IP is no longer rate-limited."""
-        import triggarr.web.routes as routes_mod
-
         # Record 10 failures at a "past" time
         fake_time = 1000.0
         monkeypatch.setattr(time, "monotonic", lambda: fake_time)
