@@ -1,17 +1,84 @@
-"""TDD tests for _safe_next_url open redirect prevention and _settings_to_dict auth extension.
+"""TDD tests for _safe_next_url, _settings_to_dict, and integration tests for auth routes.
 
 Tests cover:
 - _safe_next_url: rejects absolute URLs, protocol-relative, backslash, non-slash prefix
 - _settings_to_dict: includes auth section with SecretStr values extracted to plain strings
+- Integration: setup flow (render, create credentials, errors, 404 after config)
+- Integration: login flow (render, valid/invalid credentials, ?next=, open redirect, already-authed)
+- Integration: logout (cookie clear, redirect)
 """
 
 from __future__ import annotations
 
+import asyncio
+import tomllib
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from triggarr.auth import generate_session_secret, hash_password, sign_session
 from triggarr.models.config import AuthConfig, GeneralConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
-from triggarr.web.routes import _safe_next_url, _settings_to_dict
+from triggarr.web.middleware import AuthMiddleware
+from triggarr.web.routes import _safe_next_url, _settings_to_dict, auth_state, router
+
+# ---------------------------------------------------------------------------
+# Integration test helpers
+# ---------------------------------------------------------------------------
+
+_TEST_PASSWORD = "testpass123"
+_TEST_PASSWORD_HASH = hash_password(_TEST_PASSWORD)
+_TEST_SESSION_SECRET = generate_session_secret()
+_TEST_API_KEY = "a" * 32
+
+
+def _configured_auth(
+    method: str = "Forms",
+    username: str = "admin",
+    password_hash: str = _TEST_PASSWORD_HASH,
+    api_key: str = _TEST_API_KEY,
+    session_secret: str = _TEST_SESSION_SECRET,
+) -> AuthConfig:
+    """Create an AuthConfig with real credentials for route integration tests."""
+    return AuthConfig(
+        method=method,
+        username=username,
+        password_hash=SecretStr(password_hash),
+        api_key=SecretStr(api_key),
+        session_secret=SecretStr(session_secret),
+    )
+
+
+def _make_route_app(auth_config: AuthConfig | None = None, config_path: Path | None = None) -> FastAPI:
+    """Build a FastAPI app with real route handlers and AuthMiddleware for integration tests."""
+    app = FastAPI()
+    app.add_middleware(AuthMiddleware)
+    app.include_router(router)
+
+    # Mount static files so templates can resolve CSS links
+    static_dir = Path(__file__).resolve().parent.parent / "triggarr" / "static"
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    cfg = auth_config or AuthConfig()
+    settings = SettingsModel.model_construct(
+        general=GeneralConfig(),
+        auth=cfg,
+        radarr={},
+        sonarr={},
+        lidarr={},
+    )
+    app.state.settings = settings
+    app.state.config_path = config_path or Path("/tmp/test-triggarr.toml")
+    app.state.search_lock = asyncio.Lock()
+
+    # Sync auth_state for template rendering
+    auth_state["active"] = cfg.method in ("Forms", "Basic") and not cfg.needs_setup
+    auth_state["method"] = cfg.method
+
+    return app
 
 # ---------------------------------------------------------------------------
 # _safe_next_url tests
@@ -139,3 +206,209 @@ def test_settings_to_dict_preserves_existing_behavior():
     inst = result["radarr"]["4K Radarr"]
     assert inst["api_key"] == "radarr-key-123"
     assert isinstance(inst["api_key"], str)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: Setup routes
+# ---------------------------------------------------------------------------
+
+
+def test_setup_page_renders_when_needs_setup():
+    """GET /setup with unconfigured auth returns 200 with welcome message."""
+    app = _make_route_app()  # default AuthConfig -> needs_setup=True
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/setup")
+    assert response.status_code == 200
+    assert "Welcome to Triggarr" in response.text
+
+
+def test_setup_page_returns_404_when_configured():
+    """GET /setup with configured auth returns 404 (SETUP-04)."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/setup")
+    assert response.status_code == 404
+
+
+def test_setup_post_creates_credentials(tmp_path: Path):
+    """POST /setup with valid credentials creates account and shows API key."""
+    # Create a minimal initial TOML config file
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("[general]\nlog_level = \"info\"\n")
+
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "admin", "password": "test123", "confirm_password": "test123"},
+    )
+    assert response.status_code == 200
+    assert "Account Created" in response.text
+    assert "api-key-display" in response.text
+
+    # Verify TOML file was updated with auth section
+    with open(config_file, "rb") as f:
+        toml_data = tomllib.load(f)
+    assert "auth" in toml_data
+    assert toml_data["auth"]["username"] == "admin"
+
+
+def test_setup_post_password_mismatch_shows_error(tmp_path: Path):
+    """POST /setup with mismatched passwords shows error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("[general]\nlog_level = \"info\"\n")
+
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "admin", "password": "test123", "confirm_password": "different"},
+    )
+    assert response.status_code == 200
+    assert "Passwords do not match" in response.text
+
+
+def test_setup_post_empty_password_shows_error(tmp_path: Path):
+    """POST /setup with empty password shows error."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("[general]\nlog_level = \"info\"\n")
+
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "admin", "password": "", "confirm_password": ""},
+    )
+    assert response.status_code == 200
+    assert "Password is required" in response.text
+
+
+def test_setup_post_sets_session_cookie(tmp_path: Path):
+    """POST /setup with valid credentials sets triggarr_session cookie."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("[general]\nlog_level = \"info\"\n")
+
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "admin", "password": "test123", "confirm_password": "test123"},
+    )
+    assert response.status_code == 200
+    # Check Set-Cookie header contains triggarr_session
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+
+
+def test_setup_post_returns_404_when_configured():
+    """POST /setup with configured auth returns 404."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "admin", "password": "test123", "confirm_password": "test123"},
+    )
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: Login routes
+# ---------------------------------------------------------------------------
+
+
+def test_login_page_renders():
+    """GET /login with configured auth returns 200 with Sign In."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/login")
+    assert response.status_code == 200
+    assert "Sign In" in response.text
+
+
+def test_login_page_redirects_when_authenticated():
+    """GET /login with valid session cookie returns 302 redirect to / (D-06)."""
+    auth = _configured_auth()
+    app = _make_route_app(auth_config=auth)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+    response = client.get("/login", cookies={"triggarr_session": cookie})
+    assert response.status_code == 302
+    # Should redirect to dashboard (root)
+    location = response.headers["location"]
+    assert location.endswith("/")
+
+
+def test_login_post_valid_credentials_redirects():
+    """POST /login with correct credentials returns 303 with session cookie."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": _TEST_PASSWORD, "next": ""},
+    )
+    assert response.status_code == 303
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+
+
+def test_login_post_invalid_credentials_shows_error():
+    """POST /login with wrong password shows generic error with username pre-filled (D-04)."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "wrongpassword", "next": ""},
+    )
+    assert response.status_code == 200
+    assert "Invalid username or password" in response.text
+    # Username should be pre-filled in the form
+    assert 'value="admin"' in response.text
+
+
+def test_login_post_respects_next_param():
+    """POST /login with valid credentials and next=/settings redirects to /settings (D-05)."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": _TEST_PASSWORD, "next": "/settings"},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/settings"
+
+
+def test_login_post_rejects_open_redirect_next():
+    """POST /login with next=http://evil.com redirects to / not evil.com (T-56-14)."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": _TEST_PASSWORD, "next": "http://evil.com"},
+    )
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "evil.com" not in location
+    # Should redirect to safe fallback
+    assert location == "/"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: Logout route
+# ---------------------------------------------------------------------------
+
+
+def test_logout_clears_cookie_and_redirects():
+    """POST /logout returns 303 redirect to /login with cookie deletion."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    # Login first to have a session
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+    response = client.post("/logout", cookies={"triggarr_session": cookie})
+    assert response.status_code == 303
+    location = response.headers["location"]
+    assert "/login" in location
+    # Cookie should be deleted (max-age=0 or expires in past)
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    # Deletion indicated by max-age=0 or empty value
+    assert 'max-age=0' in set_cookie.lower() or '="";' in set_cookie
