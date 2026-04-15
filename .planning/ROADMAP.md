@@ -132,7 +132,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 55: Auth Middleware & Health Endpoint** - Deny-all middleware with path whitelist, API key validation, unauthenticated /health, redirect vs 401 logic (completed 2026-04-15)
 - [x] **Phase 56: First-Run Setup & Login** - Setup page with credential creation, login page with Forms/Basic modes, session cookie management, first-run redirect guard (completed 2026-04-15)
 - [x] **Phase 57: Settings Security & Nav Logout** - Settings security section for password/auth-mode/API-key management, nav bar logout, disabled-auth warning (completed 2026-04-15)
-- [ ] **Phase 58: Auth Test Suite** - Comprehensive tests for all auth paths, middleware enforcement, session lifecycle, and edge cases
+- [x] **Phase 58: Auth Test Suite** - Comprehensive tests for all auth paths, middleware enforcement, session lifecycle, and edge cases (completed 2026-04-15)
 
 ## Phase Details
 
@@ -209,10 +209,10 @@ Plans:
   3. Tests verify login with valid/invalid credentials, session cookie creation and validation, 30-day expiry, and logout clearing the cookie
   4. Tests verify all four auth modes (Forms redirect, Basic WWW-Authenticate, External pass-through, Disabled with warning log) behave correctly
   5. Tests verify API key authentication via X-Api-Key header, including valid key, invalid key, and missing key scenarios
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 58-01-PLAN.md -- Gap-fill existing test files (middleware, routes, config, helpers) + disabled warning log
-- [ ] 58-02-PLAN.md -- Cross-cutting integration tests (setup->login->use->logout flows)
+- [x] 58-02-PLAN.md -- Cross-cutting integration tests (setup->login->use->logout flows)
 
 ## Progress
 
@@ -225,4 +225,4 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
 | 56. First-Run Setup & Login | 4/4 | Complete    | 2026-04-15 |
 | 57. Settings Security & Nav Logout | 2/2 | Complete    | 2026-04-15 |
-| 58. Auth Test Suite | 1/2 | In Progress|  |
+| 58. Auth Test Suite | 2/2 | Complete   | 2026-04-15 |
