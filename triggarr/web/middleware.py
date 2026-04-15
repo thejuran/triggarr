@@ -110,7 +110,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Step 5: Valid X-Api-Key -> pass through (timing-safe comparison)
         api_key = request.headers.get("x-api-key")
-        if api_key and secrets.compare_digest(api_key, auth.api_key.get_secret_value()):
+        stored_key = auth.api_key.get_secret_value()
+        if api_key and stored_key and secrets.compare_digest(api_key, stored_key):
             return await call_next(request)
 
         # Step 6: Basic auth mode -> check Authorization header
@@ -138,7 +139,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             try:
                 decoded = base64.b64decode(authorization[6:]).decode("utf-8")
                 username, _, password = decoded.partition(":")
-                if username == auth.username and verify_password(
+                if secrets.compare_digest(username, auth.username) and verify_password(
                     password, auth.password_hash.get_secret_value()
                 ):
                     response = await call_next(request)
