@@ -179,7 +179,8 @@ def _safe_next_url(next_param: str | None) -> str:
     from urllib.parse import unquote
 
     decoded = unquote(next_param)
-    for value in (next_param, decoded):
+    fully_decoded = unquote(decoded)
+    for value in (next_param, decoded, fully_decoded):
         if value.startswith(("http://", "https://", "//")):
             return "/"
         if "\\" in value:
@@ -1165,7 +1166,7 @@ def _record_failure(ip: str) -> None:
     if ip not in _login_failures:
         # Evict oldest entry if at capacity
         if len(_login_failures) >= _MAX_TRACKED_IPS:
-            oldest_ip = min(_login_failures, key=lambda k: _login_failures[k][0] if _login_failures[k] else 0)
+            oldest_ip = min(_login_failures, key=lambda k: _login_failures[k][0] if _login_failures[k] else float("inf"))
             del _login_failures[oldest_ip]
         _login_failures[ip] = []
     _login_failures[ip].append(now)

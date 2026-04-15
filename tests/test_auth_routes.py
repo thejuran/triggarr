@@ -156,6 +156,21 @@ def test_safe_next_url_rejects_no_slash_prefix():
     assert _safe_next_url("settings") == "/"
 
 
+def test_safe_next_url_rejects_encoded_double_slash():
+    """_safe_next_url('%2f%2fevil.com') returns '/' (encoded //)."""
+    assert _safe_next_url("%2f%2fevil.com") == "/"
+
+
+def test_safe_next_url_rejects_encoded_backslash():
+    r"""_safe_next_url('/foo%5cbar') returns '/' (encoded backslash)."""
+    assert _safe_next_url("/foo%5cbar") == "/"
+
+
+def test_safe_next_url_rejects_double_encoded_http():
+    """_safe_next_url('%2568ttp://evil.com') returns '/' (double-encoded)."""
+    assert _safe_next_url("%2568ttp://evil.com") == "/"
+
+
 # ---------------------------------------------------------------------------
 # _settings_to_dict auth extension tests
 # ---------------------------------------------------------------------------
