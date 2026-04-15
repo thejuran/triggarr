@@ -1128,6 +1128,7 @@ async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
 # ---------------------------------------------------------------------------
 
 _login_failures: dict[str, list[float]] = {}
+_MAX_TRACKED_IPS = 10_000
 _MAX_ATTEMPTS = 10
 _WINDOW_SECONDS = 300
 
@@ -1149,6 +1150,10 @@ def _record_failure(ip: str) -> None:
     """Record a failed login attempt for rate limiting."""
     now = time.monotonic()
     if ip not in _login_failures:
+        # Evict oldest entry if at capacity
+        if len(_login_failures) >= _MAX_TRACKED_IPS:
+            oldest_ip = min(_login_failures, key=lambda k: _login_failures[k][-1] if _login_failures[k] else 0)
+            del _login_failures[oldest_ip]
         _login_failures[ip] = []
     _login_failures[ip].append(now)
 
@@ -1201,7 +1206,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
             samesite="lax",
             secure=_is_secure_context(request),
         )
-        logger.info("Login successful for user {username}", username=username)
+        logger.info("Login successful")
         return response
 
     # Failure: record for rate limiting, then re-render with error (D-04)
