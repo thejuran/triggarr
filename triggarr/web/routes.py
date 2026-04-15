@@ -398,7 +398,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "skip_unreleased": settings.general.skip_unreleased,
             "auth_method": settings.auth.method,
             "auth_is_disabled": settings.auth.is_disabled,
-            "auth_api_key": "",
+            "auth_api_key": settings.auth.api_key.get_secret_value(),
             "auth_username": settings.auth.username,
         },
     )
