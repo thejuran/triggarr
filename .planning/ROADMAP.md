@@ -129,7 +129,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Milestone Goal:** Add *arr-style built-in authentication -- secure by default with Forms/Basic/External/Disabled modes, first-run setup, API key, and signed session cookies.
 
 - [x] **Phase 54: Auth Config & Helpers** - Pydantic AuthConfig model, bcrypt password hashing, itsdangerous cookie signing, API key generation (completed 2026-04-14)
-- [ ] **Phase 55: Auth Middleware & Health Endpoint** - Deny-all middleware with path whitelist, API key validation, unauthenticated /health, redirect vs 401 logic
+- [x] **Phase 55: Auth Middleware & Health Endpoint** - Deny-all middleware with path whitelist, API key validation, unauthenticated /health, redirect vs 401 logic (completed 2026-04-15)
 - [ ] **Phase 56: First-Run Setup & Login** - Setup page with credential creation, login page with Forms/Basic modes, session cookie management, first-run redirect guard
 - [ ] **Phase 57: Settings Security & Nav Logout** - Settings security section for password/auth-mode/API-key management, nav bar logout, disabled-auth warning
 - [ ] **Phase 58: Auth Test Suite** - Comprehensive tests for all auth paths, middleware enforcement, session lifecycle, and edge cases
@@ -161,10 +161,10 @@ Plans:
   3. A request with a valid `X-Api-Key` header passes through the middleware and reaches the protected route
   4. `GET /health` returns `{"status": "ok"}` with 200 without any authentication
   5. When auth_method is "basic", the middleware returns a 401 with `WWW-Authenticate: Basic` header instead of redirecting to `/login`; when auth_method is "external", the middleware trusts the request as authenticated (reverse proxy delegation)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 55-01-PLAN.md -- AuthMiddleware TDD (deny-all dispatch with D-10 check order, all auth modes)
-- [ ] 55-02-PLAN.md -- Health endpoint + middleware registration wiring
+- [x] 55-02-PLAN.md -- Health endpoint + middleware registration wiring
 
 ### Phase 56: First-Run Setup & Login
 **Goal**: Users launching Triggarr for the first time are guided through credential creation, and returning users can log in via the Forms login page with persistent sessions
@@ -212,7 +212,7 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 54. Auth Config & Helpers | 2/2 | Complete    | 2026-04-15 |
-| 55. Auth Middleware & Health Endpoint | 1/2 | In Progress|  |
+| 55. Auth Middleware & Health Endpoint | 2/2 | Complete   | 2026-04-15 |
 | 56. First-Run Setup & Login | 0/? | Not started | - |
 | 57. Settings Security & Nav Logout | 0/? | Not started | - |
 | 58. Auth Test Suite | 0/? | Not started | - |
