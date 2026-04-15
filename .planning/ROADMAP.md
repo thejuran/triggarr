@@ -176,8 +176,12 @@ Plans:
   3. User can log in at `/login` with username and password; a valid login creates a signed session cookie that persists across browser restarts for 30 days
   4. User can click a logout button in the nav bar that clears the session cookie and redirects to `/login`
   5. Login and setup pages match AIDesigner HTML artifacts pixel-exact (design generated via AIDesigner, implemented faithfully in Jinja2 templates)
-**Plans**: TBD
-**UI hint**: yes
+**Plans:** 4 plans
+Plans:
+- [ ] 56-01-PLAN.md -- TDD: _safe_next_url open redirect prevention + _settings_to_dict auth extension
+- [ ] 56-02-PLAN.md -- Jinja2 templates (base-auth.html, login.html, setup.html) + nav bar logout
+- [ ] 56-03-PLAN.md -- Route handlers (setup, login, logout) + middleware ?next= update
+- [ ] 56-04-PLAN.md -- TDD: Integration tests for all auth route handlers
 
 ### Phase 57: Settings Security & Nav Logout
 **Goal**: Users can manage their authentication settings -- change password, switch auth mode, view/copy/regenerate API key -- from a dedicated security section in Settings
@@ -213,6 +217,6 @@ Phases execute in numeric order: 54 -> 55 -> 56 -> 57 -> 58
 |-------|----------------|--------|-----------|
 | 54. Auth Config & Helpers | 2/2 | Complete    | 2026-04-15 |
 | 55. Auth Middleware & Health Endpoint | 2/2 | Complete    | 2026-04-15 |
-| 56. First-Run Setup & Login | 0/? | Not started | - |
+| 56. First-Run Setup & Login | 0/4 | Not started | - |
 | 57. Settings Security & Nav Logout | 0/? | Not started | - |
 | 58. Auth Test Suite | 0/? | Not started | - |
