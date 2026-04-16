@@ -21,7 +21,7 @@ created: 2026-04-15
 | Tool | none (Tailwind CSS v4 + Jinja2 templates) |
 | Preset | not applicable |
 | Component library | none (hand-authored components) |
-| Icon library | @phosphor-icons/web — vendored locally to `/static/vendor/phosphor/` (D-01) |
+| Icon library | @phosphor-icons/web -- vendored locally to `/static/vendor/phosphor/` (D-01) |
 | Icon markup | `<i class="ph ph-icon-name">` (D-02) |
 | Body font | `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif` (FONT-01) |
 | Mono font | Geist Mono (self-hosted WOFF2, weights 400+500, already in input.css) (FONT-02) |
@@ -34,17 +34,25 @@ Declared values (multiples of 4, extracted from artifact header):
 
 | Token | Value | Usage in this phase |
 |-------|-------|---------------------|
-| xs | 4px (1) | Icon top offset (`relative top-px`), version badge `py-0.5` |
-| sm | 8px (2) | Nav icon-to-label gap (`gap-2`), version badge `px-2`, pill inner padding |
-| md | 12px (3) | Logo-to-badge gap (`gap-3`) |
-| lg | 16px (4) | Header horizontal padding (`px-6` = 24px), header vertical padding (`py-4` = 16px) |
-| xl | 24px (6) | Nav link spacing (`gap-6`), header `px-6` |
+| xs | 4px (1) | Pipe divider `mx-1`, version badge `py-0.5` rounding target |
+| sm | 8px (2) | Nav icon-to-label gap (`gap-2`), version badge `px-2`, pill inner gap |
+| md | 12px (3) | Logo-to-badge gap (`gap-3`), connection pill horizontal padding (`pl-3 pr-3`) |
+| lg | 16px (4) | Header vertical padding (`py-4`), pipe divider height (`h-4`) |
+| xl | 24px (6) | Nav link spacing (`gap-6`), header horizontal padding (`px-6`) |
 
-Exceptions:
-- Header uses `py-4` (16px) vertical padding per D-04, upgrading from current `py-3` (12px)
-- Left/right zones use `w-64` (256px) fixed width per D-03
-- Pipe divider uses `mx-1` (4px) horizontal margin and `h-4` (16px) height
-- Connection pill uses `pl-3 pr-3` (12px) horizontal and `py-1.5` (6px) vertical padding
+### Spacing Exceptions (artifact-mandated, pixel-exact port)
+
+The following non-4-multiple values are taken verbatim from the AIDesigner artifact HTML. Changing them would break pixel-exact fidelity to the design source of truth. Each value is justified by its artifact source line.
+
+| Value | Tailwind Class | Artifact Source | Justification |
+|-------|----------------|-----------------|---------------|
+| 6px | `py-1.5` | design.html line 88 | Connection pill vertical padding. Artifact uses `py-1.5` for optical balance between the small dot and 13px label text. A 4px or 8px alternative would visually break the pill proportions. |
+| 2px | `mt-0.5` | design.html line 90 | Connection pill label top nudge. Optically aligns the 13px text baseline with the 8px dot center. Sub-4px precision required for optical alignment. |
+| 2px | `py-0.5` | design.html line 65 | Version badge vertical padding. The 10px uppercase text in the badge needs minimal vertical breathing room; 4px would make the badge too tall relative to the logo. |
+| 1px | `top-px` | design.html lines 65, 69, 74, 78, 83 | Icon and badge vertical nudge. Aligns Phosphor icon baselines and badge baseline with adjacent text. Sub-pixel optical correction, standard practice. |
+| 21px | `-bottom-[21px]` | design.html line 71 | Active nav bottom bar offset. Precisely calculated to align the 2px indicator bar flush with the header's bottom border, given the header's `py-4` (16px) padding plus content height. This is a computed positional value, not a spacing token. |
+| 6px | `gap-1.5` | design.html line 161 | Update badge icon-to-text gap. Matches the small scale of the 12px update badge; 8px gap would be disproportionately wide. |
+| 6px | `w-1.5 h-1.5` | design.html line 162 | Update badge dot dimensions. The dot must be visually smaller than the connection pill dot (w-2 h-2) to establish hierarchy. |
 
 ---
 
@@ -55,10 +63,30 @@ Exceptions:
 | Logo | 20px (`text-xl`) | 700 (bold) | default | System sans-serif | "Triggarr" brand text |
 | Nav link (active) | 15px (`text-[15px]`) | 600 (semibold) | default | System sans-serif | Active navigation link |
 | Nav link (inactive) | 15px (`text-[15px]`) | 500 (medium) | default | System sans-serif | Inactive navigation links, logout |
-| Nav icon | 18px (`text-[18px]`) | -- | -- | Phosphor Icons | Icon beside each nav link |
 | Version badge | 10px (`text-[10px]`) | 700 (bold) | default | Geist Mono (`font-mono`) | "v2.1.0" badge, uppercase tracking-wider |
 | Connection pill label | 13px (`text-[13px]`) | 500 (medium) | default | System sans-serif | "Connection Stable" text |
 | Body (global) | 14px (Tailwind default) | 400 (normal) | 1.5 | System sans-serif | All body text across dashboard (FONT-01) |
+
+Note: Nav icons use `text-[18px]` as a Phosphor icon render size, not a text typography role. This value is specified inline in the Nav Icon Map (Section 6 of Component Inventory) and is excluded from the typography scale.
+
+### Typography Exception Justification
+
+**5 text sizes (10, 13, 14, 15, 20) instead of the standard 4-size maximum:** These sizes are artifact-mandated for pixel-exact port of the AIDesigner design (design.html lines 60-94). Each size serves a distinct hierarchy role that cannot be consolidated without breaking fidelity:
+- 20px: Logo brand text (largest, anchors left zone)
+- 15px: Navigation links (primary interactive text)
+- 14px: Body text (global default, Tailwind standard)
+- 13px: Connection pill label (secondary status indicator, must be visually subordinate to nav links)
+- 10px: Version badge (smallest, monospace micro-label with uppercase tracking)
+
+Consolidating 13px into 14px or 10px into another size would visibly break the artifact's typographic hierarchy.
+
+**4 font weights (400, 500, 600, 700) instead of the standard 2-weight maximum:** The artifact defines a 4-weight hierarchy that encodes interaction state and visual importance:
+- 400 (normal): Body text baseline
+- 500 (medium): Inactive nav links, connection pill label -- signals "available but not selected"
+- 600 (semibold): Active nav link -- signals "currently selected" with weight contrast against 500
+- 700 (bold): Logo text, version badge -- signals brand and fixed labels
+
+The 500/600 distinction is critical for the active/inactive nav state pattern. Removing either weight would eliminate the visual differentiation the artifact establishes between active and inactive navigation.
 
 ### Font Discipline Rules (FONT-01 + FONT-02)
 
@@ -80,8 +108,8 @@ All other text MUST render in system sans-serif. The `<body>` element uses `font
 
 | Token | Value | Role |
 |-------|-------|------|
-| `triggarr-bg` | `#0f172a` | Dominant (60%) — page background |
-| `triggarr-card` | `#1e293b` | Secondary (30%) — cards, header background |
+| `triggarr-bg` | `#0f172a` | Dominant (60%) -- page background |
+| `triggarr-card` | `#1e293b` | Secondary (30%) -- cards, header background |
 | `triggarr-card-elevated` | `#233346` | Elevated card state |
 | `triggarr-border` | `#334155` | Borders throughout |
 | `triggarr-text` | `#e2e8f0` | Primary text |
@@ -132,7 +160,9 @@ All other text MUST render in system sans-serif. The `<body>` element uses `font
 
 ---
 
-## Component Inventory — Header
+## Component Inventory -- Header
+
+Primary focal point: The center-anchored navigation bar with its green active-state indicator bar draws the eye first, establishing the user's current location within the app.
 
 ### 1. Header Container
 
@@ -185,7 +215,7 @@ Changes from current:
 - Add Phosphor icons to each link (HDR-02)
 - Change text size from `text-sm` to `text-[15px]` (HDR-02)
 
-### 4. Nav Link — Active State
+### 4. Nav Link -- Active State
 
 ```
 <a href="{{ dashboard_url }}"
@@ -199,10 +229,11 @@ Changes from current:
 Key details:
 - `font-semibold` on active (not just white text)
 - Icon gets `text-triggarr-primary` on active
+- Icon uses `text-[18px]` as a Phosphor icon render size (not a typography role)
 - Bottom bar is `absolute -bottom-[21px]` extending to the header border, `h-[2px] bg-triggarr-primary`
 - The `-bottom-[21px]` value aligns the bar with the header's bottom border given `py-4` padding
 
-### 5. Nav Link — Inactive State
+### 5. Nav Link -- Inactive State
 
 ```
 <a href="{{ history_url }}"
@@ -216,15 +247,18 @@ Key details:
 - `font-medium` on inactive
 - No bottom bar
 - Icon inherits muted color, transitions to text color on hover via `group-hover`
+- Icon uses `text-[18px]` as a Phosphor icon render size (not a typography role)
 
 ### 6. Nav Icon Map (HDR-02)
 
-| Link | Phosphor Icon Class | Size |
-|------|---------------------|------|
-| Dashboard | `ph ph-squares-four` | `text-[18px]` |
-| History | `ph ph-clock-counter-clockwise` | `text-[18px]` |
-| Settings | `ph ph-gear` | `text-[18px]` |
-| Logout | `ph ph-sign-out` | `text-[18px]` |
+All nav icons render at `text-[18px]` (icon render size, not a typography role).
+
+| Link | Phosphor Icon Class |
+|------|---------------------|
+| Dashboard | `ph ph-squares-four` |
+| History | `ph ph-clock-counter-clockwise` |
+| Settings | `ph ph-gear` |
+| Logout | `ph ph-sign-out` |
 
 ### 7. Pipe Divider (HDR-04)
 
@@ -252,7 +286,7 @@ Key details:
 - Hover changes BOTH text and icon to `red-400` (`#f87171`)
 - Only visible when `auth_state.active` is true (preserve existing conditional)
 
-### 9. Right Zone — Connection Status Pill (HDR-05, D-06, D-07)
+### 9. Right Zone -- Connection Status Pill (HDR-05, D-06, D-07)
 
 ```
 <div class="flex items-center justify-end w-64 shrink-0">
@@ -268,13 +302,13 @@ States:
 - **Disconnected** (any instance unhealthy): Red dot (NO pulse), red text "Connection Issue", red-tinted border `border-triggarr-danger/40`
 
 Key details:
-- Uses EXISTING `dot-pulse` CSS class (gray area resolution — no new animation)
+- Uses EXISTING `dot-pulse` CSS class (gray area resolution -- no new animation)
 - Pill border uses `triggarr-primaryDark/40` (green state) or `triggarr-danger/40` (red state)
 - Data source: existing instance health data already available in dashboard context (D-06)
 
 ---
 
-## CSS Changes — input.css
+## CSS Changes -- input.css
 
 ### New Color Tokens (add to @theme block)
 
@@ -301,7 +335,7 @@ The vendored files must include:
 
 ### No New CSS Animations
 
-The `dot-pulse` animation already in input.css is reused for the connection pill. The artifact's `pulse-dot::before` animation is visually equivalent — use the existing `dot-pulse` class instead.
+The `dot-pulse` animation already in input.css is reused for the connection pill. The artifact's `pulse-dot::before` animation is visually equivalent -- use the existing `dot-pulse` class instead.
 
 ---
 
@@ -383,7 +417,7 @@ No empty states, error states, or destructive confirmations in this phase's head
 
 | Registry | Blocks Used | Safety Gate |
 |----------|-------------|-------------|
-| @phosphor-icons/web (npm) | CSS icon font | Vendored locally; no CDN; no runtime JS — CSS + WOFF2 font only |
+| @phosphor-icons/web (npm) | CSS icon font | Vendored locally; no CDN; no runtime JS -- CSS + WOFF2 font only |
 
 No shadcn. No third-party component registries. Phosphor is a font-based icon library loaded as a static asset, not a component registry.
 
