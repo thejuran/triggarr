@@ -159,7 +159,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
   5. A favicon/app icon appears to the left of the "Triggarr" logo text in the header
 **Plans**: 3 plans
 Plans:
-- [ ] 60-01-PLAN.md -- Vendor Phosphor Icons, add CSS color tokens, font discipline foundation
+- [x] 60-01-PLAN.md -- Vendor Phosphor Icons, add CSS color tokens, font discipline foundation
 - [ ] 60-02-PLAN.md -- Header restructure with three-zone layout, nav icons, logout divider
 - [ ] 60-03-PLAN.md -- Connection status pill wiring and phase test suite
 **UI hint**: yes
@@ -194,6 +194,6 @@ Phases execute in numeric order: 60 -> 61 -> 62
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 60. Foundation & Header | v2.7 | 0/3 | Not started | - |
+| 60. Foundation & Header | v2.7 | 1/3 | In Progress|  |
 | 61. Stat Cards & App Cards | v2.7 | 0/TBD | Not started | - |
 | 62. Activity Rail & Log Viewer | v2.7 | 0/TBD | Not started | - |
