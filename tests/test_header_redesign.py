@@ -274,7 +274,8 @@ def test_connection_pill_loaded_via_htmx_in_header(client):
     response = client.get("/")
     assert response.status_code == 200
     assert "connection-pill" in response.text
-    assert 'hx-get="' in response.text and "partials/connection-pill" in response.text
+    assert 'hx-get="' in response.text
+    assert "partials/connection-pill" in response.text
     assert 'hx-trigger="load, every 30s"' in response.text
 
 
