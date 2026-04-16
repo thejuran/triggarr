@@ -2,109 +2,109 @@
      hx-get="{{ request.url_for('partial_app_card', app_name=app.name, instance_name=app.instance) }}"
      hx-trigger="every 5s"
      hx-swap="outerHTML"
-     class="bg-triggarr-card rounded-lg border border-triggarr-border p-5 shadow-sm card-hover
-            {% if app.connected == false %}border-l-4 border-l-red-500 danger-stripes relative overflow-hidden{% else %}border-l-4 border-l-triggarr-green{% endif %}">
+     class="bg-triggarr-card border border-triggarr-border border-l-4
+            {% if app.connected == false %}border-l-triggarr-danger{% elif app.name == 'radarr' %}border-l-triggarr-radarr{% elif app.name == 'sonarr' %}border-l-triggarr-sonarr{% elif app.name == 'lidarr' %}border-l-triggarr-green{% endif %}
+            rounded-lg overflow-hidden flex flex-col shadow-sm card-hover
+            {% if app.connected == false %}danger-stripes relative{% endif %}">
 
-  <!-- Header: app name + instance + unified connection pill -->
-  <div class="flex items-center justify-between">
-    <h2 class="text-lg font-semibold">{{ app.name | capitalize }}{% if app.instance != 'Default' %} <span class="text-sm font-normal text-triggarr-muted">/ {{ app.instance }}</span>{% endif %}</h2>
+  {% if app.connected == false %}
+  <div class="absolute inset-0 bg-gradient-to-br from-triggarr-danger/5 to-transparent pointer-events-none"></div>
+  {% endif %}
+
+  <!-- Header -->
+  <div class="p-4 border-b border-triggarr-border/50 flex justify-between items-center{% if app.connected == false %} relative z-10{% endif %}">
+    <h2 class="font-bold text-triggarr-text text-[15px]{% if app.connected == false %} text-triggarr-muted{% endif %}">{{ app.name | capitalize }}{% if app.instance != 'Default' %} <span class="text-sm font-normal text-triggarr-muted">/ {{ app.instance }}</span>{% endif %}</h2>
     {% if app.connected == true %}
-      <span class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-triggarr-green/15 text-triggarr-green">
-        <span class="w-1.5 h-1.5 rounded-full bg-triggarr-green dot-pulse"></span>
-        Connected
-      </span>
+      <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-triggarr-primary/10 text-triggarr-primary border border-triggarr-primary/20">Connected</span>
     {% elif app.connected == false %}
-      <span class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-500/15 text-red-400">
-        <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-        Unreachable
-      </span>
+      <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-triggarr-danger/10 text-triggarr-danger border border-triggarr-danger/20">Unreachable</span>
     {% else %}
-      <span class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-triggarr-border/40 text-triggarr-muted">
-        <span class="w-1.5 h-1.5 rounded-full bg-triggarr-muted"></span>
-        Waiting...
-      </span>
+      <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-triggarr-border/40 text-triggarr-muted border border-triggarr-border/40">Waiting...</span>
     {% endif %}
   </div>
 
-  <!-- Tag warning badge -->
-  {% if app.tag_warnings %}
-  <div class="bg-amber-500/15 text-amber-400 text-xs px-3 py-1.5 rounded mt-3 flex items-center gap-2">
-    <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="0.5"/></svg>
-    <span>
-      {% if app.tag_warnings | length == 1 %}
-        {{ app.tag_warnings[0].field | capitalize }} tag '{{ app.tag_warnings[0].tag }}' not found
-      {% else %}
-        Tags not found: {% for w in app.tag_warnings %}'{{ w.tag }}' ({{ w.field }}){% if not loop.last %}, {% endif %}{% endfor %}
-      {% endif %}
-    </span>
+  {% if app.connected == false %}
+  <!-- Unreachable body: centered error message -->
+  <div class="p-4 flex-1 relative z-10 flex flex-col justify-center items-center text-center">
+    <i class="ph ph-warning-circle text-[40px] text-triggarr-danger/40 mb-3 block"></i>
+    <span class="text-sm text-triggarr-muted block mb-1">API connection failed.</span>
+    <span class="text-[10px] text-triggarr-muted/60 block">Check API key or network setup.</span>
+  </div>
+  {% else %}
+  <!-- Connected/Waiting body -->
+  <div class="p-4 flex-1">
+    <!-- Tag warning badge -->
+    {% if app.tag_warnings %}
+    <div class="bg-amber-500/15 text-amber-400 text-xs px-3 py-1.5 rounded mb-3 flex items-center gap-2">
+      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="0.5"/></svg>
+      <span>
+        {% if app.tag_warnings | length == 1 %}
+          {{ app.tag_warnings[0].field | capitalize }} tag '{{ app.tag_warnings[0].tag }}' not found
+        {% else %}
+          Tags not found: {% for w in app.tag_warnings %}'{{ w.tag }}' ({{ w.field }}){% if not loop.last %}, {% endif %}{% endfor %}
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    <!-- Schedule row -->
+    <div class="text-[11px] font-mono text-triggarr-muted mb-4 flex justify-between">
+      <span>Last run: <span class="text-triggarr-text">{% if app.last_run %}{{ app.last_run[11:19] }}{% else %}Never{% endif %}</span></span>
+      <span>Next: <span class="text-triggarr-text">{% if app.connected == false %}&mdash;{% elif app.next_run %}{{ app.next_run[11:16] }}{% else %}&mdash;{% endif %}</span></span>
+    </div>
+
+    <!-- Stats sub-cards -->
+    <div class="grid grid-cols-2 gap-3 mb-5">
+      <div class="bg-triggarr-bg/50 border border-triggarr-border/50 rounded p-2.5">
+        <span class="block text-[10px] text-triggarr-muted uppercase tracking-wider">Missing</span>
+        <span class="block text-lg font-bold text-triggarr-text mt-1">
+          {%- if app.missing_count is not none -%}{{ app.missing_count }}{%- else -%}&mdash;{%- endif -%}
+        </span>
+        {% if app.missing_count is not none %}
+        <p class="text-[10px] text-triggarr-muted mt-0.5 flex items-center gap-1.5">
+          <span>{{ app.missing_cursor }} of {{ app.missing_searchable if app.missing_searchable is not none else (app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?')) }}</span>
+          {%- if app.missing_pass is defined and app.missing_pass > 0 %}
+          <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.missing_pass }}</span>
+          {%- endif %}
+        </p>
+        {%- if app.skip_unreleased and app.name == 'radarr' and app.missing_eligible is not none and app.missing_monitored is not none and app.missing_eligible < app.missing_monitored %}
+        <p class="text-[10px] text-amber-400 mt-0.5">{{ app.missing_monitored - app.missing_eligible }} skipped</p>
+        {%- endif %}
+        {% endif %}
+      </div>
+      <div class="bg-triggarr-bg/50 border border-triggarr-border/50 rounded p-2.5">
+        <span class="block text-[10px] text-triggarr-muted uppercase tracking-wider">Cutoff Unmet</span>
+        <span class="block text-lg font-bold text-triggarr-text mt-1">
+          {%- if app.cutoff_count is not none -%}{{ app.cutoff_count }}{%- else -%}&mdash;{%- endif -%}
+        </span>
+        {% if app.cutoff_count is not none %}
+        <p class="text-[10px] text-triggarr-muted mt-0.5 flex items-center gap-1.5">
+          <span>{{ app.cutoff_cursor }} of {{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}</span>
+          {%- if app.cutoff_pass is defined and app.cutoff_pass > 0 %}
+          <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.cutoff_pass }}</span>
+          {%- endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
   </div>
   {% endif %}
 
-  <!-- Schedule row -->
-  <div class="mt-3 flex items-center justify-between text-xs text-triggarr-muted border-b border-triggarr-border/50 pb-3">
-    <span>Last run <span class="text-triggarr-text">{% if app.last_run %}{{ app.last_run[11:19] }}{% else %}Never{% endif %}</span></span>
-    <span>Next run <span class="text-triggarr-text">{% if app.connected == false %}&mdash;{% elif app.next_run %}{{ app.next_run[11:16] }}{% else %}&mdash;{% endif %}</span></span>
-  </div>
-
-  <!-- Stats grid -->
-  <div class="grid grid-cols-2 gap-4 mt-3{% if app.connected == false %} opacity-60{% endif %}">
-    <div>
-      <span class="text-xs uppercase tracking-wide text-triggarr-muted">Missing</span>
-      <p class="text-sm font-medium">
-        {%- if app.missing_count is not none and app.total_items is not none -%}
-          {{ app.missing_count }} of {{ app.total_items }}
-        {%- elif app.missing_count is not none -%}
-          {{ app.missing_count }} items
-        {%- else -%}
-          &mdash;
-        {%- endif -%}
-      </p>
-      <p class="text-xs text-triggarr-muted mt-0.5 flex items-center gap-1.5">
-        <span>{{ app.missing_cursor }} of {{ app.missing_searchable if app.missing_searchable is not none else (app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?')) }}</span>
-        {%- if app.missing_pass is defined and app.missing_pass > 0 %}
-        <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.missing_pass }}</span>
-        {%- endif %}
-      </p>
-      {%- if app.skip_unreleased and app.name == 'radarr' and app.missing_eligible is not none and app.missing_monitored is not none and app.missing_eligible < app.missing_monitored %}
-      <p class="text-xs text-amber-400">{{ app.missing_monitored - app.missing_eligible }} skipped (unreleased)</p>
-      {%- endif %}
-    </div>
-    <div>
-      <span class="text-xs uppercase tracking-wide text-triggarr-muted">Cutoff</span>
-      <p class="text-sm font-medium">
-        {%- if app.cutoff_count is not none and app.total_items is not none -%}
-          {{ app.cutoff_count }} of {{ app.total_items }}
-        {%- elif app.cutoff_count is not none -%}
-          {{ app.cutoff_count }} items
-        {%- else -%}
-          &mdash;
-        {%- endif -%}
-      </p>
-      <p class="text-xs text-triggarr-muted mt-0.5 flex items-center gap-1.5">
-        <span>{{ app.cutoff_cursor }} of {{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}</span>
-        {%- if app.cutoff_pass is defined and app.cutoff_pass > 0 %}
-        <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.cutoff_pass }}</span>
-        {%- endif %}
-      </p>
-    </div>
-  </div>
-
-  <!-- Controls -->
-  <div class="flex items-center gap-3 mt-4 pt-3 border-t border-triggarr-border/50">
+  <!-- Footer -->
+  <div class="p-3 bg-triggarr-bg/30 border-t border-triggarr-border/50{% if app.connected == false %} relative z-10{% endif %}">
     {% if app.connected == false %}
       <button hx-post="{{ request.url_for('search_now', app_name=app.name, instance_name=app.instance) }}"
               hx-target="#{{ app.card_id }}-card"
               hx-swap="outerHTML"
-              class="bg-red-500/15 text-red-400 text-xs font-medium px-3 py-1.5 rounded hover:bg-red-500/25 transition-colors flex items-center gap-1.5">
-        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
-        Retry
+              class="w-full flex items-center justify-center gap-2 py-2 rounded-md bg-triggarr-card hover:bg-triggarr-elevated border border-triggarr-border text-xs font-semibold transition-colors text-triggarr-muted">
+        <i class="ph ph-arrows-clockwise"></i>Retry Connection
       </button>
     {% else %}
       <button hx-post="{{ request.url_for('search_now', app_name=app.name, instance_name=app.instance) }}"
               hx-target="#{{ app.card_id }}-card"
               hx-swap="outerHTML"
-              class="bg-triggarr-green/20 text-triggarr-green text-xs font-medium px-3 py-1.5 rounded hover:bg-triggarr-green/30 transition-colors">
-        Search Now
+              class="w-full flex items-center justify-center gap-2 py-2 rounded-md bg-triggarr-elevated hover:bg-triggarr-border border border-triggarr-border text-xs font-semibold transition-colors text-triggarr-text group">
+        <i class="ph ph-magnifying-glass {% if app.name == 'radarr' %}group-hover:text-triggarr-radarr{% elif app.name == 'sonarr' %}group-hover:text-triggarr-sonarr{% elif app.name == 'lidarr' %}group-hover:text-triggarr-green{% endif %} transition-colors"></i>Search Now
       </button>
     {% endif %}
   </div>
