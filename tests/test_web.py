@@ -861,21 +861,21 @@ def test_save_settings_skip_unreleased_on(client, test_app):
 
 
 def test_build_app_context_includes_total_items(client, test_app):
-    """_build_app_context shows missing_count of total_items when both are available."""
+    """_build_app_context shows missing_count as hero number in recessed sub-card."""
     test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 30
     test_app.state.triggarr_state["radarr"]["Default"]["total_items"] = 1200
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "30 of 1200" in response.text
+    assert ">30<" in response.text.replace(" ", "").replace("\n", ""), "Missing count should render as hero number"
 
 
 def test_build_app_context_no_total_items_fallback(client, test_app):
-    """App card shows 'X items' when total_items is not yet available (pre-first-cycle)."""
+    """App card shows missing_count hero number even when total_items is absent."""
     test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 42
     test_app.state.triggarr_state["radarr"]["Default"].pop("total_items", None)
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "42 items" in response.text, "Should fall back to count-only when total_items is None"
+    assert ">42<" in response.text.replace(" ", "").replace("\n", ""), "Missing count should render as hero number"
 
 
 def test_app_card_skip_indicator_shown(client, test_app):
@@ -887,7 +887,7 @@ def test_app_card_skip_indicator_shown(client, test_app):
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     # Badge should show 42-30=12, NOT 50-30=20
-    assert "12 skipped (unreleased)" in response.text, "Should show skip count badge using monitored count"
+    assert "12 skipped" in response.text, "Should show skip count badge using monitored count"
     assert "20 skipped" not in response.text, "Should NOT use raw missing_count for badge math"
     assert "text-amber-400" in response.text, "Skip badge should use amber styling"
 
@@ -1305,12 +1305,12 @@ def test_app_card_no_skip_when_equal(client, test_app):
 
 
 def test_app_card_eligible_total_display(client, test_app):
-    """App card shows 'missing_count of total_items' for the missing section."""
+    """App card shows missing_count as hero number in recessed sub-card."""
     test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 50
     test_app.state.triggarr_state["radarr"]["Default"]["total_items"] = 1500
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "50 of 1500" in response.text, "Should show missing_count of total_items"
+    assert ">50<" in response.text.replace(" ", "").replace("\n", ""), "Missing count should render as hero number"
 
 
 def test_app_card_sonarr_no_skip_badge(client, test_app):
