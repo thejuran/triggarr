@@ -3,83 +3,89 @@
      hx-trigger="every 30s"
      hx-swap="outerHTML"
      hx-include="[name='instance']"
-     class="grid grid-cols-2 {% if instance_app_type %}md:grid-cols-3{% else %}md:grid-cols-5{% endif %} gap-3 mb-4">
+     class="grid grid-cols-2 {% if instance_app_type %}md:grid-cols-3{% else %}md:grid-cols-5{% endif %} gap-4 mb-4">
 
-  <!-- Hero Grab Rate card — STATS-02, STATS-03, STATS-04 -->
-  <div class="{% if instance_app_type %}md:col-span-1{% else %}md:col-span-2{% endif %} bg-triggarr-card rounded-lg border border-triggarr-border p-5 shadow-sm relative overflow-hidden">
-    <div class="absolute inset-0 bg-gradient-to-br from-triggarr-green/5 to-transparent pointer-events-none"></div>
-    <div class="relative">
-      <div class="flex items-center justify-between">
-        <span class="text-xs uppercase tracking-wide text-triggarr-muted">Grab Rate</span>
-        {% if stats.overall_rate is not none %}
-          {% if stats.overall_rate >= 70 %}
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-triggarr-green/15 text-triggarr-green">Healthy</span>
-          {% elif stats.overall_rate >= 40 %}
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">Warn</span>
-          {% else %}
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400">Critical</span>
-          {% endif %}
-        {% endif %}
+  <!-- Hero Grab Rate card — STAT-01, STAT-02, STAT-03, STAT-04 -->
+  <div class="{% if instance_app_type %}md:col-span-1{% else %}md:col-span-2{% endif %} bg-triggarr-card border border-triggarr-border rounded-lg p-5 flex flex-col justify-between shadow-sm">
+    <div class="flex justify-between items-start mb-4">
+      <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Grab Rate</span>
+      <i class="ph ph-chart-line-up text-lg text-triggarr-primary"></i>
+    </div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-4">{% if stats.overall_rate is not none %}{{ "%.0f" | format(stats.overall_rate) }}<span class="text-2xl text-triggarr-muted">%</span>{% else %}&mdash;{% endif %}</div>
+    <div class="flex items-center justify-between gap-4 mt-2">
+      {% if stats.radarr_rate is not none %}
+      <div class="flex-1">
+        <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Radarr</span><span>{{ "%.0f" | format(stats.radarr_rate) }}%</span></div>
+        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-radarr rounded-full" style="width: {{ "%.0f" | format(stats.radarr_rate) }}%"></div></div>
       </div>
-      <p class="text-4xl font-bold mt-2 leading-none">{% if stats.overall_rate is not none %}{{ "%.0f" | format(stats.overall_rate) }}<span class="text-2xl text-triggarr-muted">%</span>{% else %}&mdash;{% endif %}</p>
-      <div class="mt-4 space-y-2">
-        {% if stats.radarr_rate is not none %}
-        <div class="flex items-center gap-3">
-          <span class="text-[11px] w-12 text-orange-400 font-medium">Radarr</span>
-          <div class="mini-bar flex-1"><span style="width: {{ "%.0f" | format(stats.radarr_rate) }}%; background: #fb923c"></span></div>
-          <span class="text-[11px] text-triggarr-muted w-8 text-right">{{ "%.0f" | format(stats.radarr_rate) }}%</span>
-        </div>
-        {% endif %}
-        {% if stats.sonarr_rate is not none %}
-        <div class="flex items-center gap-3">
-          <span class="text-[11px] w-12 text-blue-400 font-medium">Sonarr</span>
-          <div class="mini-bar flex-1"><span style="width: {{ "%.0f" | format(stats.sonarr_rate) }}%; background: #60a5fa"></span></div>
-          <span class="text-[11px] text-triggarr-muted w-8 text-right">{{ "%.0f" | format(stats.sonarr_rate) }}%</span>
-        </div>
-        {% endif %}
-        {% if stats.lidarr_rate is not none %}
-        <div class="flex items-center gap-3">
-          <span class="text-[11px] w-12 text-green-400 font-medium">Lidarr</span>
-          <div class="mini-bar flex-1"><span style="width: {{ "%.0f" | format(stats.lidarr_rate) }}%; background: #4ade80"></span></div>
-          <span class="text-[11px] text-triggarr-muted w-8 text-right">{{ "%.0f" | format(stats.lidarr_rate) }}%</span>
-        </div>
-        {% endif %}
+      {% endif %}
+      {% if stats.sonarr_rate is not none %}
+      <div class="flex-1">
+        <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Sonarr</span><span>{{ "%.0f" | format(stats.sonarr_rate) }}%</span></div>
+        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-sonarr rounded-full" style="width: {{ "%.0f" | format(stats.sonarr_rate) }}%"></div></div>
       </div>
+      {% endif %}
+      {% if stats.lidarr_rate is not none %}
+      <div class="flex-1">
+        <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Lidarr</span><span>{{ "%.0f" | format(stats.lidarr_rate) }}%</span></div>
+        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-green rounded-full" style="width: {{ "%.0f" | format(stats.lidarr_rate) }}%"></div></div>
+      </div>
+      {% endif %}
     </div>
   </div>
 
   <!-- Movies card (only shown when Radarr is enabled and not filtered to Sonarr or Lidarr) -->
   {% if radarr_enabled and instance_app_type not in ('sonarr', 'lidarr') %}
-  <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 shadow-sm">
-    <span class="text-xs uppercase tracking-wide text-triggarr-muted">Movies</span>
-    <p class="text-lg font-bold mt-1">{{ stats.movies_found + stats.movies_updated }}</p>
-    <p class="text-xs text-triggarr-muted mt-1">{{ stats.movies_found }} found &middot; {{ stats.movies_updated }} upgraded</p>
+  <div class="bg-triggarr-card border border-triggarr-border rounded-lg p-5 flex flex-col justify-between shadow-sm">
+    <div class="flex justify-between items-start mb-4">
+      <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Movies</span>
+      <i class="ph ph-film-strip text-lg text-triggarr-radarr"></i>
+    </div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ stats.movies_found + stats.movies_updated }}</div>
+    <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
+      <span class="w-1.5 h-1.5 rounded-full bg-triggarr-radarr opacity-80"></span>In Radarr
+    </div>
   </div>
   {% endif %}
 
-  <!-- Episodes card (only shown when Sonarr is enabled and not filtered to Radarr or Lidarr) -->
+  <!-- Series card (only shown when Sonarr is enabled and not filtered to Radarr or Lidarr) -->
   {% if sonarr_enabled and instance_app_type not in ('radarr', 'lidarr') %}
-  <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 shadow-sm">
-    <span class="text-xs uppercase tracking-wide text-triggarr-muted">Episodes</span>
-    <p class="text-lg font-bold mt-1">{{ stats.episodes_found + stats.episodes_updated }}</p>
-    <p class="text-xs text-triggarr-muted mt-1">{{ stats.episodes_found }} found &middot; {{ stats.episodes_updated }} upgraded</p>
+  <div class="bg-triggarr-card border border-triggarr-border rounded-lg p-5 flex flex-col justify-between shadow-sm">
+    <div class="flex justify-between items-start mb-4">
+      <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Series</span>
+      <i class="ph ph-television text-lg text-triggarr-sonarr"></i>
+    </div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ stats.episodes_found + stats.episodes_updated }}</div>
+    <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
+      <span class="w-1.5 h-1.5 rounded-full bg-triggarr-sonarr opacity-80"></span>In Sonarr
+    </div>
   </div>
   {% endif %}
 
   <!-- Albums card (only shown when Lidarr is enabled and not filtered to Radarr or Sonarr) -->
   {% if lidarr_enabled and instance_app_type not in ('radarr', 'sonarr') %}
-  <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 shadow-sm">
-    <span class="text-xs uppercase tracking-wide text-triggarr-muted">Albums</span>
-    <p class="text-lg font-bold mt-1">{{ stats.albums_found + stats.albums_updated }}</p>
-    <p class="text-xs text-triggarr-muted mt-1">{{ stats.albums_found }} found &middot; {{ stats.albums_updated }} upgraded</p>
+  <div class="bg-triggarr-card border border-triggarr-border rounded-lg p-5 flex flex-col justify-between shadow-sm">
+    <div class="flex justify-between items-start mb-4">
+      <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Albums</span>
+      <i class="ph ph-music-notes text-lg text-triggarr-green"></i>
+    </div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ stats.albums_found + stats.albums_updated }}</div>
+    <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
+      <span class="w-1.5 h-1.5 rounded-full bg-triggarr-green opacity-80"></span>In Lidarr
+    </div>
   </div>
   {% endif %}
 
-  <!-- Time to Grab card -->
-  <div class="bg-triggarr-card rounded-lg border border-triggarr-border p-4 shadow-sm">
-    <span class="text-xs uppercase tracking-wide text-triggarr-muted">Time to Grab</span>
-    <p class="text-lg font-bold mt-1">{{ time_to_grab }}</p>
-    <p class="text-xs text-triggarr-muted mt-1">avg search &rarr; grab</p>
+  <!-- Next Scan card -->
+  <div class="bg-triggarr-card border border-triggarr-border rounded-lg p-5 flex flex-col justify-between shadow-sm">
+    <div class="flex justify-between items-start mb-4">
+      <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Next Scan</span>
+      <i class="ph ph-clock-countdown text-lg text-triggarr-muted"></i>
+    </div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ time_to_grab }}</div>
+    <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
+      <i class="ph ph-calendar text-sm text-triggarr-primary"></i>Scheduled automatically
+    </div>
   </div>
 
 </div>
