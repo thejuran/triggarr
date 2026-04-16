@@ -10,6 +10,10 @@
   --color-triggarr-border: #334155;
   --color-triggarr-text: #e2e8f0;
   --color-triggarr-muted: #94a3b8;
+  --color-triggarr-radarr: #f59e0b;
+  --color-triggarr-sonarr: #3b82f6;
+  --color-triggarr-danger: #ef4444;
+  --color-triggarr-primaryDark: #16a34a;
   --font-geist-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
