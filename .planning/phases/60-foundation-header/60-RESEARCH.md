@@ -244,10 +244,12 @@ Note: Changed from artifact's `<span>` to `<button>` to preserve existing `openC
 ### Connection Pill -- Connected State
 ```html
 <!-- Source: AIDesigner artifact design.html lines 87-91, UI-SPEC Section 9 -->
+<!-- NOTE: Artifact uses triggarr-primary/triggarr-primaryDark class names. Plans translate
+     these to triggarr-green/triggarr-green-dark (same hex values, no alias token needed). -->
 <div class="flex items-center justify-end w-64 shrink-0">
-  <div class="flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-lg bg-triggarr-card border border-triggarr-primaryDark/40">
-    <div class="relative w-2 h-2 rounded-full bg-triggarr-primary dot-pulse"></div>
-    <span class="text-triggarr-primary text-[13px] font-medium mt-0.5">Connection Stable</span>
+  <div class="flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-lg bg-triggarr-card border border-triggarr-green-dark/40">
+    <div class="relative w-2 h-2 rounded-full bg-triggarr-green dot-pulse"></div>
+    <span class="text-triggarr-green text-[13px] font-medium mt-0.5">Connection Stable</span>
   </div>
 </div>
 ```
@@ -276,7 +278,8 @@ Note: No `dot-pulse` class on disconnected state (static dot).
 --color-triggarr-sonarr: #3b82f6;
 --color-triggarr-danger: #ef4444;
 --color-triggarr-primaryDark: #16a34a;
---color-triggarr-primary: #22c55e;  /* alias for triggarr-green, used by artifact class names */
+/* NOTE: No --color-triggarr-primary token. The artifact's triggarr-primary (#22c55e) is
+   identical to the existing triggarr-green. Plans use triggarr-green directly. */
 ```
 
 ## State of the Art
@@ -298,17 +301,13 @@ Note: No `dot-pulse` class on disconnected state (static dot).
 | A2 | The `font-mono` Tailwind utility in TW v4 maps to the built-in monospace stack, NOT to `--font-geist-mono` | Code Examples | Could cause version badge to render in system monospace instead of Geist Mono; use `font-geist-mono` instead |
 | A3 | Phosphor regular weight CSS is ~110KB uncompressed and acceptable to vendor entirely | Pitfall 5 | If size is a concern, could subset -- but this is unlikely for a self-hosted app |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **How should health data reach base.html for the connection pill?**
-   - What we know: `_build_health_summary(request)` exists and returns `{connected, disconnected, pending, total}`. The `/partials/health-summary` htmx endpoint also exists. `templates.env.globals` is used for `triggarr_version`, `update_info`, and `auth_state`.
-   - What's unclear: Whether to use (a) a Jinja2 global that receives `request`, (b) htmx partial load on every page, or (c) Starlette middleware to inject context.
-   - Recommendation: Use htmx to load pill content from a new lightweight partial (or adapt the existing health summary partial). This avoids modifying the Python route layer and is consistent with the project's htmx-first approach. The pill would appear with a brief delay on page load but this is acceptable for a status indicator.
+   - **RESOLVED:** Use htmx partial loading. A new `/partials/connection-pill` endpoint serves a lightweight HTML fragment. The header right zone in base.html includes an htmx placeholder with `hx-trigger="load, every 30s"` that fetches the pill on page load and refreshes every 30 seconds. This avoids modifying the Python route context layer and is consistent with the project's existing htmx patterns (e.g., `/partials/health-summary`). The brief flash before first load is acceptable for a status indicator.
 
 2. **Should `triggarr-primary` alias be added alongside `triggarr-green`?**
-   - What we know: The artifact uses `text-triggarr-primary` and `bg-triggarr-primary` extensively. The current codebase uses `text-triggarr-green` and `bg-triggarr-green`.
-   - What's unclear: Whether to add `--color-triggarr-primary` as an alias for `--color-triggarr-green` or to rewrite artifact classes to use `triggarr-green`.
-   - Recommendation: Add `--color-triggarr-primary: #22c55e` as an alias. This allows 1:1 porting from the artifact and future phases won't need class name translation. Both tokens pointing to the same value is harmless.
+   - **RESOLVED: No.** The artifact's `triggarr-primary` (#22c55e) is the same hex value as the existing `triggarr-green` token. Adding an alias would be unnecessary indirection. Plans translate artifact class names (`text-triggarr-primary` -> `text-triggarr-green`, `bg-triggarr-primary` -> `bg-triggarr-green`) during implementation. The `triggarr-primaryDark` token IS added because there is no existing equivalent with that name (it maps to `triggarr-green-dark` but is needed for artifact border classes like `border-triggarr-primaryDark/40`).
 
 ## Environment Availability
 
