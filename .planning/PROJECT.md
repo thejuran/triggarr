@@ -10,9 +10,13 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.6 Built-In Authentication shipped 2026-04-15. 805 tests passing, 20,225 Python LOC. 59 phases, 124 plans completed across 12 milestones.
+v2.7 Dashboard Scale Refresh in progress. Phase 60 (Foundation & Header) complete 2026-04-15. 826 tests passing. 60 phases, 127 plans completed across 13 milestones.
 
-**Latest milestone delivered:**
+**Latest milestone work (v2.7):**
+- Phase 60 complete: Phosphor Icons vendored, Tailwind color tokens, three-zone header with icon nav, connection status pill with htmx polling
+- HDR-06 (favicon in header) deferred — asset quality issue
+
+**Prior milestone delivered (v2.6):**
 - Deny-all auth middleware with Forms/Basic/External/Disabled modes
 - First-run setup flow with credential creation and auto-generated API key
 - Forms login with signed session cookies (30-day expiry)
