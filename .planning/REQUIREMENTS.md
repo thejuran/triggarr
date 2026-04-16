@@ -16,6 +16,7 @@ Pixel-exact port of the finalized AIDesigner artifact to Triggarr's Jinja2/Tailw
 - [ ] **HDR-03**: Navigation is center-aligned with gap-6 spacing
 - [ ] **HDR-04**: Logout link separated by vertical pipe divider with sign-out icon
 - [ ] **HDR-05**: "Connection Stable" status pill with pulsing green dot appears on right side of header
+- [ ] **HDR-06**: Refined favicon/app icon displayed to the left of "Triggarr" logo text in header (matching SeedSyncarr's icon placement)
 
 ### Stat Cards
 
@@ -70,6 +71,7 @@ None — this milestone is a focused UI port.
 | HDR-03 | TBD | Pending |
 | HDR-04 | TBD | Pending |
 | HDR-05 | TBD | Pending |
+| HDR-06 | TBD | Pending |
 | STAT-01 | TBD | Pending |
 | STAT-02 | TBD | Pending |
 | STAT-03 | TBD | Pending |
@@ -88,9 +90,9 @@ None — this milestone is a focused UI port.
 | FONT-02 | TBD | Pending |
 
 **Coverage:**
-- v2.7 requirements: 21 total
+- v2.7 requirements: 22 total
 - Mapped to phases: 0
-- Unmapped: 21
+- Unmapped: 22
 
 ---
 *Requirements defined: 2026-04-15*
