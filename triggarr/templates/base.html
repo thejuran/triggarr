@@ -83,9 +83,13 @@
         {% endif %}
       </nav>
 
-      {# Right zone: Connection status pill placeholder (Plan 03 fills this) #}
+      {# Right zone: Connection status pill (HDR-05, D-07) #}
       <div class="flex items-center justify-end w-64 shrink-0">
-        {# Connection pill will be added by Plan 03 #}
+        <div id="connection-pill"
+             hx-get="{{ request.url_for('partial_connection_pill') }}"
+             hx-trigger="load, every 30s"
+             hx-swap="outerHTML">
+        </div>
       </div>
     </div>
   </header>

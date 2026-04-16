@@ -911,6 +911,17 @@ async def partial_health_summary(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/partials/connection-pill", response_class=HTMLResponse)
+async def partial_connection_pill(request: Request) -> HTMLResponse:
+    """Return an HTML fragment for the header connection status pill (htmx partial)."""
+    health = _build_health_summary(request)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/connection_pill.html",
+        context={"health": health},
+    )
+
+
 @router.get("/partials/stats-row", response_class=HTMLResponse)
 async def partial_stats_row(request: Request) -> HTMLResponse:
     """Return an HTML fragment for the dashboard stats row (htmx partial).
