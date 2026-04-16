@@ -66,34 +66,34 @@ None — this milestone is a focused UI port.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HDR-01 | TBD | Pending |
-| HDR-02 | TBD | Pending |
-| HDR-03 | TBD | Pending |
-| HDR-04 | TBD | Pending |
-| HDR-05 | TBD | Pending |
-| HDR-06 | TBD | Pending |
-| STAT-01 | TBD | Pending |
-| STAT-02 | TBD | Pending |
-| STAT-03 | TBD | Pending |
-| STAT-04 | TBD | Pending |
-| CARD-01 | TBD | Pending |
-| CARD-02 | TBD | Pending |
-| CARD-03 | TBD | Pending |
-| CARD-04 | TBD | Pending |
-| RAIL-01 | TBD | Pending |
-| RAIL-02 | TBD | Pending |
-| RAIL-03 | TBD | Pending |
-| LOG-01 | TBD | Pending |
-| LOG-02 | TBD | Pending |
-| LOG-03 | TBD | Pending |
-| FONT-01 | TBD | Pending |
-| FONT-02 | TBD | Pending |
+| FONT-01 | Phase 60 | Pending |
+| FONT-02 | Phase 60 | Pending |
+| HDR-01 | Phase 60 | Pending |
+| HDR-02 | Phase 60 | Pending |
+| HDR-03 | Phase 60 | Pending |
+| HDR-04 | Phase 60 | Pending |
+| HDR-05 | Phase 60 | Pending |
+| HDR-06 | Phase 60 | Pending |
+| STAT-01 | Phase 61 | Pending |
+| STAT-02 | Phase 61 | Pending |
+| STAT-03 | Phase 61 | Pending |
+| STAT-04 | Phase 61 | Pending |
+| CARD-01 | Phase 61 | Pending |
+| CARD-02 | Phase 61 | Pending |
+| CARD-03 | Phase 61 | Pending |
+| CARD-04 | Phase 61 | Pending |
+| RAIL-01 | Phase 62 | Pending |
+| RAIL-02 | Phase 62 | Pending |
+| RAIL-03 | Phase 62 | Pending |
+| LOG-01 | Phase 62 | Pending |
+| LOG-02 | Phase 62 | Pending |
+| LOG-03 | Phase 62 | Pending |
 
 **Coverage:**
 - v2.7 requirements: 22 total
-- Mapped to phases: 0
-- Unmapped: 22
+- Mapped to phases: 22
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-15*
-*Last updated: 2026-04-15 after initial definition*
+*Last updated: 2026-04-15 after roadmap creation*

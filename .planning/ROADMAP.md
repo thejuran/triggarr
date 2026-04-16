@@ -16,6 +16,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v2.4 Community Polish & Test Hardening -- Phases 45-47 (shipped 2026-04-09) -- [archive](milestones/v2.4-ROADMAP.md)
 - ✅ v2.5 Dashboard UI Refresh -- Phases 48-53 (shipped 2026-04-13) -- [archive](milestones/v2.5-ROADMAP.md)
 - ✅ v2.6 Built-In Authentication -- Phases 54-59 (shipped 2026-04-15) -- [archive](milestones/v2.6-ROADMAP.md)
+- 🚧 **v2.7 Dashboard Scale Refresh** -- Phases 60-62 (in progress)
 
 ## Phases
 
@@ -136,13 +137,59 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 </details>
 
+### v2.7 Dashboard Scale Refresh (In Progress)
+
+**Milestone Goal:** Pixel-exact port of the finalized AIDesigner artifact to Triggarr's Jinja2/Tailwind templates -- spacious header with Phosphor icons, scaled stat cards, refined app cards with colored borders, card-based activity rail, and updated log viewer.
+
+- [ ] **Phase 60: Foundation & Header** - Font discipline, Phosphor icons, spacious header with nav icons, status pill, and favicon
+- [ ] **Phase 61: Stat Cards & App Cards** - Scaled stat cards with hero numbers and mini bars, refined app cards with colored borders
+- [ ] **Phase 62: Activity Rail & Log Viewer** - Card-based activity rail with fading opacity, refined log viewer controls
+
+## Phase Details
+
+### Phase 60: Foundation & Header
+**Goal**: Users see a spacious, icon-rich header with correct font discipline across the entire dashboard
+**Depends on**: Nothing (first phase of v2.7)
+**Requirements**: FONT-01, FONT-02, HDR-01, HDR-02, HDR-03, HDR-04, HDR-05, HDR-06
+**Success Criteria** (what must be TRUE):
+  1. Body text throughout the dashboard renders in system sans-serif; Geist Mono appears only on designated elements (version badge, TAILING/LIVE labels, log viewer body, log filter, activity rail badges/timestamps, schedule rows)
+  2. Header has visibly increased vertical padding and each navigation link displays a Phosphor icon beside its label at text-[15px]
+  3. Navigation links are center-aligned with gap-6 spacing, and the logout link is visually separated by a pipe divider with a sign-out icon
+  4. A "Connection Stable" status pill with pulsing green dot appears on the right side of the header
+  5. A favicon/app icon appears to the left of the "Triggarr" logo text in the header
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 61: Stat Cards & App Cards
+**Goal**: Users see larger, more spacious stat cards and app cards with colored accents matching the design artifact
+**Depends on**: Phase 60
+**Requirements**: STAT-01, STAT-02, STAT-03, STAT-04, CARD-01, CARD-02, CARD-03, CARD-04
+**Success Criteria** (what must be TRUE):
+  1. Stat cards display hero numbers at text-[32px]/text-[36px] scale with p-5 padding, and the Grab Rate card includes per-app mini progress bars (orange for Radarr, blue for Sonarr)
+  2. Movies/Series/Next Scan stat cards show colored Phosphor icons matching their respective app type
+  3. App cards have a colored left border per app type (orange Radarr, blue Sonarr, red unreachable) with title and connection status pill separated by a bottom border
+  4. App card missing/cutoff stats appear in recessed sub-cards and the Search Now button uses an app-colored hover accent
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 62: Activity Rail & Log Viewer
+**Goal**: Users see a refined activity rail with card-based entries and an updated log viewer with icon-based controls
+**Depends on**: Phase 61
+**Requirements**: RAIL-01, RAIL-02, RAIL-03, LOG-01, LOG-02, LOG-03
+**Success Criteria** (what must be TRUE):
+  1. Activity rail items render as card-based entries with speech bubble pointers and colored timeline dots; app badges use font-mono with colored dot indicators
+  2. Older activity rail entries visually fade with decreasing opacity
+  3. Log viewer header displays Phosphor icons for pause/expand controls, the TAILING badge uses font-mono with a pulsing green dot, and the log level filter uses a font-mono styled select dropdown
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 60 -> 61 -> 62
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 54. Auth Config & Helpers | v2.6 | 2/2 | Complete | 2026-04-14 |
-| 55. Auth Middleware & Health Endpoint | v2.6 | 2/2 | Complete | 2026-04-15 |
-| 56. First-Run Setup & Login | v2.6 | 4/4 | Complete | 2026-04-15 |
-| 57. Settings Security & Nav Logout | v2.6 | 2/2 | Complete | 2026-04-15 |
-| 58. Auth Test Suite | v2.6 | 2/2 | Complete | 2026-04-15 |
-| 59. Security Hardening | v2.6 | 4/4 | Complete | 2026-04-15 |
+| 60. Foundation & Header | v2.7 | 0/TBD | Not started | - |
+| 61. Stat Cards & App Cards | v2.7 | 0/TBD | Not started | - |
+| 62. Activity Rail & Log Viewer | v2.7 | 0/TBD | Not started | - |
