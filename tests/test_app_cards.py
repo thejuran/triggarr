@@ -1,8 +1,8 @@
-"""Phase 50 App Cards & Services Grid tests.
+"""Phase 61 App Cards tests.
 
-Locks CARD-01 through CARD-07 and LAYOUT-01: unified connection pills,
-schedule row, pass pill badges, hover elevation, danger stripes,
-Retry button, live-refresh dot-pulse, and 3-column xl grid.
+Locks CARD-01 through CARD-04: app-type colored borders, sectioned layout
+with header/body/footer, recessed sub-cards, connection pills with borders,
+full-width Search Now with app-colored hover, and unreachable error message.
 """
 
 from __future__ import annotations
@@ -119,37 +119,43 @@ def client(test_app):
 
 
 # ---------------------------------------------------------------------------
-# CARD-01: Unified connection pill for all states
+# CARD-01: App-type colored left borders
 # ---------------------------------------------------------------------------
 
 
 def test_connected_pill_unified_shape(client, test_app):
-    """Connected state shows green pill with unified shape (CARD-01)."""
+    """Connected state shows green pill with rounded shape and border (CARD-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "rounded-full bg-triggarr-green/15 text-triggarr-green" in response.text
+    pill = "rounded text-[10px] font-bold uppercase tracking-wider"
+    assert pill in response.text
+    assert "bg-triggarr-primary/10 text-triggarr-primary" in response.text
     assert "Connected" in response.text
-    assert "inline-flex items-center gap-1.5" in response.text
+    assert "border border-triggarr-primary/20" in response.text
 
 
 def test_unreachable_pill_unified_shape(client, test_app):
-    """Unreachable state shows red pill with unified shape (CARD-01)."""
+    """Unreachable state shows red pill with rounded shape and border (CARD-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
     test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "rounded-full bg-red-500/15 text-red-400" in response.text
+    pill = "rounded text-[10px] font-bold uppercase tracking-wider"
+    assert pill in response.text
+    assert "bg-triggarr-danger/10 text-triggarr-danger" in response.text
     assert "Unreachable" in response.text
-    assert "inline-flex items-center gap-1.5" in response.text
+    assert "border border-triggarr-danger/20" in response.text
 
 
 def test_waiting_pill_unified_shape(client, test_app):
-    """Waiting state shows muted pill with unified shape (CARD-01)."""
+    """Waiting state shows muted pill with rounded shape (CARD-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = None
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "rounded-full bg-triggarr-border/40 text-triggarr-muted" in response.text
+    pill = "rounded text-[10px] font-bold uppercase tracking-wider"
+    assert pill in response.text
+    assert "bg-triggarr-border/40 text-triggarr-muted" in response.text
     assert "Waiting..." in response.text
 
 
@@ -159,25 +165,24 @@ def test_waiting_pill_unified_shape(client, test_app):
 
 
 def test_schedule_row_present(client, test_app):
-    """Schedule row shows Last Run and Next Run with formatted times (CARD-02)."""
+    """Schedule row shows Last Run and Next Run with font-mono (CARD-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = "2026-04-13T14:32:10Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "Last run" in response.text
-    assert "Next run" in response.text
-    assert "border-b border-triggarr-border/50 pb-3" in response.text
+    assert "font-mono text-triggarr-muted mb-4 flex justify-between" in response.text
     assert "14:32:10" in response.text
 
 
-def test_schedule_row_unreachable_next_run_dash(client, test_app):
-    """When unreachable, Next Run shows em dash (CARD-02)."""
+def test_schedule_row_unreachable_no_schedule(client, test_app):
+    """When unreachable, schedule row is not shown (body replaced with error message)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
     test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    # Em dash entity or unicode
-    assert "\u2014" in response.text or "&mdash;" in response.text
+    assert "Last run" not in response.text
+    assert "API connection failed." in response.text
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +237,6 @@ def test_unreachable_card_danger_stripes(client, test_app):
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "danger-stripes" in response.text
-    assert "relative overflow-hidden" in response.text
 
 
 def test_connected_card_no_danger_stripes(client, test_app):
@@ -243,13 +247,14 @@ def test_connected_card_no_danger_stripes(client, test_app):
     assert "danger-stripes" not in response.text
 
 
-def test_unreachable_stats_opacity(client, test_app):
-    """Unreachable cards have opacity-60 on stats grid (CARD-05)."""
+def test_unreachable_card_shows_error_not_stats(client, test_app):
+    """Unreachable cards show error message instead of stats grid."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
     test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "opacity-60" in response.text
+    assert "API connection failed." in response.text
+    assert "Missing" not in response.text  # stats grid not shown for unreachable
 
 
 # ---------------------------------------------------------------------------
@@ -258,45 +263,146 @@ def test_unreachable_stats_opacity(client, test_app):
 
 
 def test_unreachable_card_retry_button(client, test_app):
-    """Unreachable cards show Retry button, not Search Now (CARD-06)."""
+    """Unreachable cards show Retry Connection button (CARD-06)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
     test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "Retry" in response.text
-    assert "bg-red-500/15 text-red-400" in response.text
+    assert "Retry Connection" in response.text
+    assert "bg-triggarr-card hover:bg-triggarr-elevated" in response.text
+    assert "ph ph-arrows-clockwise" in response.text
     assert "Search Now" not in response.text
 
 
 def test_connected_card_search_now_button(client, test_app):
-    """Connected cards show Search Now button, not Retry (CARD-06)."""
+    """Connected cards show Search Now button with Phosphor icon (CARD-06)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "Search Now" in response.text
-    assert "Retry" not in response.text
+    assert "ph ph-magnifying-glass" in response.text
+    assert "bg-triggarr-elevated" in response.text
+    assert "group-hover:text-triggarr-radarr" in response.text
+    assert "Retry Connection" not in response.text
 
 
 # ---------------------------------------------------------------------------
-# CARD-07: Pulsing green dot on Connected pill
+# CARD-07: Connection pill border styles (replaces dot-pulse)
 # ---------------------------------------------------------------------------
 
 
-def test_connected_pill_has_dot_pulse(client, test_app):
-    """Connected pill has dot-pulse class for live-refresh indicator (CARD-07)."""
+def test_connected_pill_has_border(client, test_app):
+    """Connected pill has border and tracking-wider text (CARD-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "dot-pulse" in response.text
+    assert "border border-triggarr-primary/20" in response.text
+    assert "tracking-wider" in response.text
 
 
-def test_unreachable_pill_no_dot_pulse(client, test_app):
-    """Unreachable pill does not have dot-pulse (CARD-07)."""
+def test_unreachable_pill_has_danger_border(client, test_app):
+    """Unreachable pill has danger-colored border (CARD-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
     test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "dot-pulse" not in response.text
+    assert "border border-triggarr-danger/20" in response.text
+
+
+# ---------------------------------------------------------------------------
+# CARD-01: App-type border colors
+# ---------------------------------------------------------------------------
+
+
+def test_app_card_radarr_border_color(client, test_app):
+    """Radarr app card has orange left border (CARD-01)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "border-l-triggarr-radarr" in response.text
+    assert "border-l-triggarr-green" not in response.text  # no longer green for connected
+
+
+def test_app_card_unreachable_border_color(client, test_app):
+    """Unreachable app card has red left border regardless of app type (CARD-01)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
+    test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "border-l-triggarr-danger" in response.text
+
+
+# ---------------------------------------------------------------------------
+# CARD-02: Header border-bottom separator
+# ---------------------------------------------------------------------------
+
+
+def test_card_header_border_bottom(client, test_app):
+    """App card header has border-bottom separator (CARD-02)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "p-4 border-b border-triggarr-border/50" in response.text
+    assert "text-[15px]" in response.text  # title font size
+
+
+# ---------------------------------------------------------------------------
+# CARD-03: Recessed sub-cards
+# ---------------------------------------------------------------------------
+
+
+def test_recessed_subcards(client, test_app):
+    """Missing and Cutoff stats are in recessed sub-cards (CARD-03)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "bg-triggarr-bg/50 border border-triggarr-border/50 rounded p-2.5" in response.text
+    assert "text-lg font-bold text-triggarr-text" in response.text
+    assert "text-[10px] text-triggarr-muted uppercase tracking-wider" in response.text
+
+
+# ---------------------------------------------------------------------------
+# CARD-04: Search Now app-colored hover
+# ---------------------------------------------------------------------------
+
+
+def test_search_button_app_colored_hover(client, test_app):
+    """Search Now button has app-colored hover on icon (CARD-04)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "group-hover:text-triggarr-radarr" in response.text
+    assert "ph ph-magnifying-glass" in response.text
+    assert "bg-triggarr-elevated" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Unreachable body error message
+# ---------------------------------------------------------------------------
+
+
+def test_unreachable_body_error_message(client, test_app):
+    """Unreachable card body shows centered error message with warning icon."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
+    test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "ph ph-warning-circle" in response.text
+    assert "API connection failed." in response.text
+    assert "Check API key or network setup." in response.text
+
+
+# ---------------------------------------------------------------------------
+# Footer section
+# ---------------------------------------------------------------------------
+
+
+def test_footer_section_background(client, test_app):
+    """Footer section has bg-triggarr-bg/30 background (CARD-04)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "bg-triggarr-bg/30 border-t border-triggarr-border/50" in response.text
 
 
 # ---------------------------------------------------------------------------
