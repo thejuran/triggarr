@@ -175,7 +175,7 @@ Plans:
   4. App card missing/cutoff stats appear in recessed sub-cards and the Search Now button uses an app-colored hover accent
 **Plans**: 2 plans
 Plans:
-- [ ] 61-01-PLAN.md -- CSS tokens, stat card scaling with Phosphor icons and horizontal mini bars
+- [x] 61-01-PLAN.md -- CSS tokens, stat card scaling with Phosphor icons and horizontal mini bars
 - [ ] 61-02-PLAN.md -- App card sectioned layout with colored borders, recessed sub-cards, and app-colored buttons
 **UI hint**: yes
 
@@ -198,5 +198,5 @@ Phases execute in numeric order: 60 -> 61 -> 62
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 60. Foundation & Header | v2.7 | 3/3 | Complete    | 2026-04-16 |
-| 61. Stat Cards & App Cards | v2.7 | 0/2 | Not started | - |
+| 61. Stat Cards & App Cards | v2.7 | 1/2 | In Progress|  |
 | 62. Activity Rail & Log Viewer | v2.7 | 0/TBD | Not started | - |
