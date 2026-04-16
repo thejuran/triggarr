@@ -1,8 +1,8 @@
-"""Phase 49 Stats & Health Strip tests.
+"""Phase 61 Stats & Health Strip tests.
 
-Locks STATS-01 through STATS-05: compact health strip, hero Grab Rate card
-with health badge and per-app color-coded bars, and shadow-sm elevation on
-all stat cards.
+Locks STAT-01 through STAT-04: compact health strip, hero Grab Rate card
+with Phosphor icons, per-app color-coded horizontal bars, colored dot
+subtitles, and shadow-sm elevation on all stat cards.
 """
 
 from __future__ import annotations
@@ -159,57 +159,57 @@ def test_health_strip_has_last_sync(client):
 
 
 # ---------------------------------------------------------------------------
-# STATS-02: Hero Grab Rate card (2-col, text-4xl)
+# STAT-02: Hero Grab Rate card (2-col, text-[32px])
 # ---------------------------------------------------------------------------
 
 
 def test_grab_rate_hero_card_layout(client):
-    """Grab Rate card spans 2 columns with text-4xl headline and gradient."""
+    """Grab Rate card spans 2 columns with text-[32px] headline (STAT-02)."""
     response = client.get("/")
     assert response.status_code == 200
     assert "md:col-span-2" in response.text
-    assert "text-4xl font-bold" in response.text
+    assert "text-[32px] font-bold" in response.text
     assert "text-2xl text-triggarr-muted" in response.text
-    assert "bg-gradient-to-br from-triggarr-green/5" in response.text
+    assert "tracking-widest" in response.text
+    assert "ph ph-chart-line-up" in response.text
 
 
 # ---------------------------------------------------------------------------
-# STATS-03: Health badge (Healthy/Warn/Critical)
+# STAT-03: Phosphor icon on Grab Rate card
 # ---------------------------------------------------------------------------
 
 
-def test_health_badge_renders(client):
-    """Health badge renders with one of the three threshold labels."""
+def test_grab_rate_has_phosphor_icon(client):
+    """Grab Rate card shows chart-line-up Phosphor icon (STAT-03)."""
     response = client.get("/")
     assert response.status_code == 200
-    text = response.text
-    # At least one badge label should appear (depends on test data rate)
-    assert any(label in text for label in ("Healthy", "Warn", "Critical"))
-    assert "rounded-full" in text
+    assert "ph ph-chart-line-up" in response.text
+    assert "text-triggarr-primary" in response.text
 
 
 # ---------------------------------------------------------------------------
-# STATS-04: Per-app color-coded bars
+# STAT-04: Per-app color-coded horizontal bars
 # ---------------------------------------------------------------------------
 
 
 def test_per_app_bars_with_colors(client):
-    """Per-app grab rate bars use mini-bar class and correct app colors."""
+    """Per-app grab rate bars use Tailwind utilities and correct app colors."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "mini-bar" in response.text
-    # Radarr orange bar (test data has radarr entries)
-    assert "#fb923c" in response.text
-    assert "text-orange-400" in response.text
+    assert "h-1" in response.text
+    assert "bg-triggarr-bg rounded-full" in response.text
+    # Radarr and Sonarr bar fills
+    assert "bg-triggarr-radarr" in response.text
+    assert "bg-triggarr-sonarr" in response.text
 
 
 # ---------------------------------------------------------------------------
-# STATS-05: shadow-sm elevation on all stat cards
+# STAT-05: shadow-sm elevation on all stat cards
 # ---------------------------------------------------------------------------
 
 
 def test_stat_cards_have_shadow(client):
-    """All stat cards (hero + Movies + Episodes + Albums + Time to Grab) have shadow-sm."""
+    """All stat cards (hero + Movies + Series + Albums + Next Scan) have shadow-sm."""
     response = client.get("/")
     assert response.status_code == 200
     count = response.text.count("shadow-sm")
@@ -217,7 +217,7 @@ def test_stat_cards_have_shadow(client):
 
 
 # ---------------------------------------------------------------------------
-# CSS: mini-bar compiled into output.css
+# CSS: mini-bar compiled into output.css (backward compat)
 # ---------------------------------------------------------------------------
 
 
@@ -226,3 +226,60 @@ def test_output_css_contains_mini_bar():
     css_path = STATIC_DIR / "css" / "output.css"
     css_content = css_path.read_text()
     assert "mini-bar" in css_content, "mini-bar class missing from output.css"
+
+
+# ---------------------------------------------------------------------------
+# STAT-03: All stat cards have Phosphor icons
+# ---------------------------------------------------------------------------
+
+
+def test_stat_cards_have_phosphor_icons(client):
+    """All stat cards display Phosphor icons matching app type (STAT-03)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "ph ph-chart-line-up" in response.text  # Grab Rate
+    assert "ph ph-film-strip" in response.text  # Movies
+    assert "ph ph-television" in response.text  # Series
+    assert "ph ph-clock-countdown" in response.text  # Next Scan
+
+
+# ---------------------------------------------------------------------------
+# STAT-04: Colored dot subtitles
+# ---------------------------------------------------------------------------
+
+
+def test_stat_card_subtitles(client):
+    """Stat cards show colored dot + label subtitles (STAT-04)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "w-1.5 h-1.5 rounded-full bg-triggarr-radarr" in response.text
+    assert "In Radarr" in response.text
+    assert "w-1.5 h-1.5 rounded-full bg-triggarr-sonarr" in response.text
+    assert "In Sonarr" in response.text
+    assert "Scheduled automatically" in response.text
+
+
+# ---------------------------------------------------------------------------
+# STAT-04: Label typography
+# ---------------------------------------------------------------------------
+
+
+def test_stat_card_label_typography(client):
+    """Stat card labels use font-bold tracking-widest uppercase (STAT-04)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text-xs font-bold tracking-widest uppercase text-triggarr-muted" in response.text
+
+
+# ---------------------------------------------------------------------------
+# STAT-02: Horizontal mini bar layout
+# ---------------------------------------------------------------------------
+
+
+def test_mini_bars_horizontal_layout(client):
+    """Mini bars use horizontal flex layout with h-1 rounded-full bars (STAT-02)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "flex items-center justify-between gap-4" in response.text
+    assert "h-1 bg-triggarr-bg rounded-full overflow-hidden" in response.text
+    assert "h-full bg-triggarr-radarr rounded-full" in response.text
