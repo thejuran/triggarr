@@ -639,8 +639,8 @@ def test_dashboard_renders_stats_cards(client):
     assert response.status_code == 200
     assert "Grab Rate" in response.text, "Dashboard should show Grab Rate card"
     assert "Movies" in response.text, "Dashboard should show Movies card"
-    assert "Episodes" in response.text, "Dashboard should show Episodes card"
-    assert "Time to Grab" in response.text, "Dashboard should show Time to Grab card"
+    assert "Series" in response.text, "Dashboard should show Series card"
+    assert "Next Scan" in response.text, "Dashboard should show Next Scan card"
 
 
 def test_stats_row_partial_returns_200(client):
