@@ -14,14 +14,19 @@
   <script src="{{ request.url_for('static', path='js/htmx.min.js') }}"></script>
 </head>
 <body class="bg-triggarr-bg text-triggarr-text min-h-screen font-sans">
-  <nav class="sticky top-0 z-30 backdrop-blur-md bg-triggarr-card/80 border-b border-triggarr-border">
-    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-2">
+  {% set current_path = request.url.path %}
+  {% set dashboard_url = request.url_for('dashboard') %}
+  {% set history_url = request.url_for('history_page') %}
+  {% set settings_url = request.url_for('settings_page') %}
+  <header class="sticky top-0 z-50 w-full border-b border-triggarr-border bg-triggarr-bg/95 backdrop-blur-md">
+    <div class="px-6 py-4 flex items-center justify-between">
+      {# Left zone: Logo + Version Badge + Update Badge (D-03: w-64 fixed width) #}
+      <div class="flex items-center gap-3 w-64 shrink-0">
         <span class="text-triggarr-green font-bold text-xl tracking-tight">Triggarr</span>
         <button onclick="openChangelog()" type="button"
-                class="text-xs text-triggarr-muted hover:text-white transition-colors cursor-pointer"
+                class="font-geist-mono px-2 py-0.5 rounded-md bg-triggarr-card border border-triggarr-border text-triggarr-muted text-[10px] font-bold uppercase tracking-wider relative top-px hover:text-white transition-colors cursor-pointer"
                 title="View changelog">
-          {{ triggarr_version }}
+          v{{ triggarr_version }}
         </button>
         {% if update_info and update_info.update_available %}
         <a href="{{ update_info.html_url if update_info.html_url.startswith('https://github.com/') else '#' }}" target="_blank" rel="noopener"
@@ -32,35 +37,58 @@
         </a>
         {% endif %}
       </div>
-      {% set current_path = request.url.path %}
-      {% set dashboard_url = request.url_for('dashboard') %}
-      {% set history_url = request.url_for('history_page') %}
-      {% set settings_url = request.url_for('settings_page') %}
-      <div class="flex items-center gap-6 text-sm">
+
+      {# Center zone: Navigation links with Phosphor icons (D-03: absolute-centered) #}
+      <nav class="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
+        {# Dashboard link #}
         <a href="{{ dashboard_url }}"
-           class="{% if current_path == dashboard_url.path %}text-white border-b-2 border-triggarr-green pb-1 -mb-[7px]{% else %}text-triggarr-muted hover:text-white{% endif %}">
-          Dashboard
+           class="group relative flex items-center gap-2 text-[15px] {% if current_path == dashboard_url.path %}font-semibold text-triggarr-text{% else %}font-medium text-triggarr-muted hover:text-triggarr-text{% endif %} transition-colors">
+          <i class="ph ph-squares-four text-[18px] {% if current_path == dashboard_url.path %}text-triggarr-green{% else %}group-hover:text-triggarr-text{% endif %} transition-colors relative top-px"></i>
+          <span>Dashboard</span>
+          {% if current_path == dashboard_url.path %}
+          <div class="absolute -bottom-[21px] left-0 right-0 h-[2px] bg-triggarr-green"></div>
+          {% endif %}
         </a>
+
+        {# History link #}
         <a href="{{ history_url }}"
-           class="{% if current_path == history_url.path %}text-white border-b-2 border-triggarr-green pb-1 -mb-[7px]{% else %}text-triggarr-muted hover:text-white{% endif %}">
-          History
+           class="group relative flex items-center gap-2 text-[15px] {% if current_path == history_url.path %}font-semibold text-triggarr-text{% else %}font-medium text-triggarr-muted hover:text-triggarr-text{% endif %} transition-colors">
+          <i class="ph ph-clock-counter-clockwise text-[18px] {% if current_path == history_url.path %}text-triggarr-green{% else %}group-hover:text-triggarr-text{% endif %} transition-colors relative top-px"></i>
+          <span>History</span>
+          {% if current_path == history_url.path %}
+          <div class="absolute -bottom-[21px] left-0 right-0 h-[2px] bg-triggarr-green"></div>
+          {% endif %}
         </a>
+
+        {# Settings link #}
         <a href="{{ settings_url }}"
-           class="{% if current_path == settings_url.path %}text-white border-b-2 border-triggarr-green pb-1 -mb-[7px]{% else %}text-triggarr-muted hover:text-white{% endif %}">
-          Settings
+           class="group relative flex items-center gap-2 text-[15px] {% if current_path == settings_url.path %}font-semibold text-triggarr-text{% else %}font-medium text-triggarr-muted hover:text-triggarr-text{% endif %} transition-colors">
+          <i class="ph ph-gear text-[18px] {% if current_path == settings_url.path %}text-triggarr-green{% else %}group-hover:text-triggarr-text{% endif %} transition-colors relative top-px"></i>
+          <span>Settings</span>
+          {% if current_path == settings_url.path %}
+          <div class="absolute -bottom-[21px] left-0 right-0 h-[2px] bg-triggarr-green"></div>
+          {% endif %}
         </a>
+
+        {# Pipe divider + Logout (HDR-04) -- only when auth is active #}
         {% if auth_state.active %}
-        <span class="text-triggarr-border">|</span>
+        <div class="w-px h-4 bg-triggarr-border mx-1"></div>
         <form method="post" action="{{ request.url_for('logout') }}" class="inline">
           <button type="submit"
-                  class="text-triggarr-muted hover:text-white text-sm transition-colors cursor-pointer">
-            Logout
+                  class="group flex items-center gap-2 text-[15px] font-medium text-triggarr-muted hover:text-red-400 transition-colors cursor-pointer">
+            <i class="ph ph-sign-out text-[18px] group-hover:text-red-400 transition-colors relative top-px"></i>
+            <span>Logout</span>
           </button>
         </form>
         {% endif %}
+      </nav>
+
+      {# Right zone: Connection status pill placeholder (Plan 03 fills this) #}
+      <div class="flex items-center justify-end w-64 shrink-0">
+        {# Connection pill will be added by Plan 03 #}
       </div>
     </div>
-  </nav>
+  </header>
 
   <!-- Changelog Modal -->
   <div id="changelog-modal" style="display:none" class="fixed inset-0 z-50 flex items-center justify-center p-4">
