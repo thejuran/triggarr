@@ -10,9 +10,10 @@
   <link rel="apple-touch-icon" sizes="180x180" href="{{ request.url_for('static', path='apple-touch-icon.png') }}">
   <link rel="manifest" href="{{ request.url_for('static', path='site.webmanifest') }}">
   <link rel="stylesheet" href="{{ request.url_for('static', path='css/output.css') }}">
+  <link rel="stylesheet" href="{{ request.url_for('static', path='vendor/phosphor/style.css') }}">
   <script src="{{ request.url_for('static', path='js/htmx.min.js') }}"></script>
 </head>
-<body class="bg-triggarr-bg text-triggarr-text min-h-screen">
+<body class="bg-triggarr-bg text-triggarr-text min-h-screen font-sans">
   <nav class="sticky top-0 z-30 backdrop-blur-md bg-triggarr-card/80 border-b border-triggarr-border">
     <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
