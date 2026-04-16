@@ -221,11 +221,12 @@ def test_stat_cards_have_shadow(client):
 # ---------------------------------------------------------------------------
 
 
-def test_output_css_contains_mini_bar():
-    """Compiled output.css must contain mini-bar styles."""
-    css_path = STATIC_DIR / "css" / "output.css"
-    css_content = css_path.read_text()
-    assert "mini-bar" in css_content, "mini-bar class missing from output.css"
+def test_css_has_mini_bar_rule():
+    """input.css contains .mini-bar rule with height and border-radius."""
+    css_path = STATIC_DIR / "css" / "input.css"
+    css = css_path.read_text()
+    assert ".mini-bar" in css
+    assert "height: 6px" in css
 
 
 # ---------------------------------------------------------------------------
