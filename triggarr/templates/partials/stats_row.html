@@ -16,19 +16,19 @@
       {% if stats.radarr_rate is not none %}
       <div class="flex-1">
         <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Radarr</span><span>{{ "%.0f" | format(stats.radarr_rate) }}%</span></div>
-        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-radarr rounded-full" style="width: {{ "%.0f" | format(stats.radarr_rate) }}%"></div></div>
+        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-radarr rounded-full" style="width: {{ [0, [100, stats.radarr_rate] | min] | max | int }}%"></div></div>
       </div>
       {% endif %}
       {% if stats.sonarr_rate is not none %}
       <div class="flex-1">
         <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Sonarr</span><span>{{ "%.0f" | format(stats.sonarr_rate) }}%</span></div>
-        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-sonarr rounded-full" style="width: {{ "%.0f" | format(stats.sonarr_rate) }}%"></div></div>
+        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-sonarr rounded-full" style="width: {{ [0, [100, stats.sonarr_rate] | min] | max | int }}%"></div></div>
       </div>
       {% endif %}
       {% if stats.lidarr_rate is not none %}
       <div class="flex-1">
         <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Lidarr</span><span>{{ "%.0f" | format(stats.lidarr_rate) }}%</span></div>
-        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-green rounded-full" style="width: {{ "%.0f" | format(stats.lidarr_rate) }}%"></div></div>
+        <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-green rounded-full" style="width: {{ [0, [100, stats.lidarr_rate] | min] | max | int }}%"></div></div>
       </div>
       {% endif %}
     </div>

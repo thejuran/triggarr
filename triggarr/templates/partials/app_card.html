@@ -50,7 +50,7 @@
     <!-- Schedule row -->
     <div class="text-[11px] font-mono text-triggarr-muted mb-4 flex justify-between">
       <span>Last run: <span class="text-triggarr-text">{% if app.last_run %}{{ app.last_run[11:19] }}{% else %}Never{% endif %}</span></span>
-      <span>Next: <span class="text-triggarr-text">{% if app.connected == false %}&mdash;{% elif app.next_run %}{{ app.next_run[11:16] }}{% else %}&mdash;{% endif %}</span></span>
+      <span>Next: <span class="text-triggarr-text">{% if app.next_run %}{{ app.next_run[11:16] }}{% else %}&mdash;{% endif %}</span></span>
     </div>
 
     <!-- Stats sub-cards -->
