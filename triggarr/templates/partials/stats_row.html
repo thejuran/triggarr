@@ -41,7 +41,11 @@
       <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Movies</span>
       <i class="ph ph-film-strip text-lg text-triggarr-radarr"></i>
     </div>
-    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ stats.movies_found + stats.movies_updated }}</div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">
+      {% if stats.movies_found is not none and stats.movies_updated is not none %}
+        {{ stats.movies_found + stats.movies_updated }}
+      {% else %}&mdash;{% endif %}
+    </div>
     <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
       <span class="w-1.5 h-1.5 rounded-full bg-triggarr-radarr opacity-80"></span>In Radarr
     </div>
@@ -55,7 +59,11 @@
       <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Series</span>
       <i class="ph ph-television text-lg text-triggarr-sonarr"></i>
     </div>
-    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ stats.episodes_found + stats.episodes_updated }}</div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">
+      {% if stats.episodes_found is not none and stats.episodes_updated is not none %}
+        {{ stats.episodes_found + stats.episodes_updated }}
+      {% else %}&mdash;{% endif %}
+    </div>
     <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
       <span class="w-1.5 h-1.5 rounded-full bg-triggarr-sonarr opacity-80"></span>In Sonarr
     </div>
@@ -69,7 +77,11 @@
       <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Albums</span>
       <i class="ph ph-music-notes text-lg text-triggarr-green"></i>
     </div>
-    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ stats.albums_found + stats.albums_updated }}</div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">
+      {% if stats.albums_found is not none and stats.albums_updated is not none %}
+        {{ stats.albums_found + stats.albums_updated }}
+      {% else %}&mdash;{% endif %}
+    </div>
     <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
       <span class="w-1.5 h-1.5 rounded-full bg-triggarr-green opacity-80"></span>In Lidarr
     </div>
