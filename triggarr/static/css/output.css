@@ -49,8 +49,6 @@
     --text-2xl--line-height: calc(2 / 1.5);
     --text-4xl: 2.25rem;
     --text-4xl--line-height: calc(2.5 / 2.25);
-    --text-6xl: 3.75rem;
-    --text-6xl--line-height: 1;
     --font-weight-normal: 400;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;

@@ -152,12 +152,12 @@ def test_settings_has_widened_container(client):
 
 
 def test_nav_is_sticky_and_blurred(client):
-    """Nav element has sticky positioning with backdrop blur."""
+    """Header element has sticky positioning with backdrop blur."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "sticky top-0 z-30" in response.text
+    assert "sticky top-0 z-50" in response.text
     assert "backdrop-blur-md" in response.text
-    assert "bg-triggarr-card/80" in response.text
+    assert "bg-triggarr-bg/95" in response.text
 
 
 # ---------------------------------------------------------------------------
@@ -169,22 +169,22 @@ def test_active_tab_underline_on_dashboard(client):
     """Dashboard page has the green underline active-tab marker."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "border-triggarr-green pb-1" in response.text
-    assert "-mb-[7px]" in response.text
+    assert "bg-triggarr-green" in response.text
+    assert "-bottom-[21px]" in response.text
 
 
 def test_active_tab_underline_on_history(client):
     """History page has the green underline active-tab marker."""
     response = client.get("/history")
     assert response.status_code == 200
-    assert "border-triggarr-green pb-1" in response.text
+    assert "bg-triggarr-green" in response.text
 
 
 def test_active_tab_underline_on_settings(client):
     """Settings page has the green underline active-tab marker."""
     response = client.get("/settings")
     assert response.status_code == 200
-    assert "border-triggarr-green pb-1" in response.text
+    assert "bg-triggarr-green" in response.text
 
 
 # ---------------------------------------------------------------------------
