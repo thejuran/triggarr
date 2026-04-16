@@ -142,7 +142,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 **Milestone Goal:** Pixel-exact port of the finalized AIDesigner artifact to Triggarr's Jinja2/Tailwind templates -- spacious header with Phosphor icons, scaled stat cards, refined app cards with colored borders, card-based activity rail, and updated log viewer.
 
 - [x] **Phase 60: Foundation & Header** - Font discipline, Phosphor icons, spacious header with nav icons, status pill, and favicon (completed 2026-04-16)
-- [ ] **Phase 61: Stat Cards & App Cards** - Scaled stat cards with hero numbers and mini bars, refined app cards with colored borders
+- [x] **Phase 61: Stat Cards & App Cards** - Scaled stat cards with hero numbers and mini bars, refined app cards with colored borders (completed 2026-04-16)
 - [ ] **Phase 62: Activity Rail & Log Viewer** - Card-based activity rail with fading opacity, refined log viewer controls
 
 ## Phase Details
@@ -176,7 +176,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 61-01-PLAN.md -- CSS tokens, stat card scaling with Phosphor icons and horizontal mini bars
-- [ ] 61-02-PLAN.md -- App card sectioned layout with colored borders, recessed sub-cards, and app-colored buttons
+- [x] 61-02-PLAN.md -- App card sectioned layout with colored borders, recessed sub-cards, and app-colored buttons
 **UI hint**: yes
 
 ### Phase 62: Activity Rail & Log Viewer
@@ -198,5 +198,5 @@ Phases execute in numeric order: 60 -> 61 -> 62
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 60. Foundation & Header | v2.7 | 3/3 | Complete    | 2026-04-16 |
-| 61. Stat Cards & App Cards | v2.7 | 1/2 | In Progress|  |
+| 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete   | 2026-04-16 |
 | 62. Activity Rail & Log Viewer | v2.7 | 0/TBD | Not started | - |
