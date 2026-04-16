@@ -452,7 +452,7 @@ def test_history_page_has_nav_link(client):
     a_start = text.rfind("<a", 0, history_link_start)
     a_end = text.index(">", history_link_start)
     a_tag = text[a_start:a_end + 1]
-    assert "text-white" in a_tag, "History nav link should have active text-white class"
+    assert "text-triggarr-text" in a_tag, "History nav link should have active text-triggarr-text class"
 
 
 def test_history_page_shows_entries(client):
