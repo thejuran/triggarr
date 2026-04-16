@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.6
-milestone_name: Built-In Authentication
-status: shipped
-stopped_at: Milestone complete
-last_updated: "2026-04-15T23:30:00.000Z"
+milestone: v2.7
+milestone_name: Dashboard Scale Refresh
+status: defining_requirements
+stopped_at: Defining requirements
+last_updated: "2026-04-15T00:00:00.000Z"
 last_activity: 2026-04-15
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 16
-  completed_plans: 16
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback -- without exposing credentials or expanding attack surface.
-**Current focus:** Planning next milestone
+**Current focus:** v2.7 Dashboard Scale Refresh
 
 ## Current Position
 
-Phase: All complete
-Plan: N/A
-Status: v2.6 milestone shipped
-Last activity: 2026-04-15
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-15 — Milestone v2.7 started
 
 ## Performance Metrics
 
@@ -51,7 +49,7 @@ None.
 
 ### Roadmap Evolution
 
-v2.6 milestone archived.
+v2.6 milestone archived. v2.7 milestone starting.
 
 ### Blockers/Concerns
 
@@ -59,7 +57,7 @@ None.
 
 ### Deferred Items
 
-Items acknowledged and deferred at milestone close on 2026-04-15:
+Items carried from v2.6 milestone close:
 
 | Category | Item | Status |
 |----------|------|--------|
@@ -72,6 +70,7 @@ Items acknowledged and deferred at milestone close on 2026-04-15:
 
 ### Reference Artifacts
 
+- `.aidesigner/runs/2026-04-16T00-05-51-229Z-triggarr-full-dashboard-redesign-v3-/design.html` -- finalized AIDesigner artifact (hard design spec)
 - `docs/superpowers/specs/2026-04-14-built-in-auth-design.md` -- validated design spec
 - `.planning/milestones/v2.6-ROADMAP.md` -- archived v2.6 roadmap
 - `.planning/milestones/v2.6-REQUIREMENTS.md` -- archived v2.6 requirements
@@ -80,5 +79,5 @@ Items acknowledged and deferred at milestone close on 2026-04-15:
 ## Session Continuity
 
 Last session: 2026-04-15
-Stopped at: Milestone v2.6 complete
+Stopped at: Defining requirements for v2.7
 Resume file: N/A

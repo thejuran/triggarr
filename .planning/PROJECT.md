@@ -128,11 +128,20 @@ v2.6 Built-In Authentication shipped 2026-04-15. 805 tests passing, 20,225 Pytho
 
 ### Active
 
-Planning next milestone.
+## Current Milestone: v2.7 Dashboard Scale Refresh
+
+**Goal:** Rework the dashboard UI with SeedSyncarr-inspired spacious scale — larger header, icon-paired nav, status pill, scaled stat cards and app cards — while keeping Triggarr's exact colors, fonts, and identity.
+
+**Target features:**
+- Port AIDesigner artifact: spacious header (py-4, text-[15px] nav, Phosphor icons, center-aligned nav, Connection Stable pill)
+- Scaled stat cards with larger hero numbers and per-app mini progress bars
+- Refined app card layout with colored left borders per app type
+- Updated activity rail and terminal log viewer styling
+- Resolve deferred UI-01, UI-02, UI-03 visual verification items from v2.6
 
 ## Current State
 
-v2.6 Built-In Authentication in progress. Phase 59 complete — security hardening addressing all SHIELD findings (SHIELD-001 through SHIELD-011). Login rate limiter (10 attempts/5 min per IP with HTTP 429), CSP headers, API key exposure fixed (boolean instead of raw key), SSRF IPv4-mapped IPv6 + multicast hardening, log sanitization, periodic auth-disabled warning, and open redirect percent-encoding defense. 805 total tests passing. All auth + security phases (54-59) complete for this milestone.
+v2.7 Dashboard Scale Refresh starting. 805 tests passing, 20,225 Python LOC. 59 phases, 124 plans completed across 12 milestones.
 
 ### Out of Scope
 
@@ -236,4 +245,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after v2.6 Built-In Authentication milestone complete*
+*Last updated: 2026-04-15 after v2.7 Dashboard Scale Refresh milestone started*
