@@ -9,10 +9,15 @@
     <div class="relative w-2 h-2 rounded-full bg-triggarr-danger"></div>
     <span class="text-triggarr-danger text-[13px] font-medium mt-0.5">Connection Issue</span>
   </div>
-  {% elif health.total > 0 %}
+  {% elif health.connected > 0 %}
   <div class="flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-lg bg-triggarr-card border border-triggarr-green-dark/40">
     <div class="relative w-2 h-2 rounded-full bg-triggarr-green dot-pulse"></div>
     <span class="text-triggarr-green text-[13px] font-medium mt-0.5">Connection Stable</span>
+  </div>
+  {% elif health.total > 0 %}
+  <div class="flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-lg bg-triggarr-card border border-triggarr-border/40">
+    <div class="relative w-2 h-2 rounded-full bg-triggarr-muted"></div>
+    <span class="text-triggarr-muted text-[13px] font-medium mt-0.5">Connecting...</span>
   </div>
   {% endif %}
 </div>

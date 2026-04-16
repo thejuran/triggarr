@@ -49,6 +49,8 @@
     --text-2xl--line-height: calc(2 / 1.5);
     --text-4xl: 2.25rem;
     --text-4xl--line-height: calc(2.5 / 2.25);
+    --text-6xl: 3.75rem;
+    --text-6xl--line-height: 1;
     --font-weight-normal: 400;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
@@ -299,6 +301,12 @@
   .z-50 {
     z-index: 50;
   }
+  .z-\[60\] {
+    z-index: 60;
+  }
+  .z-\[9999\] {
+    z-index: 9999;
+  }
   .col-span-2 {
     grid-column: span 2 / span 2;
   }
@@ -436,6 +444,9 @@
   }
   .max-h-\[calc\(100vh-6rem\)\] {
     max-height: calc(100vh - 6rem);
+  }
+  .min-h-\[90vh\] {
+    min-height: 90vh;
   }
   .min-h-screen {
     min-height: 100vh;
@@ -1094,6 +1105,12 @@
   .pt-3 {
     padding-top: calc(var(--spacing) * 3);
   }
+  .pt-32 {
+    padding-top: calc(var(--spacing) * 32);
+  }
+  .pt-48 {
+    padding-top: calc(var(--spacing) * 48);
+  }
   .pr-3 {
     padding-right: calc(var(--spacing) * 3);
   }
@@ -1138,6 +1155,10 @@
     font-size: var(--text-4xl);
     line-height: var(--tw-leading, var(--text-4xl--line-height));
   }
+  .text-6xl {
+    font-size: var(--text-6xl);
+    line-height: var(--tw-leading, var(--text-6xl--line-height));
+  }
   .text-base {
     font-size: var(--text-base);
     line-height: var(--tw-leading, var(--text-base--line-height));
@@ -1172,6 +1193,9 @@
   }
   .text-\[18px\] {
     font-size: 18px;
+  }
+  .text-\[64px\] {
+    font-size: 64px;
   }
   .leading-none {
     --tw-leading: 1;

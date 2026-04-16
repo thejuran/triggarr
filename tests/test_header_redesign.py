@@ -20,7 +20,7 @@ from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import log_buffer
 from triggarr.models.config import GeneralConfig
-from triggarr.web.routes import STATIC_DIR, router
+from triggarr.web.routes import STATIC_DIR, auth_state, router
 
 TEMPLATES_DIR = STATIC_DIR.parent / "templates"
 
@@ -192,10 +192,8 @@ def test_header_has_w64_zones(client):
 
 def test_logout_has_css_pipe_divider(client):
     """HDR-04: Pipe divider is a CSS element, not a text character."""
-    import triggarr.web.routes as routes_module
-
-    original = dict(routes_module.auth_state)
-    routes_module.auth_state["active"] = True
+    original = dict(auth_state)
+    auth_state["active"] = True
     try:
         response = client.get("/")
         assert response.status_code == 200
@@ -203,53 +201,47 @@ def test_logout_has_css_pipe_divider(client):
         # Old text pipe must be gone
         assert '<span class="text-triggarr-border">|</span>' not in response.text
     finally:
-        routes_module.auth_state.clear()
-        routes_module.auth_state.update(original)
+        auth_state.clear()
+        auth_state.update(original)
 
 
 def test_logout_has_sign_out_icon(client):
     """HDR-04: Logout button has ph-sign-out icon."""
-    import triggarr.web.routes as routes_module
-
-    original = dict(routes_module.auth_state)
-    routes_module.auth_state["active"] = True
+    original = dict(auth_state)
+    auth_state["active"] = True
     try:
         response = client.get("/")
         assert response.status_code == 200
         assert "ph ph-sign-out" in response.text
     finally:
-        routes_module.auth_state.clear()
-        routes_module.auth_state.update(original)
+        auth_state.clear()
+        auth_state.update(original)
 
 
 def test_logout_is_post_form(client):
     """Security: Logout remains a POST form for CSRF protection."""
-    import triggarr.web.routes as routes_module
-
-    original = dict(routes_module.auth_state)
-    routes_module.auth_state["active"] = True
+    original = dict(auth_state)
+    auth_state["active"] = True
     try:
         response = client.get("/")
         assert response.status_code == 200
         assert 'method="post"' in response.text
     finally:
-        routes_module.auth_state.clear()
-        routes_module.auth_state.update(original)
+        auth_state.clear()
+        auth_state.update(original)
 
 
 def test_logout_hover_red(client):
     """HDR-04: Logout hover transitions to red-400."""
-    import triggarr.web.routes as routes_module
-
-    original = dict(routes_module.auth_state)
-    routes_module.auth_state["active"] = True
+    original = dict(auth_state)
+    auth_state["active"] = True
     try:
         response = client.get("/")
         assert response.status_code == 200
         assert "hover:text-red-400" in response.text
     finally:
-        routes_module.auth_state.clear()
-        routes_module.auth_state.update(original)
+        auth_state.clear()
+        auth_state.update(original)
 
 
 # --- HDR-05: Connection status pill ---
@@ -273,7 +265,8 @@ def test_connection_pill_disconnected_state(test_app):
     assert "Connection Issue" in response.text
     assert "bg-triggarr-danger" in response.text
     # Disconnected state should NOT have dot-pulse
-    assert "bg-triggarr-danger dot-pulse" not in response.text
+    # Disconnected state must not have pulse animation
+    assert "dot-pulse" not in response.text
 
 
 def test_connection_pill_loaded_via_htmx_in_header(client):
@@ -281,7 +274,8 @@ def test_connection_pill_loaded_via_htmx_in_header(client):
     response = client.get("/")
     assert response.status_code == 200
     assert "connection-pill" in response.text
-    assert "partial_connection_pill" in response.text or "partials/connection-pill" in response.text
+    assert 'hx-get="' in response.text and "partials/connection-pill" in response.text
+    assert 'hx-trigger="load, every 30s"' in response.text
 
 
 # --- Static asset existence ---
