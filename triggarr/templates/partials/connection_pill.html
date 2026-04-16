@@ -2,7 +2,7 @@
 {# Loaded via htmx into the header right zone on every page #}
 <div id="connection-pill"
      hx-get="{{ request.url_for('partial_connection_pill') }}"
-     hx-trigger="every 30s"
+     hx-trigger="load, every 30s"
      hx-swap="outerHTML">
   {% if health.disconnected > 0 %}
   <div class="flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-lg bg-triggarr-card border border-triggarr-danger/40">
