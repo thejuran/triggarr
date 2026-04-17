@@ -182,7 +182,7 @@ def test_log_viewer_source_tags_lidarr(client):
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Lidarr: synced 3 albums"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
-    assert "text-green-400" in response.text, "Lidarr source tag must be green"
+    assert "text-triggarr-green" in response.text, "Lidarr source tag must use triggarr-green token"
 
 
 def test_log_viewer_expand_button(client):
