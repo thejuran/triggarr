@@ -23,6 +23,14 @@ from triggarr.models.config import GeneralConfig
 from triggarr.web.routes import STATIC_DIR, router
 
 
+@pytest.fixture(autouse=True)
+def _clear_log_buffer():
+    """Reset shared log_buffer before and after each test."""
+    log_buffer.clear()
+    yield
+    log_buffer.clear()
+
+
 @pytest.fixture
 async def test_app(tmp_path):
     """Build a minimal FastAPI app with mocked state for route testing."""

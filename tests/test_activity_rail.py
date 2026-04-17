@@ -6,6 +6,9 @@ relative_time Jinja filter, card-based layout, and timeline markup.
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import MagicMock
+
 import aiosqlite
 import pytest
 from fastapi import FastAPI
@@ -16,6 +19,14 @@ from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import log_buffer
 from triggarr.web.routes import STATIC_DIR, router
+
+
+@pytest.fixture(autouse=True)
+def _clear_log_buffer():
+    """Reset shared log_buffer before and after each test."""
+    log_buffer.clear()
+    yield
+    log_buffer.clear()
 
 
 @pytest.fixture
@@ -66,6 +77,10 @@ async def rail_app(tmp_path):
         app.state.last_search_time = {}
         app.state.update_info = {}
         app.state.last_health_check = None
+        app.state.scheduler = MagicMock()
+        app.state.search_lock = asyncio.Lock()
+        app.state.config_path = tmp_path / "triggarr.toml"
+        app.state.state_path = tmp_path / "state.json"
 
         yield app
 
@@ -99,6 +114,10 @@ async def empty_rail_app(tmp_path):
         app.state.last_search_time = {}
         app.state.update_info = {}
         app.state.last_health_check = None
+        app.state.scheduler = MagicMock()
+        app.state.search_lock = asyncio.Lock()
+        app.state.config_path = tmp_path / "triggarr.toml"
+        app.state.state_path = tmp_path / "state.json"
 
         yield app
 
@@ -135,6 +154,10 @@ async def rail_app_many(tmp_path):
         app.state.last_search_time = {}
         app.state.update_info = {}
         app.state.last_health_check = None
+        app.state.scheduler = MagicMock()
+        app.state.search_lock = asyncio.Lock()
+        app.state.config_path = tmp_path / "triggarr.toml"
+        app.state.state_path = tmp_path / "state.json"
         yield app
 
 

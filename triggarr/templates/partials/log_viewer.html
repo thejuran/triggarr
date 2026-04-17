@@ -15,7 +15,8 @@
       </div>
     </div>
     <div class="flex items-center gap-3">
-      <select onchange="var url='{{ request.url_for('partial_log_viewer') }}' + (this.value ? '?level=' + this.value : ''); var v=this.closest('#log-viewer'); v.setAttribute('hx-get', url); htmx.ajax('GET', url, {target:'#log-viewer', swap:'outerHTML'});"
+      <select data-base-url="{{ request.url_for('partial_log_viewer') }}"
+              onchange="var base=this.dataset.baseUrl; var url=base+(this.value?'?level='+this.value:''); var v=this.closest('#log-viewer'); v.setAttribute('hx-get',url); htmx.process(v); htmx.ajax('GET',url,{target:'#log-viewer',swap:'outerHTML'});"
               class="font-mono bg-triggarr-bg border border-triggarr-border text-[11px] text-triggarr-text rounded px-2 py-1 outline-none">
         <option value=""{% if not selected_level %} selected{% endif %}>Level: ALL</option>
         <option value="ERROR"{% if selected_level == 'ERROR' %} selected{% endif %}>Level: ERROR</option>
