@@ -393,12 +393,12 @@ async def test_activity_rail_shows_outcome_badge(test_app, tmp_path):
 
 
 def test_dashboard_shows_log_viewer_section(client):
-    """GET / response contains the Application Log section heading."""
+    """GET / response contains the System Logs section heading."""
     # Add a sample log entry so the viewer has content
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Test log message for dashboard"))
     response = client.get("/")
     assert response.status_code == 200
-    assert "Application Log" in response.text, "Dashboard should show Application Log section"
+    assert "System Logs" in response.text, "Dashboard should show System Logs section"
     assert "Test log message for dashboard" in response.text, "Dashboard should show log entry"
 
 
