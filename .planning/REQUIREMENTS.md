@@ -73,7 +73,7 @@ None — this milestone is a focused UI port.
 | HDR-03 | Phase 60 | Pending |
 | HDR-04 | Phase 60 | Pending |
 | HDR-05 | Phase 60 | Pending |
-| HDR-06 | Phase 60 | Pending |
+| HDR-06 | Phase 63 | Pending |
 | STAT-01 | Phase 61 | Pending |
 | STAT-02 | Phase 61 | Pending |
 | STAT-03 | Phase 61 | Pending |

@@ -144,6 +144,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 60: Foundation & Header** - Font discipline, Phosphor icons, spacious header with nav icons, status pill, and favicon (completed 2026-04-16)
 - [x] **Phase 61: Stat Cards & App Cards** - Scaled stat cards with hero numbers and mini bars, refined app cards with colored borders (completed 2026-04-16)
 - [x] **Phase 62: Activity Rail & Log Viewer** - Card-based activity rail with fading opacity, refined log viewer controls (completed 2026-04-17)
+- [ ] **Phase 63: Header Favicon Icon** - Clean up favicon asset and add app icon beside Triggarr logo in header (gap closure for HDR-06)
 
 ## Phase Details
 
@@ -193,13 +194,25 @@ Plans:
 - [x] 62-02-PLAN.md -- Log viewer Phosphor icons, System Logs title, GRAB row highlights, font-mono filter
 **UI hint**: yes
 
+### Phase 63: Header Favicon Icon
+**Goal**: Users see a cleaned-up app icon to the left of the "Triggarr" logo text in the header
+**Depends on**: Phase 60
+**Requirements**: HDR-06
+**Gap Closure**: Closes HDR-06 deferred during Phase 60 (D-05 — favicon PNG white dot anti-aliasing artifacts)
+**Success Criteria** (what must be TRUE):
+  1. A cleaned-up favicon/app icon (PNG or SVG, no white dot artifacts) exists in the static assets
+  2. An app icon element appears to the left of the "Triggarr" logo text in the header, matching the AIDesigner artifact placement
+**Plans**: 1 plan (TBD)
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 60 -> 61 -> 62
+Phases execute in numeric order: 60 -> 61 -> 62 -> 63
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 60. Foundation & Header | v2.7 | 3/3 | Complete    | 2026-04-16 |
 | 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete    | 2026-04-16 |
 | 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete    | 2026-04-17 |
+| 63. Header Favicon Icon | v2.7 | 0/1 | Pending     | — |
