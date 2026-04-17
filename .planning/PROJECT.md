@@ -10,9 +10,10 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.7 Dashboard Scale Refresh in progress. Phase 61 (Stat Cards & App Cards) complete 2026-04-16. 837 tests passing. 61 phases, 129 plans completed across 13 milestones.
+v2.7 Dashboard Scale Refresh in progress. Phase 62 (Activity Rail & Log Viewer) complete 2026-04-17. 851 tests passing. 62 phases, 131 plans completed across 13 milestones.
 
 **Latest milestone work (v2.7):**
+- Phase 62 complete: Activity rail restyled to card-based layout with speech bubble pointers, double-circle timeline dots, opacity fading, text-only outcome pills. Log viewer restyled with Phosphor icons, "System Logs" title, TAILING border container, GRAB row keyword highlights, font-mono level filter
 - Phase 61 complete: Stat cards restyled with 32px hero numbers, Phosphor icons, horizontal mini bars, colored subtitles. App cards restructured to sectioned layout with app-type colored borders, recessed sub-cards, app-colored hover on Search Now
 - Phase 60 complete: Phosphor Icons vendored, Tailwind color tokens, three-zone header with icon nav, connection status pill with htmx polling
 - HDR-06 (favicon in header) deferred — asset quality issue
