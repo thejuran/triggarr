@@ -7,7 +7,7 @@
        hx-get="{{ request.url_for('partial_activity_rail') }}"
        hx-trigger="load, every 5s"
        hx-swap="outerHTML"
-       class="hidden xl:flex w-80 shrink-0 flex-col bg-triggarr-bg border-l border-triggarr-border overflow-hidden sticky top-[73px] h-[calc(100vh-73px)] overflow-y-auto">
+       class="hidden xl:flex w-80 shrink-0 flex-col bg-triggarr-bg border-l border-triggarr-border overflow-x-hidden overflow-y-auto sticky top-[73px] h-[calc(100vh-73px)]">
   <div class="px-4 py-3 text-sm text-triggarr-muted text-center">Loading activity&hellip;</div>
 </aside>
 {% endblock %}

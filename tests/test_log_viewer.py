@@ -24,7 +24,7 @@ from triggarr.web.routes import STATIC_DIR, router
 
 
 @pytest.fixture(autouse=True)
-def _clear_log_buffer():
+async def _clear_log_buffer():
     """Reset shared log_buffer before and after each test."""
     log_buffer.clear()
     yield
@@ -34,7 +34,6 @@ def _clear_log_buffer():
 @pytest.fixture
 async def test_app(tmp_path):
     """Build a minimal FastAPI app with mocked state for route testing."""
-    log_buffer.clear()
     app = FastAPI()
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)
@@ -124,7 +123,6 @@ def client(test_app):
 
 def test_log_viewer_monospace_grid(client):
     """LOG-01: Log rows use mono font with column-aligned timestamp, level, source, message."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: grabbed 12 items"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -148,7 +146,6 @@ def test_log_viewer_tailing_indicator(client):
 
 def test_log_viewer_error_row_styling(client):
     """LOG-03: ERROR rows have red-tinted background and red left border."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "ERROR", "Connection refused"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -158,7 +155,6 @@ def test_log_viewer_error_row_styling(client):
 
 def test_log_viewer_debug_row_dimmed(client):
     """LOG-03: DEBUG rows are dimmed with opacity-60."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "DEBUG", "Cursor advanced"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -167,7 +163,6 @@ def test_log_viewer_debug_row_dimmed(client):
 
 def test_log_viewer_source_tags_radarr(client):
     """LOG-04: Radarr messages get triggarr-radarr source tag."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: grabbed 12 items"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -177,7 +172,6 @@ def test_log_viewer_source_tags_radarr(client):
 
 def test_log_viewer_source_tags_sonarr(client):
     """LOG-04: Sonarr messages get triggarr-sonarr source tag."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Sonarr: found 5 episodes"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -186,7 +180,6 @@ def test_log_viewer_source_tags_sonarr(client):
 
 def test_log_viewer_source_tags_lidarr(client):
     """LOG-04: Lidarr messages get green source tag."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Lidarr: synced 3 albums"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -228,7 +221,6 @@ def test_log_viewer_level_filter_dropdown(client):
 
 def test_log_viewer_level_filter_server_side(client):
     """LOG-06: ?level=ERROR filters to only ERROR entries server-side."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "ERROR", "Something broke"))
     log_buffer.add(LogEntry("2026-01-15 10:30:01", "INFO", "All good"))
     response = client.get("/partials/log-viewer?level=ERROR")
@@ -239,7 +231,6 @@ def test_log_viewer_level_filter_server_side(client):
 
 def test_log_viewer_invalid_level_shows_all(client):
     """LOG-06: Invalid level parameter shows all entries (no crash)."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Normal message"))
     response = client.get("/partials/log-viewer?level=BOGUS")
     assert response.status_code == 200
@@ -271,7 +262,6 @@ def test_vertical_divider(client):
 
 def test_grab_row_highlight(client):
     """LOG-01: GRAB-related messages get green highlight with [GRAB] label per D-17."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: grabbed 12 items"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -282,7 +272,6 @@ def test_grab_row_highlight(client):
 
 def test_non_grab_row_hover(client):
     """D-18: Non-grab log rows have hover:bg-white/5 with group hover transitions."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Normal status message"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -292,7 +281,6 @@ def test_non_grab_row_hover(client):
 
 def test_grab_keyword_found_release(client):
     """D-17: 'found release' keyword triggers GRAB highlight."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: found release for Movie Title"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
@@ -301,7 +289,6 @@ def test_grab_keyword_found_release(client):
 
 def test_log_body_sizing(client):
     """D-16: Log body uses h-48 height and p-3 padding."""
-    log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Test"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200

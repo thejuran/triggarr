@@ -22,7 +22,7 @@ from triggarr.web.routes import STATIC_DIR, router
 
 
 @pytest.fixture(autouse=True)
-def _clear_log_buffer():
+async def _clear_log_buffer():
     """Reset shared log_buffer before and after each test."""
     log_buffer.clear()
     yield
@@ -32,7 +32,6 @@ def _clear_log_buffer():
 @pytest.fixture
 async def rail_app(tmp_path):
     """Build a minimal FastAPI app with seeded search data for rail tests."""
-    log_buffer.clear()
     app = FastAPI()
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)
@@ -88,7 +87,6 @@ async def rail_app(tmp_path):
 @pytest.fixture
 async def empty_rail_app(tmp_path):
     """Build a minimal FastAPI app with NO search data for empty-state test."""
-    log_buffer.clear()
     app = FastAPI()
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)
@@ -125,7 +123,6 @@ async def empty_rail_app(tmp_path):
 @pytest.fixture
 async def rail_app_many(tmp_path):
     """Build a minimal FastAPI app with 5 seeded entries for opacity fading tests."""
-    log_buffer.clear()
     app = FastAPI()
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(router)
