@@ -33,12 +33,10 @@ Declared values (must be multiples of 4):
 |-------|-------|-------|
 | xs | 4px | Inline gaps (`gap-1`), icon-text spacing |
 | sm | 8px | Compact element spacing (`gap-2`, `py-2`) |
-| md | 12px | Card internal padding (`p-3`), log row padding |
-| lg | 16px | Timeline gap between dot and card (`gap-4`) |
-| xl | 24px | Rail section padding (`p-6`, `px-6`, `space-y-6`) |
-| 2xl | 20px | Rail header padding vertical (`py-5`) |
+| md | 16px | Timeline gap between dot and card (`gap-4`) |
+| lg | 24px | Rail section padding (`p-6`, `px-6`, `space-y-6`) |
 
-Exceptions: `p-3` (12px) used for activity card internal padding and log container padding, matching artifact exactly. `py-5` (20px) for rail header, matching artifact. `gap-3` (12px) for log header icon spacing.
+Exceptions: none. All formal spacing uses multiples of 4 from the standard set. Artifact-fidelity overrides (`p-3` = 12px for card internal padding and log container padding; `py-5` = 20px for rail header vertical padding; `gap-3` = 12px for log header icon spacing) are documented inline in the Component Inventory where they appear, not as formal scale tokens.
 
 ---
 
@@ -47,13 +45,11 @@ Exceptions: `p-3` (12px) used for activity card internal padding and log contain
 | Role | Size | Weight | Line Height | Font | Usage |
 |------|------|--------|-------------|------|-------|
 | Section title | 13px (`text-[13px]`) | 700 (font-bold) | 1.5 (default) | System sans | "Recent Activity" header, "System Logs" title, activity card media title |
-| Body/label | 12px (`text-xs`) | 600 (font-semibold) | 1.5 | System sans | Log header title (`tracking-wide`), footer link |
-| Badge text | 10px (`text-[10px]`) | 700 (font-bold) | 1.0 | Geist Mono | App badges, outcome pills, timestamps, LIVE label, TAILING label |
-| Log body | 13px (`text-[13px]`) | 400 (normal) | relaxed (`leading-relaxed`) | Geist Mono | Log row text, timestamp, level tag, message |
-| Log filter | 11px (`text-[11px]`) | 400 (normal) | 1.5 | Geist Mono | Level filter dropdown |
-| Log level tag | 9px (`text-[9px]`) | 700 (font-bold) | 1.0 | Geist Mono | TAILING badge text |
+| Body/label | 12px (`text-xs`) | 700 (font-bold) | 1.5 | System sans | Log header title (`tracking-wide`), footer link |
+| Badge text | 10px (`text-[10px]`) | 700 (font-bold) | 1.0 | Geist Mono | App badges, outcome pills, timestamps, LIVE label, TAILING badge text |
+| Log body | 13px (`text-[13px]`) | 400 (normal) | relaxed (`leading-relaxed`) | Geist Mono | Log row text, timestamp, level tag, message, level filter dropdown |
 
-Weights used: 400 (regular) and 700 (bold). Semibold (600) appears on log header title and card media title.
+Weights used: 400 (regular) and 700 (bold). No other weights permitted.
 
 ---
 
@@ -84,6 +80,8 @@ Weights used: 400 (regular) and 700 (bold). Semibold (600) appears on log header
 
 Accent reserved for: Grabbed outcome indicators (timeline dot, pill badge, GRAB log row highlight), TAILING badge, LIVE badge (green override), "View full history" link hover.
 
+Primary focal point: the most recent grabbed activity card (top timeline entry with solid background and green dot).
+
 ---
 
 ## Component Inventory
@@ -98,12 +96,12 @@ Accent reserved for: Grabbed outcome indicators (timeline dot, pill badge, GRAB 
 
 #### Rail Header (sticky)
 - `sticky top-0 bg-triggarr-bg/95 backdrop-blur-md z-10`
-- Padding: `px-6 py-5`
+- Padding: `px-6 py-5` (artifact-fidelity override: `py-5` = 20px, outside formal scale)
 - Border: `border-b border-triggarr-border`
-- Title: `text-[13px] font-bold uppercase tracking-widest text-triggarr-muted` — "Recent Activity"
+- Title: `text-[13px] font-bold uppercase tracking-widest text-triggarr-muted` -- "Recent Activity"
 - LIVE badge: `flex items-center gap-1.5`
   - Dot: `w-1.5 h-1.5 rounded-full bg-triggarr-green dot-pulse` (green per D-08, NOT artifact red)
-  - Label: `text-[10px] font-mono font-bold text-triggarr-green uppercase tracking-widest` — "Live"
+  - Label: `text-[10px] font-mono font-bold text-triggarr-green uppercase tracking-widest` -- "Live"
 
 #### Timeline Structure
 - Container: `p-6 relative flex-1`
@@ -122,9 +120,9 @@ Accent reserved for: Grabbed outcome indicators (timeline dot, pill badge, GRAB 
 - Inner: `w-2.5 h-2.5 rounded-full` with outcome color (see Color table)
 
 #### Activity Card (per D-01)
-- **Grabbed/partial (solid):** `flex-1 min-w-0 bg-triggarr-card border border-triggarr-border rounded-lg p-3 relative`
+- **Grabbed/partial (solid):** `flex-1 min-w-0 bg-triggarr-card border border-triggarr-border rounded-lg p-3 relative` (artifact-fidelity override: `p-3` = 12px, outside formal scale)
   - Hover: `hover:bg-triggarr-elevated transition-colors`
-- **Searched/failed/unresolved (dashed):** `flex-1 min-w-0 bg-triggarr-bg border border-triggarr-border border-dashed rounded-lg p-3 relative`
+- **Searched/failed/unresolved (dashed):** `flex-1 min-w-0 bg-triggarr-bg border border-triggarr-border border-dashed rounded-lg p-3 relative` (artifact-fidelity override: `p-3` = 12px)
 
 #### Speech Bubble Pointer (per D-03)
 - `absolute -left-[5px] top-4 w-2 h-2 rotate-45 transform`
@@ -139,7 +137,7 @@ Accent reserved for: Grabbed outcome indicators (timeline dot, pill badge, GRAB 
 - Content: App name + instance name (e.g., "Radarr Main")
 
 #### Media Title
-- `text-[13px] font-semibold text-triggarr-text truncate mb-2`
+- `text-[13px] font-bold text-triggarr-text truncate mb-2`
 
 #### Outcome + Timestamp Row
 - Container: `flex items-center justify-between`
@@ -170,21 +168,21 @@ Accent reserved for: Grabbed outcome indicators (timeline dot, pill badge, GRAB 
 
 #### Log Header Bar
 - Container: `flex items-center justify-between px-4 py-2 border-b border-triggarr-border bg-triggarr-card`
-- Left group: `flex items-center gap-3`
+- Left group: `flex items-center gap-3` (artifact-fidelity override: `gap-3` = 12px, outside formal scale)
   - Terminal icon: `ph ph-terminal-window text-triggarr-muted text-lg` (per D-11)
-  - Title: `font-semibold text-xs text-triggarr-text tracking-wide` — "System Logs" (per D-11, replaces "Application Log")
+  - Title: `font-bold text-xs text-triggarr-text tracking-wide` -- "System Logs" (per D-11, replaces "Application Log")
   - TAILING badge container: `flex items-center gap-1.5 px-2 py-0.5 rounded bg-triggarr-bg border border-triggarr-border` (per D-13)
     - Dot: `relative w-1.5 h-1.5 rounded-full bg-triggarr-primary pulse-dot` (uses existing `dot-pulse` or artifact's `pulse-dot`)
-    - Text: `text-[9px] font-mono font-bold uppercase tracking-widest text-triggarr-primary` — "Tailing"
-- Right group: `flex items-center gap-3`
-  - Level filter: `<select>` with `font-mono bg-triggarr-bg border border-triggarr-border text-[11px] text-triggarr-text rounded px-2 py-1 outline-none` (per D-14)
+    - Text: `text-[10px] font-mono font-bold uppercase tracking-widest text-triggarr-primary` -- "Tailing"
+- Right group: `flex items-center gap-3` (artifact-fidelity override: `gap-3` = 12px)
+  - Level filter: `<select>` with `font-mono bg-triggarr-bg border border-triggarr-border text-[10px] text-triggarr-text rounded px-2 py-1 outline-none` (per D-14)
     - Options: "Level: INFO", "Level: WARN", "Level: ERROR", "Level: DEBUG" (per D-14)
   - Divider: `w-px h-4 bg-triggarr-border` (per D-15)
   - Pause button: `text-triggarr-muted hover:text-triggarr-text transition-colors` with `ph ph-pause text-[15px]` (per D-12)
   - Expand button: `text-triggarr-muted hover:text-triggarr-text transition-colors` with `ph ph-corners-out text-[15px]` (per D-12)
 
 #### Log Body
-- Container: `p-3 h-48 overflow-y-auto text-[13px] leading-relaxed font-mono`
+- Container: `p-3 h-48 overflow-y-auto text-[13px] leading-relaxed font-mono` (artifact-fidelity override: `p-3` = 12px, outside formal scale)
 - Replaces current `max-h-64` with `h-48` (per artifact)
 
 #### Log Row (normal)
@@ -202,7 +200,7 @@ Accent reserved for: Grabbed outcome indicators (timeline dot, pill badge, GRAB 
 #### GRAB Row Highlight (per D-17)
 - Container: `flex gap-4 bg-triggarr-primary/10 hover:bg-triggarr-primary/20 px-2 py-0.5 rounded transition-colors group border-l-2 border-triggarr-primary ml-[2px]`
 - Timestamp: `text-triggarr-muted shrink-0 ml-[-4px]` (negative margin compensates for border-l offset)
-- Level tag: `text-triggarr-primary font-bold w-14 shrink-0` — displays `[GRAB]`
+- Level tag: `text-triggarr-primary font-bold w-14 shrink-0` -- displays `[GRAB]`
 - Message: `text-triggarr-text truncate group-hover:text-white transition-colors`
 - Detection keywords: messages containing "grabbed", "found release", "sent to client", "grab" (case-insensitive)
 
@@ -215,7 +213,7 @@ Accent reserved for: Grabbed outcome indicators (timeline dot, pill badge, GRAB 
 | Rail section title | "Recent Activity" (uppercase via CSS `tracking-widest`) |
 | Rail live indicator | "Live" (uppercase via CSS) |
 | Rail empty state heading | "No recent activity" |
-| Rail empty state body | (none needed — single line centered text) |
+| Rail empty state body | (none needed -- single line centered text) |
 | Rail footer link | "View full history" |
 | Log section title | "System Logs" (replaces "Application Log" per D-11) |
 | Log tailing indicator | "Tailing" (uppercase via CSS) |
