@@ -143,7 +143,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 - [x] **Phase 60: Foundation & Header** - Font discipline, Phosphor icons, spacious header with nav icons, status pill, and favicon (completed 2026-04-16)
 - [x] **Phase 61: Stat Cards & App Cards** - Scaled stat cards with hero numbers and mini bars, refined app cards with colored borders (completed 2026-04-16)
-- [ ] **Phase 62: Activity Rail & Log Viewer** - Card-based activity rail with fading opacity, refined log viewer controls
+- [x] **Phase 62: Activity Rail & Log Viewer** - Card-based activity rail with fading opacity, refined log viewer controls (completed 2026-04-17)
 
 ## Phase Details
 
@@ -190,7 +190,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 62-01-PLAN.md -- Activity rail card-based layout with speech bubbles, double-circle dots, opacity fading, CSS cleanup
-- [ ] 62-02-PLAN.md -- Log viewer Phosphor icons, System Logs title, GRAB row highlights, font-mono filter
+- [x] 62-02-PLAN.md -- Log viewer Phosphor icons, System Logs title, GRAB row highlights, font-mono filter
 **UI hint**: yes
 
 ## Progress
@@ -202,4 +202,4 @@ Phases execute in numeric order: 60 -> 61 -> 62
 |-------|-----------|----------------|--------|-----------|
 | 60. Foundation & Header | v2.7 | 3/3 | Complete    | 2026-04-16 |
 | 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete    | 2026-04-16 |
-| 62. Activity Rail & Log Viewer | v2.7 | 1/2 | In Progress|  |
+| 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete   | 2026-04-17 |
