@@ -2,109 +2,101 @@
        hx-get="{{ request.url_for('partial_activity_rail') }}"
        hx-trigger="every 5s"
        hx-swap="outerHTML"
-       class="hidden xl:flex w-80 shrink-0 flex-col bg-triggarr-card rounded-lg border border-triggarr-border shadow-sm overflow-hidden sticky top-20 max-h-[calc(100vh-6rem)]">
+       class="hidden xl:flex w-80 shrink-0 flex-col bg-triggarr-bg border-l border-triggarr-border overflow-hidden sticky top-[73px] h-[calc(100vh-73px)] overflow-y-auto">
 
-  {# Header — RAIL-04 #}
-  <div class="px-4 py-3 border-b border-triggarr-border flex items-center justify-between">
+  {# Header — D-09 #}
+  <div class="sticky top-0 bg-triggarr-bg/95 backdrop-blur-md z-10 px-6 py-5 border-b border-triggarr-border flex items-center justify-between">
     <div class="flex items-center gap-2">
-      <h3 class="text-sm font-semibold text-white">Recent Activity</h3>
-      <div class="flex items-center gap-1">
+      <h3 class="text-[13px] font-bold uppercase tracking-widest text-triggarr-muted">Recent Activity</h3>
+      <div class="flex items-center gap-1.5">
         <span class="w-1.5 h-1.5 rounded-full bg-triggarr-green dot-pulse"></span>
-        <span class="text-[10px] font-geist-mono uppercase tracking-wider text-triggarr-green">LIVE</span>
+        <span class="text-[10px] font-mono font-bold text-triggarr-green uppercase tracking-widest">Live</span>
       </div>
     </div>
-    <button type="button" disabled class="text-triggarr-muted transition-colors opacity-50 cursor-not-allowed" aria-label="Filter activity" title="Coming soon">
-      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-      </svg>
-    </button>
   </div>
 
-  {# Timeline body — scrollable #}
-  <div class="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-    {% set entries = search_log[:20] %}
-    {% if not entries %}
-    <p class="text-sm text-triggarr-muted text-center py-8">No recent activity</p>
-    {% else %}
-    {% for entry in entries %}
-    <div class="timeline-item">
-      {# Timeline dot — RAIL-02 #}
-      {% if entry.outcome == 'grabbed' %}
-      <span class="timeline-dot bg-triggarr-green shadow-[0_0_6px_rgba(34,197,94,0.6)]"></span>
-      {% elif entry.outcome == 'partial' %}
-      <span class="timeline-dot bg-amber-400"></span>
-      {% elif entry.outcome == 'searched' %}
-      <span class="timeline-dot bg-blue-400"></span>
-      {% elif entry.outcome == 'failed' %}
-      <span class="timeline-dot bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]"></span>
+  {# Timeline body — D-01 through D-07 #}
+  <div class="p-6 relative flex-1">
+    <div class="absolute left-[38px] top-6 bottom-6 w-px bg-triggarr-border"></div>
+    <div class="space-y-6 relative z-10">
+      {% set entries = search_log[:20] %}
+      {% if not entries %}
+      <p class="text-sm text-triggarr-muted text-center py-8">No recent activity</p>
       {% else %}
-      <span class="timeline-dot bg-gray-500"></span>
+      {% for entry in entries %}
+      {# Opacity fading per D-07 #}
+      <div class="flex gap-4 items-start{% if loop.index == 3 %} opacity-75{% elif loop.index > 3 %} opacity-60{% endif %}">
+
+        {# Double-circle timeline dot — D-04, D-02 #}
+        <div class="w-7 h-7 rounded-full bg-triggarr-card border-2 border-triggarr-bg flex items-center justify-center shrink-0 z-10 mt-1">
+          {% if entry.outcome == 'grabbed' %}
+          <div class="w-2.5 h-2.5 rounded-full bg-triggarr-primary"></div>
+          {% elif entry.outcome == 'partial' %}
+          <div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+          {% elif entry.outcome == 'searched' %}
+          <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+          {% elif entry.outcome == 'failed' %}
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+          {% else %}
+          <div class="w-2.5 h-2.5 rounded-full bg-gray-500"></div>
+          {% endif %}
+        </div>
+
+        {# Card with speech bubble — D-01, D-03 #}
+        {% if entry.outcome in ['grabbed', 'partial'] %}
+        <div class="flex-1 min-w-0 bg-triggarr-card border border-triggarr-border rounded-lg p-3 relative hover:bg-triggarr-elevated transition-colors">
+          <div class="absolute -left-[5px] top-4 w-2 h-2 rotate-45 bg-inherit border-l border-b border-triggarr-border"></div>
+        {% else %}
+        <div class="flex-1 min-w-0 bg-triggarr-bg border border-dashed border-triggarr-border rounded-lg p-3 relative">
+          <div class="absolute -left-[5px] top-4 w-2 h-2 rotate-45 bg-triggarr-bg border-l border-b border-dashed border-triggarr-border"></div>
+        {% endif %}
+
+          {# App badge row — D-06 #}
+          <div class="flex items-center gap-1.5 mb-1.5">
+            {% if entry.app == 'Radarr' %}
+            <span class="w-1.5 h-1.5 rounded-full bg-triggarr-radarr"></span>
+            {% elif entry.app == 'Sonarr' %}
+            <span class="w-1.5 h-1.5 rounded-full bg-triggarr-sonarr"></span>
+            {% elif entry.app == 'Lidarr' %}
+            <span class="w-1.5 h-1.5 rounded-full bg-triggarr-green"></span>
+            {% else %}
+            <span class="w-1.5 h-1.5 rounded-full bg-triggarr-muted"></span>
+            {% endif %}
+            <span class="text-[10px] font-mono text-triggarr-muted uppercase tracking-wider font-bold">
+              {{ entry.app }}{% if entry.instance_id and entry.instance_id != 'Default' %} {{ entry.instance_id }}{% endif %}
+            </span>
+          </div>
+
+          {# Media title #}
+          <p class="text-[13px] font-bold text-triggarr-text truncate mb-2">{{ entry.name }}</p>
+
+          {# Outcome pill + timestamp row #}
+          <div class="flex items-center justify-between">
+            {% if entry.outcome == 'grabbed' %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-triggarr-primary/10 text-triggarr-primary border border-triggarr-primary/20">grabbed</span>
+            {% elif entry.outcome == 'partial' %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-400/10 text-amber-400 border border-amber-400/20">partial</span>
+            {% elif entry.outcome == 'searched' %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">searched</span>
+            {% elif entry.outcome == 'failed' %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-red-500/10 text-red-500 border border-red-500/20">failed</span>
+            {% else %}
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-500/10 text-gray-500 border border-gray-500/20">{{ entry.outcome or 'unresolved' }}</span>
+            {% endif %}
+            <span class="text-[10px] font-mono text-triggarr-muted">{{ entry.timestamp | relative_time }}</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
       {% endif %}
-
-      {# Top row: app badge + relative timestamp — RAIL-03 #}
-      <div class="flex items-center justify-between mb-1">
-        {% if entry.app == 'Radarr' %}
-        <span class="text-[10px] font-geist-mono font-semibold uppercase text-orange-400 bg-orange-500/10 px-1.5 rounded">
-          {{ entry.app }}{% if entry.instance_id and entry.instance_id != 'Default' %} &middot; {{ entry.instance_id }}{% endif %}
-        </span>
-        {% elif entry.app == 'Sonarr' %}
-        <span class="text-[10px] font-geist-mono font-semibold uppercase text-blue-400 bg-blue-500/10 px-1.5 rounded">
-          {{ entry.app }}{% if entry.instance_id and entry.instance_id != 'Default' %} &middot; {{ entry.instance_id }}{% endif %}
-        </span>
-        {% elif entry.app == 'Lidarr' %}
-        <span class="text-[10px] font-geist-mono font-semibold uppercase text-green-400 bg-green-500/10 px-1.5 rounded">
-          {{ entry.app }}{% if entry.instance_id and entry.instance_id != 'Default' %} &middot; {{ entry.instance_id }}{% endif %}
-        </span>
-        {% else %}
-        <span class="text-[10px] font-geist-mono font-semibold uppercase text-triggarr-muted bg-triggarr-border/30 px-1.5 rounded">
-          {{ entry.app }}{% if entry.instance_id and entry.instance_id != 'Default' %} &middot; {{ entry.instance_id }}{% endif %}
-        </span>
-        {% endif %}
-        <span class="text-[10px] text-triggarr-muted font-geist-mono">{{ entry.timestamp | relative_time }}</span>
-      </div>
-
-      {# Title #}
-      <p class="text-sm font-medium text-triggarr-text leading-tight">{{ entry.name }}</p>
-
-      {# Bottom row: outcome pill + queue type — RAIL-03 #}
-      <div class="flex items-center gap-2 text-xs mt-1.5">
-        {% if entry.outcome == 'grabbed' %}
-        <span class="inline-flex items-center gap-1 text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded-sm text-xs">
-          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          grabbed
-        </span>
-        {% elif entry.outcome == 'partial' %}
-        <span class="inline-flex items-center gap-1 text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-sm text-xs">
-          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6"/></svg>
-          partial
-        </span>
-        {% elif entry.outcome == 'searched' %}
-        <span class="inline-flex items-center gap-1 text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-sm text-xs">
-          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          searched
-        </span>
-        {% elif entry.outcome == 'failed' %}
-        <span class="inline-flex items-center gap-1 text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded-sm text-xs">
-          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          failed
-        </span>
-        {% else %}
-        <span class="inline-flex items-center gap-1 text-gray-400 bg-gray-500/10 border border-gray-500/20 px-1.5 py-0.5 rounded-sm text-xs">
-          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          {{ entry.outcome or 'unresolved' }}
-        </span>
-        {% endif %}
-        <span class="text-[10px] text-triggarr-muted font-geist-mono truncate">{{ entry.queue_type }}</span>
-      </div>
     </div>
-    {% endfor %}
-    {% endif %}
   </div>
 
-  {# Footer — RAIL-04 #}
-  <div class="px-4 py-3 border-t border-triggarr-border">
-    <a href="{{ request.url_for('history_page') }}" class="text-xs text-triggarr-muted hover:text-triggarr-green transition-colors font-geist-mono">
-      View full history &rarr;
+  {# Footer — D-10 #}
+  <div class="p-6 border-t border-triggarr-border mt-auto">
+    <a href="{{ request.url_for('history_page') }}" class="flex items-center justify-center gap-2 text-[13px] font-bold text-triggarr-muted hover:text-triggarr-text transition-colors group">
+      View full history
+      <i class="ph ph-arrow-right group-hover:translate-x-1 transition-transform"></i>
     </a>
   </div>
 </aside>
