@@ -420,7 +420,7 @@ def test_log_viewer_partial_shows_entries(client):
     assert "Something went wrong" in response.text
     assert "Watch out" in response.text
     assert "text-red-400" in response.text, "ERROR should use red color"
-    assert "text-yellow-400" in response.text, "WARNING should use yellow color"
+    assert "text-yellow-500" in response.text, "WARNING should use yellow color"
 
 
 # ---------------------------------------------------------------------------
