@@ -17,6 +17,7 @@
   --color-triggarr-elevated: #233346;
   --color-triggarr-primaryDark: #16a34a;
   --font-geist-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* Self-hosted Geist Mono — see D-04..D-07 in 48-CONTEXT.md */
@@ -90,38 +91,6 @@
   );
 }
 
-/* Scanline animation for terminal pane — LOG-05 D-07 */
-@keyframes scanline {
-  0%   { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
-}
-
-/* Terminal pane background — LOG-05 D-07 */
-.terminal-pane {
-  background-color: #050505;
-  background-image:
-    radial-gradient(circle at center, transparent 0%, #000 120%),
-    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 4px;
-}
-
-/* Scanline overlay — LOG-05 D-07 */
-.scanline-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  mix-blend-mode: overlay;
-  opacity: 0.25;
-}
-.scanline-overlay::before {
-  content: '';
-  position: absolute;
-  inset: -100% 0 0 0;
-  background: linear-gradient(to bottom, transparent, rgba(34, 197, 94, 0.15), transparent);
-  animation: scanline 8s linear infinite;
-}
-
 /* Expanded log pane — LOG-05 D-02 D-03 */
 #log-viewer.expanded {
   position: fixed;
@@ -149,25 +118,3 @@ body.log-expanded {
   padding-bottom: 320px;
 }
 
-/* Activity timeline rail — RAIL-02 */
-.timeline-item { position: relative; padding-left: 1.25rem; }
-.timeline-item::before {
-  content: '';
-  position: absolute;
-  left: 0.3rem;
-  top: 0.5rem;
-  bottom: -1rem;
-  width: 2px;
-  background: #334155;
-  border-radius: 1px;
-}
-.timeline-item:last-child::before { bottom: auto; height: 0.5rem; }
-.timeline-dot {
-  position: absolute;
-  left: 0;
-  top: 0.4rem;
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 9999px;
-  border: 2px solid #1e293b;
-}
