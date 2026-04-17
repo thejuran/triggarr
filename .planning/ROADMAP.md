@@ -202,7 +202,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. A cleaned-up favicon/app icon (PNG or SVG, no white dot artifacts) exists in the static assets
   2. An app icon element appears to the left of the "Triggarr" logo text in the header, matching the AIDesigner artifact placement
-**Plans**: 1 plan (TBD)
+**Plans**: 1 plan
+Plans:
+- [ ] 63-01-PLAN.md -- Cleaned favicon bundle (SVG master + regenerated rasters) + header left-zone icon <img> + test module
 **UI hint**: yes
 
 ## Progress
