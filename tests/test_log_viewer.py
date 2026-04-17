@@ -1,8 +1,8 @@
-"""Test suite for the redesigned Application Log viewer (Phase 51).
+"""Test suite for the redesigned log viewer (Phase 62).
 
-Covers LOG-01 through LOG-06: monospace grid, TAILING indicator,
-level-colored rows, per-app source tags, expand/collapse terminal pane,
-pause button, level filter dropdown, and server-side filtering.
+Covers LOG-01 through LOG-03: Phosphor icon controls, System Logs title,
+TAILING badge with border container, GRAB row keyword highlights,
+font-mono level filter, and server-side filtering.
 """
 
 from __future__ import annotations
@@ -115,23 +115,27 @@ def client(test_app):
 
 
 def test_log_viewer_monospace_grid(client):
-    """LOG-01: Log rows use Geist Mono with column-aligned timestamp, level, source, message."""
+    """LOG-01: Log rows use mono font with column-aligned timestamp, level, source, message."""
     log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: grabbed 12 items"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
-    assert "font-geist-mono" in response.text, "Log rows must use Geist Mono font"
+    assert "font-mono" in response.text, "Log rows must use mono font"
     assert "w-14" in response.text, "Level column must have w-14 fixed width"
-    assert "w-20" in response.text, "Source column must have w-20 fixed width"
     assert "shrink-0" in response.text, "Columns must not shrink"
 
 
 def test_log_viewer_tailing_indicator(client):
-    """LOG-02: TAILING badge with pulsing green dot visible in header."""
+    """LOG-02: TAILING badge with pulsing green dot in border container."""
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
-    assert "TAILING" in response.text, "Header must show TAILING badge"
+    assert "Tailing" in response.text, "Header must show Tailing badge"
     assert "dot-pulse" in response.text, "TAILING badge must have pulsing dot"
+    assert "bg-triggarr-bg border border-triggarr-border" in response.text, (
+        "TAILING badge must be in border container per D-13"
+    )
+    assert "text-triggarr-primary" in response.text, "TAILING text must use triggarr-primary color"
+    assert "font-mono" in response.text, "TAILING badge must use mono font"
 
 
 def test_log_viewer_error_row_styling(client):
@@ -154,22 +158,22 @@ def test_log_viewer_debug_row_dimmed(client):
 
 
 def test_log_viewer_source_tags_radarr(client):
-    """LOG-04: Radarr messages get orange source tag."""
+    """LOG-04: Radarr messages get triggarr-radarr source tag."""
     log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: grabbed 12 items"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
-    assert "text-orange-400" in response.text, "Radarr source tag must be orange"
+    assert "text-triggarr-radarr" in response.text, "Radarr source tag must use triggarr-radarr token"
     assert "[Radarr]" in response.text or "Radarr" in response.text, "Radarr source tag must be present"
 
 
 def test_log_viewer_source_tags_sonarr(client):
-    """LOG-04: Sonarr messages get blue source tag."""
+    """LOG-04: Sonarr messages get triggarr-sonarr source tag."""
     log_buffer.clear()
     log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Sonarr: found 5 episodes"))
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
-    assert "text-blue-400" in response.text, "Sonarr source tag must be blue"
+    assert "text-triggarr-sonarr" in response.text, "Sonarr source tag must use triggarr-sonarr token"
 
 
 def test_log_viewer_source_tags_lidarr(client):
@@ -182,30 +186,36 @@ def test_log_viewer_source_tags_lidarr(client):
 
 
 def test_log_viewer_expand_button(client):
-    """LOG-05: Expand button present in header with correct onclick handler."""
+    """LOG-01: Expand button uses Phosphor icon with correct onclick handler."""
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
     assert "toggleLogExpand()" in response.text, "Expand button must call toggleLogExpand()"
-    assert "scanline-overlay" in response.text, "Log body must contain scanline overlay"
-    assert "terminal-pane" in response.text, "Log viewer must have terminal-pane class"
+    assert "ph ph-corners-out" in response.text, "Expand button must use Phosphor corners-out icon per D-12"
+    assert "bg-[#0b1120]" in response.text, "Log viewer must use dark background per D-16"
 
 
 def test_log_viewer_pause_button(client):
-    """LOG-05/LOG-06: Pause button present with correct onclick handler and data attribute."""
+    """LOG-01: Pause button uses Phosphor icon with correct onclick handler."""
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
     assert "toggleLogPause(this)" in response.text, "Pause button must call toggleLogPause(this)"
     assert "data-pause-btn" in response.text, "Pause button must have data-pause-btn attribute"
+    assert "ph ph-pause" in response.text, "Pause button must use Phosphor pause icon per D-12"
 
 
 def test_log_viewer_level_filter_dropdown(client):
-    """LOG-06: Level filter dropdown present with All/ERROR/WARNING/INFO/DEBUG options."""
+    """LOG-03: Level filter dropdown with Level: prefix format and font-mono styling."""
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
     html = response.text
     assert "<select" in html, "Level filter must be a select element"
     for level in ("ERROR", "WARNING", "INFO", "DEBUG"):
-        assert f'value="{level}"' in html, f"Filter must have {level} option"
+        assert f'value="{level}"' in html, f"Filter must have {level} option value"
+    assert "Level: INFO" in html, "Filter must display 'Level: INFO' format per D-14"
+    assert "Level: WARN" in html, "Filter must display 'Level: WARN' format per D-14"
+    assert "Level: ERROR" in html, "Filter must display 'Level: ERROR' format per D-14"
+    assert "Level: ALL" in html, "Filter must display 'Level: ALL' format per D-14"
+    assert "font-mono" in html, "Filter must use mono font per D-14"
 
 
 def test_log_viewer_level_filter_server_side(client):
@@ -226,3 +236,66 @@ def test_log_viewer_invalid_level_shows_all(client):
     response = client.get("/partials/log-viewer?level=BOGUS")
     assert response.status_code == 200
     assert "Normal message" in response.text, "Invalid level should show all entries"
+
+
+def test_system_logs_title(client):
+    """LOG-01: Header shows 'System Logs' with terminal-window Phosphor icon per D-11."""
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert "System Logs" in response.text, "Title must say 'System Logs' per D-11"
+    assert "Application Log" not in response.text, "Old title 'Application Log' must be removed"
+    assert "ph ph-terminal-window" in response.text, "Title must have terminal-window icon per D-11"
+
+
+def test_log_header_bar(client):
+    """LOG-01: Log header bar uses bg-triggarr-card background per D-16."""
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert "bg-triggarr-card" in response.text, "Header bar must use bg-triggarr-card per D-16"
+
+
+def test_vertical_divider(client):
+    """LOG-01: Vertical divider between filter and buttons per D-15."""
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert "w-px h-4 bg-triggarr-border" in response.text, "Vertical divider must be present per D-15"
+
+
+def test_grab_row_highlight(client):
+    """LOG-01: GRAB-related messages get green highlight with [GRAB] label per D-17."""
+    log_buffer.clear()
+    log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: grabbed 12 items"))
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert "bg-triggarr-primary/10" in response.text, "GRAB row must have green background"
+    assert "[GRAB]" in response.text, "GRAB row must show [GRAB] level label"
+    assert "border-triggarr-primary" in response.text, "GRAB row must have green left border"
+
+
+def test_non_grab_row_hover(client):
+    """D-18: Non-grab log rows have hover:bg-white/5 with group hover transitions."""
+    log_buffer.clear()
+    log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Normal status message"))
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert "hover:bg-white/5" in response.text, "Non-grab rows must have hover:bg-white/5 per D-18"
+    assert "group-hover:text-white" in response.text, "Message text must transition on group hover per D-18"
+
+
+def test_grab_keyword_found_release(client):
+    """D-17: 'found release' keyword triggers GRAB highlight."""
+    log_buffer.clear()
+    log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Radarr: found release for Movie Title"))
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert "[GRAB]" in response.text, "'found release' must trigger GRAB highlight"
+
+
+def test_log_body_sizing(client):
+    """D-16: Log body uses h-48 height and p-3 padding."""
+    log_buffer.clear()
+    log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Test"))
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert "h-48" in response.text, "Log body must use h-48 per artifact"
+    assert "text-[13px]" in response.text, "Log rows must use text-[13px] per D-18"
