@@ -189,7 +189,7 @@ Plans:
   3. Log viewer header displays Phosphor icons for pause/expand controls, the TAILING badge uses font-mono with a pulsing green dot, and the log level filter uses a font-mono styled select dropdown
 **Plans**: 2 plans
 Plans:
-- [ ] 62-01-PLAN.md -- Activity rail card-based layout with speech bubbles, double-circle dots, opacity fading, CSS cleanup
+- [x] 62-01-PLAN.md -- Activity rail card-based layout with speech bubbles, double-circle dots, opacity fading, CSS cleanup
 - [ ] 62-02-PLAN.md -- Log viewer Phosphor icons, System Logs title, GRAB row highlights, font-mono filter
 **UI hint**: yes
 
@@ -202,4 +202,4 @@ Phases execute in numeric order: 60 -> 61 -> 62
 |-------|-----------|----------------|--------|-----------|
 | 60. Foundation & Header | v2.7 | 3/3 | Complete    | 2026-04-16 |
 | 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete    | 2026-04-16 |
-| 62. Activity Rail & Log Viewer | v2.7 | 0/2 | Not started | - |
+| 62. Activity Rail & Log Viewer | v2.7 | 1/2 | In Progress|  |
