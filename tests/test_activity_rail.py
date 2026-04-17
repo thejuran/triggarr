@@ -1,7 +1,7 @@
-"""Test suite for Recent Activity Rail (Phase 52, RAIL-01 through RAIL-06).
+"""Test suite for Recent Activity Rail (Phase 62, RAIL-01 through RAIL-06).
 
 Covers the /partials/activity-rail route, activity_rail.html template,
-relative_time Jinja filter, and timeline markup.
+relative_time Jinja filter, card-based layout, and timeline markup.
 """
 
 from __future__ import annotations
@@ -104,6 +104,41 @@ async def empty_rail_app(tmp_path):
 
 
 @pytest.fixture
+async def rail_app_many(tmp_path):
+    """Build a minimal FastAPI app with 5 seeded entries for opacity fading tests."""
+    log_buffer.clear()
+    app = FastAPI()
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.include_router(router)
+    db_path = tmp_path / "test_rail_many.db"
+    async with aiosqlite.connect(db_path) as db:
+        await init_db(db, db_path)
+        await insert_search_entry(db, "Radarr", "missing", "Movie 1", outcome="grabbed")
+        await insert_search_entry(db, "Sonarr", "cutoff", "Show 2", outcome="searched")
+        await insert_search_entry(db, "Radarr", "missing", "Movie 3", outcome="partial")
+        await insert_search_entry(db, "Sonarr", "cutoff", "Show 4", outcome="failed")
+        await insert_search_entry(db, "Radarr", "missing", "Movie 5", outcome="grabbed")
+        app.state.db = db
+        _inst = {
+            "missing_cursor": 0, "cutoff_cursor": 0, "last_run": None,
+            "connected": True, "unreachable_since": None,
+            "missing_count": None, "cutoff_count": None,
+        }
+        _inst_none = {**_inst, "connected": None}
+        app.state.triggarr_state = {
+            "radarr": {"Default": {**_inst}},
+            "sonarr": {"Default": {**_inst}},
+            "lidarr": {"Default": {**_inst_none}},
+            "search_log": [],
+        }
+        app.state.settings = make_settings()
+        app.state.last_search_time = {}
+        app.state.update_info = {}
+        app.state.last_health_check = None
+        yield app
+
+
+@pytest.fixture
 def client(rail_app):
     """Create a TestClient for the rail test app."""
     return TestClient(rail_app)
@@ -115,6 +150,11 @@ def empty_client(empty_rail_app):
     return TestClient(empty_rail_app)
 
 
+@pytest.fixture
+def many_client(rail_app_many):
+    return TestClient(rail_app_many)
+
+
 # RAIL-06: Route returns 200
 def test_rail_partial_returns_200(client):
     """GET /partials/activity-rail returns 200."""
@@ -124,10 +164,10 @@ def test_rail_partial_returns_200(client):
 
 # RAIL-01: Sticky positioning
 def test_rail_has_sticky_classes(client):
-    """Response contains sticky and top-20 for fixed positioning."""
+    """Response contains sticky and top-[73px] for fixed positioning."""
     response = client.get("/partials/activity-rail")
     assert "sticky" in response.text, "Rail should have sticky positioning"
-    assert "top-20" in response.text, "Rail should have top-20 offset"
+    assert "top-[73px]" in response.text, "Rail should have top-[73px] offset"
 
 
 # RAIL-05: Hidden below xl breakpoint
@@ -137,36 +177,37 @@ def test_rail_hidden_below_xl(client):
     assert "hidden xl:flex" in response.text, "Rail should be hidden below xl breakpoint"
 
 
-# RAIL-02: Timeline dots and items
+# RAIL-02: Timeline dots — double-circle pattern
 def test_timeline_dots_present(client):
-    """Response contains timeline-item and timeline-dot classes."""
+    """Response contains double-circle timeline dot pattern."""
     response = client.get("/partials/activity-rail")
-    assert "timeline-item" in response.text, "Rail should contain timeline-item class"
-    assert "timeline-dot" in response.text, "Rail should contain timeline-dot class"
+    assert "w-7 h-7 rounded-full" in response.text, "Double-circle outer ring must be present"
+    assert "w-2.5 h-2.5 rounded-full" in response.text, "Double-circle inner dot must be present"
 
 
-# RAIL-03: App badge with color
+# RAIL-03: App badge with color dot
 def test_entry_has_app_badge(client):
-    """Response contains app name with appropriate color class."""
+    """Response contains app name with colored dot indicator and monospace font."""
     response = client.get("/partials/activity-rail")
     assert "Radarr" in response.text, "Rail should show Radarr app name"
-    assert "bg-orange-500/10" in response.text, "Radarr badge should have orange background"
+    assert "w-1.5 h-1.5 rounded-full" in response.text, "App badge dot must be present"
+    assert "font-mono" in response.text, "App badge must use monospace font"
 
 
 # RAIL-03: Outcome pill
 def test_entry_has_outcome_pill(client):
-    """Response contains outcome text with color class."""
+    """Response contains outcome text with triggarr-primary color."""
     response = client.get("/partials/activity-rail")
     assert "grabbed" in response.text, "Rail should show grabbed outcome"
-    assert "text-green-400" in response.text, "Grabbed outcome should use green text"
+    assert "text-triggarr-primary" in response.text, "Grabbed outcome should use triggarr-primary color"
 
 
-# RAIL-03: Queue type
-def test_entry_has_queue_type(client):
-    """Response contains queue type text."""
+# RAIL-03: Queue type removed in card redesign — entries now show app badge + outcome pill
+def test_entry_has_app_and_outcome(client):
+    """Response contains app name and outcome pill (queue type no longer shown)."""
     response = client.get("/partials/activity-rail")
-    assert "missing" in response.text, "Rail should show queue type 'missing'"
-    assert "cutoff" in response.text, "Rail should show queue type 'cutoff'"
+    assert "Radarr" in response.text, "Rail should show app name"
+    assert "grabbed" in response.text, "Rail should show outcome"
 
 
 # RAIL-03: Relative timestamp
@@ -182,7 +223,7 @@ def test_entry_has_relative_timestamp(client):
 def test_live_indicator_present(client):
     """Response contains LIVE text and dot-pulse class."""
     response = client.get("/partials/activity-rail")
-    assert "LIVE" in response.text, "Rail header should show LIVE indicator"
+    assert "Live" in response.text, "Rail header should show Live indicator"
     assert "dot-pulse" in response.text, "LIVE indicator should have pulsing dot"
 
 
@@ -194,12 +235,14 @@ def test_footer_history_link(client):
     assert "/history" in response.text, "History link should point to /history"
 
 
-# RAIL-03: SVG outcome icons
-def test_outcome_svg_icons(client):
-    """Response contains SVG elements for outcome icons."""
+# RAIL-01: Outcome pills use text-only badges
+def test_outcome_pills_text_only(client):
+    """RAIL-01: Outcome pills use text-only badges without SVGs."""
     response = client.get("/partials/activity-rail")
-    assert "<polyline" in response.text, "Grabbed outcome should have checkmark SVG"
-    assert "<circle" in response.text, "Other outcomes should have circle-based SVGs"
+    assert response.status_code == 200
+    assert "grabbed" in response.text, "Grabbed pill text must be present"
+    assert "<polyline" not in response.text, "SVG polyline must not appear in pills"
+    assert "<circle" not in response.text, "SVG circle must not appear in pills"
 
 
 # RAIL-06: Empty state
@@ -208,3 +251,64 @@ def test_empty_state(empty_client):
     response = empty_client.get("/partials/activity-rail")
     assert response.status_code == 200
     assert "No recent activity" in response.text, "Empty rail should show 'No recent activity'"
+
+
+# RAIL-01: Card-based layout
+def test_card_based_layout(client):
+    """RAIL-01: Activity entries use card-based layout with proper styling."""
+    response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "bg-triggarr-card" in response.text, "Solid cards must use bg-triggarr-card"
+    assert "rounded-lg p-3" in response.text, "Cards must have rounded-lg p-3"
+
+
+# RAIL-01: Dashed cards for non-grab outcomes
+def test_dashed_cards_for_non_grab(client):
+    """RAIL-01: Non-grabbed entries use dashed border cards."""
+    response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "border-dashed" in response.text, "Failed/searched entries must have dashed borders"
+
+
+# RAIL-01: Speech bubble pointer
+def test_speech_bubble_pointer(client):
+    """RAIL-01: Cards have speech bubble pointer with rotate-45."""
+    response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "rotate-45" in response.text, "Speech bubble pointer must use rotate-45"
+
+
+# RAIL-03: Opacity fading
+def test_opacity_fading(many_client):
+    """RAIL-03: Entries 3+ fade with decreasing opacity."""
+    response = many_client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "opacity-75" in response.text, "Entry 3 must have opacity-75"
+    assert "opacity-60" in response.text, "Entry 4+ must have opacity-60"
+
+
+# D-09: Rail header styling
+def test_rail_header_styling(client):
+    """RAIL-01: Rail header uses updated styling per D-09."""
+    response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "tracking-widest" in response.text, "Header title must use tracking-widest"
+    assert "backdrop-blur-md" in response.text, "Header must use backdrop blur"
+    assert "text-[13px]" in response.text, "Header title must use text-[13px]"
+
+
+# D-05: Vertical timeline line
+def test_vertical_timeline_line(client):
+    """RAIL-01: Vertical timeline line connects dots."""
+    response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "left-[38px]" in response.text, "Timeline line must be positioned at left-[38px]"
+
+
+# D-10: Footer Phosphor icon
+def test_footer_phosphor_icon(client):
+    """RAIL-01: Footer uses Phosphor arrow-right icon."""
+    response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "ph-arrow-right" in response.text, "Footer must use ph-arrow-right icon"
+    assert "group-hover:translate-x-1" in response.text, "Arrow must animate on hover"
