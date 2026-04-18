@@ -16,7 +16,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v2.4 Community Polish & Test Hardening -- Phases 45-47 (shipped 2026-04-09) -- [archive](milestones/v2.4-ROADMAP.md)
 - ✅ v2.5 Dashboard UI Refresh -- Phases 48-53 (shipped 2026-04-13) -- [archive](milestones/v2.5-ROADMAP.md)
 - ✅ v2.6 Built-In Authentication -- Phases 54-59 (shipped 2026-04-15) -- [archive](milestones/v2.6-ROADMAP.md)
-- 🚧 **v2.7 Dashboard Scale Refresh** -- Phases 60-62 (in progress)
+- 🚧 **v2.7 Dashboard Scale Refresh** -- Phases 60-63 (in progress)
 
 ## Phases
 
@@ -144,7 +144,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - [x] **Phase 60: Foundation & Header** - Font discipline, Phosphor icons, spacious header with nav icons, status pill, and favicon (completed 2026-04-16)
 - [x] **Phase 61: Stat Cards & App Cards** - Scaled stat cards with hero numbers and mini bars, refined app cards with colored borders (completed 2026-04-16)
 - [x] **Phase 62: Activity Rail & Log Viewer** - Card-based activity rail with fading opacity, refined log viewer controls (completed 2026-04-17)
-- [ ] **Phase 63: Header Favicon Icon** - Clean up favicon asset and add app icon beside Triggarr logo in header (gap closure for HDR-06)
+- [x] **Phase 63: Header Favicon Icon** - Clean up favicon asset and add app icon beside Triggarr logo in header (gap closure for HDR-06) (completed 2026-04-17)
 
 ## Phase Details
 
@@ -204,7 +204,7 @@ Plans:
   2. An app icon element appears to the left of the "Triggarr" logo text in the header, matching the AIDesigner artifact placement
 **Plans**: 1 plan
 Plans:
-- [ ] 63-01-PLAN.md -- Cleaned favicon bundle (SVG master + regenerated rasters) + header left-zone icon <img> + test module
+- [x] 63-01-PLAN.md -- Cleaned favicon bundle (SVG master + regenerated rasters) + header left-zone icon <img> + test module
 **UI hint**: yes
 
 ## Progress
@@ -217,4 +217,4 @@ Phases execute in numeric order: 60 -> 61 -> 62 -> 63
 | 60. Foundation & Header | v2.7 | 3/3 | Complete    | 2026-04-16 |
 | 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete    | 2026-04-16 |
 | 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete    | 2026-04-17 |
-| 63. Header Favicon Icon | v2.7 | 0/1 | Pending     | — |
+| 63. Header Favicon Icon | v2.7 | 1/1 | Complete    | 2026-04-17 |
