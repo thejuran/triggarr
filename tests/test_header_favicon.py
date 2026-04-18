@@ -24,7 +24,7 @@ FAVICON_BUNDLE = (
     "android-chrome-512x512.png",
 )
 
-_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.DOTALL)
+_IMG_TAG_RE = re.compile(r"<img\b[^>]*>")
 
 
 @pytest.fixture(scope="module")
