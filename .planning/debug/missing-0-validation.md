@@ -1,8 +1,10 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Setting missing=0 in Radarr settings produces validation error 'value should be greater than 0', but 0 should be allowed for missing if upgrade is greater than 0."
 created: 2026-03-10T00:00:00Z
-updated: 2026-03-10T00:00:00Z
+updated: 2026-04-18T00:00:00Z
+resolved: 2026-03-10T20:06:37-04:00
+resolution_commit: b162971
 ---
 
 ## Current Focus
@@ -48,8 +50,9 @@ started: Since cross-field validation was added (v1.x era) -- the feature to all
 
 ## Resolution
 
-root_cause: HTML template settings.html has min="1" on search_missing_count and search_cutoff_count inputs (lines 111, 116), causing browser-side validation to reject 0. The backend (routes.py, config.py model validator) already supports 0, but the HTML was never updated despite the plan and summary claiming it was.
-fix: Change min="1" to min="0" on lines 111 and 116 of settings.html
-verification: 303 tests pass, 0 ruff violations, model validation confirms 0 accepted with positive counterpart
+root_cause: HTML template settings.html had min="1" on search_missing_count and search_cutoff_count inputs, causing browser-side validation to reject 0. The backend (routes.py, config.py model validator) already supported 0, but the HTML was never updated despite the quick task summary claiming it was.
+fix: Changed min="1" to min="0" on both inputs in settings.html (commit b162971, 2026-03-10)
+verification: Verified 2026-04-18 — current settings.html lines 178 and 183 show min="0" on both inputs; 857 tests pass.
 files_changed:
   - triggarr/templates/settings.html
+closed_by: gsd-complete-milestone v2.7 preflight audit (2026-04-18) — session was shipped same day it was opened but never marked resolved.

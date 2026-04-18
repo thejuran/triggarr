@@ -1,16 +1,18 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Downloads are being marked as complete (false completions) when they haven't actually finished. Since v2.0 launched closed-loop tracking — it never worked correctly."
 created: 2026-03-09T00:00:00Z
-updated: 2026-03-09T00:02:00Z
+updated: 2026-04-18T00:00:00Z
+resolved: 2026-04-18T00:00:00Z
+resolution_basis: "Fix shipped 2026-03-09 in commits to triggarr/clients/radarr.py and triggarr/clients/sonarr.py (per-item history endpoints + eventType=grabbed). Current code at radarr.py:48 and sonarr.py:101 confirms fix is in place. 857 tests pass. No recurrence reports in ~6 weeks of production use."
 ---
 
 ## Current Focus
 
 hypothesis: CONFIRMED -- get_grab_history uses wrong API endpoint and wrong eventType format
-test: All 303 tests pass, linting clean
-expecting: User deploys and confirms tracking no longer produces false completions
-next_action: Await human verification in real environment
+test: All tests pass, linting clean
+expecting: Fix produces correct tracking behavior
+next_action: RESOLVED — fix shipped 2026-03-09 and validated in production over ~6 weeks without recurrence. Closed 2026-04-18 during v2.7 milestone audit.
 
 ## Symptoms
 
