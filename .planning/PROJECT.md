@@ -10,13 +10,13 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.7 Dashboard Scale Refresh in progress. Phase 62 (Activity Rail & Log Viewer) complete 2026-04-17. 851 tests passing. 62 phases, 131 plans completed across 13 milestones.
+v2.7 Dashboard Scale Refresh shipped 2026-04-18. 857 tests passing. 63 phases, 139 plans completed across 13 shipped milestones.
 
-**Latest milestone work (v2.7):**
-- Phase 62 complete: Activity rail restyled to card-based layout with speech bubble pointers, double-circle timeline dots, opacity fading, text-only outcome pills. Log viewer restyled with Phosphor icons, "System Logs" title, TAILING border container, GRAB row keyword highlights, font-mono level filter
-- Phase 61 complete: Stat cards restyled with 32px hero numbers, Phosphor icons, horizontal mini bars, colored subtitles. App cards restructured to sectioned layout with app-type colored borders, recessed sub-cards, app-colored hover on Search Now
-- Phase 60 complete: Phosphor Icons vendored, Tailwind color tokens, three-zone header with icon nav, connection status pill with htmx polling
-- HDR-06 (favicon in header) deferred — asset quality issue
+**Latest milestone delivered (v2.7):**
+- Phase 60 complete: Phosphor Icons vendored locally (no CDN), 4 new Tailwind color tokens (triggarr-radarr/sonarr/danger/primaryDark), three-zone `py-4` header with icon-paired `text-[15px]` nav, CSS pipe divider + Phosphor sign-out for logout, Geist Mono version badge, "Connection Stable" pill with htmx `load, every 30s` self-polling
+- Phase 61 complete: Stat cards scaled to `text-[32px]` hero numbers with `p-5` uniform padding, Phosphor icons per app type (chart-line-up/film-strip/television/music-notes/clock-countdown), three horizontal per-app mini bars on Grab Rate (Radarr/Sonarr/Lidarr), colored-dot subtitles; app cards with app-type colored left borders (orange/blue/green/red), sectioned header/body/footer layout, recessed Missing/Cutoff sub-cards (`bg-triggarr-bg/50`), full-width Search Now with app-colored hover accent
+- Phase 62 complete: Card-based activity rail with speech bubble pointers (`rotate-45`), double-circle timeline dots, position-based opacity fading (`opacity-75`/`opacity-60` by index), font-mono app badges with colored dot indicators, outcome-based solid/dashed cards; log viewer refined with `ph-terminal-window`/`ph-pause`/`ph-corners-out` Phosphor controls, "System Logs" title, TAILING border-container badge in `font-mono text-triggarr-primary`, GRAB row highlighting, `font-mono` level filter dropdown; `--font-mono` alias added, obsolete CSS removed (timeline-item / timeline-dot / terminal-pane / scanline-overlay)
+- Phase 63 complete (gap closure): Cleaned SVG favicon master (3043 bytes, safe markup) + regenerated raster bundle (16/32/180/192/512) eliminating Mar 11 white-dot aliasing artifact; 24×24 `<img class="w-6 h-6">` app icon beside "Triggarr" logo text via nested `gap-2` sub-flex inside outer `gap-3 w-64 shrink-0` left-zone flex (D-08 invariant preserved); SVG-primary `<link rel="icon" type="image/svg+xml">` before `.ico` fallback. Closes HDR-06 deferred from Phase 60.
 
 **Prior milestone delivered (v2.6):**
 - Deny-all auth middleware with Forms/Basic/External/Disabled modes
@@ -132,22 +132,22 @@ v2.7 Dashboard Scale Refresh in progress. Phase 62 (Activity Rail & Log Viewer) 
 - ✓ CSP headers with frame-ancestors 'none', SSRF IPv4-mapped IPv6 + multicast blocking — v2.6
 - ✓ Log sanitization (no user-supplied data in login/setup logs) — v2.6
 
+- ✓ Phosphor Icons vendored locally (regular weight only, ~144KB woff2, no CDN) — v2.7
+- ✓ Tailwind color tokens for app-type identity (triggarr-radarr/sonarr/danger/primary/primaryDark/elevated) — v2.7
+- ✓ Three-zone header: py-4 padding, Phosphor-paired nav at text-[15px], gap-6 center alignment, pipe-separated logout with sign-out icon — v2.7
+- ✓ "Connection Stable" status pill with pulsing green dot + htmx `load, every 30s` self-polling — v2.7
+- ✓ Font discipline: body font-sans, Geist Mono only on version badge / TAILING-LIVE / log body / log filter / activity rail badges-timestamps / app card schedule rows (via `--font-mono` alias) — v2.7
+- ✓ Stat cards: text-[32px] hero numbers, p-5 padding, colored Phosphor icons per app type, colored-dot subtitles — v2.7
+- ✓ Grab Rate card: three horizontal per-app mini progress bars (Radarr orange, Sonarr blue, Lidarr green) with proportional inline widths — v2.7
+- ✓ App cards: app-type colored left borders (orange/blue/green/red), bordered header-body-footer sections, recessed Missing/Cutoff sub-cards (bg-triggarr-bg/50), full-width Search Now with app-colored group-hover accent — v2.7
+- ✓ Activity rail: card-based entries with speech bubble pointers, double-circle timeline dots, outcome-based solid/dashed cards, position-based opacity fading, font-mono app badges — v2.7
+- ✓ Log viewer: Phosphor icon controls (terminal-window/pause/corners-out), "System Logs" title, TAILING border-container badge in font-mono, GRAB row keyword highlighting, font-mono level filter with "Level: X" format — v2.7
+- ✓ Cleaned SVG favicon master + regenerated raster bundle (16/32/180/192/512) eliminates Mar 11 white-dot aliasing artifact — v2.7
+- ✓ 24×24 in-header app icon beside "Triggarr" logo text via nested gap-2 sub-flex (preserves D-08 version badge spacing) — v2.7
+
 ### Active
 
-## Current Milestone: v2.7 Dashboard Scale Refresh
-
-**Goal:** Rework the dashboard UI with SeedSyncarr-inspired spacious scale — larger header, icon-paired nav, status pill, scaled stat cards and app cards — while keeping Triggarr's exact colors, fonts, and identity.
-
-**Target features:**
-- Port AIDesigner artifact: spacious header (py-4, text-[15px] nav, Phosphor icons, center-aligned nav, Connection Stable pill)
-- Scaled stat cards with larger hero numbers and per-app mini progress bars
-- Refined app card layout with colored left borders per app type
-- Updated activity rail and terminal log viewer styling
-- Resolve deferred UI-01, UI-02, UI-03 visual verification items from v2.6
-
-## Current State
-
-v2.7 Dashboard Scale Refresh starting. 805 tests passing, 20,225 Python LOC. 59 phases, 124 plans completed across 12 milestones.
+_None — next milestone scope pending. Run `/gsd-new-milestone` to define v2.8._
 
 ### Out of Scope
 
@@ -170,14 +170,14 @@ v2.7 Dashboard Scale Refresh starting. 805 tests passing, 20,225 Python LOC. 59 
 
 ## Context
 
-Shipped v2.6 with ~20,225 Python LOC. 805 tests passing. 59 phases, 124 plans completed across 12 milestones.
-Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff, bcrypt, itsdangerous.
+Shipped v2.7 with ~6,178 Python LOC, 1,502 template LOC, 7,184 CSS LOC. 857 tests passing. 63 phases, 139 plans completed across 13 shipped milestones.
+Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff, bcrypt, itsdangerous, Phosphor Icons (vendored regular weight).
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
-CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache.
+CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache. `:main`/`:dev` tags on main push, `:latest` + version tag on release.
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted); test_state_wrong_structure_list_crashes documents a limitation in _merge_defaults (list JSON). UI-01/UI-02/UI-03 pixel-exact visual verification pending human review.
+Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted); test_state_wrong_structure_list_crashes documents a limitation in _merge_defaults (list JSON). UI-01/UI-02/UI-03 pixel-exact visual verification from v2.6 still pending (auth pages). Duplicate `--color-triggarr-primaryDark` token declared but unused (templates use `triggarr-green-dark` alias) — collapse in future cleanup pass.
 
 ## Constraints
 
@@ -232,6 +232,13 @@ Known tech debt: _update_info as module-level mutable dict (should move to app.s
 | Mutable dict for _update_info Jinja2 global | In-place update avoids re-registration; no .clear() for atomicity | ✓ Good — v2.3 |
 | HX-Request header check for CSRF on DELETE endpoints | Htmx sends custom header; cross-origin requests blocked by CORS preflight | ✓ Good — v2.3 |
 | Sticky Recent Activity rail + expandable terminal log (vanilla JS, no framework) | Rail queries existing SQLite search history via a dedicated `/partials/activity-rail` polling endpoint — reuses `get_recent_searches()` DB helper with no new schema changes. Sticky positioning keeps activity visible during scroll. Expandable log uses fixed bottom-pinned pane with vanilla JS toggle — avoids Alpine/React dependency. Rail hidden below xl: breakpoint so narrow screens use History page instead. | ✓ Good — v2.5 |
+| Vendor Phosphor Icons regular weight locally (v2.7) | Only regular weight needed; local vendor avoids CDN dependency (CONSTRAINT: no external CDN) and saves ~800KB vs all-weights bundle. Delivered via single woff2 + generated CSS linked from base.html head. | ✓ Good — v2.7 |
+| Three-zone absolute-centered header layout (v2.7) | `w-64 shrink-0` left/right zones with `absolute left-1/2 -translate-x-1/2` center nav gives precise alignment without flexbox justify hacks; zones provide deterministic space for favicon/version badge + connection pill. | ✓ Good — v2.7 |
+| Connection pill htmx `load, every 30s` self-polling (v2.7) | Avoids threading health data through every route context. Partial re-renders with `hx-swap="outerHTML"` and the returned fragment carries the same trigger attrs, so polling continues after each swap. | ✓ Good — v2.7 |
+| Defer HDR-06 rather than ship with aliasing artifacts (P60 D-05) | Mar 11 favicon PNGs had visible white-dot aliasing artifacts at 16×16. Rather than ship degraded visuals, defer to dedicated gap-closure phase that produces a clean SVG master + regenerated rasters. | ✓ Good — v2.7 (closed in Phase 63) |
+| CSS `--font-mono: "Geist Mono"` alias (v2.7 Phase 62) | Enables `font-mono` utility class to map to Geist Mono without requiring Tailwind v4 theme restructuring; preserves existing `font-geist-mono` utility for version badge while letting activity rail/log viewer/app card schedule rows use standard `font-mono`. | ✓ Good — v2.7 |
+| Regenerate 16×16/32×32 favicons from SVG via qlmanage (P63 D-19) | Bypasses realfavicongenerator.net's downsampled pipeline that caused the Mar 11 aliasing artifact. macOS `qlmanage -t -s 16/32` renders directly from the clean SVG master, producing bytes that differ from Mar 11 backup (verified via `cmp`). | ✓ Good — v2.7 |
+| SVG-primary favicon `<link>` before `.ico` fallback (P63) | Modern browsers pick the crisp SVG; legacy fall through to rasters. SVG master also serves as the source for the 24×24 in-header `<img class="w-6 h-6">` app icon via same `url_for('static', path='favicon.svg')`. | ✓ Good — v2.7 |
 
 ## Evolution
 
@@ -251,4 +258,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after v2.7 Dashboard Scale Refresh milestone started*
+*Last updated: 2026-04-18 after v2.7 Dashboard Scale Refresh milestone shipped*

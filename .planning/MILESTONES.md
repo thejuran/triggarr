@@ -1,5 +1,34 @@
 # Milestones
 
+## v2.7 Dashboard Scale Refresh (Shipped: 2026-04-18)
+
+**Phases completed:** 4 phases, 8 plans
+**Timeline:** 3 days (Apr 15-18, 2026 — 2 execution days + 1 audit/ship day)
+**LOC:** 6,178 Python + 1,502 HTML templates + 7,184 CSS | 857 tests passing
+**Git range:** ecafd9a..c34ae6a (101 commits, 19 files in triggarr/ modified, +5,792 / -409 lines in template/CSS)
+**Requirements:** 22/22 satisfied (0 deferred) — all HDR / STAT / CARD / RAIL / LOG / FONT requirements shipped
+
+**Delivered:** Pixel-exact port of the finalized AIDesigner artifact — spacious header with vendored Phosphor icons, scaled stat cards with proportional per-app mini bars, refined app cards with colored left borders, card-based activity rail with opacity fading, updated log viewer with Phosphor icon controls, and a cleaned-up SVG favicon + in-header app icon.
+
+**Key accomplishments:**
+
+- Vendored Phosphor Icons regular weight locally (~144KB woff2, no CDN dependency) + 6 new Tailwind color tokens (triggarr-radarr / sonarr / danger / primary / primaryDark / elevated) for consistent app-type color coding across stat cards, app cards, activity rail, and log viewer
+- Three-zone `py-4` header with Phosphor-paired `text-[15px]` nav, CSS pipe divider + sign-out icon on logout, Geist Mono version badge, and "Connection Stable" pill with htmx `load, every 30s` self-polling — FONT-01/02, HDR-01..HDR-05 shipped in Phase 60
+- Hero-scaled stat cards: `text-[32px]` hero numbers, Phosphor icons per app type (chart-line-up / film-strip / television / music-notes / clock-countdown), horizontal per-app mini bars on Grab Rate with proportional inline width math, colored-dot subtitles — STAT-01..STAT-04 shipped in Phase 61
+- Sectioned app cards with app-type colored left borders (orange Radarr / blue Sonarr / green Lidarr / red unreachable), bordered header/body/footer sections, recessed Missing/Cutoff sub-cards with `bg-triggarr-bg/50`, full-width Search Now with app-colored group-hover accent — CARD-01..CARD-04 shipped in Phase 61
+- Card-based activity rail with speech-bubble pointers and double-circle timeline dots, position-based opacity fading, font-mono app badges with colored dot indicators; refined log viewer with Phosphor icon controls, "System Logs" title, TAILING border-container badge, GRAB row highlighting, font-mono level filter — RAIL-01..03 + LOG-01..03 shipped in Phase 62
+- Gap-closure Phase 63 for HDR-06 (deferred from Phase 60 D-05): cleaned SVG favicon master (safe markup, no script/on*/xlink:href), regenerated raster bundle (16/32/180/192/512) eliminating Mar 11 white-dot aliasing artifact via direct SVG→PNG rendering (`qlmanage`), 24×24 in-header `<img>` app icon via nested `gap-2` sub-flex preserving outer `gap-3 w-64 shrink-0` invariant
+- All phases Nyquist-compliant at close (refreshed during milestone audit): 20 tests for P60, 38 tests for P61, 38 tests for P62, 6 tests for P63 — 102 new phase-scoped tests layered on top of 755 carry-over tests
+
+**Known gaps at close:** None blocking.
+
+**Minor tech debt deferred:**
+- Duplicate `--color-triggarr-primaryDark` (#16a34a) token declared but unused — templates use older `triggarr-green-dark` alias (same hex). Safe to collapse in future cleanup pass.
+- SUMMARY frontmatter inconsistency on plans 61-01, 62-01, 62-02 (missing `requirements-completed` field). VERIFICATION.md Requirements Coverage tables compensate; future plans should follow 60-xx/63-01 precedent.
+- UI-01/UI-02/UI-03 from v2.6 milestone close (auth pages pixel-exact verification) still carries forward — not in v2.7 scope.
+
+---
+
 ## v2.6 Built-In Authentication (Shipped: 2026-04-15)
 
 **Phases completed:** 6 phases, 16 plans

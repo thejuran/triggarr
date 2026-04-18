@@ -283,6 +283,55 @@
 
 ---
 
+## Milestone: v2.7 — Dashboard Scale Refresh
+
+**Shipped:** 2026-04-18
+**Phases:** 4 | **Plans:** 8
+
+### What Was Built
+- Phosphor Icons vendored locally (regular weight, ~144KB woff2, no CDN) with 4 new Tailwind color tokens for app-type identity
+- Spacious three-zone `py-4` header with icon-paired `text-[15px]` nav, pipe-separated logout, and htmx-polled Connection Stable pill
+- Stat cards scaled to `text-[32px]` hero numbers with Phosphor icons per card and three horizontal per-app mini bars on Grab Rate
+- App cards redesigned with colored left borders per app type (orange/blue/green/red), recessed Missing/Cutoff sub-cards, app-colored Search Now hover
+- Card-based activity rail with speech bubble pointers, double-circle timeline dots, position-based opacity fading
+- Refined log viewer with Phosphor controls, "System Logs" title, font-mono TAILING badge, GRAB row highlighting, font-mono level filter
+- Cleaned SVG favicon master + regenerated raster bundle (16/32/180/192/512) closing Mar 11 white-dot aliasing artifact, plus 24×24 in-header app icon
+
+### What Worked
+- AIDesigner HTML artifact reused from v2.5/v2.6 as binding spec — zero design drift across 4 phases
+- UI-SPEC + VERIFICATION + HUMAN-UAT triad kept structural correctness (class/markup assertions) separate from visual fidelity (live browser) — let the 38 stat/app card tests and 38 rail/log tests run headless while the visual match was confirmed once at milestone close
+- Mid-milestone gap-closure (Phase 63 for HDR-06) kept the original phase plans clean — deferral in P60 D-05 was documented, tracked, and resolved in a dedicated phase rather than padding P60 with scope creep
+- Live gsd-browser UAT against the dev image with real Radarr (15 missing / 182 cutoff) + Sonarr (630 missing / 4413 cutoff) data confirmed both structural and proportional behavior in a single screenshot
+- Milestone audit caught stale `output.css` (missing P62 `--font-mono` alias) and stale Nyquist classification on VALIDATION.md drafts — recompile + audit-refresh resolved both during preflight, no code fixes needed
+
+### What Was Inefficient
+- VALIDATION.md files written at plan time classified every requirement as "visual / Browser check" even though the phases subsequently shipped real pytest assertions — had to be refreshed at milestone close to flip `nyquist_compliant: false` → `true`. Lesson: VALIDATION.md must be re-touched during phase verification, not just at plan creation
+- Debug sessions from v2.0 and the HTML form `min="1"` bug had been fixed in code weeks before but never administratively closed — surfaced only during milestone-close `audit-open`. Could have been swept during phase-close routines instead of at milestone-close
+- `61-HUMAN-UAT.md` was expected to be cleared during Phase 61 but instead carried to milestone-close, forcing a dev-image push for verification
+- `pyproject.toml` + `triggarr/__init__.py` version string still showed `2.7.0` from the April 7 Lidarr tag even though this milestone is the actual "v2.7 Dashboard Scale Refresh" — version string drift from the tag namespace required bumping to `v2.7.1` at release time
+
+### Patterns Established
+- CSS `--font-mono` alias pattern — enables `font-mono` utility to map to Geist Mono without restructuring the Tailwind v4 theme, while preserving `font-geist-mono` for the version badge. Clean compatibility layer for mixing typography aliases.
+- Gap-closure phase pattern — when a phase must defer one requirement (asset quality, external dependency, tool limitation), spawn a dedicated single-plan gap-closure phase rather than letting the parent phase linger open. Keeps both phases' scope crisp.
+- SVG-primary favicon + rasters-as-fallback — modern browsers pick the crisp SVG; legacy fall through to PNG/ICO. Same `url_for('static', path='favicon.svg')` also feeds the in-header `<img>`, giving root-path/reverse-proxy safety without duplicating asset refs.
+- Three-zone absolute-centered header layout — `w-64 shrink-0` left/right zones + `absolute left-1/2 -translate-x-1/2` center nav gives precise alignment without flexbox justify hacks. Zones provide deterministic space for favicon/version badge + connection pill.
+- Nested `gap-2` sub-flex inside outer `gap-3` flex — lets you add a new icon beside existing text without disturbing the outer spacing invariant (D-08: version badge stays at same position after favicon adds).
+
+### Key Lessons
+1. VALIDATION.md drafts must be refreshed during phase verification — classifying requirements as "visual only" upfront lies about the eventual test coverage and creates false-negative Nyquist gaps at milestone audit
+2. Gap-closure phases beat phase-scope-creep — when execution encounters an unresolvable obstacle mid-phase, defer with explicit documentation and close in a dedicated phase. Phase 63 (1 plan, 1 day) was cheaper than bloating Phase 60
+3. Milestone-close `audit-open` is the last line of defense against stale debug sessions and un-updated status files — fixes that shipped weeks ago can silently stay "open" because nobody ran the sweep. Worth running at every phase close, not just milestone close
+4. HUMAN-UAT should happen at phase close against the current dev image, not stockpiled for milestone close — a single UAT-blocked phase forces a whole-milestone-ship-to-unblock cycle
+5. Tag namespace discipline — `pyproject.toml` version string should track the actual milestone-in-progress, not the last released tag. Stale version = stale nav-bar version badge = stale UAT evidence
+6. Live-data UAT (real Radarr + Sonarr) catches proportional rendering in a way fixture data can't — the `style="width: 16%"` inline Jinja2 math was verified at a non-zero value exercising the clamp expression
+
+### Cost Observations
+- Model mix: ~40% opus (milestone audit, verification, planning), ~60% sonnet (execution, code review, UAT)
+- Sessions: ~3 sessions across 3 days
+- Notable: 8 plans across 4 phases in 2 execution days + 1 audit/ship day; deep-review hardening on Phase 63 tightened regex assertions before ship
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -299,6 +348,7 @@
 | v2.4 | 3 | 6 | Test-only milestone, community health files, single-session ship |
 | v2.5 | 6 | 15 | AIDesigner HTML artifacts as design spec, vanilla JS components |
 | v2.6 | 6 | 16 | Shield scan → hardening phase, TDD auth, in-memory rate limiter |
+| v2.7 | 4 | 8 | Mid-milestone gap-closure phase for deferred requirement, live-data UAT against dev image |
 
 ### Cumulative Quality
 
@@ -314,13 +364,16 @@
 | v2.4 | 606 | ~15,979 | 0 |
 | v2.5 | 668 | ~17,361 | 0 |
 | v2.6 | 805 | ~20,225 | 2 (bcrypt, itsdangerous — necessary for auth) |
+| v2.7 | 857 | ~20,225 source (pure UI port; +5,792 template/CSS) | 0 (Phosphor Icons vendored as static assets, no PyPI dep) |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Deep code review as a formal phase catches real bugs — validated in v1.2 (7 fixes), v2.0 (20 fixes), v2.2 (5 fixes), v2.5 (26 fixes)
-2. Zero-dependency policy keeps the stack simple and Docker images small — v2.6 added 2 deps (bcrypt, itsdangerous) only because auth requires real crypto
+2. Zero-dependency policy keeps the stack simple and Docker images small — v2.6 added 2 deps (bcrypt, itsdangerous) only because auth requires real crypto; v2.7 stayed at 0 by vendoring Phosphor Icons as static assets
 3. Fix test breakage immediately — deferred test debt compounds across phases
-4. Always populate requirements-completed in SUMMARY frontmatter — audit depends on it (v2.2, v2.6)
+4. Always populate requirements-completed in SUMMARY frontmatter — audit depends on it (v2.2, v2.6, v2.7 still partial)
 5. Pure functions are easy to test and verify — keep pipeline steps pure (v2.2)
 6. Shield security scan before milestone close finds real vulnerabilities — v2.6 hardening phase addressed all 11 findings
-7. AIDesigner HTML artifacts as binding spec for UI phases prevents design drift (v2.5, v2.6)
+7. AIDesigner HTML artifacts as binding spec for UI phases prevents design drift (v2.5, v2.6, v2.7)
+8. VALIDATION.md drafts must be refreshed post-execution (v2.7) — classifying requirements as "visual only" at plan time lies about eventual test coverage
+9. Milestone-close `audit-open` catches stale debug/quick-task/UAT artifacts that never got administratively closed (v2.7)

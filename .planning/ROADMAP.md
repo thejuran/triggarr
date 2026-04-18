@@ -2,7 +2,7 @@
 
 ## Overview
 
-Triggarr is a single-process automation daemon that cycles through Radarr and Sonarr's wanted/cutoff-unmet lists on a configurable schedule, with closed-loop download tracking. Security invariants (no API key in any HTTP response) are established from day one and never relaxed.
+Triggarr is a single-process automation daemon that cycles through Radarr, Sonarr, and Lidarr's wanted/cutoff-unmet lists on a configurable schedule, with closed-loop download tracking. Security invariants (no API key in any HTTP response) are established from day one and never relaxed.
 
 ## Milestones
 
@@ -16,7 +16,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 - ✅ v2.4 Community Polish & Test Hardening -- Phases 45-47 (shipped 2026-04-09) -- [archive](milestones/v2.4-ROADMAP.md)
 - ✅ v2.5 Dashboard UI Refresh -- Phases 48-53 (shipped 2026-04-13) -- [archive](milestones/v2.5-ROADMAP.md)
 - ✅ v2.6 Built-In Authentication -- Phases 54-59 (shipped 2026-04-15) -- [archive](milestones/v2.6-ROADMAP.md)
-- 🚧 **v2.7 Dashboard Scale Refresh** -- Phases 60-63 (in progress)
+- ✅ v2.7 Dashboard Scale Refresh -- Phases 60-63 (shipped 2026-04-18) -- [archive](milestones/v2.7-ROADMAP.md)
 
 ## Phases
 
@@ -137,84 +137,25 @@ Triggarr is a single-process automation daemon that cycles through Radarr and So
 
 </details>
 
-### v2.7 Dashboard Scale Refresh (In Progress)
+<details>
+<summary>v2.7 Dashboard Scale Refresh (Phases 60-63) -- SHIPPED 2026-04-18</summary>
 
-**Milestone Goal:** Pixel-exact port of the finalized AIDesigner artifact to Triggarr's Jinja2/Tailwind templates -- spacious header with Phosphor icons, scaled stat cards, refined app cards with colored borders, card-based activity rail, and updated log viewer.
+- [x] Phase 60: Foundation & Header (3/3 plans) -- completed 2026-04-16
+- [x] Phase 61: Stat Cards & App Cards (2/2 plans) -- completed 2026-04-16
+- [x] Phase 62: Activity Rail & Log Viewer (2/2 plans) -- completed 2026-04-17
+- [x] Phase 63: Header Favicon Icon (1/1 plan) -- completed 2026-04-17
 
-- [x] **Phase 60: Foundation & Header** - Font discipline, Phosphor icons, spacious header with nav icons, status pill, and favicon (completed 2026-04-16)
-- [x] **Phase 61: Stat Cards & App Cards** - Scaled stat cards with hero numbers and mini bars, refined app cards with colored borders (completed 2026-04-16)
-- [x] **Phase 62: Activity Rail & Log Viewer** - Card-based activity rail with fading opacity, refined log viewer controls (completed 2026-04-17)
-- [x] **Phase 63: Header Favicon Icon** - Clean up favicon asset and add app icon beside Triggarr logo in header (gap closure for HDR-06) (completed 2026-04-17)
+</details>
 
-## Phase Details
+### Next Milestone (Planned)
 
-### Phase 60: Foundation & Header
-**Goal**: Users see a spacious, icon-rich header with correct font discipline across the entire dashboard
-**Depends on**: Nothing (first phase of v2.7)
-**Requirements**: FONT-01, FONT-02, HDR-01, HDR-02, HDR-03, HDR-04, HDR-05, HDR-06
-**Success Criteria** (what must be TRUE):
-  1. Body text throughout the dashboard renders in system sans-serif; Geist Mono appears only on designated elements (version badge, TAILING/LIVE labels, log viewer body, log filter, activity rail badges/timestamps, schedule rows)
-  2. Header has visibly increased vertical padding and each navigation link displays a Phosphor icon beside its label at text-[15px]
-  3. Navigation links are center-aligned with gap-6 spacing, and the logout link is visually separated by a pipe divider with a sign-out icon
-  4. A "Connection Stable" status pill with pulsing green dot appears on the right side of the header
-  5. A favicon/app icon appears to the left of the "Triggarr" logo text in the header
-**Plans**: 3 plans
-Plans:
-- [x] 60-01-PLAN.md -- Vendor Phosphor Icons, add CSS color tokens, font discipline foundation
-- [x] 60-02-PLAN.md -- Header restructure with three-zone layout, nav icons, logout divider
-- [x] 60-03-PLAN.md -- Connection status pill wiring and phase test suite
-**UI hint**: yes
-
-### Phase 61: Stat Cards & App Cards
-**Goal**: Users see larger, more spacious stat cards and app cards with colored accents matching the design artifact
-**Depends on**: Phase 60
-**Requirements**: STAT-01, STAT-02, STAT-03, STAT-04, CARD-01, CARD-02, CARD-03, CARD-04
-**Success Criteria** (what must be TRUE):
-  1. Stat cards display hero numbers at text-[32px]/text-[36px] scale with p-5 padding, and the Grab Rate card includes per-app mini progress bars (orange for Radarr, blue for Sonarr)
-  2. Movies/Series/Next Scan stat cards show colored Phosphor icons matching their respective app type
-  3. App cards have a colored left border per app type (orange Radarr, blue Sonarr, red unreachable) with title and connection status pill separated by a bottom border
-  4. App card missing/cutoff stats appear in recessed sub-cards and the Search Now button uses an app-colored hover accent
-**Plans**: 2 plans
-Plans:
-- [x] 61-01-PLAN.md -- CSS tokens, stat card scaling with Phosphor icons and horizontal mini bars
-- [x] 61-02-PLAN.md -- App card sectioned layout with colored borders, recessed sub-cards, and app-colored buttons
-**UI hint**: yes
-
-### Phase 62: Activity Rail & Log Viewer
-**Goal**: Users see a refined activity rail with card-based entries and an updated log viewer with icon-based controls
-**Depends on**: Phase 61
-**Requirements**: RAIL-01, RAIL-02, RAIL-03, LOG-01, LOG-02, LOG-03
-**Success Criteria** (what must be TRUE):
-  1. Activity rail items render as card-based entries with speech bubble pointers and colored timeline dots; app badges use font-mono with colored dot indicators
-  2. Older activity rail entries visually fade with decreasing opacity
-  3. Log viewer header displays Phosphor icons for pause/expand controls, the TAILING badge uses font-mono with a pulsing green dot, and the log level filter uses a font-mono styled select dropdown
-**Plans**: 2 plans
-Plans:
-- [x] 62-01-PLAN.md -- Activity rail card-based layout with speech bubbles, double-circle dots, opacity fading, CSS cleanup
-- [x] 62-02-PLAN.md -- Log viewer Phosphor icons, System Logs title, GRAB row highlights, font-mono filter
-**UI hint**: yes
-
-### Phase 63: Header Favicon Icon
-**Goal**: Users see a cleaned-up app icon to the left of the "Triggarr" logo text in the header
-**Depends on**: Phase 60
-**Requirements**: HDR-06
-**Gap Closure**: Closes HDR-06 deferred during Phase 60 (D-05 — favicon PNG white dot anti-aliasing artifacts)
-**Success Criteria** (what must be TRUE):
-  1. A cleaned-up favicon/app icon (PNG or SVG, no white dot artifacts) exists in the static assets
-  2. An app icon element appears to the left of the "Triggarr" logo text in the header, matching the AIDesigner artifact placement
-**Plans**: 1 plan
-Plans:
-- [x] 63-01-PLAN.md -- Cleaned favicon bundle (SVG master + regenerated rasters) + header left-zone icon <img> + test module
-**UI hint**: yes
+_None — run `/gsd-new-milestone` to scope v2.8._
 
 ## Progress
 
-**Execution Order:**
-Phases execute in numeric order: 60 -> 61 -> 62 -> 63
-
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 60. Foundation & Header | v2.7 | 3/3 | Complete    | 2026-04-16 |
-| 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete    | 2026-04-16 |
-| 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete    | 2026-04-17 |
-| 63. Header Favicon Icon | v2.7 | 1/1 | Complete    | 2026-04-17 |
+| 60. Foundation & Header | v2.7 | 3/3 | Complete | 2026-04-16 |
+| 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete | 2026-04-16 |
+| 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete | 2026-04-17 |
+| 63. Header Favicon Icon | v2.7 | 1/1 | Complete | 2026-04-17 |
