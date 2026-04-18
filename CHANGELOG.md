@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.7.1 (2026-04-18)
+
+Dashboard Scale Refresh — pixel-exact port of the finalized AIDesigner artifact. Spacious header with vendored Phosphor icons, scaled stat cards, refined app cards with colored borders, card-based activity rail, updated log viewer, and cleaned-up favicon.
+
+* Features:
+
+  * Vendor Phosphor Icons locally (~144KB woff2, no CDN dependency) with new color tokens for app-type identity
+  * Three-zone header with `py-4` padding, icon-paired nav at `text-[15px]`, `gap-6` center alignment, pipe-separated logout with sign-out icon, and Geist Mono version badge
+  * "Connection Stable" status pill with pulsing green dot auto-refreshing every 30s via htmx
+  * Stat cards scaled to 32px hero numbers with Phosphor icons per app type (chart-line-up / film-strip / television / music-notes / clock-countdown) and colored-dot subtitles
+  * Grab Rate card: three horizontal per-app mini progress bars (Radarr orange, Sonarr blue, Lidarr green) with proportional fills
+  * App cards: app-type colored left borders (orange / blue / green / red), sectioned header / body / footer layout, recessed Missing/Cutoff sub-cards, full-width Search Now with app-colored hover accent
+  * Activity rail: card-based entries with speech bubble pointers, double-circle timeline dots, position-based opacity fading, font-mono app badges with colored dot indicators
+  * Log viewer: Phosphor icon controls (terminal-window / pause / corners-out), "System Logs" title, TAILING border-container badge in font-mono, GRAB row highlighting, font-mono level filter with "Level: X" format
+  * Cleaned SVG favicon master + regenerated raster bundle (16 / 32 / 180 / 192 / 512) — SVG-primary `<link>` with legacy fallbacks; 24×24 app icon rendered beside "Triggarr" logo text in header
+
+* Fixes:
+
+  * Close HDR-06 — favicon 16×16 white-dot anti-aliasing artifact (originally regressed Mar 11) eliminated by sourcing all rasters from the clean SVG master
+  * Refresh stale `output.css` missing Phase 62 `--font-mono` alias (detected during milestone audit)
+
 ## v2.7.0 (2026-04-07)
 
 * Features:
