@@ -17,7 +17,7 @@ from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.config import ensure_config
 from triggarr.logging import setup_logging
-from triggarr.models.config import APP_TYPES, CONFIG_PATH, Settings
+from triggarr.models.config import APP_TYPES, Settings, get_config_path
 
 LOCALHOST_PATTERNS = {"localhost", "127.0.0.1", "::1"}
 
@@ -161,7 +161,7 @@ async def startup(config_path: Path | None = None) -> Settings:
     Returns:
         Validated Settings instance for use by the rest of the app.
     """
-    path = config_path or CONFIG_PATH
+    path = config_path or get_config_path()
 
     # 1. Config loading (exits if missing, generating default template)
     settings = ensure_config(path)

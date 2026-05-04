@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -10,7 +11,7 @@ from loguru import logger
 
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.models.config import InstanceConfig, Settings
-from triggarr.startup import check_localhost_urls, collect_secrets, validate_connections
+from triggarr.startup import check_localhost_urls, collect_secrets, startup, validate_connections
 
 
 def _make_settings(
@@ -145,6 +146,30 @@ def test_collect_secrets_extracts_all_api_keys() -> None:
     assert "radarr-secret" in result
     assert "sonarr-secret" in result
     assert len(result) == 2
+
+
+async def test_startup_default_config_path_follows_current_config_dir(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """startup() without an explicit path should use the current TRIGGARR_CONFIG_DIR."""
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", str(tmp_path))
+    seen_paths: list[Path] = []
+
+    def _fake_ensure_config(path: Path) -> Settings:
+        seen_paths.append(path)
+        return Settings()
+
+    with (
+        patch("triggarr.startup.ensure_config", side_effect=_fake_ensure_config),
+        patch("triggarr.startup.setup_logging"),
+        patch("triggarr.startup.print_banner"),
+        patch("triggarr.startup.validate_connections", new_callable=AsyncMock) as mock_validate,
+    ):
+        settings = await startup()
+
+    assert isinstance(settings, Settings)
+    assert seen_paths == [tmp_path / "triggarr.toml"]
+    mock_validate.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

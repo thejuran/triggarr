@@ -151,26 +151,28 @@ def _merge_defaults(loaded: dict) -> TriggarrState:
     return defaults
 
 
-def load_state(state_path: Path = STATE_PATH) -> TriggarrState:
+def load_state(state_path: Path | None = None) -> TriggarrState:
     """Load state from a JSON file.
 
     If the file does not exist, returns a default empty state.
     Automatically migrates v2.2 flat format to v2.3 nested format.
 
     Args:
-        state_path: Path to the state JSON file.
+        state_path: Path to the state JSON file. When omitted, derived from
+            the current TRIGGARR_CONFIG_DIR value.
 
     Returns:
         Parsed state dictionary.
     """
-    if not state_path.exists():
+    resolved_state_path = state_path or get_state_path()
+    if not resolved_state_path.exists():
         return _default_state()
 
     try:
-        with open(state_path, encoding="utf-8") as f:
+        with open(resolved_state_path, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
-        logger.warning("Corrupt state file at {path} -- resetting to defaults", path=state_path)
+        logger.warning("Corrupt state file at {path} -- resetting to defaults", path=resolved_state_path)
         return _default_state()
 
     if _is_v22_state_format(data):
@@ -180,7 +182,7 @@ def load_state(state_path: Path = STATE_PATH) -> TriggarrState:
     return _merge_defaults(data)
 
 
-def save_state(state: TriggarrState, state_path: Path = STATE_PATH) -> None:
+def save_state(state: TriggarrState, state_path: Path | None = None) -> None:
     """Atomically write state to disk.
 
     Uses write-to-temp-file then ``os.replace()`` to ensure the state
@@ -189,9 +191,11 @@ def save_state(state: TriggarrState, state_path: Path = STATE_PATH) -> None:
 
     Args:
         state: State dictionary to persist.
-        state_path: Destination path for the state file.
+        state_path: Destination path for the state file. When omitted, derived
+            from the current TRIGGARR_CONFIG_DIR value.
     """
-    parent = state_path.parent
+    resolved_state_path = state_path or get_state_path()
+    parent = resolved_state_path.parent
     parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.NamedTemporaryFile(
@@ -203,7 +207,7 @@ def save_state(state: TriggarrState, state_path: Path = STATE_PATH) -> None:
 
     dir_fd = None
     try:
-        os.replace(tmp.name, state_path)
+        os.replace(tmp.name, resolved_state_path)
         # fsync the directory to ensure rename is durable (matches config.py)
         dir_fd = os.open(parent, os.O_RDONLY)
         os.fsync(dir_fd)

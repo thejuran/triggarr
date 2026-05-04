@@ -22,3 +22,23 @@ build/
 .bg-shell/
 .aidesigner/*
 !.aidesigner/.gitkeep
+
+# ── GSD baseline (auto-generated) ──
+.gsd-id
+.mcp.json
+Thumbs.db
+*.swo
+*~
+*.code-workspace
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+*.pyc
+target/
+vendor/
+*.log
+coverage/
+.cache/
+tmp/

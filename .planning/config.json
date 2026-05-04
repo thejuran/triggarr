@@ -2,7 +2,7 @@
   "mode": "yolo",
   "parallelization": true,
   "commit_docs": true,
-  "model_profile": "quality",
+  "model_profile": "balanced",
   "workflow": {
     "research": true,
     "plan_check": true,
@@ -11,5 +11,6 @@
     "_auto_chain_active": false,
     "tdd_mode": true
   },
-  "granularity": "standard"
+  "granularity": "standard",
+  "resolve_model_ids": true
 }

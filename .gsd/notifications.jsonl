@@ -1,0 +1,6 @@
+{"id":"36de815f-1b98-4fad-a98a-dfd911cece50","ts":"2026-05-03T22:31:45.921Z","severity":"info","message":"Current version: v2.78.1\nChecking npm registry...","source":"notify","read":false}
+{"id":"0b57d70f-144a-4688-bd6c-458293b68847","ts":"2026-05-03T22:31:45.999Z","severity":"info","message":"Updating: v2.78.1 → v2.79.0...","source":"notify","read":false}
+{"id":"3de71226-c4d5-4568-bb72-7d7d0fdd6267","ts":"2026-05-03T22:32:01.363Z","severity":"info","message":"Updated to v2.79.0. Restart your GSD session to use the new version.","source":"notify","read":false}
+{"id":"75b413f0-5770-460a-90cd-330b1618f585","ts":"2026-05-04T00:42:07.353Z","severity":"info","message":"Auto-mode started. Will loop until milestone complete.","source":"notify","read":false}
+{"id":"fd224fd6-c979-48bb-877f-d8a07edbedcd","ts":"2026-05-04T00:42:07.354Z","severity":"info","message":"Dynamic routing: enabled — simple tasks may use cheaper models (ceiling: openai-codex/gpt-5.5)","source":"notify","read":false}
+{"id":"59db1145-5457-44b1-8214-4490e70cf421","ts":"2026-05-04T00:42:07.578Z","severity":"info","message":"Pre-dispatch: pre-dispatch: created gsd snapshot after 22166m of uncommitted changes","source":"notify","read":false}

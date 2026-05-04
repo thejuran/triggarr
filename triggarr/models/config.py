@@ -29,6 +29,11 @@ def get_config_dir() -> Path:
     return path.resolve()
 
 
+def get_config_path() -> Path:
+    """Return the config file path derived from the current config directory."""
+    return get_config_dir() / "triggarr.toml"
+
+
 CONFIG_DIR = get_config_dir()
 CONFIG_PATH = CONFIG_DIR / "triggarr.toml"
 # NOTE: CONFIG_DIR and CONFIG_PATH are evaluated once at first import.

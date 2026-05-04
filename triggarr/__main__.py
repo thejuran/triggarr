@@ -10,9 +10,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from triggarr.models.config import CONFIG_PATH
+from triggarr.models.config import get_config_path
 from triggarr.search.scheduler import create_lifespan
-from triggarr.state import STATE_PATH
+from triggarr.state import get_state_path
 from triggarr.web.middleware import AuthMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware
 from triggarr.web.routes import STATIC_DIR, router
 
@@ -50,7 +50,9 @@ async def _run() -> None:
     """Async entry point: startup then serve with lifespan-managed scheduler."""
     from triggarr.startup import startup
 
-    settings = await startup()
+    config_path = get_config_path()
+    state_path = get_state_path()
+    settings = await startup(config_path)
 
     root_path = get_root_path()
     if root_path:
@@ -63,7 +65,7 @@ async def _run() -> None:
             "behind a controlled reverse proxy with no direct external access"
         )
 
-    app = FastAPI(lifespan=create_lifespan(settings, STATE_PATH, CONFIG_PATH))
+    app = FastAPI(lifespan=create_lifespan(settings, state_path, config_path))
     app.add_middleware(SecurityHeadersMiddleware)   # runs 3rd (response headers)
     app.add_middleware(OriginCheckMiddleware)        # runs 2nd (CSRF)
     app.add_middleware(AuthMiddleware)               # runs 1st (auth gate) -- MUST BE LAST

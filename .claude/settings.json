@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm view *)",
+      "Bash(gsd-sdk query config-get *)",
+      "Bash(gsd-sdk query agent-skills *)",
+      "Bash(gsd-sdk query init.execute-phase *)",
+      "Bash(gsd-sdk query init.plan-phase *)",
+      "Bash(gsd-sdk query phase-plan-index *)",
+      "Bash(gsd-sdk query find-phase *)",
+      "Bash(gsd-sdk query verify.key-links *)",
+      "Bash(gsd-sdk query verify.schema-drift *)",
+      "Bash(gsd-sdk query resolve-model *)",
+      "Bash(gsd-sdk query audit-open *)",
+      "Bash(gsd-sdk query list-todos *)",
+      "Bash(gsd-sdk query phases *)",
+      "Bash(gsd-sdk query summary-extract *)"
+    ]
+  }
+}

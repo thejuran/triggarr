@@ -28,13 +28,12 @@ def test_custom_config_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     assert get_config_dir() == Path("/custom/path")
 
 
-def test_config_path_follows_config_dir(monkeypatch: pytest.MonkeyPatch) -> None:
-    """CONFIG_PATH should be CONFIG_DIR / 'triggarr.toml'."""
+def test_config_path_follows_current_config_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_config_path() should derive triggarr.toml from the current config dir."""
     monkeypatch.setenv("TRIGGARR_CONFIG_DIR", "/data")
-    from triggarr.models.config import get_config_dir
+    from triggarr.models.config import get_config_path
 
-    config_dir = get_config_dir()
-    assert config_dir / "triggarr.toml" == Path("/data/triggarr.toml")
+    assert get_config_path() == Path("/data/triggarr.toml")
 
 
 def test_state_path_follows_config_dir(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,6 +50,23 @@ def test_state_path_default(monkeypatch: pytest.MonkeyPatch) -> None:
     from triggarr.state import get_state_path
 
     assert get_state_path() == Path("/config/state.json")
+
+
+def test_default_state_read_write_paths_follow_current_config_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Default load_state()/save_state() paths derive from the current config dir."""
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", str(tmp_path))
+    from triggarr.state import TriggarrState, load_state, save_state
+
+    expected_path = tmp_path / "state.json"
+    state = TriggarrState(radarr={}, sonarr={}, lidarr={}, search_log=[])
+
+    save_state(state)
+    loaded = load_state()
+
+    assert expected_path.exists()
+    assert loaded == state
 
 
 # ---------------------------------------------------------------------------
