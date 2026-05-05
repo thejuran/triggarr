@@ -1,0 +1,9 @@
+1. PASS README mentions Lidarr: README includes Radarr/Sonarr/Lidarr wording
+2. PASS README auth not stale: README does not claim no authentication
+3. PASS README env override not stale: README does not claim TOML env overrides
+4. PASS README nested instances documented: README uses nested per-instance TOML tables
+5. PASS README config-dir default documented: README documents /config fallback when env unset
+6. PASS TODO retired config-dir backlog: TODO states config-dir work is retired
+7. PASS SECURITY current app/auth scope: SECURITY reflects Lidarr scope and signed session cookies
+8. PASS SECURITY config-dir contract: SECURITY documents config-dir /config fallback
+Docs review gate surrogate passed: no release-blocking stale docs markers found in README.md, SECURITY.md, or TODO.md.
