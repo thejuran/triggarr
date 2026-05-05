@@ -1,0 +1,18 @@
+{
+  "id": "2caaedb3-a9ae-4e3c-a95d-236f30b8e54d",
+  "runtime": "bash",
+  "purpose": "S04 T03 focused auth proxy tests",
+  "script_chars": 114,
+  "started_at": "2026-05-05T22:40:57.033Z",
+  "finished_at": "2026-05-05T22:41:09.338Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 12305,
+  "stdout_bytes": 749,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/2caaedb3-a9ae-4e3c-a95d-236f30b8e54d.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/2caaedb3-a9ae-4e3c-a95d-236f30b8e54d.stderr"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "82ae6bca-acd1-463a-9f54-fb7ea47f3a11",
+  "runtime": "bash",
+  "purpose": "T01 green test: Basic auth spoofed forwarded proto ignored after helper",
+  "script_chars": 113,
+  "started_at": "2026-05-05T22:34:12.382Z",
+  "finished_at": "2026-05-05T22:34:13.109Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 727,
+  "stdout_bytes": 98,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/82ae6bca-acd1-463a-9f54-fb7ea47f3a11.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/82ae6bca-acd1-463a-9f54-fb7ea47f3a11.stderr"
+}

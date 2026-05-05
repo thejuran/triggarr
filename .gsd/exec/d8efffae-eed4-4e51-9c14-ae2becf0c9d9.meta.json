@@ -1,0 +1,18 @@
+{
+  "id": "d8efffae-eed4-4e51-9c14-ae2becf0c9d9",
+  "runtime": "bash",
+  "purpose": "S05 closer stale documentation claim scan",
+  "script_chars": 658,
+  "started_at": "2026-05-05T23:02:20.511Z",
+  "finished_at": "2026-05-05T23:02:20.546Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 35,
+  "stdout_bytes": 75,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/d8efffae-eed4-4e51-9c14-ae2becf0c9d9.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/d8efffae-eed4-4e51-9c14-ae2becf0c9d9.stderr"
+}

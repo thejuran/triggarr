@@ -1,0 +1,18 @@
+{
+  "id": "d7cda7d3-990a-4993-b6a1-ba9a790975dc",
+  "runtime": "bash",
+  "purpose": "Summarize auth/security tests around secure cookies and external auth",
+  "script_chars": 384,
+  "started_at": "2026-05-05T22:18:19.273Z",
+  "finished_at": "2026-05-05T22:18:19.310Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 37,
+  "stdout_bytes": 3073,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/d7cda7d3-990a-4993-b6a1-ba9a790975dc.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/d7cda7d3-990a-4993-b6a1-ba9a790975dc.stderr"
+}

@@ -1,0 +1,10 @@
+triggarr/tracking.py:3:Bridges the correlation engine (triggarr.correlation) with the DB layer (triggarr.db)
+triggarr/tracking.py:18:from triggarr.db import get_trackable_entries, update_outcome_and_stats
+triggarr/web/routes.py:43:from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
+triggarr/search/engine.py:6:history is persisted to SQLite via the ``triggarr.db`` module.
+triggarr/search/engine.py:24:from triggarr.db import insert_search_entry
+triggarr/search/engine.py:299:db: Open aiosqlite connection for search history persistence.
+triggarr/search/engine.py:515:db: Open aiosqlite connection for search history persistence.
+triggarr/search/engine.py:740:db: Open aiosqlite connection for search history persistence.
+triggarr/search/scheduler.py:29:from triggarr.db import init_db, migrate_from_state
+triggarr/search/scheduler.py:169:db_path = state_path.parent / "triggarr.db"

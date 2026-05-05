@@ -1,0 +1,18 @@
+{
+  "id": "ad229bdf-e500-4eff-b8c6-8bb2cd747b9e",
+  "runtime": "bash",
+  "purpose": "S05 T01 verification matrix",
+  "script_chars": 2114,
+  "started_at": "2026-05-05T22:56:35.353Z",
+  "finished_at": "2026-05-05T22:56:56.984Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 21631,
+  "stdout_bytes": 3520,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/ad229bdf-e500-4eff-b8c6-8bb2cd747b9e.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/ad229bdf-e500-4eff-b8c6-8bb2cd747b9e.stderr"
+}

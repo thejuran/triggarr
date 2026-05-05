@@ -1,0 +1,51 @@
+## tests/test_auth_config.py
+60: for method in ("Forms", "Basic", "External", "Disabled"):
+## tests/test_auth_integration.py
+125: session_cookie = resp.cookies.get("triggarr_session")
+129: resp = client.get(_PROTECTED_ROUTE, cookies={"triggarr_session": session_cookie})
+133: resp = client.post("/logout", cookies={"triggarr_session": session_cookie})
+148: new_cookie = resp.cookies.get("triggarr_session")
+152: resp = client.get(_PROTECTED_ROUTE, cookies={"triggarr_session": new_cookie})
+192: resp = client.get(_PROTECTED_ROUTE, cookies={"triggarr_session": cookie})
+203: cookies={"triggarr_session": cookie},
+210: resp = client.get(_PROTECTED_ROUTE, cookies={"triggarr_session": cookie})
+## tests/test_root_path.py
+57: """When TRUSTED_PROXY_IPS is not set, forwarded_allow_ips defaults to 127.0.0.1."""
+58: monkeypatch.delenv("TRUSTED_PROXY_IPS", raising=False)
+65: """When TRUSTED_PROXY_IPS is set, that value is used for forwarded_allow_ips."""
+66: monkeypatch.setenv("TRUSTED_PROXY_IPS", "172.18.0.0/16")
+## tests/test_auth_middleware.py
+179: # External mode tests
+184: """When method is External, all requests pass through unconditionally."""
+185: auth = _configured_auth(method="External")
+202: response = client.get("/", cookies={"triggarr_session": cookie})
+244: """Basic mode with valid credentials sets triggarr_session cookie."""
+249: assert "triggarr_session" in response.cookies
+330: response = client.get("/", cookies={"triggarr_session": cookie})
+368: response = client.get("/", cookies={"triggarr_session": wrong_cookie}, headers={"Accept": "text/html"})
+382: response = client.get("/", cookies={"triggarr_session": cookie}, headers={"Accept": "text/html"})
+397: response = client.get("/", cookies={"triggarr_session": cookie})
+429: """X-Api-Key still works in External mode (External passes through anyway)."""
+430: auth = _configured_auth(method="External")
+## tests/test_auth_routes.py
+342: """POST /setup with valid credentials sets triggarr_session cookie."""
+353: # Check Set-Cookie header contains triggarr_session
+355: assert "triggarr_session" in set_cookie
+392: response = client.get("/login", cookies={"triggarr_session": cookie})
+409: assert "triggarr_session" in set_cookie
+464: response = client.post("/logout", cookies={"triggarr_session": cookie})
+470: assert "triggarr_session" in set_cookie
+497: cookies={"triggarr_session": cookie},
+523: cookies={"triggarr_session": cookie},
+546: cookies={"triggarr_session": cookie},
+569: cookies={"triggarr_session": cookie},
+588: cookies={"triggarr_session": cookie},
+599: """POST /settings/security with method=External updates config and redirects."""
+610: data={"auth_method": "External"},
+611: cookies={"triggarr_session": cookie},
+629: cookies={"triggarr_session": cookie},
+652: cookies={"triggarr_session": cookie},
+674: cookies={"triggarr_session": cookie},
+695: response = client.get("/settings", cookies={"triggarr_session": cookie})
+976: response = client.get("/settings", cookies={"triggarr_session": cookie})
+991: response = client.get("/settings", cookies={"triggarr_session": cookie})

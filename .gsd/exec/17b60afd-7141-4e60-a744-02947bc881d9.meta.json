@@ -1,0 +1,18 @@
+{
+  "id": "17b60afd-7141-4e60-a744-02947bc881d9",
+  "runtime": "bash",
+  "purpose": "T03 docs review gate: stale docs scan and README TOML parse rerun with uv python",
+  "script_chars": 1941,
+  "started_at": "2026-05-05T22:12:36.875Z",
+  "finished_at": "2026-05-05T22:12:37.008Z",
+  "exit_code": 1,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 133,
+  "stdout_bytes": 571,
+  "stderr_bytes": 33,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/17b60afd-7141-4e60-a744-02947bc881d9.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/17b60afd-7141-4e60-a744-02947bc881d9.stderr"
+}

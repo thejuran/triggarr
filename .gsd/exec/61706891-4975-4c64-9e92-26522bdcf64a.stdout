@@ -1,0 +1,44 @@
+README anchors:
+4:[![Docker](https://img.shields.io/badge/ghcr.io-thejuran%2Ftriggarr-blue?logo=docker)](https://ghcr.io/thejuran/triggarr)
+32:- Docker-first with PUID/PGID support, or standalone pip install
+44:### Docker (recommended)
+75:When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `restart: unless-stopped` example above, the container then starts normally on the next restart.
+88:export TRIGGARR_CONFIG_DIR="$HOME/.config/triggarr"
+89:mkdir -p "$TRIGGARR_CONFIG_DIR"
+93:Standalone installs store `triggarr.toml`, `state.json`, and `triggarr.db` in `TRIGGARR_CONFIG_DIR`. If the config file does not exist yet, the first `triggarr` run writes a default template and exits; run `triggarr` again, then visit [http://localhost:8484](http://localhost:8484) to complete setup and configure apps.
+106:Environment=TRIGGARR_CONFIG_DIR=/var/lib/triggarr
+117:Runtime config lives in `${TRIGGARR_CONFIG_DIR}/triggarr.toml`; when `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config/triggarr.toml` for Docker compatibility. The config directory must be an absolute path and must be set before the Triggarr process starts.
+119:You can edit settings from the web UI at [http://localhost:8484/settings](http://localhost:8484/settings) -- changes are written to the TOML file and take effect immediately without restart. Each app type is a table of named instances, so use nested tables such as `[radarr.Default]` or `[sonarr.Anime]` rather than putting connection fields directly under the app name.
+141:[auth]
+142:method = "Forms"                   # Forms, Basic, External, or Disabled
+144:[radarr.Default]
+181:Startup-level environment variables such as `TRIGGARR_CONFIG_DIR`, `TRUSTED_PROXY_IPS`, and `ROOT_PATH` are read by the process before the TOML settings are loaded; they are not stored in `triggarr.toml`.
+189:Configured in `[auth]` as `method`:
+193:- `External` — Triggarr bypasses local auth because an upstream reverse proxy or SSO layer has already authenticated and authorized the user; enable it only after direct access to port 8484 is blocked and the proxy is the sole path to Triggarr.
+194:- `Disabled` — all routes are accessible without Triggarr auth and a warning is logged periodically. Prefer `External` for reverse-proxy deployments.
+200:- **Application routes** are deny-by-default after setup unless auth is `External` or `Disabled`
+206:- **Docker container** drops all capabilities except CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID
+214:Keep the compose example's localhost bind (`127.0.0.1:8484:8484`) unless Triggarr is behind Tailscale, a VPN, or a reverse proxy. For proxy/SSO deployments, set `auth.method = "External"` only after confirming the proxy enforces authentication and authorization and is the sole path to Triggarr; keep port 8484 bound to localhost or firewalled from direct clients.
+218:When running Triggarr behind a reverse proxy (Nginx, Caddy, Traefik, etc.), configure `TRUSTED_PROXY_IPS` so Uvicorn accepts forwarded client and scheme headers only from that proxy. Accepted `X-Forwarded-For` values set the client IP; accepted `X-Forwarded-Proto` values become the ASGI request scheme used by scheme-aware behavior such as Secure cookie emission. Without this, Triggarr sees the proxy/default client and protocol. Keep direct access to port 8484 blocked so clients cannot send proxy headers straight to Triggarr.
+224:| `TRUSTED_PROXY_IPS` | `127.0.0.1` | Comma-separated list of trusted proxy IPs or CIDR subnets. Set this to the IP address or subnet of your reverse proxy. **Do not use `*`** — it allows any client to forge its apparent IP address. |
+227:**Example: Nginx reverse proxy on the same Docker network**
+237:      - TRUSTED_PROXY_IPS=172.18.0.1       # Prefer the specific proxy IP; use a CIDR only on fully trusted Docker networks
+245:If your proxy runs on the Docker host (e.g. host-networked Nginx), set `TRUSTED_PROXY_IPS=172.17.0.1` (the default Docker gateway) or the specific IP your proxy uses to reach Triggarr.
+251:      - TRUSTED_PROXY_IPS=172.18.0.1
+270:docker build -t triggarr:local .       # Local Docker build
+
+SECURITY anchors:
+23:- **Supported auth modes** -- `Forms` (default), `Basic`, `External`, and `Disabled` are configured in `[auth].method`. Use `External` only when a trusted reverse proxy or SSO layer enforces authentication and authorization before traffic reaches Triggarr and direct access to port 8484 is blocked. `Disabled` intentionally removes Triggarr auth and should be limited to already-private networks.
+24:- **Session cookies** -- browser sessions are signed, HTTP-only, SameSite=Lax cookies with a 30-day max age. Cookies are marked Secure when the ASGI request scheme is HTTPS. Behind a reverse proxy, Uvicorn can translate `X-Forwarded-Proto` into that HTTPS scheme only for peers listed in `TRUSTED_PROXY_IPS`; configure that trust list so forwarded headers are accepted only from expected proxies.
+30:- **SecretStr for API keys and auth secrets** -- instance API keys, auth API keys, password hashes, and session secrets are stored as Pydantic `SecretStr` fields. Secret values are only unwrapped at explicit use sites such as HTTP client initialization, password/session validation, or API-key comparison.
+36:- **Deny-by-default route protection** -- after setup, non-exempt routes require a valid session, API key, configured Basic credentials, or an explicitly configured External/Disabled mode.
+46:- **Config directory contract** -- runtime config, state, and SQLite files derive from `TRIGGARR_CONFIG_DIR` when set to an absolute path. When it is unset, Triggarr uses `/config` for Docker compatibility.
+58:- Set `TRUSTED_PROXY_IPS` to specific proxy IPs or CIDR ranges when using forwarded headers. Do not use `*`, because it lets any client spoof its apparent IP address.
+59:- Prefer `auth.method = "External"` only for reverse-proxy or SSO deployments where the proxy enforces authentication and authorization and is the only path to Triggarr.
+
+TODO content:
+# Triggarr Pending TODOs
+
+No pending TODOs are tracked in this file.
+
+Previously listed configurable config-directory work has been retired: current code derives `triggarr.toml`, `state.json`, and `triggarr.db` from the absolute `TRIGGARR_CONFIG_DIR` path, with `/config` retained as the Docker-compatible default when the variable is unset.

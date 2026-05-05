@@ -1,0 +1,18 @@
+{
+  "id": "f38fe576-7b49-4bea-8137-889dcb731965",
+  "runtime": "bash",
+  "purpose": "verify S06 artifact does not assert unsafe forwarded-proto trust model",
+  "script_chars": 413,
+  "started_at": "2026-05-05T23:38:20.570Z",
+  "finished_at": "2026-05-05T23:38:20.586Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 16,
+  "stdout_bytes": 46,
+  "stderr_bytes": 156,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/f38fe576-7b49-4bea-8137-889dcb731965.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/f38fe576-7b49-4bea-8137-889dcb731965.stderr"
+}

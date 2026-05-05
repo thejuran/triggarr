@@ -1,0 +1,8 @@
+operational config-dir check ok
+CONFIG_DIR=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.ojJjqw8xLT/custom-config
+get_config_dir()=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.ojJjqw8xLT/custom-config
+CONFIG_PATH=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.ojJjqw8xLT/custom-config/triggarr.toml
+get_config_path()=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.ojJjqw8xLT/custom-config/triggarr.toml
+STATE_PATH=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.ojJjqw8xLT/custom-config/state.json
+get_state_path()=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.ojJjqw8xLT/custom-config/state.json
+scheduler_db_path=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.ojJjqw8xLT/custom-config/triggarr.db

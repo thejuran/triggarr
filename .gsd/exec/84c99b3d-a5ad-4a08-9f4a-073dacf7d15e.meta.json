@@ -1,0 +1,18 @@
+{
+  "id": "84c99b3d-a5ad-4a08-9f4a-073dacf7d15e",
+  "runtime": "bash",
+  "purpose": "Find secure cookie helper usages and auth docs lines",
+  "script_chars": 573,
+  "started_at": "2026-05-05T22:18:14.600Z",
+  "finished_at": "2026-05-05T22:18:14.684Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 84,
+  "stdout_bytes": 412,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/84c99b3d-a5ad-4a08-9f4a-073dacf7d15e.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/84c99b3d-a5ad-4a08-9f4a-073dacf7d15e.stderr"
+}

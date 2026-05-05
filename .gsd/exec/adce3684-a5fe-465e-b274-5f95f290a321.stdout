@@ -1,0 +1,54 @@
+S06 files:
+
+S02 files:
+.gsd/milestones/M001/slices/S02/S02-PLAN.md
+.gsd/milestones/M001/slices/S02/S02-REPLAN.md
+.gsd/milestones/M001/slices/S02/S02-SUMMARY.md
+.gsd/milestones/M001/slices/S02/tasks/T01-PLAN.md
+.gsd/milestones/M001/slices/S02/tasks/T01-SUMMARY.md
+.gsd/milestones/M001/slices/S02/tasks/T01-VERIFY.json
+.gsd/milestones/M001/slices/S02/tasks/T02-PLAN.md
+.gsd/milestones/M001/slices/S02/tasks/T02-SUMMARY.md
+.gsd/milestones/M001/slices/S02/tasks/T02-VERIFY.json
+.gsd/milestones/M001/slices/S02/tasks/T03-PLAN.md
+.gsd/milestones/M001/slices/S02/tasks/T03-SUMMARY.md
+.gsd/milestones/M001/slices/S02/tasks/T03-VERIFY.json
+.gsd/milestones/M001/slices/S02/tasks/T04-PLAN.md
+
+S04 files:
+.gsd/milestones/M001/slices/S04/S04-PLAN.md
+.gsd/milestones/M001/slices/S04/S04-PRE-EXEC-VERIFY.json
+.gsd/milestones/M001/slices/S04/S04-RESEARCH.md
+.gsd/milestones/M001/slices/S04/S04-SUMMARY.md
+.gsd/milestones/M001/slices/S04/S04-UAT.md
+.gsd/milestones/M001/slices/S04/tasks/T01-PLAN.md
+.gsd/milestones/M001/slices/S04/tasks/T01-SUMMARY.md
+.gsd/milestones/M001/slices/S04/tasks/T01-VERIFY.json
+.gsd/milestones/M001/slices/S04/tasks/T02-PLAN.md
+.gsd/milestones/M001/slices/S04/tasks/T02-SUMMARY.md
+.gsd/milestones/M001/slices/S04/tasks/T02-VERIFY.json
+.gsd/milestones/M001/slices/S04/tasks/T03-ASSESSMENT.md
+.gsd/milestones/M001/slices/S04/tasks/T03-PLAN.md
+.gsd/milestones/M001/slices/S04/tasks/T03-SUMMARY.md
+.gsd/milestones/M001/slices/S04/tasks/T03-VERIFY.json
+
+S05 files:
+.gsd/milestones/M001/slices/S05/S05-ASSESSMENT.md
+.gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md
+.gsd/milestones/M001/slices/S05/S05-PLAN.md
+.gsd/milestones/M001/slices/S05/S05-PRE-EXEC-VERIFY.json
+.gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md
+.gsd/milestones/M001/slices/S05/S05-REPLAN.md
+.gsd/milestones/M001/slices/S05/S05-RESEARCH.md
+.gsd/milestones/M001/slices/S05/S05-SUMMARY.md
+.gsd/milestones/M001/slices/S05/S05-UAT-GATE.md
+.gsd/milestones/M001/slices/S05/S05-UAT.md
+.gsd/milestones/M001/slices/S05/tasks/T01-PLAN.md
+.gsd/milestones/M001/slices/S05/tasks/T01-SUMMARY.md
+.gsd/milestones/M001/slices/S05/tasks/T01-VERIFY.json
+.gsd/milestones/M001/slices/S05/tasks/T02-PLAN.md
+.gsd/milestones/M001/slices/S05/tasks/T02-SUMMARY.md
+.gsd/milestones/M001/slices/S05/tasks/T02-VERIFY.json
+.gsd/milestones/M001/slices/S05/tasks/T03-PLAN.md
+.gsd/milestones/M001/slices/S05/tasks/T03-SUMMARY.md
+.gsd/milestones/M001/slices/S05/tasks/T03-VERIFY.json

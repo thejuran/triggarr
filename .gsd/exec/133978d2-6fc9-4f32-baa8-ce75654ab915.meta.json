@@ -1,0 +1,18 @@
+{
+  "id": "133978d2-6fc9-4f32-baa8-ce75654ab915",
+  "runtime": "bash",
+  "purpose": "T03 docs review gate: stale docs scan and README TOML parse",
+  "script_chars": 1944,
+  "started_at": "2026-05-05T22:12:13.979Z",
+  "finished_at": "2026-05-05T22:12:13.991Z",
+  "exit_code": 127,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 12,
+  "stdout_bytes": 0,
+  "stderr_bytes": 40,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/133978d2-6fc9-4f32-baa8-ce75654ab915.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/133978d2-6fc9-4f32-baa8-ce75654ab915.stderr"
+}

@@ -17,8 +17,17 @@
 - [x] **S02: S02** `risk:medium` `depends:[]`
   > After this: After this: README and adjacent docs explain current Docker/standalone setup, nested multi-instance config, auth/security behavior, and no longer point to stale missing configurable-config work.
 
-- [ ] **S03: S03** `risk:low` `depends:[]`
+- [x] **S03: S03** `risk:low` `depends:[]`
   > After this: After this: focused tests, full tests, lint, operational config-dir check, and user documentation review have all passed, so the milestone can be completed with evidence.
+
+- [x] **S04: S04** `risk:high` `depends:[]`
+  > After this: After this: README/SECURITY external-auth and secure-cookie trust-boundary guidance is reconciled with implementation, S02 delivery evidence is repaired or superseded with a real artifact trail, requirement coverage is explicitly scoped/proven for touched requirements, and focused/full/lint verification has been rerun.
+
+- [x] **S05: S05** `risk:medium` `depends:[]`
+  > After this: After this: a human has reviewed the README/SECURITY/TODO documentation diff, release/deep-review caveats are resolved or explicitly deferred by the user, and validation can rerun with UAT evidence.
+
+- [ ] **S06: S06** `risk:high` `depends:[]`
+  > After this: After this: validation has an explicit requirement-scope coverage artifact, S02 placeholder/task-state inconsistency is resolved or accepted via canonical supersession, human documentation UAT/deep-review is approved or explicitly deferred only if a real human decision exists (otherwise recorded as unresolved/escalated with needs-attention posture), and focused/full/lint checks have fresh evidence for rerun validation.
 
 ## Boundary Map
 

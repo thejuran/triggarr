@@ -1,0 +1,18 @@
+{
+  "id": "f9421a26-0f01-47b7-95cc-ce07b8e42b37",
+  "runtime": "python",
+  "purpose": "summarize S02 task evidence artifacts for repair/supersede planning",
+  "script_chars": 644,
+  "started_at": "2026-05-05T22:26:17.776Z",
+  "finished_at": "2026-05-05T22:26:17.809Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 33,
+  "stdout_bytes": 7572,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/f9421a26-0f01-47b7-95cc-ce07b8e42b37.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/f9421a26-0f01-47b7-95cc-ce07b8e42b37.stderr"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "2ad00428-af52-42ff-8811-8f72eee0a4ae",
+  "runtime": "bash",
+  "purpose": "current S04 stale-marker and doc/code mismatch check",
+  "script_chars": 878,
+  "started_at": "2026-05-05T22:27:34.745Z",
+  "finished_at": "2026-05-05T22:27:34.783Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 38,
+  "stdout_bytes": 3260,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/2ad00428-af52-42ff-8811-8f72eee0a4ae.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/2ad00428-af52-42ff-8811-8f72eee0a4ae.stderr"
+}

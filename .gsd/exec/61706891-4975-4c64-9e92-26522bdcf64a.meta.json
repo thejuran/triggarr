@@ -1,0 +1,18 @@
+{
+  "id": "61706891-4975-4c64-9e92-26522bdcf64a",
+  "runtime": "bash",
+  "purpose": "capture current documentation anchors relevant to S06 review packet and guardrails",
+  "script_chars": 401,
+  "started_at": "2026-05-05T23:11:22.626Z",
+  "finished_at": "2026-05-05T23:11:22.702Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 76,
+  "stdout_bytes": 6491,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/61706891-4975-4c64-9e92-26522bdcf64a.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/61706891-4975-4c64-9e92-26522bdcf64a.stderr"
+}

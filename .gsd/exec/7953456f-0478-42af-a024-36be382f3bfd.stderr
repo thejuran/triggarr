@@ -1,0 +1,2 @@
+sed: 1: "s#^#- #nprintf
+": bad flag in substitute command: 'n'

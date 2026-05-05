@@ -6,6 +6,8 @@ Gate status: unresolved
 
 Recorded at: 2026-05-05T23:00:47Z
 
+Closure evidence refreshed at: 2026-05-05T23:04:22Z (auto-mode closer run)
+
 Source gate artifact: `.gsd/milestones/M001/slices/S05/S05-UAT-GATE.md`
 
 Review packet: `.gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md`
@@ -24,10 +26,12 @@ Because the human gate is unresolved while all mechanical diagnostics passed, mi
 
 | # | Command | Exit Code | Verdict | Stdout Artifact | Stderr Artifact | Notes |
 |---|---------|-----------|---------|-----------------|-----------------|-------|
-| 1 | `uv run pytest tests/test_docs_accuracy.py -q` | 0 | ✅ pass | `.gsd/exec/f8e998e8-5d88-4ae1-a102-636d0486d197.stdout` | `.gsd/exec/f8e998e8-5d88-4ae1-a102-636d0486d197.stderr` | Docs accuracy guardrail passed: 4 tests passed. |
-| 2 | `uv run pytest tests/ -x -q` | 0 | ✅ pass | `.gsd/exec/56498cb5-a4a9-41cf-bfdc-dfb4558515b4.stdout` | `.gsd/exec/56498cb5-a4a9-41cf-bfdc-dfb4558515b4.stderr` | Full regression suite passed: 873 tests passed with 27 warnings. |
-| 3 | `uv run ruff check triggarr/ tests/` | 0 | ✅ pass | `.gsd/exec/eb84977c-cb79-4cc2-bab0-6918b5c9a391.stdout` | `.gsd/exec/eb84977c-cb79-4cc2-bab0-6918b5c9a391.stderr` | Ruff lint check passed. |
-| 4 | `rg -n -i -e 'no authentication|authentication is not implemented|config directory is not configurable|make config directory configurable|flat \[radarr\]|\[radarr\][[:space:]]*$|TRIGGARR_GENERAL__|directly trusts.*x-forwarded-proto|routes trust.*x-forwarded-proto' -- README.md SECURITY.md TODO.md CONTRIBUTING.md docs` | 0 | ✅ pass | `.gsd/exec/29c19efd-9757-4b40-bfeb-0fba71c430eb.stdout` | `.gsd/exec/29c19efd-9757-4b40-bfeb-0fba71c430eb.stderr` | Supporting stale-claim scan found no stale documentation claims. The actual command ran only existing paths and treated no matches as success. |
+| 1 | `uv run pytest tests/test_docs_accuracy.py -q` | 0 | ✅ pass | `.gsd/exec/b73f0f50-3261-495f-ac82-e7e04795c090.stdout` | `.gsd/exec/b73f0f50-3261-495f-ac82-e7e04795c090.stderr` | Docs accuracy guardrail passed: 4 tests passed. |
+| 2 | `uv run pytest tests/test_config_dir.py tests/test_state.py tests/test_startup.py tests/test_docs_accuracy.py -q` | 0 | ✅ pass | `.gsd/exec/aace1c32-569f-4364-9064-4a6e4e09308b.stdout` | `.gsd/exec/aace1c32-569f-4364-9064-4a6e4e09308b.stderr` | Focused config-dir/state/startup/docs regression passed: 56 tests passed. |
+| 3 | `uv run pytest tests/ -x -q` | 0 | ✅ pass | `.gsd/exec/ba75ab1c-ea35-4123-b684-24749706842e.stdout` | `.gsd/exec/ba75ab1c-ea35-4123-b684-24749706842e.stderr` | Full regression suite passed: 873 tests passed with 27 warnings. |
+| 4 | `uv run ruff check triggarr/ tests/` | 0 | ✅ pass | `.gsd/exec/c976accb-49b1-40e8-9404-d0e204c70154.stdout` | `.gsd/exec/c976accb-49b1-40e8-9404-d0e204c70154.stderr` | Ruff lint check passed. |
+| 5 | `rg -n -i -e 'no authentication|authentication is not implemented|config directory is not configurable|make config directory configurable|flat \[radarr\]|\[radarr\][[:space:]]*$|TRIGGARR_GENERAL__|directly trusts.*x-forwarded-proto|routes trust.*x-forwarded-proto' -- README.md SECURITY.md TODO.md CONTRIBUTING.md docs` | 0 | ✅ pass | `.gsd/exec/f3093198-96a8-4f97-8494-7135faa1f83e.stdout` | `.gsd/exec/f3093198-96a8-4f97-8494-7135faa1f83e.stderr` | Supporting stale-claim scan found no stale documentation claims. The actual closer command used `rg` instead of `git grep` because auto-mode was instructed not to run git commands; no matches is treated as success. |
+| 6 | `test -s .gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md && test -s .gsd/milestones/M001/slices/S05/S05-UAT-GATE.md && test -s .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md && ...` | 0 | ✅ pass | `.gsd/exec/51266f70-59fe-442c-b9c6-d32c72395cf2.stdout` | `.gsd/exec/51266f70-59fe-442c-b9c6-d32c72395cf2.stderr` | Artifact existence/content check passed and confirmed `Release readiness: blocked`. |
 
 ## Stale-Scan Status
 

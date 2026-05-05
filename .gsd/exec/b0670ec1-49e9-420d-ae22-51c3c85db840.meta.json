@@ -1,0 +1,18 @@
+{
+  "id": "b0670ec1-49e9-420d-ae22-51c3c85db840",
+  "runtime": "bash",
+  "purpose": "scan repository docs for stale M001 documentation claims",
+  "script_chars": 498,
+  "started_at": "2026-05-05T22:50:20.303Z",
+  "finished_at": "2026-05-05T22:50:20.342Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 39,
+  "stdout_bytes": 130,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/b0670ec1-49e9-420d-ae22-51c3c85db840.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/b0670ec1-49e9-420d-ae22-51c3c85db840.stderr"
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "taskId": "T02",
+  "unitId": "M001/S05/T02",
+  "timestamp": 1778021953081,
+  "passed": true,
+  "discoverySource": "task-plan",
+  "checks": [
+    {
+      "command": "test -s .gsd/milestones/M001/slices/S05/S05-UAT-GATE.md",
+      "exitCode": 0,
+      "durationMs": 4,
+      "verdict": "pass"
+    },
+    {
+      "command": "grep -q 'Deep-review decision:' .gsd/milestones/M001/slices/S05/S05-UAT-GATE.md",
+      "exitCode": 0,
+      "durationMs": 6,
+      "verdict": "pass"
+    }
+  ]
+}

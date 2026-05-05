@@ -1,0 +1,99 @@
+## README.md
+271 lines
+1: # Triggarr
+10: ## Table of Contents
+20: ## Features
+34: ## Screenshots
+42: ## Install
+44: ### Docker (recommended)
+47: # docker-compose.yml
+56:       - triggarr_config:/config
+75: When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `r
+77: ### Standalone (pip)
+88: export TRIGGARR_CONFIG_DIR="$HOME/.config/triggarr"
+89: mkdir -p "$TRIGGARR_CONFIG_DIR"
+93: Standalone installs store `triggarr.toml`, `state.json`, and `triggarr.db` in `TRIGGARR_CONFIG_DIR`. If the config file does not exist yet, the first `triggarr` run writes a default template and exits; run `triggarr` aga
+98: # /etc/systemd/system/triggarr.service
+106: Environment=TRIGGARR_CONFIG_DIR=/var/lib/triggarr
+115: ## Configuration Reference
+117: Runtime config lives in `${TRIGGARR_CONFIG_DIR}/triggarr.toml`; when `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config/triggarr.toml` for Docker compatibility. The config directory must be an absolute path and must 
+122: # Triggarr Configuration
+125: # Log level: debug, info, warning, error
+128: # Hard max items searched per app per cycle. 0 = unlimited.
+129: # When set, the limit is split proportionally between missing and cutoff searches.
+132: # Optional scheduler/API tuning defaults:
+133: # request_timeout = 30.0
+134: # page_size = 50
+135: # max_history_rows = 1000
+136: # tracking_window_minutes = 60
+137: # skip_unreleased = true
+139: # The web setup flow creates auth.username, auth.password_hash,
+140: # auth.api_key, and auth.session_secret. Do not copy example secrets.
+142: method = "Forms"                   # Forms, Basic, External, or Disabled
+181: Startup-level environment variables such as `TRIGGARR_CONFIG_DIR`, `TRUSTED_PROXY_IPS`, and `ROOT_PATH` are read by the process before the TOML settings are loaded; they are not stored in `triggarr.toml`.
+183: ## Security Model
+187: ### Authentication modes
+193: - `External` — Triggarr bypasses local auth because an upstream reverse proxy or SSO layer has already authenticated and authorized the user; enable it only after direct access to port 8484 is blocked and the proxy is th
+194: - `Disabled` — all routes are accessible without Triggarr auth and a warning is logged periodically. Prefer `External` for reverse-proxy deployments.
+198: ### What IS protected
+200: - **Application routes** are deny-by-default after setup unless auth is `External` or `Disabled`
+212: ### Recommendation
+214: Keep the compose example's localhost bind (`127.0.0.1:8484:8484`) unless Triggarr is behind Tailscale, a VPN, or a reverse proxy. For proxy/SSO deployments, set `auth.method = "External"` only after confirming the proxy 
+216: ### Reverse Proxy
+218: When running Triggarr behind a reverse proxy (Nginx, Caddy, Traefik, etc.), configure `TRUSTED_PROXY_IPS` so Uvicorn accepts forwarded client and scheme headers only from that proxy. Accepted `X-Forwarded-For` values set
+224: | `TRUSTED_PROXY_IPS` | `127.0.0.1` | Comma-separated list of trusted proxy IPs or CIDR subnets. Set this to the IP address or subnet of your reverse proxy. **Do not use `*`** — it allows any client to forge its apparent
+237:       - TRUSTED_PROXY_IPS=172.18.0.1       # Prefer the specific proxy IP; use a CIDR only on fully trusted Docker networks
+239:       - triggarr_config:/config
+245: If your proxy runs on the Docker host (e.g. host-networked Nginx), set `TRUSTED_PROXY_IPS=172.17.0.1` (the default Docker gateway) or the specific IP your proxy uses to reach Triggarr.
+251:       - TRUSTED_PROXY_IPS=172.18.0.1
+259: ### Synology NAS
+263: ## Development
+
+## SECURITY.md
+60 lines
+1: # Security Policy
+3: ## Supported Versions
+10: ## Reporting a Vulnerability
+16: ## Security Model
+20: ### Authentication and Access Control
+23: - **Supported auth modes** -- `Forms` (default), `Basic`, `External`, and `Disabled` are configured in `[auth].method`. Use `External` only when a trusted reverse proxy or SSO layer enforces authentication and authorizat
+24: - **Session cookies** -- browser sessions are signed, HTTP-only, SameSite=Lax cookies with a 30-day max age. Cookies are marked Secure when the ASGI request scheme is HTTPS. Behind a reverse proxy, Uvicorn can translate 
+28: ### Credential Protection
+34: ### Web Security
+36: - **Deny-by-default route protection** -- after setup, non-exempt routes require a valid session, API key, configured Basic credentials, or an explicitly configured External/Disabled mode.
+42: ### Data Integrity and Runtime Paths
+46: - **Config directory contract** -- runtime config, state, and SQLite files derive from `TRIGGARR_CONFIG_DIR` when set to an absolute path. When it is unset, Triggarr uses `/config` for Docker compatibility.
+48: ### Container Hardening
+55: ## Deployment Recommendations
+58: - Set `TRUSTED_PROXY_IPS` to specific proxy IPs or CIDR ranges when using forwarded headers. Do not use `*`, because it lets any client spoof its apparent IP address.
+59: - Prefer `auth.method = "External"` only for reverse-proxy or SSO deployments where the proxy enforces authentication and authorization and is the only path to Triggarr.
+
+## TODO.md
+5 lines
+1: # Triggarr Pending TODOs
+3: No pending TODOs are tracked in this file.
+5: Previously listed configurable config-directory work has been retired: current code derives `triggarr.toml`, `state.json`, and `triggarr.db` from the absolute `TRIGGARR_CONFIG_DIR` path, with `/config` retained as the Do
+
+## tests/test_docs_accuracy.py
+100 lines
+17: TODO = PROJECT_ROOT / "TODO.md"
+18: TRACKED_DOCS = (README, SECURITY, TODO)
+32: def test_external_auth_docs_require_upstream_authz_and_blocked_direct_access() -> None:
+33:     """External auth docs must describe the upstream trust boundary, not just a bypass switch."""
+36:         assert "external" in text, f"{path.name} must document External auth mode"
+37:         assert "authentication" in text, f"{path.name} must require upstream authentication for External auth"
+38:         assert "authorization" in text, f"{path.name} must require upstream authorization for External auth"
+44:     """Docs may mention X-Forwarded-Proto, but cookie trust must flow through Uvicorn/ASGI scheme."""
+49:         assert "x-forwarded-proto" in text, f"{path.name} should document the forwarded-proto proxy boundary"
+52:         assert "trusted_proxy_ips" in text, f"{path.name} should document the trusted proxy allow-list"
+55:         "triggarr trusts the `x-forwarded-proto`",
+56:         "triggarr trusts x-forwarded-proto",
+57:         "carries `x-forwarded-proto: https`",
+58:         "route-level `x-forwarded-proto`",
+59:         "routes trust `x-forwarded-proto`",
+61:         "directly trusts `x-forwarded-proto`",
+73:         "no authentication is provided",
+75:         "no authentication / authorization",
+78:         "todo: configurable config",
+79:         "todo - configurable config",
+

@@ -1,0 +1,18 @@
+{
+  "id": "c5ef32e9-b011-4661-a4ca-334cf438a92f",
+  "runtime": "bash",
+  "purpose": "verify unsafe forwarded-proto wording absent with clean stderr",
+  "script_chars": 449,
+  "started_at": "2026-05-05T23:38:25.460Z",
+  "finished_at": "2026-05-05T23:38:25.476Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 16,
+  "stdout_bytes": 64,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/c5ef32e9-b011-4661-a4ca-334cf438a92f.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/c5ef32e9-b011-4661-a4ca-334cf438a92f.stderr"
+}

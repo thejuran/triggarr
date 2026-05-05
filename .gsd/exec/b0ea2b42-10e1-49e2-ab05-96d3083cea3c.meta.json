@@ -1,0 +1,18 @@
+{
+  "id": "b0ea2b42-10e1-49e2-ab05-96d3083cea3c",
+  "runtime": "bash",
+  "purpose": "Locate config/state path constants for operational config-dir check",
+  "script_chars": 379,
+  "started_at": "2026-05-05T22:19:04.052Z",
+  "finished_at": "2026-05-05T22:19:04.135Z",
+  "exit_code": 1,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 83,
+  "stdout_bytes": 608,
+  "stderr_bytes": 750,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/b0ea2b42-10e1-49e2-ab05-96d3083cea3c.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/b0ea2b42-10e1-49e2-ab05-96d3083cea3c.stderr"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "ac9b7a5b-48fd-44ad-9808-4b98ac1da572",
+  "runtime": "bash",
+  "purpose": "T03 final docs review gate plus full test/lint verification",
+  "script_chars": 2215,
+  "started_at": "2026-05-05T22:13:10.566Z",
+  "finished_at": "2026-05-05T22:13:10.795Z",
+  "exit_code": 1,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 229,
+  "stdout_bytes": 675,
+  "stderr_bytes": 321,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/ac9b7a5b-48fd-44ad-9808-4b98ac1da572.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/ac9b7a5b-48fd-44ad-9808-4b98ac1da572.stderr"
+}

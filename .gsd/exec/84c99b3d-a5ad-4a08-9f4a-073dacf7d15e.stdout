@@ -1,0 +1,6 @@
+triggarr/web/routes.py:77:def _is_secure_context(request: Request) -> bool:
+triggarr/web/routes.py:81:return request.headers.get("x-forwarded-proto", "") == "https"
+triggarr/web/routes.py:1123:secure=_is_secure_context(request),
+triggarr/web/routes.py:1260:secure=_is_secure_context(request),
+triggarr/web/routes.py:1289:secure=_is_secure_context(request),
+triggarr/web/middleware.py:174:"x-forwarded-proto", ""

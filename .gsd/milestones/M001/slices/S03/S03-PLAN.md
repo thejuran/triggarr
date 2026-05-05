@@ -35,7 +35,7 @@ Nothing remains before the milestone is usable end-to-end once this slice passes
   - Files: `triggarr`, `tests`, `README.md`, `TODO.md`
   - Verify: `uv run pytest tests/ -x -q` and `uv run ruff check triggarr/ tests/`
 
-- [ ] **T03: Run user docs review gate before UAT** `est:45m + review wait`
+- [x] **T03: Run user docs review gate before UAT** `est:45m + review wait`
   Why: documentation changes need human judgment, and project preference requires prompting the user to run deep review before UAT when completing a slice.
   - Files: `README.md`, `TODO.md`, `.gsd/DEFERRED-BACKLOG.md`
   - Verify: Manual review gate — user confirms README/docs changes are acceptable and any requested deep-review findings are resolved before slice completion.

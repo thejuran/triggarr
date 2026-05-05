@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "milestoneId": "M001",
+  "sliceId": "S06",
+  "timestamp": 1778023012568,
+  "status": "fail",
+  "durationMs": 1,
+  "checks": [
+    {
+      "category": "file",
+      "target": ".gsd/milestones/M001/M001-VALIDATION.md",
+      "passed": false,
+      "message": "Task T01 references '.gsd/milestones/M001/M001-VALIDATION.md' which doesn't exist and isn't created by prior or same-task outputs",
+      "blocking": true
+    }
+  ]
+}

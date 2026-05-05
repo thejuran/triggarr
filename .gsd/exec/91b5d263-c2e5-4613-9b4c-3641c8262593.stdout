@@ -1,0 +1,32 @@
+.gsd/milestones/M001/slices/S05/S05-PLAN.md
+  ## Threat Surface: OK
+  ## Requirement Impact: OK
+  ## Proof Level: OK
+  ## Verification: OK
+  ## Observability / Diagnostics: OK
+  ## Integration Closure: OK
+  ## Tasks: OK
+.gsd/milestones/M001/slices/S05/tasks/T01-PLAN.md
+  skills_used:: OK
+  ## Steps: OK
+  ## Must-Haves: OK
+  ## Verification: OK
+  ## Inputs: OK
+  ## Expected Output: OK
+  expected output backtick path: OK
+.gsd/milestones/M001/slices/S05/tasks/T02-PLAN.md
+  skills_used:: OK
+  ## Steps: OK
+  ## Must-Haves: OK
+  ## Verification: OK
+  ## Inputs: OK
+  ## Expected Output: OK
+  expected output backtick path: OK
+.gsd/milestones/M001/slices/S05/tasks/T03-PLAN.md
+  skills_used:: OK
+  ## Steps: OK
+  ## Must-Haves: OK
+  ## Verification: OK
+  ## Inputs: OK
+  ## Expected Output: OK
+  expected output backtick path: OK

@@ -1,0 +1,53 @@
+CHECK_RESULT|task packet required content|0|24|✅ pass
+COMMAND|test -s .gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md && grep -q 'a3f09ad\^..HEAD' .gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md && grep -q 'operator installing or upgrading Triggarr' .gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md
+OUTPUT|<empty>
+CHECK_RESULT|task human UAT caveat|0|19|✅ pass
+COMMAND|grep -q 'agent-side review is not human UAT' .gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md
+OUTPUT|<empty>
+CHECK_RESULT|docs accuracy guardrail|0|533|✅ pass
+COMMAND|uv run pytest tests/test_docs_accuracy.py -q
+OUTPUT_TAIL_BEGIN
+....                                                                     [100%]
+4 passed in 0.01s
+OUTPUT_TAIL_END
+CHECK_RESULT|config/state/startup/docs regression|0|524|✅ pass
+COMMAND|uv run pytest tests/test_config_dir.py tests/test_state.py tests/test_startup.py tests/test_docs_accuracy.py -q
+OUTPUT_TAIL_BEGIN
+........................................................                 [100%]
+56 passed in 0.14s
+OUTPUT_TAIL_END
+CHECK_RESULT|full pytest suite|0|20269|✅ pass
+COMMAND|uv run pytest tests/ -x -q
+OUTPUT_TAIL_BEGIN
+........................................................................ [ 24%]
+........................................................................ [ 32%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 57%]
+........................................................................ [ 65%]
+........................................................................ [ 74%]
+........................................................................ [ 82%]
+........................................................................ [ 90%]
+........................................................................ [ 98%]
+.........                                                                [100%]
+=============================== warnings summary ===============================
+tests/test_auth_integration.py: 6 warnings
+tests/test_auth_middleware.py: 5 warnings
+tests/test_auth_routes.py: 16 warnings
+  /Users/julianamacbook/triggarr/.venv/lib/python3.12/site-packages/starlette/testclient.py:445: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+873 passed, 27 warnings in 19.72s
+OUTPUT_TAIL_END
+CHECK_RESULT|ruff lint|0|45|✅ pass
+COMMAND|uv run ruff check triggarr/ tests/
+OUTPUT_TAIL_BEGIN
+All checks passed!
+OUTPUT_TAIL_END
+CHECK_RESULT|stale claim scan|0|37|✅ pass
+COMMAND|git grep -n -i -E 'no authentication|authentication is not implemented|config directory is not configurable|make config directory configurable|flat \[radarr\]|\[radarr\][[:space:]]*$|TRIGGARR_GENERAL__|directly trusts.*x-forwarded-proto|routes trust.*x-forwarded-proto' -- README.md SECURITY.md TODO.md CONTRIBUTING.md docs 2>/dev/null || true
+OUTPUT|<empty>
+CHECK_RESULT|slice artifact existence|1|18|❌ fail
+COMMAND|test -s .gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md && test -s .gsd/milestones/M001/slices/S05/S05-UAT-GATE.md && test -s .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md
+OUTPUT|<empty>

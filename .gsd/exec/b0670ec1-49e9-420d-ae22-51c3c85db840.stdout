@@ -1,0 +1,4 @@
+## tracked stale-claim scan
+
+## current docs accuracy focused test command suggested
+uv run pytest tests/test_docs_accuracy.py -q

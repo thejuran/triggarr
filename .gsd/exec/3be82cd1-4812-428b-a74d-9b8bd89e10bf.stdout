@@ -1,0 +1,4 @@
+PASS - triggarr/web/routes.py no direct header lookup []
+PASS - triggarr/web/middleware.py no direct header lookup []
+PASS - triggarr/web/security.py no direct header lookup []
+PASS - X-Forwarded-Proto appears only as helper documentation, not app-layer header access.

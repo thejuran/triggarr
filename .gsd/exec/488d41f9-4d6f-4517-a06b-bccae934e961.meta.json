@@ -1,0 +1,18 @@
+{
+  "id": "488d41f9-4d6f-4517-a06b-bccae934e961",
+  "runtime": "python",
+  "purpose": "summarize auth test fixtures and existing External mode coverage",
+  "script_chars": 616,
+  "started_at": "2026-05-05T22:25:56.425Z",
+  "finished_at": "2026-05-05T22:25:56.463Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 38,
+  "stdout_bytes": 8815,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/488d41f9-4d6f-4517-a06b-bccae934e961.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/488d41f9-4d6f-4517-a06b-bccae934e961.stderr"
+}

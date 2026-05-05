@@ -1,7 +1,7 @@
 # Codebase Map
 
-Generated: 2026-05-05T21:55:39Z | Files: 108 | Described: 0/108
-<!-- gsd:codebase-meta {"generatedAt":"2026-05-05T21:55:39Z","fingerprint":"8d3328003568b383e1c3a22bc2a2e3541c4bc8ad","fileCount":108,"truncated":false} -->
+Generated: 2026-05-05T23:36:51Z | Files: 110 | Described: 0/110
+<!-- gsd:codebase-meta {"generatedAt":"2026-05-05T23:36:51Z","fingerprint":"d15e644e1f0d1a4540ab58776092a65628fb4262","fileCount":110,"truncated":false} -->
 
 ### (root)/
 - `.dockerignore`
@@ -42,7 +42,7 @@ Generated: 2026-05-05T21:55:39Z | Files: 108 | Described: 0/108
 - `reports/security-2026-04-15.md`
 
 ### tests/
-- *(34 files: 34 .py)*
+- *(35 files: 35 .py)*
 
 ### triggarr/
 - `triggarr/__init__.py`
@@ -112,4 +112,5 @@ Generated: 2026-05-05T21:55:39Z | Files: 108 | Described: 0/108
 - `triggarr/web/__init__.py`
 - `triggarr/web/middleware.py`
 - `triggarr/web/routes.py`
+- `triggarr/web/security.py`
 - `triggarr/web/validation.py`

@@ -1,0 +1,18 @@
+{
+  "id": "1d9394b1-9b93-4c46-8f0d-8aff663587be",
+  "runtime": "python",
+  "purpose": "find TRUSTED_PROXY_IPS implementation and secure cookie tests",
+  "script_chars": 624,
+  "started_at": "2026-05-05T22:25:40.763Z",
+  "finished_at": "2026-05-05T22:25:40.807Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 44,
+  "stdout_bytes": 3567,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/1d9394b1-9b93-4c46-8f0d-8aff663587be.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/1d9394b1-9b93-4c46-8f0d-8aff663587be.stderr"
+}

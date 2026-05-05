@@ -1,0 +1,201 @@
+Requirement IDs in M001 artifacts:
+.gsd/DEFERRED-BACKLOG.md:29:### DEFER-01 — Cross-instance search deduplication
+.gsd/DEFERRED-BACKLOG.md:38:### DEFER-02 — Dynamic instance hot-add
+.gsd/DEFERRED-BACKLOG.md:50:- `OOS-01` — Auto-discover *arr instances. Reason: network scanning / SSRF risk.
+.gsd/DEFERRED-BACKLOG.md:51:- `OOS-02` — Tag management from Triggarr. Reason: write operations expand attack surface; Triggarr should stay read + search only.
+.gsd/DEFERRED-BACKLOG.md:52:- `OOS-03` — Tag-based exclusion. Reason: inverse tag logic is more confusing than include-only filtering.
+.gsd/PROJECT.md:25:- Multi-instance config model with v2.2 auto-migration (Phase 33)
+.gsd/PROJECT.md:54:- [x] M-v2.2: Skip Unreleased Media — Unreleased filter, eligible counts, dashboard skip badges (shipped 2026-03-09)
+triggarr/state.py:74:    search_log: list[dict]  # deprecated: migrated to SQLite (SRCH-13), kept for migration compat
+triggarr/state.py:99:    """Check if state uses v2.2 flat format (AppState directly under radarr/sonarr).
+triggarr/state.py:101:    v2.2 format has keys like "missing_cursor" directly under radarr/sonarr.
+triggarr/state.py:113:def _migrate_v22_state(data: dict) -> dict:
+triggarr/state.py:114:    """Transform v2.2 flat state to v2.3 per-instance format.
+triggarr/state.py:117:    the Phase 33 config migration naming convention.
+triggarr/state.py:119:    Only migrates radarr/sonarr — lidarr is new in v2.3 and never had flat state.
+triggarr/state.py:158:    Automatically migrates v2.2 flat format to v2.3 nested format.
+triggarr/state.py:179:        logger.info("Migrating v2.2 state to v2.3 per-instance format")
+triggarr/state.py:180:        data = _migrate_v22_state(data)
+.gsd/milestones/M001/M001-VALIDATION.md:48:| INST-01 — Multiple named Radarr instances | PARTIAL | `.gsd/milestones/M001/slices/S05/S05-SUMMARY.md` says S05 preserves prior validated documentation/evidence coverage for INST-01, and S03/S05 mention README nested multi-instance TOML parsing. The slice summaries do not clearly demonstrate independent Radarr URL/API key/schedule/batch-size runtime behavior. |
+.gsd/milestones/M001/M001-VALIDATION.md:49:| INST-02 — Multiple named Sonarr instances | PARTIAL | Same as INST-01: S05 explicitly mentions preserving INST-02 coverage and docs parsing, but no slice summary demonstrates independent Sonarr instance behavior. |
+.gsd/milestones/M001/M001-VALIDATION.md:51:| INST-04 — Auto-migration from v2.2 | PARTIAL | `S01-SUMMARY.md` lists INST-04 as advanced/validated and verifies config startup/default-generation path behavior, but it does not demonstrate v2.2 single-instance auto-migration, backup, or `.migrated` marker behavior. |
+.gsd/milestones/M001/M001-VALIDATION.md:62:| OBS-02 — Per-instance search history | PARTIAL | `S05-SUMMARY.md` explicitly says S05 preserves prior validated coverage for OBS-02, but no slice summary demonstrates scoped history or instance filter behavior. |
+.gsd/milestones/M001/M001-VALIDATION.md:63:| OBS-03 — Per-instance effectiveness stats | PARTIAL | `S05-SUMMARY.md` explicitly says S05 preserves prior validated coverage for OBS-03, but no slice summary demonstrates grab-rate/lifetime-stat display behavior. |
+.gsd/milestones/M001/M001-VALIDATION.md:66:| DEFER-01 — Cross-instance search deduplication | DEFERRED | Explicitly deferred in `.gsd/REQUIREMENTS.md`; also listed under “Deferred unless user demand appears” in `.gsd/DEFERRED-BACKLOG.md`. |
+.gsd/milestones/M001/M001-VALIDATION.md:67:| DEFER-02 — Dynamic instance hot-add | DEFERRED | Explicitly deferred in `.gsd/REQUIREMENTS.md`; also listed as deferred in `.gsd/DEFERRED-BACKLOG.md`. |
+.gsd/milestones/M001/M001-VALIDATION.md:68:| OOS-01 — Auto-discover *arr instances | OUT-OF-SCOPE | Explicitly out-of-scope in `.gsd/REQUIREMENTS.md`; `.gsd/DEFERRED-BACKLOG.md` says to keep it out of scope due to network scanning / SSRF risk. |
+.gsd/milestones/M001/M001-VALIDATION.md:69:| OOS-02 — Tag management from Triggarr | OUT-OF-SCOPE | Explicitly out-of-scope in `.gsd/REQUIREMENTS.md`; `.gsd/DEFERRED-BACKLOG.md` says write operations expand attack surface and Triggarr should remain read + search only. |
+.gsd/milestones/M001/M001-VALIDATION.md:70:| OOS-03 — Tag-based exclusion | OUT-OF-SCOPE | Explicitly out-of-scope in `.gsd/REQUIREMENTS.md`; `.gsd/DEFERRED-BACKLOG.md` says inverse tag logic is excluded. |
+.gsd/milestones/M001/M001-VALIDATION.md:74:Synthesis note: the milestone context says only INST-04 was advanced/validated during this milestone and other requirements were already validated, deferred, or out of scope before S04. Remediation should reconcile that scope explicitly so validation does not rely on ambiguous inherited requirement claims.
+.gsd/milestones/M001/M001-VALIDATION.md:88:Reviewer A returned FAIL because the requirements audit found many project-level requirements missing or only partially evidenced in M001 slice summaries, while the milestone scope says only INST-04 was touched and prior validated/deferred/out-of-scope requirements must be reconciled explicitly. Reviewer B and Reviewer C returned NEEDS-ATTENTION: cross-slice handoffs are mechanically traceable after S04 superseded the S02 placeholder, but the planned human documentation UAT/deep-review gate remains unresolved. Therefore the aggregate verdict for remediation round 0 is needs-remediation. S06 has been added to the roadmap to remediate these blockers before validation reruns.
+.gsd/milestones/M001/M001-VALIDATION.md:91:Roadmap remediation has been added as S06. Execute S06 before rerunning milestone validation: (1) reconcile requirement coverage by producing explicit milestone-scope evidence that distinguishes M001-touched requirements from previously validated/deferred/out-of-scope requirements, with direct proof for INST-04 or a corrected requirement status note; (2) repair remaining artifact/state inconsistencies around the S02 placeholder and pending task count or document a canonical supersession that validation can accept; (3) collect human documentation UAT for README/SECURITY/TODO or record an explicit human deferral, and resolve whether `/deep-review` is required before release/push; (4) rerun focused config/docs tests, full pytest, and ruff, then rerun validation.
+tests/test_config.py:16:    _migrate_v22_to_v23,
+tests/test_config.py:17:    detect_and_migrate_v22,
+tests/test_config.py:383:# v2.2 detection and migration
+tests/test_config.py:460:def test_migrate_v22_to_v23_wraps_radarr() -> None:
+tests/test_config.py:461:    """_migrate_v22_to_v23 wraps flat radarr section into {'Default': {...}}."""
+tests/test_config.py:467:    result = _migrate_v22_to_v23(data)
+tests/test_config.py:472:def test_migrate_v22_to_v23_wraps_sonarr() -> None:
+tests/test_config.py:473:    """_migrate_v22_to_v23 wraps flat sonarr section into {'Default': {...}}."""
+tests/test_config.py:479:    result = _migrate_v22_to_v23(data)
+tests/test_config.py:484:def test_migrate_v22_to_v23_preserves_general() -> None:
+tests/test_config.py:485:    """_migrate_v22_to_v23 preserves general section unchanged."""
+tests/test_config.py:490:    result = _migrate_v22_to_v23(data)
+tests/test_config.py:495:def test_migrate_v22_to_v23_handles_missing_sonarr() -> None:
+tests/test_config.py:496:    """_migrate_v22_to_v23 handles radarr present but sonarr missing."""
+tests/test_config.py:501:    result = _migrate_v22_to_v23(data)
+tests/test_config.py:506:def test_detect_and_migrate_v22_creates_backup(tmp_path: Path) -> None:
+tests/test_config.py:507:    """detect_and_migrate_v22 creates backup file triggarr.toml.bak."""
+tests/test_config.py:511:    detect_and_migrate_v22(config_file)
+tests/test_config.py:518:def test_detect_and_migrate_v22_writes_valid_settings(tmp_path: Path) -> None:
+tests/test_config.py:519:    """detect_and_migrate_v22 writes migrated config that loads as valid Settings."""
+tests/test_config.py:523:    detect_and_migrate_v22(config_file)
+tests/test_config.py:532:def test_detect_and_migrate_v22_returns_true(tmp_path: Path) -> None:
+tests/test_config.py:533:    """detect_and_migrate_v22 returns True when migration performed."""
+tests/test_config.py:537:    result = detect_and_migrate_v22(config_file)
+tests/test_config.py:542:def test_detect_and_migrate_v22_returns_false_for_v23(tmp_path: Path) -> None:
+tests/test_config.py:543:    """detect_and_migrate_v22 returns False for already-migrated config (no backup created)."""
+tests/test_config.py:547:    result = detect_and_migrate_v22(config_file)
+tests/test_config.py:554:def test_detect_and_migrate_v22_creates_marker(tmp_path: Path) -> None:
+tests/test_config.py:555:    """detect_and_migrate_v22 creates .migrated marker file in config dir."""
+tests/test_config.py:559:    detect_and_migrate_v22(config_file)
+tests/test_config.py:561:    marker = config_file.parent / ".migrated"
+tests/test_config.py:565:def test_detect_and_migrate_v22_preserves_disabled(tmp_path: Path) -> None:
+tests/test_config.py:566:    """detect_and_migrate_v22 preserves disabled app as disabled 'Default' instance."""
+tests/test_config.py:570:    detect_and_migrate_v22(config_file)
+tests/test_config.py:579:def test_detect_and_migrate_v22_preserves_api_key_plaintext(tmp_path: Path) -> None:
+tests/test_config.py:580:    """detect_and_migrate_v22 preserves API key values (not SecretStr-masked) in written TOML."""
+tests/test_config.py:584:    detect_and_migrate_v22(config_file)
+tests/test_config.py:611:def test_ensure_config_calls_migration(tmp_path: Path) -> None:
+tests/test_config.py:612:    """ensure_config calls detect_and_migrate_v22 before load_settings for existing configs."""
+tests/test_config.py:618:    # Should have migrated and loaded successfully
+tests/test_config.py:627:    """TOML round-trip: load migrated config, serialize back, reload -- same values."""
+tests/test_config.py:631:    detect_and_migrate_v22(config_file)
+tests/test_config.py:633:    # Load migrated config
+tests/test_config.py:730:# Config migration edge cases (STATE-04)
+tests/test_config.py:734:def test_migrate_v22_partial_radarr_only() -> None:
+tests/test_config.py:735:    """_migrate_v22_to_v23 with radarr only (no sonarr key) wraps radarr, sonarr stays absent."""
+tests/test_config.py:740:    result = _migrate_v22_to_v23(data)
+tests/test_config.py:750:def test_migrate_v22_unknown_extra_fields_preserved() -> None:
+tests/test_config.py:751:    """_migrate_v22_to_v23 preserves unknown fields by wrapping, not filtering."""
+tests/test_config.py:756:    result = _migrate_v22_to_v23(data)
+tests/test_config.py:768:def test_migrate_v22_mixed_nested_and_flat_only_detects_flat() -> None:
+.gsd/milestones/M001/M001-CONTEXT.md:110:- Filesystem config/state paths — `triggarr.toml`, `state.json`, `.migrated` marker, and SQLite data path assumptions if any.
+tests/test_db.py:3:Covers: database init, insert/retrieve, limit, pruning, migration system,
+tests/test_db.py:4:tracking columns, lifetime_stats, backfill migration, shared-connection
+tests/test_db.py:16:    _migrate_v1,
+tests/test_db.py:24:    migrate_from_state,
+tests/test_db.py:30:    """Create a test database with migrations applied, return (db, db_path)."""
+tests/test_db.py:109:async def test_migrate_from_state(tmp_path):
+tests/test_db.py:110:    """migrate_from_state inserts entries from state.json format into SQLite."""
+tests/test_db.py:118:    count = await migrate_from_state(db, search_log)
+tests/test_db.py:128:async def test_migrate_empty_log(tmp_path):
+tests/test_db.py:129:    """migrate_from_state with empty list returns 0 and inserts nothing."""
+tests/test_db.py:132:    count = await migrate_from_state(db, [])
+tests/test_db.py:183:async def test_migration_preserves_existing_rows(tmp_path):
+tests/test_db.py:184:    """Calling init_db twice (re-migration) preserves existing rows."""
+tests/test_db.py:198:    # Entry inserted after migration has outcome populated
+tests/test_db.py:374:async def test_backup_created_on_migration(tmp_path):
+tests/test_db.py:375:    """Database backup file is created before migration runs."""
+tests/test_db.py:383:    """lifetime_stats table has Radarr, Sonarr, and Lidarr rows after migration."""
+tests/test_db.py:431:    """Rows inserted before v1 migration get DEFAULT 'searched' for outcome.
+tests/test_db.py:433:    With the corrected v1 migration (DEFAULT 'searched'), pre-existing rows
+tests/test_db.py:439:    # Create a v0 database manually (no migrations, just base table)
+tests/test_db.py:455:    # Now run init_db which triggers migrations
+tests/test_db.py:459:    # v1 migration sets DEFAULT 'searched', so pre-existing rows get 'searched'
+tests/test_db.py:679:async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
+tests/test_db.py:680:    """Fresh install: run_migrations skips backup when db_path.exists() is False."""
+tests/test_db.py:684:    # db_path so that the backup guard in run_migrations sees it as missing.
+tests/test_db.py:698:    # Verify migrations ran to completion (no FileNotFoundError)
+tests/test_db.py:708:async def test_migration_loop_tolerates_gaps(tmp_path):
+tests/test_db.py:710:    from triggarr.db import MIGRATIONS, run_migrations
+tests/test_db.py:726:    await run_migrations(db, db_path)
+tests/test_db.py:732:async def test_migration_suppresses_only_operational_error(tmp_path):
+tests/test_db.py:733:    """Re-running _migrate_v1 is idempotent -- OperationalError is suppressed."""
+tests/test_db.py:738:    await _migrate_v1(db)  # should not raise
+tests/test_db.py:955:async def test_migration_v6_adds_instance_id_column(tmp_path):
+tests/test_db.py:959:    await insert_search_entry(db, "Radarr", "missing", "Pre-migration Movie")
+tests/test_db.py:974:async def test_migration_v7_lifetime_stats_composite_key(tmp_path):
+.gsd/milestones/M001/slices/S01/S01-SUMMARY.md:62:- INST-04 — reaffirmed continuity-related config startup/migration path behavior; requirement was already validated.
+.gsd/milestones/M001/slices/S01/S01-SUMMARY.md:66:- INST-04 — S01 evidence confirms config startup/default-generation paths remain controlled by the supplied config path and do not require a new runtime fix.
+triggarr/config.py:1:"""TOML configuration loading, default config generation, and v2.2 migration."""
+triggarr/config.py:49:# Keys that appear directly under [radarr] or [sonarr] in v2.2 flat format
+triggarr/config.py:54:    """Check if parsed TOML data uses the v2.2 flat config format.
+triggarr/config.py:56:    In v2.2, [radarr] and [sonarr] sections contain url/api_key/enabled
+triggarr/config.py:63:        True if v2.2 flat format detected.
+triggarr/config.py:72:def _migrate_v22_to_v23(data: dict) -> dict:
+triggarr/config.py:73:    """Transform v2.2 flat config data to v2.3 multi-instance format.
+triggarr/config.py:79:        data: Parsed v2.2 TOML data dict.
+triggarr/config.py:122:def detect_and_migrate_v22(config_path: Path) -> bool:
+triggarr/config.py:123:    """Detect v2.2 config format and migrate to v2.3 multi-instance format.
+triggarr/config.py:125:    If the config file uses the v2.2 flat format (url/api_key/enabled directly
+triggarr/config.py:126:    under [radarr] or [sonarr]), it is migrated to the v2.3 nested format
+triggarr/config.py:131:    2. If not v2.2 format, return False
+triggarr/config.py:134:    5. Write migrated config atomically
+triggarr/config.py:135:    6. Create .migrated marker for web UI banner
+triggarr/config.py:142:        True if migration was performed, False if already v2.3 format.
+triggarr/config.py:155:    migrated = _migrate_v22_to_v23(data)
+triggarr/config.py:157:    # Write migrated config atomically
+triggarr/config.py:158:    _atomic_toml_write(config_path, migrated)
+triggarr/config.py:161:    marker = config_path.parent / ".migrated"
+triggarr/config.py:164:    logger.info("Config migrated from v2.2 to v2.3 multi-instance format")
+triggarr/config.py:220:    For existing configs, runs v2.2 migration detection before loading.
+triggarr/config.py:236:    migrated = detect_and_migrate_v22(config_path)
+triggarr/config.py:237:    if migrated:
+triggarr/config.py:239:        logger.info("v2.2 config backed up to {path}", path=backup_path)
+tests/test_state.py:49:def test_v22_state_migration(tmp_path: Path) -> None:
+tests/test_state.py:50:    """v2.2 flat state.json auto-migrates to nested per-instance format with 'Default' key."""
+tests/test_state.py:259:def test_state_schema_migration_fills_missing_keys(tmp_path: Path) -> None:
+tests/test_state.py:283:def test_state_schema_migration_preserves_all_existing(tmp_path: Path) -> None:
+triggarr/db.py:5:the application lifespan.  A versioned migration system ensures safe,
+triggarr/db.py:6:logged, version-tracked schema evolution with backup-before-migrate.
+triggarr/db.py:26:# Migration registry: version -> (description, migration_fn)
+triggarr/db.py:27:# Populated after migration functions are defined below.
+triggarr/db.py:54:async def run_migrations(db: aiosqlite.Connection, db_path: Path) -> None:
+triggarr/db.py:55:    """Run pending schema migrations with backup-before-migrate."""
+triggarr/db.py:63:    # Backup before first migration (user decision: backup-before-migrate)
+triggarr/db.py:75:    logger.info("Schema migration complete (now v{v})", v=target)
+triggarr/db.py:83:async def _migrate_v1(db: aiosqlite.Connection) -> None:
+triggarr/db.py:91:async def _migrate_v2(db: aiosqlite.Connection) -> None:
+triggarr/db.py:99:async def _migrate_v3(db: aiosqlite.Connection) -> None:
+triggarr/db.py:120:async def _migrate_v4(db: aiosqlite.Connection) -> None:
+triggarr/db.py:127:async def _migrate_v5(db: aiosqlite.Connection) -> None:
+triggarr/db.py:134:async def _migrate_v6(db: aiosqlite.Connection) -> None:
+triggarr/db.py:145:async def _migrate_v7(db: aiosqlite.Connection) -> None:
+triggarr/db.py:173:async def _migrate_v8(db: aiosqlite.Connection) -> None:
+triggarr/db.py:177:    episodes_found/episodes_updated on every tracking cycle.  This migration
+triggarr/db.py:235:async def _migrate_v9(db: aiosqlite.Connection) -> None:
+triggarr/db.py:249:# Register migrations after functions are defined
+triggarr/db.py:251:    1: ("add outcome and detail columns", _migrate_v1),
+triggarr/db.py:252:    2: ("add item_id, season_number, missing_count columns", _migrate_v2),
+triggarr/db.py:253:    3: ("create lifetime_stats table", _migrate_v3),
+triggarr/db.py:254:    4: ("backfill existing rows as unresolved", _migrate_v4),
+triggarr/db.py:255:    5: ("add resolved_at column for time-to-grab", _migrate_v5),
+triggarr/db.py:256:    6: ("add instance_id to search_history", _migrate_v6),
+triggarr/db.py:257:    7: ("rebuild lifetime_stats with composite key", _migrate_v7),
+triggarr/db.py:258:    8: ("recompute episode stats and fix partial_expired outcomes", _migrate_v8),
+triggarr/db.py:259:    9: ("add Lidarr album stats columns", _migrate_v9),
+triggarr/db.py:269:    """Create base tables, run migrations.
+triggarr/db.py:293:    await run_migrations(db, db_path)
+triggarr/db.py:628:async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -> int:
+triggarr/db.py:636:        Number of entries migrated.
+tests/test_tracking.py:35:    """Create a test database with migrations applied, return (db, db_path)."""
+triggarr/templates/partials/migration_banner.html:1:<div id="migration-banner"
+triggarr/templates/partials/migration_banner.html:3:  <span>Config migrated to v2.3 format. Your settings were updated.</span>
+triggarr/templates/partials/migration_banner.html:4:  <button hx-delete="{{ request.url_for('dismiss_migration') }}"
+triggarr/templates/partials/migration_banner.html:5:          hx-target="#migration-banner"
+triggarr/templates/partials/migration_banner.html:8:          aria-label="Dismiss migration banner">&times;</button>
+.gsd/milestones/M001/slices/S01/tasks/T01-SUMMARY.md:29:- `triggarr/config.py`: config generation, loading, migration, backups, and `.migrated` marker creation all operate relative to the supplied `config_path`. This is runtime-configurable behavior.
+.gsd/milestones/M001/slices/S01/tasks/T01-SUMMARY.md:30:- `triggarr/web/routes.py`: settings, auth, instance add/remove, API-key, and security write paths use `request.app.state.config_path` and `request.app.state.state_path`, preserving the startup-provided location. The dashboard and dismiss-migration route use `CONFIG_DIR / ".migrated"`; in production this matches the env-derived config path, while path-injected tests patch `CONFIG_DIR`. I did not classify this as a runtime bug because production startup derives both `CONFIG_DIR` and `config_path` from the same `TRIGGARR_CONFIG_DIR` value.
+.gsd/milestones/M001/slices/S01/tasks/T01-SUMMARY.md:45:| 1 | `rg -n "(/config|TRIGGARR_CONFIG_DIR|CONFIG_DIR|CONFIG_PATH|STATE_PATH|state\.json|triggarr\.toml|\.migrated)" triggarr entrypoint.sh Dockerfile docker-compose.yml README.md TODO.md` | 0 | ✅ pass | 22ms |
+tests/test_github_templates.py:32:        for version in ("v2.3", "v2.2", "v2.1", "Older"):
+triggarr/search/scheduler.py:29:from triggarr.db import init_db, migrate_from_state
+triggarr/search/scheduler.py:177:            migrated = await migrate_from_state(db, state["search_log"])
+triggarr/search/scheduler.py:178:            if migrated > 0:
+.gsd/milestones/M001/slices/S01/tasks/T01-PLAN.md:12:1. Audit every non-test `/config`, `CONFIG_DIR`, `CONFIG_PATH`, `STATE_PATH`, `.migrated`, and database path reference.
+.gsd/milestones/M001/slices/S01/tasks/T01-PLAN.md:34:`rg -n "(/config|TRIGGARR_CONFIG_DIR|CONFIG_DIR|CONFIG_PATH|STATE_PATH|state\.json|triggarr\.toml|\.migrated)" triggarr entrypoint.sh Dockerfile docker-compose.yml README.md TODO.md` and a written classification in the task summary.
+triggarr/templates/dashboard.html:17:{% if show_migration_banner %}
+triggarr/templates/dashboard.html:18:{% include "partials/migration_banner.html" %}
+tests/test_web.py:1807:def test_dismiss_migration(client, tmp_path):
+tests/test_web.py:1808:    """DELETE /api/dismiss-migration deletes .migrated marker and returns empty HTML."""
+tests/test_web.py:1809:    marker = tmp_path / ".migrated"

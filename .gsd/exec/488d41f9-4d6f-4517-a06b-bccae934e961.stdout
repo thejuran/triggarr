@@ -1,0 +1,170 @@
+## tests/test_auth_middleware.py (502 lines)
+25: from fastapi.testclient import TestClient
+29: from triggarr.models.config import AuthConfig
+33: def _make_auth_app(auth_config: AuthConfig | None = None) -> FastAPI:
+39: settings.auth = auth_config or AuthConfig()
+85: ) -> AuthConfig:
+86: """Create an AuthConfig with real credentials for testing."""
+87: return AuthConfig(
+114: client = TestClient(_make_auth_app())
+121: client = TestClient(_make_auth_app())
+128: client = TestClient(_make_auth_app())
+135: client = TestClient(_make_auth_app())
+147: # Default AuthConfig has empty username -> needs_setup is True
+148: client = TestClient(_make_auth_app(), follow_redirects=False)
+156: client = TestClient(_make_auth_app())
+165: # Disabled mode tests
+170: """When method is Disabled, all requests pass through unconditionally."""
+171: auth = _configured_auth(method="Disabled")
+172: client = TestClient(_make_auth_app(auth))
+179: # External mode tests
+184: """When method is External, all requests pass through unconditionally."""
+185: auth = _configured_auth(method="External")
+186: client = TestClient(_make_auth_app(auth))
+200: client = TestClient(_make_auth_app(auth))
+215: client = TestClient(_make_auth_app(auth))
+224: client = TestClient(_make_auth_app(auth), follow_redirects=False)
+237: client = TestClient(_make_auth_app(auth))
+246: client = TestClient(_make_auth_app(auth))
+255: client = TestClient(_make_auth_app(auth))
+264: client = TestClient(_make_auth_app(auth))
+273: client = TestClient(_make_auth_app(auth))
+282: client = TestClient(_make_auth_app(auth))
+291: client = TestClient(_make_auth_app(auth))
+305: client = TestClient(_make_auth_app(auth), follow_redirects=False)
+314: client = TestClient(_make_auth_app(auth))
+328: client = TestClient(_make_auth_app(auth))
+342: client = TestClient(_make_auth_app())
+351: client = TestClient(_make_auth_app(auth), follow_redirects=False)
+366: client = TestClient(_make_auth_app(auth), follow_redirects=False)
+379: client = TestClient(app, follow_redirects=False)
+396: client = TestClient(_make_auth_app(auth))
+403: """Switching to Disabled mode passes requests through without auth."""
+404: auth = _configured_auth(method="Disabled")
+405: client = TestClient(_make_auth_app(auth))
+412: """Switching from Disabled back to Forms re-requires login."""
+414: client = TestClient(_make_auth_app(auth), follow_redirects=False)
+423: client = TestClient(_make_auth_app(auth))
+429: """X-Api-Key still works in External mode (External passes through anyway)."""
+430: auth = _configured_auth(method="External")
+431: client = TestClient(_make_auth_app(auth))
+444: client = TestClient(_make_auth_app(auth))
+453: client = TestClient(_make_auth_app(auth))
+461: client = TestClient(_make_auth_app(auth))
+469: client = TestClient(_make_auth_app(auth))
+481: """Disabled mode logs a warning periodically (every 60s), not just once."""
+482: auth = _configured_auth(method="Disabled")
+483: client = TestClient(_make_auth_app(auth))
+
+## tests/test_auth_routes.py (1048 lines)
+13: test_login_set_cookie_max_age_30_days, test_login_get_rejects_open_redirect_next,
+28: from fastapi.testclient import TestClient
+32: from triggarr.models.config import AuthConfig, GeneralConfig, InstanceConfig
+71: ) -> AuthConfig:
+72: """Create an AuthConfig with real credentials for route integration tests."""
+73: return AuthConfig(
+82: def _make_route_app(auth_config: AuthConfig | None = None, config_path: Path | None = None) -> FastAPI:
+92: cfg = auth_config or AuthConfig()
+187: "auth": AuthConfig(),
+199: auth=AuthConfig(
+222: """Default AuthConfig produces auth section with empty string secret values."""
+260: app = _make_route_app()  # default AuthConfig -> needs_setup=True
+261: client = TestClient(app, follow_redirects=False)
+270: client = TestClient(app, follow_redirects=False)
+281: client = TestClient(app, follow_redirects=True)
+295: client = TestClient(app, follow_redirects=False)
+317: client = TestClient(app, follow_redirects=False)
+332: client = TestClient(app, follow_redirects=False)
+347: client = TestClient(app, follow_redirects=False)
+354: set_cookie = response.headers.get("set-cookie", "")
+355: assert "triggarr_session" in set_cookie
+361: client = TestClient(app, follow_redirects=False)
+380: client = TestClient(app, follow_redirects=False)
+390: client = TestClient(app, follow_redirects=False)
+402: client = TestClient(app, follow_redirects=False)
+408: set_cookie = response.headers.get("set-cookie", "")
+409: assert "triggarr_session" in set_cookie
+415: client = TestClient(app, follow_redirects=False)
+429: client = TestClient(app, follow_redirects=False)
+441: client = TestClient(app, follow_redirects=False)
+461: client = TestClient(app, follow_redirects=False)
+469: set_cookie = response.headers.get("set-cookie", "")
+470: assert "triggarr_session" in set_cookie
+472: assert 'max-age=0' in set_cookie.lower() or '="";' in set_cookie
+487: client = TestClient(app, follow_redirects=False)
+513: client = TestClient(app, follow_redirects=False)
+536: client = TestClient(app, follow_redirects=False)
+559: client = TestClient(app, follow_redirects=False)
+582: client = TestClient(app, follow_redirects=False)
+599: """POST /settings/security with method=External updates config and redirects."""
+605: client = TestClient(app, follow_redirects=False)
+610: data={"auth_method": "External"},
+617: """POST /settings/security with method=Disabled is rejected; config unchanged."""
+623: client = TestClient(app, follow_redirects=False)
+628: data={"auth_method": "Disabled"},
+633: # Config should NOT have changed to Disabled
+646: client = TestClient(app, follow_redirects=False)
+669: client = TestClient(app, follow_redirects=False)
+692: client = TestClient(app, follow_redirects=False)
+704: """GET /settings with method=Disabled includes warning banner (SET-04)."""
+708: auth_cfg = _configured_auth(method="Disabled")
+710: client = TestClient(app, follow_redirects=False)
+711: # With Disabled auth, middleware should let request through without cookie
+729: client = TestClient(app, follow_redirects=False)
+749: client = TestClient(app, follow_redirects=False)
+764: client = TestClient(app, follow_redirects=False)
+774: def test_login_set_cookie_max_age_30_days(tmp_path: Path):
+780: client = TestClient(app, follow_redirects=False)
+785: set_cookie = response.headers.get("set-cookie", "")
+786: assert "max-age=2592000" in set_cookie.lower()
+795: client = TestClient(app, follow_redirects=False)
+808: client = TestClient(app, follow_redirects=False)
+899: def _make_client(self, tmp_path: Path) -> TestClient:
+905: return TestClient(app, follow_redirects=False)
+909: client = self._make_client(tmp_path)
+923: client = self._make_client(tmp_path)
+934: client = self._make_client(tmp_path)
+949: client = self._make_client(tmp_path)
+973: client = TestClient(app, follow_redirects=False)
+988: client = TestClient(app, follow_redirects=False)
+1002: client = TestClient(app, follow_redirects=False)
+1028: client = TestClient(app, follow_redirects=False)
+
+## tests/test_auth_config.py (128 lines)
+1: """AuthConfig model tests -- Phase 58 traceability added.
+18: from triggarr.models.config import AuthConfig, Settings
+22: # AuthConfig defaults
+27: """AuthConfig defaults to Forms method."""
+28: assert AuthConfig().method == "Forms"
+32: """AuthConfig with empty username signals needs-setup state."""
+33: assert AuthConfig().needs_setup is True
+37: """AuthConfig with username set is not in needs-setup state."""
+38: cfg = AuthConfig(username="admin")
+43: """AuthConfig with method Disabled reports is_disabled True."""
+44: cfg = AuthConfig(method="Disabled")
+49: """AuthConfig with default Forms method is not disabled."""
+50: assert AuthConfig().is_disabled is False
+59: """AuthConfig accepts all four valid auth methods."""
+60: for method in ("Forms", "Basic", "External", "Disabled"):
+61: cfg = AuthConfig(method=method)
+66: """AuthConfig rejects an invalid auth method."""
+68: AuthConfig(method="InvalidMethod")
+79: cfg = AuthConfig(
+95: """Settings includes an auth field with AuthConfig defaults."""
+98: assert isinstance(settings.auth, AuthConfig)
+99: assert settings.auth.needs_setup is True
+110: auth=AuthConfig(
+125: # Default AuthConfig has empty radarr/sonarr + empty auth secrets
+
+## tests/test_auth_integration.py (211 lines)
+22: from fastapi.testclient import TestClient
+26: from triggarr.models.config import AuthConfig, GeneralConfig
+61: ) -> AuthConfig:
+62: """Create an AuthConfig with real credentials for integration tests."""
+63: return AuthConfig(
+72: def _make_route_app(auth_config: AuthConfig | None = None, config_path: Path | None = None) -> FastAPI:
+82: cfg = auth_config or AuthConfig()
+111: client = TestClient(app, follow_redirects=False)
+161: client = TestClient(app, follow_redirects=False)
+188: client = TestClient(app, follow_redirects=False)
+

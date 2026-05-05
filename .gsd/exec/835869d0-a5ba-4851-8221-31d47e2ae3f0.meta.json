@@ -1,0 +1,18 @@
+{
+  "id": "835869d0-a5ba-4851-8221-31d47e2ae3f0",
+  "runtime": "bash",
+  "purpose": "S05 closer focused config-state-startup-docs regression",
+  "script_chars": 111,
+  "started_at": "2026-05-05T23:02:20.502Z",
+  "finished_at": "2026-05-05T23:02:21.324Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 822,
+  "stdout_bytes": 99,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/835869d0-a5ba-4851-8221-31d47e2ae3f0.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/835869d0-a5ba-4851-8221-31d47e2ae3f0.stderr"
+}

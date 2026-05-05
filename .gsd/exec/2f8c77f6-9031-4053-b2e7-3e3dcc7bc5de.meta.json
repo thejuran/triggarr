@@ -1,0 +1,18 @@
+{
+  "id": "2f8c77f6-9031-4053-b2e7-3e3dcc7bc5de",
+  "runtime": "bash",
+  "purpose": "S03 final operational custom config-dir smoke check corrected constants",
+  "script_chars": 1044,
+  "started_at": "2026-05-05T22:19:39.948Z",
+  "finished_at": "2026-05-05T22:19:40.108Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 160,
+  "stdout_bytes": 800,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/2f8c77f6-9031-4053-b2e7-3e3dcc7bc5de.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/2f8c77f6-9031-4053-b2e7-3e3dcc7bc5de.stderr"
+}

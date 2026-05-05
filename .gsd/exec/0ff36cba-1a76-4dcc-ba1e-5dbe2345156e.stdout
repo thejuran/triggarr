@@ -1,0 +1,5 @@
+PLAN_EXISTS=True TASK_COUNT=4 MISSING_PLAN_TOKENS=[]
+T01: exists=True skills=True inputs=True outputs=True verify=True
+T02: exists=True skills=True inputs=True outputs=True verify=True
+T03: exists=True skills=True inputs=True outputs=True verify=True
+T04: exists=True skills=True inputs=True outputs=True verify=True

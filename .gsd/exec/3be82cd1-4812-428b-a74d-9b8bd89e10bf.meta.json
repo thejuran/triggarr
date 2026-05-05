@@ -1,0 +1,18 @@
+{
+  "id": "3be82cd1-4812-428b-a74d-9b8bd89e10bf",
+  "runtime": "bash",
+  "purpose": "S04 runtime header-trust source check",
+  "script_chars": 676,
+  "started_at": "2026-05-05T22:44:53.968Z",
+  "finished_at": "2026-05-05T22:44:54.017Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 49,
+  "stdout_bytes": 269,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/3be82cd1-4812-428b-a74d-9b8bd89e10bf.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/3be82cd1-4812-428b-a74d-9b8bd89e10bf.stderr"
+}

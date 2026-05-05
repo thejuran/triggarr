@@ -1,0 +1,28 @@
+
+[38;5;250m███████╗██╗  ██╗██╗██╗     ██╗     ███████╗[0m
+[38;5;248m██╔════╝██║ ██╔╝██║██║     ██║     ██╔════╝[0m
+[38;5;245m███████╗█████╔╝ ██║██║     ██║     ███████╗[0m
+[38;5;243m╚════██║██╔═██╗ ██║██║     ██║     ╚════██║[0m
+[38;5;240m███████║██║  ██╗██║███████╗███████╗███████║[0m
+[38;5;238m╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚══════╝[0m
+
+[38;5;102mInstall with[0m npx skills add <owner/repo@skill>
+
+[38;5;145msecondsky/claude-skills@api-security-hardening[0m [36m182 installs[0m
+[38;5;102m└ https://skills.sh/secondsky/claude-skills/api-security-hardening[0m
+
+[38;5;145msecondsky/claude-skills@security-headers-configuration[0m [36m163 installs[0m
+[38;5;102m└ https://skills.sh/secondsky/claude-skills/security-headers-configuration[0m
+
+[38;5;145mjamditis/claude-skills-journalism@api-hardening[0m [36m85 installs[0m
+[38;5;102m└ https://skills.sh/jamditis/claude-skills-journalism/api-hardening[0m
+
+[38;5;145mitechmeat/llm-code@fastapi[0m [36m65 installs[0m
+[38;5;102m└ https://skills.sh/itechmeat/llm-code/fastapi[0m
+
+[38;5;145mslanycukr/riot-api-project@uvicorn[0m [36m41 installs[0m
+[38;5;102m└ https://skills.sh/slanycukr/riot-api-project/uvicorn[0m
+
+[38;5;145mclaude-dev-suite/claude-dev-suite@cors-security-headers[0m [36m30 installs[0m
+[38;5;102m└ https://skills.sh/claude-dev-suite/claude-dev-suite/cors-security-headers[0m
+

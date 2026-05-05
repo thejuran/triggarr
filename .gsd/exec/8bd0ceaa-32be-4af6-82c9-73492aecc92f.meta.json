@@ -1,0 +1,18 @@
+{
+  "id": "8bd0ceaa-32be-4af6-82c9-73492aecc92f",
+  "runtime": "bash",
+  "purpose": "S05 T03 evidence artifact path verification",
+  "script_chars": 516,
+  "started_at": "2026-05-05T23:01:16.914Z",
+  "finished_at": "2026-05-05T23:01:16.922Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 8,
+  "stdout_bytes": 0,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/8bd0ceaa-32be-4af6-82c9-73492aecc92f.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/8bd0ceaa-32be-4af6-82c9-73492aecc92f.stderr"
+}

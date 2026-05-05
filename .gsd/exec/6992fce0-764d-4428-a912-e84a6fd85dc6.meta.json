@@ -1,0 +1,18 @@
+{
+  "id": "6992fce0-764d-4428-a912-e84a6fd85dc6",
+  "runtime": "bash",
+  "purpose": "map requirement evidence for M001 scope and INST-04 migration tests",
+  "script_chars": 250,
+  "started_at": "2026-05-05T23:10:27.532Z",
+  "finished_at": "2026-05-05T23:10:27.591Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 59,
+  "stdout_bytes": 22049,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/6992fce0-764d-4428-a912-e84a6fd85dc6.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/6992fce0-764d-4428-a912-e84a6fd85dc6.stderr"
+}

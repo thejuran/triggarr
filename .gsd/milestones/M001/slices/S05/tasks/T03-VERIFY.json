@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "taskId": "T03",
+  "unitId": "M001/S05/T03",
+  "timestamp": 1778022113875,
+  "passed": true,
+  "discoverySource": "task-plan",
+  "checks": [
+    {
+      "command": "test -s .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md",
+      "exitCode": 0,
+      "durationMs": 4,
+      "verdict": "pass"
+    },
+    {
+      "command": "grep -q 'Gate status:' .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md",
+      "exitCode": 0,
+      "durationMs": 3,
+      "verdict": "pass"
+    },
+    {
+      "command": "grep -q 'uv run pytest tests/test_docs_accuracy.py -q' .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md",
+      "exitCode": 0,
+      "durationMs": 4,
+      "verdict": "pass"
+    },
+    {
+      "command": "grep -q 'uv run pytest tests/ -x -q' .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md",
+      "exitCode": 0,
+      "durationMs": 4,
+      "verdict": "pass"
+    },
+    {
+      "command": "grep -q 'uv run ruff check triggarr/ tests/' .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md",
+      "exitCode": 0,
+      "durationMs": 3,
+      "verdict": "pass"
+    }
+  ]
+}
