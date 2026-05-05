@@ -1,0 +1,5 @@
+negative gate checks passed: no affirmative approval, no pass posture, no release-ready posture
+
+COMMAND=python3 negative gate posture check for S06-HUMAN-UAT-GATE.md
+EXIT_CODE=0
+DURATION_MS=39

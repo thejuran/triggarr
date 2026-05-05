@@ -1,0 +1,6 @@
+....                                                                     [100%]
+4 passed in 0.01s
+
+COMMAND=uv run pytest tests/test_docs_accuracy.py -q
+EXIT_CODE=0
+DURATION_MS=582

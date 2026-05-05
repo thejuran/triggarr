@@ -1,0 +1,4 @@
+COMMAND=test -s .gsd/milestones/M001/slices/S06/S06-VALIDATION-EVIDENCE.md && uv run python <artifact self-check>
+SELF_CHECK=pass
+ARTIFACTS_CHECKED=4
+EXIT_CODE=0

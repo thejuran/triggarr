@@ -61,6 +61,8 @@ Validation posture recommendation: needs-attention.
 
 Rationale: all fresh S06 mechanical checks above passed, and no test/lint/stale-claim failure requires needs-remediation. However, `S06-HUMAN-UAT-GATE.md` records the human documentation UAT and `/deep-review` gate as unresolved/escalated. Passing mechanical checks do not convert that missing human decision into approval. A milestone validator should therefore rerun M001 validation with a needs-attention posture until a human approval, change request, completed `/deep-review`, or explicit human deferral is recorded.
 
+Machine-readable gate note: `.gsd/milestones/M001/slices/S06/tasks/T04-VERIFY.json` intentionally records the unresolved human/release gate as `passed: false` with `discoverySource: "human-gate"` so automated consumers do not confuse mechanical command success with human approval.
+
 ## Redaction and Artifact Hygiene
 
 This index references only command names, exit codes, durations, verdicts, and local transcript paths. It does not store API keys, cookies, generated auth/session values, password hashes, bearer tokens, or secret environment values.

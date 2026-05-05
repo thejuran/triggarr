@@ -1,0 +1,18 @@
+{
+  "id": "bd50129c-2db3-4e97-a220-52cb689c5b81",
+  "runtime": "bash",
+  "purpose": "S06 T04 final post-index artifact self-check",
+  "script_chars": 1693,
+  "started_at": "2026-05-05T23:44:13.643Z",
+  "finished_at": "2026-05-05T23:44:13.723Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 80,
+  "stdout_bytes": 193,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/bd50129c-2db3-4e97-a220-52cb689c5b81.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/bd50129c-2db3-4e97-a220-52cb689c5b81.stderr"
+}

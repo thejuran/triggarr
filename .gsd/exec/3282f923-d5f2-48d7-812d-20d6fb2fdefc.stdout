@@ -1,0 +1,46 @@
+\n## uv run pytest tests/test_config_dir.py tests/test_startup.py tests/test_docs_accuracy.py tests/test_auth_routes.py tests/test_auth_middleware.py tests/test_root_path.py -q
+........................................................................ [ 48%]
+........................................................................ [ 97%]
+....                                                                     [100%]
+=============================== warnings summary ===============================
+tests/test_auth_routes.py: 16 warnings
+tests/test_auth_middleware.py: 5 warnings
+  /Users/julianamacbook/triggarr/.venv/lib/python3.12/site-packages/starlette/testclient.py:445: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+148 passed, 21 warnings in 11.38s
+EXIT_CODE=0
+\n## uv run pytest tests/ -x -q
+........................................................................ [  8%]
+........................................................................ [ 16%]
+........................................................................ [ 24%]
+........................................................................ [ 32%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 57%]
+........................................................................ [ 65%]
+........................................................................ [ 74%]
+........................................................................ [ 82%]
+........................................................................ [ 90%]
+........................................................................ [ 98%]
+.........                                                                [100%]
+=============================== warnings summary ===============================
+tests/test_auth_integration.py: 6 warnings
+tests/test_auth_middleware.py: 5 warnings
+tests/test_auth_routes.py: 16 warnings
+  /Users/julianamacbook/triggarr/.venv/lib/python3.12/site-packages/starlette/testclient.py:445: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+873 passed, 27 warnings in 18.37s
+EXIT_CODE=0
+\n## uv run ruff check triggarr/ tests/
+All checks passed!
+EXIT_CODE=0
+\n## operational TRIGGARR_CONFIG_DIR smoke at /var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.IPUv2UB5Ow
+config_dir=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.IPUv2UB5Ow
+config_path=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.IPUv2UB5Ow/triggarr.toml
+state_path=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.IPUv2UB5Ow/state.json exists=True
+EXIT_CODE=0
+\nFINAL_EXIT=0

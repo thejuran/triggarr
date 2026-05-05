@@ -1,0 +1,18 @@
+{
+  "id": "de197588-616e-4cf8-9a70-10d40649a3f6",
+  "runtime": "bash",
+  "purpose": "S06 T04 artifact self-check verification",
+  "script_chars": 2784,
+  "started_at": "2026-05-05T23:43:38.159Z",
+  "finished_at": "2026-05-05T23:43:38.231Z",
+  "exit_code": 127,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 72,
+  "stdout_bytes": 1373,
+  "stderr_bytes": 41,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/de197588-616e-4cf8-9a70-10d40649a3f6.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/de197588-616e-4cf8-9a70-10d40649a3f6.stderr"
+}

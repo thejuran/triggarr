@@ -36,12 +36,12 @@ Upstream surfaces consumed: `.gsd/REQUIREMENTS.md`, `.gsd/milestones/M001/M001-V
   - Files: `.gsd/DECISIONS.md`, `.gsd/milestones/M001/slices/S02/S02-SUMMARY.md`, `.gsd/milestones/M001/slices/S02/tasks/T01-SUMMARY.md`, `.gsd/milestones/M001/slices/S02/tasks/T02-SUMMARY.md`, `.gsd/milestones/M001/slices/S02/tasks/T03-SUMMARY.md`, `.gsd/milestones/M001/slices/S02/tasks/T04-PLAN.md`, `.gsd/milestones/M001/slices/S02/tasks/T04-SUMMARY.md`, `.gsd/milestones/M001/slices/S04/tasks/T03-ASSESSMENT.md`, `.gsd/milestones/M001/slices/S06/S06-S02-SUPERSESSION.md`, `tests/test_docs_accuracy.py`
   - Verify: Use gsd_milestone_status for M001; pass if S02 pending count is 0, otherwise require `test -s .gsd/milestones/M001/slices/S06/S06-S02-SUPERSESSION.md` and `rg -n "canonical supersession|S04/tasks/T03-ASSESSMENT|D001|D002|S02-SUMMARY" .gsd/milestones/M001/slices/S06/S06-S02-SUPERSESSION.md`.
 
-- [ ] **T03: Record human UAT and deep-review gate truthfully** `est:30m`
+- [x] **T03: Record human UAT and deep-review gate truthfully** `est:30m`
   Create the S06 human-gate artifact that records the real state of documentation UAT and `/deep-review` without fabricating approval in auto-mode.
   - Files: `.gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md`, `.gsd/milestones/M001/slices/S05/S05-UAT-GATE.md`, `.gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md`, `README.md`, `SECURITY.md`, `TODO.md`, `.gsd/milestones/M001/slices/S06/S06-HUMAN-UAT-GATE.md`
   - Verify: test -s .gsd/milestones/M001/slices/S06/S06-HUMAN-UAT-GATE.md && rg -n "Gate status|Human UAT|/deep-review|needs-attention|unresolved|human source" .gsd/milestones/M001/slices/S06/S06-HUMAN-UAT-GATE.md
 
-- [ ] **T04: Refresh validation evidence index and rerun readiness checks** `est:1h`
+- [x] **T04: Refresh validation evidence index and rerun readiness checks** `est:1h`
   Rerun the focused/full mechanical verification suite after S06 artifacts exist and write a single evidence index that validation can consume without rediscovering the S02/S05 history.
   - Files: `.gsd/milestones/M001/slices/S06/S06-REQUIREMENT-SCOPE.md`, `.gsd/milestones/M001/slices/S06/S06-S02-SUPERSESSION.md`, `.gsd/milestones/M001/slices/S02/tasks/T04-SUMMARY.md`, `.gsd/milestones/M001/slices/S06/S06-HUMAN-UAT-GATE.md`, `.gsd/milestones/M001/slices/S06/S06-VALIDATION-EVIDENCE.md`, `tests/test_docs_accuracy.py`, `tests/test_config.py`, `tests/test_config_dir.py`, `tests/test_state.py`, `tests/test_startup.py`
   - Verify: Run the listed pytest, ruff, stale-claim scan, and S06 artifact self-check through gsd_exec; then require `test -s .gsd/milestones/M001/slices/S06/S06-VALIDATION-EVIDENCE.md` and evidence index entries for each command.

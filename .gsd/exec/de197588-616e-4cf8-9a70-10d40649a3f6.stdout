@@ -1,0 +1,26 @@
+COMMAND=test -s .gsd/milestones/M001/slices/S06/S06-VALIDATION-EVIDENCE.md && python - <<'PY'
+from pathlib import Path
+checks = [
+    (Path('.gsd/milestones/M001/slices/S06/S06-REQUIREMENT-SCOPE.md'), ['M001 Acceptance Themes', 'Validation Posture Guidance']),
+    (Path('.gsd/milestones/M001/slices/S06/S06-S02-SUPERSESSION.md'), ['canonical supersession record', 'S02/T04']),
+    (Path('.gsd/milestones/M001/slices/S06/S06-HUMAN-UAT-GATE.md'), ['Gate status: unresolved/escalated', 'Human UAT: not approved', 'Validation posture: needs-attention']),
+    (Path('.gsd/milestones/M001/slices/S06/S06-VALIDATION-EVIDENCE.md'), ['Docs accuracy guardrail', 'Focused v2.2 migration/config round-trip', 'Config-dir/state/startup/docs integration', 'Full test suite', 'Ruff lint', 'Stale-claim scan', 'Artifact self-check status', 'Validation posture recommendation: needs-attention']),
+]
+missing = []
+for path, needles in checks:
+    if not path.is_file() or path.stat().st_size == 0:
+        missing.append(f'{path}: missing or empty')
+        continue
+    text = path.read_text()
+    for needle in needles:
+        if needle not in text:
+            missing.append(f'{path}: missing {needle!r}')
+if missing:
+    print('SELF_CHECK=fail')
+    for item in missing:
+        print(item)
+    raise SystemExit(1)
+print('SELF_CHECK=pass')
+print('ARTIFACTS_CHECKED=4')
+PY
+EXIT_CODE=127

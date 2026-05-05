@@ -1,0 +1,18 @@
+{
+  "id": "9bf4c0e9-1048-486d-9717-ba7d86fce214",
+  "runtime": "bash",
+  "purpose": "T03 verify S06 human UAT gate artifact existence and required fields",
+  "script_chars": 492,
+  "started_at": "2026-05-05T23:40:13.638Z",
+  "finished_at": "2026-05-05T23:40:13.715Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 77,
+  "stdout_bytes": 1921,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/9bf4c0e9-1048-486d-9717-ba7d86fce214.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/9bf4c0e9-1048-486d-9717-ba7d86fce214.stderr"
+}

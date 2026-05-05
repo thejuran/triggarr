@@ -1,0 +1,18 @@
+{
+  "id": "34863d39-998e-48a7-84d9-fd551d38789e",
+  "runtime": "bash",
+  "purpose": "S06 T04 stale-claim scan verification",
+  "script_chars": 919,
+  "started_at": "2026-05-05T23:42:43.817Z",
+  "finished_at": "2026-05-05T23:42:43.876Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 59,
+  "stdout_bytes": 375,
+  "stderr_bytes": 44,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/34863d39-998e-48a7-84d9-fd551d38789e.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/34863d39-998e-48a7-84d9-fd551d38789e.stderr"
+}

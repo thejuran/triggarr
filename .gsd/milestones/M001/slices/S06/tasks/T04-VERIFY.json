@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "taskId": "T04",
+  "unitId": "M001/S06/T04",
+  "timestamp": 1778024692778,
+  "passed": false,
+  "discoverySource": "human-gate",
+  "checks": [
+    {
+      "command": "human documentation UAT + /deep-review gate",
+      "exitCode": 1,
+      "verdict": "needs-attention: unresolved human UAT and /deep-review; mechanical S06 checks passed but milestone release validation is not approved"
+    }
+  ],
+  "note": "This machine-readable verify artifact intentionally reflects the unresolved release/human gate so automated consumers do not treat mechanical checks as human approval. See S06-VALIDATION-EVIDENCE.md for passing mechanical command evidence."
+}

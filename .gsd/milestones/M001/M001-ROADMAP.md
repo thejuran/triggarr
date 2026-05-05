@@ -26,7 +26,7 @@
 - [x] **S05: S05** `risk:medium` `depends:[]`
   > After this: After this: a human has reviewed the README/SECURITY/TODO documentation diff, release/deep-review caveats are resolved or explicitly deferred by the user, and validation can rerun with UAT evidence.
 
-- [ ] **S06: S06** `risk:high` `depends:[]`
+- [x] **S06: S06** `risk:high` `depends:[]`
   > After this: After this: validation has an explicit requirement-scope coverage artifact, S02 placeholder/task-state inconsistency is resolved or accepted via canonical supersession, human documentation UAT/deep-review is approved or explicitly deferred only if a real human decision exists (otherwise recorded as unresolved/escalated with needs-attention posture), and focused/full/lint checks have fresh evidence for rerun validation.
 
 ## Boundary Map

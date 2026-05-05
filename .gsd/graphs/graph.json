@@ -145,6 +145,37 @@
       "label": "T03: Capture blocked-gate verification evidence without claiming release readiness",
       "type": "task",
       "confidence": "EXTRACTED"
+    },
+    {
+      "id": "slice:M001:S06",
+      "label": "S06: Validation remediation: requirement scope, S02 evidence, and human UAT",
+      "type": "slice",
+      "confidence": "EXTRACTED",
+      "sourceFile": "milestones/M001/slices/S06/S06-PLAN.md"
+    },
+    {
+      "id": "task:M001:S06:T01",
+      "label": "T01: Write requirement-scope coverage artifact",
+      "type": "task",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "id": "task:M001:S06:T02",
+      "label": "T02: Repair or canonically supersede S02 evidence inconsistency",
+      "type": "task",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "id": "task:M001:S06:T03",
+      "label": "T03: Record human UAT and deep-review gate truthfully",
+      "type": "task",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "id": "task:M001:S06:T04",
+      "label": "T04: Refresh validation evidence index and rerun readiness checks",
+      "type": "task",
+      "confidence": "EXTRACTED"
     }
   ],
   "edges": [
@@ -273,7 +304,37 @@
       "to": "task:M001:S05:T03",
       "type": "contains",
       "confidence": "EXTRACTED"
+    },
+    {
+      "from": "milestone:M001",
+      "to": "slice:M001:S06",
+      "type": "contains",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "from": "slice:M001:S06",
+      "to": "task:M001:S06:T01",
+      "type": "contains",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "from": "slice:M001:S06",
+      "to": "task:M001:S06:T02",
+      "type": "contains",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "from": "slice:M001:S06",
+      "to": "task:M001:S06:T03",
+      "type": "contains",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "from": "slice:M001:S06",
+      "to": "task:M001:S06:T04",
+      "type": "contains",
+      "confidence": "EXTRACTED"
     }
   ],
-  "builtAt": "2026-05-05T23:05:14.738Z"
+  "builtAt": "2026-05-05T23:52:45.816Z"
 }

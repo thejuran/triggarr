@@ -1,0 +1,3 @@
+COMMAND=uv run ruff check triggarr/ tests/
+All checks passed!
+EXIT_CODE=0

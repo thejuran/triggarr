@@ -1,0 +1,18 @@
+{
+  "id": "e4dff5a5-7fe3-4cb2-b711-f9ccfae09274",
+  "runtime": "bash",
+  "purpose": "T03 negative check S06 gate has no affirmative approval or release-ready posture",
+  "script_chars": 1309,
+  "started_at": "2026-05-05T23:40:18.879Z",
+  "finished_at": "2026-05-05T23:40:18.950Z",
+  "exit_code": 1,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 71,
+  "stdout_bytes": 1049,
+  "stderr_bytes": 165,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/e4dff5a5-7fe3-4cb2-b711-f9ccfae09274.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/e4dff5a5-7fe3-4cb2-b711-f9ccfae09274.stderr"
+}

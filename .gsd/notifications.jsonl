@@ -61,3 +61,11 @@
 {"id":"f5ce52e4-f530-43bd-be9f-3a59b3b2498e","ts":"2026-05-05T23:36:08.678Z","severity":"info","message":"Auto-mode resumed.","source":"notify","read":false}
 {"id":"ce0b9bb9-56bf-49cd-a96e-e9c896a206b9","ts":"2026-05-05T23:36:09.328Z","severity":"info","message":"Resume: applied 5 fix(es) to state.","source":"notify","read":false}
 {"id":"4b026feb-bc53-4106-b0cd-23c27eeb8be4","ts":"2026-05-05T23:36:09.459Z","severity":"info","message":"Recovered 19 tool calls from paused session. Resuming with context.","source":"notify","read":false}
+{"id":"0e7181a0-4fe9-4ffe-95a4-3c2faef7fbbb","ts":"2026-05-05T23:39:23.000Z","severity":"info","message":"Committed: chore: auto-commit after reactive-execute","source":"notify","read":false}
+{"id":"0e78823e-c809-41e1-9457-a6a437f90d26","ts":"2026-05-05T23:41:34.387Z","severity":"info","message":"Committed: feat: Recorded the S06 human UAT and /deep-review gate as unresolved wi…","source":"notify","read":false}
+{"id":"95676345-d260-4df3-ace0-20288f2506c6","ts":"2026-05-05T23:41:34.446Z","severity":"info","message":"Verification gate: 1/1 checks passed","source":"notify","read":false}
+{"id":"971f6198-430e-481d-8b7b-df7909800a32","ts":"2026-05-05T23:44:52.768Z","severity":"info","message":"Committed: feat: Created the S06 validation evidence index with fresh pytest, lint…","source":"notify","read":false}
+{"id":"b33bbd40-8723-4ec8-8d1d-6969c03c5e5e","ts":"2026-05-05T23:44:52.777Z","severity":"warning","message":"[safety] task marked complete with verification commands but no bash calls were executed","source":"workflow-logger","read":false}
+{"id":"f0a6fc98-94c6-48e4-a737-27dfee76cda9","ts":"2026-05-05T23:44:52.777Z","severity":"warning","message":"Safety: task T04 has verification commands but no bash calls were recorded","source":"notify","read":false}
+{"id":"a77fd923-e790-4098-8d1e-e6a680010f80","ts":"2026-05-05T23:44:52.836Z","severity":"warning","message":"[safety] task marked complete with verification commands but no bash calls were executed","source":"notify","read":false}
+{"id":"2f32ad43-37c1-4701-94d0-2fcf89b3d935","ts":"2026-05-05T23:57:12.696Z","severity":"warning","message":"[recovery] verify-fail complete-milestone M001: existsSync false for /Users/julianamacbook/triggarr/.gsd/milestones/M001/M001-SUMMARY.md","source":"workflow-logger","read":false}
