@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from triggarr.auth import COOKIE_MAX_AGE, sign_session, validate_session, verify_password
 from triggarr.models.config import AuthConfig
+from triggarr.web.security import is_secure_request
 
 # Paths that bypass authentication entirely.
 # Prefix matching is intentional: /static covers all static assets,
@@ -170,16 +171,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     session_value = sign_session(
                         username, auth.session_secret.get_secret_value()
                     )
-                    _secure = request.url.scheme == "https" or request.headers.get(
-                        "x-forwarded-proto", ""
-                    ) == "https"
                     response.set_cookie(
                         "triggarr_session",
                         session_value,
                         max_age=COOKIE_MAX_AGE,
                         httponly=True,
                         samesite="lax",
-                        secure=_secure,
+                        secure=is_secure_request(request),
                     )
                     return response
             except (ValueError, UnicodeDecodeError):

@@ -104,6 +104,11 @@ def _basic_auth_header(username: str = "admin", password: str = _PASSWORD) -> st
     return f"Basic {encoded}"
 
 
+def _set_cookie_has_secure_attribute(set_cookie: str) -> bool:
+    """Return True when Set-Cookie includes Secure as an attribute."""
+    return "secure" in {part.strip().lower() for part in set_cookie.split(";")[1:]}
+
+
 # ---------------------------------------------------------------------------
 # Exempt path tests
 # ---------------------------------------------------------------------------
@@ -247,6 +252,31 @@ def test_basic_auth_valid_sets_session_cookie():
     response = client.get("/", headers={"Authorization": _basic_auth_header()})
     assert response.status_code == 200
     assert "triggarr_session" in response.cookies
+
+
+def test_basic_auth_ignores_spoofed_forwarded_proto_for_secure_cookie():
+    """HTTP Basic auth with spoofed X-Forwarded-Proto must not set Secure."""
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+    response = client.get(
+        "/",
+        headers={"Authorization": _basic_auth_header(), "X-Forwarded-Proto": "https"},
+    )
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert not _set_cookie_has_secure_attribute(set_cookie)
+
+
+def test_basic_auth_https_sets_secure_session_cookie():
+    """HTTPS Basic auth sets a Secure session cookie."""
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth), base_url="https://testserver")
+    response = client.get("/", headers={"Authorization": _basic_auth_header()})
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert _set_cookie_has_secure_attribute(set_cookie)
 
 
 def test_basic_auth_missing_authorization_returns_401():

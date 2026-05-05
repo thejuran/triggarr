@@ -107,6 +107,12 @@ def _make_route_app(auth_config: AuthConfig | None = None, config_path: Path | N
 
     return app
 
+
+def _set_cookie_has_secure_attribute(set_cookie: str) -> bool:
+    """Return True when Set-Cookie includes Secure as an attribute."""
+    return "secure" in {part.strip().lower() for part in set_cookie.split(";")[1:]}
+
+
 # ---------------------------------------------------------------------------
 # _safe_next_url tests
 # ---------------------------------------------------------------------------
@@ -355,6 +361,41 @@ def test_setup_post_sets_session_cookie(tmp_path: Path):
     assert "triggarr_session" in set_cookie
 
 
+def test_setup_post_https_sets_secure_session_cookie(tmp_path: Path):
+    """HTTPS setup auto-login sets a Secure session cookie."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("[general]\nlog_level = \"info\"\n")
+
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "admin", "password": "test123", "confirm_password": "test123"},
+    )
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert _set_cookie_has_secure_attribute(set_cookie)
+
+
+def test_setup_post_ignores_spoofed_forwarded_proto_for_secure_cookie(tmp_path: Path):
+    """HTTP setup with spoofed X-Forwarded-Proto must not set a Secure cookie."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text("[general]\nlog_level = \"info\"\n")
+
+    app = _make_route_app(config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/setup",
+        data={"username": "admin", "password": "test123", "confirm_password": "test123"},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert not _set_cookie_has_secure_attribute(set_cookie)
+
+
 def test_setup_post_redirects_to_login_when_configured():
     """POST /setup with configured auth redirects to /login?setup=done (not bare 404)."""
     app = _make_route_app(auth_config=_configured_auth())
@@ -407,6 +448,35 @@ def test_login_post_valid_credentials_redirects():
     assert response.status_code == 303
     set_cookie = response.headers.get("set-cookie", "")
     assert "triggarr_session" in set_cookie
+
+
+def test_login_post_ignores_spoofed_forwarded_proto_for_secure_cookie():
+    """HTTP login with spoofed X-Forwarded-Proto must not set a Secure cookie."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": _TEST_PASSWORD, "next": ""},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+    assert response.status_code == 303
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert not _set_cookie_has_secure_attribute(set_cookie)
+
+
+def test_login_post_https_sets_secure_session_cookie():
+    """HTTPS login sets a Secure session cookie."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": _TEST_PASSWORD, "next": ""},
+    )
+    assert response.status_code == 303
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert _set_cookie_has_secure_attribute(set_cookie)
 
 
 def test_login_post_invalid_credentials_shows_error():
@@ -470,6 +540,34 @@ def test_logout_clears_cookie_and_redirects():
     assert "triggarr_session" in set_cookie
     # Deletion indicated by max-age=0 or empty value
     assert 'max-age=0' in set_cookie.lower() or '="";' in set_cookie
+
+
+def test_logout_https_deletion_sets_secure_session_cookie():
+    """HTTPS logout deletion mirrors the Secure session-cookie attribute."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+    response = client.post("/logout", cookies={"triggarr_session": cookie})
+    assert response.status_code == 303
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert _set_cookie_has_secure_attribute(set_cookie)
+
+
+def test_logout_ignores_spoofed_forwarded_proto_for_secure_cookie():
+    """HTTP logout with spoofed X-Forwarded-Proto must not emit Secure deletion."""
+    app = _make_route_app(auth_config=_configured_auth())
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+    response = client.post(
+        "/logout",
+        cookies={"triggarr_session": cookie},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+    assert response.status_code == 303
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session" in set_cookie
+    assert not _set_cookie_has_secure_attribute(set_cookie)
 
 
 # ---------------------------------------------------------------------------

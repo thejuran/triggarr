@@ -50,6 +50,7 @@ from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
 from triggarr.version import get_display_version
+from triggarr.web.security import is_secure_request
 from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url, validate_instance_name
 
 _PKG_DIR = Path(__file__).resolve().parent.parent
@@ -72,13 +73,6 @@ templates.env.globals["update_info"] = update_info
 # for conditional logout link visibility (D-11).
 auth_state: dict = {"active": False}
 templates.env.globals["auth_state"] = auth_state
-
-
-def _is_secure_context(request: Request) -> bool:
-    """True when the request arrived over HTTPS (direct or via reverse proxy)."""
-    if request.url.scheme == "https":
-        return True
-    return request.headers.get("x-forwarded-proto", "") == "https"
 
 
 def _sync_auth_state(settings: SettingsModel) -> None:
@@ -1120,7 +1114,7 @@ async def setup_post(request: Request) -> HTMLResponse | RedirectResponse:
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=_is_secure_context(request),
+        secure=is_secure_request(request),
     )
     logger.info("Setup completed")
     return response
@@ -1257,7 +1251,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
             max_age=COOKIE_MAX_AGE,
             httponly=True,
             samesite="lax",
-            secure=_is_secure_context(request),
+            secure=is_secure_request(request),
         )
         logger.info("Login successful")
         return response
@@ -1286,7 +1280,7 @@ async def logout(request: Request) -> RedirectResponse:
         path="/",
         httponly=True,
         samesite="lax",
-        secure=_is_secure_context(request),
+        secure=is_secure_request(request),
     )
     logger.info("User logged out")
     return response
