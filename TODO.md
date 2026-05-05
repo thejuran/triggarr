@@ -1,6 +1,5 @@
 # Triggarr Pending TODOs
 
-## Make config directory configurable (GitHub issue)
-- Hardcoded `/config/` paths prevent running outside Docker
-- Fix: add `TRIGGARR_CONFIG_DIR` env var in `triggarr/models/config.py` and `triggarr/state.py`
-- Plan saved at `.claude/plans/mellow-tinkering-creek.md`
+No pending TODOs are tracked in this file.
+
+Previously listed configurable config-directory work has been retired: current code derives `triggarr.toml`, `state.json`, and `triggarr.db` from the absolute `TRIGGARR_CONFIG_DIR` path, with `/config` retained as the Docker-compatible default when the variable is unset.

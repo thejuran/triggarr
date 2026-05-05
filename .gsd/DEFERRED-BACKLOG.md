@@ -1,27 +1,28 @@
 # Deferred Backlog Audit
 
 Generated: 2026-05-03
+Updated: 2026-05-05 during M001/S02/T03
 
 This file surfaces carry-forward work found in the legacy GSD v1 artifacts and adjacent project notes. The existing root-level GSD files remain historical; new execution should be planned under `.gsd/milestones/M###/`.
 
 ## Carry forward now
 
-### 1. Config directory should be configurable
+### 1. Update check interval 24h → 6h
 
-- Source: `TODO.md`
-- Status: pending / unscheduled
-- Problem: hardcoded `/config/` paths prevent running Triggarr cleanly outside Docker.
-- Suggested direction from TODO: add `TRIGGARR_CONFIG_DIR` support in `triggarr/models/config.py` and `triggarr/state.py`.
-- Caveat: `TODO.md` references `.claude/plans/mellow-tinkering-creek.md`, but that file is missing in the current checkout.
-- Recommendation: promote this into the next current-format milestone before or alongside other operability work.
-
-### 2. Update check interval 24h → 6h
-
-- Source: `.gsd/QUEUE.md`; confirmed by `git stash list` / `git stash show --stat stash@{0}`
+- Source: `.gsd/QUEUE.md`; confirmed by `git stash list` / `git stash show --stat stash@{0}` during the transition audit.
 - Status: queued and apparently already implemented in `stash@{0}`.
 - Files in stash: `triggarr/search/scheduler.py`, `triggarr/update_check.py`.
 - Rationale in queue: Sonarr/Radarr use 6h; Tautulli uses 12h.
 - Recommendation: treat as a small ready slice. Apply only after review, then verify with tests/lint before completing.
+
+## Resolved / retired during M001
+
+### Config-directory portability
+
+- Former source: `TODO.md`.
+- Status: retired from active backlog.
+- Why retired: current code and tests derive `triggarr.toml`, `state.json`, and `triggarr.db` from an absolute `TRIGGARR_CONFIG_DIR`, while keeping `/config` as the Docker-compatible default when the variable is unset.
+- Follow-up: do not re-plan this from legacy notes unless new evidence shows a regression in the current config-dir contract.
 
 ## Deferred unless user demand appears
 
@@ -57,4 +58,4 @@ These are explicitly anti-features in `.gsd/REQUIREMENTS.md` and should not be c
 
 ## Audit conclusion
 
-No active blockers were found in legacy GSD state. The strongest carry-forward candidate is configurable config directory support from `TODO.md`; the smallest ready change is the 6h update-check interval from `stash@{0}`.
+No active blockers were found in legacy GSD state. The only active carry-forward candidate identified here is the 6h update-check interval from `stash@{0}`; the former configurable config-directory TODO is retired because current code already implements the portable path contract.
