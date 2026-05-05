@@ -190,7 +190,7 @@ Configured in `[auth]` as `method`:
 
 - `Forms` (default) — browser login page, bcrypt password hash, signed 30-day session cookie, logout, password change, and login rate limiting.
 - `Basic` — HTTP Basic credentials are accepted and can establish the same signed session cookie.
-- `External` — Triggarr trusts an upstream proxy or SSO layer and lets requests through; use this only when direct access to port 8484 is blocked.
+- `External` — Triggarr bypasses local auth because an upstream reverse proxy or SSO layer has already authenticated and authorized the user; enable it only after direct access to port 8484 is blocked and the proxy is the sole path to Triggarr.
 - `Disabled` — all routes are accessible without Triggarr auth and a warning is logged periodically. Prefer `External` for reverse-proxy deployments.
 
 Requests may also authenticate with `X-Api-Key` when `auth.api_key` is set. The setup flow and security settings page generate API keys; do not paste real keys into examples or logs.
@@ -211,11 +211,11 @@ Requests may also authenticate with `X-Api-Key` when `auth.api_key` is set. The 
 
 ### Recommendation
 
-Keep the compose example's localhost bind (`127.0.0.1:8484:8484`) unless Triggarr is behind Tailscale, a VPN, or a reverse proxy. For proxy/SSO deployments, set `auth.method = "External"` only after confirming the proxy is the sole path to Triggarr.
+Keep the compose example's localhost bind (`127.0.0.1:8484:8484`) unless Triggarr is behind Tailscale, a VPN, or a reverse proxy. For proxy/SSO deployments, set `auth.method = "External"` only after confirming the proxy enforces authentication and authorization and is the sole path to Triggarr; keep port 8484 bound to localhost or firewalled from direct clients.
 
 ### Reverse Proxy
 
-When running Triggarr behind a reverse proxy (Nginx, Caddy, Traefik, etc.), configure `TRUSTED_PROXY_IPS` so Triggarr trusts the `X-Forwarded-For` and `X-Forwarded-Proto` headers from your proxy. Without this, Triggarr cannot determine the real client IP or protocol, which affects logging and scheme-aware behavior.
+When running Triggarr behind a reverse proxy (Nginx, Caddy, Traefik, etc.), configure `TRUSTED_PROXY_IPS` so Uvicorn accepts forwarded client and scheme headers only from that proxy. Accepted `X-Forwarded-For` values set the client IP; accepted `X-Forwarded-Proto` values become the ASGI request scheme used by scheme-aware behavior such as Secure cookie emission. Without this, Triggarr sees the proxy/default client and protocol. Keep direct access to port 8484 blocked so clients cannot send proxy headers straight to Triggarr.
 
 > These are startup-level environment variables read directly by the process — they are not part of `triggarr.toml` and do not use the `TRIGGARR_` prefix.
 
