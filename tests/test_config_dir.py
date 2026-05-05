@@ -118,3 +118,55 @@ def test_frozen_constants_not_affected_by_env_change(monkeypatch: pytest.MonkeyP
 
     # CONFIG_DIR constant is still the value from first import -- it's frozen
     assert result_fn_after != CONFIG_DIR, "CONFIG_DIR should be frozen and not track env changes"
+
+
+async def test_lifespan_derives_sqlite_path_from_injected_state_path(tmp_path: Path) -> None:
+    """create_lifespan() should place triggarr.db beside the injected state path."""
+    from unittest.mock import AsyncMock, patch
+
+    from fastapi import FastAPI
+
+    from triggarr.models.config import Settings
+    from triggarr.search.scheduler import create_lifespan
+
+    state_path = tmp_path / "custom-config" / "state.json"
+    config_path = tmp_path / "custom-config" / "triggarr.toml"
+    expected_db_path = state_path.parent / "triggarr.db"
+
+    fake_db = AsyncMock()
+    fake_scheduler = _FakeScheduler()
+
+    app = FastAPI(lifespan=create_lifespan(Settings(), state_path, config_path))
+    lifespan = app.router.lifespan_context
+
+    with (
+        patch("triggarr.search.scheduler.aiosqlite.connect", AsyncMock(return_value=fake_db)) as mock_connect,
+        patch("triggarr.search.scheduler.init_db", new_callable=AsyncMock) as mock_init_db,
+        patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=fake_scheduler),
+    ):
+        async with lifespan(app):
+            assert app.state.config_path == config_path
+            assert app.state.state_path == state_path
+
+    mock_connect.assert_awaited_once_with(expected_db_path)
+    mock_init_db.assert_awaited_once_with(fake_db, expected_db_path)
+    assert fake_scheduler.started is True
+    assert fake_scheduler.shutdown_wait is False
+
+
+class _FakeScheduler:
+    """Small scheduler stand-in for lifespan path wiring tests."""
+
+    def __init__(self) -> None:
+        self.started = False
+        self.shutdown_wait: bool | None = None
+        self.jobs: list[tuple[tuple, dict]] = []
+
+    def add_job(self, *args, **kwargs) -> None:
+        self.jobs.append((args, kwargs))
+
+    def start(self) -> None:
+        self.started = True
+
+    def shutdown(self, wait: bool = True) -> None:
+        self.shutdown_wait = wait

@@ -1,0 +1,10 @@
+[
+  {
+    "kind": "bash",
+    "toolCallId": "call_X3DzhWJJ4nnGxFtHb46K7I8O|fc_00f4b940b4eb23ac0169f7ecdd2b30819894dc49bffb50e83c",
+    "command": "rg -n \"TRIGGARR_CONFIG_DIR|CONFIG_DIR|CONFIG_PATH|STATE_PATH|config_path|state_path|triggarr\\.db|\\.migrated\" triggarr tests/test_config_dir.py tests/test_state.py tests/test_startup.py",
+    "exitCode": 0,
+    "outputSnippet": "tests/test_startup.py:151:async def test_startup_default_config_path_follows_current_config_dir(\ntests/test_startup.py:154:    \"\"\"startup() without an explicit path should use the current TRIGGARR_CONFIG_DIR.\"\"\"\ntests/test_startup.py:155:    monkeypatch.setenv(\"TRIGGARR_CONFIG_DIR\", str(tmp_path))\ntests/test_config_dir.py:1:\"\"\"Tests for TRIGGARR_CONFIG_DIR env var support.\ntests/test_config_dir.py:3:Verifies that CONFIG_DIR, CONFIG_PATH, and STATE_PATH all respect\ntests/test_config_dir.py:4:the ",
+    "timestamp": 1777855709661
+  }
+]

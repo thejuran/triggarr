@@ -1,0 +1,6 @@
+custom_dir=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.kStaCS9l6x
+config_path=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.kStaCS9l6x/triggarr.toml
+state_path=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.kStaCS9l6x/state.json
+db_path=/private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.kStaCS9l6x/triggarr.db
+fresh_default_generation=exit_1_then_file_created
+default_dir=/config

@@ -11,10 +11,10 @@
 
 ## Slices
 
-- [ ] **S01: S01** `risk:high` `depends:[]`
+- [x] **S01: S01** `risk:high` `depends:[]`
   > After this: After this: a temporary absolute `TRIGGARR_CONFIG_DIR` is proven through tests/startup checks to control config and state paths, and any real residual `/config` bug is fixed or documented as absent.
 
-- [ ] **S02: Refresh README and project documentation** `risk:medium` `depends:[S01]`
+- [ ] **S02: S02** `risk:medium` `depends:[]`
   > After this: After this: README and adjacent docs explain current Docker/standalone setup, nested multi-instance config, auth/security behavior, and no longer point to stale missing configurable-config work.
 
 - [ ] **S03: Integrated verification and docs UAT** `risk:low` `depends:[S01,S02]`

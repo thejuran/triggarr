@@ -1,7 +1,7 @@
 # Codebase Map
 
-Generated: 2026-05-04T00:42:42Z | Files: 106 | Described: 0/106
-<!-- gsd:codebase-meta {"generatedAt":"2026-05-04T00:42:42Z","fingerprint":"eb6fd30430149170f16df540321dacd04b19c345","fileCount":106,"truncated":false} -->
+Generated: 2026-05-05T21:55:39Z | Files: 108 | Described: 0/108
+<!-- gsd:codebase-meta {"generatedAt":"2026-05-05T21:55:39Z","fingerprint":"8d3328003568b383e1c3a22bc2a2e3541c4bc8ad","fileCount":108,"truncated":false} -->
 
 ### (root)/
 - `.dockerignore`
@@ -19,6 +19,9 @@ Generated: 2026-05-04T00:42:42Z | Files: 106 | Described: 0/106
 - `SECURITY.md`
 - `TODO.md`
 
+### .aidesigner/
+- `.aidesigner/.gitkeep`
+
 ### .github/
 - `.github/pull_request_template.md`
 
@@ -34,6 +37,9 @@ Generated: 2026-05-04T00:42:42Z | Files: 106 | Described: 0/106
 ### docs/superpowers/specs/
 - `docs/superpowers/specs/2026-04-09-community-polish-design.md`
 - `docs/superpowers/specs/2026-04-14-built-in-auth-design.md`
+
+### reports/
+- `reports/security-2026-04-15.md`
 
 ### tests/
 - *(34 files: 34 .py)*

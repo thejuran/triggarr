@@ -1,0 +1,12 @@
+task summaries:
+.gsd/milestones/M001/slices/S01/tasks/T01-SUMMARY.md
+.gsd/milestones/M001/slices/S01/tasks/T02-SUMMARY.md
+.gsd/milestones/M001/slices/S01/tasks/T03-SUMMARY.md
+
+S01 plan task checkboxes:
+- [x] **T01: Audit config-dir consumers and classify path references** `est:45m`
+- [x] **T02: Fill config-dir verification gaps or fix real path bugs** `est:1h`
+- [x] **T03: Prove fresh custom config-dir startup behavior** `est:45m`
+
+project_doc=present
+t03_summary=present

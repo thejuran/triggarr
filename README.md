@@ -70,19 +70,19 @@ volumes:
   triggarr_config:
 ```
 
-Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:8484) to configure your Radarr, Sonarr, and/or Lidarr connections.
+Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:8484) to complete first-run account setup and configure your Radarr, Sonarr, and/or Lidarr connections.
 
-On first run, a default config file is auto-generated at `/config/triggarr.toml`. Use the web UI to configure -- no need to edit the file by hand.
+The Docker image defaults `TRIGGARR_CONFIG_DIR` to `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `restart: unless-stopped` example above, the container then starts normally on the next restart.
 
 ### Standalone (pip)
 
-Requires Python 3.11+. Download the `.whl` from the [latest release](https://github.com/thejuran/triggarr/releases/latest), or install directly:
+Requires Python 3.11+. Download the `.whl` from the [latest release](https://github.com/thejuran/triggarr/releases/latest), or install the current release directly:
 
 ```bash
-pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.7.0-py3-none-any.whl
+pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.7.1-py3-none-any.whl
 ```
 
-Set the config directory and run:
+Set an absolute config directory before starting Triggarr:
 
 ```bash
 export TRIGGARR_CONFIG_DIR="$HOME/.config/triggarr"
@@ -90,7 +90,7 @@ mkdir -p "$TRIGGARR_CONFIG_DIR"
 triggarr
 ```
 
-Visit [http://localhost:8484](http://localhost:8484) to configure. Config and data files are stored in `TRIGGARR_CONFIG_DIR`.
+Standalone installs store `triggarr.toml`, `state.json`, and `triggarr.db` in `TRIGGARR_CONFIG_DIR`. If the config file does not exist yet, the first `triggarr` run writes a default template and exits; run `triggarr` again, then visit [http://localhost:8484](http://localhost:8484) to complete setup and configure apps.
 
 To run in the background, use a process manager like systemd, launchd, or supervisor. A minimal systemd unit:
 
@@ -114,77 +114,103 @@ WantedBy=multi-user.target
 
 ## Configuration Reference
 
-All settings live in `/config/triggarr.toml`. You can also edit everything from the web UI at [http://localhost:8484/settings](http://localhost:8484/settings) -- changes are written to the TOML file and take effect immediately without restart.
+Runtime config lives in `${TRIGGARR_CONFIG_DIR}/triggarr.toml`; when `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config/triggarr.toml` for Docker compatibility. The config directory must be an absolute path and must be set before the Triggarr process starts.
+
+You can edit settings from the web UI at [http://localhost:8484/settings](http://localhost:8484/settings) -- changes are written to the TOML file and take effect immediately without restart. Each app type is a table of named instances, so use nested tables such as `[radarr.Default]` or `[sonarr.Anime]` rather than putting connection fields directly under the app name.
 
 ```toml
 # Triggarr Configuration
 
 [general]
 # Log level: debug, info, warning, error
-log_level = "info"                  # default: "info"
+log_level = "info"
 
 # Hard max items searched per app per cycle. 0 = unlimited.
 # When set, the limit is split proportionally between missing and cutoff searches.
-hard_max_per_cycle = 0              # default: 0 (unlimited), valid: 0+
+hard_max_per_cycle = 0
 
-[radarr]
-# Radarr connection settings
-url = "http://radarr:7878"          # Radarr base URL (string, required if enabled)
-api_key = "your-api-key-here"       # From Radarr > Settings > General > API Key
-enabled = false                     # default: false -- set to true to activate
+# Optional scheduler/API tuning defaults:
+# request_timeout = 30.0
+# page_size = 50
+# max_history_rows = 1000
+# tracking_window_minutes = 60
+# skip_unreleased = true
 
-search_interval = 30                # default: 30 (minutes between search cycles)
-search_missing_count = 5            # default: 5 (missing items to search per cycle)
-search_cutoff_count = 5             # default: 5 (cutoff/upgrade items to search per cycle)
+# The web setup flow creates auth.username, auth.password_hash,
+# auth.api_key, and auth.session_secret. Do not copy example secrets.
+[auth]
+method = "Forms"                   # Forms, Basic, External, or Disabled
 
-[sonarr]
-# Sonarr connection settings
-url = "http://sonarr:8989"          # Sonarr base URL (string, required if enabled)
-api_key = "your-api-key-here"       # From Sonarr > Settings > General > API Key
-enabled = false                     # default: false -- set to true to activate
+[radarr.Default]
+url = "http://radarr:7878"          # Radarr base URL
+enabled = true
+api_key = "<radarr-api-key>"        # From Radarr > Settings > General > API Key
+search_interval = 30                # minutes between search cycles
+search_missing_count = 5            # missing movies to search per cycle
+search_cutoff_count = 5             # cutoff/upgrade movies to search per cycle
+missing_tag = ""                    # optional tag filter; empty = all items
+cutoff_tag = ""                     # optional tag filter; empty = all items
 
-search_interval = 30                # default: 30 (minutes between search cycles)
-search_missing_count = 5            # default: 5 (missing items to search per cycle)
-search_cutoff_count = 5             # default: 5 (cutoff/upgrade items to search per cycle)
+[radarr."4K"]
+url = "http://radarr-4k:7878"
+enabled = false
+api_key = "<radarr-4k-api-key>"
+search_interval = 60
+search_missing_count = 3
+search_cutoff_count = 3
 
-[lidarr]
-# Lidarr connection settings
-url = "http://lidarr:8686"          # Lidarr base URL (string, required if enabled)
-api_key = "your-api-key-here"       # From Lidarr > Settings > General > API Key
-enabled = false                     # default: false -- set to true to activate
+[sonarr.Default]
+url = "http://sonarr:8989"
+enabled = true
+api_key = "<sonarr-api-key>"
+search_interval = 30
+search_missing_count = 5
+search_cutoff_count = 5
+missing_tag = ""
+cutoff_tag = ""
 
-search_interval = 30                # default: 30 (minutes between search cycles)
-search_missing_count = 5            # default: 5 (missing albums to search per cycle)
-search_cutoff_count = 5             # default: 5 (cutoff/upgrade albums to search per cycle)
+[lidarr.Default]
+url = "http://lidarr:8686"
+enabled = false
+api_key = "<lidarr-api-key>"
+search_interval = 30
+search_missing_count = 5            # missing albums to search per cycle
+search_cutoff_count = 5             # cutoff/upgrade albums to search per cycle
 ```
 
-Environment variable overrides are supported via pydantic-settings (e.g., `TRIGGARR_GENERAL__LOG_LEVEL=debug`), but TOML is the primary configuration method.
+Startup-level environment variables such as `TRIGGARR_CONFIG_DIR`, `TRUSTED_PROXY_IPS`, and `ROOT_PATH` are read by the process before the TOML settings are loaded; they are not stored in `triggarr.toml`.
 
 ## Security Model
 
-Triggarr has **no authentication**. This is intentional.
+Triggarr includes application authentication by default. A fresh config starts in setup mode; the first browser visit redirects to `/setup`, where you create the local username/password and receive a generated API key. After setup, protected browser routes require either a signed `triggarr_session` cookie or another configured auth method.
 
-### Design philosophy
+### Authentication modes
 
-Triggarr is designed to run on a trusted local network -- behind Tailscale, a VPN, or bound to localhost. No passwords means no credential attack surface.
+Configured in `[auth]` as `method`:
+
+- `Forms` (default) — browser login page, bcrypt password hash, signed 30-day session cookie, logout, password change, and login rate limiting.
+- `Basic` — HTTP Basic credentials are accepted and can establish the same signed session cookie.
+- `External` — Triggarr trusts an upstream proxy or SSO layer and lets requests through; use this only when direct access to port 8484 is blocked.
+- `Disabled` — all routes are accessible without Triggarr auth and a warning is logged periodically. Prefer `External` for reverse-proxy deployments.
+
+Requests may also authenticate with `X-Api-Key` when `auth.api_key` is set. The setup flow and security settings page generate API keys; do not paste real keys into examples or logs.
 
 ### What IS protected
 
-- **API keys** are never exposed in HTTP responses or HTML (`SecretStr` discipline throughout)
-- **Log output** redacts all configured secrets automatically
-- **Config file** written with `0600` permissions (owner-read/write only)
+- **Application routes** are deny-by-default after setup unless auth is `External` or `Disabled`
+- **API keys and auth secrets** are stored as `SecretStr`, redacted from logs, and not exposed in normal settings HTML
+- **Password hashes** use bcrypt, and session cookies are signed with a generated session secret
+- **Login attempts** are rate-limited per client IP
+- **Config file** is written with `0600` permissions (owner-read/write only)
 - **Docker container** drops all capabilities except CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID
-- **CSRF protection** via Origin header checking on POST requests
+- **CSRF protection** via Origin/Referer checking on mutating requests
+- **Security headers** include frame denial, MIME-sniffing prevention, same-origin referrer policy, and a restrictive CSP
 - **URL validation** blocks SSRF attempts (non-HTTP schemes, inappropriate public IPs)
-- **Security hardening** via `no-new-privileges` applied after privilege setup in entrypoint
-
-### What is NOT protected
-
-Anyone with network access to port 8484 can view the dashboard and edit configuration. There is no login, no session management, no user accounts.
+- **Security hardening** via `no-new-privileges` applied after privilege setup in entrypoint when the host supports it
 
 ### Recommendation
 
-Bind to localhost (`127.0.0.1:8484:8484` as shown in the docker-compose example) and access via Tailscale or a reverse proxy with authentication.
+Keep the compose example's localhost bind (`127.0.0.1:8484:8484`) unless Triggarr is behind Tailscale, a VPN, or a reverse proxy. For proxy/SSO deployments, set `auth.method = "External"` only after confirming the proxy is the sole path to Triggarr.
 
 ### Reverse Proxy
 

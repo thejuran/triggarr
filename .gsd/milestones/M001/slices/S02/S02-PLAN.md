@@ -24,12 +24,12 @@ Produces updated docs for S03 to verify with command checks, lint/tests, and use
 
 ## Tasks
 
-- [ ] **T01: Audit README and adjacent docs against current behavior** `est:1h`
+- [x] **T01: Audit README and adjacent docs against current behavior** `est:1h`
   Why: the README already shows signs of mixed-era documentation, so edits should be grounded in code and tests rather than assumptions.
   - Files: `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, `docker-compose.yml`, `CHANGELOG.md`, `TODO.md`, `triggarr/models/config.py`, `triggarr/models/config.py`, `triggarr/auth.py`, `triggarr/web/middleware.py`, `tests/test_auth_config.py`, `tests/test_auth_routes.py`, `tests/test_config.py`
   - Verify: `rg -n "no authentication|TRIGGARR_CONFIG_DIR|\[radarr\]|\[sonarr\]|\[lidarr\]|/config|mellow-tinkering-creek|latest/download" README.md SECURITY.md CONTRIBUTING.md docker-compose.yml CHANGELOG.md TODO.md` plus written audit findings.
 
-- [ ] **T02: Update README install, config, and security sections** `est:1.5h`
+- [x] **T02: Update README install, config, and security sections** `est:1.5h`
   Why: README is the primary user entry point and currently mixes current standalone config-dir docs with stale config/security examples.
   - Files: `README.md`
   - Verify: `rg -n "no authentication|\[radarr\]\s*$|\[sonarr\]\s*$|\[lidarr\]\s*$|mellow-tinkering-creek" README.md` should show no stale/contradictory matches except intentional explanatory context.

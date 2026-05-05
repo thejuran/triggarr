@@ -1,0 +1,18 @@
+{
+  "id": "26853aa3-7f44-4609-acac-8251219cf877",
+  "runtime": "bash",
+  "purpose": "S01 fresh operational config-dir contract check corrected",
+  "script_chars": 1659,
+  "started_at": "2026-05-05T21:54:18.084Z",
+  "finished_at": "2026-05-05T21:54:18.446Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 362,
+  "stdout_bytes": 517,
+  "stderr_bytes": 230,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/26853aa3-7f44-4609-acac-8251219cf877.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/26853aa3-7f44-4609-acac-8251219cf877.stderr"
+}

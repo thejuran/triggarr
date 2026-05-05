@@ -2,64 +2,45 @@
 id: T02
 parent: S01
 milestone: M001
-provides:
-  - Failure artifact for incomplete T02 execution
 key_files:
   - tests/test_config_dir.py
   - tests/test_startup.py
 key_decisions:
-  - None; parent orchestrator did not complete T02 because the dispatched worker did not create its required summary or DB completion record.
-patterns_established:
-  - None.
-observability_surfaces:
-  - Focused pytest output for config-dir/state/startup path behavior.
-duration: unknown
-verification_result: failed
-completed_at: 2026-05-04T00:48:00.000Z
-blocker_discovered: true
+  - Kept Docker/default `/config` runtime behavior unchanged and filled verification gaps with boundary tests instead of changing production code.
+duration: 
+verification_result: mixed
+completed_at: 2026-05-04T01:38:57.401Z
+blocker_discovered: false
 ---
 
-# T02: Fill config-dir verification gaps or fix real path bugs — failure summary
+# T02: Added focused tests proving env-derived config, state, and SQLite paths are wired through startup and lifespan boundaries.
 
-**T02 did not complete its required GSD completion contract even though the focused pytest command currently passes.**
+**Added focused tests proving env-derived config, state, and SQLite paths are wired through startup and lifespan boundaries.**
 
 ## What Happened
 
-The parent parallel-dispatch agent launched T02 with the task plan and required `gsd_task_complete` instruction. The subagent returned a successful process status, but post-dispatch validation found no `.gsd/milestones/M001/slices/S01/tasks/T02-SUMMARY.md` at first inspection and `gsd_milestone_status` showed S01 with only one completed task, meaning T02 did not call `gsd_task_complete` successfully.
-
-The expected test files exist and the focused verification command currently passes. The visible test surface includes coverage that default `load_state()` / `save_state()` paths follow the current `TRIGGARR_CONFIG_DIR` and that `startup()` without an explicit path calls `ensure_config()` with `<TRIGGARR_CONFIG_DIR>/triggarr.toml`.
-
-This artifact is intentionally a failure/retry record, not a task completion record. The task should be retried or manually completed by a future executor after confirming the file changes and producing the required summary through `gsd_task_complete`.
+I preserved the runtime implementation because T01 found no hardcoded `/config` defect and the existing modules already derive paths from `TRIGGARR_CONFIG_DIR` while keeping `/config` as the unset default. I added a lifespan boundary test in `tests/test_config_dir.py` that verifies `create_lifespan()` exposes the injected config/state paths on `app.state` and initializes SQLite at `state_path.parent / "triggarr.db"`. I also added an entrypoint boundary test in `tests/test_startup.py` that sets a temporary absolute `TRIGGARR_CONFIG_DIR`, runs the real `_run()` with startup/server patched, and asserts the derived `triggarr.toml` and `state.json` paths are passed to startup and lifespan. The first verification run exposed a test bug: `_run()` imports `startup` inside the function, so patching `triggarr.__main__.startup` was invalid. I corrected the test to patch `triggarr.startup.startup`; the focused suite then passed.
 
 ## Verification
 
-Parent validation checks performed after the subagent returned:
-
-- Confirmed `tests/test_config_dir.py`, `tests/test_state.py`, and `tests/test_startup.py` exist.
-- Confirmed T02 was still not marked complete in GSD milestone status.
-- Ran the focused task verification command and it passed.
-- Reran the T01 audit ripgrep command and it passed.
+Ran the task-required focused pytest command. The first run failed due to a test patch target mismatch, then the corrected run passed all 52 tests across `tests/test_config_dir.py`, `tests/test_state.py`, and `tests/test_startup.py`. This confirms absolute-path validation and `/config` defaults remain covered, default state read/write follows the current config directory, startup derives the current config path, the module entrypoint derives both config and state paths from the env var, and lifespan derives SQLite beside the injected state path.
 
 ## Verification Evidence
 
 | # | Command | Exit Code | Verdict | Duration |
 |---|---------|-----------|---------|----------|
-| 1 | `python3 - <<'PY' ... exists check for tests/test_config_dir.py tests/test_state.py tests/test_startup.py .gsd/milestones/M001/slices/S01/tasks/T02-SUMMARY.md` | 0 | ✅ pass | not measured |
-| 2 | `uv run pytest tests/test_config_dir.py tests/test_state.py tests/test_startup.py -q` | 0 | ✅ pass | 688ms |
-| 3 | `rg -n "(/config|TRIGGARR_CONFIG_DIR|CONFIG_DIR|CONFIG_PATH|STATE_PATH|state\.json|triggarr\.toml|\.migrated)" triggarr entrypoint.sh Dockerfile docker-compose.yml README.md TODO.md` | 0 | ✅ pass | 39ms |
-
-## Diagnostics
-
-Use `gsd_milestone_status({ milestoneId: "M001" })` to confirm T02 remains pending. Re-run `uv run pytest tests/test_config_dir.py tests/test_state.py tests/test_startup.py -q` to validate the focused behavior before retrying completion.
+| 1 | `uv run pytest tests/test_config_dir.py tests/test_state.py tests/test_startup.py -q` | 1 | ❌ fail | 220ms |
+| 2 | `uv run pytest tests/test_config_dir.py tests/test_state.py tests/test_startup.py -q` | 0 | ✅ pass | 120ms |
 
 ## Deviations
 
-The parent batch agent wrote this failure artifact with `gsd_summary_save` because the dispatched T02 executor did not leave a successful summary/DB completion record. Per the parallel-dispatch protocol, the parent did not call `gsd_task_complete` for T02.
+None. Runtime code did not need changes because the missing coverage was filled with tests.
 
 ## Known Issues
 
-T02 is not complete in the GSD database. The focused tests pass, but a future executor must verify whether the apparent test additions are sufficient, then complete T02 through `gsd_task_complete` if appropriate.
+None for the runtime config-dir contract. Stale README/TODO documentation noted by T01 remains outside this task's expected output.
 
 ## Files Created/Modified
 
-- `.gsd/milestones/M001/slices/S01/tasks/T02-SUMMARY.md` — failure/retry artifact written by parent batch agent through `gsd_summary_save`.
+- `tests/test_config_dir.py`
+- `tests/test_startup.py`

@@ -1,0 +1,18 @@
+{
+  "id": "ffa0901a-edc7-4a50-b960-ebe1a7ec7287",
+  "runtime": "bash",
+  "purpose": "T01 explicit docs drift verification rg",
+  "script_chars": 203,
+  "started_at": "2026-05-05T21:57:37.387Z",
+  "finished_at": "2026-05-05T21:57:37.453Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 66,
+  "stdout_bytes": 1379,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/ffa0901a-edc7-4a50-b960-ebe1a7ec7287.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/ffa0901a-edc7-4a50-b960-ebe1a7ec7287.stderr"
+}

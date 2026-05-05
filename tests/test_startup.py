@@ -172,6 +172,46 @@ async def test_startup_default_config_path_follows_current_config_dir(
     mock_validate.assert_not_called()
 
 
+async def test_main_run_wires_current_config_dir_into_startup_and_lifespan(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The real module entrypoint should pass env-derived config/state paths onward."""
+    from contextlib import asynccontextmanager
+
+    import triggarr.__main__ as main_module
+
+    monkeypatch.setenv("TRIGGARR_CONFIG_DIR", str(tmp_path))
+    settings = Settings()
+    seen_lifespan_args: list[tuple[Settings, Path, Path]] = []
+
+    @asynccontextmanager
+    async def _fake_lifespan(_app):
+        yield
+
+    def _fake_create_lifespan(settings_arg: Settings, state_path: Path, config_path: Path):
+        seen_lifespan_args.append((settings_arg, state_path, config_path))
+        return _fake_lifespan
+
+    class _FakeServer:
+        def __init__(self, _config) -> None:
+            pass
+
+        async def serve(self) -> None:
+            return None
+
+    with (
+        patch("triggarr.startup.startup", AsyncMock(return_value=settings)) as mock_startup,
+        patch.object(main_module, "create_lifespan", side_effect=_fake_create_lifespan),
+        patch.object(main_module.uvicorn, "Server", _FakeServer),
+    ):
+        await main_module._run()
+
+    expected_config_path = tmp_path / "triggarr.toml"
+    expected_state_path = tmp_path / "state.json"
+    mock_startup.assert_awaited_once_with(expected_config_path)
+    assert seen_lifespan_args == [(settings, expected_state_path, expected_config_path)]
+
+
 # ---------------------------------------------------------------------------
 # Sonarr API version detection -- unit tests on SonarrClient
 # ---------------------------------------------------------------------------

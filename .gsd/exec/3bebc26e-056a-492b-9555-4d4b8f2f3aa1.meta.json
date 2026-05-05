@@ -1,0 +1,18 @@
+{
+  "id": "3bebc26e-056a-492b-9555-4d4b8f2f3aa1",
+  "runtime": "bash",
+  "purpose": "audit docs source patterns for config auth paths capabilities",
+  "script_chars": 1084,
+  "started_at": "2026-05-05T21:56:22.869Z",
+  "finished_at": "2026-05-05T21:56:31.583Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 8714,
+  "stdout_bytes": 1048576,
+  "stderr_bytes": 0,
+  "stdout_truncated": true,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/3bebc26e-056a-492b-9555-4d4b8f2f3aa1.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/3bebc26e-056a-492b-9555-4d4b8f2f3aa1.stderr"
+}

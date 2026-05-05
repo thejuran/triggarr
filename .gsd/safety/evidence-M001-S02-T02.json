@@ -1,0 +1,74 @@
+[
+  {
+    "kind": "bash",
+    "toolCallId": "call_kgVLFWbJOWeba4roTFuY2b1G|fc_067bb828c74fde8b0169fa6835c9e8819a9ebb00f6eb462a2a",
+    "command": "rg -n \"login|setup|auth.method|api_key|session_secret\" triggarr tests README.md",
+    "exitCode": 0,
+    "outputSnippet": "tests/test_clients.py:834:    client = LidarrClient(base_url=\"http://test\", api_key=\"key\")\ntests/test_clients.py:855:    client = _ConcreteClient(base_url=\"http://test\", api_key=\"key\")\ntests/test_clients.py:872:    client = _ConcreteClient(base_url=\"http://test\", api_key=\"key\")\ntests/test_clients.py:889:    client = _ConcreteClient(base_url=\"http://test\", api_key=\"key\")\ntests/test_clients.py:913:    client = _ConcreteClient(base_url=\"http://test\", api_key=\"key\")\ntests/test_clients.py:948:    cli",
+    "timestamp": 1778018358241
+  },
+  {
+    "kind": "bash",
+    "toolCallId": "call_b95zitk9prWjhXsI1CPR64eP|fc_067bb828c74fde8b0169fa685d8628819aa226b8cb9a6ddd3e",
+    "command": "rg -n \"_ALLOWED_AUTH_METHODS\" triggarr/web/routes.py triggarr/templates/settings.html tests/test_auth_routes.py",
+    "exitCode": 0,
+    "outputSnippet": "triggarr/web/routes.py:1299:_ALLOWED_AUTH_METHODS = {\"Forms\", \"Basic\", \"External\"}\ntriggarr/web/routes.py:1374:    if auth_method not in _ALLOWED_AUTH_METHODS:\n",
+    "timestamp": 1778018398485
+  },
+  {
+    "kind": "bash",
+    "toolCallId": "call_RXdvHReyZQnHrZLJO1D0DcNG|fc_067bb828c74fde8b0169fa6863ba48819a9afcbc586d195a03",
+    "command": "rg -n \"allowed_auth_methods|_ALLOWED_AUTH_METHODS|auth_method\" triggarr/web/routes.py triggarr/templates/settings.html",
+    "exitCode": 0,
+    "outputSnippet": "triggarr/templates/settings.html:93:      <select name=\"auth_method\" onchange=\"updateMethodWarning(this.value)\"\ntriggarr/templates/settings.html:96:        <option value=\"{{ mode }}\" {% if auth_method == mode %}selected{% endif %}>{{ mode }}</option>\ntriggarr/templates/settings.html:261:    var select = document.querySelector('select[name=\"auth_method\"]');\ntriggarr/web/routes.py:405:            \"auth_method\": settings.auth.method,\ntriggarr/web/routes.py:1299:_ALLOWED_AUTH_METHODS = {\"Forms\", \"Ba",
+    "timestamp": 1778018404287
+  },
+  {
+    "kind": "edit",
+    "toolCallId": "call_koboo7EL88Q2kxN5pCR45qJX|fc_067bb828c74fde8b0169fa687291a8819aad82f8944aadcda2",
+    "path": "README.md",
+    "timestamp": 1778018420937
+  },
+  {
+    "kind": "edit",
+    "toolCallId": "call_2IZwMtciIVMGY2TUi1SG0RU2|fc_067bb828c74fde8b0169fa6877741c819a88a692a091a07aab",
+    "path": "README.md",
+    "timestamp": 1778018430106
+  },
+  {
+    "kind": "edit",
+    "toolCallId": "call_79yQjrMxivzEvhzKz20nni97|fc_067bb828c74fde8b0169fa68819fcc819aa229651afd53a00b",
+    "path": "README.md",
+    "timestamp": 1778018445703
+  },
+  {
+    "kind": "edit",
+    "toolCallId": "call_62HYAWxNVZaGozKUSeHsM2im|fc_067bb828c74fde8b0169fa6891acbc819aaf7925c47d7e7c7a",
+    "path": "README.md",
+    "timestamp": 1778018459471
+  },
+  {
+    "kind": "bash",
+    "toolCallId": "call_C8hXimRgyjM1NCkRbq0SMXiw|fc_067bb828c74fde8b0169fa68ae23dc819aaa1257e04006e9e3",
+    "command": "start=$(python - <<'PY'\nimport time\nprint(time.perf_counter_ns())\nPY\n)\nif rg -n \"no authentication|\\[radarr\\]\\s*$|\\[sonarr\\]\\s*$|\\[lidarr\\]\\s*$|mellow-tinkering-creek\" README.md; then\n  code=1\nelse\n  code=0\nfi\nend=$(python - <<'PY'\nimport time\nprint(time.perf_counter_ns())\nPY\n)\nduration=$(( (end - start) / 1000000 ))\necho \"exit_code=$code duration_ms=$duration\"\nexit \"$code\"",
+    "exitCode": 0,
+    "outputSnippet": "exit_code=0 duration_ms=0\n/bin/bash: line 4: python: command not found\n/bin/bash: line 14: python: command not found\n",
+    "timestamp": 1778018479805
+  },
+  {
+    "kind": "bash",
+    "toolCallId": "call_qkG4z4Vpm9acczvrwo958qNz|fc_067bb828c74fde8b0169fa68b5c07c819aa8767abe3ab2fbea",
+    "command": "start=$(python3 - <<'PY'\nimport time\nprint(time.perf_counter_ns())\nPY\n)\nif rg -n \"no authentication|\\[radarr\\]\\s*$|\\[sonarr\\]\\s*$|\\[lidarr\\]\\s*$|mellow-tinkering-creek\" README.md; then\n  code=1\nelse\n  code=0\nfi\nend=$(python3 - <<'PY'\nimport time\nprint(time.perf_counter_ns())\nPY\n)\nduration=$(( (end - start) / 1000000 ))\necho \"exit_code=$code duration_ms=$duration\"\nexit \"$code\"",
+    "exitCode": 0,
+    "outputSnippet": "exit_code=0 duration_ms=22\n",
+    "timestamp": 1778018486594
+  },
+  {
+    "kind": "bash",
+    "toolCallId": "call_2oXl5hyRqoQNZX1oTy3sH4wG|fc_067bb828c74fde8b0169fa68bad398819a994a35e80c4235ce",
+    "command": "start=$(python3 - <<'PY'\nimport time\nprint(time.perf_counter_ns())\nPY\n)\nuv run python - <<'PY'\nfrom pathlib import Path\nimport re\nimport tomllib\nfrom triggarr.models.config import Settings\nreadme = Path('README.md').read_text()\nmatch = re.search(r'```toml\\n(.*?)\\n```', readme, re.S)\nassert match, 'README TOML block not found'\ndata = tomllib.loads(match.group(1))\nsettings = Settings(**data)\nassert 'Default' in settings.radarr\nassert '4K' in settings.radarr\nassert 'Default' in settings.sonarr\nassert 'Default' in settings.lidarr\nprint('README TOML example validates against Settings')\nPY\ncode=$?\nend=$(python3 - <<'PY'\nimport time\nprint(time.perf_counter_ns())\nPY\n)\nduration=$(( (end - start) / 1000000 ))\necho \"exit_code=$code duration_ms=$duration\"\nexit \"$code\"",
+    "exitCode": 0,
+    "outputSnippet": "README TOML example validates against Settings\nexit_code=0 duration_ms=272\n",
+    "timestamp": 1778018494052
+  }
+]
