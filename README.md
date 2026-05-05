@@ -72,7 +72,7 @@ volumes:
 
 Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:8484) to complete first-run account setup and configure your Radarr, Sonarr, and/or Lidarr connections.
 
-The Docker image defaults `TRIGGARR_CONFIG_DIR` to `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `restart: unless-stopped` example above, the container then starts normally on the next restart.
+When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `restart: unless-stopped` example above, the container then starts normally on the next restart.
 
 ### Standalone (pip)
 
@@ -202,10 +202,11 @@ Requests may also authenticate with `X-Api-Key` when `auth.api_key` is set. The 
 - **Password hashes** use bcrypt, and session cookies are signed with a generated session secret
 - **Login attempts** are rate-limited per client IP
 - **Config file** is written with `0600` permissions (owner-read/write only)
+- **Config secrets** in `triggarr.toml` are plaintext on disk; protect them with file permissions and volume security
 - **Docker container** drops all capabilities except CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID
 - **CSRF protection** via Origin/Referer checking on mutating requests
 - **Security headers** include frame denial, MIME-sniffing prevention, same-origin referrer policy, and a restrictive CSP
-- **URL validation** blocks SSRF attempts (non-HTTP schemes, inappropriate public IPs)
+- **URL validation** blocks SSRF attempts by rejecting non-HTTP schemes and metadata, link-local, loopback, unspecified, or multicast targets
 - **Security hardening** via `no-new-privileges` applied after privilege setup in entrypoint when the host supports it
 
 ### Recommendation
@@ -233,7 +234,7 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - TRUSTED_PROXY_IPS=172.18.0.1       # Docker network gateway (use 172.18.0.0/16 for the full subnet)
+      - TRUSTED_PROXY_IPS=172.18.0.1       # Prefer the specific proxy IP; use a CIDR only on fully trusted Docker networks
     volumes:
       - triggarr_config:/config
     ports:

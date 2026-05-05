@@ -1,0 +1,8 @@
+docs/screenshots/dashboard.png: True
+docs/screenshots/history.png: True
+docs/screenshots/settings.png: True
+docker-compose.yml: True
+SECURITY.md: True
+CONTRIBUTING.md: True
+CHANGELOG.md: True
+TODO.md: True

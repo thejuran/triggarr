@@ -1,0 +1,18 @@
+{
+  "id": "75aa8b0d-7c51-49a9-b967-6286cd82506c",
+  "runtime": "bash",
+  "purpose": "T02 full pytest verification",
+  "script_chars": 318,
+  "started_at": "2026-05-05T22:09:27.281Z",
+  "finished_at": "2026-05-05T22:09:44.968Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 17687,
+  "stdout_bytes": 1666,
+  "stderr_bytes": 81,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/75aa8b0d-7c51-49a9-b967-6286cd82506c.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/75aa8b0d-7c51-49a9-b967-6286cd82506c.stderr"
+}

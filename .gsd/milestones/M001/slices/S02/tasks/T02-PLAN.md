@@ -4,7 +4,7 @@ estimated_files: 1
 skills_used: []
 ---
 
-# T02: Update README install, config, and security sections
+# T02: Updated README install, config, and security guidance to match current config-dir, multi-instance, and auth behavior.
 
 Why: README is the primary user entry point and currently mixes current standalone config-dir docs with stale config/security examples.
 

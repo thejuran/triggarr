@@ -1,0 +1,18 @@
+{
+  "id": "9557b3a5-6065-420e-9c29-6c2435dd9785",
+  "runtime": "bash",
+  "purpose": "S03 T01 stale content checks from S02",
+  "script_chars": 1133,
+  "started_at": "2026-05-05T22:09:54.920Z",
+  "finished_at": "2026-05-05T22:09:54.956Z",
+  "exit_code": 1,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 36,
+  "stdout_bytes": 1005,
+  "stderr_bytes": 0,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/9557b3a5-6065-420e-9c29-6c2435dd9785.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/9557b3a5-6065-420e-9c29-6c2435dd9785.stderr"
+}

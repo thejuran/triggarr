@@ -4,7 +4,7 @@ estimated_files: 5
 skills_used: []
 ---
 
-# T03: Retire stale TODO and reconcile supporting docs
+# T03: Retired the stale configurable config-directory TODO and reconciled backlog/security docs with current path and auth behavior.
 
 Why: stale backlog notes caused this milestone; leaving them stale would recreate the problem for the next agent.
 

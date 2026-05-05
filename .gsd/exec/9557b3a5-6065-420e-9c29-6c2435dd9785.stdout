@@ -1,0 +1,10 @@
+CHECK 1: README stale no-auth/flat/missing-plan markers
+CHECK 1 RESULT: no matches
+CHECK 2: retired config-dir backlog markers
+CHECK 2 RESULT: no matches
+CHECK 3: final docs-review correction markers
+SECURITY.md:24:- **Session cookies** -- browser sessions are signed, HTTP-only, SameSite=Lax cookies with a 30-day max age. Cookies are marked secure when the request is HTTPS or forwarded as HTTPS by a trusted proxy.
+README.md:75:The Docker image defaults `TRIGGARR_CONFIG_DIR` to `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `restart: unless-stopped` example above, the container then starts normally on the next restart.
+README.md:208:- **URL validation** blocks SSRF attempts (non-HTTP schemes, inappropriate public IPs)
+README.md:236:      - TRUSTED_PROXY_IPS=172.18.0.1       # Docker network gateway (use 172.18.0.0/16 for the full subnet)
+CHECK 3 RESULT: stale markers found

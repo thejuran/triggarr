@@ -25,12 +25,12 @@ Nothing remains before the milestone is usable end-to-end once this slice passes
 
 ## Tasks
 
-- [ ] **T01: Run focused runtime and docs verification** `est:30m`
+- [x] **T01: Run focused runtime and docs verification** `est:30m`
   Why: docs and runtime behavior are now coupled; focused verification should rerun after all code/docs edits to catch regressions before expensive full-suite checks.
   - Files: `tests/test_config_dir.py`, `tests/test_state.py`, `tests/test_startup.py`, `README.md`, `TODO.md`, `.gsd/DEFERRED-BACKLOG.md`
   - Verify: `uv run pytest tests/test_config_dir.py tests/test_state.py tests/test_startup.py -q` and stale-content `rg` checks from S02.
 
-- [ ] **T02: Run full tests and lint** `est:1h`
+- [x] **T02: Run full tests and lint** `est:1h`
   Why: milestone completion requires project-level confidence, not only focused checks.
   - Files: `triggarr`, `tests`, `README.md`, `TODO.md`
   - Verify: `uv run pytest tests/ -x -q` and `uv run ruff check triggarr/ tests/`

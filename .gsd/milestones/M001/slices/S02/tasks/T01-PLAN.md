@@ -4,7 +4,7 @@ estimated_files: 13
 skills_used: []
 ---
 
-# T01: Audit README and adjacent docs against current behavior
+# T01: Audited README and adjacent docs against verified auth, config-dir, multi-instance, release, and Lidarr behavior.
 
 Why: the README already shows signs of mixed-era documentation, so edits should be grounded in code and tests rather than assumptions.
 

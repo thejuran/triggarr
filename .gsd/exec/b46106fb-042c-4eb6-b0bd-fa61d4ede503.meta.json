@@ -1,0 +1,18 @@
+{
+  "id": "b46106fb-042c-4eb6-b0bd-fa61d4ede503",
+  "runtime": "bash",
+  "purpose": "T02 ruff verification",
+  "script_chars": 334,
+  "started_at": "2026-05-05T22:09:27.285Z",
+  "finished_at": "2026-05-05T22:09:27.514Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "duration_ms": 229,
+  "stdout_bytes": 101,
+  "stderr_bytes": 81,
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "stdout_path": "/Users/julianamacbook/triggarr/.gsd/exec/b46106fb-042c-4eb6-b0bd-fa61d4ede503.stdout",
+  "stderr_path": "/Users/julianamacbook/triggarr/.gsd/exec/b46106fb-042c-4eb6-b0bd-fa61d4ede503.stderr"
+}
