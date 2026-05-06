@@ -79,7 +79,7 @@ When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`
 Requires Python 3.11+. Download the `.whl` from the [latest release](https://github.com/thejuran/triggarr/releases/latest), or install the current release directly:
 
 ```bash
-pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.7.1-py3-none-any.whl
+pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.7.2-py3-none-any.whl
 ```
 
 Set an absolute config directory before starting Triggarr:

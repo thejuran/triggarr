@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "triggarr"
-version = "2.7.1"
+version = "2.7.2"
 description = "Automated search triggering for Radarr and Sonarr"
 requires-python = ">=3.11"
 dependencies = [

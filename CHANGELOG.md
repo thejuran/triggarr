@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.7.2 (2026-05-06)
+
+Portable config directory and documentation refresh.
+
+* Improvements:
+
+  * Custom config directory deployments now behave more consistently, including migration marker handling.
+  * Documentation now better reflects current Docker, pip, authentication, reverse proxy, and multi-instance configuration behavior.
+  * Radarr, Sonarr, and Lidarr examples have been refreshed to match the current named-instance config format.
+  * Reverse proxy guidance now more clearly explains `ROOT_PATH`, `TRUSTED_PROXY_IPS`, and secure cookie behavior.
+  * Release automation has been tightened so container publishing only runs from successful main-branch CI.
+
+* Fixes:
+
+  * Fixed a config migration marker path issue when Triggarr is launched with a runtime config path.
+  * Removed generated agent/runtime files from the source tree so releases stay cleaner.
+
 ## v2.7.1 (2026-04-18)
 
 Dashboard Scale Refresh — pixel-exact port of the finalized AIDesigner artifact. Spacious header with vendored Phosphor icons, scaled stat cards, refined app cards with colored borders, card-based activity rail, updated log viewer, and cleaned-up favicon.
