@@ -14,8 +14,31 @@ build/
 .vscode/
 *.swp
 
-# GSD activity logs
+# GSD runtime and generated local artifacts
 .gsd/activity/
+.gsd/exec/
+.gsd/runtime/
+.gsd/worktrees/
+.gsd/audit/
+.gsd/journal/
+.gsd/turingmind-review/
+.gsd/notifications.jsonl
+.gsd/graphs/
+.gsd/safety/
+.gsd/last-snapshot.md
+.gsd/STATE.md
+.gsd/auto.lock
+.gsd/doctor-history.jsonl
+.gsd/event-log.jsonl
+# This repo persists durable GSD artifacts in Git; SQLite state/WAL files are local runtime data.
+.gsd/gsd.db*
+.gsd/metrics.json
+.gsd/state-manifest.json
+.gsd/browser-state/
+.gsd/browser-baselines/
+
+# Agent-local worktrees
+.claude/worktrees/
 
 # OS
 .DS_Store

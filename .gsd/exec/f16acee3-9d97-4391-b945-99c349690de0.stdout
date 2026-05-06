@@ -1,4 +1,0 @@
-COMMAND=rg -n -i -e 'no authentication|authentication is not implemented|config directory is not configurable|make config directory configurable|flat \[radarr\]|\[radarr\][[:space:]]*$|TRIGGARR_GENERAL__|directly trusts.*x-forwarded-proto|routes trust.*x-forwarded-proto|carries `x-forwarded-proto: https`' -- README.md SECURITY.md TODO.md CONTRIBUTING.md docs
-NO_MATCHES=1
-RG_EXIT_CODE=1
-EXIT_CODE=0

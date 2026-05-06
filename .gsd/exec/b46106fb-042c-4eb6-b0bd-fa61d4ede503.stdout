@@ -1,2 +1,0 @@
-All checks passed!
-GSD_RESULT command='uv run ruff check triggarr/ tests/' exit_code=0 duration_ms=0

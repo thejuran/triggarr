@@ -1,9 +1,0 @@
-2026-05-05 17:54:07.129 | WARNING  | triggarr.config:ensure_config:230 - Default config written to /private/var/folders/xq/3_d4916j6jl_5n6173p02lxw0000gn/T/tmp.kStaCS9l6x/triggarr.toml -- edit the config file and restart Triggarr
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-  File "/Users/julianamacbook/triggarr/triggarr/models/config.py", line 37, in <module>
-    CONFIG_DIR = get_config_dir()
-                 ^^^^^^^^^^^^^^^^
-  File "/Users/julianamacbook/triggarr/triggarr/models/config.py", line 28, in get_config_dir
-    raise ValueError(msg)
-ValueError: TRIGGARR_CONFIG_DIR must be an absolute path, got: relative

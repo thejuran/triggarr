@@ -1,3 +1,0 @@
-Traceback (most recent call last):
-  File "<stdin>", line 3, in <module>
-ImportError: cannot import name 'CONFIG_FILE' from 'triggarr.models.config' (/Users/julianamacbook/triggarr/triggarr/models/config.py). Did you mean: 'CONFIG_DIR'?

@@ -1,6 +1,0 @@
-CHECK 1: README stale no-auth/flat/missing-plan markers
-CHECK 1 RESULT: no matches
-CHECK 2: retired config-dir backlog markers
-CHECK 2 RESULT: no matches
-CHECK 3: final docs-review correction markers
-CHECK 3 RESULT: no matches

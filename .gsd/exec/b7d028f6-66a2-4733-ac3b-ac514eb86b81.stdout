@@ -1,2 +1,0 @@
-Release readiness: blocked
-| 6 | `test -s .gsd/milestones/M001/slices/S05/S05-DOCS-REVIEW-PACKET.md && test -s .gsd/milestones/M001/slices/S05/S05-UAT-GATE.md && test -s .gsd/milestones/M001/slices/S05/S05-RELEASE-GATE-EVIDENCE.md && ...` | 0 | ✅ pass | `.gsd/exec/51266f70-59fe-442c-b9c6-d32c72395cf2.stdout` | `.gsd/exec/51266f70-59fe-442c-b9c6-d32c72395cf2.stderr` | Artifact existence/content check passed and confirmed `Release readiness: blocked`. |

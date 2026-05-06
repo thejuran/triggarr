@@ -10,6 +10,8 @@ build/
 .pytest_cache/
 tests/
 .planning/
+.gsd/
+.claude/worktrees/
 .idea/
 .vscode/
 .DS_Store

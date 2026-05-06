@@ -43,7 +43,7 @@ from triggarr.config import _atomic_toml_write, load_settings
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
-from triggarr.models.config import APP_TYPES, CONFIG_DIR, AuthConfig, InstanceConfig
+from triggarr.models.config import APP_TYPES, AuthConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.search.engine import run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
@@ -73,6 +73,11 @@ templates.env.globals["update_info"] = update_info
 # for conditional logout link visibility (D-11).
 auth_state: dict = {"active": False}
 templates.env.globals["auth_state"] = auth_state
+
+
+def _runtime_config_dir(request: Request) -> Path:
+    """Return the active runtime config directory for route-level sidecar files."""
+    return Path(request.app.state.config_path).parent
 
 
 def _sync_auth_state(settings: SettingsModel) -> None:
@@ -356,7 +361,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "all_instances": all_instances,
             "selected_instance": "",
             "instance_app_type": None,
-            "show_migration_banner": (CONFIG_DIR / ".migrated").exists(),
+            "show_migration_banner": (_runtime_config_dir(request) / ".migrated").exists(),
             "radarr_enabled": bool(settings.get_enabled_instances("radarr")),
             "sonarr_enabled": bool(settings.get_enabled_instances("sonarr")),
             "lidarr_enabled": bool(settings.get_enabled_instances("lidarr")),
@@ -996,7 +1001,7 @@ async def dismiss_migration(request: Request) -> HTMLResponse:
     """
     if not request.headers.get("HX-Request"):
         return HTMLResponse("Forbidden", status_code=403)
-    (CONFIG_DIR / ".migrated").unlink(missing_ok=True)
+    (_runtime_config_dir(request) / ".migrated").unlink(missing_ok=True)
     return HTMLResponse("")
 
 

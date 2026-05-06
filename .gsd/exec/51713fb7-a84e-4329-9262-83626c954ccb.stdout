@@ -1,4 +1,0 @@
-COMMAND=uv run pytest tests/test_config.py -q -k 'v22 or migrate_v22 or ensure_config_calls_migration or toml_round_trip'
-.....................                                                    [100%]
-21 passed, 33 deselected in 0.02s
-EXIT_CODE=0

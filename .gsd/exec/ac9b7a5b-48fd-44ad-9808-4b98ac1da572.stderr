@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "<stdin>", line 7, in <module>
-  File "/Users/julianamacbook/triggarr/.venv/lib/python3.12/site-packages/pydantic/_internal/_model_construction.py", line 289, in __getattr__
-    raise AttributeError(item)
-AttributeError: model_validate_toml. Did you mean: 'model_validate_json'?

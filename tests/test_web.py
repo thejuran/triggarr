@@ -1804,46 +1804,61 @@ def test_dashboard_includes_all_instances_and_health(client, test_app):
     assert response.status_code == 200
 
 
-def test_dismiss_migration(client, tmp_path):
-    """DELETE /api/dismiss-migration deletes .migrated marker and returns empty HTML."""
+def test_dashboard_migration_banner_uses_runtime_config_path(client, test_app, tmp_path):
+    """Dashboard migration banner follows app.state.config_path, not import-time CONFIG_DIR."""
+    test_app.state.config_path = tmp_path / "triggarr.toml"
     marker = tmp_path / ".migrated"
     marker.touch()
 
-    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
-        response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Config migrated to v2.3 format" in response.text
+
+
+def test_dismiss_migration(client, test_app, tmp_path):
+    """DELETE /api/dismiss-migration deletes .migrated marker and returns empty HTML."""
+    test_app.state.config_path = tmp_path / "triggarr.toml"
+    marker = tmp_path / ".migrated"
+    marker.touch()
+
+    response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
 
     assert response.status_code == 200
     assert response.text == ""
     assert not marker.exists()
 
 
-def test_dismiss_migration_no_file(client, tmp_path):
+def test_dismiss_migration_no_file(client, test_app, tmp_path):
     """DELETE /api/dismiss-migration succeeds even if .migrated does not exist."""
-    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
-        response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
+    test_app.state.config_path = tmp_path / "triggarr.toml"
+
+    response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
 
     assert response.status_code == 200
     assert response.text == ""
 
 
-def test_dismiss_migration_csrf_rejects_non_htmx(client, tmp_path):
+def test_dismiss_migration_csrf_rejects_non_htmx(client, test_app, tmp_path):
     """DELETE /api/dismiss-migration returns 403 without HX-Request header."""
+    test_app.state.config_path = tmp_path / "triggarr.toml"
     marker = tmp_path / ".migrated"
     marker.touch()
-    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
-        response = client.delete("/api/dismiss-migration")
+
+    response = client.delete("/api/dismiss-migration")
 
     assert response.status_code == 403
     # File should NOT have been deleted
     assert marker.exists()
 
 
-def test_dismiss_migration_csrf_allows_htmx(client, tmp_path):
+def test_dismiss_migration_csrf_allows_htmx(client, test_app, tmp_path):
     """DELETE /api/dismiss-migration succeeds with HX-Request header."""
+    test_app.state.config_path = tmp_path / "triggarr.toml"
     marker = tmp_path / ".migrated"
     marker.touch()
-    with patch("triggarr.web.routes.CONFIG_DIR", tmp_path):
-        response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
+
+    response = client.delete("/api/dismiss-migration", headers={"HX-Request": "true"})
 
     assert response.status_code == 200
     assert not marker.exists()
