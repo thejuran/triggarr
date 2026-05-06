@@ -7,11 +7,11 @@ key_files:
   - .gsd/DEFERRED-BACKLOG.md
   - SECURITY.md
 key_decisions:
-  - Kept TODO.md as an explicit empty backlog marker instead of deleting it, so future agents can distinguish "no pending TODOs" from a missing or forgotten file.
-  - Retired the configurable config-directory item in .gsd/DEFERRED-BACKLOG.md rather than leaving it in active carry-forward, because current source/tests already implement the path contract.
+  - Kept TODO.md as an explicit empty backlog marker instead of deleting it, so future agents can distinguish no pending TODOs from a missing file.
+  - Retired the configurable config-directory item in `.gsd/DEFERRED-BACKLOG.md` rather than leaving it as active carry-forward, because current source/tests already implement the path contract.
 duration: 
 verification_result: passed
-completed_at: 2026-05-05T22:04:20.052Z
+completed_at: 2026-05-06T00:02:44.705Z
 blocker_discovered: false
 ---
 
@@ -21,27 +21,27 @@ blocker_discovered: false
 
 ## What Happened
 
-Replaced the root TODO with an explicit "no pending TODOs" state and a short note that configurable config-directory work is already retired because current code derives config, state, and SQLite paths from an absolute TRIGGARR_CONFIG_DIR while preserving /config as the Docker default. Updated .gsd/DEFERRED-BACKLOG.md so the legacy transition audit no longer promotes the retired config-dir item and now leaves only the 6h update-check stash as an active carry-forward candidate. Refreshed SECURITY.md to match current product capabilities: Radarr/Sonarr/Lidarr support, setup/default auth behavior, Forms/Basic/External/Disabled modes, X-Api-Key support, signed sessions, route protection, config-dir path behavior, and current container hardening guidance. Checked README-referenced local paths and supporting docs so future agents are not pointed at missing files or stale security/path behavior.
+T03 replaced the root TODO with an explicit no-pending-TODOs state and noted that configurable config-directory work is retired because current code derives config, state, and SQLite paths from an absolute `TRIGGARR_CONFIG_DIR` while preserving `/config` as Docker default. It also updated `.gsd/DEFERRED-BACKLOG.md` so the legacy transition audit no longer promotes the retired config-dir item, and refreshed SECURITY.md to match Radarr/Sonarr/Lidarr support, setup/default auth behavior, Forms/Basic/External/Disabled modes, X-Api-Key support, signed sessions, protected routes, config-dir behavior, and container hardening guidance.
 
 ## Verification
 
-Ran the exact task stale-marker check against TODO.md, .gsd/DEFERRED-BACKLOG.md, and README.md; it exited 0 with no matches. Ran an additional supporting-doc drift scan across README.md, SECURITY.md, TODO.md, and .gsd/DEFERRED-BACKLOG.md for stale no-auth/config-dir phrases; it exited 0 with no matches. Verified README-referenced local docs/assets exist, including screenshots, docker-compose.yml, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md, and TODO.md.
+Original task verification passed: task stale-marker scan and supporting-doc drift scan returned no matches, and README-referenced local docs/assets existed. Later fresh M001 completion verification passed docs guardrails, full tests, and lint.
 
 ## Verification Evidence
 
 | # | Command | Exit Code | Verdict | Duration |
 |---|---------|-----------|---------|----------|
-| 1 | `! rg -n 'mellow-tinkering-creek|Hardcoded `/config/` paths prevent running outside Docker|Fix: add `TRIGGARR_CONFIG_DIR`' TODO.md .gsd/DEFERRED-BACKLOG.md README.md` | 0 | ✅ pass | 16ms |
-| 2 | `! rg -n 'no authentication|Triggarr is a single-process automation daemon that connects to Radarr and Sonarr instances|mellow-tinkering-creek|Hardcoded `/config/` paths prevent running outside Docker|Fix: add `TRIGGARR_CONFIG_DIR`' README.md SECURITY.md TODO.md .gsd/DEFERRED-BACKLOG.md` | 0 | ✅ pass | 65ms |
-| 3 | `uv run python - <<'PY'  # assert README-referenced local docs/assets exist` | 0 | ✅ pass | 150ms |
+| 1 | `! rg stale configurable config-dir TODO markers in TODO.md .gsd/DEFERRED-BACKLOG.md README.md` | 0 | ✅ pass — no stale TODO markers | 16ms |
+| 2 | `! rg stale no-auth/config-dir phrases in README.md SECURITY.md TODO.md .gsd/DEFERRED-BACKLOG.md` | 0 | ✅ pass — no stale supporting-doc matches | 65ms |
+| 3 | `uv run python assert README-referenced local docs/assets exist` | 0 | ✅ pass | 150ms |
 
 ## Deviations
 
-Extended the edit set to SECURITY.md because the slice-level T03 file list and T01 audit identified it as an adjacent supporting doc with stale auth/capability prose; no legacy GSD PROJECT/REQUIREMENTS/DECISIONS/QUEUE/STATE files were rewritten.
+Extended the edit set to SECURITY.md because the S02 file list and T01 audit identified it as adjacent supporting documentation with stale auth/capability prose.
 
 ## Known Issues
 
-None.
+None for T03 after later S04 refinements; human documentation UAT remains a release gate outside this task.
 
 ## Files Created/Modified
 

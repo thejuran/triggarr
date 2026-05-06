@@ -9,8 +9,8 @@
       "sourceFile": "STATE.md"
     },
     {
-      "id": "concept:phase:validating-milestone",
-      "label": "Phase: validating-milestone",
+      "id": "concept:phase:completing-milestone",
+      "label": "Phase: completing-milestone",
       "type": "concept",
       "confidence": "EXTRACTED",
       "sourceFile": "STATE.md"
@@ -336,5 +336,5 @@
       "confidence": "EXTRACTED"
     }
   ],
-  "builtAt": "2026-05-05T23:52:45.816Z"
+  "builtAt": "2026-05-06T00:03:20.303Z"
 }
