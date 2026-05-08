@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.7.3 (2026-05-08)
+
+Security patch release for a high-severity multipart parser advisory.
+
+* Security:
+
+  * Require `python-multipart>=0.0.27` to remediate GHSA-pp6c-gr5w-3c5g / CVE-2026-42561, a denial-of-service issue in multipart part header parsing.
+  * Refresh `uv.lock` so locked installs resolve `python-multipart 0.0.27`.
+  * Docker installs now enforce the patched dependency floor through `pyproject.toml`.
+
 ## v2.7.2 (2026-05-06)
 
 Portable config directory and documentation refresh.
