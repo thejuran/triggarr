@@ -68,6 +68,12 @@ Items carried forward (not in v2.7 scope):
 | requirement | UI-03: Settings security pixel-exact visual verification | v2.6 | human_needed |
 | tech-debt | `--color-triggarr-primaryDark` duplicate token (unused in templates) | v2.7 | cosmetic cleanup |
 
+### Quick Tasks Completed
+
+| Date | Task | Outcome |
+|------|------|---------|
+| 2026-05-19 | Address Dependabot alerts and PR | Merged PR #19 (idna 3.11→3.15, squash cc61133). Closes alert #12 (CVE-2026-45409, IDNA encoding bypass, medium). |
+
 ### Reference Artifacts
 
 - `.planning/milestones/v2.7-ROADMAP.md` -- archived v2.7 roadmap
