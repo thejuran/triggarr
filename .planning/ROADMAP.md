@@ -167,7 +167,11 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
   3. Two simultaneous PUT requests to the config save endpoint cannot interleave — the second waits for the first to complete and the resulting config file reflects exactly one of the two saves atomically
   4. Starting the application with a TOML file containing a syntax error or invalid UTF-8 produces a clear, actionable error message that includes the path of the backup file the user can restore from
   5. The concurrent config save test passes (`pytest`) confirming the SAFETY-05 lock prevents interleaved writes
-**Plans**: TBD
+**Plans:** 4 plans
+- [ ] 64-01-PLAN.md — SAFETY-04: harden _atomic_toml_write OSError handling (log non-FNF cleanup errors + log os.replace failures with path)
+- [ ] 64-02-PLAN.md — TEST-02: friendly TOML-corruption handler in ensure_config (syntax error + invalid UTF-8 + backup-path hint)
+- [ ] 64-03-PLAN.md — SAFETY-05 + TEST-03: concurrent POST /settings test via ASGITransport + grep audit of all 7 mutating routes + single-worker comment
+- [ ] 64-04-PLAN.md — SAFETY-01: docstring expansion on insert_search_entry + 2x max_rows soak test
 
 ### Phase 65: Scheduler Hardening & Resilience
 **Goal**: Scheduler jobs fail safely, alert on repeated failures, and shut down without leaving in-flight work in an unknown state
@@ -209,7 +213,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 | 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete | 2026-04-16 |
 | 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete | 2026-04-17 |
 | 63. Header Favicon Icon | v2.7 | 1/1 | Complete | 2026-04-17 |
-| 64. Data Safety & Config Integrity | v2.8 | 0/? | Not started | - |
+| 64. Data Safety & Config Integrity | v2.8 | 0/4 | Not started | - |
 | 65. Scheduler Hardening & Resilience | v2.8 | 0/? | Not started | - |
 | 66. Security Hardening | v2.8 | 0/? | Not started | - |
 | 67. Observability & CSRF Test Coverage | v2.8 | 0/? | Not started | - |
