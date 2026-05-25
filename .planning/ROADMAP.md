@@ -17,6 +17,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - ✅ v2.5 Dashboard UI Refresh -- Phases 48-53 (shipped 2026-04-13) -- [archive](milestones/v2.5-ROADMAP.md)
 - ✅ v2.6 Built-In Authentication -- Phases 54-59 (shipped 2026-04-15) -- [archive](milestones/v2.6-ROADMAP.md)
 - ✅ v2.7 Dashboard Scale Refresh -- Phases 60-63 (shipped 2026-04-18) -- [archive](milestones/v2.7-ROADMAP.md)
+- 🔄 **v2.8 Hardening & Observability -- Phases 64-67 (in progress)**
 
 ## Phases
 
@@ -147,9 +148,58 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 
 </details>
 
-### Next Milestone (Planned)
+### v2.8 Hardening & Observability (Phases 64-67)
 
-_None — run `/gsd-new-milestone` to scope v2.8._
+- [ ] **Phase 64: Data Safety & Config Integrity** - Enforce search history bounds, harden atomic config writes, add concurrency lock on config saves, test corrupted TOML recovery and concurrent saves
+- [ ] **Phase 65: Scheduler Hardening & Resilience** - Narrow scheduler exception handler to expected types, add consecutive-failure escalation, extend graceful shutdown timeout, test async client cleanup
+- [ ] **Phase 66: Security Hardening** - Remove CSP unsafe-inline via nonce migration, reject apikey= in *arr URLs, harden Basic auth header decoding, validate session secret at startup
+- [ ] **Phase 67: Observability & CSRF Test Coverage** - Surface last-successful-search per app on dashboard, cache tag lists with 1h TTL, add OriginCheckMiddleware test suite
+
+## Phase Details
+
+### Phase 64: Data Safety & Config Integrity
+**Goal**: Config writes and database growth are safe under concurrent access and in error conditions
+**Depends on**: Nothing (first phase of v2.8; all items touch persistence layer independently of scheduler/security)
+**Requirements**: SAFETY-01, SAFETY-04, SAFETY-05, TEST-02, TEST-03
+**Success Criteria** (what must be TRUE):
+  1. The SQLite search history table never exceeds `max_history_rows`; rows over the limit are trimmed immediately after each insert without blocking the search cycle
+  2. A failed `os.replace()` during config save produces a logged OSError rather than silently swallowing the failure; a `FileNotFoundError` during temp file cleanup continues to be suppressed
+  3. Two simultaneous PUT requests to the config save endpoint cannot interleave — the second waits for the first to complete and the resulting config file reflects exactly one of the two saves atomically
+  4. Starting the application with a TOML file containing a syntax error or invalid UTF-8 produces a clear, actionable error message that includes the path of the backup file the user can restore from
+  5. The concurrent config save test passes (`pytest`) confirming the SAFETY-05 lock prevents interleaved writes
+**Plans**: TBD
+
+### Phase 65: Scheduler Hardening & Resilience
+**Goal**: Scheduler jobs fail safely, alert on repeated failures, and shut down without leaving in-flight work in an unknown state
+**Depends on**: Phase 64 (config lock established; scheduler can safely read fresh config)
+**Requirements**: SAFETY-02, SAFETY-03, RES-01, TEST-04
+**Success Criteria** (what must be TRUE):
+  1. A search cycle that throws an unexpected exception type (e.g., `RuntimeError`, `MemoryError`) is no longer silently caught; only `httpx.HTTPError`, `pydantic.ValidationError`, `aiosqlite.Error`, and `OSError` are handled — others propagate to the APScheduler error handler
+  2. After N consecutive failures on a single job (default N=5, configurable), the log level escalates from WARNING to ERROR so the user can see the repeated failure without inspecting every individual line
+  3. Graceful shutdown waits up to 60 seconds (extended from 35s) for the search lock to drain; if a cycle is still holding the lock when the timeout fires, the specific job identifier and elapsed runtime are logged before forced close
+  4. The async client cleanup test confirms that calling `aclose()` on a client with in-flight requests does not hang and that any in-flight responses raise cleanly rather than leaving the event loop blocked
+**Plans**: TBD
+
+### Phase 66: Security Hardening
+**Goal**: The application's HTTP attack surface is narrowed: inline scripts are gone, credential-containing URLs are rejected at save time, and session and Basic auth handling are defensively validated
+**Depends on**: Phase 64 (config save path is locked before adding URL validation there)
+**Requirements**: SEC-01, SEC-02, SEC-03, SEC-04
+**Success Criteria** (what must be TRUE):
+  1. The CSP `script-src` directive no longer contains `'unsafe-inline'`; all inline `<script>` blocks in base and page templates are replaced with external static JS files or nonce-tagged script elements, verified by inspecting the `Content-Security-Policy` response header on any page
+  2. Submitting a Radarr/Sonarr/Lidarr URL that contains an `apikey=` query parameter in the settings form is rejected with a clear validation error before the config file is written
+  3. A Basic auth header whose decoded credentials contain null bytes or other control characters is rejected with a 401 and the failed decode attempt is logged at WARNING — it does not reach the password comparison step
+  4. On startup, if the session secret is shorter than 32 characters, or if it was auto-generated and not yet persisted to the config file, a WARNING is logged naming the problem and the recommended remediation
+**Plans**: TBD
+
+### Phase 67: Observability & CSRF Test Coverage
+**Goal**: Users can see at a glance whether searches are succeeding per app, tag resolution no longer adds a round-trip every cycle, and the CSRF middleware is verified against adversarial header scenarios
+**Depends on**: Phase 65 (scheduler records last-successful-search timestamps; Phase 64 config lock is available for cache invalidation on instance config save)
+**Requirements**: RES-02, RES-03, TEST-01
+**Success Criteria** (what must be TRUE):
+  1. The dashboard shows a "last successful search" timestamp for each enabled app type (Radarr, Sonarr, Lidarr); when the timestamp is more than 2× the configured interval in the past, it is visually flagged as stale (e.g., amber color or "stale" badge)
+  2. Tag lists fetched from `*arr` instances are cached in `app.state` and reused for up to 1 hour; saving instance config in the settings UI immediately invalidates the cache for that instance so the next cycle fetches fresh tags
+  3. The `OriginCheckMiddleware` test suite covers at minimum: missing Origin header, missing Referer header, both headers absent, scheme mismatch, and spoofed-host scenarios — all tests pass and none rely on internal middleware state
+**Plans**: TBD
 
 ## Progress
 
@@ -159,3 +209,7 @@ _None — run `/gsd-new-milestone` to scope v2.8._
 | 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete | 2026-04-16 |
 | 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete | 2026-04-17 |
 | 63. Header Favicon Icon | v2.7 | 1/1 | Complete | 2026-04-17 |
+| 64. Data Safety & Config Integrity | v2.8 | 0/? | Not started | - |
+| 65. Scheduler Hardening & Resilience | v2.8 | 0/? | Not started | - |
+| 66. Security Hardening | v2.8 | 0/? | Not started | - |
+| 67. Observability & CSRF Test Coverage | v2.8 | 0/? | Not started | - |

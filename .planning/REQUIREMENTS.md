@@ -75,32 +75,30 @@ Explicitly excluded from v2.8 to keep the hardening milestone focused.
 
 ## Traceability
 
-Empty until ROADMAP.md is created. The roadmapper will populate this section, mapping every v1 REQ-ID to exactly one phase.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SAFETY-01 | TBD | Pending |
-| SAFETY-02 | TBD | Pending |
-| SAFETY-03 | TBD | Pending |
-| SAFETY-04 | TBD | Pending |
-| SAFETY-05 | TBD | Pending |
-| SEC-01 | TBD | Pending |
-| SEC-02 | TBD | Pending |
-| SEC-03 | TBD | Pending |
-| SEC-04 | TBD | Pending |
-| RES-01 | TBD | Pending |
-| RES-02 | TBD | Pending |
-| RES-03 | TBD | Pending |
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
-| TEST-04 | TBD | Pending |
+| SAFETY-01 | Phase 64 | Pending |
+| SAFETY-02 | Phase 65 | Pending |
+| SAFETY-03 | Phase 65 | Pending |
+| SAFETY-04 | Phase 64 | Pending |
+| SAFETY-05 | Phase 64 | Pending |
+| SEC-01 | Phase 66 | Pending |
+| SEC-02 | Phase 66 | Pending |
+| SEC-03 | Phase 66 | Pending |
+| SEC-04 | Phase 66 | Pending |
+| RES-01 | Phase 65 | Pending |
+| RES-02 | Phase 67 | Pending |
+| RES-03 | Phase 67 | Pending |
+| TEST-01 | Phase 67 | Pending |
+| TEST-02 | Phase 64 | Pending |
+| TEST-03 | Phase 64 | Pending |
+| TEST-04 | Phase 65 | Pending |
 
 **Coverage:**
 - v1 requirements: 16 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16 (100%)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-25*
-*Last updated: 2026-05-25 after initial definition*
+*Last updated: 2026-05-25 after roadmap creation — traceability table populated*
