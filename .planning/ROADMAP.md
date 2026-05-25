@@ -169,7 +169,11 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
   4. Starting the application with a TOML file containing a syntax error or invalid UTF-8 produces a clear, actionable error message that includes the path of the backup file the user can restore from (TEST-02)
   5. The concurrent config save test passes (`pytest`) confirming the SAFETY-05 lock prevents interleaved writes (TEST-03)
   6. Every call to `_atomic_toml_write` in `triggarr/web/routes.py` is lexically dominated by `async with request.app.state.search_lock` — verified by an AST audit script run in CI, not by a line-distance grep (SAFETY-05 audit hardening — added per Codex adversarial review F3)
-**Plans:** TBD (replan in progress per `/gsd:plan-phase 64 --reviews`)
+**Plans:** 4 plans
+- [ ] 64-01-PLAN.md — SAFETY-04: harden `_atomic_toml_write` OSError handling (log non-FNF cleanup errors + log `os.replace` failures with path)
+- [ ] 64-02-PLAN.md — TEST-02: friendly TOML-corruption handler in `ensure_config` (syntax error + invalid UTF-8 + backup-path hint)
+- [ ] 64-03-PLAN.md — SAFETY-05 + TEST-03: concurrent POST `/settings` test via `ASGITransport` + **AST audit script** verifying every `_atomic_toml_write` call is lexically dominated by `async with request.app.state.search_lock` (per Codex F3)
+- [ ] 64-04-PLAN.md — SAFETY-01 + SAFETY-01b: docstring on `insert_search_entry` + soak test for resolved-row cap (SAFETY-01) **plus** pending-row cap via `PendingCapExceeded` exception when pending count would exceed `2 × max_history_rows` (SAFETY-01b, per Codex F1)
 
 ### Phase 65: Scheduler Hardening & Resilience
 **Goal**: Scheduler jobs fail safely, alert on repeated failures, and shut down without leaving in-flight work in an unknown state
