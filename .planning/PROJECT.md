@@ -147,7 +147,34 @@ v2.7 Dashboard Scale Refresh shipped 2026-04-18. 857 tests passing. 63 phases, 1
 
 ### Active
 
-_None — next milestone scope pending. Run `/gsd-new-milestone` to define v2.8._
+**Current Milestone: v2.8 Hardening & Observability**
+
+**Goal:** Close concrete correctness, security, and observability gaps surfaced in the 2026-05-25 codebase audit without expanding feature surface.
+
+**Target features:**
+
+*Correctness & Data Safety*
+- [ ] Bounded search history enforcement (`max_history_rows` trim-after-insert) — DEBT-03
+- [ ] Narrowed scheduler exception handling with consecutive-failure escalation
+- [ ] `_atomic_toml_write` logs `OSError` before suppressing (no silent config-write loss)
+- [ ] Config write concurrency lock covering web UI saves + scheduler reads
+
+*Security Hardening*
+- [ ] CSP `unsafe-inline` removal — extract inline scripts, adopt nonce-based CSP
+- [ ] Reject `apikey=` query parameter in `*arr` URL validation
+- [ ] Basic auth header hardening — null-byte rejection + failed-decode logging
+- [ ] Session secret startup validation (length ≥ 32 chars, warn if auto-generated)
+
+*Resilience & Observability*
+- [ ] Graceful shutdown improvements (DEBT-06: longer drain timeout, log in-flight job)
+- [ ] "Last successful search" timestamp on dashboard per app type
+- [ ] Tag list caching with 1h TTL + config-change invalidation
+
+*Test Coverage Gaps*
+- [ ] `OriginCheckMiddleware` tested with missing/spoofed Origin+Referer headers
+- [ ] Corrupted TOML config startup recovery tested
+- [ ] Concurrent config save requests tested
+- [ ] Async client cleanup with in-flight requests tested
 
 ### Out of Scope
 
@@ -258,4 +285,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-18 after v2.7 Dashboard Scale Refresh milestone shipped*
+*Last updated: 2026-05-25 after v2.8 Hardening & Observability milestone started*
