@@ -150,7 +150,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 
 ### v2.8 Hardening & Observability (Phases 64-67)
 
-- [ ] **Phase 64: Data Safety & Config Integrity** - Enforce search history bounds, harden atomic config writes, add concurrency lock on config saves, test corrupted TOML recovery and concurrent saves
+- [ ] **Phase 64: Data Safety & Config Integrity** - Enforce search history bounds (resolved + pending separately), harden atomic config writes, prove concurrent config save lock with AST-verified coverage, test corrupted TOML recovery
 - [ ] **Phase 65: Scheduler Hardening & Resilience** - Narrow scheduler exception handler to expected types, add consecutive-failure escalation, extend graceful shutdown timeout, test async client cleanup
 - [ ] **Phase 66: Security Hardening** - Remove CSP unsafe-inline via nonce migration, reject apikey= in *arr URLs, harden Basic auth header decoding, validate session secret at startup
 - [ ] **Phase 67: Observability & CSRF Test Coverage** - Surface last-successful-search per app on dashboard, cache tag lists with 1h TTL, add OriginCheckMiddleware test suite
@@ -160,18 +160,16 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 ### Phase 64: Data Safety & Config Integrity
 **Goal**: Config writes and database growth are safe under concurrent access and in error conditions
 **Depends on**: Nothing (first phase of v2.8; all items touch persistence layer independently of scheduler/security)
-**Requirements**: SAFETY-01, SAFETY-04, SAFETY-05, TEST-02, TEST-03
+**Requirements**: SAFETY-01, SAFETY-01b, SAFETY-04, SAFETY-05, TEST-02, TEST-03
 **Success Criteria** (what must be TRUE):
-  1. The SQLite search history table never exceeds `max_history_rows`; rows over the limit are trimmed immediately after each insert without blocking the search cycle
-  2. A failed `os.replace()` during config save produces a logged OSError rather than silently swallowing the failure; a `FileNotFoundError` during temp file cleanup continues to be suppressed
-  3. Two simultaneous PUT requests to the config save endpoint cannot interleave — the second waits for the first to complete and the resulting config file reflects exactly one of the two saves atomically
-  4. Starting the application with a TOML file containing a syntax error or invalid UTF-8 produces a clear, actionable error message that includes the path of the backup file the user can restore from
-  5. The concurrent config save test passes (`pytest`) confirming the SAFETY-05 lock prevents interleaved writes
-**Plans:** 4 plans
-- [ ] 64-01-PLAN.md — SAFETY-04: harden _atomic_toml_write OSError handling (log non-FNF cleanup errors + log os.replace failures with path)
-- [ ] 64-02-PLAN.md — TEST-02: friendly TOML-corruption handler in ensure_config (syntax error + invalid UTF-8 + backup-path hint)
-- [ ] 64-03-PLAN.md — SAFETY-05 + TEST-03: concurrent POST /settings test via ASGITransport + grep audit of all 7 mutating routes + single-worker comment
-- [ ] 64-04-PLAN.md — SAFETY-01: docstring expansion on insert_search_entry + 2x max_rows soak test
+  1. The SQLite search history table's **resolved rows** (`outcome != 'searched'`) never exceed `max_history_rows`; resolved rows over the limit are trimmed immediately after each insert without blocking the search cycle (SAFETY-01)
+  1b. The SQLite search history table's **pending rows** (`outcome = 'searched'`) never exceed `2 × max_history_rows`; when the bound would be exceeded, new pending inserts are rejected (or oldest pending rows are evicted with a logged warning) so that a stalled tracker cannot grow the table unboundedly (SAFETY-01b — added per Codex adversarial review F1, 2026-05-25)
+  2. A failed `os.replace()` during config save produces a logged OSError rather than silently swallowing the failure; a `FileNotFoundError` during temp file cleanup continues to be suppressed (SAFETY-04)
+  3. Two simultaneous PUT requests to the config save endpoint cannot interleave — the second waits for the first to complete and the resulting config file reflects exactly one of the two saves atomically (SAFETY-05)
+  4. Starting the application with a TOML file containing a syntax error or invalid UTF-8 produces a clear, actionable error message that includes the path of the backup file the user can restore from (TEST-02)
+  5. The concurrent config save test passes (`pytest`) confirming the SAFETY-05 lock prevents interleaved writes (TEST-03)
+  6. Every call to `_atomic_toml_write` in `triggarr/web/routes.py` is lexically dominated by `async with request.app.state.search_lock` — verified by an AST audit script run in CI, not by a line-distance grep (SAFETY-05 audit hardening — added per Codex adversarial review F3)
+**Plans:** TBD (replan in progress per `/gsd:plan-phase 64 --reviews`)
 
 ### Phase 65: Scheduler Hardening & Resilience
 **Goal**: Scheduler jobs fail safely, alert on repeated failures, and shut down without leaving in-flight work in an unknown state

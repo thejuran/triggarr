@@ -9,7 +9,8 @@
 
 ### Correctness & Data Safety
 
-- [ ] **SAFETY-01**: Search history table trims to `max_history_rows` after each insert so the database does not grow unbounded (DEBT-03; `triggarr/db.py`, `triggarr/models/config.py:79`)
+- [ ] **SAFETY-01**: Resolved-outcome rows in the search history table (rows where `outcome != 'searched'`) trim to `max_history_rows` after each insert so the database does not grow unbounded under normal operation (DEBT-03; `triggarr/db.py`, `triggarr/models/config.py:79`). *Pending rows (`outcome = 'searched'`) are intentionally exempt — they are bounded separately by SAFETY-01b.*
+- [ ] **SAFETY-01b**: The count of pending rows (`outcome = 'searched'`) in the search history table is bounded so that a stalled tracker (Sonarr/Radarr unreachable for an extended period) cannot grow the table unboundedly. New pending inserts are rejected — or oldest pending rows are evicted with a logged warning — when pending count would exceed `2 × max_history_rows`. (Codex adversarial review F1, 2026-05-25; `triggarr/db.py`, `triggarr/tracking.py`)
 - [ ] **SAFETY-02**: Scheduler exception handler catches only expected types (`httpx.HTTPError`, `pydantic.ValidationError`, `aiosqlite.Error`, `OSError`) instead of bare `Exception` (`triggarr/search/scheduler.py:124-129`)
 - [ ] **SAFETY-03**: Scheduler tracks consecutive failures per job and escalates from WARNING to ERROR after N (configurable, default 5) consecutive failures (`triggarr/search/scheduler.py`)
 - [ ] **SAFETY-04**: `_atomic_toml_write` logs `OSError` before suppressing during temp file cleanup, and re-raises any non-`FileNotFoundError` `OSError` raised by `os.replace()` (`triggarr/config.py:113-115`)
@@ -78,6 +79,7 @@ Explicitly excluded from v2.8 to keep the hardening milestone focused.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SAFETY-01 | Phase 64 | Pending |
+| SAFETY-01b | Phase 64 | Pending |
 | SAFETY-02 | Phase 65 | Pending |
 | SAFETY-03 | Phase 65 | Pending |
 | SAFETY-04 | Phase 64 | Pending |
@@ -95,10 +97,11 @@ Explicitly excluded from v2.8 to keep the hardening milestone focused.
 | TEST-04 | Phase 65 | Pending |
 
 **Coverage:**
-- v1 requirements: 16 total
-- Mapped to phases: 16 (100%)
+- v1 requirements: 17 total
+- Mapped to phases: 17 (100%)
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-25*
 *Last updated: 2026-05-25 after roadmap creation — traceability table populated*
+*Revised: 2026-05-25 — SAFETY-01 narrowed to resolved rows; SAFETY-01b added for pending-backlog bound (Codex adversarial review F1)*
