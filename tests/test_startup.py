@@ -143,7 +143,8 @@ def test_warn_if_session_secret_short() -> None:
             username="admin",
             password_hash=SecretStr("$2b$12$dummy"),
             api_key=SecretStr("x" * 32),
-            session_secret=SecretStr("ZZZSENTINELZZZ"),  # 14 chars -- well under 32; sentinel avoids substring collision with "shorter" in warning
+            # Sentinel chosen to avoid "short" substring collision with "shorter" in warning.
+            session_secret=SecretStr("ZZZSENTINELZZZ"),  # 14 chars -- well under 32
         ),
     )
 
