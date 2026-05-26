@@ -23,6 +23,43 @@ from loguru import logger
 
 from triggarr.models.config import APP_TYPES
 
+# SAFETY-01b: pending-row cap multiplier. The pending-row bound is
+# PENDING_CAP_MULTIPLIER * max_rows (default 2 * 1000 = 2000). Headroom
+# of 2x covers transient tracking backlog during normal operation while
+# still bounding the stalled-tracker failure mode (Sonarr/Radarr
+# unreachable for extended period -> pending rows accumulate forever).
+# Kept as a module constant rather than a config field intentionally:
+# operator-tunable would create a foot-gun (raise the cap -> disk fills).
+PENDING_CAP_MULTIPLIER: int = 2
+
+
+class PendingCapExceeded(Exception):
+    """Raised by insert_search_entry when a pending insert would exceed the SAFETY-01b cap.
+
+    The cap is ``PENDING_CAP_MULTIPLIER * max_rows`` (default 2 * 1000 = 2000).
+    Carries the rejected entry's identifiers so callers can correlate the
+    cap being hit with a specific stalled tracker.
+    """
+
+    def __init__(
+        self,
+        app: str,
+        instance_id: str,
+        item_name: str,
+        pending_count: int,
+        cap: int,
+    ) -> None:
+        self.app = app
+        self.instance_id = instance_id
+        self.item_name = item_name
+        self.pending_count = pending_count
+        self.cap = cap
+        super().__init__(
+            f"Pending-row cap reached for {app}/{instance_id}: "
+            f"{pending_count} pending >= {cap} (rejecting {item_name!r})"
+        )
+
+
 # Migration registry: version -> (description, migration_fn)
 # Populated after migration functions are defined below.
 MIGRATIONS: dict[int, tuple[str, Callable[[aiosqlite.Connection], Awaitable[None]]]] = {}
@@ -351,6 +388,35 @@ async def insert_search_entry(
         max_rows: Maximum resolved rows to keep. The pending cap is
             derived as ``PENDING_CAP_MULTIPLIER * max_rows``.
     """
+    # SAFETY-01b: bound pending rows so a stalled tracker cannot grow
+    # the table unboundedly. Resolved inserts bypass this guard -- they
+    # are bounded by the resolved-row trim further below.
+    if outcome == "searched":
+        cap = PENDING_CAP_MULTIPLIER * max_rows
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history WHERE outcome = 'searched'"
+        ) as cursor:
+            row = await cursor.fetchone()
+        pending_count = row[0] if row is not None else 0
+        if pending_count >= cap:
+            logger.warning(
+                "Pending-row cap reached -- rejecting search_history insert "
+                "for {app}/{instance_id} {item_name!r} (pending={pending_count}, cap={cap}). "
+                "Tracker may be stalled; check app reachability.",
+                app=app,
+                instance_id=instance_id,
+                item_name=item_name,
+                pending_count=pending_count,
+                cap=cap,
+            )
+            raise PendingCapExceeded(
+                app=app,
+                instance_id=instance_id,
+                item_name=item_name,
+                pending_count=pending_count,
+                cap=cap,
+            )
+
     timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     await db.execute(
         "INSERT INTO search_history "
