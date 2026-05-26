@@ -139,7 +139,12 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
                 exc=cleanup_exc,
             )
         raise
-    except Exception:
+    except Exception as exc:
+        logger.error(
+            "Config write failed (unexpected error): {path} - {exc}",
+            path=path,
+            exc=exc,
+        )
         try:
             os.unlink(tmp_path)
         except FileNotFoundError:
@@ -268,7 +273,12 @@ def generate_default_config(config_path: Path) -> None:
                 exc=cleanup_exc,
             )
         raise
-    except Exception:
+    except Exception as exc:
+        logger.error(
+            "Default config write failed (unexpected error): {path} - {exc}",
+            path=config_path,
+            exc=exc,
+        )
         try:
             os.unlink(tmp_path)
         except FileNotFoundError:

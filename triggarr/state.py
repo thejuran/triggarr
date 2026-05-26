@@ -234,7 +234,12 @@ def save_state(state: TriggarrState, state_path: Path | None = None) -> None:
                 exc=cleanup_exc,
             )
         raise
-    except Exception:
+    except Exception as exc:
+        logger.error(
+            "State write failed (unexpected error): {path} - {exc}",
+            path=resolved_state_path,
+            exc=exc,
+        )
         try:
             os.unlink(tmp_path)
         except FileNotFoundError:
