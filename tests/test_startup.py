@@ -8,10 +8,17 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 from loguru import logger
+from pydantic import SecretStr
 
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.models.config import InstanceConfig, Settings
-from triggarr.startup import check_localhost_urls, collect_secrets, startup, validate_connections
+from triggarr.models.config import AuthConfig, InstanceConfig, Settings
+from triggarr.startup import (
+    _warn_if_session_secret_short,
+    check_localhost_urls,
+    collect_secrets,
+    startup,
+    validate_connections,
+)
 
 
 def _make_settings(
@@ -121,6 +128,78 @@ def test_disabled_app_with_localhost_no_warning() -> None:
 
     output = sink.getvalue()
     assert output == ""
+
+
+# ---------------------------------------------------------------------------
+# SEC-04: _warn_if_session_secret_short (Phase 66, Plan 03)
+# ---------------------------------------------------------------------------
+
+
+def test_warn_if_session_secret_short() -> None:
+    """Short session_secret with completed setup triggers a single WARNING (D-13)."""
+    settings = Settings(
+        auth=AuthConfig(
+            method="Forms",
+            username="admin",
+            password_hash=SecretStr("$2b$12$dummy"),
+            api_key=SecretStr("x" * 32),
+            session_secret=SecretStr("short"),  # 5 chars -- well under 32
+        ),
+    )
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        _warn_if_session_secret_short(settings)
+    finally:
+        logger.remove(handler_id)
+
+    output = sink.getvalue()
+    # D-14: warning names the field
+    assert "auth.session_secret is shorter than 32 characters" in output
+    # D-14: warning includes remediation hint (Unicode arrow U+2192 preserved)
+    assert "regenerate via Settings → Security or set a longer value in config.toml" in output
+    # SecretStr discipline: secret VALUE never leaks into the log line
+    assert "short" not in output
+
+
+def test_no_warn_when_session_secret_long() -> None:
+    """A normal-length (>= 32 chars) session_secret produces no warning (D-13 trigger)."""
+    settings = Settings(
+        auth=AuthConfig(
+            method="Forms",
+            username="admin",
+            password_hash=SecretStr("$2b$12$dummy"),
+            api_key=SecretStr("x" * 32),
+            session_secret=SecretStr("x" * 64),  # production length (generate_session_secret)
+        ),
+    )
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        _warn_if_session_secret_short(settings)
+    finally:
+        logger.remove(handler_id)
+
+    output = sink.getvalue()
+    assert "session_secret" not in output
+
+
+def test_no_warn_when_needs_setup() -> None:
+    """Pre-setup state (needs_setup=True, empty username) skips the warning (D-13 guard)."""
+    # Default AuthConfig: username="" -> needs_setup=True, session_secret="" (len 0 < 32)
+    settings = Settings(auth=AuthConfig())
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        _warn_if_session_secret_short(settings)
+    finally:
+        logger.remove(handler_id)
+
+    output = sink.getvalue()
+    assert "session_secret" not in output
 
 
 # ---------------------------------------------------------------------------
