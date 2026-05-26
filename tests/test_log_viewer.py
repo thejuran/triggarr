@@ -187,20 +187,33 @@ def test_log_viewer_source_tags_lidarr(client):
 
 
 def test_log_viewer_expand_button(client):
-    """LOG-01: Expand button uses Phosphor icon with correct onclick handler."""
+    """LOG-01: Expand button uses Phosphor icon and data-action="log-expand" marker.
+
+    Updated 2026-05-26 (SEC-01 / 66-04): the inline `onclick="toggleLogExpand()"`
+    attribute was removed when nonce-based CSP was prepared. The button now carries
+    `data-action="log-expand"` and the click handler is attached by
+    `bindLogViewerControls` in dashboard.html.
+    """
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
-    assert "toggleLogExpand()" in response.text, "Expand button must call toggleLogExpand()"
+    assert 'data-action="log-expand"' in response.text, "Expand button must carry data-action='log-expand'"
     assert "ph ph-corners-out" in response.text, "Expand button must use Phosphor corners-out icon per D-12"
     assert "bg-[#0b1120]" in response.text, "Log viewer must use dark background per D-16"
 
 
 def test_log_viewer_pause_button(client):
-    """LOG-01: Pause button uses Phosphor icon with correct onclick handler."""
+    """LOG-01: Pause button uses Phosphor icon and data-action="log-pause" marker.
+
+    Updated 2026-05-26 (SEC-01 / 66-04): the inline `onclick="toggleLogPause(this)"`
+    attribute was removed when nonce-based CSP was prepared. The button now carries
+    `data-action="log-pause"` and the click handler is attached by
+    `bindLogViewerControls` in dashboard.html.
+    """
     response = client.get("/partials/log-viewer")
     assert response.status_code == 200
-    assert "toggleLogPause(this)" in response.text, "Pause button must call toggleLogPause(this)"
-    assert "data-pause-btn" in response.text, "Pause button must have data-pause-btn attribute"
+    assert 'data-action="log-pause"' in response.text, "Pause button must carry data-action='log-pause'"
+    # data-pause-btn is still used by htmx:afterSwap state restore in dashboard.html
+    assert "data-pause-btn" in response.text, "Pause button must keep data-pause-btn"
     assert "ph ph-pause" in response.text, "Pause button must use Phosphor pause icon per D-12"
 
 
@@ -294,3 +307,21 @@ def test_log_body_sizing(client):
     assert response.status_code == 200
     assert "h-48" in response.text, "Log body must use h-48 per artifact"
     assert "text-[13px]" in response.text, "Log rows must use text-[13px] per D-18"
+
+
+def test_log_viewer_uses_data_action_not_inline_handlers(client):
+    """SEC-01 / 66-04: partial endpoint renders [data-action] markers instead of
+    inline `on*=` event handler attributes. CSP Level 3 nonces do NOT cover
+    inline event-handler attributes, so SEC-01 part 2 (66-05) drops
+    'unsafe-inline' from script-src — these markers must be in place first.
+    """
+    log_buffer.add(LogEntry("2026-01-15 10:30:00", "INFO", "Sample log line"))
+    response = client.get("/partials/log-viewer")
+    assert response.status_code == 200
+    assert 'data-action="log-pause"' in response.text, "pause button must use data-action marker"
+    assert 'data-action="log-expand"' in response.text, "expand button must use data-action marker"
+    assert 'data-action="log-level"' in response.text, "level select must use data-action marker"
+    # Negative assertions: the old inline handlers must be gone
+    assert "onclick=\"toggleLogPause" not in response.text, "old onclick=toggleLogPause must be removed"
+    assert "onclick=\"toggleLogExpand" not in response.text, "old onclick=toggleLogExpand must be removed"
+    assert 'onchange="var base=' not in response.text, "old inline onchange must be removed"

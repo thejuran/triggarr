@@ -65,6 +65,8 @@ document.addEventListener('htmx:afterSwap', function(evt) {
       var pauseBtn = viewer.querySelector('[data-pause-btn]');
       if (pauseBtn) pauseBtn.classList.add('text-yellow-400');
     }
+    /* SEC-01 66-04: rebind [data-action] controls inside the swapped DOM */
+    bindLogViewerControls(evt.detail.target);
   }
 });
 
@@ -76,6 +78,30 @@ function toggleLogExpand() {
   document.body.classList.toggle('log-expanded');
   var logBody = viewer.querySelector('.log-body');
   if (logBody) logBody.scrollTop = logBody.scrollHeight;
+}
+
+/* SEC-01 D-05 (66-04): Re-bind [data-action] controls inside #log-viewer.
+ * The partial is hx-swap='outerHTML' every 5s so any previously-attached
+ * listeners are discarded with the old DOM. Called from htmx:afterSwap below
+ * and from DOMContentLoaded for the initial render. */
+function bindLogViewerControls(viewer) {
+  if (!viewer) return;
+  viewer.querySelectorAll('[data-action="log-expand"]').forEach(function(el) {
+    el.addEventListener('click', toggleLogExpand);
+  });
+  viewer.querySelectorAll('[data-action="log-pause"]').forEach(function(el) {
+    el.addEventListener('click', function() { toggleLogPause(el); });
+  });
+  viewer.querySelectorAll('[data-action="log-level"]').forEach(function(el) {
+    el.addEventListener('change', function() {
+      var base = el.dataset.baseUrl;
+      var url = base + (el.value ? '?level=' + el.value : '');
+      var v = el.closest('#log-viewer');
+      v.setAttribute('hx-get', url);
+      htmx.process(v);
+      htmx.ajax('GET', url, { target: '#log-viewer', swap: 'outerHTML' });
+    });
+  });
 }
 
 /* D-05: Toggle pause/resume htmx polling */
@@ -98,10 +124,13 @@ function toggleLogPause(btn) {
   }
 }
 
-/* Auto-scroll on initial page load */
+/* Auto-scroll on initial page load + initial bind */
 document.addEventListener('DOMContentLoaded', function() {
   var logBody = document.querySelector('#log-viewer .log-body');
   if (logBody) logBody.scrollTop = logBody.scrollHeight;
+  /* SEC-01 66-04: bind controls on the initial server-rendered viewer */
+  var viewer = document.getElementById('log-viewer');
+  if (viewer) bindLogViewerControls(viewer);
 });
 </script>
 {% endblock %}

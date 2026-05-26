@@ -16,7 +16,7 @@
     </div>
     <div class="flex items-center gap-3">
       <select data-base-url="{{ request.url_for('partial_log_viewer') }}"
-              onchange="var base=this.dataset.baseUrl; var url=base+(this.value?'?level='+this.value:''); var v=this.closest('#log-viewer'); v.setAttribute('hx-get',url); htmx.process(v); htmx.ajax('GET',url,{target:'#log-viewer',swap:'outerHTML'});"
+              data-action="log-level"
               class="font-mono bg-triggarr-bg border border-triggarr-border text-[11px] text-triggarr-text rounded px-2 py-1 outline-none">
         <option value=""{% if not selected_level %} selected{% endif %}>Level: ALL</option>
         <option value="ERROR"{% if selected_level == 'ERROR' %} selected{% endif %}>Level: ERROR</option>
@@ -25,11 +25,11 @@
         <option value="DEBUG"{% if selected_level == 'DEBUG' %} selected{% endif %}>Level: DEBUG</option>
       </select>
       <div class="w-px h-4 bg-triggarr-border"></div>
-      <button type="button" title="Pause stream" data-pause-btn onclick="toggleLogPause(this)"
+      <button type="button" title="Pause stream" data-pause-btn data-action="log-pause"
               class="text-triggarr-muted hover:text-triggarr-text transition-colors">
         <i class="ph ph-pause text-[15px]"></i>
       </button>
-      <button type="button" title="Expand log to terminal" onclick="toggleLogExpand()"
+      <button type="button" title="Expand log to terminal" data-action="log-expand"
               class="text-triggarr-muted hover:text-triggarr-text transition-colors">
         <i class="ph ph-corners-out text-[15px]"></i>
       </button>
