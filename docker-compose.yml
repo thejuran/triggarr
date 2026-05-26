@@ -21,6 +21,10 @@ services:
       - FOWNER
       - SETUID
       - SETGID
+    # RES-01: must exceed TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT (default 60s) so
+    # Docker waits for the in-process search-cycle drain before SIGKILL.
+    # 90s = 60s drain + 30s margin for client/db close steps.
+    stop_grace_period: 90s
     restart: unless-stopped
 
 volumes:
