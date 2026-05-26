@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Literal
+from urllib.parse import parse_qsl, urlparse
 
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 APP_TYPES: tuple[str, ...] = ("radarr", "sonarr", "lidarr")
@@ -60,6 +61,32 @@ class InstanceConfig(BaseModel):
     # Tag filtering (empty = search all items, no filtering)
     missing_tag: str = ""  # Tag name for missing queue filter
     cutoff_tag: str = ""  # Tag name for cutoff queue filter
+
+    @field_validator("url")
+    @classmethod
+    def reject_apikey_in_url(cls, v: str) -> str:
+        """SEC-02 D-06/D-07/D-08: Reject URLs whose query string contains an apikey= parameter
+        (any case, including the empty-value variant and URL-encoded forms like apikey%3D...).
+
+        The validator runs at model construction time -- BEFORE the settings POST handler
+        acquires search_lock and BEFORE _atomic_toml_write runs -- so a URL carrying an
+        embedded API key never reaches the filesystem. Per D-07 the rule is narrow: only
+        apikey= keys (any case) are rejected; legitimate non-apikey query parameters
+        (?base=/sonarr, ?token=foo) remain valid for reverse-proxy/subpath setups.
+        """
+        if not v:
+            return v
+        parsed = urlparse(v)
+        if not parsed.query:
+            return v
+        # keep_blank_values=True so ?apikey= (empty value) is still parsed (Pitfall 6).
+        # startswith("apikey") catches the URL-encoded variant ?apikey%3Dsecret which
+        # parse_qsl decodes to key=`apikey=secret` (codex M2 finding 2026-05-26).
+        for key, _value in parse_qsl(parsed.query, keep_blank_values=True):
+            if key.lower().startswith("apikey"):
+                msg = "URL must not contain an apikey= query parameter. Use the API Key field instead."
+                raise ValueError(msg)
+        return v
 
     @model_validator(mode="after")
     def at_least_one_search_count(self) -> InstanceConfig:
