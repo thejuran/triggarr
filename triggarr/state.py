@@ -197,17 +197,15 @@ def save_state(state: TriggarrState, state_path: Path | None = None) -> None:
     parent = resolved_state_path.parent
     parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", dir=parent, suffix=".tmp", delete=False, encoding="utf-8"
-    ) as tmp:
-        json.dump(state, tmp, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-
     dir_fd = None
     renamed = False
+    fd, tmp_path = tempfile.mkstemp(dir=parent, suffix=".tmp")
     try:
-        os.replace(tmp.name, resolved_state_path)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, resolved_state_path)
         renamed = True
         # fsync the directory to ensure rename is durable (matches config.py)
         dir_fd = os.open(parent, os.O_RDONLY)
@@ -226,13 +224,25 @@ def save_state(state: TriggarrState, state_path: Path | None = None) -> None:
             exc=exc,
         )
         try:
-            os.unlink(tmp.name)
+            os.unlink(tmp_path)
         except FileNotFoundError:
             pass
         except OSError as cleanup_exc:
             logger.error(
                 "Failed to clean up temp file {tmp} during state write: {exc}",
-                tmp=tmp.name,
+                tmp=tmp_path,
+                exc=cleanup_exc,
+            )
+        raise
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        except OSError as cleanup_exc:
+            logger.error(
+                "Failed to clean up temp file {tmp} during state write: {exc}",
+                tmp=tmp_path,
                 exc=cleanup_exc,
             )
         raise
