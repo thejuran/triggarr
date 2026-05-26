@@ -313,7 +313,29 @@ async def insert_search_entry(
     instance_id: str = "Default",
     max_rows: int = 1000,
 ) -> None:
-    """Insert a search log entry and prune resolved rows beyond *max_rows*.
+    """Insert a search log entry, enforcing bounded growth on both row classes.
+
+    Bounds:
+        * Resolved rows (outcome != 'searched') are trimmed inline after
+          every insert to keep their count <= max_rows. The trim runs in
+          the same transaction as the insert (single ``db.commit()`` at
+          the end), so the cap holds immediately on the next read. Closes
+          SAFETY-01.
+        * Pending rows (outcome == 'searched') are bounded separately at
+          ``PENDING_CAP_MULTIPLIER * max_rows`` (default 2x). If the
+          pending count is already at or above this cap, a new pending
+          insert is REJECTED with ``PendingCapExceeded`` and a WARNING
+          log line identifying the rejected entry (app, instance_id,
+          item_name). This bounds the stalled-tracker failure mode
+          (Sonarr/Radarr unreachable for extended period). Pending rows
+          are also bounded by ``tracking_window_minutes`` (their natural
+          resolution timeout). Closes SAFETY-01b.
+
+    Raises:
+        PendingCapExceeded: when ``outcome == 'searched'`` and the
+            pending row count is already >= PENDING_CAP_MULTIPLIER *
+            max_rows. The insert is rejected; existing pending rows are
+            NOT evicted (eviction would lose tracking semantics).
 
     Args:
         db: Open aiosqlite connection.
@@ -326,7 +348,8 @@ async def insert_search_entry(
         season_number: Season number (Sonarr only).
         missing_count: Number of missing episodes at search time (Sonarr only).
         instance_id: Instance name for multi-instance scoping.
-        max_rows: Maximum resolved rows to keep (pending rows are exempt).
+        max_rows: Maximum resolved rows to keep. The pending cap is
+            derived as ``PENDING_CAP_MULTIPLIER * max_rows``.
     """
     timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     await db.execute(
