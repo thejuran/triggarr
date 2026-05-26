@@ -93,7 +93,10 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
     """Write TOML data to a file atomically using tempfile + fsync + rename.
 
     On failure (e.g. serialization error), the temp file is cleaned up
-    so no orphaned files remain on disk.
+    so no orphaned files remain on disk. OSError during the write
+    (os.replace / fsync) is logged with the config path before re-raise.
+    Non-FileNotFoundError OSError during temp cleanup is also logged so
+    permission / read-only / no-space failures are observable (SAFETY-04).
 
     Args:
         path: Destination file path.
@@ -110,9 +113,30 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
         # fsync the directory to ensure rename is durable
         dir_fd = os.open(path.parent, os.O_RDONLY)
         os.fsync(dir_fd)
-    except Exception:
-        with contextlib.suppress(OSError):
+    except OSError as exc:
+        logger.error("Config write failed: {path} - {exc}", path=path, exc=exc)
+        try:
             os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        except OSError as cleanup_exc:
+            logger.error(
+                "Failed to clean up temp file {tmp} during config write: {exc}",
+                tmp=tmp_path,
+                exc=cleanup_exc,
+            )
+        raise
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        except OSError as cleanup_exc:
+            logger.error(
+                "Failed to clean up temp file {tmp} during config write: {exc}",
+                tmp=tmp_path,
+                exc=cleanup_exc,
+            )
         raise
     finally:
         if dir_fd is not None:
