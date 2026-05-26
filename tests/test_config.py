@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import tomli_w
+from loguru import logger
 from pydantic import ValidationError
 
 from triggarr.config import (
@@ -678,6 +680,66 @@ def test_atomic_toml_write_cleans_temp_on_failure(tmp_path: Path) -> None:
     # No temp files should remain in the directory
     remaining = list(tmp_path.glob("*.tmp"))
     assert remaining == [], f"Temp files should be cleaned up, found: {remaining}"
+
+
+# ---------------------------------------------------------------------------
+# SAFETY-04: _atomic_toml_write OSError observability
+# ---------------------------------------------------------------------------
+
+
+def test_atomic_toml_write_logs_cleanup_oserror(tmp_path: Path) -> None:
+    """Non-FileNotFoundError OSError during temp cleanup is logged via loguru (SAFETY-04)."""
+    config_file = tmp_path / "test.toml"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")), \
+             patch("triggarr.config.os.unlink", side_effect=PermissionError("denied")), \
+             pytest.raises(TypeError):
+            _atomic_toml_write(config_file, {"k": "v"})
+
+        text = sink.getvalue()
+        assert "Failed to clean up temp file" in text
+        assert "denied" in text
+    finally:
+        logger.remove(handler_id)
+
+
+def test_atomic_toml_write_suppresses_filenotfound_silently(tmp_path: Path) -> None:
+    """FileNotFoundError during temp cleanup remains silently suppressed (SAFETY-04)."""
+    config_file = tmp_path / "test.toml"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")), \
+             patch("triggarr.config.os.unlink", side_effect=FileNotFoundError), \
+             pytest.raises(TypeError):
+            _atomic_toml_write(config_file, {"k": "v"})
+
+        assert "Failed to clean up" not in sink.getvalue()
+    finally:
+        logger.remove(handler_id)
+
+
+def test_atomic_toml_write_logs_os_replace_failure(tmp_path: Path) -> None:
+    """OSError raised by os.replace is logged with the config path before re-raise (SAFETY-04)."""
+    config_file = tmp_path / "test.toml"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with patch("triggarr.config.os.replace", side_effect=OSError("EROFS")), \
+             pytest.raises(OSError):
+            _atomic_toml_write(config_file, {"k": "v"})
+
+        text = sink.getvalue()
+        assert "Config write failed" in text
+        assert "EROFS" in text
+        assert str(config_file) in text
+    finally:
+        logger.remove(handler_id)
 
 
 # ---------------------------------------------------------------------------
