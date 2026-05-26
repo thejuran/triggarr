@@ -29,7 +29,11 @@ The user explicitly delegated all gray-area decisions ("take your recommendation
   - **Why:** Single source of truth (the middleware), and Jinja templates can reference it as `<script nonce="{{ csp_nonce() }}">…</script>` without needing per-route context plumbing.
 - **D-03:** **All four inline scripts get a nonce attribute.** Inventory: `base.html:116-132` (changelog modal), `dashboard.html:48+` (log viewer controls + expand/pause), `setup.html:70+` (copy API key), `settings.html:253+` (auth method warning + API key toggle).
 - **D-04:** `script-src` becomes `'self' 'nonce-<value>'` (no `'unsafe-inline'`). `style-src` keeps `'unsafe-inline'` for now — Tailwind utility output is fine, and migrating styles is out of scope for SEC-01. Document this explicitly in the CSP comment.
-- **D-05:** No `hx-on` / `hx-on::` htmx attribute handlers exist in templates (verified via `grep -rnE "hx-on|hx-on::" triggarr/templates/`) — htmx attribute handlers are NOT a blocker for dropping `'unsafe-inline'`. Future htmx event handling must use the delegated `htmx:afterSwap`-style pattern already used in `dashboard.html`.
+- **D-05:** **REVISED 2026-05-26 (research correction).** No `hx-on` / `hx-on::` htmx attribute handlers exist. BUT 13 inline event-handler attributes (`onclick=`, `onchange=`) exist across 5 templates (`base.html:31,104,108`; `setup.html:60`; `settings.html:100,152`; `partials/security_apikey.html:18,29,41,54,58`; `partials/log_viewer.html:19,28,32`). **CSP Level 3 nonces do NOT cover inline event-handler attributes** — dropping `'unsafe-inline'` would break these. The migration must therefore happen in two ordered steps within SEC-01:
+  1. **First**, migrate all `onclick=`/`onchange=` attributes to `addEventListener` calls placed inside the nonced inline `<script>` blocks (or moved to existing nonced scripts where one already exists in the same template).
+  2. **Then** add the nonce middleware/Jinja-global wiring and drop `'unsafe-inline'`.
+  - **Why this order:** Step 1 is a no-op for browser behavior (handlers fire identically); it lands safely on a green codebase before the CSP tightening in step 2. Reversing the order would ship a broken page.
+  - **Verification of removal:** A grep assertion that `triggarr/templates/` contains zero `on(click|change|submit|load|blur|focus|keydown|keyup|input)=` attributes is part of the SEC-01 acceptance criteria.
 
 ### SEC-02 — URL validation (apikey= rejection)
 - **D-06:** Implement as a **Pydantic `@field_validator('url')`** on `InstanceConfig` in `triggarr/models/config.py:44`. Validation runs at config load AND at every settings POST that round-trips through `InstanceConfig` construction (already the path used by `triggarr/web/routes.py` settings save handlers).
@@ -50,7 +54,7 @@ The user explicitly delegated all gray-area decisions ("take your recommendation
   - **Why:** Hard-fail breaks the first-run setup flow (during `needs_setup`, `session_secret` is empty by design). The Disabled-mode periodic warning at `triggarr/startup.py:30-37` exists because Disabled-mode is an actively-insecure operating state; a short session_secret is a configuration mistake that's either acceptable (the user knows) or actionable once (the user fixes it on next save).
 - **D-13:** Trigger condition: `not settings.auth.needs_setup AND len(settings.auth.session_secret.get_secret_value()) < 32`. The `needs_setup` guard prevents false positives during the pre-setup state where `session_secret == ""` is normal.
   - **Why:** `triggarr/web/routes.py:1089-1112` shows setup ALWAYS persists the freshly-generated 64-char hex secret atomically inside `search_lock` before any subsequent request runs — so "auto-generated and not yet persisted" (the original CONCERNS recommendation #2) is unreachable in current code. The remaining risk is a user hand-editing the TOML to a short value.
-- **D-14:** Warning location: `triggarr/startup.py` `_warn_if_auth_disabled`-adjacent helper (new function `_warn_if_session_secret_short`), invoked once during startup before the connection-validation block. Message: `"auth.session_secret is shorter than 32 characters — regenerate via Settings → Security or set a longer value in config.toml"` — names the remediation path.
+- **D-14:** **REVISED 2026-05-26 (research correction).** Warning location: `triggarr/startup.py` — new function `_warn_if_session_secret_short(settings: Settings) -> None`, modeled exactly on the existing **`check_localhost_urls`** sync helper at `triggarr/startup.py:25-46` (NOT `_warn_if_auth_disabled` — that function does not exist; the periodic disabled-mode warning lives in `AuthMiddleware._DISABLED_WARN_INTERVAL` at `web/middleware.py:114-122` and is request-time-rate-limited, which is the wrong pattern for a one-shot startup check). Invoked once during the startup sequence, alongside `check_localhost_urls`, before the connection-validation block. Message: `"auth.session_secret is shorter than 32 characters — regenerate via Settings → Security or set a longer value in config.toml"` — names the remediation path.
 
 ### Claude's Discretion
 All four items above were user-delegated ("take your recommendations for all"). No additional discretionary areas — every decision in this CONTEXT.md is locked.
@@ -71,7 +75,7 @@ All four items above were user-delegated ("take your recommendations for all"). 
 - `triggarr/web/middleware.py:157-188` — `_handle_basic_auth` (SEC-03 char validation + WARNING log added here)
 - `triggarr/models/config.py:44-70` — `InstanceConfig` (SEC-02 `@field_validator('url')` added here)
 - `triggarr/auth.py:61-67` — `generate_session_secret` (SEC-04 reference: produces the 64-char secret that the validator length-checks against)
-- `triggarr/startup.py:27-37` — `_warn_if_auth_disabled` pattern (SEC-04 follows this exact structure for the new `_warn_if_session_secret_short`)
+- `triggarr/startup.py:25-46` — `check_localhost_urls` pattern (SEC-04 follows this exact structure for the new `_warn_if_session_secret_short` — corrected per RESEARCH.md finding; the previously-cited `_warn_if_auth_disabled` does not exist)
 - `triggarr/web/routes.py:1089-1112` — Setup persistence flow (SEC-04: confirms session_secret is always persisted atomically; "auto-generated and not yet persisted" is unreachable)
 
 ### Templates with inline scripts (SEC-01 inventory)
@@ -98,7 +102,7 @@ All four items above were user-delegated ("take your recommendations for all"). 
 - `SecurityHeadersMiddleware` at `triggarr/web/middleware.py:25-49` is already the single owner of CSP composition. SEC-01 nonce work plugs into this single class — no new middleware class needed.
 - `_handle_basic_auth` at `middleware.py:157-188` is already a static method with a clean try/except boundary at `163-184`. SEC-03 adds one validation check between `decoded = base64.b64decode(...)` (line 165) and `secrets.compare_digest(...)` (line 167) — minimal surgical change.
 - Pydantic `@field_validator` and `@model_validator` patterns are already used in `models/config.py:64` (`at_least_one_search_count`) and `models/config.py:132` (`validate_instances`). SEC-02 follows the same pattern.
-- `_warn_if_auth_disabled` at `triggarr/startup.py:27-37` is the proven pattern for startup-time WARNING emission. SEC-04 follows this exact shape.
+- `check_localhost_urls` at `triggarr/startup.py:25-46` is the proven pattern for startup-time WARNING emission (sync function, iterates settings, calls `logger.warning(...)`). SEC-04's `_warn_if_session_secret_short` follows this exact shape.
 
 ### Established Patterns
 - **SecretStr discipline (PROJECT D-07):** `password_hash`, `api_key`, `session_secret` are all `SecretStr`. The SEC-04 length check needs `.get_secret_value()` — that's allowed at the validation point, but must NOT leak the value into the log message (D-14's message names the field, not the value).
@@ -110,7 +114,7 @@ All four items above were user-delegated ("take your recommendations for all"). 
 - **SEC-01 nonce → templates:** Middleware sets `request.state.csp_nonce` early in `dispatch()`. Jinja global `csp_nonce` callable reads `request.state.csp_nonce`. Templates render `<script nonce="{{ csp_nonce() }}">…</script>`. Tests assert `Content-Security-Policy` header contains the same nonce that the rendered HTML's `<script>` tag carries.
 - **SEC-02 validator → settings POST:** `triggarr/web/routes.py` settings save handler already constructs `InstanceConfig(**form_data)` (or similar). Pydantic raises `ValidationError`, the handler already maps validation errors back to the settings form template. SEC-02 plugs into that existing error path.
 - **SEC-03 WARNING log → loguru:** Existing loguru sink at `triggarr/logging_setup.py` (redacting sink). New WARNING line uses `logger.warning("basic_auth_rejected reason={reason} client_ip={ip}", ...)` — no PII fields means no new redaction config needed.
-- **SEC-04 warning → startup.py main():** New helper `_warn_if_session_secret_short(settings)` called once from the main startup sequence, after `ensure_config()` returns and before connection validation. Same call-site shape as `_warn_if_auth_disabled`.
+- **SEC-04 warning → startup.py main():** New helper `_warn_if_session_secret_short(settings)` called once from the main startup sequence, after `ensure_config()` returns and before connection validation. Same call-site shape as the existing `check_localhost_urls(settings)` invocation in startup.py.
 
 </code_context>
 
