@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import io
 import json
 from unittest.mock import AsyncMock, patch
@@ -136,6 +138,231 @@ async def test_request_with_retry_reraises_when_retry_fails() -> None:
             await client._request_with_retry("GET", "/test")
     finally:
         await client.close()
+
+
+# ---------------------------------------------------------------------------
+# TEST-04 (Phase 65, Plan 04): in-flight aclose() contract tests
+# ---------------------------------------------------------------------------
+# Three tests pinning the behavioral contract of httpx.AsyncClient.aclose()
+# when called while a request is still in flight. ArrClient.close() delegates
+# to httpx.AsyncClient.aclose(); the scheduler shutdown drain (extended to 60s
+# in plan 65-03) normally lets requests complete first, but in the worst case
+# (scheduler.shutdown(wait=False) forces cancellation of a running cycle), an
+# in-flight request could still be pending when await client.close() runs.
+#
+# Why these tests exist (Codex finding 4): a previous draft of TEST-04 used
+# only httpx.MockTransport (which bypasses the real async connection pool and
+# AsyncHTTPTransport close logic — the very code paths production exercises)
+# and accepted "any of {RuntimeError, cancellation, HTTPError, clean completion}"
+# for the no-cancel case, which can only prove "the mock does not hang". The
+# revised plan keeps the cheap MockTransport regression check but adds two
+# httpx.ASGITransport-backed tests that exercise the production close
+# machinery, and pins the no-cancel exception class deterministically.
+#
+# Live probe (httpx 0.28.1, 2026-05-26): with the ASGI app described below,
+# calling aclose() WITHOUT cancelling the in-flight request produces a
+# deterministic AssertionError on the in-flight task (5/5 probe runs) — the
+# assertion `response_complete.is_set()` inside httpx/_transports/asgi.py
+# (line 181) trips because aclose() releases the streaming context before the
+# ASGI handler has finished sending the response body. close() itself returns
+# cleanly within ms. A future httpx release that intentionally changes this
+# contract (e.g. surfaces httpx.RemoteProtocolError instead) will fail
+# test 3 deliberately, surfacing the change instead of letting it silently
+# alter Triggarr's shutdown behavior.
+#
+# TEST-04 (Codex finding 4): empirically observed exception class on
+# httpx==0.28.1; update if httpx behavior changes intentionally.
+_HTTPX_INFLIGHT_NO_CANCEL_EXC: type[BaseException] = AssertionError
+
+
+def _build_slow_asgi_app(request_started: asyncio.Event, sleep_seconds: float = 10.0):
+    """Build a bare-ASGI callable for TEST-04 in-flight close tests.
+
+    Routes:
+        /slow  — sets ``request_started`` then ``await asyncio.sleep(sleep_seconds)``;
+                 never sends a response. The sleep is the configurable "in-flight"
+                 window: long enough that the test can deterministically observe
+                 the request as pending when close() is called, short enough that
+                 the no-cancel test can let the sleep complete (and the transport's
+                 ``assert response_complete.is_set()`` trip) within the 3s test
+                 budget.
+        /fast  — sends a 200 immediately (sanity check that the transport works).
+        *      — 404.
+
+    Not production code; only used by the TEST-04 tests below.
+    """
+
+    async def app(scope: dict, receive, send) -> None:
+        if scope.get("type") != "http":
+            return
+        path = scope.get("path")
+        if path == "/slow":
+            request_started.set()
+            # Block for ``sleep_seconds``; the test will close the client or
+            # cancel the task before the sleep completes (cancel-then-close path),
+            # or allow it to complete naturally so the ASGITransport assertion
+            # trips (no-cancel path).
+            await asyncio.sleep(sleep_seconds)
+            return
+        if path == "/fast":
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send(
+                {"type": "http.response.body", "body": b'{"ok":true}', "more_body": False}
+            )
+            return
+        await send({"type": "http.response.start", "status": 404, "headers": []})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    return app
+
+
+async def test_aclose_with_mocktransport_returns_quickly_after_cancel() -> None:
+    """MockTransport regression: close() returns within 2s after cancelling in-flight.
+
+    TEST-04 cheap unit-level coverage. Proves the in-memory mock path does not
+    hang when close() is called immediately after cancelling a request that is
+    blocked in the handler. This is NOT a production-machinery contract test —
+    that role belongs to the two ASGITransport tests below — but it stays for
+    fast feedback on the test fixture itself.
+
+    Key assertion: ``asyncio.wait_for(client.close(), timeout=2.0)`` — a hang
+    in close() would surface as TimeoutError, failing the test fast.
+    """
+    request_started = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        request_started.set()
+        await asyncio.sleep(10)
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+
+    pending = asyncio.create_task(client._request_with_retry("GET", "/slow"))
+    try:
+        await asyncio.wait_for(request_started.wait(), timeout=2.0)
+        pending.cancel()
+        with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError):
+            await pending
+        # close() MUST return within 2s; a hang means a regression.
+        await asyncio.wait_for(client.close(), timeout=2.0)
+    finally:
+        if not pending.done():
+            pending.cancel()
+            with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError, Exception):
+                await pending
+
+
+async def test_aclose_with_real_asgi_transport_in_flight_returns_within_2s() -> None:
+    """ASGITransport contract: cancel-then-close returns within 2s, no exceptions from close().
+
+    TEST-04 real-transport contract test (Codex finding 4). Uses
+    httpx.ASGITransport — a REAL transport that exercises the production
+    AsyncHTTPTransport-equivalent async machinery (connection pool, async
+    streaming, event-loop-aware close) — not the in-memory MockTransport that
+    bypasses those paths.
+
+    Recommended cancel-then-close shutdown pattern:
+        1. cancel the in-flight task
+        2. consume the cancellation (CancelledError / httpx.HTTPError)
+        3. await client.close() inside asyncio.wait_for(..., timeout=2.0)
+
+    Acceptance: close() returns within 2s with no unhandled exception from
+    close() itself. A 2s timeout is ~1000x the expected close latency under
+    in-process testing — large enough to absorb CI scheduler jitter, small
+    enough that a regression (hang) fails fast.
+    """
+    request_started = asyncio.Event()
+    app = _build_slow_asgi_app(request_started)
+
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    )
+
+    pending = asyncio.create_task(client._request_with_retry("GET", "/slow"))
+    try:
+        await asyncio.wait_for(request_started.wait(), timeout=2.0)
+        pending.cancel()
+        with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError):
+            await pending
+        # close() MUST return within 2s and MUST NOT raise from close() itself.
+        await asyncio.wait_for(client.close(), timeout=2.0)
+    finally:
+        if not pending.done():
+            pending.cancel()
+            with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError, Exception):
+                await pending
+
+
+async def test_aclose_with_real_asgi_transport_no_cancel_raises_specific_exception() -> None:
+    """ASGITransport contract: close-without-cancel pins httpx's exact in-flight exception class.
+
+    TEST-04 real-transport contract test (Codex finding 4). Calls close() while
+    the request is still in flight WITHOUT cancelling the task first, then
+    asserts the in-flight task raises exactly ``_HTTPX_INFLIGHT_NO_CANCEL_EXC``
+    (empirically observed via live probe — see comment above the constant).
+
+    The single-class isinstance assertion replaces the previous four-class
+    "accept any of {RuntimeError / cancellation / HTTPError / clean completion}"
+    hedging union (Codex finding 4) — that pattern could not detect a
+    regression. A future httpx release that intentionally changes the
+    in-flight exception class will fail THIS test deliberately, forcing the
+    operator to update the pinned constant after auditing the upstream change.
+
+    Acceptance:
+        - ``asyncio.wait_for(client.close(), timeout=2.0)`` does not raise
+          TimeoutError (close itself must complete within 2s).
+        - ``isinstance(result[0], _HTTPX_INFLIGHT_NO_CANCEL_EXC)`` for the
+          gathered in-flight task result.
+
+    Implementation note: the /slow handler sleeps for 0.5s (not 10s) in this
+    test so the ASGI handler can complete naturally and the transport's
+    ``assert response_complete.is_set()`` (httpx 0.28.1 asgi.py line 181) can
+    trip — yielding the deterministic _HTTPX_INFLIGHT_NO_CANCEL_EXC the test
+    pins. 0.5s is long enough to guarantee the request is in flight when
+    close() is called (request_started signals before sleep), and short
+    enough that the whole test completes well under the 3s wall-clock budget.
+    """
+    request_started = asyncio.Event()
+    # Short sleep so the ASGI handler completes and the transport assertion
+    # fires inside the 3s test budget; long enough that the request is
+    # provably in flight when client.close() is called (request_started has
+    # already been set by the handler before the sleep begins).
+    app = _build_slow_asgi_app(request_started, sleep_seconds=0.5)
+
+    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client._app_name = "Test"
+    client._client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    )
+
+    pending = asyncio.create_task(client._request_with_retry("GET", "/slow"))
+    try:
+        await asyncio.wait_for(request_started.wait(), timeout=2.0)
+        # Do NOT cancel pending — call close() with the request still in-flight.
+        await asyncio.wait_for(client.close(), timeout=2.0)
+
+        # Wait for the in-flight task to surface its exception (bounded by the
+        # 0.5s sleep + a generous margin; 2.0s total caps the test budget).
+        result = await asyncio.wait_for(
+            asyncio.gather(pending, return_exceptions=True), timeout=2.0
+        )
+        assert isinstance(result[0], _HTTPX_INFLIGHT_NO_CANCEL_EXC), (
+            f"Expected in-flight task to raise {_HTTPX_INFLIGHT_NO_CANCEL_EXC.__name__} "
+            f"after aclose() without prior cancel; got {type(result[0]).__name__}: {result[0]!r}. "
+            "If this is an intentional httpx change, update _HTTPX_INFLIGHT_NO_CANCEL_EXC."
+        )
+    finally:
+        if not pending.done():
+            pending.cancel()
+            with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError, Exception):
+                await pending
 
 
 # ---------------------------------------------------------------------------
