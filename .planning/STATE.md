@@ -4,8 +4,8 @@ milestone: v2.8
 milestone_name: Hardening & Observability
 status: executing
 stopped_at: "v2.8 roadmap created — ready for `/gsd:plan-phase 64`"
-last_updated: "2026-05-26T02:19:24.440Z"
-last_activity: 2026-05-26 -- Phase 65 planning complete
+last_updated: "2026-05-26T02:27:30.718Z"
+last_activity: 2026-05-26 -- Phase 65 execution started
 progress:
   total_phases: 4
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-25)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.8 Hardening & Observability — Phase 64 ready to plan
+**Current focus:** Phase 65 — scheduler-hardening-resilience
 
 ## Current Position
 
-Phase: 64 — COMPLETE
-Plan: — (not yet planned)
-Status: Ready to execute
-Last activity: 2026-05-26 -- Phase 65 planning complete
+Phase: 65 (scheduler-hardening-resilience) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 65
+Last activity: 2026-05-26 -- Phase 65 execution started
 
 ```
 v2.8 Progress: [                    ] 0% (0/4 phases)

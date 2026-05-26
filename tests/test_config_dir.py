@@ -161,9 +161,15 @@ class _FakeScheduler:
         self.started = False
         self.shutdown_wait: bool | None = None
         self.jobs: list[tuple[tuple, dict]] = []
+        self.listeners: list[tuple[tuple, dict]] = []
 
     def add_job(self, *args, **kwargs) -> None:
         self.jobs.append((args, kwargs))
+
+    def add_listener(self, *args, **kwargs) -> None:
+        # SAFETY-02 (Phase 65-01): lifespan now registers _on_job_error;
+        # record but do not exercise — these tests only verify wiring.
+        self.listeners.append((args, kwargs))
 
     def start(self) -> None:
         self.started = True
