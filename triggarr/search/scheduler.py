@@ -209,9 +209,23 @@ def make_search_job(
                     aiosqlite.Error,
                     OSError,
                 ) as tracking_exc:
+                    # CR-01: match the sanitization split applied in
+                    # `_on_job_error` (see its docstring): httpx/pydantic
+                    # exceptions route through `_sanitize_exc` to strip
+                    # `request.url` credentials that may carry `?apikey=`
+                    # query parameters on legacy *arr installs. aiosqlite
+                    # and OSError messages do not carry secrets, so plain
+                    # `str(exc)` keeps them readable for debugging.
                     logger.warning(
                         "Tracking: check failed -- {exc}",
-                        exc=tracking_exc,
+                        exc=(
+                            _sanitize_exc(tracking_exc)
+                            if isinstance(
+                                tracking_exc,
+                                httpx.HTTPError | pydantic.ValidationError,
+                            )
+                            else str(tracking_exc)
+                        ),
                     )
             finally:
                 # RES-01: clear holder regardless of how we exit the in-lock

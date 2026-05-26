@@ -45,7 +45,7 @@ from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
 from triggarr.models.config import APP_TYPES, AuthConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
-from triggarr.search.engine import run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
+from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.search.scheduler import make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
@@ -854,11 +854,19 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
             )
             logger.info("{name}/{inst}: Manual search triggered", name=app_name.title(), inst=instance_name)
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
+            # CR-01: same sanitization split applied in scheduler's
+            # `_on_job_error` / tracking branch — httpx/pydantic exceptions
+            # may carry `?apikey=` query strings on legacy *arr installs;
+            # aiosqlite/OSError messages do not carry secrets.
             logger.error(
                 "{name}/{inst}: Manual search failed -- {exc}",
                 name=app_name.title(),
                 inst=instance_name,
-                exc=exc,
+                exc=(
+                    _sanitize_exc(exc)
+                    if isinstance(exc, httpx.HTTPError | pydantic.ValidationError)
+                    else str(exc)
+                ),
             )
 
     # Return updated card partial
