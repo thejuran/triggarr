@@ -22,6 +22,11 @@ from triggarr.web.security import is_secure_request
 EXEMPT_PREFIXES = ("/health", "/static", "/login", "/setup")
 
 
+def _has_control_chars(s: str) -> bool:
+    """SEC-03 D-09: Return True if string contains any C0 control char (0x00..0x1F) or DEL (0x7F)."""
+    return any(ord(c) < 0x20 or ord(c) == 0x7F for c in s)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add standard security response headers to every response.
 
@@ -160,10 +165,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """Decode Basic auth header, verify credentials, set session cookie on success."""
         authorization = request.headers.get("authorization", "")
+        client_ip = request.client.host if request.client else "unknown"
         if authorization.startswith("Basic "):
             try:
-                decoded = base64.b64decode(authorization[6:]).decode("utf-8")
+                decoded = base64.b64decode(authorization[6:], validate=True).decode("utf-8")
                 username, _, password = decoded.partition(":")
+                if _has_control_chars(username) or _has_control_chars(password):
+                    logger.warning(
+                        "basic_auth_rejected reason={reason} client_ip={ip}",
+                        reason="control_char",
+                        ip=client_ip,
+                    )
+                    return Response(
+                        status_code=401,
+                        headers={"WWW-Authenticate": 'Basic realm="Triggarr"'},
+                    )
                 if secrets.compare_digest(username, auth.username) and verify_password(
                     password, auth.password_hash.get_secret_value()
                 ):
@@ -181,7 +197,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     )
                     return response
             except (ValueError, UnicodeDecodeError):
-                pass
+                logger.warning(
+                    "basic_auth_rejected reason={reason} client_ip={ip}",
+                    reason="decode_failure",
+                    ip=client_ip,
+                )
         return Response(
             status_code=401,
             headers={"WWW-Authenticate": 'Basic realm="Triggarr"'},
