@@ -20,7 +20,6 @@ import aiosqlite
 import httpx
 import pytest
 from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
 
@@ -116,9 +115,14 @@ async def test_event_job_error_listener_logs_unexpected_exception():
     """
     from triggarr.search.scheduler import _on_job_error
 
-    scheduler = AsyncIOScheduler()
-    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
-
+    # WR-08: invoke the listener directly rather than calling
+    # `scheduler._dispatch_event(event)`. `_dispatch_event` is a private
+    # APScheduler API (leading underscore) -- any APScheduler upgrade
+    # can rename or change its signature without warning, leaving this
+    # test broken with an unhelpful AttributeError. The unit under test
+    # here is `_on_job_error`, not APScheduler's dispatch path, so calling
+    # the listener directly is both more robust and more faithful to the
+    # test intent.
     sink = io.StringIO()
     sink_id = logger.add(sink, format="{level} | {message}", level="ERROR")
     try:
@@ -129,7 +133,7 @@ async def test_event_job_error_listener_logs_unexpected_exception():
             scheduled_run_time=datetime.now(UTC),
             exception=RuntimeError("synthetic boom"),
         )
-        scheduler._dispatch_event(event)
+        _on_job_error(event)
     finally:
         logger.remove(sink_id)
 
