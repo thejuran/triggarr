@@ -152,7 +152,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 
 - [x] **Phase 64: Data Safety & Config Integrity** - Enforce search history bounds (resolved + pending separately), harden atomic config writes, prove concurrent config save lock with AST-verified coverage, test corrupted TOML recovery (completed 2026-05-26)
 - [x] **Phase 65: Scheduler Hardening & Resilience** - Narrow scheduler exception handler to expected types, add consecutive-failure escalation, extend graceful shutdown timeout, test async client cleanup (completed 2026-05-26)
-- [ ] **Phase 66: Security Hardening** - Remove CSP unsafe-inline via nonce migration, reject apikey= in *arr URLs, harden Basic auth header decoding, validate session secret at startup
+- [x] **Phase 66: Security Hardening** - Remove CSP unsafe-inline via nonce migration, reject apikey= in *arr URLs, harden Basic auth header decoding, validate session secret at startup (completed 2026-05-26)
 - [ ] **Phase 67: Observability & CSRF Test Coverage** - Surface last-successful-search per app on dashboard, cache tag lists with 1h TTL, add OriginCheckMiddleware test suite
 
 ## Phase Details
@@ -199,12 +199,12 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
   2. Submitting a Radarr/Sonarr/Lidarr URL that contains an `apikey=` query parameter in the settings form is rejected with a clear validation error before the config file is written
   3. A Basic auth header whose decoded credentials contain null bytes or other control characters is rejected with a 401 and the failed decode attempt is logged at WARNING — it does not reach the password comparison step
   4. On startup, if the session secret is shorter than 32 characters, or if it was auto-generated and not yet persisted to the config file, a WARNING is logged naming the problem and the recommended remediation
-**Plans:** 5 plans
-- [ ] 66-01-PLAN.md — SEC-02: Pydantic @field_validator on InstanceConfig.url rejecting apikey= query parameter (TDD, Wave 1)
-- [ ] 66-02-PLAN.md — SEC-03: Control-char rejection + WARNING logging in AuthMiddleware._handle_basic_auth (TDD, Wave 1)
-- [ ] 66-03-PLAN.md — SEC-04: _warn_if_session_secret_short helper + call site in startup() (TDD, Wave 1)
-- [ ] 66-04-PLAN.md — SEC-01 part 1: migrate 13 inline on*= handlers to addEventListener / data-action markers (Wave 2)
-- [ ] 66-05-PLAN.md — SEC-01 part 2: nonce middleware + Jinja context_processor + drop unsafe-inline from script-src + browser smoke checkpoint (Wave 3)
+**Plans:** 5/5 plans complete
+- [x] 66-01-PLAN.md — SEC-02: Pydantic @field_validator on InstanceConfig.url rejecting apikey= query parameter (TDD, Wave 1)
+- [x] 66-02-PLAN.md — SEC-03: Control-char rejection + WARNING logging in AuthMiddleware._handle_basic_auth (TDD, Wave 1)
+- [x] 66-03-PLAN.md — SEC-04: _warn_if_session_secret_short helper + call site in startup() (TDD, Wave 1)
+- [x] 66-04-PLAN.md — SEC-01 part 1: migrate 13 inline on*= handlers to addEventListener / data-action markers (Wave 2)
+- [x] 66-05-PLAN.md — SEC-01 part 2: nonce middleware + Jinja context_processor + drop unsafe-inline from script-src + browser smoke checkpoint (Wave 3)
 
 ### Phase 67: Observability & CSRF Test Coverage
 **Goal**: Users can see at a glance whether searches are succeeding per app, tag resolution no longer adds a round-trip every cycle, and the CSRF middleware is verified against adversarial header scenarios
@@ -226,5 +226,5 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 | 63. Header Favicon Icon | v2.7 | 1/1 | Complete | 2026-04-17 |
 | 64. Data Safety & Config Integrity | v2.8 | 4/4 | Complete   | 2026-05-26 |
 | 65. Scheduler Hardening & Resilience | v2.8 | 4/4 | Complete    | 2026-05-26 |
-| 66. Security Hardening | v2.8 | 0/5 | Planned | - |
+| 66. Security Hardening | v2.8 | 5/5 | Complete   | 2026-05-26 |
 | 67. Observability & CSRF Test Coverage | v2.8 | 0/? | Not started | - |
