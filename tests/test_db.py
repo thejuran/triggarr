@@ -427,6 +427,46 @@ async def test_pruning_preserves_pending_rows(tmp_path):
     await db.close()
 
 
+async def test_insert_caps_at_max_rows_over_large_soak(tmp_path):
+    """SAFETY-01: steady-state cap holds across 2x max_rows resolved inserts.
+
+    The inline trim in insert_search_entry deletes resolved rows beyond
+    max_rows after every insert. After inserting twice max_rows resolved
+    entries, the table must contain exactly max_rows resolved rows,
+    proving the trim runs after every insert and not only after some
+    inserts.
+    """
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 1000
+    try:
+        for i in range(2 * max_rows):
+            await insert_search_entry(
+                db,
+                "Radarr",
+                "missing",
+                f"Movie {i}",
+                outcome="failed",
+                max_rows=max_rows,
+            )
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history WHERE COALESCE(outcome, 'searched') != 'searched'"
+        ) as cursor:
+            resolved_count = (await cursor.fetchone())[0]
+
+        async with db.execute("SELECT COUNT(*) FROM search_history") as cursor:
+            total_count = (await cursor.fetchone())[0]
+
+        assert resolved_count == max_rows, (
+            f"Resolved rows should be capped at {max_rows}, got {resolved_count}"
+        )
+        assert total_count == max_rows, (
+            f"Total rows should equal resolved count (no pending in this test), got {total_count}"
+        )
+    finally:
+        await db.close()
+
+
 async def test_backfill_sets_unresolved(tmp_path):
     """Rows inserted before v1 migration get DEFAULT 'searched' for outcome.
 
