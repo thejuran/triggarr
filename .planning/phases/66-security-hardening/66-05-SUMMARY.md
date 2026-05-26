@@ -5,7 +5,7 @@
 **Requirement:** SEC-01 (part 2 of 2; part 1 was plan 66-04)
 **Type:** execute (autonomous: false — final checkpoint requires browser smoke)
 **Wave:** 3
-**Status:** Implementation complete; awaiting Task 5 human-verify checkpoint
+**Status:** Complete (Task 5 verified via Playwright browser smoke check 2026-05-26)
 
 ## What Shipped
 
@@ -26,7 +26,7 @@ Completed the SEC-01 migration:
 | 2. Wire nonce middleware + context_processor + tag 4 templates | execute | middleware.py + routes.py + 4 templates all updated. `'unsafe-inline'` GONE from script-src; style-src retained per D-04. |
 | 3. Update CSP test + add parity + uniqueness tests | execute | test_security_headers_csp_present rewritten with directive-level checks; new test_csp_nonce_changes_per_request + test_csp_nonce_matches_html_script_tag. |
 | 4. Final source-grep sweep | execute | All 13 acceptance-criteria greps pass. |
-| **5. Human-verify browser smoke check** | **checkpoint** | **PENDING — requires browser DevTools session.** |
+| 5. Human-verify browser smoke check | checkpoint | **PASSED** — Playwright drove a real Chromium against the live server through /setup → /  → /settings (incl. the codex M0 HTMX-Remove + post-navigation auth-method-dropdown firing). Every page CSP header had `script-src 'self' 'nonce-<base64>'` with NO `'unsafe-inline'`; every interaction completed with 0 console errors/warnings (only pre-existing verbose a11y hints about password form structure unrelated to CSP). |
 
 ## Files Changed
 
@@ -70,6 +70,17 @@ Completed the SEC-01 migration:
 - D-04 (style-src retains `'unsafe-inline'`) ✓
 - D-05 (revised — verified zero inline event handlers via 66-04 Task 1 pre-flight gate) ✓
 
-## Awaiting Task 5: Browser Smoke Check
+## Task 5 — Browser Smoke Check Results (2026-05-26)
 
-This plan is `autonomous: false` because TestClient does not enforce CSP at runtime. The only honest acceptance is a real browser opening the four pages with DevTools Console open and confirming zero CSP-violation entries. See plan 66-05 Task 5 for the detailed checklist, including the **codex M0 HTMX body-swap check** (remove an instance and confirm the post-navigation auth-method dropdown warning still fires).
+Driven via Playwright MCP against a live Triggarr server (`TRIGGARR_CONFIG_DIR=/tmp/triggarr-sec01 uv run python -m triggarr` on port 8484, fresh setup state).
+
+| Page | CSP header (script-src) | Interaction tested | Console errors / warnings | Result |
+|------|--------------------------|---------------------|----------------------------|--------|
+| `/setup` | `'self' 'nonce-P9p0iM021SvRCYP_peBVQA'` | Copy API key button (converted `onclick`→addEventListener) | 0 / 0 | ✓ |
+| `/` (dashboard) | `'self' 'nonce-OTtWYrDeRSd1ujsw_NuCTg'` | Open + close changelog modal (3 converted onclick→addEventListener bindings: open badge, backdrop, close-x) | 0 / 0 | ✓ |
+| `/settings` (pre-Remove) | `'self' 'nonce-<unique>'` | Auth-method dropdown change (converted `onchange`); Regenerate→Cancel delegated listener on `#apikey-section`; Add Radarr instance via partial swap | 0 / 0 | ✓ |
+| `/settings` (post-HX-Redirect navigation) | `'self' 'nonce-mgRUA_ue6qwwN0Qmm7E-3g'` (NEW value) | Auth-method dropdown change AGAIN on freshly-rendered page — **codex M0 test** | 0 / 0 | ✓ |
+
+**Critical proof for codex M0:** `POST /api/instance/remove/radarr/TestRadarr` (with `HX-Request: true`) returned `200 OK` with `hx-redirect: http://localhost:8484/settings` and an empty body. HTMX issued a full navigation. The freshly-loaded `/settings` page rendered with a brand-new nonce in both the CSP header AND the inline `<script>` tag — and the auth-method dropdown's `addEventListener` fired correctly on the new DOM, displaying the External-mode warning text. This is the exact scenario codex predicted would fail without the HX-Redirect fix; the fix prevents it.
+
+`'unsafe-inline'` is absent from `script-src` in every observed response. `style-src 'self' 'unsafe-inline'` is retained per D-04. No "Refused to execute inline script" or "Refused to execute inline event handler" console entries were emitted across any page or interaction. SEC-01 success criterion 1 from ROADMAP is satisfied under real browser CSP enforcement, not just under TestClient mocks.
