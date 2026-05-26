@@ -10,10 +10,12 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
+from httpx import ASGITransport
 
 from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
@@ -1938,3 +1940,81 @@ def test_changelog_link_in_nav(client, test_app):
     assert response.status_code == 200
     assert "/changelog" in response.text
     assert "changelog-modal" in response.text
+
+
+# --- SAFETY-05 / TEST-03: concurrent settings save serialization ---
+
+
+async def test_concurrent_settings_save_serialized(test_app, tmp_path):
+    """SAFETY-05 / TEST-03: two concurrent POST /settings cannot interleave.
+
+    The route handler acquires request.app.state.search_lock before dispatching
+    _atomic_toml_write via run_in_executor. The second concurrent request must
+    wait for the first to release the lock; the recorded call order must be
+    [enter, exit, enter, exit], never [enter, enter, exit, exit].
+
+    Uses httpx.AsyncClient + ASGITransport because the synchronous TestClient
+    cannot fire two truly concurrent requests on the same event loop
+    (RESEARCH 64-RESEARCH.md Pitfall 2). This is a new pattern for web tests
+    in this repo -- precedent for ASGITransport-style drivers exists in
+    tests/test_startup.py:257 (MockTransport) and tests/test_clients.py.
+    """
+    import time
+
+    from triggarr.config import _atomic_toml_write as real_atomic_write
+
+    call_order: list[str] = []
+
+    def slow_atomic_write(path, data):
+        call_order.append("enter")
+        time.sleep(0.05)  # block the executor thread to force lock contention
+        call_order.append("exit")
+        return real_atomic_write(path, data)
+
+    # Two schema-complete form payloads that differ only in log_level so we
+    # can confirm the final config reflects one save (not a hybrid).
+    def _form(log_level: str) -> dict[str, str]:
+        return {
+            "log_level": log_level,
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "5000",
+            "request_timeout": "60",
+            "page_size": "100",
+            "tracking_window_minutes": "120",
+            "radarr__Default__url": "http://radarr:7878",
+            "radarr__Default__api_key": "",
+            "radarr__Default__enabled": "on",
+            "radarr__Default__search_interval": "30",
+            "radarr__Default__search_missing_count": "5",
+            "radarr__Default__search_cutoff_count": "5",
+            "radarr__Default__missing_tag": "",
+            "radarr__Default__cutoff_tag": "",
+            "sonarr__Default__url": "http://sonarr:8989",
+            "sonarr__Default__api_key": "",
+            "sonarr__Default__enabled": "on",
+            "sonarr__Default__search_interval": "30",
+            "sonarr__Default__search_missing_count": "5",
+            "sonarr__Default__search_cutoff_count": "5",
+            "sonarr__Default__missing_tag": "",
+            "sonarr__Default__cutoff_tag": "",
+        }
+
+    form_a = _form("info")
+    form_b = _form("debug")
+
+    with patch("triggarr.web.routes._atomic_toml_write", side_effect=slow_atomic_write):
+        async with httpx.AsyncClient(
+            transport=ASGITransport(app=test_app),
+            base_url="http://test",
+        ) as ac:
+            r1, r2 = await asyncio.gather(
+                ac.post("/settings", data=form_a, follow_redirects=False),
+                ac.post("/settings", data=form_b, follow_redirects=False),
+            )
+
+    assert r1.status_code == 303, f"First request status={r1.status_code} body={r1.text[:200]}"
+    assert r2.status_code == 303, f"Second request status={r2.status_code} body={r2.text[:200]}"
+    assert call_order == ["enter", "exit", "enter", "exit"], (
+        f"Lock did not serialize writes; call_order={call_order}. "
+        "If [enter, enter, exit, exit], the asyncio.Lock is missing or no-op."
+    )
