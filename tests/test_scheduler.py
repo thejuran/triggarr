@@ -8,12 +8,18 @@ and tracking integration after search cycles (Plan 20-03).
 from __future__ import annotations
 
 import asyncio
+import io
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
+import httpx
+import pytest
+from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
+from loguru import logger
 
 from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
@@ -32,11 +38,20 @@ async def test_make_search_job_client_none_returns_early():
     await job()
 
 
-async def test_make_search_job_exception_swallowed():
-    """Job catches and swallows unhandled exceptions from cycle function."""
+async def test_make_search_job_unexpected_exception_propagates():
+    """SAFETY-02: unexpected (non-narrow-tuple) exceptions now propagate.
+
+    RuntimeError is NOT in (httpx.HTTPError, pydantic.ValidationError,
+    aiosqlite.Error, OSError), so it must escape the wrapper and reach
+    APScheduler's EVENT_JOB_ERROR listener.
+    """
     app = FastAPI()
     app.state.radarr_clients = {"Default": AsyncMock()}
     app.state.search_lock = asyncio.Lock()
+    # Pre-initialize state attrs the later plans (65-02 / 65-03) will populate.
+    # Harmless here under the inverted assertion.
+    app.state.search_failures = {}
+    app.state.search_lock_holder = None
     app.state.triggarr_state = _default_state(make_settings())
     app.state.settings = make_settings()
 
@@ -49,10 +64,69 @@ async def test_make_search_job_exception_swallowed():
             "triggarr.search.scheduler.save_state",
             new=MagicMock(),
         ),
+        pytest.raises(RuntimeError, match="boom"),
     ):
         job = make_search_job(app, "radarr", "Default", Path("/tmp/state.json"))
-        # Should NOT raise -- exception is caught internally
         await job()
+
+
+async def test_make_search_job_httperror_swallowed():
+    """SAFETY-02: httpx.ConnectError IS still caught (it's in the narrow tuple)."""
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": AsyncMock()}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_failures = {}
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = _default_state(make_settings())
+    app.state.settings = make_settings()
+
+    with (
+        patch(
+            "triggarr.search.scheduler.run_radarr_cycle",
+            new=AsyncMock(side_effect=httpx.ConnectError("connection refused")),
+        ),
+        patch(
+            "triggarr.search.scheduler.save_state",
+            new=MagicMock(),
+        ),
+    ):
+        job = make_search_job(app, "radarr", "Default", Path("/tmp/state.json"))
+        # Should NOT raise -- httpx.ConnectError is in the narrow tuple.
+        await job()
+
+
+async def test_event_job_error_listener_logs_unexpected_exception():
+    """SAFETY-02: the EVENT_JOB_ERROR listener logs propagated exceptions.
+
+    When a non-narrow-tuple exception (e.g. RuntimeError) escapes a job
+    wrapper, APScheduler fires EVENT_JOB_ERROR and the registered
+    `_on_job_error` listener logs at ERROR level with job_id + type name
+    + sanitized exception message.
+    """
+    from triggarr.search.scheduler import _on_job_error
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
+
+    sink = io.StringIO()
+    sink_id = logger.add(sink, format="{level} | {message}", level="ERROR")
+    try:
+        event = JobExecutionEvent(
+            code=EVENT_JOB_ERROR,
+            job_id="radarr_Default_search",
+            jobstore="default",
+            scheduled_run_time=datetime.now(UTC),
+            exception=RuntimeError("synthetic boom"),
+        )
+        scheduler._dispatch_event(event)
+    finally:
+        logger.remove(sink_id)
+
+    output = sink.getvalue()
+    assert output.startswith("ERROR | "), f"Expected ERROR-level log line, got: {output!r}"
+    assert "radarr_Default_search" in output, f"Missing job_id in: {output!r}"
+    assert "RuntimeError" in output, f"Missing exception type in: {output!r}"
+    assert "synthetic boom" in output, f"Missing exception message in: {output!r}"
 
 
 # ---------------------------------------------------------------------------
