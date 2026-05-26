@@ -143,7 +143,7 @@ def test_warn_if_session_secret_short() -> None:
             username="admin",
             password_hash=SecretStr("$2b$12$dummy"),
             api_key=SecretStr("x" * 32),
-            session_secret=SecretStr("short"),  # 5 chars -- well under 32
+            session_secret=SecretStr("ZZZSENTINELZZZ"),  # 14 chars -- well under 32; sentinel avoids substring collision with "shorter" in warning
         ),
     )
 
@@ -160,7 +160,7 @@ def test_warn_if_session_secret_short() -> None:
     # D-14: warning includes remediation hint (Unicode arrow U+2192 preserved)
     assert "regenerate via Settings → Security or set a longer value in config.toml" in output
     # SecretStr discipline: secret VALUE never leaks into the log line
-    assert "short" not in output
+    assert "ZZZSENTINELZZZ" not in output
 
 
 def test_no_warn_when_session_secret_long() -> None:

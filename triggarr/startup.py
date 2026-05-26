@@ -46,6 +46,31 @@ def check_localhost_urls(settings: Settings) -> None:
                 )
 
 
+def _warn_if_session_secret_short(settings: Settings) -> None:
+    """SEC-04 D-12/D-13/D-14: Warn once at startup if the persisted session_secret
+    is shorter than 32 characters.
+
+    The ``needs_setup`` guard skips the warning during the pre-setup state, where an
+    empty session_secret is normal (setup persists a fresh 64-char hex secret
+    atomically via ``_atomic_toml_write`` -- see ``routes.py:1086-1117``).
+
+    This helper mirrors ``check_localhost_urls`` above: a single sync function called
+    once during the startup sequence (NOT a periodic loop). The Disabled-mode warning
+    in ``web/middleware.py`` is request-time rate-limited; that pattern is wrong for a
+    one-shot configuration check (per RESEARCH Pattern 4).
+
+    Only ``len()`` is computed on the secret value -- the value itself is never logged
+    (SecretStr discipline).
+    """
+    if settings.auth.needs_setup:
+        return
+    if len(settings.auth.session_secret.get_secret_value()) < 32:
+        logger.warning(
+            "auth.session_secret is shorter than 32 characters -- "
+            "regenerate via Settings → Security or set a longer value in config.toml"
+        )
+
+
 def collect_secrets(settings: Settings) -> list[str]:
     """Extract API key values from all configured instances and auth secrets.
 
@@ -185,6 +210,9 @@ async def startup(config_path: Path | None = None) -> Settings:
 
     # 4.6 Warn about localhost URLs (common Docker networking mistake)
     check_localhost_urls(settings)
+
+    # 4.7 SEC-04: Warn if persisted session_secret is shorter than 32 chars.
+    _warn_if_session_secret_short(settings)
 
     # 5. Validate connections
     results = await validate_connections(settings)
