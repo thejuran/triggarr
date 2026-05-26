@@ -394,7 +394,9 @@ async def insert_search_entry(
     if outcome == "searched":
         cap = PENDING_CAP_MULTIPLIER * max_rows
         async with db.execute(
-            "SELECT COUNT(*) FROM search_history WHERE outcome = 'searched'"
+            "SELECT COUNT(*) FROM search_history "
+            "WHERE outcome = 'searched' AND app = ? AND instance_id = ?",
+            (app, instance_id),
         ) as cursor:
             row = await cursor.fetchone()
         pending_count = row[0] if row is not None else 0
