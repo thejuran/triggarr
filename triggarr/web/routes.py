@@ -400,6 +400,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "page_size": settings.general.page_size,
             "tracking_window_minutes": settings.general.tracking_window_minutes,
             "tracking_delay_seconds": settings.general.tracking_delay_seconds,
+            "max_consecutive_failures": settings.general.max_consecutive_failures,
             "skip_unreleased": settings.general.skip_unreleased,
             "auth_method": settings.auth.method,
             "auth_is_disabled": settings.auth.is_disabled,
@@ -502,6 +503,7 @@ async def save_settings(request: Request) -> RedirectResponse:
             "page_size": safe_int(form.get("page_size"), 50, 10, 500),
             "tracking_window_minutes": safe_int(form.get("tracking_window_minutes"), 60, 5, 1440),
             "tracking_delay_seconds": current_settings.general.tracking_delay_seconds,
+            "max_consecutive_failures": safe_int(form.get("max_consecutive_failures"), 5, 1, 100),
             "skip_unreleased": form.get("skip_unreleased") == "on",
         },
     }

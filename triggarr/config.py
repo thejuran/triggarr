@@ -31,6 +31,7 @@ log_level = "info"
 # page_size = 50
 # tracking_window_minutes = 60
 # tracking_delay_seconds = 90
+# max_consecutive_failures = 5
 # skip_unreleased = true
 
 # Tag filtering: configure missing_tag and cutoff_tag per instance

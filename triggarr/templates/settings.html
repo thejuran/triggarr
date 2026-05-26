@@ -67,6 +67,13 @@
                 <p class="text-xs text-triggarr-muted mt-1">How long to wait for grabs after a search before marking unresolved.</p>
             </div>
             <div>
+                <label class="block text-sm text-triggarr-muted mb-1">Max Consecutive Failures</label>
+                <input type="number" name="max_consecutive_failures" value="{{ max_consecutive_failures }}"
+                       min="1" max="100"
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">After N consecutive search cycle failures, escalate log level from warning to error.</p>
+            </div>
+            <div>
                 <div class="flex items-center gap-3 mt-2">
                     <input type="checkbox" name="skip_unreleased"
                            {% if skip_unreleased %}checked{% endif %}

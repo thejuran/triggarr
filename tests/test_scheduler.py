@@ -211,8 +211,19 @@ async def test_failure_counter_increments_on_real_arr_outage(tmp_path):
 
     app, job = _build_outage_app(tmp_path, transport_handler=handler)
     # Patch asyncio.sleep so the retry inside _request_with_retry does not
-    # actually sleep 2s × 3 cycles.
-    with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+    # actually sleep 2s × 3 cycles. Patch run_tracking_check to no-op so
+    # the AsyncMock db doesn't have to model aiosqlite's cursor protocol.
+    # Patch save_state so the cycle's post-success persistence call doesn't
+    # write to disk (we patch the imported reference inside scheduler).
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
         await job()
         await job()
         await job()
@@ -280,7 +291,15 @@ async def test_failure_counter_escalates_at_threshold(tmp_path):
     sink = io.StringIO()
     sink_id = logger.add(sink, format="{level} | {message}", level="WARNING")
     try:
-        with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+            patch(
+                "triggarr.search.scheduler.run_tracking_check",
+                new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                            "unresolved": 0, "errors": 0}),
+            ),
+            patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+        ):
             await job()
             await job()
             await job()
@@ -311,31 +330,40 @@ async def test_failure_counter_resets_on_success(tmp_path):
     Drives 4 cycles via a stateful MockTransport: 503, 503, 200, 503.
     Counter trajectory: 1, 2, 0 (reset), 1.
     """
-    call_count = {"n": 0}
-
     def handler(request: httpx.Request) -> httpx.Response:
-        call_count["n"] += 1
-        # The engine makes get_wanted_missing + get_wanted_cutoff per cycle
-        # (2 calls each into get_paginated → at least 2 HTTP calls per cycle,
-        # plus get_library_count and get_tags depending on path). Treat
-        # ALL calls within the same cycle as a unit: cycles 1, 2, 4 fail
-        # (handler always returns 503); cycle 3 succeeds (handler returns 200).
-        # We approximate cycle index by ranges of HTTP calls — but a simpler
-        # and more reliable approach is to flip behavior based on the cycle
-        # counter, which the test increments before each await job() below.
+        # Cycle 1, 2, 4 → fail (503). Cycle 3 → success (200 with valid
+        # paginated payload). The cycle counter is set explicitly by the
+        # test body before each await job() below.
         if state["cycle"] in (1, 2, 4):
             return httpx.Response(503, json={"error": "Service unavailable"})
-        # Cycle 3 success path: return empty paginated payloads for any path.
+        # Cycle 3 success path: PaginatedResponse needs page/pageSize/sortKey/
+        # totalRecords/records. Tag endpoint returns a flat JSON array.
+        if request.url.path == "/api/v3/tag":
+            return httpx.Response(200, json=[])
         return httpx.Response(
             200,
-            json={"page": 1, "pageSize": 50, "totalRecords": 0, "records": []},
+            json={
+                "page": 1,
+                "pageSize": 50,
+                "sortKey": "id",
+                "totalRecords": 0,
+                "records": [],
+            },
         )
 
     state = {"cycle": 1}
     app, job = _build_outage_app(tmp_path, transport_handler=handler)
     connected_snapshots = []
 
-    with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
         # Cycle 1 (503)
         state["cycle"] = 1
         await job()
@@ -371,9 +399,17 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
         return httpx.Response(503, json={"error": "Service unavailable"})
 
     def fourk_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/tag":
+            return httpx.Response(200, json=[])
         return httpx.Response(
             200,
-            json={"page": 1, "pageSize": 50, "totalRecords": 0, "records": []},
+            json={
+                "page": 1,
+                "pageSize": 50,
+                "sortKey": "id",
+                "totalRecords": 0,
+                "records": [],
+            },
         )
 
     # Build settings with two radarr instances.
@@ -436,7 +472,15 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
     default_job = make_search_job(app, "radarr", "Default", tmp_path / "state.json")
     fourk_job = make_search_job(app, "radarr", "4K", tmp_path / "state.json")
 
-    with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
         await default_job()
         await fourk_job()
 
@@ -456,9 +500,17 @@ async def test_persistence_failure_logs_error_and_marks_degraded(tmp_path):
       - NOT increment the search-failure counter (durability != *arr outage).
     """
     def success_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/tag":
+            return httpx.Response(200, json=[])
         return httpx.Response(
             200,
-            json={"page": 1, "pageSize": 50, "totalRecords": 0, "records": []},
+            json={
+                "page": 1,
+                "pageSize": 50,
+                "sortKey": "id",
+                "totalRecords": 0,
+                "records": [],
+            },
         )
 
     app, job = _build_outage_app(tmp_path, transport_handler=success_handler)
@@ -569,6 +621,9 @@ async def _make_app_with_db(tmp_path, *, radarr_client=None, sonarr_client=None)
     app.state.radarr_clients = {"Default": radarr_client} if radarr_client else {}
     app.state.sonarr_clients = {"Default": sonarr_client} if sonarr_client else {}
     app.state.state_path = state_path
+    # Plan 65-02: scheduler now reads/writes these state attrs unconditionally.
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
     return app, db, state_path
 
 

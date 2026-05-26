@@ -79,6 +79,13 @@ def make_search_job(
         if instance_config is None:
             return
         async with app.state.search_lock:
+            # SAFETY-03: per-job consecutive-failure counter key; also reused
+            # by plan 65-03 (lock-holder identity). Assigned first so every
+            # branch below can reference it.
+            job_id = f"{app_name}_{instance_name}_search"
+
+            # --- Cycle execution (narrow-tuple catch; OSError REMOVED — Codex
+            # finding 2: OSError is durability, not transient *arr blip). ---
             try:
                 app.state.triggarr_state = await cycle_fn(
                     client,
@@ -88,53 +95,131 @@ def make_search_job(
                     app.state.settings,
                     app.state.db,
                 )
-                await asyncio.get_running_loop().run_in_executor(
-                    None, save_state, app.state.triggarr_state, state_path
-                )
-                # --- Tracking check: resolve pending search outcomes for this instance ---
-                try:
-                    tracking_result = await run_tracking_check(
-                        app.state.db,
-                        client,
-                        app_name.title(),
-                        instance_name,
-                        app.state.settings.general.tracking_window_minutes,
-                    )
-                    resolved = (
-                        tracking_result["grabbed"]
-                        + tracking_result["partial"]
-                        + tracking_result.get("partial_expired", 0)
-                        + tracking_result["unresolved"]
-                    )
-                    if resolved > 0 or tracking_result["errors"] > 0:
-                        logger.info(
-                            "Tracking: {grabbed} grabbed, {partial} partial, "
-                            "{partial_expired} partial_expired, "
-                            "{unresolved} unresolved, {errors} errors",
-                            grabbed=tracking_result["grabbed"],
-                            partial=tracking_result["partial"],
-                            partial_expired=tracking_result.get("partial_expired", 0),
-                            unresolved=tracking_result["unresolved"],
-                            errors=tracking_result["errors"],
-                        )
-                except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as tracking_exc:
-                    logger.warning(
-                        "Tracking: check failed -- {exc}",
-                        exc=tracking_exc,
-                    )
-            # SAFETY-02: narrow tuple only — code-bug exceptions (RuntimeError,
+            # SAFETY-02: narrow tuple — code-bug exceptions (RuntimeError,
             # KeyError, etc.) intentionally propagate to APScheduler's
             # EVENT_JOB_ERROR listener (_on_job_error). Do NOT add
             # asyncio.CancelledError here: it is BaseException, not Exception,
             # and the shutdown drain depends on its propagation.
-            except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
+            # SAFETY-03 (Codex finding 2): OSError moved to the dedicated
+            # persistence branch below; persistence durability failures must
+            # not be conflated with transient *arr cycle blips.
+            except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error) as exc:
+                _record_cycle_failure(app, job_id, app_name, reason=_sanitize_exc(exc))
+                return
+
+            # SAFETY-03 (Codex finding 1): cycle outcome derived from
+            # state[app][inst][connected] — covers the REAL *arr outage path
+            # where the engine catches httpx.HTTPError internally, sets
+            # connected = False, and returns state without raising.
+            _evaluate_cycle_outcome(app, app_name, instance_name, job_id)
+
+            # SAFETY-03 (Codex finding 2): persistence is its own try/except.
+            # OSError / aiosqlite.Error here are durability failures, NOT
+            # transient *arr blips. Log ERROR immediately (no threshold gate),
+            # mark persistence_degraded, and re-raise so EVENT_JOB_ERROR also
+            # logs with job_id context. The counter is NOT incremented.
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, save_state, app.state.triggarr_state, state_path
+                )
+            except (OSError, aiosqlite.Error) as persist_exc:
+                app.state.persistence_degraded = True
                 logger.error(
-                    "{app}: Unhandled error in search cycle -- {exc}",
+                    "{app}: persistence failed -- {exc}",
                     app=app_name.title(),
-                    exc=exc,
+                    exc=_sanitize_exc(persist_exc),
+                )
+                raise
+
+            # --- Tracking check: resolve pending search outcomes for this instance ---
+            try:
+                tracking_result = await run_tracking_check(
+                    app.state.db,
+                    client,
+                    app_name.title(),
+                    instance_name,
+                    app.state.settings.general.tracking_window_minutes,
+                )
+                resolved = (
+                    tracking_result["grabbed"]
+                    + tracking_result["partial"]
+                    + tracking_result.get("partial_expired", 0)
+                    + tracking_result["unresolved"]
+                )
+                if resolved > 0 or tracking_result["errors"] > 0:
+                    logger.info(
+                        "Tracking: {grabbed} grabbed, {partial} partial, "
+                        "{partial_expired} partial_expired, "
+                        "{unresolved} unresolved, {errors} errors",
+                        grabbed=tracking_result["grabbed"],
+                        partial=tracking_result["partial"],
+                        partial_expired=tracking_result.get("partial_expired", 0),
+                        unresolved=tracking_result["unresolved"],
+                        errors=tracking_result["errors"],
+                    )
+            except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as tracking_exc:
+                logger.warning(
+                    "Tracking: check failed -- {exc}",
+                    exc=tracking_exc,
                 )
 
     return job
+
+
+def _record_cycle_failure(app: FastAPI, job_id: str, app_name: str, reason: str) -> int:
+    """SAFETY-03: increment the per-job failure counter and log at the appropriate level.
+
+    Uses ``>=`` (per RESEARCH A6: count==threshold IS ERROR — the threshold
+    represents "the Nth failure escalates"). Returns the new count for
+    testability.
+
+    Args:
+        app: FastAPI app holding ``app.state.search_failures`` and ``app.state.settings``.
+        job_id: ``f"{app_name}_{instance_name}_search"`` — the counter key.
+        app_name: Lower-case *arr name ("radarr", "sonarr", "lidarr").
+        reason: Pre-sanitized human-readable failure reason for the log line.
+    """
+    count = app.state.search_failures.get(job_id, 0) + 1
+    app.state.search_failures[job_id] = count
+    threshold = app.state.settings.general.max_consecutive_failures
+    # SAFETY-03: >= per RESEARCH A6 (count==threshold IS ERROR)
+    log_fn = logger.error if count >= threshold else logger.warning
+    log_fn(
+        "{app}: search cycle failed ({count}/{threshold}) -- {reason}",
+        app=app_name.title(),
+        count=count,
+        threshold=threshold,
+        reason=reason,
+    )
+    return count
+
+
+def _evaluate_cycle_outcome(app: FastAPI, app_name: str, instance_name: str, job_id: str) -> bool:
+    """SAFETY-03 (Codex finding 1): derive cycle outcome from the engine's `connected` signal.
+
+    Production engine cycles catch ``httpx.HTTPError`` / ``pydantic.ValidationError``
+    internally, set ``state[app][inst]["connected"] = False``, and return state
+    rather than raising. The scheduler MUST observe this outcome to count
+    real *arr outages — the rare narrow-tuple raise path alone is not enough.
+
+    Returns True on success (counter reset), False on failure (counter
+    incremented + escalation logged). Missing or None ``connected`` is treated
+    as success (do not double-count first-ever cycle before the engine sets
+    the flag).
+    """
+    # SAFETY-03 (Codex finding 1): cycle outcome derived from state[app][inst][connected],
+    # not from raised exceptions.
+    connected = (
+        app.state.triggarr_state.get(app_name, {})
+        .get(instance_name, {})
+        .get("connected")
+    )
+    if connected is False:
+        _record_cycle_failure(app, job_id, app_name, reason="instance unreachable")
+        return False
+    # connected is True or unknown — treat as success to avoid double-counting.
+    app.state.search_failures[job_id] = 0
+    return True
 
 
 def _on_job_error(event) -> None:
@@ -253,6 +338,15 @@ def create_lifespan(
         app.state.search_lock = asyncio.Lock()
         app.state.last_search_time: dict[str, float] = {}
         app.state.last_health_check = None
+        # SAFETY-03: per-job consecutive-failure counter keyed by
+        # f"{app_name}_{instance_name}_search". Incremented when the engine
+        # cycle returns with connected=False or when the narrow-tuple cycle
+        # catch fires; reset on cycle success.
+        app.state.search_failures: dict[str, int] = {}
+        # SAFETY-03 (Codex finding 2): set to True when save_state raises
+        # OSError/aiosqlite.Error mid-persistence. Observable state only in
+        # this phase; future phase may surface via /health endpoint.
+        app.state.persistence_degraded: bool = False
 
         # Import update_info dict once at lifespan start (not inside job)
         # to avoid circular import during scheduler ticks.
