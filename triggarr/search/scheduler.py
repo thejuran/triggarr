@@ -206,6 +206,17 @@ def _evaluate_cycle_outcome(app: FastAPI, app_name: str, instance_name: str, job
     incremented + escalation logged). Missing or None ``connected`` is treated
     as success (do not double-count first-ever cycle before the engine sets
     the flag).
+
+    NOTE: This helper is invoked only from `make_search_job` (the APScheduler
+    job factory). The manual-search-now endpoint in `triggarr/web/routes.py`
+    invokes `cycle_fn(...)` directly and bypasses `make_search_job`, so a
+    successful manual search does NOT currently reset the per-job counter,
+    and a failing manual search does NOT currently increment it.
+    TODO(SAFETY-03): refactor `search_now` to go through `make_search_job`
+    (or extract a shared `_run_one_cycle(app, app_name, instance_name)`
+    helper) so manual and scheduled searches share the same counter
+    semantics. Deferred to a follow-up plan in v2.8 to keep this plan's
+    diff focused on the scheduler path.
     """
     # SAFETY-03 (Codex finding 1): cycle outcome derived from state[app][inst][connected],
     # not from raised exceptions.
@@ -218,6 +229,8 @@ def _evaluate_cycle_outcome(app: FastAPI, app_name: str, instance_name: str, job
         _record_cycle_failure(app, job_id, app_name, reason="instance unreachable")
         return False
     # connected is True or unknown — treat as success to avoid double-counting.
+    # SAFETY-03: manual searches via search_now bypass this reset (see TODO
+    # above). The cycle counter is per-scheduler-job today.
     app.state.search_failures[job_id] = 0
     return True
 
