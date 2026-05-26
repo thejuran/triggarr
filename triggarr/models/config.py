@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConfigSettingsSource
 
 APP_TYPES: tuple[str, ...] = ("radarr", "sonarr", "lidarr")
@@ -81,6 +81,8 @@ class GeneralConfig(BaseModel):
     page_size: int = 50  # DEBT-08: *arr API pagination size
     tracking_window_minutes: int = 60  # TRACK-07: how long to wait for grabs after search
     tracking_delay_seconds: int = 90  # Delay before tracking check (unused)
+    # SAFETY-03: bounded 1..100 to defend against typos at config edit time
+    max_consecutive_failures: int = Field(default=5, ge=1, le=100)
     # v2.2: skip Radarr movies without past digital/physical release date
     skip_unreleased: bool = True
 
