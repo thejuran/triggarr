@@ -64,6 +64,7 @@ services:
       - FOWNER
       - SETUID
       - SETGID
+    stop_grace_period: 90s  # > TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT (default 60s)
     restart: unless-stopped
 
 volumes:
@@ -71,6 +72,8 @@ volumes:
 ```
 
 Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:8484) to complete first-run account setup and configure your Radarr, Sonarr, and/or Lidarr connections.
+
+The `stop_grace_period: 90s` setting gives the in-process search-cycle drain (default 60s, configurable via the `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` environment variable) time to complete before Docker sends SIGKILL. If you run Triggarr with `docker run` directly (no compose), pass `--stop-timeout 90`.
 
 When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `restart: unless-stopped` example above, the container then starts normally on the next restart.
 
@@ -107,6 +110,9 @@ Environment=TRIGGARR_CONFIG_DIR=/var/lib/triggarr
 ExecStart=/usr/local/bin/triggarr
 Restart=on-failure
 RestartSec=10
+# Give the in-process search-cycle drain (default 60s, set via
+# TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT) time to complete before SIGKILL.
+TimeoutStopSec=90s
 
 [Install]
 WantedBy=multi-user.target

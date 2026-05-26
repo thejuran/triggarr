@@ -5,11 +5,25 @@ FastAPI's lifespan context manager.  Shared state is exposed on ``app.state``
 so that web routes can read it without coupling.  The ``make_search_job``
 factory creates job closures that read from ``app.state`` rather than
 capturing variables, enabling future hot-reload of clients and settings.
+
+Phase 65 hardening layered on top of the original wiring:
+- SAFETY-02 (65-01): narrow-tuple cycle except + EVENT_JOB_ERROR listener so
+  code-bug exceptions escape APScheduler's default silence.
+- SAFETY-03 (65-02): per-job consecutive-failure counter on
+  ``app.state.search_failures`` driven by the engine's ``connected`` flag;
+  split persistence branch with ``app.state.persistence_degraded`` flag.
+- RES-01 (65-03): configurable shutdown drain (``_SHUTDOWN_DRAIN_TIMEOUT``,
+  env-overridable via ``TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT``) + holder identity
+  on ``app.state.search_lock_holder``; INFO-on-entry and WARNING-on-timeout
+  shutdown logs both name the stuck cycle and elapsed runtime so operators
+  see what was draining even if Docker SIGKILLs mid-drain.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -39,6 +53,32 @@ from triggarr.state import (
 )
 from triggarr.tracking import run_tracking_check
 from triggarr.update_check import check_for_update
+
+
+def _read_shutdown_drain_timeout() -> float:
+    """RES-01 (Codex finding 3): read TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env var.
+
+    Defaults to 60.0s. Clamped to >= 1.0 so a misconfiguration (e.g. setting
+    the env var to "0") cannot disable the shutdown drain entirely.
+    Malformed values fall back to the default rather than crashing import.
+
+    Recommended deployment: set the host process manager's stop-timeout
+    greater than this value (e.g. docker-compose stop_grace_period: 90s,
+    docker run --stop-timeout 90, systemd TimeoutStopSec=90) so the
+    in-process drain has time to complete before SIGKILL.
+    """
+    raw = os.environ.get("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "60.0")
+    try:
+        value = float(raw)
+    except (ValueError, TypeError):
+        value = 60.0
+    return max(value, 1.0)
+
+
+# RES-01 (Codex finding 3): configurable; default 60.0s; clamped >= 1.0 to
+# prevent misconfig disabling drain entirely. Recommended deployment: set
+# docker-compose stop_grace_period > this value (default 90s).
+_SHUTDOWN_DRAIN_TIMEOUT: float = _read_shutdown_drain_timeout()
 
 
 def make_search_job(
@@ -83,85 +123,101 @@ def make_search_job(
             # by plan 65-03 (lock-holder identity). Assigned first so every
             # branch below can reference it.
             job_id = f"{app_name}_{instance_name}_search"
-
-            # --- Cycle execution (narrow-tuple catch; OSError REMOVED — Codex
-            # finding 2: OSError is durability, not transient *arr blip). ---
+            # RES-01: record holder identity INSIDE the lock so the shutdown
+            # drain can name the stuck cycle. Cleared in the outer finally
+            # below — runs even when a propagated exception (RuntimeError
+            # from SAFETY-02, re-raised OSError/aiosqlite.Error from the
+            # persistence branch below) escapes through.
+            app.state.search_lock_holder = (job_id, time.monotonic())
             try:
-                app.state.triggarr_state = await cycle_fn(
-                    client,
-                    app.state.triggarr_state,
-                    instance_name,
-                    instance_config,
-                    app.state.settings,
-                    app.state.db,
-                )
-            # SAFETY-02: narrow tuple — code-bug exceptions (RuntimeError,
-            # KeyError, etc.) intentionally propagate to APScheduler's
-            # EVENT_JOB_ERROR listener (_on_job_error). Do NOT add
-            # asyncio.CancelledError here: it is BaseException, not Exception,
-            # and the shutdown drain depends on its propagation.
-            # SAFETY-03 (Codex finding 2): OSError moved to the dedicated
-            # persistence branch below; persistence durability failures must
-            # not be conflated with transient *arr cycle blips.
-            except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error) as exc:
-                _record_cycle_failure(app, job_id, app_name, reason=_sanitize_exc(exc))
-                return
-
-            # SAFETY-03 (Codex finding 1): cycle outcome derived from
-            # state[app][inst][connected] — covers the REAL *arr outage path
-            # where the engine catches httpx.HTTPError internally, sets
-            # connected = False, and returns state without raising.
-            _evaluate_cycle_outcome(app, app_name, instance_name, job_id)
-
-            # SAFETY-03 (Codex finding 2): persistence is its own try/except.
-            # OSError / aiosqlite.Error here are durability failures, NOT
-            # transient *arr blips. Log ERROR immediately (no threshold gate),
-            # mark persistence_degraded, and re-raise so EVENT_JOB_ERROR also
-            # logs with job_id context. The counter is NOT incremented.
-            try:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, save_state, app.state.triggarr_state, state_path
-                )
-            except (OSError, aiosqlite.Error) as persist_exc:
-                app.state.persistence_degraded = True
-                logger.error(
-                    "{app}: persistence failed -- {exc}",
-                    app=app_name.title(),
-                    exc=_sanitize_exc(persist_exc),
-                )
-                raise
-
-            # --- Tracking check: resolve pending search outcomes for this instance ---
-            try:
-                tracking_result = await run_tracking_check(
-                    app.state.db,
-                    client,
-                    app_name.title(),
-                    instance_name,
-                    app.state.settings.general.tracking_window_minutes,
-                )
-                resolved = (
-                    tracking_result["grabbed"]
-                    + tracking_result["partial"]
-                    + tracking_result.get("partial_expired", 0)
-                    + tracking_result["unresolved"]
-                )
-                if resolved > 0 or tracking_result["errors"] > 0:
-                    logger.info(
-                        "Tracking: {grabbed} grabbed, {partial} partial, "
-                        "{partial_expired} partial_expired, "
-                        "{unresolved} unresolved, {errors} errors",
-                        grabbed=tracking_result["grabbed"],
-                        partial=tracking_result["partial"],
-                        partial_expired=tracking_result.get("partial_expired", 0),
-                        unresolved=tracking_result["unresolved"],
-                        errors=tracking_result["errors"],
+                # --- Cycle execution (narrow-tuple catch; OSError REMOVED — Codex
+                # finding 2: OSError is durability, not transient *arr blip). ---
+                try:
+                    app.state.triggarr_state = await cycle_fn(
+                        client,
+                        app.state.triggarr_state,
+                        instance_name,
+                        instance_config,
+                        app.state.settings,
+                        app.state.db,
                     )
-            except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as tracking_exc:
-                logger.warning(
-                    "Tracking: check failed -- {exc}",
-                    exc=tracking_exc,
-                )
+                # SAFETY-02: narrow tuple — code-bug exceptions (RuntimeError,
+                # KeyError, etc.) intentionally propagate to APScheduler's
+                # EVENT_JOB_ERROR listener (_on_job_error). Do NOT add
+                # asyncio.CancelledError here: it is BaseException, not Exception,
+                # and the shutdown drain depends on its propagation.
+                # SAFETY-03 (Codex finding 2): OSError moved to the dedicated
+                # persistence branch below; persistence durability failures must
+                # not be conflated with transient *arr cycle blips.
+                except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error) as exc:
+                    _record_cycle_failure(app, job_id, app_name, reason=_sanitize_exc(exc))
+                    return
+
+                # SAFETY-03 (Codex finding 1): cycle outcome derived from
+                # state[app][inst][connected] — covers the REAL *arr outage path
+                # where the engine catches httpx.HTTPError internally, sets
+                # connected = False, and returns state without raising.
+                _evaluate_cycle_outcome(app, app_name, instance_name, job_id)
+
+                # SAFETY-03 (Codex finding 2): persistence is its own try/except.
+                # OSError / aiosqlite.Error here are durability failures, NOT
+                # transient *arr blips. Log ERROR immediately (no threshold gate),
+                # mark persistence_degraded, and re-raise so EVENT_JOB_ERROR also
+                # logs with job_id context. The counter is NOT incremented.
+                try:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, save_state, app.state.triggarr_state, state_path
+                    )
+                except (OSError, aiosqlite.Error) as persist_exc:
+                    app.state.persistence_degraded = True
+                    logger.error(
+                        "{app}: persistence failed -- {exc}",
+                        app=app_name.title(),
+                        exc=_sanitize_exc(persist_exc),
+                    )
+                    raise
+
+                # --- Tracking check: resolve pending search outcomes for this instance ---
+                try:
+                    tracking_result = await run_tracking_check(
+                        app.state.db,
+                        client,
+                        app_name.title(),
+                        instance_name,
+                        app.state.settings.general.tracking_window_minutes,
+                    )
+                    resolved = (
+                        tracking_result["grabbed"]
+                        + tracking_result["partial"]
+                        + tracking_result.get("partial_expired", 0)
+                        + tracking_result["unresolved"]
+                    )
+                    if resolved > 0 or tracking_result["errors"] > 0:
+                        logger.info(
+                            "Tracking: {grabbed} grabbed, {partial} partial, "
+                            "{partial_expired} partial_expired, "
+                            "{unresolved} unresolved, {errors} errors",
+                            grabbed=tracking_result["grabbed"],
+                            partial=tracking_result["partial"],
+                            partial_expired=tracking_result.get("partial_expired", 0),
+                            unresolved=tracking_result["unresolved"],
+                            errors=tracking_result["errors"],
+                        )
+                except (
+                    httpx.HTTPError,
+                    pydantic.ValidationError,
+                    aiosqlite.Error,
+                    OSError,
+                ) as tracking_exc:
+                    logger.warning(
+                        "Tracking: check failed -- {exc}",
+                        exc=tracking_exc,
+                    )
+            finally:
+                # RES-01: clear holder regardless of how we exit the in-lock
+                # body (success, narrow-tuple swallow + return, persistence
+                # re-raise, or propagated unexpected exception).
+                app.state.search_lock_holder = None
 
     return job
 
@@ -360,6 +416,12 @@ def create_lifespan(
         # OSError/aiosqlite.Error mid-persistence. Observable state only in
         # this phase; future phase may surface via /health endpoint.
         app.state.persistence_degraded: bool = False
+        # RES-01 (Codex finding 3): tuple[str, float] | None holding the
+        # currently-running cycle's (job_id, monotonic_start). Set INSIDE
+        # `async with search_lock` in make_search_job; cleared in the same
+        # block's finally. Read by the shutdown drain to log which instance
+        # is stuck and how long it's been running.
+        app.state.search_lock_holder: tuple[str, float] | None = None
 
         # Import update_info dict once at lifespan start (not inside job)
         # to avoid circular import during scheduler ticks.
@@ -420,11 +482,51 @@ def create_lifespan(
             scheduler.shutdown(wait=False)
 
             # 2. Drain any in-flight search cycle before closing resources (DEBT-06)
+            # RES-01 (Codex finding 3): log holder identity on entry to the drain
+            # so the operator sees which instance is stuck even if Docker SIGKILLs
+            # the process before the timeout fires. Then await with the
+            # configurable timeout; log a structured WARNING on timeout.
+            holder = getattr(app.state, "search_lock_holder", None)
+            if holder:
+                job_id, started = holder
+                elapsed = time.monotonic() - started
+                logger.info(
+                    "Shutdown: draining search lock (timeout={t}s); holder={job} elapsed={e:.1f}s",
+                    t=_SHUTDOWN_DRAIN_TIMEOUT,
+                    job=job_id,
+                    e=elapsed,
+                )
+            else:
+                logger.info(
+                    "Shutdown: draining search lock (timeout={t}s); no current holder",
+                    t=_SHUTDOWN_DRAIN_TIMEOUT,
+                )
             try:
-                await asyncio.wait_for(app.state.search_lock.acquire(), timeout=35.0)
+                await asyncio.wait_for(
+                    app.state.search_lock.acquire(), timeout=_SHUTDOWN_DRAIN_TIMEOUT
+                )
                 app.state.search_lock.release()
             except TimeoutError:
-                logger.warning("Shutdown: search cycle did not finish in 35s — forcing close")
+                # Re-read holder defensively: a race could have cleared it if
+                # the cycle finished but a different caller reacquired the lock
+                # before our wait_for hit zero.
+                holder = getattr(app.state, "search_lock_holder", None)
+                if holder:
+                    job_id, started = holder
+                    elapsed = time.monotonic() - started
+                    logger.warning(
+                        "Shutdown: search cycle did not finish in {timeout}s -- "
+                        "job={job} elapsed={elapsed:.1f}s -- forcing close",
+                        timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                        job=job_id,
+                        elapsed=elapsed,
+                    )
+                else:
+                    logger.warning(
+                        "Shutdown: search lock did not drain in {timeout}s "
+                        "(no holder recorded) -- forcing close",
+                        timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                    )
 
             # 3. Close HTTP clients (all instances)
             for app_type in APP_TYPES:

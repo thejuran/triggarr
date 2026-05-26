@@ -8,7 +8,10 @@ and tracking integration after search cycles (Plan 20-03).
 from __future__ import annotations
 
 import asyncio
+import importlib
 import io
+import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -595,6 +598,119 @@ async def test_shutdown_proceeds_after_lock_released(tmp_path):
 
     # Shutdown completed — lock drain succeeded after release
     assert True, "Shutdown completed after lock was released"
+
+
+# ---------------------------------------------------------------------------
+# RES-01 (Plan 65-03): configurable shutdown drain + holder identity logging
+#
+# Three tests:
+#   A. default constant value is 60.0
+#   B. TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env var override + clamp >= 1.0
+#   C. shutdown drain timeout logs holder identity (INFO on entry, WARNING on
+#      timeout) — Codex finding 3 demanded INFO-on-entry so the holder is
+#      observable even if Docker SIGKILLs the process before the timeout.
+# ---------------------------------------------------------------------------
+
+
+def test_shutdown_timeout_default_is_60s():
+    """RES-01: module-level _SHUTDOWN_DRAIN_TIMEOUT defaults to 60.0 (float)."""
+    from triggarr.search.scheduler import _SHUTDOWN_DRAIN_TIMEOUT
+
+    assert _SHUTDOWN_DRAIN_TIMEOUT == 60.0
+    assert isinstance(_SHUTDOWN_DRAIN_TIMEOUT, float)
+
+
+def test_shutdown_timeout_env_var_override(monkeypatch):
+    """RES-01: TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env var overrides the default.
+
+    The module constant is read at import time. The test reloads the module
+    after setting the env var so the new value is picked up. Values < 1.0
+    are clamped to 1.0 so a misconfiguration cannot disable the drain entirely.
+    """
+    import triggarr.search.scheduler as sched
+
+    original_timeout = sched._SHUTDOWN_DRAIN_TIMEOUT
+    try:
+        # 1. Override path
+        monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "15.0")
+        importlib.reload(sched)
+        assert sched._SHUTDOWN_DRAIN_TIMEOUT == 15.0
+
+        # 2. Clamp path: "0" is below the >=1.0 floor; must clamp up to 1.0.
+        monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "0")
+        importlib.reload(sched)
+        assert sched._SHUTDOWN_DRAIN_TIMEOUT >= 1.0
+        assert sched._SHUTDOWN_DRAIN_TIMEOUT == 1.0
+    finally:
+        # Restore module state so other tests see the default.
+        monkeypatch.delenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", raising=False)
+        importlib.reload(sched)
+        # Sanity: module constant restored to default.
+        assert original_timeout == sched._SHUTDOWN_DRAIN_TIMEOUT
+
+
+async def test_shutdown_timeout_logs_holder_identity(tmp_path, monkeypatch):
+    """RES-01 (Codex finding 3): shutdown drain logs holder identity twice.
+
+    On entry to the drain (INFO) AND on timeout (WARNING), the log must
+    name the holder (job_id) and the elapsed runtime. The INFO-on-entry
+    log fires immediately so that even if Docker SIGKILLs the process
+    before the drain timeout completes, the operator still has visibility
+    into which instance was stuck.
+    """
+    import triggarr.search.scheduler as sched
+    from triggarr.search.scheduler import create_lifespan
+
+    # Force a very short drain timeout so the test finishes in <1s.
+    monkeypatch.setattr(sched, "_SHUTDOWN_DRAIN_TIMEOUT", 0.1)
+
+    settings = make_settings(radarr_enabled=False, sonarr_enabled=False)
+    state_path = tmp_path / "state.json"
+    config_path = tmp_path / "triggarr.toml"
+
+    lifespan_fn = create_lifespan(settings, state_path, config_path)
+    app = FastAPI(lifespan=lifespan_fn)
+
+    sink = io.StringIO()
+    sink_id = logger.add(sink, format="{level} | {message}", level="INFO")
+    try:
+        async with lifespan_fn(app):
+            # Simulate a stuck cycle: acquire the lock without releasing AND
+            # inject a synthetic holder tuple representing a job that started
+            # 100 seconds ago.
+            await app.state.search_lock.acquire()
+            app.state.search_lock_holder = (
+                "radarr_Default_search",
+                time.monotonic() - 100.0,
+            )
+            # On block exit, the finally runs: INFO-on-entry log fires
+            # immediately; wait_for times out at 0.1s; WARNING-on-timeout fires.
+    finally:
+        logger.remove(sink_id)
+
+    output = sink.getvalue()
+
+    # Assert INFO-on-entry log exists, names the holder, and is at INFO level.
+    info_lines = [
+        line for line in output.splitlines()
+        if line.startswith("INFO | ") and "radarr_Default_search" in line
+    ]
+    assert info_lines, (
+        f"Expected INFO-on-entry log naming radarr_Default_search, got:\n{output!r}"
+    )
+
+    # Assert WARNING-on-timeout log exists, names the holder, and includes
+    # elapsed=99.x or 100.x (rounding tolerance for wall-clock jitter).
+    warning_lines = [
+        line for line in output.splitlines()
+        if line.startswith("WARNING | ") and "radarr_Default_search" in line
+    ]
+    assert warning_lines, (
+        f"Expected WARNING-on-timeout log naming radarr_Default_search, got:\n{output!r}"
+    )
+    assert re.search(r"elapsed=(99|100)\.\d", warning_lines[0]), (
+        f"Expected elapsed=99.x or 100.x in WARNING line: {warning_lines[0]!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
