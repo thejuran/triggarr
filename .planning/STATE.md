@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.8
 milestone_name: Hardening & Observability
-status: ready_to_plan
-stopped_at: Phase 65 complete (4/4) — ready to discuss Phase 66
-last_updated: 2026-05-26T03:59:16.618Z
-last_activity: 2026-05-26 -- Phase 65 execution started
+status: planning
+stopped_at: Phase 66 context gathered
+last_updated: "2026-05-26T15:39:51.432Z"
+last_activity: 2026-05-26
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 16
-  percent: 25
+  completed_plans: 8
+  percent: 50
 ---
 
 # Project State
@@ -109,6 +109,6 @@ Items carried forward (not in v2.8 scope):
 
 ## Session Continuity
 
-Last session: 2026-05-25T00:00:00.000Z
-Stopped at: v2.8 roadmap created — ready for `/gsd:plan-phase 64`
-Resume file: n/a (roadmap just created)
+Last session: 2026-05-26T15:39:51.429Z
+Stopped at: Phase 66 context gathered
+Resume file: .planning/phases/66-security-hardening/66-CONTEXT.md
