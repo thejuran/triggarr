@@ -515,32 +515,51 @@ def create_lifespan(
                     "Shutdown: draining search lock (timeout={t}s); no current holder",
                     t=_SHUTDOWN_DRAIN_TIMEOUT,
                 )
+            # WR-01: use `asyncio.timeout()` (Python 3.11+) instead of
+            # `asyncio.wait_for(lock.acquire(), ...)`. The wait_for idiom
+            # has a documented footgun: if it is *cancelled* (not timed
+            # out), the underlying acquire() task may complete after
+            # wait_for has unwound, leaving the lock acquired with no
+            # matching release. Shutdown is exactly where a higher-level
+            # cancel (uvicorn reload, test re-entry) is most likely to
+            # interleave with this code path. `asyncio.timeout()` does
+            # not have this race: the acquire() runs in the caller's
+            # frame, so a cancel propagates as CancelledError before any
+            # state is committed.
+            acquired = False
             try:
-                await asyncio.wait_for(
-                    app.state.search_lock.acquire(), timeout=_SHUTDOWN_DRAIN_TIMEOUT
-                )
-                app.state.search_lock.release()
-            except TimeoutError:
-                # Re-read holder defensively: a race could have cleared it if
-                # the cycle finished but a different caller reacquired the lock
-                # before our wait_for hit zero.
-                holder = getattr(app.state, "search_lock_holder", None)
-                if holder:
-                    job_id, started = holder
-                    elapsed = time.monotonic() - started
-                    logger.warning(
-                        "Shutdown: search cycle did not finish in {timeout}s -- "
-                        "job={job} elapsed={elapsed:.1f}s -- forcing close",
-                        timeout=_SHUTDOWN_DRAIN_TIMEOUT,
-                        job=job_id,
-                        elapsed=elapsed,
-                    )
-                else:
-                    logger.warning(
-                        "Shutdown: search lock did not drain in {timeout}s "
-                        "(no holder recorded) -- forcing close",
-                        timeout=_SHUTDOWN_DRAIN_TIMEOUT,
-                    )
+                try:
+                    async with asyncio.timeout(_SHUTDOWN_DRAIN_TIMEOUT):
+                        await app.state.search_lock.acquire()
+                        acquired = True
+                except TimeoutError:
+                    # Re-read holder defensively: a race could have cleared
+                    # it if the cycle finished but a different caller
+                    # reacquired the lock before our timeout hit zero.
+                    holder = getattr(app.state, "search_lock_holder", None)
+                    if holder:
+                        job_id, started = holder
+                        elapsed = time.monotonic() - started
+                        logger.warning(
+                            "Shutdown: search cycle did not finish in {timeout}s -- "
+                            "job={job} elapsed={elapsed:.1f}s -- forcing close",
+                            timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                            job=job_id,
+                            elapsed=elapsed,
+                        )
+                    else:
+                        logger.warning(
+                            "Shutdown: search lock did not drain in {timeout}s "
+                            "(no holder recorded) -- forcing close",
+                            timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                        )
+            finally:
+                # WR-01: release only when acquire actually succeeded. A
+                # bare `lock.release()` on an unlocked lock raises
+                # RuntimeError and would crash the rest of the lifespan
+                # shutdown (client close, db close).
+                if acquired:
+                    app.state.search_lock.release()
 
             # 3. Close HTTP clients (all instances)
             for app_type in APP_TYPES:
