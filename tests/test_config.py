@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 import tomli_w
 from loguru import logger
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from triggarr.config import (
     _atomic_toml_write,
@@ -240,6 +240,50 @@ def test_instance_config_allows_both_counts_zero_when_disabled() -> None:
         search_cutoff_count=0,
     )
     assert cfg.search_missing_count == 0
+
+
+# ---------------------------------------------------------------------------
+# SEC-02: InstanceConfig.url rejects apikey= query parameter (D-06/D-07/D-08)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://radarr:7878?apikey=secret",
+        "http://radarr:7878/?apikey=secret",
+        "http://radarr:7878?APIKEY=secret",
+        "http://radarr:7878?apiKey=secret",
+        "http://radarr:7878?other=ok&apikey=secret",
+        "http://radarr:7878?apikey=",
+        "http://radarr:7878?apikey%3Dsecret",
+        "http://radarr:7878?apikey%3D%73ecret",
+    ],
+)
+def test_instance_url_rejects_apikey(url: str) -> None:
+    """SEC-02: InstanceConfig rejects URLs whose query contains apikey= (any case, including
+    empty value and URL-encoded variants). The validator raises ValidationError carrying the
+    D-08 message before any TOML write happens (D-06/D-07/D-08 + codex M2 finding 2026-05-26)."""
+    with pytest.raises(ValidationError, match="apikey="):
+        InstanceConfig(url=url, api_key=SecretStr("k"), enabled=True)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "http://radarr:7878",
+        "http://radarr:7878/",
+        "http://radarr:7878/sonarr/",
+        "http://radarr:7878?base=/sonarr",
+        "http://radarr:7878?token=foo",
+    ],
+)
+def test_instance_url_accepts_without_apikey(url: str) -> None:
+    """SEC-02 D-07 narrow rule: legitimate URLs without an apikey= query parameter
+    continue to construct successfully (empty default, subpath, non-apikey queries)."""
+    cfg = InstanceConfig(url=url, api_key=SecretStr("k"), enabled=True)
+    assert cfg.url == url
 
 
 def test_multi_instance_radarr() -> None:
