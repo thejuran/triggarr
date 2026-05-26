@@ -184,7 +184,11 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
   2. After N consecutive failures on a single job (default N=5, configurable), the log level escalates from WARNING to ERROR so the user can see the repeated failure without inspecting every individual line
   3. Graceful shutdown waits up to 60 seconds (extended from 35s) for the search lock to drain; if a cycle is still holding the lock when the timeout fires, the specific job identifier and elapsed runtime are logged before forced close
   4. The async client cleanup test confirms that calling `aclose()` on a client with in-flight requests does not hang and that any in-flight responses raise cleanly rather than leaving the event loop blocked
-**Plans**: TBD
+**Plans:** 4 plans
+- [ ] 65-01-PLAN.md — SAFETY-02: narrow scheduler exception handler to `(httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError)` + register APScheduler `EVENT_JOB_ERROR` listener so non-narrow-tuple exceptions become operator-visible (Wave 1)
+- [ ] 65-02-PLAN.md — SAFETY-03: add `general.max_consecutive_failures` config field (default 5, bounds 1..100) + per-(app,instance) failure counter on `app.state.search_failures` with WARNING→ERROR escalation at threshold (Wave 2)
+- [ ] 65-03-PLAN.md — RES-01: extract `_SHUTDOWN_DRAIN_TIMEOUT = 60.0` module constant (extended from 35s) + track `app.state.search_lock_holder` inside the lock + log holder job_id + elapsed runtime on shutdown timeout (Wave 3)
+- [ ] 65-04-PLAN.md — TEST-04: pin httpx `AsyncClient.aclose()` behavior with in-flight requests (cancel-then-close pattern + documented RuntimeError-on-no-cancel pattern) — pure test work (Wave 1, parallel with 65-01)
 
 ### Phase 66: Security Hardening
 **Goal**: The application's HTTP attack surface is narrowed: inline scripts are gone, credential-containing URLs are rejected at save time, and session and Basic auth handling are defensively validated
@@ -216,6 +220,6 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 | 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete | 2026-04-17 |
 | 63. Header Favicon Icon | v2.7 | 1/1 | Complete | 2026-04-17 |
 | 64. Data Safety & Config Integrity | v2.8 | 4/4 | Complete   | 2026-05-26 |
-| 65. Scheduler Hardening & Resilience | v2.8 | 0/? | Not started | - |
+| 65. Scheduler Hardening & Resilience | v2.8 | 0/4 | Planned | - |
 | 66. Security Hardening | v2.8 | 0/? | Not started | - |
 | 67. Observability & CSRF Test Coverage | v2.8 | 0/? | Not started | - |
