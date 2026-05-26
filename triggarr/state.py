@@ -10,7 +10,6 @@ v2.3: State is nested per-instance -- each configured instance
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import tempfile
@@ -206,14 +205,36 @@ def save_state(state: TriggarrState, state_path: Path | None = None) -> None:
         os.fsync(tmp.fileno())
 
     dir_fd = None
+    renamed = False
     try:
         os.replace(tmp.name, resolved_state_path)
+        renamed = True
         # fsync the directory to ensure rename is durable (matches config.py)
         dir_fd = os.open(parent, os.O_RDONLY)
         os.fsync(dir_fd)
-    except OSError:
-        with contextlib.suppress(OSError):
+    except OSError as exc:
+        if renamed:
+            logger.warning(
+                "State written but directory fsync failed: {path} - {exc}",
+                path=resolved_state_path,
+                exc=exc,
+            )
+            return
+        logger.error(
+            "State write failed: {path} - {exc}",
+            path=resolved_state_path,
+            exc=exc,
+        )
+        try:
             os.unlink(tmp.name)
+        except FileNotFoundError:
+            pass
+        except OSError as cleanup_exc:
+            logger.error(
+                "Failed to clean up temp file {tmp} during state write: {exc}",
+                tmp=tmp.name,
+                exc=cleanup_exc,
+            )
         raise
     finally:
         if dir_fd is not None:

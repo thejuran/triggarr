@@ -104,6 +104,7 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
         data: TOML-serializable dict.
     """
     dir_fd = None
+    renamed = False
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
@@ -111,10 +112,21 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, path)
+        renamed = True
         # fsync the directory to ensure rename is durable
         dir_fd = os.open(path.parent, os.O_RDONLY)
         os.fsync(dir_fd)
     except OSError as exc:
+        if renamed:
+            # os.replace already committed the new contents; only the durability
+            # fsync on the parent directory failed. Surface as a warning so the
+            # caller does not treat a succeeded write as a failure.
+            logger.warning(
+                "Config written but directory fsync failed: {path} - {exc}",
+                path=path,
+                exc=exc,
+            )
+            return
         logger.error("Config write failed: {path} - {exc}", path=path, exc=exc)
         try:
             os.unlink(tmp_path)
@@ -217,6 +229,7 @@ def generate_default_config(config_path: Path) -> None:
     """
     config_path.parent.mkdir(parents=True, exist_ok=True)
     dir_fd = None
+    renamed = False
     fd, tmp_path = tempfile.mkstemp(dir=config_path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -224,11 +237,48 @@ def generate_default_config(config_path: Path) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, config_path)
+        renamed = True
         dir_fd = os.open(config_path.parent, os.O_RDONLY)
         os.fsync(dir_fd)
-    except Exception:
-        with contextlib.suppress(OSError):
+    except OSError as exc:
+        if renamed:
+            logger.warning(
+                "Default config written but directory fsync failed: {path} - {exc}",
+                path=config_path,
+                exc=exc,
+            )
+            # Still chmod -- the file exists on disk and must be 0o600
+            # regardless of the durability-fsync outcome.
+            with contextlib.suppress(OSError):
+                os.chmod(config_path, 0o600)
+            return
+        logger.error(
+            "Default config write failed: {path} - {exc}",
+            path=config_path,
+            exc=exc,
+        )
+        try:
             os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        except OSError as cleanup_exc:
+            logger.error(
+                "Failed to clean up temp file {tmp} during default config write: {exc}",
+                tmp=tmp_path,
+                exc=cleanup_exc,
+            )
+        raise
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        except OSError as cleanup_exc:
+            logger.error(
+                "Failed to clean up temp file {tmp} during default config write: {exc}",
+                tmp=tmp_path,
+                exc=cleanup_exc,
+            )
         raise
     finally:
         if dir_fd is not None:
