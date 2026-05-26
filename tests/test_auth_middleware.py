@@ -18,11 +18,13 @@ Traceability:
 from __future__ import annotations
 
 import base64
+import io
 import time
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from loguru import logger
 from pydantic import SecretStr
 
 from triggarr.auth import generate_session_secret, hash_password, sign_session
@@ -322,6 +324,137 @@ def test_basic_auth_missing_colon_returns_401():
     encoded = base64.b64encode(b"nocolon").decode()
     response = client.get("/", headers={"Authorization": f"Basic {encoded}"})
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# SEC-03: Control-char rejection + decode-failure WARNING (D-09, D-10, D-11)
+# ---------------------------------------------------------------------------
+
+
+def test_basic_auth_null_byte_in_password_rejected():
+    """SEC-03 D-09: Basic auth credentials containing a null byte are rejected.
+
+    Also asserts WARNING log line per D-11 with PII minimization per D-10:
+    only `reason` and `client_ip` fields appear -- not username/password.
+    """
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+    encoded = base64.b64encode(b"admin:pass\x00word").decode()
+    header = f"Basic {encoded}"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        response = client.get("/", headers={"Authorization": header})
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == 'Basic realm="Triggarr"'
+
+    log_output = sink.getvalue()
+    assert "basic_auth_rejected" in log_output
+    assert "control_char" in log_output
+    assert "client_ip=" in log_output
+    # D-10 PII minimization: decoded username and password substrings must not appear.
+    assert "admin" not in log_output
+    assert "pass" not in log_output
+
+
+def test_basic_auth_control_char_in_username_rejected():
+    """SEC-03 D-09: Control char (0x01) in username triggers control_char rejection."""
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+    encoded = base64.b64encode(b"adm\x01in:password").decode()
+    header = f"Basic {encoded}"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        response = client.get("/", headers={"Authorization": header})
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == 'Basic realm="Triggarr"'
+
+    log_output = sink.getvalue()
+    assert "basic_auth_rejected" in log_output
+    assert "control_char" in log_output
+    assert "client_ip=" in log_output
+    # D-10 PII minimization: the raw control byte must not leak through to the log.
+    assert "\x01" not in log_output
+
+
+def test_basic_auth_del_in_password_rejected():
+    """SEC-03 D-09: DEL char (0x7F) in password triggers control_char rejection."""
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+    encoded = base64.b64encode(b"admin:pass\x7fword").decode()
+    header = f"Basic {encoded}"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        response = client.get("/", headers={"Authorization": header})
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == 'Basic realm="Triggarr"'
+
+    log_output = sink.getvalue()
+    assert "basic_auth_rejected" in log_output
+    assert "control_char" in log_output
+    assert "client_ip=" in log_output
+    # D-10 PII minimization: raw DEL byte must not appear in log output.
+    assert "\x7f" not in log_output
+
+
+def test_basic_auth_decode_failure_logs_warning():
+    """SEC-03 D-11: Invalid base64 Authorization header logs a WARNING with reason=decode_failure.
+
+    Codex M3 patch: strict base64 decoding (validate=True) ensures `Basic !!!!`
+    raises a binascii.Error that hits the except clause and emits the WARNING.
+    Without validate=True, the permissive default decode would yield b"" and
+    silently fall through to the bottom-of-method 401 with no log.
+    """
+    auth = _configured_auth(method="Basic")
+    client = TestClient(_make_auth_app(auth))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        response = client.get("/", headers={"Authorization": "Basic !!!!"})
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == 'Basic realm="Triggarr"'
+
+    log_output = sink.getvalue()
+    assert "basic_auth_rejected" in log_output
+    assert "decode_failure" in log_output
+    assert "client_ip=" in log_output
+
+
+def test_basic_auth_non_ascii_password_accepted():
+    """SEC-03 D-09 regression guard: legitimate non-ASCII Unicode passwords still authenticate.
+
+    The control-char check rejects only 0x00..0x1F + 0x7F. Characters above 0x7F
+    (accented letters, etc.) are valid in passwords and must pass through to bcrypt.
+    This guards against an over-broad implementation that rejects ALL non-ASCII.
+    """
+    unicode_password = "pässwörd-é"
+    auth = _configured_auth(
+        method="Basic",
+        password_hash=hash_password(unicode_password),
+    )
+    client = TestClient(_make_auth_app(auth))
+    header = _basic_auth_header(username="admin", password=unicode_password)
+    response = client.get("/", headers={"Authorization": header})
+    assert response.status_code == 200
+    assert response.json() == {"page": "home"}
 
 
 # ---------------------------------------------------------------------------
