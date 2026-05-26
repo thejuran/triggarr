@@ -419,23 +419,34 @@ def create_lifespan(
         # routes.py) and dynamically by
         # tests/test_web.py::test_concurrent_settings_save_serialized.
         app.state.search_lock = asyncio.Lock()
-        app.state.last_search_time: dict[str, float] = {}
+        # WR-05: `app.state` is starlette.datastructures.State -- a
+        # SimpleNamespace-like __dict__ container with no class slot to
+        # attach __annotations__. Inline `: type = value` annotations on
+        # these attributes were misleading: they are discarded at runtime
+        # and not stored anywhere consultable. Document the intended types
+        # in comments instead so readers do not infer enforcement that
+        # does not exist.
+        # last_search_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
+        app.state.last_search_time = {}
         app.state.last_health_check = None
         # SAFETY-03: per-job consecutive-failure counter keyed by
         # f"{app_name}_{instance_name}_search". Incremented when the engine
         # cycle returns with connected=False or when the narrow-tuple cycle
         # catch fires; reset on cycle success.
-        app.state.search_failures: dict[str, int] = {}
+        # search_failures: dict[str, int]
+        app.state.search_failures = {}
         # SAFETY-03 (Codex finding 2): set to True when save_state raises
         # OSError/aiosqlite.Error mid-persistence. Observable state only in
         # this phase; future phase may surface via /health endpoint.
-        app.state.persistence_degraded: bool = False
+        # persistence_degraded: bool
+        app.state.persistence_degraded = False
         # RES-01 (Codex finding 3): tuple[str, float] | None holding the
         # currently-running cycle's (job_id, monotonic_start). Set INSIDE
         # `async with search_lock` in make_search_job; cleared in the same
         # block's finally. Read by the shutdown drain to log which instance
         # is stuck and how long it's been running.
-        app.state.search_lock_holder: tuple[str, float] | None = None
+        # search_lock_holder: tuple[str, float] | None
+        app.state.search_lock_holder = None
 
         # Import update_info dict once at lifespan start (not inside job)
         # to avoid circular import during scheduler ticks.
