@@ -168,6 +168,14 @@ def make_search_job(
                     await asyncio.get_running_loop().run_in_executor(
                         None, save_state, app.state.triggarr_state, state_path
                     )
+                    # WR-09: clear `persistence_degraded` once a save
+                    # succeeds. Without this reset the flag is sticky and
+                    # latches True forever after the first transient
+                    # OSError (e.g., one-off disk full, brief permission
+                    # blip on a remote volume), giving operators a
+                    # permanently stale degraded signal even after the
+                    # underlying durability problem has resolved.
+                    app.state.persistence_degraded = False
                 except (OSError, aiosqlite.Error) as persist_exc:
                     app.state.persistence_degraded = True
                     logger.error(
