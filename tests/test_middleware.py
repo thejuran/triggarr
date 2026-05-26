@@ -190,19 +190,49 @@ def _make_security_headers_app() -> FastAPI:
 
 
 def test_security_headers_csp_present():
-    """Response includes Content-Security-Policy header with correct directives."""
+    """Response includes Content-Security-Policy header with correct directives.
+
+    Updated 2026-05-26 (SEC-01 / 66-05): script-src now contains a per-request
+    nonce instead of 'unsafe-inline'. Full-string equality is no longer
+    appropriate because the nonce varies per request; switch to directive-level
+    substring checks. D-01 drops 'unsafe-inline' from script-src; D-04 keeps
+    'unsafe-inline' on style-src.
+    """
     client = TestClient(_make_security_headers_app())
     response = client.get("/test")
     assert response.status_code == 200
-    expected_csp = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; "
-        "connect-src 'self'; "
-        "frame-ancestors 'none'"
-    )
-    assert response.headers["Content-Security-Policy"] == expected_csp
+    csp = response.headers["Content-Security-Policy"]
+
+    # All directives present (substring-level)
+    assert "default-src 'self'" in csp
+    assert "script-src 'self' 'nonce-" in csp, "D-02: script-src must carry a per-request nonce"
+    assert "style-src 'self' 'unsafe-inline'" in csp, "D-04: style-src retains unsafe-inline"
+    assert "img-src 'self' data:" in csp
+    assert "connect-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp
+
+    # D-01: 'unsafe-inline' must NOT be in the script-src directive specifically.
+    # Slice on `;` to isolate script-src so style-src's unsafe-inline doesn't
+    # false-positive the negative check.
+    script_src_segment = csp.split("script-src")[1].split(";")[0]
+    assert "'unsafe-inline'" not in script_src_segment, "D-01: 'unsafe-inline' dropped from script-src"
+
+
+def test_csp_nonce_changes_per_request():
+    """SEC-01 D-02 regression guard: two consecutive requests receive two different nonces.
+
+    Without this, an accidental caching of the nonce (e.g. as a Jinja `globals` entry)
+    would silently make every page share the same value -- defeating the per-request
+    contract.
+    """
+    client = TestClient(_make_security_headers_app())
+    r1 = client.get("/test")
+    r2 = client.get("/test")
+    import re
+    m1 = re.search(r"'nonce-([A-Za-z0-9_-]+)'", r1.headers["Content-Security-Policy"])
+    m2 = re.search(r"'nonce-([A-Za-z0-9_-]+)'", r2.headers["Content-Security-Policy"])
+    assert m1 and m2, "both responses must carry a nonce in script-src"
+    assert m1.group(1) != m2.group(1), "two consecutive requests must produce two different nonces"
 
 
 def test_security_headers_x_frame_options_deny():

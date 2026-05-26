@@ -2073,3 +2073,41 @@ async def test_concurrent_settings_save_serialized(test_app, tmp_path):
         f"Lock did not serialize writes; call_order={call_order}. "
         "If [enter, enter, exit, exit], the asyncio.Lock is missing or no-op."
     )
+
+
+def test_csp_nonce_matches_html_script_tag(test_app):
+    """SEC-01 D-02 (Pitfall 5): the nonce value in the CSP response header must
+    match the nonce value in the rendered HTML's <script nonce="..."> tags
+    for the SAME request. Without this parity, the browser blocks the inline
+    scripts even though both sides "have a nonce".
+
+    This is the single most important automated check in SEC-01 -- httpx.TestClient
+    does not enforce CSP at runtime, but it CAN verify the contract that the
+    middleware-generated nonce and the template-rendered nonce are the same
+    string within one request. The default test_app fixture does NOT mount
+    SecurityHeadersMiddleware (production does, per triggarr/__main__.py:69);
+    this test mounts it explicitly so the response carries the CSP header.
+    """
+    import re
+
+    from triggarr.web.middleware import SecurityHeadersMiddleware
+
+    test_app.add_middleware(SecurityHeadersMiddleware)
+
+    with TestClient(test_app) as tc:
+        response = tc.get("/")
+    assert response.status_code == 200
+    csp = response.headers["Content-Security-Policy"]
+    header_match = re.search(r"'nonce-([A-Za-z0-9_-]+)'", csp)
+    assert header_match, f"CSP header missing nonce: {csp}"
+    header_nonce = header_match.group(1)
+
+    # Find at least one <script nonce="..."> in the rendered HTML
+    body_match = re.search(r'<script nonce="([A-Za-z0-9_-]+)"', response.text)
+    assert body_match, "rendered HTML missing <script nonce=...> tag"
+    body_nonce = body_match.group(1)
+
+    assert header_nonce == body_nonce, (
+        f"CSP header nonce ({header_nonce!r}) does NOT match rendered script nonce ({body_nonce!r}); "
+        "this would cause the browser to silently block all inline scripts"
+    )
