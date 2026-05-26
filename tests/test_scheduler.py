@@ -22,9 +22,11 @@ from fastapi import FastAPI
 from loguru import logger
 
 from tests.conftest import make_settings
+from triggarr.clients.radarr import RadarrClient
 from triggarr.db import init_db, insert_search_entry
+from triggarr.models.config import InstanceConfig, Settings
 from triggarr.search.scheduler import make_search_job
-from triggarr.state import _default_state, save_state
+from triggarr.state import _default_instance_state, _default_state, save_state
 
 
 async def test_make_search_job_client_none_returns_early():
@@ -133,6 +135,357 @@ async def test_event_job_error_listener_logs_unexpected_exception():
     assert "radarr_Default_search" in output, f"Missing job_id in: {output!r}"
     assert "RuntimeError" in output, f"Missing exception type in: {output!r}"
     assert "synthetic boom" in output, f"Missing exception message in: {output!r}"
+
+
+# ---------------------------------------------------------------------------
+# SAFETY-03 (Plan 65-02): consecutive-failure counter + escalation
+#
+# The outage-driven tests below build a real RadarrClient wired to an
+# httpx.MockTransport (pattern verified in tests/test_clients.py:83-97).
+# They DO NOT patch run_radarr_cycle itself — the goal is to exercise the
+# REAL engine path so that the engine's `connected = False` signal flows
+# through scheduler.make_search_job and triggers the counter increment
+# (Codex finding 1 from REVIEWS.md).
+# ---------------------------------------------------------------------------
+
+
+def _build_outage_app(tmp_path, *, max_consecutive_failures=5, transport_handler):
+    """Build a FastAPI app wired with a real RadarrClient on a MockTransport.
+
+    The returned (app, job) tuple lets the test drive `make_search_job` end
+    to end: the real `run_radarr_cycle` runs, its internal HTTP calls hit the
+    MockTransport (which returns whatever the handler decides), and the
+    scheduler's post-cycle counter logic observes the engine's
+    `connected = True / False` outcome.
+
+    Note: settings are mutated AFTER make_settings() to apply the per-test
+    max_consecutive_failures (GeneralConfig is a plain BaseModel — direct
+    attribute mutation is allowed).
+    """
+    settings = make_settings()
+    settings.general.max_consecutive_failures = max_consecutive_failures
+
+    # Real RadarrClient with its httpx.AsyncClient swapped for one driven
+    # by the MockTransport. base_url must match the original so any path
+    # the engine constructs (e.g. /api/v3/wanted/missing) resolves correctly.
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(transport_handler),
+        base_url="http://radarr-test:7878",
+        headers={"X-Api-Key": "test-key", "Content-Type": "application/json"},
+    )
+    real_client._app_name = "Radarr"
+
+    state = _default_state(settings)
+    # Ensure the Default instance state exists and starts as connected.
+    state["radarr"]["Default"] = _default_instance_state()
+    state["radarr"]["Default"]["connected"] = True
+
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": real_client}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = state
+    app.state.settings = settings
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.db = AsyncMock()
+    app.state.state_path = tmp_path / "state.json"
+
+    job = make_search_job(app, "radarr", "Default", tmp_path / "state.json")
+    return app, job
+
+
+async def test_failure_counter_increments_on_real_arr_outage(tmp_path):
+    """SAFETY-03 (Codex finding 1): counter observes REAL *arr outage path.
+
+    The engine cycle catches httpx.HTTPError internally and sets
+    state["radarr"][instance]["connected"] = False. The scheduler MUST detect
+    this via the returned state and increment the counter — NOT only the
+    rare narrow-tuple exception escape path.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "Service unavailable"})
+
+    app, job = _build_outage_app(tmp_path, transport_handler=handler)
+    # Patch asyncio.sleep so the retry inside _request_with_retry does not
+    # actually sleep 2s × 3 cycles.
+    with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+        await job()
+        await job()
+        await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 3
+    # Confirm the test actually drove the engine's outage path (not a
+    # synthetic shortcut).
+    assert app.state.triggarr_state["radarr"]["Default"]["connected"] is False
+
+
+async def test_failure_counter_increments_on_cycle_exception(tmp_path):
+    """SAFETY-03: rare cycle-exception path also feeds the counter.
+
+    Engine cycles normally catch httpx.HTTPError/pydantic.ValidationError
+    and return state with `connected = False`. The narrow-tuple except in
+    make_search_job exists for the rare case where something else escapes
+    (e.g. aiosqlite.Error from inside the cycle). This test drives that path
+    by patching run_radarr_cycle itself.
+    """
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": AsyncMock()}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = _default_state(make_settings())
+    app.state.settings = make_settings()
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.db = MagicMock()
+
+    with (
+        patch(
+            "triggarr.search.scheduler.run_radarr_cycle",
+            new=AsyncMock(side_effect=aiosqlite.Error("db locked")),
+        ),
+        patch(
+            "triggarr.search.scheduler.save_state",
+            new=MagicMock(),
+        ),
+    ):
+        job = make_search_job(app, "radarr", "Default", tmp_path / "state.json")
+        await job()
+        await job()
+        await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 3
+
+
+async def test_failure_counter_escalates_at_threshold(tmp_path):
+    """SAFETY-03: at/above max_consecutive_failures, log level escalates to ERROR.
+
+    With max_consecutive_failures=3, the first two failures log at WARNING
+    and the third escalates to ERROR. The ERROR line must include the
+    `(count/threshold)` marker so the operator can tell why escalation
+    fired.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "Service unavailable"})
+
+    app, job = _build_outage_app(
+        tmp_path, max_consecutive_failures=3, transport_handler=handler
+    )
+
+    sink = io.StringIO()
+    sink_id = logger.add(sink, format="{level} | {message}", level="WARNING")
+    try:
+        with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+            await job()
+            await job()
+            await job()
+    finally:
+        logger.remove(sink_id)
+
+    output = sink.getvalue()
+    warning_lines = [line for line in output.splitlines() if line.startswith("WARNING | ")
+                     and "search cycle failed" in line]
+    error_lines = [line for line in output.splitlines() if line.startswith("ERROR | ")
+                   and "search cycle failed" in line]
+
+    # First two cycles below threshold = WARNING; third at threshold = ERROR
+    assert len(warning_lines) == 2, (
+        f"Expected 2 WARNING failure lines, got {len(warning_lines)}: {output!r}"
+    )
+    assert len(error_lines) >= 1, (
+        f"Expected at least 1 ERROR failure line, got {len(error_lines)}: {output!r}"
+    )
+    assert "(3/3)" in error_lines[0], (
+        f"Expected count/threshold marker '(3/3)' in ERROR line: {error_lines[0]!r}"
+    )
+
+
+async def test_failure_counter_resets_on_success(tmp_path):
+    """SAFETY-03: a successful cycle resets the counter to 0.
+
+    Drives 4 cycles via a stateful MockTransport: 503, 503, 200, 503.
+    Counter trajectory: 1, 2, 0 (reset), 1.
+    """
+    call_count = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["n"] += 1
+        # The engine makes get_wanted_missing + get_wanted_cutoff per cycle
+        # (2 calls each into get_paginated → at least 2 HTTP calls per cycle,
+        # plus get_library_count and get_tags depending on path). Treat
+        # ALL calls within the same cycle as a unit: cycles 1, 2, 4 fail
+        # (handler always returns 503); cycle 3 succeeds (handler returns 200).
+        # We approximate cycle index by ranges of HTTP calls — but a simpler
+        # and more reliable approach is to flip behavior based on the cycle
+        # counter, which the test increments before each await job() below.
+        if state["cycle"] in (1, 2, 4):
+            return httpx.Response(503, json={"error": "Service unavailable"})
+        # Cycle 3 success path: return empty paginated payloads for any path.
+        return httpx.Response(
+            200,
+            json={"page": 1, "pageSize": 50, "totalRecords": 0, "records": []},
+        )
+
+    state = {"cycle": 1}
+    app, job = _build_outage_app(tmp_path, transport_handler=handler)
+    connected_snapshots = []
+
+    with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+        # Cycle 1 (503)
+        state["cycle"] = 1
+        await job()
+        connected_snapshots.append(app.state.triggarr_state["radarr"]["Default"]["connected"])
+        # Cycle 2 (503)
+        state["cycle"] = 2
+        await job()
+        connected_snapshots.append(app.state.triggarr_state["radarr"]["Default"]["connected"])
+        # Cycle 3 (200 — success)
+        state["cycle"] = 3
+        await job()
+        connected_snapshots.append(app.state.triggarr_state["radarr"]["Default"]["connected"])
+        # Cycle 4 (503 again)
+        state["cycle"] = 4
+        await job()
+        connected_snapshots.append(app.state.triggarr_state["radarr"]["Default"]["connected"])
+
+    assert app.state.search_failures["radarr_Default_search"] == 1, (
+        f"Expected counter=1 after F/F/S/F, got {app.state.search_failures}"
+    )
+    assert connected_snapshots == [False, False, True, False], (
+        f"Unexpected connected trajectory: {connected_snapshots}"
+    )
+
+
+async def test_failure_counter_per_instance_scoped(tmp_path):
+    """SAFETY-03: counter is keyed per (app, instance), not shared across instances.
+
+    Default instance returns 503 (failure); 4K instance returns 200 (success).
+    Counters must remain independent.
+    """
+    def default_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "Service unavailable"})
+
+    def fourk_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"page": 1, "pageSize": 50, "totalRecords": 0, "records": []},
+        )
+
+    # Build settings with two radarr instances.
+    settings = Settings(
+        radarr={
+            "Default": InstanceConfig(
+                url="http://radarr-default:7878",
+                api_key="key-default",
+                enabled=True,
+                search_missing_count=5,
+                search_cutoff_count=5,
+                search_interval=30,
+            ),
+            "4K": InstanceConfig(
+                url="http://radarr-4k:7878",
+                api_key="key-4k",
+                enabled=True,
+                search_missing_count=5,
+                search_cutoff_count=5,
+                search_interval=30,
+            ),
+        },
+    )
+
+    default_client = RadarrClient(base_url="http://radarr-default:7878", api_key="key-default")
+    default_client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(default_handler),
+        base_url="http://radarr-default:7878",
+        headers={"X-Api-Key": "key-default", "Content-Type": "application/json"},
+    )
+    default_client._app_name = "Radarr"
+
+    fourk_client = RadarrClient(base_url="http://radarr-4k:7878", api_key="key-4k")
+    fourk_client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(fourk_handler),
+        base_url="http://radarr-4k:7878",
+        headers={"X-Api-Key": "key-4k", "Content-Type": "application/json"},
+    )
+    fourk_client._app_name = "Radarr"
+
+    state = _default_state(settings)
+    state["radarr"]["Default"] = _default_instance_state()
+    state["radarr"]["Default"]["connected"] = True
+    state["radarr"]["4K"] = _default_instance_state()
+    state["radarr"]["4K"]["connected"] = True
+
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": default_client, "4K": fourk_client}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = state
+    app.state.settings = settings
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.db = AsyncMock()
+    app.state.state_path = tmp_path / "state.json"
+
+    default_job = make_search_job(app, "radarr", "Default", tmp_path / "state.json")
+    fourk_job = make_search_job(app, "radarr", "4K", tmp_path / "state.json")
+
+    with patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()):
+        await default_job()
+        await fourk_job()
+
+    assert app.state.search_failures.get("radarr_Default_search", 0) == 1
+    assert app.state.search_failures.get("radarr_4K_search", 0) == 0
+
+
+async def test_persistence_failure_logs_error_and_marks_degraded(tmp_path):
+    """SAFETY-03 (Codex finding 2): persistence failure is a hard error, not transient.
+
+    When save_state raises OSError (disk full, permission denied), the cycle
+    has already completed successfully and `connected = True`. The scheduler
+    MUST:
+      - log at ERROR immediately (no threshold gate),
+      - set app.state.persistence_degraded = True,
+      - re-raise so APScheduler's EVENT_JOB_ERROR listener logs with job_id,
+      - NOT increment the search-failure counter (durability != *arr outage).
+    """
+    def success_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"page": 1, "pageSize": 50, "totalRecords": 0, "records": []},
+        )
+
+    app, job = _build_outage_app(tmp_path, transport_handler=success_handler)
+
+    sink = io.StringIO()
+    sink_id = logger.add(sink, format="{level} | {message}", level="ERROR")
+    try:
+        with (
+            patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+            patch(
+                "triggarr.search.scheduler.save_state",
+                new=MagicMock(side_effect=OSError(28, "No space left on device")),
+            ),
+            pytest.raises(OSError, match="No space left"),
+        ):
+            await job()
+    finally:
+        logger.remove(sink_id)
+
+    output = sink.getvalue()
+    assert any(
+        line.startswith("ERROR | ")
+        and ("persistence" in line.lower() or "save_state" in line.lower() or "durability" in line.lower())
+        for line in output.splitlines()
+    ), f"Expected ERROR-level persistence log line, got: {output!r}"
+    assert app.state.persistence_degraded is True
+    assert app.state.search_failures.get("radarr_Default_search", 0) == 0
 
 
 # ---------------------------------------------------------------------------

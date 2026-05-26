@@ -155,6 +155,23 @@ def test_skip_unreleased_defaults_true() -> None:
     assert GeneralConfig().skip_unreleased is True
 
 
+def test_general_config_default_max_consecutive_failures() -> None:
+    """SAFETY-03: GeneralConfig().max_consecutive_failures defaults to 5, bounded 1..100.
+
+    The bound is enforced via pydantic Field(ge=1, le=100) (or an equivalent
+    field validator) so out-of-bounds values raise pydantic.ValidationError at
+    model construction time. Defense in depth: the route handler also clamps
+    via safe_int(..., 5, 1, 100) before the form value reaches the model.
+    """
+    assert GeneralConfig().max_consecutive_failures == 5
+
+    with pytest.raises(ValidationError):
+        GeneralConfig(max_consecutive_failures=0)
+
+    with pytest.raises(ValidationError):
+        GeneralConfig(max_consecutive_failures=101)
+
+
 def test_skip_unreleased_from_toml(tmp_path: Path) -> None:
     """skip_unreleased=false in TOML loads as False."""
     config_file = tmp_path / "triggarr.toml"
