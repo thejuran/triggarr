@@ -520,6 +520,88 @@ async def test_pending_inserts_rejected_when_cap_reached(tmp_path):
         await db.close()
 
 
+async def test_pending_cap_is_scoped_per_instance(tmp_path):
+    """DEEP-02 (pass-1 follow-up): the pending-row cap must be scoped per
+    (app, instance_id), not a global SELECT COUNT(*) over the whole table.
+
+    Without this test, the production query at db.py::insert_search_entry
+    could regress to a global COUNT and the existing single-instance test
+    (test_pending_inserts_rejected_when_cap_reached) would still pass --
+    masking a cross-instance interference bug where a stalled tracker on
+    instance A could starve a healthy instance B.
+    """
+    from triggarr.db import PendingCapExceeded
+
+    db, _ = await _init_test_db(tmp_path)
+    max_rows = 5  # cap = 2 * 5 = 10 pending per instance
+    try:
+        # Fill Default to its per-instance cap.
+        for i in range(2 * max_rows):
+            await insert_search_entry(
+                db,
+                "Radarr",
+                "missing",
+                f"DefaultPending {i}",
+                outcome="searched",
+                instance_id="Default",
+                max_rows=max_rows,
+            )
+
+        # A further Default insert must be rejected (per-instance cap reached).
+        with pytest.raises(PendingCapExceeded):
+            await insert_search_entry(
+                db,
+                "Radarr",
+                "missing",
+                "DefaultOverflow",
+                outcome="searched",
+                instance_id="Default",
+                max_rows=max_rows,
+            )
+
+        # Secondary is empty and must still accept new pending inserts even
+        # though Default is at its cap.
+        await insert_search_entry(
+            db,
+            "Radarr",
+            "missing",
+            "SecondaryPending",
+            outcome="searched",
+            instance_id="Secondary",
+            max_rows=max_rows,
+        )
+
+        # Same scoping must hold across apps: Sonarr/Default is independent.
+        await insert_search_entry(
+            db,
+            "Sonarr",
+            "missing",
+            "SonarrPending",
+            outcome="searched",
+            instance_id="Default",
+            max_rows=max_rows,
+        )
+
+        # Verify each instance bucket independently.
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history "
+            "WHERE outcome = 'searched' AND app = 'Radarr' AND instance_id = 'Default'"
+        ) as cursor:
+            assert (await cursor.fetchone())[0] == 2 * max_rows
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history "
+            "WHERE outcome = 'searched' AND app = 'Radarr' AND instance_id = 'Secondary'"
+        ) as cursor:
+            assert (await cursor.fetchone())[0] == 1
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history "
+            "WHERE outcome = 'searched' AND app = 'Sonarr' AND instance_id = 'Default'"
+        ) as cursor:
+            assert (await cursor.fetchone())[0] == 1
+    finally:
+        await db.close()
+
+
 async def test_insert_caps_at_max_rows_over_large_soak(tmp_path):
     """SAFETY-01: steady-state cap holds across 2x max_rows resolved inserts.
 
