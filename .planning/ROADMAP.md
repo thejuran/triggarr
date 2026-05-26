@@ -220,6 +220,6 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 | 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete | 2026-04-17 |
 | 63. Header Favicon Icon | v2.7 | 1/1 | Complete | 2026-04-17 |
 | 64. Data Safety & Config Integrity | v2.8 | 4/4 | Complete   | 2026-05-26 |
-| 65. Scheduler Hardening & Resilience | v2.8 | 4/4 | Complete   | 2026-05-26 |
+| 65. Scheduler Hardening & Resilience | v2.8 | 4/4 | Complete    | 2026-05-26 |
 | 66. Security Hardening | v2.8 | 0/? | Not started | - |
 | 67. Observability & CSRF Test Coverage | v2.8 | 0/? | Not started | - |

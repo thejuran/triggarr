@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.8
 milestone_name: Hardening & Observability
-status: executing
-stopped_at: "v2.8 roadmap created — ready for `/gsd:plan-phase 64`"
-last_updated: "2026-05-26T02:27:30.718Z"
+status: ready_to_plan
+stopped_at: Phase 65 complete (4/4) — ready to discuss Phase 66
+last_updated: 2026-05-26T03:59:16.618Z
 last_activity: 2026-05-26 -- Phase 65 execution started
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 16
   percent: 25
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-25)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 65 — scheduler-hardening-resilience
+**Current focus:** Phase 66 — security hardening
 
 ## Current Position
 
-Phase: 65 (scheduler-hardening-resilience) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 65
-Last activity: 2026-05-26 -- Phase 65 execution started
+Phase: 66
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-05-26
 
 ```
 v2.8 Progress: [                    ] 0% (0/4 phases)
@@ -42,7 +42,7 @@ Phase 67: [ ] Observability & CSRF Test Coverage
 
 **Overall:**
 
-- Total plans completed: 139 across 13 shipped milestones
+- Total plans completed: 143 across 13 shipped milestones
 - Milestones shipped: 13 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7)
 - Tests passing: 857
 - Shipped LOC: ~6,178 Python source + 1,502 HTML templates + 7,184 CSS

@@ -11,8 +11,8 @@
 
 - [ ] **SAFETY-01**: Resolved-outcome rows in the search history table (rows where `outcome != 'searched'`) trim to `max_history_rows` after each insert so the database does not grow unbounded under normal operation (DEBT-03; `triggarr/db.py`, `triggarr/models/config.py:79`). *Pending rows (`outcome = 'searched'`) are intentionally exempt — they are bounded separately by SAFETY-01b.*
 - [ ] **SAFETY-01b**: The count of pending rows (`outcome = 'searched'`) in the search history table is bounded so that a stalled tracker (Sonarr/Radarr unreachable for an extended period) cannot grow the table unboundedly. New pending inserts are rejected — or oldest pending rows are evicted with a logged warning — when pending count would exceed `2 × max_history_rows`. (Codex adversarial review F1, 2026-05-25; `triggarr/db.py`, `triggarr/tracking.py`)
-- [ ] **SAFETY-02**: Scheduler exception handler catches only expected types (`httpx.HTTPError`, `pydantic.ValidationError`, `aiosqlite.Error`, `OSError`) instead of bare `Exception` (`triggarr/search/scheduler.py:124-129`)
-- [ ] **SAFETY-03**: Scheduler tracks consecutive failures per job and escalates from WARNING to ERROR after N (configurable, default 5) consecutive failures (`triggarr/search/scheduler.py`)
+- [x] **SAFETY-02**: Scheduler exception handler catches only expected types (`httpx.HTTPError`, `pydantic.ValidationError`, `aiosqlite.Error`, `OSError`) instead of bare `Exception` (`triggarr/search/scheduler.py:124-129`)
+- [x] **SAFETY-03**: Scheduler tracks consecutive failures per job and escalates from WARNING to ERROR after N (configurable, default 5) consecutive failures (`triggarr/search/scheduler.py`)
 - [ ] **SAFETY-04**: `_atomic_toml_write` logs `OSError` before suppressing during temp file cleanup, and re-raises any non-`FileNotFoundError` `OSError` raised by `os.replace()` (`triggarr/config.py:113-115`)
 - [ ] **SAFETY-05**: A config-write lock serializes web UI config saves so two concurrent PUT requests cannot interleave or silently overwrite each other (`triggarr/web/routes.py`, `triggarr/config.py`)
 
@@ -25,7 +25,7 @@
 
 ### Resilience & Observability
 
-- [ ] **RES-01**: Graceful shutdown extends the `search_lock` drain timeout from 35s to 60s and logs the specific job identifier and elapsed runtime of any cycle still holding the lock before forcing close (DEBT-06; `triggarr/search/scheduler.py:266-273`)
+- [x] **RES-01**: Graceful shutdown extends the `search_lock` drain timeout from 35s to 60s and logs the specific job identifier and elapsed runtime of any cycle still holding the lock before forcing close (DEBT-06; `triggarr/search/scheduler.py:266-273`)
 - [ ] **RES-02**: Dashboard surfaces a "last successful search" timestamp per app type (Radarr, Sonarr, Lidarr), visibly stale-flagged when the timestamp is older than 2× the configured interval (`triggarr/web/routes.py`, dashboard templates)
 - [ ] **RES-03**: Tag list responses from `*arr` instances are cached in `app.state` with a 1-hour TTL and invalidated on instance config save, eliminating the per-cycle `get_tags()` round-trip (`triggarr/search/engine.py`, `triggarr/clients/base.py`)
 
@@ -34,7 +34,7 @@
 - [ ] **TEST-01**: `OriginCheckMiddleware` test suite covers missing Origin, missing Referer, both missing, mismatched scheme, and spoofed-host scenarios (`triggarr/web/middleware.py:52-77`)
 - [ ] **TEST-02**: Startup behavior with a corrupted TOML config (syntax error and invalid UTF-8) is tested and produces a clear, actionable error message that mentions the backup file path (`triggarr/config.py:170-185`)
 - [ ] **TEST-03**: Two concurrent PUT requests to the config save endpoint are tested to verify the SAFETY-05 lock prevents interleaved writes (`triggarr/web/routes.py`)
-- [ ] **TEST-04**: Async client cleanup is tested for in-flight requests at shutdown — client `aclose()` does not hang and any in-flight responses raise cleanly (`triggarr/clients/base.py:275-283`, `triggarr/search/scheduler.py:275-281`)
+- [x] **TEST-04**: Async client cleanup is tested for in-flight requests at shutdown — client `aclose()` does not hang and any in-flight responses raise cleanly (`triggarr/clients/base.py:275-283`, `triggarr/search/scheduler.py:275-281`)
 
 ## v2 Requirements
 
@@ -80,21 +80,21 @@ Explicitly excluded from v2.8 to keep the hardening milestone focused.
 |-------------|-------|--------|
 | SAFETY-01 | Phase 64 | Pending |
 | SAFETY-01b | Phase 64 | Pending |
-| SAFETY-02 | Phase 65 | Pending |
-| SAFETY-03 | Phase 65 | Pending |
+| SAFETY-02 | Phase 65 | Complete |
+| SAFETY-03 | Phase 65 | Complete |
 | SAFETY-04 | Phase 64 | Pending |
 | SAFETY-05 | Phase 64 | Pending |
 | SEC-01 | Phase 66 | Pending |
 | SEC-02 | Phase 66 | Pending |
 | SEC-03 | Phase 66 | Pending |
 | SEC-04 | Phase 66 | Pending |
-| RES-01 | Phase 65 | Pending |
+| RES-01 | Phase 65 | Complete |
 | RES-02 | Phase 67 | Pending |
 | RES-03 | Phase 67 | Pending |
 | TEST-01 | Phase 67 | Pending |
 | TEST-02 | Phase 64 | Pending |
 | TEST-03 | Phase 64 | Pending |
-| TEST-04 | Phase 65 | Pending |
+| TEST-04 | Phase 65 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
