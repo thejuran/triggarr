@@ -21,7 +21,7 @@ from loguru import logger
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.db import insert_search_entry
+from triggarr.db import PendingCapExceeded, insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
 from triggarr.state import TriggarrState
@@ -413,6 +413,16 @@ async def run_radarr_cycle(
             )
             logger.info("Radarr: Searched {title} (missing)", title=movie["title"])
             searched_count += 1
+        except PendingCapExceeded as cap_exc:
+            logger.warning(
+                "Skipping search history insert -- pending-row cap reached "
+                "for {app}/{instance} {item!r}",
+                app=cap_exc.app,
+                instance=cap_exc.instance_id,
+                item=cap_exc.item_name,
+            )
+            skipped_count += 1
+            continue
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Radarr: Failed to search {title}: {exc}",
@@ -452,6 +462,16 @@ async def run_radarr_cycle(
             )
             logger.info("Radarr: Searched {title} (cutoff)", title=movie["title"])
             searched_count += 1
+        except PendingCapExceeded as cap_exc:
+            logger.warning(
+                "Skipping search history insert -- pending-row cap reached "
+                "for {app}/{instance} {item!r}",
+                app=cap_exc.app,
+                instance=cap_exc.instance_id,
+                item=cap_exc.item_name,
+            )
+            skipped_count += 1
+            continue
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Radarr: Failed to search {title}: {exc}",
@@ -627,6 +647,16 @@ async def run_sonarr_cycle(
             )
             logger.info("Sonarr: Searched {name} (missing)", name=season["display_name"])
             searched_count += 1
+        except PendingCapExceeded as cap_exc:
+            logger.warning(
+                "Skipping search history insert -- pending-row cap reached "
+                "for {app}/{instance} {item!r}",
+                app=cap_exc.app,
+                instance=cap_exc.instance_id,
+                item=cap_exc.item_name,
+            )
+            skipped_count += 1
+            continue
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Sonarr: Failed to search {name}: {exc}",
@@ -672,6 +702,16 @@ async def run_sonarr_cycle(
             )
             logger.info("Sonarr: Searched {name} (cutoff)", name=season["display_name"])
             searched_count += 1
+        except PendingCapExceeded as cap_exc:
+            logger.warning(
+                "Skipping search history insert -- pending-row cap reached "
+                "for {app}/{instance} {item!r}",
+                app=cap_exc.app,
+                instance=cap_exc.instance_id,
+                item=cap_exc.item_name,
+            )
+            skipped_count += 1
+            continue
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Sonarr: Failed to search {name}: {exc}",
@@ -850,6 +890,16 @@ async def run_lidarr_cycle(
             )
             logger.info("Lidarr: Searched {title} (missing)", title=title)
             searched_count += 1
+        except PendingCapExceeded as cap_exc:
+            logger.warning(
+                "Skipping search history insert -- pending-row cap reached "
+                "for {app}/{instance} {item!r}",
+                app=cap_exc.app,
+                instance=cap_exc.instance_id,
+                item=cap_exc.item_name,
+            )
+            skipped_count += 1
+            continue
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Lidarr: Failed to search {title}: {exc}",
@@ -890,6 +940,16 @@ async def run_lidarr_cycle(
             )
             logger.info("Lidarr: Searched {title} (cutoff)", title=title)
             searched_count += 1
+        except PendingCapExceeded as cap_exc:
+            logger.warning(
+                "Skipping search history insert -- pending-row cap reached "
+                "for {app}/{instance} {item!r}",
+                app=cap_exc.app,
+                instance=cap_exc.instance_id,
+                item=cap_exc.item_name,
+            )
+            skipped_count += 1
+            continue
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             logger.warning(
                 "Lidarr: Failed to search {title}: {exc}",
