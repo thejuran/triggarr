@@ -834,3 +834,85 @@ def test_migrate_v22_mixed_nested_and_flat_only_detects_flat() -> None:
         "sonarr": {"url": "http://s:8989"},
     }
     assert _is_v22_format(data) is True
+
+
+# ---------------------------------------------------------------------------
+# TEST-02: ensure_config friendly TOML-corruption handling
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_config_logs_friendly_error_on_toml_syntax_error(tmp_path: Path) -> None:
+    """Corrupt TOML syntax produces friendly loguru.error mentioning the config path; sys.exit(1)."""
+    config_path = tmp_path / "triggarr.toml"
+    config_path.write_text('[general\nlog_level = "info"')
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            ensure_config(config_path)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc_info.value.code == 1
+    text = sink.getvalue()
+    assert str(config_path) in text
+    assert "Failed to parse config file" in text
+
+
+def test_ensure_config_logs_friendly_error_on_invalid_utf8(tmp_path: Path) -> None:
+    """Invalid UTF-8 bytes in config produce friendly loguru.error and sys.exit(1)."""
+    config_path = tmp_path / "triggarr.toml"
+    config_path.write_bytes(b"\xff\xfe\x00garbage")
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            ensure_config(config_path)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc_info.value.code == 1
+    text = sink.getvalue()
+    assert str(config_path) in text
+    assert "Failed to parse config file" in text
+
+
+def test_ensure_config_mentions_backup_path_when_backup_exists(tmp_path: Path) -> None:
+    """When triggarr.toml.bak exists alongside corrupt config, the log mentions the backup path."""
+    config_path = tmp_path / "triggarr.toml"
+    backup_path = tmp_path / "triggarr.toml.bak"
+    backup_path.write_text('log_level = "info"\n')
+    config_path.write_text('[general\nlog_level = "info"')
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            ensure_config(config_path)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc_info.value.code == 1
+    text = sink.getvalue()
+    assert str(backup_path) in text
+    assert "backup is available" in text
+
+
+def test_ensure_config_mentions_no_backup_when_absent(tmp_path: Path) -> None:
+    """When no .bak exists alongside corrupt config, the log states no automatic backup exists."""
+    config_path = tmp_path / "triggarr.toml"
+    config_path.write_text('[general\nlog_level = "info"')
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with pytest.raises(SystemExit) as exc_info:
+            ensure_config(config_path)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc_info.value.code == 1
+    text = sink.getvalue()
+    assert "No automatic backup" in text
