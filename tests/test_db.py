@@ -7,10 +7,12 @@ signatures, and multi-instance scoping.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import aiosqlite
 import pytest
+from loguru import logger
 
 from triggarr.db import (
     _migrate_v1,
@@ -425,6 +427,97 @@ async def test_pruning_preserves_pending_rows(tmp_path):
     assert pending == 5  # All pending preserved
     assert resolved == 3  # Capped at max_rows
     await db.close()
+
+
+async def test_pending_inserts_rejected_when_cap_reached(tmp_path):
+    """SAFETY-01b: pending inserts past 2x max_rows are rejected with a logged WARNING.
+
+    Today, pending rows (outcome='searched') are exempt from the resolved-row
+    trim (DEBT-03) because they represent in-flight tracking the search engine
+    wants to resolve. That exemption created an unbounded-growth failure mode
+    (Codex adversarial review F1): if Sonarr/Radarr is unreachable for an
+    extended period, every search cycle adds more pending rows that are never
+    resolved.
+
+    The fix (per User Decision Path A in 64-REVIEWS.md): cap pending rows at
+    2 * max_rows by REJECTING new pending inserts when the cap is reached.
+    Eviction would lose tracking semantics, which was the original concern
+    that drove deferral. Rejection + WARNING log lets the operator see the
+    cap being hit and correlate it with a specific stalled tracker.
+    """
+    # Import lazily so the RED phase produces a clean test failure (not a
+    # collection error) before Task 4 defines PendingCapExceeded.
+    try:
+        from triggarr.db import PendingCapExceeded
+    except ImportError:
+        pytest.fail(
+            "PendingCapExceeded not yet defined in triggarr.db -- "
+            "this test is RED until Task 4 ships the production-code guard."
+        )
+
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 5  # small for test speed; cap is 2*5 = 10 pending
+    try:
+        # Insert exactly 2 * max_rows pending entries (all should succeed).
+        for i in range(2 * max_rows):
+            await insert_search_entry(
+                db,
+                "Radarr",
+                "missing",
+                f"Pending {i}",
+                outcome="searched",
+                instance_id="Default",
+                max_rows=max_rows,
+            )
+
+        # Confirm the cap is right at the boundary BEFORE the rejected insert.
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history WHERE outcome = 'searched'"
+        ) as cursor:
+            pending_before = (await cursor.fetchone())[0]
+        assert pending_before == 2 * max_rows, (
+            f"Setup invariant broken: expected {2 * max_rows} pending rows "
+            f"before the rejected insert, got {pending_before}."
+        )
+
+        # The next pending insert must be rejected AND emit a WARNING.
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            with pytest.raises(PendingCapExceeded):
+                await insert_search_entry(
+                    db,
+                    "Radarr",
+                    "missing",
+                    "Rejected entry",
+                    outcome="searched",
+                    instance_id="Default",
+                    max_rows=max_rows,
+                )
+        finally:
+            logger.remove(handler_id)
+
+        log_text = sink.getvalue()
+        assert "Rejected entry" in log_text, (
+            f"WARNING log must name the rejected entry's item_name; "
+            f"got: {log_text!r}"
+        )
+        assert "Radarr" in log_text, (
+            f"WARNING log must name the app for operator correlation; "
+            f"got: {log_text!r}"
+        )
+
+        # Pending count must be unchanged -- the rejected insert did NOT land.
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history WHERE outcome = 'searched'"
+        ) as cursor:
+            pending_after = (await cursor.fetchone())[0]
+        assert pending_after == 2 * max_rows, (
+            f"Rejected insert must NOT add a row; "
+            f"expected {2 * max_rows} pending, got {pending_after}."
+        )
+    finally:
+        await db.close()
 
 
 async def test_insert_caps_at_max_rows_over_large_soak(tmp_path):
