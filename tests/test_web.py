@@ -1295,6 +1295,61 @@ def test_remove_instance_nonexistent(multi_instance_app):
     assert response.status_code == 400
 
 
+def test_remove_instance_uses_hx_redirect_when_htmx(multi_instance_app):
+    """SEC-01 / codex M0: HTMX callers receive HX-Redirect so the browser issues a
+    full navigation. Without this, the body-swap of a fresh settings.html page
+    would inherit the OLD CSP nonce -- the new `<script nonce="NEW">` would be
+    blocked by the active document's CSP policy.
+    """
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/remove/radarr/4K",
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 200
+    assert response.headers.get("HX-Redirect", "").endswith("/settings")
+    # Body should be empty (HTMX discards it before issuing the redirect).
+    assert response.text == ""
+
+
+def test_remove_instance_uses_303_for_non_htmx(multi_instance_app):
+    """Backwards compat: non-HTMX callers (curl, browsers without HX-Request)
+    still get a 303 + Location header.
+    """
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/remove/radarr/Default",
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    assert response.headers.get("location", "").endswith("/settings")
+
+
+def test_no_new_body_swap_html_targets():
+    """SEC-01 defense-in-depth: only ONE place in the codebase uses
+    `hx-target="body"` (the Remove-instance button on settings.html, which is
+    safe because remove_instance returns HX-Redirect). Any future addition of
+    `hx-target="body"` must come with a paired HX-Redirect response or a
+    non-script-bearing partial template, or it will silently break CSP-nonce
+    inheritance on the swapped-in page.
+    """
+    from pathlib import Path
+    matches: list[str] = []
+    for path in Path("triggarr/templates").rglob("*.html"):
+        for line_num, line in enumerate(path.read_text().splitlines(), start=1):
+            if 'hx-target="body"' in line or 'hx-target="html"' in line:
+                matches.append(f"{path}:{line_num}")
+    assert len(matches) == 1, (
+        f"Expected exactly 1 hx-target=body/html in templates (settings.html Remove button), "
+        f"found {len(matches)}: {matches}"
+    )
+    assert "settings.html" in matches[0], (
+        f"The single body-target usage must remain on settings.html Remove button; "
+        f"found unexpected location: {matches[0]}"
+    )
+
+
 def test_app_card_no_skip_when_equal(client, test_app):
     """App card does NOT show skip badge when missing_monitored == missing_eligible (DASH-02)."""
     test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 42

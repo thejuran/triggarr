@@ -800,7 +800,13 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
     if client:
         await client.close()
 
-    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+    settings_url = str(request.url_for("settings_page"))
+    if request.headers.get("HX-Request") == "true":
+        # SEC-01 / codex M0: avoid HTMX body-swap inheriting old CSP nonce.
+        # HX-Redirect forces a full browser navigation so the new document
+        # binds to the new CSP header's nonce value.
+        return HTMLResponse("", headers={"HX-Redirect": settings_url})
+    return RedirectResponse(url=settings_url, status_code=303)
 
 
 @router.post("/api/search-now/{app_name}/{instance_name}", response_class=HTMLResponse)
