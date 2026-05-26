@@ -97,7 +97,7 @@
   <form method="post" action="{{ request.url_for('save_security') }}">
     <div class="max-w-md">
       <label class="block text-sm text-triggarr-muted mb-1">Authentication Method</label>
-      <select name="auth_method" onchange="updateMethodWarning(this.value)"
+      <select id="auth-method-select" name="auth_method"
               class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
         {% for mode in ['Forms', 'Basic', 'External'] %}
         <option value="{{ mode }}" {% if auth_method == mode %}selected{% endif %}>{{ mode }}</option>
@@ -149,7 +149,7 @@
                         hx-confirm="Remove instance '{{ inst_name }}'? This cannot be undone."
                         hx-target="body" hx-swap="outerHTML"
                         class="text-red-400 hover:text-red-300 text-sm"
-                        type="button" onclick="event.stopPropagation()">
+                        type="button" data-stop-propagation>
                     Remove
                 </button>
             </summary>
@@ -310,6 +310,37 @@ function confirmRegen() {
     htmx.ajax('POST', '{{ request.url_for("regenerate_api_key_endpoint") }}', {
         target: '#apikey-section',
         swap: 'innerHTML'
+    });
+}
+
+// SEC-01 D-05: auth-method onchange binding (replaces inline onchange).
+var authMethodSelect = document.getElementById('auth-method-select');
+if (authMethodSelect) {
+    authMethodSelect.addEventListener('change', function(e) {
+        updateMethodWarning(e.target.value);
+    });
+}
+
+// SEC-01 D-05: remove-button event.stopPropagation (replaces inline onclick on remove buttons).
+document.querySelectorAll('[data-stop-propagation]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); });
+});
+
+// SEC-01 D-05: delegated listener on #apikey-section (parent stays mounted across
+// hx-swap='innerHTML' of partials/security_apikey.html). Captures clicks on all
+// future swapped-in [data-action] buttons.
+var apikeySection = document.getElementById('apikey-section');
+if (apikeySection) {
+    apikeySection.addEventListener('click', function(e) {
+        var target = e.target.closest('[data-action]');
+        if (!target) return;
+        switch (target.dataset.action) {
+            case 'apikey-toggle': toggleApiKeyVisibility(); break;
+            case 'apikey-copy': copyApiKey(target); break;
+            case 'apikey-regen-show': showRegenConfirm(); break;
+            case 'apikey-regen-confirm': confirmRegen(); break;
+            case 'apikey-regen-cancel': cancelRegen(); break;
+        }
     });
 }
 </script>

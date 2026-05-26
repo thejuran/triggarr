@@ -57,7 +57,7 @@
   <code id="api-key-display"
         class="block w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text select-all mt-6">{{ api_key }}</code>
 
-  <button type="button" onclick="copyApiKey(this)"
+  <button id="copy-api-key-btn" type="button"
           class="mt-2 bg-triggarr-card-elevated border border-triggarr-border rounded px-3 py-1 text-sm text-triggarr-text hover:text-white transition-colors cursor-pointer">
     Copy
   </button>
@@ -85,6 +85,8 @@
             setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
         }
     }
+    var copyBtn = document.getElementById('copy-api-key-btn');
+    if (copyBtn) copyBtn.addEventListener('click', function(){ copyApiKey(copyBtn); });
   </script>
   {% endif %}
 </div>

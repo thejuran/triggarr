@@ -28,7 +28,7 @@
           <img src="{{ request.url_for('static', path='favicon.svg') }}" alt="" class="w-6 h-6">
           <span class="text-triggarr-green font-bold text-xl tracking-tight">Triggarr</span>
         </div>
-        <button onclick="openChangelog()" type="button"
+        <button id="changelog-badge" type="button"
                 class="font-geist-mono px-2 py-0.5 rounded-md bg-triggarr-card border border-triggarr-border text-triggarr-muted text-[10px] font-bold uppercase tracking-wider relative top-px hover:text-white transition-colors cursor-pointer"
                 title="View changelog">
           v{{ triggarr_version }}
@@ -101,11 +101,11 @@
 
   <!-- Changelog Modal -->
   <div id="changelog-modal" style="display:none" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="fixed inset-0 bg-black/60" onclick="closeChangelog()"></div>
+    <div id="changelog-backdrop" class="fixed inset-0 bg-black/60"></div>
     <div class="relative bg-triggarr-card border border-triggarr-border rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
       <div class="flex items-center justify-between px-6 py-4 border-b border-triggarr-border shrink-0">
         <h2 class="text-lg font-semibold text-white">Changelog</h2>
-        <button onclick="closeChangelog()" type="button"
+        <button id="changelog-close-btn" type="button"
                 class="text-triggarr-muted hover:text-white transition-colors text-xl leading-none"
                 aria-label="Close changelog">&times;</button>
       </div>
@@ -126,6 +126,12 @@
     function closeChangelog() {
       document.getElementById('changelog-modal').style.display = 'none';
     }
+    var badge = document.getElementById('changelog-badge');
+    if (badge) badge.addEventListener('click', openChangelog);
+    var backdrop = document.getElementById('changelog-backdrop');
+    if (backdrop) backdrop.addEventListener('click', closeChangelog);
+    var closeBtn = document.getElementById('changelog-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', closeChangelog);
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') closeChangelog();
     });
