@@ -150,7 +150,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 
 ### v2.8 Hardening & Observability (Phases 64-67)
 
-- [ ] **Phase 64: Data Safety & Config Integrity** - Enforce search history bounds (resolved + pending separately), harden atomic config writes, prove concurrent config save lock with AST-verified coverage, test corrupted TOML recovery
+- [x] **Phase 64: Data Safety & Config Integrity** - Enforce search history bounds (resolved + pending separately), harden atomic config writes, prove concurrent config save lock with AST-verified coverage, test corrupted TOML recovery (completed 2026-05-26)
 - [ ] **Phase 65: Scheduler Hardening & Resilience** - Narrow scheduler exception handler to expected types, add consecutive-failure escalation, extend graceful shutdown timeout, test async client cleanup
 - [ ] **Phase 66: Security Hardening** - Remove CSP unsafe-inline via nonce migration, reject apikey= in *arr URLs, harden Basic auth header decoding, validate session secret at startup
 - [ ] **Phase 67: Observability & CSRF Test Coverage** - Surface last-successful-search per app on dashboard, cache tag lists with 1h TTL, add OriginCheckMiddleware test suite
@@ -169,11 +169,11 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
   4. Starting the application with a TOML file containing a syntax error or invalid UTF-8 produces a clear, actionable error message that includes the path of the backup file the user can restore from (TEST-02)
   5. The concurrent config save test passes (`pytest`) confirming the SAFETY-05 lock prevents interleaved writes (TEST-03)
   6. Every call to `_atomic_toml_write` in `triggarr/web/routes.py` is lexically dominated by `async with request.app.state.search_lock` — verified by an AST audit script run in CI, not by a line-distance grep (SAFETY-05 audit hardening — added per Codex adversarial review F3)
-**Plans:** 4 plans
-- [ ] 64-01-PLAN.md — SAFETY-04: harden `_atomic_toml_write` OSError handling (log non-FNF cleanup errors + log `os.replace` failures with path)
-- [ ] 64-02-PLAN.md — TEST-02: friendly TOML-corruption handler in `ensure_config` (syntax error + invalid UTF-8 + backup-path hint)
-- [ ] 64-03-PLAN.md — SAFETY-05 + TEST-03: concurrent POST `/settings` test via `ASGITransport` + **AST audit script** verifying every `_atomic_toml_write` call is lexically dominated by `async with request.app.state.search_lock` (per Codex F3)
-- [ ] 64-04-PLAN.md — SAFETY-01 + SAFETY-01b: docstring on `insert_search_entry` + soak test for resolved-row cap (SAFETY-01) **plus** pending-row cap via `PendingCapExceeded` exception when pending count would exceed `2 × max_history_rows` (SAFETY-01b, per Codex F1)
+**Plans:** 4/4 plans complete
+- [x] 64-01-PLAN.md — SAFETY-04: harden `_atomic_toml_write` OSError handling (log non-FNF cleanup errors + log `os.replace` failures with path)
+- [x] 64-02-PLAN.md — TEST-02: friendly TOML-corruption handler in `ensure_config` (syntax error + invalid UTF-8 + backup-path hint)
+- [x] 64-03-PLAN.md — SAFETY-05 + TEST-03: concurrent POST `/settings` test via `ASGITransport` + **AST audit script** verifying every `_atomic_toml_write` call is lexically dominated by `async with request.app.state.search_lock` (per Codex F3)
+- [x] 64-04-PLAN.md — SAFETY-01 + SAFETY-01b: docstring on `insert_search_entry` + soak test for resolved-row cap (SAFETY-01) **plus** pending-row cap via `PendingCapExceeded` exception when pending count would exceed `2 × max_history_rows` (SAFETY-01b, per Codex F1)
 
 ### Phase 65: Scheduler Hardening & Resilience
 **Goal**: Scheduler jobs fail safely, alert on repeated failures, and shut down without leaving in-flight work in an unknown state
@@ -215,7 +215,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 | 61. Stat Cards & App Cards | v2.7 | 2/2 | Complete | 2026-04-16 |
 | 62. Activity Rail & Log Viewer | v2.7 | 2/2 | Complete | 2026-04-17 |
 | 63. Header Favicon Icon | v2.7 | 1/1 | Complete | 2026-04-17 |
-| 64. Data Safety & Config Integrity | v2.8 | 0/4 | Not started | - |
+| 64. Data Safety & Config Integrity | v2.8 | 4/4 | Complete   | 2026-05-26 |
 | 65. Scheduler Hardening & Resilience | v2.8 | 0/? | Not started | - |
 | 66. Security Hardening | v2.8 | 0/? | Not started | - |
 | 67. Observability & CSRF Test Coverage | v2.8 | 0/? | Not started | - |
