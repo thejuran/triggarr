@@ -9,6 +9,7 @@ import sys
 import tempfile
 import tomllib
 from pathlib import Path
+from typing import NoReturn
 
 import tomli_w
 from loguru import logger
@@ -235,6 +236,39 @@ def generate_default_config(config_path: Path) -> None:
     os.chmod(config_path, 0o600)
 
 
+def _log_corrupt_config_and_exit(config_path: Path, exc: Exception) -> NoReturn:
+    """Log a friendly TOML-corruption error and exit with code 1 (TEST-02).
+
+    Emits structured loguru.error lines that name the config path and either
+    point at the `.toml.bak` backup with a `cp` restore hint (when present)
+    or tell the operator how to regenerate the default template (when absent).
+    Path-only disclosure — no config contents or secrets are logged.
+
+    Args:
+        config_path: Path to the corrupt TOML configuration file.
+        exc: The TOMLDecodeError or UnicodeDecodeError that triggered this.
+    """
+    backup_path = config_path.with_suffix(".toml.bak")
+    logger.error(
+        "Failed to parse config file {path}: {exc}",
+        path=config_path,
+        exc=exc,
+    )
+    if backup_path.exists():
+        logger.error(
+            "A backup is available at {backup} -- to restore: cp {backup} {path}",
+            backup=backup_path,
+            path=config_path,
+        )
+    else:
+        logger.error(
+            "No automatic backup exists. Restore from your own backup or "
+            "delete {path} to regenerate the default template.",
+            path=config_path,
+        )
+    sys.exit(1)
+
+
 def ensure_config(config_path: Path) -> Settings:
     """Ensure config file exists and load settings.
 
@@ -242,6 +276,12 @@ def ensure_config(config_path: Path) -> Settings:
     prints a message to stderr, and exits with code 1.
 
     For existing configs, runs v2.2 migration detection before loading.
+    A `tomllib.TOMLDecodeError` or `UnicodeDecodeError` from either the
+    migration probe or the final load is translated into a friendly
+    loguru.error line (mentioning the `.toml.bak` backup when present)
+    and `sys.exit(1)` — instead of an uncaught traceback from
+    `asyncio.run(_run())` (TEST-02). `OSError` (permission denied) and
+    `pydantic.ValidationError` (schema bug) continue to propagate uncaught.
 
     Args:
         config_path: Path to the TOML configuration file.
@@ -257,9 +297,16 @@ def ensure_config(config_path: Path) -> Settings:
         )
         sys.exit(1)
 
-    migrated = detect_and_migrate_v22(config_path)
+    try:
+        migrated = detect_and_migrate_v22(config_path)
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        _log_corrupt_config_and_exit(config_path, exc)
+
     if migrated:
         backup_path = config_path.with_suffix(".toml.bak")
         logger.info("v2.2 config backed up to {path}", path=backup_path)
 
-    return load_settings(config_path)
+    try:
+        return load_settings(config_path)
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        _log_corrupt_config_and_exit(config_path, exc)
