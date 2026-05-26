@@ -580,9 +580,13 @@ async def save_settings(request: Request) -> RedirectResponse:
         request.app.state.settings = new_settings
         _sync_auth_state(new_settings)
 
-        # Refresh log redaction with new secrets (QUAL-05)
-        secrets = collect_secrets(new_settings)
-        setup_logging(new_settings.general.log_level, secrets)
+        # Refresh log redaction with new secrets (QUAL-05).
+        # WR-04: do NOT name this `secrets` -- it shadows the stdlib
+        # `secrets` module imported at module top. `_new_secrets` matches
+        # the convention used in 4 other endpoints (lines 1108, 1358,
+        # 1392, 1416).
+        _new_secrets = collect_secrets(new_settings)
+        setup_logging(new_settings.general.log_level, _new_secrets)
 
         # Handle scheduler updates for each app's instances
         for name in APP_TYPES:
