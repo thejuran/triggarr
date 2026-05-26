@@ -207,6 +207,16 @@ def create_lifespan(
         app.state.lidarr_clients = all_clients.get("lidarr", {})
         app.state.config_path = config_path
         app.state.state_path = state_path
+        # search_lock serializes (a) search cycles in scheduler.make_search_job and
+        # (b) every config-save call to _atomic_toml_write in triggarr.web.routes.
+        # SAFETY-05 (Assumption A1): this asyncio.Lock is correct only because
+        # Triggarr runs a single uvicorn worker (__main__.py constructs uvicorn.Config
+        # without workers=N). Adding --workers >1 would silently break serialization
+        # because asyncio.Lock is per-event-loop. If you ever introduce multi-worker
+        # uvicorn, replace this with a file-level lock (fcntl.flock) or a process-level
+        # primitive. Verified statically by tests/audit_lock_coverage.py (AST audit of
+        # routes.py) and dynamically by
+        # tests/test_web.py::test_concurrent_settings_save_serialized.
         app.state.search_lock = asyncio.Lock()
         app.state.last_search_time: dict[str, float] = {}
         app.state.last_health_check = None
