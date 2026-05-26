@@ -250,7 +250,7 @@
 <form id="add-{{ app_name }}" method="post" action="{{ request.url_for('add_instance') }}"></form>
 {% endfor %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
 function updateMethodWarning(value) {
     var el = document.getElementById('method-warning');
     if (value === 'External') {

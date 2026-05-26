@@ -61,7 +61,23 @@ _jinja_env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=True,
 )
-templates = Jinja2Templates(env=_jinja_env)
+
+
+def _csp_nonce_processor(request: Request) -> dict[str, str]:
+    """SEC-01 D-02: Expose the per-request CSP nonce to Jinja templates as {{ csp_nonce }}.
+
+    The middleware (SecurityHeadersMiddleware in triggarr/web/middleware.py) sets
+    request.state.csp_nonce BEFORE call_next. The empty-string default protects
+    against renders where the middleware did not run (e.g. error pages rendered
+    before middleware mounts) — `<script nonce="">` would be inert, which is the
+    correct fail-closed behavior.
+
+    MUST be sync def per FastAPI docs (async context_processors are unsupported).
+    """
+    return {"csp_nonce": getattr(request.state, "csp_nonce", "")}
+
+
+templates = Jinja2Templates(env=_jinja_env, context_processors=[_csp_nonce_processor])
 templates.env.globals["triggarr_version"] = get_display_version()
 # Shared mutable dict for update info. The scheduler lifespan assigns this
 # same object to app.state.update_info so both sides share it without

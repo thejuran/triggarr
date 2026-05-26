@@ -67,7 +67,7 @@
     Continue to Dashboard
   </a>
 
-  <script>
+  <script nonce="{{ csp_nonce }}">
     function copyApiKey(btn) {
         var text = document.getElementById('api-key-display').textContent;
         if (navigator.clipboard && navigator.clipboard.writeText) {

@@ -45,7 +45,7 @@
   <p class="text-triggarr-muted">No apps configured. Visit <a href="{{ request.url_for('settings_page') }}" class="text-triggarr-green hover:underline">Settings</a> to add Radarr, Sonarr, or Lidarr.</p>
 </div>
 {% endif %}
-<script>
+<script nonce="{{ csp_nonce }}">
 /* Log viewer controls — lives outside partial to survive htmx outerHTML swaps */
 
 /* D-04: Auto-scroll log body to bottom after every htmx swap */

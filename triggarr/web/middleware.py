@@ -35,17 +35,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        """Add security headers to the response."""
+        """Add security headers to the response.
+
+        Generates a per-request CSP nonce BEFORE call_next so the template render
+        can read it via the csp_nonce context_processor (see routes.py).
+        """
+        nonce = secrets.token_urlsafe(16)
+        request.state.csp_nonce = nonce
         response = await call_next(request)
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
-        # NOTE: 'unsafe-inline' for script-src is required by htmx hx-* attribute
-        # handlers and inline <script> blocks in templates. Nonce-based CSP is a
-        # future hardening step that requires moving inline scripts to static JS files.
+        # SEC-01 D-04: script-src uses per-request nonce; style-src keeps 'unsafe-inline' for Tailwind utility output
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
+            f"script-src 'self' 'nonce-{nonce}'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "connect-src 'self'; "
