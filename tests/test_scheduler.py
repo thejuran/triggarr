@@ -54,6 +54,11 @@ async def test_make_search_job_unexpected_exception_propagates():
     app.state.search_lock_holder = None
     app.state.triggarr_state = _default_state(make_settings())
     app.state.settings = make_settings()
+    # app.state.db is referenced as an argument to cycle_fn(...) before the
+    # mocked side_effect fires; provide a MagicMock so attribute access works.
+    # (Rule 3 — exposed by narrow-tuple change: the prior broad-except masked
+    # the AttributeError; tracking_check is never reached because cycle_fn raises.)
+    app.state.db = MagicMock()
 
     with (
         patch(
@@ -79,6 +84,7 @@ async def test_make_search_job_httperror_swallowed():
     app.state.search_lock_holder = None
     app.state.triggarr_state = _default_state(make_settings())
     app.state.settings = make_settings()
+    app.state.db = MagicMock()  # see propagation test for rationale
 
     with (
         patch(
@@ -269,7 +275,16 @@ async def test_search_job_runs_tracking_after_cycle(tmp_path):
 
 
 async def test_search_job_tracking_failure_nonfatal(tmp_path):
-    """Tracking failure does not prevent state save or raise from the job."""
+    """Tracking failure does not prevent state save or raise from the job.
+
+    SAFETY-02 narrowed the outer except to (httpx.HTTPError,
+    pydantic.ValidationError, aiosqlite.Error, OSError). The inner
+    tracking-check try/except uses the same narrow tuple. To stay in
+    the realistic failure path (tracking calls httpx + aiosqlite), this
+    test simulates an httpx.ConnectError — which is what a Radarr/Sonarr
+    history-endpoint outage actually raises. RuntimeError would now
+    correctly propagate (it's a code bug, not a transient failure).
+    """
     radarr_client = AsyncMock()
     app, db, state_path = await _make_app_with_db(tmp_path, radarr_client=radarr_client)
 
@@ -285,11 +300,12 @@ async def test_search_job_tracking_failure_nonfatal(tmp_path):
             ) as mock_save,
             patch(
                 "triggarr.search.scheduler.run_tracking_check",
-                new=AsyncMock(side_effect=RuntimeError("tracking exploded")),
+                new=AsyncMock(side_effect=httpx.ConnectError("tracking unreachable")),
             ),
         ):
             job = make_search_job(app, "radarr", "Default", state_path)
-            # Should NOT raise despite tracking failure
+            # Should NOT raise despite tracking failure (httpx.ConnectError is
+            # in the inner tracking narrow tuple)
             await job()
             # State was saved before tracking ran
             mock_save.assert_called_once()

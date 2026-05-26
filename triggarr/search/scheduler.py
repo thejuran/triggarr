@@ -18,6 +18,7 @@ from pathlib import Path
 import aiosqlite
 import httpx
 import pydantic
+from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
@@ -28,7 +29,7 @@ from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
 from triggarr.models.config import APP_TYPES, Settings
-from triggarr.search.engine import run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
+from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.state import (
     TriggarrState,
     _default_instance_state,
@@ -121,7 +122,7 @@ def make_search_job(
                         "Tracking: check failed -- {exc}",
                         exc=tracking_exc,
                     )
-            except Exception as exc:
+            except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
                 logger.error(
                     "{app}: Unhandled error in search cycle -- {exc}",
                     app=app_name.title(),
@@ -129,6 +130,33 @@ def make_search_job(
                 )
 
     return job
+
+
+def _on_job_error(event) -> None:
+    """SAFETY-02: log propagated job exceptions at ERROR level.
+
+    Registered via ``add_listener`` on the AsyncIOScheduler so that
+    exceptions which fall outside the narrow tuple in ``make_search_job``
+    (RuntimeError, KeyError, etc.) become operator-visible instead of
+    disappearing into APScheduler's stdlib-logging silence.
+
+    Sanitization split: httpx/pydantic exceptions route through
+    ``_sanitize_exc`` (engine.py) to strip ``request.url`` credentials that
+    may contain ``apikey=`` query parameters. All other exception types use
+    ``str(exc)`` — Triggarr's non-httpx exceptions do not carry secrets.
+    """
+    exc = event.exception
+    exc_repr = (
+        _sanitize_exc(exc)
+        if isinstance(exc, httpx.HTTPError | pydantic.ValidationError)
+        else str(exc)
+    )
+    logger.error(
+        "Job {job} failed unexpectedly: {type}: {exc}",
+        job=event.job_id,
+        type=type(exc).__name__,
+        exc=exc_repr,
+    )
 
 
 def create_lifespan(
@@ -252,6 +280,10 @@ def create_lifespan(
                     interval=cfg.search_interval,
                 )
 
+        # SAFETY-02: surface non-narrow-tuple exceptions that propagate out of
+        # make_search_job (RuntimeError, KeyError, etc.) by routing them through
+        # the EVENT_JOB_ERROR listener instead of APScheduler's silent default.
+        scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
         scheduler.start()
 
         async def update_check_job() -> None:
