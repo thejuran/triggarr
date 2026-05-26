@@ -5,6 +5,18 @@ FastAPI's lifespan context manager.  Shared state is exposed on ``app.state``
 so that web routes can read it without coupling.  The ``make_search_job``
 factory creates job closures that read from ``app.state`` rather than
 capturing variables, enabling future hot-reload of clients and settings.
+
+Phase 65 hardening layered on top of the original wiring:
+- SAFETY-02 (65-01): narrow-tuple cycle except + EVENT_JOB_ERROR listener so
+  code-bug exceptions escape APScheduler's default silence.
+- SAFETY-03 (65-02): per-job consecutive-failure counter on
+  ``app.state.search_failures`` driven by the engine's ``connected`` flag;
+  split persistence branch with ``app.state.persistence_degraded`` flag.
+- RES-01 (65-03): configurable shutdown drain (``_SHUTDOWN_DRAIN_TIMEOUT``,
+  env-overridable via ``TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT``) + holder identity
+  on ``app.state.search_lock_holder``; INFO-on-entry and WARNING-on-timeout
+  shutdown logs both name the stuck cycle and elapsed runtime so operators
+  see what was draining even if Docker SIGKILLs mid-drain.
 """
 
 from __future__ import annotations
