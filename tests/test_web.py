@@ -1336,7 +1336,8 @@ def test_no_new_body_swap_html_targets():
     """
     from pathlib import Path
     matches: list[str] = []
-    for path in Path("triggarr/templates").rglob("*.html"):
+    templates_dir = Path(__file__).resolve().parent.parent / "triggarr" / "templates"
+    for path in templates_dir.rglob("*.html"):
         for line_num, line in enumerate(path.read_text().splitlines(), start=1):
             if 'hx-target="body"' in line or 'hx-target="html"' in line:
                 matches.append(f"{path}:{line_num}")
