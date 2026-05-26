@@ -122,6 +122,11 @@ def make_search_job(
                         "Tracking: check failed -- {exc}",
                         exc=tracking_exc,
                     )
+            # SAFETY-02: narrow tuple only — code-bug exceptions (RuntimeError,
+            # KeyError, etc.) intentionally propagate to APScheduler's
+            # EVENT_JOB_ERROR listener (_on_job_error). Do NOT add
+            # asyncio.CancelledError here: it is BaseException, not Exception,
+            # and the shutdown drain depends on its propagation.
             except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
                 logger.error(
                     "{app}: Unhandled error in search cycle -- {exc}",
