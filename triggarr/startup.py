@@ -200,6 +200,11 @@ async def startup(config_path: Path | None = None) -> Settings:
     # 4. Print banner
     print_banner(settings)
 
+    # 4.4 SEC-04: Warn if persisted session_secret is shorter than 32 chars.
+    # Runs before the has_enabled_app early-exit so auth-layer warnings fire
+    # regardless of *arr-instance configuration.
+    _warn_if_session_secret_short(settings)
+
     # 4.5 Warn if no apps configured (first-run scenario)
     if not settings.has_enabled_app:
         logger.warning(
@@ -210,9 +215,6 @@ async def startup(config_path: Path | None = None) -> Settings:
 
     # 4.6 Warn about localhost URLs (common Docker networking mistake)
     check_localhost_urls(settings)
-
-    # 4.7 SEC-04: Warn if persisted session_secret is shorter than 32 chars.
-    _warn_if_session_secret_short(settings)
 
     # 5. Validate connections
     results = await validate_connections(settings)
