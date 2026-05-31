@@ -214,7 +214,10 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
   1. The dashboard shows a "last successful search" timestamp for each enabled app type (Radarr, Sonarr, Lidarr); when the timestamp is more than 2× the configured interval in the past, it is visually flagged as stale (e.g., amber color or "stale" badge)
   2. Tag lists fetched from `*arr` instances are cached in `app.state` and reused for up to 1 hour; saving instance config in the settings UI immediately invalidates the cache for that instance so the next cycle fetches fresh tags
   3. The `OriginCheckMiddleware` test suite covers at minimum: missing Origin header, missing Referer header, both headers absent, scheme mismatch, and spoofed-host scenarios — all tests pass and none rely on internal middleware state
-**Plans**: TBD
+**Plans:** 3 plans
+- [ ] 67-01-PLAN.md — RES-02: `last_success` field through state→engine→routes→card, render-time stale flag (2× interval), amber treatment reusing the tag-warning token (Wave 1)
+- [ ] 67-02-PLAN.md — RES-03: `_TAG_CACHE_TTL_SECONDS=3600` + `app.state.tag_cache` keyed `(app,instance)`, monotonic-TTL resolver threaded into cycle fns via keyword-only `get_tags_fn`, targeted invalidation on config save + remove instance (Wave 2)
+- [ ] 67-03-PLAN.md — TEST-01: OriginCheckMiddleware CSRF tests (missing Origin/Referer, both absent, scheme-mismatch ALLOW pinned, spoofed-host/suffix/port REJECT) via TestClient (Wave 1)
 
 ## Progress
 
@@ -227,4 +230,4 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 | 64. Data Safety & Config Integrity | v2.8 | 4/4 | Complete   | 2026-05-26 |
 | 65. Scheduler Hardening & Resilience | v2.8 | 4/4 | Complete    | 2026-05-26 |
 | 66. Security Hardening | v2.8 | 5/5 | Complete   | 2026-05-26 |
-| 67. Observability & CSRF Test Coverage | v2.8 | 0/? | Not started | - |
+| 67. Observability & CSRF Test Coverage | v2.8 | 0/3 | Planned | - |
