@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.8
 milestone_name: Hardening & Observability
 status: completed
-stopped_at: Phase 66 context gathered
-last_updated: "2026-05-26T17:19:15.524Z"
+stopped_at: Phase 67 context gathered
+last_updated: "2026-05-31T21:11:09.691Z"
 last_activity: 2026-05-26 -- Phase 66 marked complete
 progress:
   total_phases: 4
@@ -109,6 +109,6 @@ Items carried forward (not in v2.8 scope):
 
 ## Session Continuity
 
-Last session: 2026-05-26T15:39:51.429Z
-Stopped at: Phase 66 context gathered
-Resume file: .planning/phases/66-security-hardening/66-CONTEXT.md
+Last session: 2026-05-31T21:11:09.687Z
+Stopped at: Phase 67 context gathered
+Resume file: .planning/phases/67-observability-csrf-test-coverage/67-CONTEXT.md
