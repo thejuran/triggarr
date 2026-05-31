@@ -165,13 +165,17 @@ def test_waiting_pill_unified_shape(client, test_app):
 
 
 def test_schedule_row_present(client, test_app):
-    """Schedule row shows Last Run and Next Run with font-mono (CARD-02)."""
+    """Schedule row shows Last Run and Next Run with font-mono (CARD-02).
+
+    The schedule row uses mb-1 (not mb-4) since the Last OK row below it provides
+    the visual separation; the Last OK row itself carries mb-4.
+    """
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = "2026-04-13T14:32:10Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "Last run" in response.text
-    assert "font-mono text-triggarr-muted mb-4 flex justify-between" in response.text
+    assert "font-mono text-triggarr-muted mb-1 flex justify-between" in response.text
     assert "14:32:10" in response.text
 
 
