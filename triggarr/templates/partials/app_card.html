@@ -29,6 +29,14 @@
     <i class="ph ph-warning-circle text-[40px] text-triggarr-danger/40 mb-3 block"></i>
     <span class="text-sm text-triggarr-muted block mb-1">API connection failed.</span>
     <span class="text-[10px] text-triggarr-muted/60 block">Check API key or network setup.</span>
+    <!-- Last OK on unreachable card (Codex finding A): users most need this when instance is down -->
+    <div class="text-[10px] font-mono text-triggarr-muted mt-2">Last OK:
+      {% if app.last_success %}
+        <span class="{% if app.last_success_stale %}text-amber-400{% else %}text-triggarr-text{% endif %}">{{ app.last_success[11:19] }}</span>
+      {% else %}
+        <span class="text-triggarr-muted">Never</span>
+      {% endif %}
+    </div>
   </div>
   {% else %}
   <!-- Connected/Waiting body -->
@@ -47,10 +55,18 @@
     </div>
     {% endif %}
 
-    <!-- Schedule row -->
-    <div class="text-[11px] font-mono text-triggarr-muted mb-4 flex justify-between">
+    <!-- Schedule row: Last run / Last OK / Next -->
+    <div class="text-[11px] font-mono text-triggarr-muted mb-1 flex justify-between">
       <span>Last run: <span class="text-triggarr-text">{% if app.last_run %}{{ app.last_run[11:19] }}{% else %}Never{% endif %}</span></span>
       <span>Next: <span class="text-triggarr-text">{% if app.next_run %}{{ app.next_run[11:16] }}{% else %}&mdash;{% endif %}</span></span>
+    </div>
+    <!-- Last OK row (D-04): amber when stale and a real timestamp exists; never amber on Never -->
+    <div class="text-[11px] font-mono text-triggarr-muted mb-4">Last OK:
+      {% if app.last_success %}
+        <span class="{% if app.last_success_stale %}text-amber-400{% else %}text-triggarr-text{% endif %}">{{ app.last_success[11:19] }}</span>
+      {% else %}
+        <span class="text-triggarr-muted">Never</span>
+      {% endif %}
     </div>
 
     <!-- Stats sub-cards -->

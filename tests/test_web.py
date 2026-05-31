@@ -2119,6 +2119,59 @@ def test_csp_nonce_matches_html_script_tag(test_app):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# RES-02: Template render assertions for "Last OK" entry (Task 3)
+# ---------------------------------------------------------------------------
+
+
+def test_app_card_connected_stale_last_success_renders_amber(client, test_app):
+    """Connected card with a stale last_success shows 'Last OK' with text-amber-400 class."""
+    from datetime import UTC, datetime, timedelta
+
+    stale_ts = (datetime.now(UTC) - timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = stale_ts
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last OK" in response.text, "Connected card with stale last_success must show 'Last OK'"
+    assert "text-amber-400" in response.text, "Stale last_success must render with text-amber-400"
+
+
+def test_app_card_no_last_success_renders_never_without_amber(client, test_app):
+    """Card with no last_success shows 'Never' and does NOT apply text-amber-400 to that entry."""
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = None
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    # Remove tag_warnings to ensure amber isn't coming from the tag badge
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = []
+
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last OK" in response.text, "Card must show 'Last OK' even when value is Never"
+    assert "Never" in response.text, "Card must show 'Never' when last_success is None"
+    # amber should NOT appear (no tag warnings, no stale timestamp)
+    assert "text-amber-400" not in response.text, "Never case must NOT apply text-amber-400"
+
+
+def test_app_card_unreachable_still_shows_last_ok(client, test_app):
+    """Unreachable card (connected==False) still shows 'Last OK' — Codex adversarial finding A.
+
+    The timestamp is most valuable when the instance is down: users need to see
+    when searches last worked.  This is a regression test — do NOT remove it.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    stale_ts = (datetime.now(UTC) - timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = stale_ts
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
+
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last OK" in response.text, (
+        "Unreachable card MUST still show 'Last OK' — finding A regression guard"
+    )
+
+
 def test_build_app_context_last_success_none_is_stale(client, test_app):
     """_build_app_context with last_success=None yields last_success_stale=True.
 
