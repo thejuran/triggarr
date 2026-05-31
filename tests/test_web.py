@@ -2112,3 +2112,76 @@ def test_csp_nonce_matches_html_script_tag(test_app):
         f"CSP header nonce ({header_nonce!r}) does NOT match rendered script nonce ({body_nonce!r}); "
         "this would cause the browser to silently block all inline scripts"
     )
+
+
+# ---------------------------------------------------------------------------
+# RES-02: last_success_stale computation in _build_app_context (Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_build_app_context_last_success_none_is_stale(client, test_app):
+    """_build_app_context with last_success=None yields last_success_stale=True.
+
+    None means no successful search has ever run — treat as stale so the card
+    shows 'Never' in the default muted style (not amber; amber is for a real
+    stale timestamp).  The partial endpoint exercises _build_app_context.
+    """
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = None
+    # The partial route calls _build_app_context; template must receive stale=True
+    # We verify by checking that last_success_stale was True: the "Never" text
+    # rendered in the template indicates the stale branch was reached.
+    # Since we have not added the template yet, verify via _build_app_context directly.
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_success"] is None
+    assert ctx["last_success_stale"] is True
+
+
+def test_build_app_context_old_last_success_is_stale(client, test_app):
+    """_build_app_context with last_success older than 2x search_interval yields stale=True."""
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    # Default search_interval is 30 min; 2x = 60 min. Use 90 min ago = stale.
+    old_ts = (datetime.now(UTC) - timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = old_ts
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_success"] == old_ts
+    assert ctx["last_success_stale"] is True
+
+
+def test_build_app_context_fresh_last_success_is_not_stale(client, test_app):
+    """_build_app_context with last_success within 2x search_interval yields stale=False."""
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    # Default search_interval is 30 min; 2x = 60 min. Use 5 min ago = fresh.
+    fresh_ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = fresh_ts
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_success"] == fresh_ts
+    assert ctx["last_success_stale"] is False
