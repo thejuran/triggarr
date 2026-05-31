@@ -80,6 +80,16 @@ def _read_shutdown_drain_timeout() -> float:
 # docker-compose stop_grace_period > this value (default 90s).
 _SHUTDOWN_DRAIN_TIMEOUT: float = _read_shutdown_drain_timeout()
 
+# RES-03 (D-06): tag-list cache TTL. Successful get_tags() responses are cached
+# in app.state.tag_cache for this duration, compared via time.monotonic() (not
+# wall-clock, so an NTP/DST adjustment cannot make an entry look permanently
+# fresh or instantly expired). 1 hour matches typical *arr tag-list churn.
+# Invalidated on instance config save (url/api_key/missing_tag/cutoff_tag
+# changes) and on remove_instance. Mirrors the _SHUTDOWN_DRAIN_TIMEOUT
+# module-constant pattern; unlike the drain timeout this is NOT operator-
+# configurable (no env-override) — the TTL is an internal performance knob.
+_TAG_CACHE_TTL_SECONDS: float = 3600.0
+
 
 def make_search_job(
     app: FastAPI, app_name: str, instance_name: str, state_path: Path
@@ -129,6 +139,27 @@ def make_search_job(
             # from SAFETY-02, re-raised OSError/aiosqlite.Error from the
             # persistence branch below) escapes through.
             app.state.search_lock_holder = (job_id, time.monotonic())
+            # RES-03: build the tag resolver at job execution time so it reads
+            # app.state.tag_cache at call time (consistent with the "read from
+            # app.state at call time" philosophy). The resolver returns a fresh
+            # cache entry within the TTL, otherwise fetches and stores. It does
+            # NOT catch exceptions: a failed get_tags() propagates to the cycle
+            # fn's existing except guard so a transient outage is never cached
+            # (D-07 negative-caching avoidance — the store line is unreachable
+            # when get_tags() raises).
+            cache_key = (app_name, instance_name)
+
+            async def _get_tags_cached() -> list:
+                cache = app.state.tag_cache
+                entry = cache.get(cache_key)
+                if entry is not None:
+                    cached_tags, fetched_at = entry
+                    if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                        return cached_tags
+                fresh_tags = await client.get_tags()
+                cache[cache_key] = (fresh_tags, time.monotonic())
+                return fresh_tags
+
             try:
                 # --- Cycle execution (narrow-tuple catch; OSError REMOVED — Codex
                 # finding 2: OSError is durability, not transient *arr blip). ---
@@ -140,6 +171,7 @@ def make_search_job(
                         instance_config,
                         app.state.settings,
                         app.state.db,
+                        get_tags_fn=_get_tags_cached,
                     )
                 # SAFETY-02: narrow tuple — code-bug exceptions (RuntimeError,
                 # KeyError, etc.) intentionally propagate to APScheduler's
@@ -455,6 +487,15 @@ def create_lifespan(
         # is stuck and how long it's been running.
         # search_lock_holder: tuple[str, float] | None
         app.state.search_lock_holder = None
+        # RES-03 (D-05): tag-list cache keyed by (app_name, instance_name).
+        # value: (tags: list[Tag], fetched_at: float) where fetched_at is
+        # time.monotonic() at the moment of a successful get_tags() fetch.
+        # Read+populated by the resolver built in make_search_job's job()
+        # closure (and by search_now in routes). Invalidated on instance config
+        # save for changed instances; cleared on remove_instance. Only
+        # successful fetches are stored (no negative caching — D-07).
+        # tag_cache: dict[tuple[str, str], tuple[list, float]]
+        app.state.tag_cache = {}
 
         # Import update_info dict once at lifespan start (not inside job)
         # to avoid circular import during scheduler ticks.

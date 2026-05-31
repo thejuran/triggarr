@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -279,6 +279,8 @@ async def run_radarr_cycle(
     instance_config: InstanceConfig,
     settings: Settings,
     db: aiosqlite.Connection,
+    *,
+    get_tags_fn: Callable[[], Awaitable[list[Tag]]] | None = None,
 ) -> TriggarrState:
     """Run one complete Radarr search cycle: missing batch then cutoff batch.
 
@@ -357,7 +359,10 @@ async def run_radarr_cycle(
     if instance_config.missing_tag or instance_config.cutoff_tag:
         tag_fetch_ok = False
         try:
-            tags = await client.get_tags()
+            # RES-03: resolve via the cache-aware resolver when supplied
+            # (scheduler/search_now), else fall back to the direct client call
+            # (backward-compatible None default — keeps existing tests passing).
+            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
             tag_fetch_ok = True
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
@@ -516,6 +521,8 @@ async def run_sonarr_cycle(
     instance_config: InstanceConfig,
     settings: Settings,
     db: aiosqlite.Connection,
+    *,
+    get_tags_fn: Callable[[], Awaitable[list[Tag]]] | None = None,
 ) -> TriggarrState:
     """Run one complete Sonarr search cycle: missing batch then cutoff batch.
 
@@ -595,7 +602,10 @@ async def run_sonarr_cycle(
     if instance_config.missing_tag or instance_config.cutoff_tag:
         tag_fetch_ok = False
         try:
-            tags = await client.get_tags()
+            # RES-03: resolve via the cache-aware resolver when supplied
+            # (scheduler/search_now), else fall back to the direct client call
+            # (backward-compatible None default — keeps existing tests passing).
+            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
             tag_fetch_ok = True
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
@@ -760,6 +770,8 @@ async def run_lidarr_cycle(
     instance_config: InstanceConfig,
     settings: Settings,
     db: aiosqlite.Connection,
+    *,
+    get_tags_fn: Callable[[], Awaitable[list[Tag]]] | None = None,
 ) -> TriggarrState:
     """Run one complete Lidarr search cycle: missing batch then cutoff batch.
 
@@ -842,7 +854,10 @@ async def run_lidarr_cycle(
     if instance_config.missing_tag or instance_config.cutoff_tag:
         tag_fetch_ok = False
         try:
-            tags = await client.get_tags()
+            # RES-03: resolve via the cache-aware resolver when supplied
+            # (scheduler/search_now), else fall back to the direct client call
+            # (backward-compatible None default — keeps existing tests passing).
+            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
             tag_fetch_ok = True
         except (httpx.HTTPError, pydantic.ValidationError) as exc:
             logger.warning(
