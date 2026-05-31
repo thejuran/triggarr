@@ -48,6 +48,7 @@ class AppState(TypedDict, total=False):
     missing_pass: int  # How many times missing queue has wrapped around (0-based, first wrap sets to 1)
     cutoff_pass: int  # How many times cutoff queue has wrapped around (0-based, first wrap sets to 1)
     last_run: str | None  # ISO timestamp
+    last_success: str | None  # ISO timestamp — last cycle that reached connected=True
     connected: bool | None  # True after successful fetch, False after failure
     unreachable_since: str | None  # ISO timestamp of first failure, None when healthy
     missing_count: int | None  # Total wanted-missing items (before filtering)
@@ -75,7 +76,7 @@ class TriggarrState(TypedDict, total=False):
 
 def _default_instance_state() -> AppState:
     """Return a fresh AppState for a single instance at cursor 0."""
-    return AppState(missing_cursor=0, cutoff_cursor=0, last_run=None)
+    return AppState(missing_cursor=0, cutoff_cursor=0, last_run=None, last_success=None)
 
 
 def _default_state(settings: Settings | None = None) -> TriggarrState:
