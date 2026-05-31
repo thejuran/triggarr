@@ -83,6 +83,86 @@ def test_get_with_mismatched_origin_passes():
 
 
 # ---------------------------------------------------------------------------
+# CSRF scenario tests — ROADMAP Phase 67 named cases (Plan 67-03)
+# ---------------------------------------------------------------------------
+
+
+def test_post_missing_origin_with_matching_referer_passes():
+    """POST with no Origin but matching Referer should return 200.
+
+    When Origin is absent, the middleware falls through to the Referer branch.
+    A Referer whose netloc matches the Host is permitted (same-origin behavior).
+    """
+    response = client.post(
+        "/test",
+        headers={"Referer": "http://testserver/page", "Host": "testserver"},
+    )
+    assert response.status_code == 200
+
+
+def test_post_missing_referer_with_matching_origin_passes():
+    """POST with matching Origin but no Referer should return 200.
+
+    Browsers do not always send Referer. When Origin matches Host, the Referer
+    branch is never evaluated; the request is allowed.
+    """
+    response = client.post(
+        "/test",
+        headers={"Origin": "http://testserver", "Host": "testserver"},
+    )
+    assert response.status_code == 200
+
+
+def test_post_scheme_mismatch_is_allowed():
+    """POST with https Origin vs http Host (same netloc) should return 200.
+
+    The middleware compares urlparse(origin).netloc against the raw Host header.
+    urlparse strips the scheme, so 'https://testserver' yields netloc 'testserver',
+    which equals Host 'testserver' — the check passes.
+
+    This PINS the current ALLOW behavior per D-10. In Triggarr's single-origin
+    deployment model this is NOT a security bypass: an attacker cannot cause a
+    browser to emit a same-host Origin under a scheme they control.
+
+    Do NOT change this test to assert 403 — scheme comparison is intentionally
+    absent from OriginCheckMiddleware (D-10).
+    """
+    response = client.post(
+        "/test",
+        headers={"Origin": "https://testserver", "Host": "testserver"},
+    )
+    assert response.status_code == 200
+
+
+def test_post_suffix_spoof_returns_403():
+    """POST with a suffix-spoofed Origin (testserver.evil.com) should return 403.
+
+    urlparse('https://testserver.evil.com').netloc == 'testserver.evil.com', which
+    does not equal Host 'testserver'. Regression-locks the netloc-equality guard
+    against suffix-spoof attempts (D-11).
+    """
+    response = client.post(
+        "/test",
+        headers={"Origin": "https://testserver.evil.com", "Host": "testserver"},
+    )
+    assert response.status_code == 403
+
+
+def test_post_port_mismatch_returns_403():
+    """POST with a port-appended Origin (testserver:8080) should return 403.
+
+    urlparse('http://testserver:8080').netloc == 'testserver:8080', which does not
+    equal Host 'testserver'. Regression-locks the netloc-equality guard against
+    port-mismatch attempts (D-11).
+    """
+    response = client.post(
+        "/test",
+        headers={"Origin": "http://testserver:8080", "Host": "testserver"},
+    )
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # DEBT-02: Integration test — OriginCheckMiddleware wired to real /settings route
 # ---------------------------------------------------------------------------
 
