@@ -25,18 +25,24 @@ See: .planning/PROJECT.md (updated 2026-05-25)
 
 ## Current Position
 
-Phase: 67 (observability-csrf-test-coverage) — DEEP REVIEW PENDING
-Plan: 3 of 3 executed
-Status: Phase 67 plans complete (3/3); turingmind deep-review gate next
-Last activity: 2026-05-31 -- Phase 67 wave 2 (67-02 RES-03 tag caching) executed; 960 tests passing
+Phase: 67 (observability-csrf-test-coverage) — COMPLETE (deep-review APPROVED)
+Plan: 3 of 3 complete
+Status: v2.8 phases 64-67 all complete + reviewed; milestone-end paused for remote NAS deploy → walkthrough → complete-milestone
+Last activity: 2026-05-31 -- Phase 67 deep-review APPROVED (0C/0W/2 fixed Mediums); 960 tests passing, ruff clean
 
 ```
-v2.8 Progress: [                    ] 0% (0/4 phases)
-Phase 64: [ ] Data Safety & Config Integrity
-Phase 65: [ ] Scheduler Hardening & Resilience
-Phase 66: [ ] Security Hardening
-Phase 67: [ ] Observability & CSRF Test Coverage
+v2.8 Progress: [████████████████████] 100% (4/4 phases)
+Phase 64: [x] Data Safety & Config Integrity
+Phase 65: [x] Scheduler Hardening & Resilience
+Phase 66: [x] Security Hardening
+Phase 67: [x] Observability & CSRF Test Coverage
 ```
+
+### Milestone-end resume point
+
+v2.8 code is complete, reviewed (.turingmind/REVIEW.md ✅ APPROVED), 960 tests pass. Held open at orchestrator Phase 4c. To resume after deploying to the NAS: re-run `/julian-orchestrator:milestone` and paste the deployed URL → walkthrough (4c) → post-walkthrough review if any fixes (4d) → `/gsd:complete-milestone` (4e). Or run `/gsd:complete-milestone` directly to close without a walkthrough.
+
+⚠ Pending before/at release: bump `pyproject.toml` version 2.7.3 → 2.8.0; push 125 unpushed commits to origin/main.
 
 ## Performance Metrics
 
