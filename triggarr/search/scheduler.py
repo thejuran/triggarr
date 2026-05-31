@@ -37,7 +37,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
 
-from triggarr.clients.base import ArrClient
+from triggarr.clients.base import ArrClient, Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
@@ -149,7 +149,7 @@ def make_search_job(
             # when get_tags() raises).
             cache_key = (app_name, instance_name)
 
-            async def _get_tags_cached() -> list:
+            async def _get_tags_cached() -> list[Tag]:
                 cache = app.state.tag_cache
                 entry = cache.get(cache_key)
                 if entry is not None:
