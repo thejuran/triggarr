@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.8
 milestone_name: Hardening & Observability
 status: executing
-stopped_at: Phase 67 plans executed (3/3) — deep-review pending
-last_updated: "2026-05-31T22:40:00.000Z"
-last_activity: 2026-05-31 -- Phase 67 wave 2 (67-02 RES-03) executed; 960 tests passing
+stopped_at: v2.8 phases 64-67 complete + deep-reviewed (APPROVED) — paused for remote deploy before walkthrough
+last_updated: "2026-05-31T23:30:00.000Z"
+last_activity: 2026-05-31 -- Phase 67 deep-review APPROVED (0C/0W/2 fixed Mediums); milestone held open for NAS deploy + walkthrough
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 16
   completed_plans: 16
-  percent: 94
+  percent: 98
 ---
 
 # Project State
