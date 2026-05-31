@@ -36,6 +36,7 @@ from triggarr.auth import (
     verify_password,
 )
 from triggarr.changelog import read_changelog
+from triggarr.clients.base import Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
@@ -919,7 +920,7 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
         # get_tags() propagates to the cycle fn's guard and is never cached.
         cache_key = (app_name, instance_name)
 
-        async def _get_tags_cached() -> list:
+        async def _get_tags_cached() -> list[Tag]:
             cache = request.app.state.tag_cache
             entry = cache.get(cache_key)
             if entry is not None:
