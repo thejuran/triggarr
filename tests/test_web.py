@@ -117,6 +117,10 @@ async def test_app(tmp_path):
         app.state.last_search_time = {}
         app.state.last_health_check = None
 
+        # RES-03: tag cache (read by search_now resolver, popped by
+        # save_settings / remove_instance invalidation).
+        app.state.tag_cache = {}
+
         yield app
 
 
@@ -987,6 +991,9 @@ async def multi_instance_app(tmp_path):
         app.state.search_lock = asyncio.Lock()
         app.state.last_search_time = {}
         app.state.last_health_check = None
+        # RES-03: tag cache (read by search_now resolver, popped by
+        # save_settings / remove_instance invalidation).
+        app.state.tag_cache = {}
 
         yield app
 
@@ -2238,3 +2245,165 @@ def test_build_app_context_fresh_last_success_is_not_stale(client, test_app):
     assert ctx is not None
     assert ctx["last_success"] == fresh_ts
     assert ctx["last_success_stale"] is False
+
+
+# ---------------------------------------------------------------------------
+# RES-03 (Plan 67-02): tag cache invalidation on save / remove + search_now wiring
+# ---------------------------------------------------------------------------
+
+
+def _multi_form_data(**overrides) -> dict:
+    """Baseline multi-instance settings form (Default + 4K radarr, Default sonarr).
+
+    Mirrors the existing config in multi_instance_app so save_settings is a
+    no-op unless overridden. Pass keyword overrides like
+    radarr__4K__url='http://changed:7878' to mutate a single field.
+    """
+    data = {
+        "log_level": "info",
+        "hard_max_per_cycle": "0",
+        "max_history_rows": "1000",
+        "request_timeout": "30",
+        "page_size": "50",
+        "tracking_window_minutes": "60",
+        "radarr__Default__url": "http://radarr:7878",
+        "radarr__Default__api_key": "",
+        "radarr__Default__enabled": "on",
+        "radarr__Default__search_interval": "30",
+        "radarr__Default__search_missing_count": "5",
+        "radarr__Default__search_cutoff_count": "5",
+        "radarr__Default__missing_tag": "wanted",
+        "radarr__Default__cutoff_tag": "upgrade",
+        "radarr__4K__url": "http://radarr4k:7878",
+        "radarr__4K__api_key": "",
+        "radarr__4K__enabled": "on",
+        "radarr__4K__search_interval": "30",
+        "radarr__4K__search_missing_count": "5",
+        "radarr__4K__search_cutoff_count": "5",
+        "radarr__4K__missing_tag": "wanted-4k",
+        "radarr__4K__cutoff_tag": "",
+        "sonarr__Default__url": "http://sonarr:8989",
+        "sonarr__Default__api_key": "",
+        "sonarr__Default__enabled": "on",
+        "sonarr__Default__search_interval": "30",
+        "sonarr__Default__search_missing_count": "5",
+        "sonarr__Default__search_cutoff_count": "5",
+        "sonarr__Default__missing_tag": "",
+        "sonarr__Default__cutoff_tag": "",
+    }
+    data.update(overrides)
+    return data
+
+
+def test_save_settings_invalidates_changed_instance_cache(multi_client, multi_instance_app):
+    """RES-03 (D-08): a changed url/api_key/missing_tag/cutoff_tag pops that cache entry."""
+    import time
+
+    multi_instance_app.state.tag_cache[("radarr", "Default")] = ([], time.monotonic())
+    multi_instance_app.state.tag_cache[("radarr", "4K")] = ([], time.monotonic())
+
+    # Change the 4K instance's missing_tag -> only its entry should be popped.
+    response = multi_client.post(
+        "/settings",
+        data=_multi_form_data(radarr__4K__missing_tag="changed-tag"),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    assert ("radarr", "4K") not in multi_instance_app.state.tag_cache, (
+        "Changed instance's cache entry should be invalidated"
+    )
+
+
+def test_save_settings_preserves_unchanged_instance_cache(multi_client, multi_instance_app):
+    """RES-03 (D-08): an instance with no cache-relevant change keeps its entry."""
+    import time
+
+    multi_instance_app.state.tag_cache[("radarr", "Default")] = ([], time.monotonic())
+    multi_instance_app.state.tag_cache[("radarr", "4K")] = ([], time.monotonic())
+
+    # Change ONLY 4K's missing_tag; Default is submitted unchanged.
+    response = multi_client.post(
+        "/settings",
+        data=_multi_form_data(radarr__4K__missing_tag="changed-tag"),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    assert ("radarr", "Default") in multi_instance_app.state.tag_cache, (
+        "Unchanged instance's cache entry should be preserved"
+    )
+
+
+def test_remove_instance_invalidates_tag_cache(multi_instance_app):
+    """RES-03 (Pitfall 5): removing via the endpoint pops the instance's cache entry."""
+    import time
+
+    multi_instance_app.state.tag_cache[("radarr", "4K")] = ([], time.monotonic())
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post("/api/instance/remove/radarr/4K", follow_redirects=False)
+    assert response.status_code == 303
+    assert ("radarr", "4K") not in multi_instance_app.state.tag_cache, (
+        "Removed instance's cache entry should be cleared"
+    )
+
+
+def test_save_settings_form_removal_invalidates_tag_cache(multi_client, multi_instance_app):
+    """RES-03 (Codex finding B): omitting an instance from the form pops its cache entry.
+
+    The 4K instance is dropped from the submission (no radarr__4K__* fields), so
+    save_settings' removal loop treats new_cfg as None. Its stale cache key must
+    be popped so a later instance reusing the '4K' name within the TTL cannot
+    receive the old instance's cached tags.
+    """
+    import time
+
+    multi_instance_app.state.tag_cache[("radarr", "4K")] = ([], time.monotonic())
+
+    # Build a form WITHOUT any radarr__4K__* fields (4K removed via form).
+    data = _multi_form_data()
+    for key in list(data.keys()):
+        if key.startswith("radarr__4K__"):
+            del data[key]
+
+    response = multi_client.post("/settings", data=data, follow_redirects=False)
+    assert response.status_code == 303
+
+    assert ("radarr", "4K") not in multi_instance_app.state.tag_cache, (
+        "Form-removed instance's cache entry should be cleared (finding B)"
+    )
+
+
+def test_search_now_reuses_warm_tag_cache(multi_instance_app):
+    """RES-03: a manual search reuses a warm cache entry instead of calling get_tags.
+
+    The Default radarr instance has missing_tag='wanted'. With a fresh cache
+    entry pre-populated, search_now's resolver returns the cached tags so the
+    real client.get_tags() is never awaited.
+    """
+    import time
+
+    from triggarr.clients.base import Tag
+
+    radarr_client = multi_instance_app.state.radarr_clients["Default"]
+    radarr_client.get_tags = AsyncMock(return_value=[Tag(id=1, label="wanted")])
+    radarr_client.get_wanted_missing = AsyncMock(return_value=[])
+    radarr_client.get_wanted_cutoff = AsyncMock(return_value=[])
+    radarr_client.get_library_count = AsyncMock(return_value=0)
+    radarr_client.search_movies = AsyncMock()
+
+    # Warm cache entry for (radarr, Default).
+    multi_instance_app.state.tag_cache[("radarr", "Default")] = (
+        [Tag(id=1, label="wanted")],
+        time.monotonic(),
+    )
+
+    with (
+        patch("triggarr.web.routes.save_state"),
+        TestClient(multi_instance_app) as tc,
+    ):
+        response = tc.post("/api/search-now/radarr/Default")
+
+    assert response.status_code == 200
+    radarr_client.get_tags.assert_not_awaited()
