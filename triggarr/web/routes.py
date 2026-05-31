@@ -46,7 +46,7 @@ from triggarr.logging import setup_logging
 from triggarr.models.config import APP_TYPES, AuthConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
-from triggarr.search.scheduler import make_search_job
+from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
 from triggarr.version import get_display_version
@@ -636,6 +636,12 @@ async def save_settings(request: Request) -> RedirectResponse:
                     client = clients_dict.pop(inst_name, None)
                     if client:
                         clients_to_close.append(client)
+                    # RES-03 (Codex finding B): an instance removed via form
+                    # omission (new_cfg is None) or disabled would otherwise
+                    # leave a stale tag_cache key. Pop it here so a later
+                    # instance reusing this name within the TTL never receives
+                    # the old instance's cached tags.
+                    request.app.state.tag_cache.pop((name, inst_name), None)
 
             # Update/create clients for enabled instances
             for inst_name, new_cfg in new_instances.items():
@@ -690,6 +696,28 @@ async def save_settings(request: Request) -> RedirectResponse:
                     triggarr_state[name][inst_name] = _default_instance_state()
 
             setattr(request.app.state, f"{name}_clients", clients_dict)
+
+        # RES-03 (D-08): targeted tag-cache invalidation for instances whose
+        # cache-relevant config changed (url/api_key/missing_tag/cutoff_tag).
+        # Runs inside the existing search_lock; uses current_settings (the
+        # pre-update snapshot) vs new_settings. New instances (old_cfg is None)
+        # have no entry yet (A1), so they are skipped. Form-removed/disabled
+        # instances are handled by the removal loop above (finding B).
+        for name in APP_TYPES:
+            new_instances = getattr(new_settings, name)
+            old_instances = getattr(current_settings, name)
+            for inst_name, new_cfg in new_instances.items():
+                old_cfg = old_instances.get(inst_name)
+                if old_cfg is None:
+                    continue  # new instance — no cache entry to invalidate
+                cache_relevant_changed = (
+                    new_cfg.url != old_cfg.url
+                    or new_cfg.api_key != old_cfg.api_key
+                    or new_cfg.missing_tag != old_cfg.missing_tag
+                    or new_cfg.cutoff_tag != old_cfg.cutoff_tag
+                )
+                if cache_relevant_changed:
+                    request.app.state.tag_cache.pop((name, inst_name), None)
 
         # Persist state with any new instance entries
         await asyncio.get_running_loop().run_in_executor(
@@ -827,6 +855,9 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         if app_name in triggarr_state:
             triggarr_state[app_name].pop(instance_name, None)
 
+        # RES-03 (Pitfall 5): clear the tag cache entry for the removed instance.
+        request.app.state.tag_cache.pop((app_name, instance_name), None)
+
     # Close stale client outside the lock (TCP teardown doesn't need lock protection)
     if client:
         await client.close()
@@ -881,6 +912,24 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
             return HTMLResponse("Rate limited -- try again shortly", status_code=429)
         request.app.state.last_search_time[rate_key] = now
 
+        # RES-03: manual searches read/populate the tag cache exactly like
+        # scheduled cycles (same resolver shape as make_search_job's job()
+        # closure). Without this, every manual search would re-fetch tags and
+        # bypass RES-03. The resolver does NOT catch exceptions, so a failed
+        # get_tags() propagates to the cycle fn's guard and is never cached.
+        cache_key = (app_name, instance_name)
+
+        async def _get_tags_cached() -> list:
+            cache = request.app.state.tag_cache
+            entry = cache.get(cache_key)
+            if entry is not None:
+                cached_tags, fetched_at = entry
+                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                    return cached_tags
+            fresh_tags = await client.get_tags()
+            cache[cache_key] = (fresh_tags, time.monotonic())
+            return fresh_tags
+
         try:
             request.app.state.triggarr_state = await cycle_fn(
                 client,
@@ -889,6 +938,7 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
                 instance_config,
                 request.app.state.settings,
                 request.app.state.db,
+                get_tags_fn=_get_tags_cached,
             )
             await asyncio.get_running_loop().run_in_executor(
                 None, save_state, request.app.state.triggarr_state, request.app.state.state_path
