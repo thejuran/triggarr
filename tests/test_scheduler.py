@@ -26,8 +26,9 @@ from loguru import logger
 from tests.conftest import make_settings
 from triggarr.clients.radarr import RadarrClient
 from triggarr.db import init_db, insert_search_entry
+from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
-from triggarr.search.scheduler import make_search_job
+from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, make_search_job
 from triggarr.state import _default_instance_state, _default_state, save_state
 
 
@@ -56,6 +57,7 @@ async def test_make_search_job_unexpected_exception_propagates():
     # Harmless here under the inverted assertion.
     app.state.search_failures = {}
     app.state.search_lock_holder = None
+    app.state.tag_cache = {}
     app.state.triggarr_state = _default_state(make_settings())
     app.state.settings = make_settings()
     # app.state.db is referenced as an argument to cycle_fn(...) before the
@@ -86,6 +88,7 @@ async def test_make_search_job_httperror_swallowed():
     app.state.search_lock = asyncio.Lock()
     app.state.search_failures = {}
     app.state.search_lock_holder = None
+    app.state.tag_cache = {}
     app.state.triggarr_state = _default_state(make_settings())
     app.state.settings = make_settings()
     app.state.db = MagicMock()  # see propagation test for rationale
@@ -198,6 +201,7 @@ def _build_outage_app(tmp_path, *, max_consecutive_failures=5, transport_handler
     app.state.settings = settings
     app.state.search_failures = {}
     app.state.persistence_degraded = False
+    app.state.tag_cache = {}
     app.state.db = AsyncMock()
     app.state.state_path = tmp_path / "state.json"
 
@@ -260,6 +264,7 @@ async def test_failure_counter_increments_on_cycle_exception(tmp_path):
     app.state.settings = make_settings()
     app.state.search_failures = {}
     app.state.persistence_degraded = False
+    app.state.tag_cache = {}
     app.state.db = MagicMock()
 
     with (
@@ -473,6 +478,7 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
     app.state.settings = settings
     app.state.search_failures = {}
     app.state.persistence_degraded = False
+    app.state.tag_cache = {}
     app.state.db = AsyncMock()
     app.state.state_path = tmp_path / "state.json"
 
@@ -744,6 +750,7 @@ async def _make_app_with_db(tmp_path, *, radarr_client=None, sonarr_client=None)
     # Plan 65-02: scheduler now reads/writes these state attrs unconditionally.
     app.state.search_failures = {}
     app.state.persistence_degraded = False
+    app.state.tag_cache = {}
     return app, db, state_path
 
 
@@ -882,3 +889,178 @@ async def test_search_job_logs_tracking_results(tmp_path, capsys):
     finally:
         logger.remove(sink_id)
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# RES-03 (Plan 67-02): tag-list cache TTL + resolver threaded into job()
+#
+# These tests build a real RadarrClient on an httpx.MockTransport (same shape
+# as _build_outage_app) but configure a missing_tag so the engine actually
+# reaches the tag-resolution block and invokes the job()'s _get_tags_cached
+# resolver. They assert against app.state.tag_cache directly: cache hit avoids
+# the get_tags() round-trip, cache miss stores a fresh entry, and a stale entry
+# triggers a refresh.
+# ---------------------------------------------------------------------------
+
+
+def _build_tag_cache_app(tmp_path, *, tag_handler):
+    """Build a FastAPI app with a real RadarrClient (MockTransport) + a
+    tag-configured Default instance, returning (app, job).
+
+    The instance sets missing_tag='triggarr' so run_radarr_cycle reaches the
+    get_tags resolver path. tag_handler controls what the /api/v3/tag endpoint
+    returns; the wanted/cutoff endpoints return empty paginated payloads so the
+    cycle completes successfully (connected=True).
+    """
+    settings = Settings(
+        radarr={
+            "Default": InstanceConfig(
+                url="http://radarr-test:7878",
+                api_key="test-key",
+                enabled=True,
+                search_missing_count=5,
+                search_cutoff_count=5,
+                search_interval=30,
+                missing_tag="triggarr",
+            ),
+        },
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/tag":
+            return tag_handler(request)
+        return httpx.Response(
+            200,
+            json={
+                "page": 1,
+                "pageSize": 50,
+                "sortKey": "id",
+                "totalRecords": 0,
+                "records": [],
+            },
+        )
+
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="http://radarr-test:7878",
+        headers={"X-Api-Key": "test-key", "Content-Type": "application/json"},
+    )
+    real_client._app_name = "Radarr"
+
+    state = _default_state(settings)
+    state["radarr"]["Default"] = _default_instance_state()
+    state["radarr"]["Default"]["connected"] = True
+
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": real_client}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = state
+    app.state.settings = settings
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.tag_cache = {}
+    app.state.db = AsyncMock()
+    app.state.state_path = tmp_path / "state.json"
+
+    job = make_search_job(app, "radarr", "Default", tmp_path / "state.json")
+    return app, job
+
+
+async def test_tag_cache_hit_skips_get_tags_call(tmp_path):
+    """RES-03: a fresh cache entry is reused; the *arr tag endpoint is not hit."""
+    tag_calls = {"count": 0}
+
+    def tag_handler(request: httpx.Request) -> httpx.Response:
+        tag_calls["count"] += 1
+        return httpx.Response(200, json=[{"id": 5, "label": "triggarr"}])
+
+    app, job = _build_tag_cache_app(tmp_path, tag_handler=tag_handler)
+    # Pre-populate a FRESH cache entry (fetched just now).
+    app.state.tag_cache[("radarr", "Default")] = (
+        [Tag(id=5, label="triggarr")],
+        time.monotonic(),
+    )
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    # The cached entry was reused — the /api/v3/tag endpoint was never called.
+    assert tag_calls["count"] == 0
+
+
+async def test_tag_cache_miss_calls_get_tags_and_stores_result(tmp_path):
+    """RES-03: an empty cache is populated after a successful cycle fetches tags."""
+    tag_calls = {"count": 0}
+
+    def tag_handler(request: httpx.Request) -> httpx.Response:
+        tag_calls["count"] += 1
+        return httpx.Response(200, json=[{"id": 5, "label": "triggarr"}])
+
+    app, job = _build_tag_cache_app(tmp_path, tag_handler=tag_handler)
+    assert app.state.tag_cache == {}  # cold
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    assert tag_calls["count"] == 1, "Cold cache should trigger exactly one tag fetch"
+    entry = app.state.tag_cache.get(("radarr", "Default"))
+    assert entry is not None, "Cache entry should be stored after a successful fetch"
+    cached_tags, fetched_at = entry
+    assert [t.label for t in cached_tags] == ["triggarr"]
+    assert isinstance(fetched_at, float)
+
+
+async def test_tag_cache_ttl_expired_triggers_fresh_fetch(tmp_path):
+    """RES-03: a stale entry (older than the TTL) triggers a refresh."""
+    tag_calls = {"count": 0}
+
+    def tag_handler(request: httpx.Request) -> httpx.Response:
+        tag_calls["count"] += 1
+        return httpx.Response(200, json=[{"id": 5, "label": "triggarr"}])
+
+    app, job = _build_tag_cache_app(tmp_path, tag_handler=tag_handler)
+    # Pre-populate a STALE entry (fetched beyond the TTL window).
+    stale_at = time.monotonic() - (_TAG_CACHE_TTL_SECONDS + 1.0)
+    app.state.tag_cache[("radarr", "Default")] = (
+        [Tag(id=99, label="stale")],
+        stale_at,
+    )
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    assert tag_calls["count"] == 1, "Stale entry should trigger exactly one refresh fetch"
+    entry = app.state.tag_cache.get(("radarr", "Default"))
+    assert entry is not None
+    cached_tags, fetched_at = entry
+    # Entry was refreshed to the live value, not the stale one.
+    assert [t.label for t in cached_tags] == ["triggarr"]
+    assert fetched_at > stale_at

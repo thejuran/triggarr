@@ -2698,3 +2698,121 @@ async def test_run_radarr_cycle_does_not_write_last_success_on_failure(tmp_path)
 
     assert result["radarr"]["Default"].get("last_success") is None
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# RES-03: get_tags_fn resolver param on cycle fns (tag cache threading)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_radarr_cycle_uses_get_tags_fn_when_provided(tmp_path):
+    """RES-03: when get_tags_fn is supplied, the cycle calls it instead of client.get_tags.
+
+    A tag-configured instance with a resolver passed in must route tag
+    resolution through the resolver — client.get_tags() is NOT awaited.
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=9, label="should-not-be-used")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    resolver = AsyncMock(return_value=[Tag(id=5, label="triggarr")])
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(
+        client, state, "Default", instance_config, settings, db, get_tags_fn=resolver
+    )
+
+    resolver.assert_awaited_once()
+    client.get_tags.assert_not_awaited()
+    await db.close()
+
+
+async def test_run_radarr_cycle_falls_back_to_client_get_tags_when_no_fn(tmp_path):
+    """RES-03 (Pitfall 1): with no get_tags_fn (None default), the cycle uses client.get_tags.
+
+    Backward compatibility — a tag-configured instance still fetches tags via
+    the client when no resolver is provided.
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="triggarr")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    client.get_tags.assert_awaited_once()
+    await db.close()
+
+
+async def test_run_radarr_cycle_get_tags_fn_exception_suppresses_filtering(tmp_path):
+    """RES-03 (Pitfall 2/3): a get_tags_fn that raises is handled by the existing guard.
+
+    When the resolver raises httpx.ConnectError, the cycle does NOT raise; the
+    existing except guard sets tags=[] / tag_fetch_ok=False so tag filtering is
+    suppressed and all monitored items are searched (no tag warning recorded,
+    because tag_fetch_ok is False).
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="triggarr")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [6]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    resolver = AsyncMock(side_effect=httpx.ConnectError("tag fetch boom"))
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    # Must not raise — the cycle's existing except guard handles it.
+    result = await run_radarr_cycle(
+        client, state, "Default", instance_config, settings, db, get_tags_fn=resolver
+    )
+
+    resolver.assert_awaited_once()
+    # Tag filtering suppressed (tag_fetch_ok=False) -> both monitored items searched.
+    assert client.search_movies.call_count == 2
+    # No tag warning recorded because the fetch failed (tag_fetch_ok=False).
+    assert result["radarr"]["Default"]["tag_warnings"] == []
+    await db.close()
