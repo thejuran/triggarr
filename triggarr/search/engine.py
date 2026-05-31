@@ -502,8 +502,10 @@ async def run_radarr_cycle(
         skipped=skipped_count,
     )
 
-    # --- Update last_run ---
-    ist["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    # --- Update last_run and last_success ---
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    ist["last_run"] = now_iso
+    ist["last_success"] = now_iso
     return state
 
 
@@ -744,8 +746,10 @@ async def run_sonarr_cycle(
         skipped=skipped_count,
     )
 
-    # --- Update last_run ---
-    ist["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    # --- Update last_run and last_success ---
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    ist["last_run"] = now_iso
+    ist["last_success"] = now_iso
     return state
 
 
@@ -980,6 +984,8 @@ async def run_lidarr_cycle(
         skipped=skipped_count,
     )
 
-    # --- Update last_run ---
-    ist["last_run"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    # --- Update last_run and last_success ---
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    ist["last_run"] = now_iso
+    ist["last_success"] = now_iso
     return state

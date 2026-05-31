@@ -393,3 +393,48 @@ def test_state_wrong_nested_type_recovers(tmp_path: Path) -> None:
     assert state["radarr"] == {}
     assert state["sonarr"] == {}
     assert state["search_log"] == []
+
+
+# ---------------------------------------------------------------------------
+# RES-02: last_success field tests
+# ---------------------------------------------------------------------------
+
+
+def test_last_success_persists_round_trip(tmp_path: Path) -> None:
+    """last_success value survives save_state -> load_state round-trip intact."""
+    state_file = tmp_path / "state.json"
+    state = TriggarrState(
+        radarr={
+            "Default": AppState(
+                missing_cursor=0,
+                cutoff_cursor=0,
+                last_run="2026-05-31T10:00:00Z",
+                last_success="2026-05-31T10:00:00Z",
+            )
+        },
+        sonarr={},
+        search_log=[],
+    )
+
+    save_state(state, state_file)
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"]["last_success"] == "2026-05-31T10:00:00Z"
+
+
+def test_last_success_defaults_to_none_for_fresh_state(tmp_path: Path) -> None:
+    """Loading a state JSON without last_success key yields None via _merge_defaults."""
+    state_file = tmp_path / "state.json"
+    # Old-format state without last_success key
+    partial_state = {
+        "radarr": {
+            "Default": {"missing_cursor": 5, "cutoff_cursor": 2, "last_run": "2026-05-31T09:00:00Z"},
+        },
+        "sonarr": {},
+        "search_log": [],
+    }
+    state_file.write_text(json.dumps(partial_state))
+
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"].get("last_success") is None

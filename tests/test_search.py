@@ -2651,3 +2651,50 @@ async def test_sonarr_cycle_all_filtered_by_tag(tmp_path):
         assert client.search_season.call_count == 0
     finally:
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# RES-02: last_success written only at cycle success point
+# ---------------------------------------------------------------------------
+
+
+async def test_run_radarr_cycle_writes_last_success_on_success(tmp_path):
+    """A successful run_radarr_cycle sets last_success to a non-None ISO timestamp."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=1, cutoff_count=1)
+    instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert result["radarr"]["Default"]["last_success"] is not None
+    await db.close()
+
+
+async def test_run_radarr_cycle_does_not_write_last_success_on_failure(tmp_path):
+    """A cycle that fails on connection error leaves last_success as None."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+    state = _make_test_state()
+    settings = _cycle_settings()
+    instance_config = _cycle_instance_config()
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert result["radarr"]["Default"].get("last_success") is None
+    await db.close()
