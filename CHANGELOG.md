@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.8.0 (2026-06-01)
+
+Hardening & Observability — a reliability-focused release. Triggarr is now sturdier under load and failure, gives you a clearer at-a-glance picture of whether searches are actually working, and tightens security around the web UI. No changes to how you configure or run it.
+
+* Features:
+
+  * The dashboard now shows a "Last OK" time on each app card — the last time a search cycle actually completed successfully. If it's been too long (more than twice your search interval), the time turns amber so you can spot a silently stuck connection at a glance. It still shows even when an app is unreachable, which is exactly when you want to know.
+
+* Improvements:
+
+  * Tag lists are now cached for an hour instead of being re-fetched every single cycle, so tag-filtered searches put less load on Radarr/Sonarr/Lidarr. Saving an instance's settings refreshes its tags immediately.
+  * Searches now keep running smoothly through unexpected hiccups instead of quietly stopping, and Triggarr now warns you in the log if the same app keeps failing cycle after cycle.
+  * Shutdowns wait a little longer for an in-progress search to finish cleanly, and tell you which one was still running if it has to force-close.
+  * The search history database now stays bounded even if download tracking gets stuck, so it can't quietly balloon over time.
+
+* Security:
+
+  * The web UI's content security policy is stricter (inline scripts are gone), reducing the browser-side attack surface.
+  * Settings now reject an *arr URL that has an API key pasted into it, and flag a too-short or unsaved session secret on startup.
+  * Login handling is more defensive against malformed credentials.
+
+* Fixes:
+
+  * Fixed a bug where saving Settings silently reset the General options (including "Skip Unreleased Movies") because the Save button wasn't tied to those fields. General settings now save correctly.
+
 ## v2.7.3 (2026-05-08)
 
 Security patch release for a high-severity multipart parser advisory.
