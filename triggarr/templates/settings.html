@@ -15,14 +15,17 @@
 </div>
 {% endif %}
 
-<form method="post" action="{{ request.url_for('save_settings') }}" class="space-y-8">
-    <!-- General section -->
+<!-- General section -->
+<!-- Fields use form="settings-form" to submit together with the instances form
+     below. They cannot be in one literal <form> because the Security form
+     (save_security) sits between them and nested forms are illegal HTML. -->
+<div class="space-y-8">
     <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
         <h2 class="text-lg font-semibold mb-4">General</h2>
         <div class="grid grid-cols-1 gap-4 max-w-md">
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Log Level</label>
-                <select name="log_level"
+                <select form="settings-form" name="log_level"
                         class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                     {% for level in ['debug', 'info', 'warning', 'error'] %}
                     <option value="{{ level }}" {% if log_level == level %}selected{% endif %}>
@@ -33,49 +36,49 @@
             </div>
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Hard Max Items Per Cycle</label>
-                <input type="number" name="hard_max_per_cycle" value="{{ hard_max_per_cycle }}"
+                <input form="settings-form" type="number" name="hard_max_per_cycle" value="{{ hard_max_per_cycle }}"
                        min="0" max="1000"
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">0 = unlimited. Caps total items per app per cycle.</p>
             </div>
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Max History Rows</label>
-                <input type="number" name="max_history_rows" value="{{ max_history_rows }}"
+                <input form="settings-form" type="number" name="max_history_rows" value="{{ max_history_rows }}"
                        min="0" max="100000"
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">0 = unlimited. Max resolved rows kept in search history.</p>
             </div>
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Request Timeout (seconds)</label>
-                <input type="number" name="request_timeout" value="{{ request_timeout }}"
+                <input form="settings-form" type="number" name="request_timeout" value="{{ request_timeout }}"
                        min="5" max="300" step="1"
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">Timeout for outbound HTTP requests to *arr apps.</p>
             </div>
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Page Size</label>
-                <input type="number" name="page_size" value="{{ page_size }}"
+                <input form="settings-form" type="number" name="page_size" value="{{ page_size }}"
                        min="10" max="500"
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">Items per page when querying *arr APIs.</p>
             </div>
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Tracking Window (minutes)</label>
-                <input type="number" name="tracking_window_minutes" value="{{ tracking_window_minutes }}"
+                <input form="settings-form" type="number" name="tracking_window_minutes" value="{{ tracking_window_minutes }}"
                        min="5" max="1440"
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">How long to wait for grabs after a search before marking unresolved.</p>
             </div>
             <div>
                 <label class="block text-sm text-triggarr-muted mb-1">Max Consecutive Failures</label>
-                <input type="number" name="max_consecutive_failures" value="{{ max_consecutive_failures }}"
+                <input form="settings-form" type="number" name="max_consecutive_failures" value="{{ max_consecutive_failures }}"
                        min="1" max="100"
                        class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
                 <p class="text-xs text-triggarr-muted mt-1">After N consecutive search cycle failures, escalate log level from warning to error.</p>
             </div>
             <div>
                 <div class="flex items-center gap-3 mt-2">
-                    <input type="checkbox" name="skip_unreleased"
+                    <input form="settings-form" type="checkbox" name="skip_unreleased"
                            {% if skip_unreleased %}checked{% endif %}
                            class="accent-triggarr-green w-4 h-4"
                            id="skip_unreleased">
@@ -87,7 +90,7 @@
             </div>
         </div>
     </section>
-</form>
+</div>
 
 <!-- Security section (D-01: after General, D-02: separate form) -->
 <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5 mt-8">
@@ -131,7 +134,10 @@
 </section>
 
 <!-- Per-app sections: Radarr, Sonarr, Lidarr -->
-<form method="post" action="{{ request.url_for('save_settings') }}" class="space-y-8 mt-8">
+<!-- id="settings-form": the General-section fields above associate with this
+     form via form="settings-form" so one "Save Settings" submits General +
+     instances together (the save_settings handler reads both). -->
+<form id="settings-form" method="post" action="{{ request.url_for('save_settings') }}" class="space-y-8 mt-8">
     {% for app_name, instances in apps.items() %}
     <section class="bg-triggarr-card rounded-lg border border-triggarr-border p-5">
         <h2 class="text-lg font-semibold capitalize mb-4">{{ app_name }}</h2>

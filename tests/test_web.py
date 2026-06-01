@@ -829,6 +829,65 @@ def test_settings_page_skip_unreleased_checked_when_true(client):
     assert "checked" in match.group(0), "skip_unreleased checkbox should be checked when True"
 
 
+def test_general_fields_submit_with_the_save_settings_form(client):
+    """Every General-section control must associate with the same form the
+    'Save Settings' button submits, or clicking Save drops them and they reset
+    to form-defaults (e.g. skip_unreleased silently flips to False each save).
+
+    Regression guard for the walkthrough finding: the General fields were in
+    their own <form action=save_settings> with NO submit button, while the
+    'Save Settings' button lived in a separate <form action=save_settings>
+    holding only the instance fields. An HTML form submits only its associated
+    controls, so the entire General section was unsavable from the UI.
+
+    The General section cannot be literally nested in the instances <form> (the
+    Security form sits between them and nested forms are illegal HTML), so the
+    fix associates each General control with the instances form via the
+    form="settings-form" attribute. This test pins that association: the
+    instances <form> carries id="settings-form", the 'Save Settings' button is
+    inside it, and every General control names that form.
+    """
+    text = client.get("/settings").text
+
+    # The submitting form must declare the id the General fields reference.
+    assert 'id="settings-form"' in text, "instances form must declare id=settings-form"
+
+    # The 'Save Settings' submit button must be inside the form with that id
+    # (i.e. after the <form id="settings-form"> open and before its </form>).
+    form_open = text.find('id="settings-form"')
+    save_idx = text.find("Save Settings")
+    form_close = text.find("</form>", form_open)
+    assert save_idx != -1, "'Save Settings' button should exist"
+    assert form_open < save_idx < form_close, (
+        "'Save Settings' button must live inside <form id=settings-form>"
+    )
+
+    # Every General control must carry form="settings-form" so it submits with
+    # that form. skip_unreleased is the field the walkthrough caught resetting;
+    # the rest are the other General controls that were equally unsavable.
+    general_fields = [
+        "skip_unreleased",
+        "log_level",
+        "hard_max_per_cycle",
+        "max_history_rows",
+        "request_timeout",
+        "page_size",
+        "tracking_window_minutes",
+        "max_consecutive_failures",
+    ]
+    for name in general_fields:
+        # Find the control's opening tag and confirm form="settings-form" is on it.
+        idx = text.find(f'name="{name}"')
+        assert idx != -1, f"General field {name!r} should exist on the settings page"
+        tag_open = text.rfind("<", 0, idx)
+        tag_close = text.find(">", idx)
+        tag = text[tag_open:tag_close]
+        assert 'form="settings-form"' in tag, (
+            f"General field {name!r} must carry form=\"settings-form\" so it "
+            f"submits with the Save Settings button; tag was: {tag}"
+        )
+
+
 def test_save_settings_skip_unreleased_on(client, test_app):
     """POST /settings with skip_unreleased=on saves True to config."""
     response = client.post(
