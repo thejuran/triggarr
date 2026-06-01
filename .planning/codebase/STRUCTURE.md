@@ -1,246 +1,254 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-05-25
+**Analysis Date:** 2026-06-01
 
 ## Directory Layout
 
 ```
-triggarr/                                # Main package root
-├── __init__.py                          # Package init (empty)
-├── __main__.py                          # CLI entry point: main() and _run()
-├── auth.py                              # Session, password, API key validation (D-11)
-├── changelog.py                         # Parse CHANGELOG.md for display
-├── config.py                            # TOML loading, defaults, v2.2→v2.3 migration
-├── correlation.py                       # DEPRECATED (migrated to db.py)
-├── db.py                                # SQLite search history + migrations (SRCH-13)
-├── log_buffer.py                        # Recent log messages for web UI
-├── logging.py                           # Loguru setup with secret redaction
-├── startup.py                           # Startup orchestration (validation, banner)
-├── state.py                             # JSON cursor/history tracking (atomic writes)
-├── tracking.py                          # Post-search grab event correlation
-├── update_check.py                      # Background version check (async)
-├── version.py                           # __version__ constant
+triggarr/
+├── __main__.py              # CLI entry point: asyncio.run(_run())
+├── __init__.py              # Package marker
+├── startup.py               # Startup orchestration: config load, logging, validation
+├── config.py                # TOML I/O, atomic writes, v2.2→v2.3 migration
+├── state.py                 # JSON state persistence: cursors, timings
+├── auth.py                  # Session + Basic + API-key auth, password hashing
+├── logging.py               # Loguru setup with secret redaction
+├── changelog.py             # Version history parsing
+├── correlation.py           # Grab event correlation (tracking helper)
+├── tracking.py              # Pending search resolution with history matching
+├── update_check.py          # Version check against GitHub releases
+├── version.py               # Display version helpers
+├── db.py                    # SQLite search history, schema migrations
+├── log_buffer.py            # In-memory log storage for UI
 │
-├── models/
+├── clients/                 # *arr API clients (httpx wrappers)
 │   ├── __init__.py
-│   ├── config.py                        # Pydantic: Settings, InstanceConfig, AuthConfig
-│   └── arr.py                           # Pydantic: Tag, SystemStatus, GrabEvent, etc.
+│   ├── base.py              # ArrClient base: pagination, retry, status validation
+│   ├── radarr.py            # RadarrClient: wanted/missing/cutoff endpoints
+│   ├── sonarr.py            # SonarrClient: episode dedup, API version detection
+│   └── lidarr.py            # LidarrClient: artist/album hierarchy
 │
-├── clients/
+├── models/                  # Pydantic data models
 │   ├── __init__.py
-│   ├── base.py                          # ArrClient base class (pagination, retry)
-│   ├── radarr.py                        # RadarrClient (wanted/missing, cutoff)
-│   ├── sonarr.py                        # SonarrClient (series, seasons)
-│   └── lidarr.py                        # LidarrClient (artists, albums)
+│   ├── config.py            # Settings, InstanceConfig, AuthConfig, GeneralConfig
+│   └── arr.py               # PaginatedResponse, GrabEvent, Tag, SystemStatus
 │
-├── search/
+├── search/                  # Search orchestration & scheduling
 │   ├── __init__.py
-│   ├── scheduler.py                     # APScheduler lifespan, job factory
-│   └── engine.py                        # Search cycles, filtering, batching
+│   ├── scheduler.py         # APScheduler lifespan integration, job factory
+│   │                        # - create_lifespan() context manager
+│   │                        # - make_search_job() closure factory
+│   │                        # - Graceful shutdown drain (RES-01)
+│   │                        # - Failure escalation (SAFETY-03)
+│   └── engine.py            # Search cycle logic
+│                            # - Filters: monitored, tags, dates
+│                            # - Batch: cursor, slice, dedup
+│                            # - Cycles: run_radarr_cycle, run_sonarr_cycle, run_lidarr_cycle
 │
-├── web/
+├── web/                     # HTTP server & routes
 │   ├── __init__.py
-│   ├── routes.py                        # FastAPI routes, template rendering
-│   ├── middleware.py                    # Auth, CSRF, security headers
-│   ├── security.py                      # Secure request detection
-│   └── validation.py                    # Form input sanitization
+│   ├── routes.py            # GET/POST handlers, htmx partials
+│   │                        # - /health, /, /dashboard, /settings, /history
+│   │                        # - /search_now, /tag_autocomplete, +add/remove instance
+│   │                        # - htmx partials: app_card, activity_rail, stats_row, etc.
+│   ├── middleware.py        # SecurityHeadersMiddleware, OriginCheckMiddleware, AuthMiddleware
+│   ├── security.py          # is_secure_request() for cookie Secure flag
+│   └── validation.py        # Input validators: safe_int, safe_log_level, validate_arr_url
 │
-├── templates/
-│   ├── base.html                        # Base layout (nav, footer)
-│   ├── base-auth.html                   # Auth layout (login, setup forms)
-│   ├── dashboard.html                   # Main dashboard page
-│   ├── history.html                     # Search history page
-│   ├── login.html                       # Login form
-│   ├── setup.html                       # Initial auth setup form
-│   ├── settings.html                    # Config editor form
-│   └── partials/
-│       ├── app-card.html                # Instance status card (htmx target)
-│       ├── search-log-row.html          # Search history row
-│       ├── settings-*.html              # Settings form partials (radarr, sonarr, etc.)
-│       └── [others]                     # Form fragments, modals
-│
-├── static/
+├── static/                  # CSS, JavaScript
 │   ├── css/
-│   │   ├── input.css                    # Tailwind source (dev)
-│   │   └── output.css                   # Compiled CSS (Dockerfile builder stage)
-│   ├── js/
-│   │   └── [helpers]                    # Minimal JS (htmx handles most interactivity)
-│   ├── fonts/
-│   │   └── [webfonts]                   # System fonts or custom typefaces
-│   └── vendor/
-│       ├── htmx.min.js                  # HTmx library (form fragments)
-│       └── phosphor/                    # Phosphor icon set (SVG)
+│   │   ├── input.css        # Tailwind v4 input (built by tailwindcss CLI)
+│   │   └── output.css       # Compiled Tailwind CSS (served to browser)
+│   └── js/
+│       └── app.js           # htmx setup, polling intervals
 │
-└── [tests]/                             # Test suite (sibling to triggarr/ in project)
-    ├── conftest.py                      # Pytest fixtures
-    ├── test_*.py                        # Test modules
-    └── [fixtures]/                      # Test data
+└── templates/               # Jinja2 templates
+    ├── base.html            # Main layout (nav, sidebar, slots)
+    ├── base-auth.html       # Auth-layer layout (login, setup, no sidebar)
+    ├── dashboard.html       # Dashboard page: app cards, activity rail
+    ├── history.html         # Search history page wrapper
+    ├── settings.html        # Settings editor: instance forms, auth, general config
+    ├── setup.html           # Initial auth setup wizard
+    ├── login.html           # Login page (session auth)
+    └── partials/            # htmx fragment responses
+        ├── app_card.html    # Individual app status card (polling target)
+        ├── activity_rail.html
+        ├── stats_row.html
+        ├── history_results.html
+        ├── health_summary.html
+        ├── connection_pill.html
+        ├── instance_form.html  # Settings: single instance sub-form
+        ├── auth_forms.html     # Settings: auth method options
+        ├── general_form.html   # Settings: general config
+        └── [others]
 ```
 
 ## Directory Purposes
 
-**triggarr/ (root):**
-- Purpose: Main package entry point and core app logic
-- Contains: CLI entry point, startup, state/config persistence, logging setup
+**triggarr/**
+- Purpose: Root package, entry point is __main__.py
+- Contains: Core orchestration, config/state I/O, startup sequence
 - Key files: `__main__.py`, `startup.py`, `config.py`, `state.py`
 
-**triggarr/models/:**
-- Purpose: Pydantic schema definitions for configuration and API models
-- Contains: Settings, InstanceConfig, AuthConfig, arr API models (Tag, GrabEvent, etc.)
-- Key files: `config.py` (base schemas), `arr.py` (API models)
+**triggarr/clients/**
+- Purpose: Async HTTP wrappers for Radarr/Sonarr/Lidarr APIs
+- Contains: Base client class, app-specific subclasses, pagination/retry logic
+- Key files: `base.py` (defines ArrClient), `radarr.py`, `sonarr.py`, `lidarr.py`
 
-**triggarr/clients/:**
-- Purpose: Async HTTP wrappers for *arr application REST APIs
-- Contains: Base client with pagination/retry, Radarr/Sonarr/Lidarr subclasses
-- Key files: `base.py` (abstract + shared logic), `radarr.py`, `sonarr.py`, `lidarr.py`
+**triggarr/models/**
+- Purpose: Pydantic validation models for config and API responses
+- Contains: Settings, InstanceConfig, AuthConfig, API response envelopes
+- Key files: `config.py` (settings schema), `arr.py` (API response types)
 
-**triggarr/search/:**
-- Purpose: Search orchestration and scheduling logic
-- Contains: APScheduler integration, job factories, search cycles, filtering/batching
-- Key files: `scheduler.py` (lifespan, jobs), `engine.py` (cycles, filters)
+**triggarr/search/**
+- Purpose: Scheduled search cycle orchestration and cycle logic
+- Contains: APScheduler integration, job factory, filter/batch/dedup functions, cycle functions
+- Key files: `scheduler.py` (lifespan + jobs), `engine.py` (cycle logic)
 
-**triggarr/web/:**
-- Purpose: Web server routes, middleware, and request handling
-- Contains: FastAPI route handlers, auth middleware, security layers
-- Key files: `routes.py` (handlers), `middleware.py` (auth/CSRF), `security.py` (validation)
+**triggarr/web/**
+- Purpose: HTTP server, authentication, request validation
+- Contains: FastAPI routes, middleware, security helpers, input validators
+- Key files: `routes.py` (all endpoints), `middleware.py` (auth + CSRF + security headers)
 
-**triggarr/templates/:**
-- Purpose: Jinja2 HTML templates for UI rendering
-- Contains: Base layouts, page templates, htmx form fragments
-- Key files: `base.html` (layout), `dashboard.html` (home), `settings.html` (config editor), `partials/` (fragments)
+**triggarr/static/**
+- Purpose: Frontend assets (CSS, JavaScript)
+- Contains: Tailwind CSS output (built from input.css), htmx polling setup
+- Key files: `css/output.css` (served to browser), `js/app.js` (client-side behavior)
 
-**triggarr/static/:**
-- Purpose: Static assets (CSS, JavaScript, fonts, icons)
-- Contains: Tailwind CSS output, htmx library, Phosphor icons
-- Key files: `css/output.css` (compiled Tailwind), `vendor/htmx.min.js`
+**triggarr/templates/**
+- Purpose: Jinja2 HTML templates and htmx fragments
+- Contains: Page layouts, forms, dynamic partials for polling updates
+- Key files: `base.html` (main layout), `dashboard.html` (main page), `settings.html` (config editor)
 
 ## Key File Locations
 
 **Entry Points:**
-- `triggarr/__main__.py`: CLI entry point (`main()`) and async server start (`_run()`)
-- `triggarr/startup.py`: Startup sequence (config load, validation, logging setup)
-- `triggarr/web/routes.py`: FastAPI app creation and route registration (via `create_lifespan()`)
+- `triggarr/__main__.py`: CLI entry point (main() and _run())
+- `triggarr/search/scheduler.py::create_lifespan()`: FastAPI lifespan (startup/shutdown)
 
 **Configuration:**
-- `triggarr/config.py`: TOML loading, defaults, atomic writes, v2.2 migration
-- `triggarr/models/config.py`: Pydantic Settings schema and validators
-- `triggarr/models/arr.py`: Pydantic models for *arr API responses (Tag, GrabEvent, etc.)
+- `triggarr/config.py`: TOML loading, default generation, atomic writes
+- `triggarr/models/config.py`: Pydantic settings + instance config schema
+- `triggarr/startup.py`: Startup sequence (load config, validate, print banner)
 
 **Core Logic:**
-- `triggarr/search/scheduler.py`: APScheduler lifespan integration, job creation per instance
-- `triggarr/search/engine.py`: Pure functions for filtering/batching + cycle orchestrators
-- `triggarr/clients/base.py`: Base async HTTP client with pagination and retry logic
-- `triggarr/clients/radarr.py`, `sonarr.py`, `lidarr.py`: App-specific endpoint methods
-
-**State & Persistence:**
-- `triggarr/state.py`: JSON state loading/saving with atomic writes
-- `triggarr/db.py`: SQLite database + migration system for search history
-- `triggarr/tracking.py`: Grab event correlation and outcome resolution
-
-**Web & UI:**
-- `triggarr/web/routes.py`: All HTTP endpoint handlers and template rendering
-- `triggarr/web/middleware.py`: Auth, CSRF, security headers
-- `triggarr/templates/base.html`: Base layout (nav, footer, shared blocks)
-- `triggarr/templates/dashboard.html`: Home page with instance status cards
-- `triggarr/templates/settings.html`: Config editor form
+- `triggarr/search/scheduler.py::make_search_job()`: Job factory closure
+- `triggarr/search/engine.py`: run_radarr_cycle, run_sonarr_cycle, run_lidarr_cycle
+- `triggarr/clients/base.py`: Base ArrClient class with pagination/retry
 
 **Testing:**
-- `tests/test_*.py`: Test modules (unit, integration, e2e)
-- `tests/conftest.py`: Pytest fixtures and shared setup
+- Tests live in `tests/` directory (sibling to `triggarr/`)
+- Test fixtures in `tests/fixtures/` (temp dirs, mock apps, etc.)
+- Test patterns: pytest-asyncio with asyncio_mode=auto
+
+**Persistence:**
+- `triggarr/state.py`: JSON state file I/O, cursor tracking
+- `triggarr/db.py`: SQLite search history, schema versioning
+- `triggarr/config.py::_atomic_toml_write()`: Atomic config writes
+
+**Web UI:**
+- `triggarr/web/routes.py`: All GET/POST handlers and htmx endpoints
+- `triggarr/templates/dashboard.html`: Main UI page
+- `triggarr/templates/settings.html`: Settings editor
+- `triggarr/templates/partials/`: htmx fragment responses
+
+**Authentication:**
+- `triggarr/auth.py`: Session signing, password hashing, API key generation
+- `triggarr/web/middleware.py::AuthMiddleware`: Request-time auth checks
 
 ## Naming Conventions
 
 **Files:**
-- Entry points: `__main__.py`, `__init__.py`
-- Core modules: `{domain}.py` (e.g., `config.py`, `state.py`, `auth.py`)
-- Package subdirs: `{layer}/` (e.g., `clients/`, `web/`, `search/`)
-- Tests: `test_{module}.py` (e.g., `test_config.py`, `test_scheduler.py`)
-- Templates: `{page}.html` (e.g., `dashboard.html`), `{page}_partial.html` for fragments
-- Partials: `partials/{component}.html` (e.g., `partials/app-card.html`)
-
-**Directories:**
-- Package modules: PascalCase for packages (`triggarr/web/`, `triggarr/models/`)
-- Logical grouping: snake_case for roles (e.g., `search/`, `clients/`)
-- Static assets: `static/{css,js,fonts,vendor}/`
-- Config templates: `templates/`, `templates/partials/`
+- Modules are lowercase with underscores: `search_engine.py` is `search/engine.py`
+- Package directories are lowercase: `triggarr/clients/`, `triggarr/web/`
+- HTML templates are lowercase: `dashboard.html`, `base.html`
+- Partials are in `partials/` subdirectory: `partials/app_card.html`
 
 **Functions:**
-- Public: `snake_case` (e.g., `load_settings()`, `make_search_job()`)
-- Private: `_snake_case` prefix (e.g., `_sanitize_exc()`, `_atomic_toml_write()`)
-- Async: `async def` keyword, same naming (e.g., `async def startup()`, `async def run_radarr_cycle()`)
-
-**Classes:**
-- Models: `PascalCase` with no suffix (e.g., `Settings`, `InstanceConfig`, `RadarrClient`)
-- Exceptions: `PascalCase` with `Error` or `Exception` suffix (none currently defined)
+- Async functions are async def: `async def run_radarr_cycle(...)`
+- Private/internal functions start with `_`: `_atomic_toml_write()`, `_record_cycle_failure()`
+- Factory functions are named make_*: `make_search_job()`
+- Handler functions are named {action}_{resource}: `search_now()`, `save_settings()`, `add_instance()`
 
 **Variables:**
-- Constants: `UPPER_SNAKE_CASE` (e.g., `APP_TYPES`, `EXEMPT_PREFIXES`, `SEARCH_RATE_LIMIT_SECONDS`)
-- Config dicts: `snake_case` (e.g., `app.state.radarr_clients`, `app.state.triggarr_state`)
-- Loop variables: `snake_case` (e.g., `for app_type in APP_TYPES`)
+- Module constants are UPPER_CASE: `EXEMPT_PREFIXES`, `_SHUTDOWN_DRAIN_TIMEOUT`
+- Classes are PascalCase: `RadarrClient`, `InstanceConfig`, `AuthMiddleware`
+- Instances/variables are snake_case: `instance_name`, `search_interval`, `client`
+- Secrets are SecretStr (Pydantic): `api_key: SecretStr`, never plain str
+
+**Types:**
+- Pydantic models live in `models/`: `models/config.py`, `models/arr.py`
+- TypedDict (runtime type hints) in `state.py`: `AppState`, `TriggarrState`
+- Protocol abstractions in docstrings, not separate files
 
 ## Where to Add New Code
 
-**New Feature (e.g., Weekly Schedule Report):**
-- Primary code: `triggarr/web/routes.py` (new route handler)
-- Logic: `triggarr/search/engine.py` (new query function if needed)
-- Template: `triggarr/templates/report.html` (new page template)
-- Tests: `tests/test_web_routes.py` (test the handler)
+**New Feature (e.g., add Lidarr to dashboard):**
+- Primary code: `triggarr/search/engine.py::run_lidarr_cycle()` (cycle logic)
+- Client: `triggarr/clients/lidarr.py::LidarrClient` (API wrapper)
+- Config: `triggarr/models/config.py::Settings.lidarr` (instance config)
+- Scheduler: Already generic in `triggarr/search/scheduler.py` (no changes needed)
+- Routes: `triggarr/web/routes.py` (dashboard context builder, already generic)
+- Templates: `triggarr/templates/partials/app_card.html` (already generic)
+- Tests: `tests/test_lidarr_cycle.py`, `tests/test_lidarr_client.py`
 
-**New App Type (e.g., Whisparr for comics):**
-- Config model: Add field to `triggarr/models/config.py` (e.g., `whisparr: dict[str, InstanceConfig]`)
-- Client: New file `triggarr/clients/whisparr.py` (subclass ArrClient)
-- Search cycle: Add handler to `triggarr/search/engine.py` (e.g., `async def run_whisparr_cycle()`)
-- Scheduler: Update `triggarr/search/scheduler.py` to create jobs for whisparr instances
-- State: Update `triggarr/state.py` to initialize whisparr cursors
-- Database: Update `triggarr/db.py` migration if tracking schema changes
-- Web: Update `triggarr/web/routes.py` form handlers for whisparr config
-- Tests: Add test files `tests/test_whisparr_client.py`, etc.
+**New Endpoint (e.g., /api/stats):**
+- Add route handler to `triggarr/web/routes.py`: `@router.get("/api/stats")`
+- If it returns HTML (htmx): use templates from `triggarr/templates/` and `Jinja2Templates.TemplateResponse()`
+- If it returns JSON: use `JSONResponse()`
+- Add auth check via `AuthMiddleware` (automatic — all routes behind auth unless in `EXEMPT_PREFIXES`)
+- Tests: `tests/test_web.py` or new `tests/test_api_stats.py`
 
-**New Component/Module (e.g., Notification System):**
-- Implementation: New package `triggarr/notify/` with submodules (e.g., `webhook.py`, `discord.py`)
-- Integration: Import and call from `triggarr/search/engine.py` after cycle completes
-- Config: Add NotifyConfig section to `triggarr/models/config.py`
-- State: Track notification outcomes in `triggarr/db.py` if history needed
-- Tests: `tests/test_notify_*.py`
+**New Component/Module (e.g., notification system):**
+- Implementation: Create new file in appropriate directory
+  - Business logic: `triggarr/notify.py` (if cross-cutting) or `triggarr/search/notify.py` (if search-related)
+  - API wrapper: `triggarr/clients/discord.py` (if external service)
+  - Config: Add fields to `triggarr/models/config.py::GeneralConfig` or new subsection
+- Integration: Call from affected layers
+  - Post-cycle: Call in `triggarr/search/engine.py` cycle functions
+  - Post-search: Call in `triggarr/search/scheduler.py::make_search_job()`
+  - On error: Call in error handlers
+- Secrets: Use SecretStr for API keys, extract in `triggarr/startup.py::collect_secrets()`
+- Tests: `tests/test_notify.py`
 
-**Utilities (e.g., New Filter Function):**
-- Shared helpers: `triggarr/search/engine.py` (if search-related)
-- Validation helpers: `triggarr/web/validation.py` (if form input)
-- Client utilities: `triggarr/clients/base.py` (if HTTP-related)
-- Auth utilities: `triggarr/auth.py` (if auth-related)
+**Utilities / Shared Helpers:**
+- Filtering/batching logic: `triggarr/search/engine.py` (already home to filter_monitored, slice_batch, etc.)
+- Validation: `triggarr/web/validation.py` (safe_int, safe_log_level, validate_arr_url)
+- Time/date formatting: `triggarr/web/routes.py` (_relative_time, _format_duration) or extract to `triggarr/util.py`
+- DB helpers: `triggarr/db.py` (all schema + query functions in one place)
+- Logging: `triggarr/logging.py` (setup_logging) + `triggarr/log_buffer.py` (in-memory storage)
+
+**Tests:**
+- Unit tests: `tests/test_{module}.py` mirrors `triggarr/{module}.py`
+  - Example: `tests/test_engine.py` tests `triggarr/search/engine.py`
+- Integration tests: `tests/test_{feature}.py` for cross-module flows
+  - Example: `tests/test_radarr_search_integration.py` tests full cycle from scheduler to DB
+- Fixtures: `tests/fixtures/` or inline `@pytest.fixture` in test files
+- Conftest: `tests/conftest.py` for shared fixtures (mock clients, temp dirs, etc.)
+- Run: `uv run pytest tests/ -x -q`
 
 ## Special Directories
 
-**triggarr/templates/:**
-- Purpose: Jinja2 HTML templates for web UI
-- Generated: No (hand-written)
+**triggarr/static/css/**
+- Purpose: Generated Tailwind CSS
+- Generated: Yes (by tailwindcss CLI: `tailwindcss -i input.css -o output.css --watch`)
+- Committed: Yes (output.css committed to avoid build step in Docker)
+- Development: Edit `input.css`, run tailwindcss in watch mode, output.css auto-updates
+
+**triggarr/templates/partials/**
+- Purpose: htmx fragment responses (not standalone pages)
+- Generated: No
 - Committed: Yes
-- Patterns: Base template inheritance, htmx attributes for form fragments
-- Tailwind classes: Used for styling (compiled by Docker builder)
+- Pattern: Each partial is a complete HTML snippet, no <html>/<body> wrapper
+- Usage: Returns via `Jinja2Templates.TemplateResponse(...)` with status 200
+- Naming: `{noun}_{descriptor}.html` (app_card.html, activity_rail.html)
 
-**triggarr/static/:**
-- Purpose: Static assets served at `/static/{path}`
-- Generated: `css/output.css` generated by Tailwind build (not in repo, generated in Dockerfile)
-- Committed: Only source `css/input.css` + vendor libs (htmx, Phosphor)
-- Mount: FastAPI `StaticFiles()` mount at line 72 of `__main__.py`
-
-**tests/:**
-- Purpose: Pytest test suite
-- Generated: `.pytest_cache/`, `__pycache__/` (not committed)
-- Committed: Yes (test files + fixtures)
-- Fixtures: `conftest.py` provides temp config dir, temp state file, mock clients
-- Run: `uv run pytest tests/ -x -q`
-
-**.planning/**
-- Purpose: GSD planning and codebase analysis documents
-- Generated: Yes (ARCHITECTURE.md, STRUCTURE.md, etc.)
-- Committed: Yes (tracks architecture over time)
-
-**.gsd/**
-- Purpose: GSD orchestrator state and phase history
-- Generated: Yes (auto-generated by /gsd commands)
-- Committed: Yes (keeps audit trail)
+**.planning/codebase/**
+- Purpose: Generated by /gsd:map-codebase (this directory)
+- Generated: Yes (ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, TESTING.md, CONCERNS.md)
+- Committed: Yes
+- Consumed by: /gsd:plan-phase (reads context), /gsd:execute-phase (enforces patterns)
 
 ---
 
-*Structure analysis: 2026-05-25*
+*Structure analysis: 2026-06-01*

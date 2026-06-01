@@ -1,105 +1,111 @@
 # Technology Stack
 
-**Analysis Date:** 2026-05-25
+**Analysis Date:** 2026-06-01
 
 ## Languages
 
 **Primary:**
-- Python 3.11+ - Core application logic, API server, scheduling, and search engine
-
-**Secondary:**
-- HTML/Jinja2 - Web UI templates
-- Tailwind CSS v4 - Styling (compiled during build to `triggarr/static/css/output.css`)
+- Python 3.11+ - Core application logic, async daemon, API clients
+- HTML/Jinja2 3.11+ - Web UI templates with htmx integration
+- CSS v4 - Tailwind CSS v4.2.1 via pytailwindcss (compiled, minified in Docker)
+- JavaScript (minimal) - Bundled with Tailwind/htmx, no build pipeline
 
 ## Runtime
 
 **Environment:**
-- Python 3.13 (Dockerfile uses `python:3.13-slim`)
-- Docker containerization with multi-stage build (Tailwind CSS builder + production image)
-- uv - Package manager and dependency management (replaces pip/pip-tools)
+- Python 3.13-slim (Docker production) / Python 3.11+ (development)
 
 **Package Manager:**
-- uv with `pyproject.toml` configuration
-- Lockfile: `uv.lock` (present, provides reproducible installs)
+- `uv` (lockfile: `uv.lock`)
+- Lockfile present at `uv.lock` (197KB, auto-generated)
 
 ## Frameworks
 
 **Core:**
-- FastAPI 0.115+ - HTTP API framework and web server
-- Uvicorn [standard] - ASGI application server (runs on port 8484)
-- APScheduler 3.11.x - Job scheduling for automated search cycles
+- FastAPI 0.100+ - Async HTTP server (8484 default port, ASGI via Uvicorn)
+- Uvicorn[standard] - ASGI server with native proxy header support
 
-**Frontend:**
-- Jinja2 - Server-side template rendering
-- htmx - HTML attribute-driven dynamic frontend interactions
-- Tailwind CSS v4.2.1 - Utility-first CSS framework (build pinned in Dockerfile)
-- pytailwindcss - Tailwind CLI wrapper for build processes
+**Web & UI:**
+- Jinja2 3.11+ - Template engine for HTML rendering
+- htmx (included in static assets) - AJAX/hypermedia interactions
+- Tailwind CSS v4.2.1 - Utility-first CSS framework, compiled at build time
+
+**Scheduling & Automation:**
+- APScheduler 3.11+ - Event-driven search scheduling with cron/interval support
+
+**Database & State:**
+- aiosqlite - Async SQLite wrapper (versioned migrations, search history + state persistence)
+- aiofiles - Async file I/O for config/state writes
+
+**Authentication & Security:**
+- bcrypt - Password hashing (12 rounds)
+- itsdangerous - Session cookie signing (TimestampSigner)
+- Pydantic SecretStr - Type-safe secret storage (never logged/exposed)
 
 **Testing:**
 - pytest 9.0.3+ - Test runner
-- pytest-asyncio - Async test support with `asyncio_mode=auto`
+- pytest-asyncio - Async test support (`asyncio_mode=auto`)
 
-**Build/Dev:**
-- Ruff - Fast Python linter (E, F, I, UP, B, SIM rules; line length 120)
-- Hatchling - Build backend for PyPI packaging
+**Development & Linting:**
+- ruff - Fast linter/formatter (rules: E, F, I, UP, B, SIM; line length 120)
+- pytailwindcss - Tailwind CSS compiler (`tailwindcss_install` + CLI)
 
 ## Key Dependencies
 
 **Critical:**
-- httpx - Async HTTP client for Radarr/Sonarr/Lidarr API communication with connection pooling and timeout control
-- pydantic-settings[toml] - TOML configuration loading and Pydantic v2 settings validation
-- aiosqlite - Async SQLite driver for search history persistence
-- loguru - Structured logging with custom redacting sink for API key safety
+- httpx - Async HTTP client for Radarr/Sonarr/Lidarr API calls + GitHub update checks
+  - 30s default timeout, retry logic on transient failures (2s backoff)
+  - API key injection into X-Api-Key header + Content-Type: application/json
+- pydantic-settings[toml] - Config validation + TOML file loading
+- loguru - Structured logging with custom redacting sink (secrets masked in full output + tracebacks)
+- tomli-w - Atomic TOML serialization (write-then-rename pattern for config)
 
 **Infrastructure:**
-- uvicorn[standard] - ASGI server with uvloop, httptools optimizations
-- fastapi - Async web framework (includes Starlette, Pydantic)
-- apscheduler - APScheduler for periodic search scheduling
-- aiofiles - Async file I/O (used for config/state file writes)
-
-**Security & Auth:**
-- bcrypt - Password hashing with 12 rounds (v5.0.0)
-- itsdangerous - Cryptographic signing for session cookies (TimestampSigner-based)
-- SecretStr (from pydantic) - Type-safe secret value handling for API keys
-
-**Configuration & Serialization:**
-- tomli-w - Atomic TOML writing for config persistence
-- tomllib (Python 3.11+ stdlib) - TOML parsing
-- python-multipart 0.0.27+ - Multipart form handling for FastAPI
-- jinja2 - HTML template rendering
+- python-multipart 0.0.27+ - Form data parsing for web UI settings POST
+- jinja2 - Template rendering (no auto-escaping for htmx/inline JS)
 
 ## Configuration
 
 **Environment:**
-- `TRIGGARR_CONFIG_DIR` (optional, default `/config`) - Base directory for `triggarr.toml` and state files
-- `ROOT_PATH` (optional, default empty) - Root path for reverse proxy support
-- `TRUSTED_PROXY_IPS` (optional, default `127.0.0.1`) - Comma-separated IPs trusted for X-Forwarded-* headers; use `*` only behind controlled reverse proxy
-- `PUID` / `PGID` (Docker, optional, default 1000) - User/group ID for container execution
-- `TAILWINDCSS_VERSION` (Dockerfile, pinned to `v4.2.1`) - Tailwind CSS binary version for reproducible CSS builds
+- `TRIGGARR_CONFIG_DIR` - Config directory (default: `/config`, must be absolute)
+- `ROOT_PATH` - Reverse proxy prefix (empty string if not set)
+- `TRUSTED_PROXY_IPS` - CSV of IPs to trust X-Forwarded-For/Proto from (default: `127.0.0.1`, special value `*`)
 
 **Build:**
-- `pyproject.toml` - Project metadata, dependencies, and build configuration
-- `Dockerfile` - Multi-stage Docker build (builder stage for Tailwind CSS, production stage with slim Python image)
-- `.dockerignore` - Build context exclusions (prevents .git, .venv, etc. in image)
-- `entrypoint.sh` - Container startup script with PUID/PGID privilege management
+- `pyproject.toml` - Project metadata, dependencies, tool configs
+- `Dockerfile` - Multi-stage: Tailwind CSS compilation stage → production runtime
+- `entrypoint.sh` - Non-root user privilege drop (`triggarr_default` fallback)
 
 ## Platform Requirements
 
 **Development:**
 ```bash
-uv sync --extra dev                    # Install with dev dependencies
-uv run pytest tests/ -x -q             # Run tests with asyncio_mode=auto
-uv run ruff check triggarr/ tests/     # Lint with Ruff (E,F,I,UP,B,SIM)
-uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch
+uv sync --extra dev              # install with dev deps
+uv run pytest tests/ -x -q       # test
+uv run ruff check triggarr/ tests/  # lint (120 char line)
+uv run tailwindcss -w            # CSS watch (v4.2.1)
+docker build -t triggarr:local . # Docker build
 ```
 
 **Production:**
-- Docker image: `ghcr.io/thejuran/triggarr` (published from GitHub Actions)
-- Container port: 8484 (HTTP)
-- Volume mount: `/config` - Config directory (holds `triggarr.toml`, `state.json`, `search_history.db`)
-- Health check: HTTP GET `http://localhost:8484/health` (30s interval, 5s timeout, 3 retries)
-- Non-root user: `triggarr` or UID from `PUID` (Linux capability: dropped via entrypoint.sh)
+- Docker container (ghcr.io/thejuran/triggarr)
+- Single-threaded asyncio event loop (no threading model)
+- SQLite database at `{TRIGGARR_CONFIG_DIR}/triggarr.db` (with migrations)
+- Config file at `{TRIGGARR_CONFIG_DIR}/triggarr.toml`
+- Secrets stored as environment variables → injected via SecretStr
+- Health check endpoint: `GET /health` (200 OK when ready)
+- Exposed port: 8484
+
+## Data Flow at Startup
+
+1. `uv run python -m triggarr` → `triggarr/__main__.py:main()`
+2. Load config from `triggarr.toml` via Pydantic Settings TOML loader
+3. Validate all Radarr/Sonarr/Lidarr instances (URL + API key via httpx)
+4. Initialize SQLite database + run versioned migrations
+5. Start APScheduler with lifespan-managed background search cycles
+6. Mount FastAPI app with auth/CSRF/security middlewares
+7. Serve on `0.0.0.0:8484` with optional reverse proxy prefix
 
 ---
 
-*Stack analysis: 2026-05-25*
+*Stack analysis: 2026-06-01*

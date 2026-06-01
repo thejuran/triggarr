@@ -1,334 +1,208 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-05-25
+**Analysis Date:** 2026-06-01
 
 ## Naming Patterns
 
 **Files:**
-- Lowercase with underscores: `config.py`, `logging.py`, `search_engine.py`
-- Module names reflect their primary function or domain
-- Package directories (e.g., `clients/`, `models/`, `search/`, `web/`)
+- Lowercase with underscores: `config.py`, `state.py`, `tracking.py`
+- Test files: `test_*.py` (e.g., `test_config.py`, `test_middleware.py`)
+- Private/internal modules: `_migrate_v22_to_v23()`, `_atomic_toml_write()`, `_sanitize_exc()`
+- Directories: Lowercase, plural for collections: `tests/`, `models/`, `clients/`, `web/`
 
 **Functions:**
-- Lowercase with underscores: `load_settings()`, `get_config_path()`, `filter_monitored()`
-- Public functions are regular: `def get_config_path() -> Path:`
-- Private functions start with underscore: `def _atomic_toml_write()`, `def _is_v22_format()`
-- Async functions use `async def`: `async def run_radarr_cycle()`, `async def get_wanted_missing()`
-- Helper functions for internal module use prefixed with underscore: `_relative_time()`, `_sanitize_card_id()`
+- Async search/tracking functions use clear action verbs: `run_radarr_cycle()`, `run_tracking_check()`, `run_migrations()`
+- Helper functions prefixed with `_`: `_parse_timestamp()`, `_determine_outcome()`, `_default_instance_state()`
+- Type/class initialization: `make_settings()`, `make_app()` (test factories)
+- Private query functions: `_get_outcome()`, `_get_stat()` (test database helpers)
+- Camel case reserved for class methods: `model_validate()`, `get_secret_value()`, `get_paginated()`
 
 **Variables:**
-- Lowercase with underscores: `config_path`, `search_interval`, `api_key`, `item_count`
-- Constants in UPPERCASE: `COOKIE_MAX_AGE`, `APP_TYPES`, `_V22_FLAT_KEYS`
-- Private module-level constants start with underscore: `_PKG_DIR`, `_jinja_env`
+- Snake case throughout: `config_path`, `search_window_minutes`, `raw_api_key`, `instance_id`
+- Boolean flags end with descriptive suffix: `renamed`, `window_expired`, `has_enabled_app`
+- Loop accumulators/counters: `counts`, `rows`, `groups`, `entries`
+- Abbreviated where clear: `exc` (exception), `db` (database), `app` (application), `msg` (message)
 
 **Types:**
-- PascalCase for classes: `Settings`, `InstanceConfig`, `GeneralConfig`, `AuthConfig`
-- TypedDict names: `AppState`, `TriggarrState`
-- Use type hints on all public function signatures
+- Pydantic models use PascalCase: `Settings`, `InstanceConfig`, `AppState`, `TriggarrState`, `GrabEvent`
+- TypedDict models use PascalCase: `AppState`, `TriggarrState` (defined in `triggarr/state.py`)
+- Generic type hints after imports: `dict[str, Any]`, `list[dict]`, `tuple[str | None, str]`
 
 ## Code Style
 
 **Formatting:**
-- Tool: `ruff` (configured in `pyproject.toml`)
-- Line length: 120 characters
-- Python target: 3.11+
+- Tool: `ruff` (via `uv run ruff check triggarr/ tests/`)
+- Line length: 120 characters (configured in `pyproject.toml`)
+- Target version: Python 3.11+
 
 **Linting:**
-- Enabled rule sets: E (errors), F (pyflakes), I (imports), UP (upgrades), B (flake8-bugbear), SIM (simplify)
-- Run: `uv run ruff check triggarr/ tests/`
-- Format imports with ruff's `I` rule (import sorting)
-
-**Type Hints:**
-- Required on all public function signatures
-- Avoid `Any` when a specific type is known
-- Use `|` for union types (PEP 604): `str | None`, `dict[str, Any]`
-- Use `from __future__ import annotations` at top of all modules for PEP 563 compatibility
-
-**Async Functions:**
-- Prefix with `async def` when the function contains `await`
-- Never mark functions `async` if they contain no `await` calls
-- Always `await` external calls (HTTP, database, file I/O)
-- Wrap external `await` calls in try/except with meaningful error context
+- Rules enabled: `E` (errors), `F` (Pyflakes), `I` (isort imports), `UP` (pyupgrade), `B` (bugbear), `SIM` (simplify)
+- Config location: `pyproject.toml` under `[tool.ruff]`
+- No bare `except:` — always catch specific exception types
+- Imports organized by ruff isort plugin (E/F/I/UP/B/SIM rules)
 
 ## Import Organization
 
 **Order:**
-1. `from __future__ import annotations` (if used)
-2. Standard library (stdlib)
-3. Third-party packages
-4. Local imports from `triggarr` package
+1. `from __future__ import annotations` (always first in module files)
+2. Standard library: `import os`, `import sys`, `from pathlib import Path`, `from typing import TYPE_CHECKING`
+3. Third-party: `import httpx`, `import pydantic`, `from loguru import logger`, `import aiosqlite`
+4. Local: `from triggarr.config import load_settings`, `from triggarr.models.config import Settings`
+5. Conditional imports under `if TYPE_CHECKING:` block for forward references
 
 **Path Aliases:**
-- None configured — use absolute imports from package root: `from triggarr.models.config import Settings`
-- Internal imports use full paths: `from triggarr.clients.radarr import RadarrClient`
-
-**Example (from `triggarr/search/engine.py`):**
-```python
-from __future__ import annotations
-
-import contextlib
-import time
-from collections.abc import Callable
-from datetime import UTC, datetime
-
-import aiosqlite
-import httpx
-import pydantic
-from loguru import logger
-
-from triggarr.clients.lidarr import LidarrClient
-from triggarr.db import insert_search_entry
-from triggarr.models.config import Settings
-from triggarr.state import TriggarrState
-```
+- No path aliases in use; all imports are explicit relative paths from `triggarr/` root
+- Test imports: `from tests.conftest import make_settings`, `from triggarr.clients.base import ArrClient`
 
 ## Error Handling
 
 **Patterns:**
-- Specific exception catching: Never bare `except:` — always catch specific exceptions
-- Example from `triggarr/clients/base.py`:
-  ```python
-  try:
-      response = await self._client.request(method, path, **kwargs)
-      response.raise_for_status()
-      return response
-  except (httpx.HTTPStatusError, httpx.TransportError) as exc:
-      logger.warning("Retry failed: {exc}", exc=type(exc).__name__)
-      raise
-  ```
-- HTTP errors: Catch `httpx.HTTPStatusError`, `httpx.HTTPError`, `httpx.TimeoutException`
-- Validation errors: Catch `pydantic.ValidationError`
-- Always log errors with loguru before re-raising
-- Sanitize exception messages for logs (don't leak URLs, API keys, paths)
 
-**Example from `triggarr/search/engine.py`:**
-```python
-def _sanitize_exc(exc: Exception) -> str:
-    """Return a safe, type-based summary of an exception for storage."""
-    if isinstance(exc, httpx.HTTPStatusError):
-        return f"HTTP {exc.response.status_code}"
-    if isinstance(exc, httpx.TimeoutException):
-        return "request timeout"
-    return type(exc).__name__
-```
+1. **HTTP/API Errors:**
+   - Catch and log: `except (httpx.HTTPError, pydantic.ValidationError) as exc:`
+   - Log structured messages with context: `"Tracking[{inst}]: failed to fetch grab history..."`
+   - For HTTPStatusError, extract status code: `f"HTTP {exc.response.status_code}"`
+   - Never log full request/response bodies (secrets in headers)
+   - Example from `triggarr/tracking.py` lines 62-76
+
+2. **Config Loading Errors:**
+   - TOML parsing: Catch `tomllib.TOMLDecodeError` and `UnicodeDecodeError` separately
+   - Call dedicated handler `_log_corrupt_config_and_exit()` to provide user-friendly error message
+   - Path-only disclosure — never log config contents
+   - Example: `triggarr/config.py` lines 361-373
+
+3. **Database/File Operations:**
+   - Catch `OSError` for file I/O, log with context and path
+   - Use context managers (`with`, `async with`) to ensure cleanup
+   - For temp file cleanup failures, log but don't re-raise FileNotFoundError
+   - Example: `triggarr/config.py` lines 120-142
+
+4. **Pydantic Validation:**
+   - Validation errors bubble up — do NOT catch and suppress
+   - Let `ValidationError` surface for debugging (operator needs to fix config)
+   - Tests explicitly check: `with pytest.raises(ValidationError, match="..."):`
+
+5. **Search Cycle Errors:**
+   - Non-fatal errors (network, validation) logged but cycle continues
+   - Caught as tuple: `except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError)`
+   - Count errors for dashboard visibility
+   - Example: `triggarr/search/engine.py` tracks `error_count` in cycle returns
 
 ## Logging
 
-**Framework:** Loguru
+**Framework:** loguru (never use `print()` or `logging` module)
 
-**Usage:**
-- Import: `from loguru import logger`
-- Never use `print()` or `logging` module
-- API keys are automatically redacted by `create_redacting_sink()` in `triggarr/logging.py`
+**Setup:** `triggarr/logging.py` configures a custom redacting sink
 
 **Patterns:**
-```python
-logger.info("Message with {var}", var=value)
-logger.warning("Something unexpected: {path}", path=config_path)
-logger.debug("Internal state: {state}", state=some_dict)
-logger.exception("API call failed")  # Logs full traceback
 
-# Never:
-logger.info(f"API key: {api_key}")  # Would be logged unsanitized before redaction
-```
+- Initialize with `from loguru import logger` at module top
+- Structured logging with named parameters: `logger.info("Config loaded: {path}", path=config_path)`
+- Levels used: `debug` (dev/trace), `info` (lifecycle), `warning` (recoverable issues), `error` (failures)
+- Secret redaction automatic via custom sink — no need to mask in code
+- Never call `print()` for output
+- Log buffer captured separately for web UI (see `triggarr/log_buffer.py`)
 
-**Log Levels:**
-- `debug`: Internal state, detailed flow (cursor positions, batch slicing)
-- `info`: Lifecycle events, config migration, connection validation
-- `warning`: Non-fatal failures, retries, config issues
-- `error`: Unrecoverable errors (logged at endpoint level)
-
-**Secrets Redaction:**
-- Secrets are automatically redacted by the custom sink before any output
-- Covers both log messages AND exception tracebacks
-- SecretStr values: Call `.get_secret_value()` only at initialization (HTTP client setup)
-
-**Example from `triggarr/logging.py`:**
-```python
-def create_redacting_sink(secrets: list[str], stream: IO[str] = sys.stderr) -> Callable[[str], None]:
-    """Create a loguru sink that redacts secrets from the full formatted output."""
-    def sink(message: Any) -> None:
-        text = str(message)
-        for secret in secrets:
-            if secret:
-                text = text.replace(secret, "[REDACTED]")
-        stream.write(text)
-    return sink
-```
+Examples:
+- `logger.info("Schema migration complete (now v{v})", v=target)` (line 112, `triggarr/db.py`)
+- `logger.warning("Tracking[{inst}]: failed to fetch ...", inst=instance_id, ...)` (line 65, `triggarr/tracking.py`)
+- `logger.error("Config write failed: {path} - {exc}", path=path, exc=exc)` (line 131, `triggarr/config.py`)
 
 ## Comments
 
 **When to Comment:**
-- Complex algorithms: Explain the "why", not the "what"
-- Non-obvious logic: Tag-filtering logic, batch capping, deduplication
-- Workarounds: Mark with `# DEBT-XX` or `# SRCH-XX` markers for tracking
+- Document non-obvious algorithmic choices (e.g., v2.2 config migration detection logic)
+- Reference external constraints (e.g., SAFETY-01b pending row cap multiplier)
+- Explain why, not what (code shows what; comments explain why)
+- Mark temporary workarounds with task/issue references
 
-**Example from `triggarr/search/engine.py`:**
-```python
-def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tuple[int, int]:
-    """Cap total batch sizes to a hard maximum, splitting proportionally."""
-    if hard_max <= 0:
-        return (missing_count, cutoff_count)
-    total_requested = missing_count + cutoff_count
-    if total_requested <= hard_max:
-        return (missing_count, cutoff_count)
-    # Proportional split, round down for missing, remainder to cutoff
-    effective_missing = max(0, (missing_count * hard_max) // total_requested)
-    effective_cutoff = hard_max - effective_missing
-    return (effective_missing, effective_cutoff)
-```
-
-**JSDoc/Docstrings:**
-- All public functions require docstrings
-- Format: Google-style with Args, Returns, Raises
-- Example from `triggarr/auth.py`:
+**JSDoc/TSDoc:**
+- All public functions documented with docstrings (Google-style)
+- Args section: parameter types and purpose
+- Returns section: type and description
+- Example from `triggarr/config.py` lines 230-235:
   ```python
-  def hash_password(plaintext: str) -> str:
-      """Hash a plaintext password with bcrypt (12 rounds).
-      
+  def generate_default_config(config_path: Path) -> None:
+      """Write a commented default TOML config template to disk atomically.
+
       Args:
-          plaintext: The password to hash.
-      
-      Returns:
-          Bcrypt hash string suitable for storage.
-      
-      Raises:
-          ValueError: If password exceeds 72 bytes (bcrypt limit).
+          config_path: Destination path for the config file.
       """
   ```
 
-**Inline Comments:**
-- Used sparingly; prefer clear code over comments
-- Useful for non-obvious intent: `# keep previous value`, `# wrap-around detected`
-- Mark technical debt: `# DEBT-03: max resolved rows kept in search_history`
-
 ## Function Design
 
-**Size:**
-- Keep functions focused and testable (under 50 lines preferred)
-- Pure functions (no side effects) for filtering/batching logic
-- Async functions for I/O-bound operations (HTTP, database)
+**Size:** 
+- Preference for single-responsibility functions
+- Migration functions like `_migrate_v7()` can be longer (~100 lines) due to SQL complexity
+- Search cycle functions `run_radarr_cycle()` organized into clear sections with blank lines
 
 **Parameters:**
-- Type hints required on all parameters
-- Keyword-only arguments for optional parameters using `*` separator
-- Example from `triggarr/web/routes.py`:
-  ```python
-  def _relative_time(dt: datetime | None, *, short_threshold: bool = False) -> str:
-  ```
+- Type hints on all parameters: `config_path: Path`, `batch_size: int`
+- Keyword-only args for optional parameters in orchestrator functions: `run_tracking_check(..., tracking_window_minutes: int)`
+- Factories use keyword args with sensible defaults: `make_settings(radarr_url: str = "http://radarr:7878", ...)`
 
 **Return Values:**
-- Explicit return types required
-- Return tuples for multiple values: `tuple[list, int]` for (batch, new_cursor)
-- Use `| None` for optional returns: `str | None`
-
-**Example (Pure Function):**
-```python
-def filter_monitored(items: list[dict]) -> list[dict]:
-    """Filter out items where monitored is not True."""
-    return [item for item in items if item.get("monitored", False)]
-```
+- Explicit return types on all functions: `-> dict[str, int]`, `-> TriggarrState`, `-> None`
+- Tuple unpacking for multi-value returns: `outcome, detail, stat_increments = _determine_outcome(...)`
+- Optional returns documented: `-> str | None`, `-> Path | None`
 
 ## Module Design
 
 **Exports:**
-- Public functions/classes exported directly from module
-- Private functions/classes prefixed with underscore
-- Example: `triggarr/config.py` exports `load_settings()`, `ensure_config()`, `generate_default_config()`
+- Public functions at module level (no wrapper classes unless necessary)
+- Internal helpers prefixed with `_` to signal non-public API
+- Each module has a docstring explaining purpose: `"""SQLite-backed search history persistence. ..."""`
+- Example: `triggarr/config.py` exports `load_settings()`, `generate_default_config()`, `ensure_config()`; `_atomic_toml_write()` is internal
 
-**File Organization:**
-- Module docstring at top with purpose
-- Imports grouped per PEP 8
-- Helper functions before public functions
-- Constants at module level
+**Barrel Files:**
+- Minimal use; each module is imported directly by name
+- `tests/conftest.py` re-exports test helpers: `make_settings()`, `default_state()`
+- No wildcard imports (`from module import *`)
 
-**Example Module Structure (`triggarr/auth.py`):**
+## API Key Security
+
+**SecretStr Pattern:**
+- All API keys stored in `pydantic.SecretStr` fields (e.g., `api_key: SecretStr` in `InstanceConfig`)
+- Call `.get_secret_value()` ONLY when initializing HTTP client: `client = httpx.AsyncClient(headers={"X-Api-Key": config.api_key.get_secret_value()})`
+- Never store return value in variable or log it
+- Tests verify: `assert secret not in str(config)` (line 118, `test_config.py`)
+
+## Atomic File Writes
+
+**Pattern (SAFETY-04):**
 ```python
-"""Authentication helpers: password hashing, cookie signing, and token generation."""
-
-from __future__ import annotations
-
-import secrets
-import bcrypt
-from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
-
-COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # Constants
-
-def hash_password(plaintext: str) -> str:  # Public functions
-    ...
-
-def verify_password(plaintext: str, hashed: str) -> bool:
-    ...
+# 1. Create temp file in same directory as target
+fd, tmp_path = tempfile.mkstemp(dir=parent_dir, suffix=".tmp")
+# 2. Write and fsync data
+with os.fdopen(fd, "wb") as f:
+    data.dump(f)
+    f.flush()
+    os.fsync(f.fileno())
+# 3. Atomic replace
+os.replace(tmp_path, target_path)
+# 4. fsync parent directory for durability
+dir_fd = os.open(parent_path, os.O_RDONLY)
+os.fsync(dir_fd)
+os.close(dir_fd)
 ```
 
-## Data Handling
+Applied in:
+- `triggarr/config.py` `_atomic_toml_write()` (lines 94-162)
+- `triggarr/state.py` `save_state()` (lines 185-257)
+- `triggarr/config.py` `generate_default_config()` (lines 230-297)
 
-**Atomic Writes:**
-- Used for config (TOML) and state (JSON) files
-- Pattern: write to temp file, fsync, rename atomically
-- Example from `triggarr/config.py`:
-  ```python
-  def _atomic_toml_write(path: Path, data: dict) -> None:
-      """Write TOML data atomically using tempfile + fsync + rename."""
-      dir_fd = None
-      fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-      try:
-          with os.fdopen(fd, "wb") as f:
-              tomli_w.dump(data, f)
-              f.flush()
-              os.fsync(f.fileno())
-          os.replace(tmp_path, path)
-          dir_fd = os.open(path.parent, os.O_RDONLY)
-          os.fsync(dir_fd)
-      except Exception:
-          with contextlib.suppress(OSError):
-              os.unlink(tmp_path)
-          raise
-      finally:
-          if dir_fd is not None:
-              os.close(dir_fd)
-  ```
+## Python Version & Future Imports
 
-**SecretStr Usage:**
-- All API keys stored as `SecretStr` in config models
-- Call `.get_secret_value()` ONLY when initializing HTTP clients
-- Never log or repr a SecretStr directly
-- Example from `triggarr/models/config.py`:
-  ```python
-  class InstanceConfig(BaseModel):
-      api_key: SecretStr = SecretStr("")
-  ```
+**Version:** 3.11+
 
-**Validation:**
-- Use Pydantic validators with `@model_validator` for custom logic
-- Example from `triggarr/models/config.py`:
-  ```python
-  @model_validator(mode="after")
-  def at_least_one_search_count(self) -> InstanceConfig:
-      """Ensure at least one search count is positive when enabled."""
-      if self.enabled and self.search_missing_count <= 0 and self.search_cutoff_count <= 0:
-          msg = "At least one search count must be > 0 when enabled"
-          raise ValueError(msg)
-      return self
-  ```
+**Future Imports:**
+- All modules start with `from __future__ import annotations` to enable PEP 563 postponed evaluation
+- Allows forward references without `TYPE_CHECKING` block in many cases
+- Necessary for recursive types and self-references
 
-## Testing Integration
-
-**Test File Locations:**
-- Tests in `tests/` directory parallel to `triggarr/` package
-- Example: `triggarr/search/engine.py` → `tests/test_search.py`
-
-**Test Naming:**
-- Test classes: `TestClassName` (each test class tests one function/behavior)
-- Test methods: `test_description()` (describe what is being tested)
-- Example from `tests/test_validation.py`:
-  ```python
-  class TestValidateArrUrl:
-      def test_valid_http_url(self) -> None:
-          ok, err = validate_arr_url("http://radarr:7878")
-          assert ok is True
-  ```
+Example: `triggarr/state.py` line 11
 
 ---
 
-*Convention analysis: 2026-05-25*
+*Convention analysis: 2026-06-01*

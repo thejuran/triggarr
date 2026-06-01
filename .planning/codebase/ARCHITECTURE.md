@@ -1,361 +1,358 @@
-<!-- refreshed: 2026-05-25 -->
+<!-- refreshed: 2026-06-01 -->
 # Architecture
 
-**Analysis Date:** 2026-05-25
+**Analysis Date:** 2026-06-01
 
 ## System Overview
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│                      FastAPI Web Server (uvicorn)                         │
-│         `triggarr/__main__.py` port 8484, stateless request handling      │
-└────────────────┬───────────────────────────────────────────────┬─────────┘
-                 │                                               │
-    ┌────────────▼────────────┐                  ┌──────────────▼─────┐
-    │   Web Routes Layer      │                  │  Authentication     │
-    │  `triggarr/web/`        │                  │  `triggarr/auth.py` │
-    ├────────────────────────┤                  │  Forms/Basic/API    │
-    │ • Jinja2 templates      │                  │  D-11: Policy       │
-    │ • HTmx form handlers    │                  │                     │
-    │ • JSON API endpoints    │                  └─────────────────────┘
-    │ • Settings dashboard    │
-    │ • Config editor         │
-    └────────────┬────────────┘
-                 │
-    ┌────────────▼────────────────────────────────────────────┐
-    │         Middleware Stack (FIFO order, LIFO response)     │
-    ├────────────────────────────────────────────────────────┤
-    │ 1. SecurityHeadersMiddleware (response headers)          │
-    │ 2. OriginCheckMiddleware (CSRF via Origin/Referer)      │
-    │ 3. AuthMiddleware (deny-all + whitelist)                │
-    │    `triggarr/web/middleware.py`                         │
-    └────────────┬────────────────────────────────────────────┘
-                 │
-    ┌────────────▼──────────────────────┐
-    │      Scheduler / Search Engine     │
-    ├───────────────────────────────────┤
-    │ APScheduler + asyncio.Lock        │
-    │ `triggarr/search/scheduler.py`    │
-    │                                   │
-    │ Interval jobs per instance:       │
-    │ • RadarrClient (search cycles)    │
-    │ • SonarrClient (search cycles)    │
-    │ • LidarrClient (search cycles)    │
-    │ `triggarr/search/engine.py`       │
-    │                                   │
-    │ Tracking check (post-search)      │
-    │ `triggarr/tracking.py`            │
-    └────────┬──────────┬───────────────┘
-             │          │
-    ┌────────▼──┐   ┌───▼────────────┐
-    │ Clients    │   │ Persistence    │
-    └────────────┘   └────────────────┘
-         │                │
-    ┌────▼─────────────┐  │
-    │ HTTP Clients:    │  │
-    │ • RadarrClient   │  │
-    │ • SonarrClient   │  │
-    │ • LidarrClient   │  │
-    │ `triggarr/       │  │
-    │  clients/`       │  │
-    │                  │  │
-    │ Base: ArrClient  │  │
-    │ • Pagination     │  │
-    │ • Retry logic    │  │
-    │ • Validation     │  │
-    └────────┬─────────┘  │
-             │             │
-    ┌────────▼──────────┐  │
-    │ External APIs:    │  │
-    │ • Radarr REST API │  │
-    │ • Sonarr REST API │  │
-    │ • Lidarr REST API │  │
-    └───────────────────┘  │
-                            │
-    ┌───────────────────────▼──────────────┐
-    │     Persistence Layer                │
-    ├───────────────────────────────────────┤
-    │ Config:                               │
-    │ • TOML parsing & validation           │
-    │ • `triggarr/config.py`                │
-    │ • Atomic write-then-rename            │
-    │ • v2.2→v2.3 migration                │
-    │                                       │
-    │ State:                                │
-    │ • JSON cursor/history tracking        │
-    │ • `triggarr/state.py`                 │
-    │ • Per-instance state dicts            │
-    │                                       │
-    │ Search History (SQLite):              │
-    │ • `triggarr/db.py`                    │
-    │ • Versioned migrations (WAL mode)     │
-    │ • Tracking outcomes + grab events     │
-    └───────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           HTTP Server (Uvicorn)                              │
+│                         Entry: triggarr/__main__.py                          │
+├──────────────────────────────┬──────────────────────────────────────────────┤
+│   Middleware Stack           │          FastAPI Routes & UI                  │
+│  (Auth, CSRF, Security)      │  `triggarr/web/routes.py`                    │
+│  `triggarr/web/middleware.py`│  (Dashboard, Settings, Search Trigger)       │
+└──────────────┬───────────────┴──────────────────────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    FastAPI Lifespan Context Manager                          │
+│           `triggarr/search/scheduler.py::create_lifespan()`                 │
+│     Manages: Scheduler startup, client init, app.state, shutdown drain      │
+├──────────────────────────────┬──────────────────────────────────────────────┤
+│   APScheduler (asyncio)      │   HTTP Clients (long-lived)                  │
+│   Runs interval jobs for:    │   For each enabled *arr instance:            │
+│   - radarr_*_search          │   - RadarrClient                             │
+│   - sonarr_*_search          │   - SonarrClient                             │
+│   - lidarr_*_search          │   - LidarrClient                             │
+│   - update_check             │   `triggarr/clients/base.py`                 │
+└──────────┬───────────────────┴──────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Search Execution Layer                                    │
+│              Per-job closure: `make_search_job()` factory                    │
+│   Job closure includes:                                                      │
+│   - Search cycle orchestration (`run_radarr_cycle`, etc.)                   │
+│   - State mutation (cursor advance, connected flag)                         │
+│   - Failure escalation (consecutive-failure tracking)                       │
+│   - State persistence (atomic JSON + atomic SQLite writes)                  │
+│   - Tracking check (resolve pending search outcomes)                        │
+│   - Tag cache lookup (RES-03: TTL-based per-instance)                       │
+└──────────────┬──────────────────────────────────────────────────────────────┘
+               │
+               ├──────────────────────────────────────────────────────────────┐
+               │                                                              │
+               ▼                                                              ▼
+     ┌──────────────────────┐                              ┌──────────────────┐
+     │ Search Engine Cycles │                              │  Persistence     │
+     │ (engine.py)          │                              │  (State + DB)    │
+     │ - Filter monitored   │                              │                  │
+     │ - Resolve tags       │◄──────────────────────────────│ Read/Write       │
+     │ - Slice batch        │                              │ `state.py`       │
+     │ - Deduplicate        │                              │ `db.py`          │
+     │ - Query API          │                              │ `config.py`      │
+     │ - Trigger search     │                              │                  │
+     │ - Record result      │                              │ Atomic writes:   │
+     │ - Update state       │                              │ - TOML config    │
+     └──────────────────────┘                              │ - JSON state     │
+                                                           │ - SQLite history │
+                                                           └──────────────────┘
 ```
 
 ## Component Responsibilities
 
 | Component | Responsibility | File |
 |-----------|----------------|------|
-| Entry Point | Load config, validate connections, create lifespan, start uvicorn | `triggarr/__main__.py` |
-| Config Layer | TOML loading, generation, migration, atomic persistence | `triggarr/config.py` |
-| Settings Model | Pydantic schema for [general], [auth], [radarr], [sonarr], [lidarr] | `triggarr/models/config.py` |
-| Startup Orchestration | Logging setup, secret redaction, connection validation, banner | `triggarr/startup.py` |
-| Scheduler | APScheduler lifespan integration, job creation, client lifecycle | `triggarr/search/scheduler.py` |
-| Search Engine | Filtering, batching, dedup, cycle orchestration per app type | `triggarr/search/engine.py` |
-| HTTP Clients | Async httpx wrappers for Radarr/Sonarr/Lidarr REST APIs | `triggarr/clients/base.py`, `radarr.py`, `sonarr.py`, `lidarr.py` |
-| State Persistence | JSON-based cursor/history tracking with atomic writes | `triggarr/state.py` |
-| Database | SQLite search history + grab event tracking with migrations | `triggarr/db.py` |
-| Web Routes | FastAPI endpoints, template rendering, config editor, API responses | `triggarr/web/routes.py` |
-| Middleware | Auth enforcement, CSRF, security headers, path whitelisting | `triggarr/web/middleware.py` |
-| Authentication | Session signing, password hashing, API key validation | `triggarr/auth.py` |
-| Logging | Loguru setup with secret redaction sink | `triggarr/logging.py` |
-| Tracking | Post-search grab event correlation and outcome resolution | `triggarr/tracking.py` |
-| Update Check | Background async check for new releases | `triggarr/update_check.py` |
+| Entry Point | Async app lifecycle, uvicorn config, middleware stack | `triggarr/__main__.py` |
+| Config Loading | TOML parsing, validation, v2.2→v2.3 migration | `triggarr/config.py` |
+| Pydantic Models | Settings, instance config, app/auth validation | `triggarr/models/config.py` |
+| State Persistence | JSON cursors/timing, atomic write-then-rename | `triggarr/state.py` |
+| Startup Sequence | Config ensure, logging setup, connection validation, banner | `triggarr/startup.py` |
+| Scheduler Lifespan | APScheduler setup, client creation, job scheduling, graceful shutdown | `triggarr/search/scheduler.py` |
+| Search Job Factory | Closure that reads app.state at runtime, encapsulates cycle + failure escalation | `triggarr/search/scheduler.py::make_search_job()` |
+| Search Engine | Filter logic, batch slicing, dedup, API orchestration, state mutation | `triggarr/search/engine.py` |
+| Radarr Client | Paginated fetch, tag resolution, wanted/missing/cutoff endpoints | `triggarr/clients/radarr.py` |
+| Sonarr Client | Paginated fetch, episode dedup to seasons, API v3 detection | `triggarr/clients/sonarr.py` |
+| Lidarr Client | Paginated fetch, artist/album hierarchy | `triggarr/clients/lidarr.py` |
+| Base Client | Async httpx wrapper, retry logic, response parsing, pagination | `triggarr/clients/base.py` |
+| Database | SQLite search history, schema versioning, lifetime stats | `triggarr/db.py` |
+| Web Routes | Dashboard, settings CRUD, search trigger, htmx partials | `triggarr/web/routes.py` |
+| Middleware | Security headers + CSP nonce, CSRF (Origin/Referer check), auth gate | `triggarr/web/middleware.py` |
+| Auth | Session + Basic + API-key + External modes, password hashing | `triggarr/auth.py` |
+| Logging | Loguru setup with secret redaction, custom log buffer | `triggarr/logging.py` |
+| Tracking | Correlate pending searches with history grab events | `triggarr/tracking.py` |
 
 ## Pattern Overview
 
-**Overall:** Async daemon with scheduled jobs + stateless web UI
+**Overall:** Event-driven daemon with HTTP UI management layer and async background scheduler.
 
 **Key Characteristics:**
-- **Async-first:** Everything uses `asyncio` and `aiofiles`/`aiosqlite` for non-blocking I/O
-- **Single-threaded event loop:** APScheduler runs jobs via asyncio executor, not thread pool
-- **Shared state via app.state:** Clients, settings, state, and DB exposed to routes without coupling
-- **Atomic file writes:** All persistent changes (config, state, DB) use write-then-rename
-- **Job-based concurrency:** Search cycles protected by `asyncio.Lock` to prevent overlapping runs
-- **Multi-instance:** Each app type (Radarr/Sonarr/Lidarr) can have multiple named instances with independent schedules and cursors
+- **Lifespan-driven**: FastAPI `lifespan=` context manager owns scheduler and client lifecycle
+- **Job closure pattern**: Each scheduled job reads app.state at execution time (enables hot-reload without restart)
+- **Atomic persistence**: All state writes (JSON, TOML, SQLite) are atomic via write-then-rename (file) or transaction + commit
+- **Async throughout**: asyncio event loop, httpx async clients, aiosqlite for DB
+- **Narrow exception handling**: Cycle catch tuple is explicitly narrow (`httpx.HTTPError`, `pydantic.ValidationError`, `aiosqlite.Error`) to surface code bugs to the scheduler's EVENT_JOB_ERROR listener
+- **Per-job failure tracking**: Consecutive-failure counter per scheduled job instance; threshold-based escalation from WARNING to ERROR
+- **Graceful shutdown drain**: Configurable timeout (`TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT`, default 60s) that holds the lock and logs which job is stuck
 
 ## Layers
 
-**Presentation Layer:**
-- Purpose: Serve web UI via FastAPI, handle form submissions, return JSON responses
-- Location: `triggarr/web/routes.py`, `triggarr/templates/`, `triggarr/static/`
-- Contains: Route handlers, Jinja2 templates, htmx form fragments, Tailwind CSS
-- Depends on: Models (config, arr), search engine, database, auth
-- Used by: HTTP clients (browsers, mobile clients)
+**HTTP Server:**
+- Purpose: Serve web UI (dashboard, settings editor) and manage configuration
+- Location: `triggarr/__main__.py`, `triggarr/web/routes.py`
+- Contains: FastAPI app, uvicorn config, middleware stack, route handlers, Jinja2 templates
+- Depends on: Settings (config), app.state (scheduler reference), auth module
+- Used by: Web browsers, API clients (X-Api-Key or Basic auth), htmx polling
 
-**Application Layer:**
-- Purpose: Orchestrate search cycles, manage scheduler lifecycle, expose shared state
-- Location: `triggarr/search/scheduler.py`, `triggarr/search/engine.py`, `triggarr/tracking.py`
-- Contains: Job factories, cycle orchestrators, search history insertion
-- Depends on: HTTP clients, database, state, settings
-- Used by: Middleware, routes (manual search trigger)
+**Middleware & Security:**
+- Purpose: Gate requests with auth checks, apply security headers, validate CSRF
+- Location: `triggarr/web/middleware.py`, `triggarr/auth.py`
+- Contains: AuthMiddleware (session/basic/API-key validation), OriginCheckMiddleware (CSRF), SecurityHeadersMiddleware (CSP nonce + headers)
+- Depends on: Config (auth settings), request headers
+- Used by: All HTTP handlers
 
-**Domain / Business Logic Layer:**
-- Purpose: Core algorithms for filtering, batching, dedup, tag resolution
-- Location: `triggarr/search/engine.py` (pure functions)
-- Contains: `filter_by_tag()`, `filter_monitored()`, `slice_batch()`, `cap_batch_sizes()`, `resolve_tag_id()`
-- Depends on: Models
-- Used by: Search cycles
+**Scheduler & Job Orchestration:**
+- Purpose: Periodically trigger search cycles on a fixed interval per instance
+- Location: `triggarr/search/scheduler.py`, `triggarr/search/engine.py`
+- Contains: APScheduler integration, job factory, cycle functions (run_radarr_cycle, etc.), batch slicing, filtering
+- Depends on: Settings, state, clients, DB, app.state
+- Used by: FastAPI lifespan startup/shutdown, failure escalation system
 
-**Data Access Layer:**
-- Purpose: HTTP API communication, state/config persistence, database operations
-- Location: `triggarr/clients/base.py` + subclasses, `triggarr/config.py`, `triggarr/state.py`, `triggarr/db.py`
-- Contains: Async HTTP client wrapper, TOML parsing, JSON state I/O, SQLite queries
-- Depends on: Models, pydantic validation, httpx/aiosqlite libraries
-- Used by: Application layer, routes, startup
+**Data Access:**
+- Purpose: Persistent storage for configuration, state cursors, search history
+- Location: `triggarr/config.py`, `triggarr/state.py`, `triggarr/db.py`
+- Contains: TOML parsing + validation, JSON state file I/O, SQLite schema + migrations, atomic write patterns
+- Depends on: Pydantic models, pathlib
+- Used by: Startup, scheduler jobs, settings editor
 
-**Configuration & Model Layer:**
-- Purpose: Define schema, validation rules, and defaults
-- Location: `triggarr/models/config.py`, `triggarr/models/arr.py`
-- Contains: Pydantic BaseModel/BaseSettings, SecretStr fields, validators
-- Depends on: pydantic library
-- Used by: All layers
-
-**Middleware & Security Layer:**
-- Purpose: Request/response gating, auth enforcement, CSRF prevention, header injection
-- Location: `triggarr/web/middleware.py`, `triggarr/auth.py`, `triggarr/web/security.py`
-- Contains: HTTPMiddleware subclasses, session/password/API key validation
-- Depends on: Models, itsdangerous/bcrypt libraries
-- Used by: FastAPI app
+**API Clients:**
+- Purpose: Communicate with Radarr/Sonarr/Lidarr instances
+- Location: `triggarr/clients/base.py`, `triggarr/clients/radarr.py`, `triggarr/clients/sonarr.py`, `triggarr/clients/lidarr.py`
+- Contains: Async httpx wrappers, retry logic, pagination, tag fetching, history correlation
+- Depends on: httpx, Pydantic models
+- Used by: Search cycles, search-now endpoint, tag autocomplete, connection validation
 
 ## Data Flow
 
-### Primary Request Path (Web Dashboard View)
+### Primary Request Path: Scheduled Search Cycle
 
-1. Browser GET `/` (`triggarr/web/routes.py:get_dashboard`) - render dashboard template
-2. AuthMiddleware checks session cookie or redirects to `/login` (`triggarr/web/middleware.py:AuthMiddleware`)
-3. Route reads `app.state.triggarr_state` (current cursor, stats) and `app.state.db` (recent searches)
-4. Jinja2 renders `dashboard.html` with passed state (instance cards, search log)
-5. Template includes htmx polling: `hx-get="/dashboard/card/{app}/{instance}"` every 15s
-6. Browser makes polling requests → partial handler rebuilds card HTML with live stats
-7. Response returned to browser
+1. **Scheduler triggers job** (`triggarr/search/scheduler.py::make_search_job()` returned closure, registered at lifespan startup)
+   - Job reads app.state.{app_name}_clients and app.state.settings at execution time
+   - Records job_id and start time in app.state.search_lock_holder for graceful shutdown tracking
 
-### Config Editor (Web Settings Form)
+2. **Acquire search_lock** (`asyncio.Lock`, enforces one search cycle at a time)
+   - Serializes scheduled cycles and config-save operations (SAFETY-05)
 
-1. Browser POST `/settings/save` with form data (`triggarr/web/routes.py:post_settings_save`)
-2. AuthMiddleware validates session (or redirects)
-3. Route handler parses + validates form fields using Pydantic models
-4. Settings atomically written to TOML via `_atomic_toml_write()` (`triggarr/config.py`)
-5. Scheduler clients and state reloaded from updated config (hot-reload via `app.state.settings = new_settings`)
-6. Jobs rescheduled if intervals changed
-7. Redirect to `/settings` with success banner
+3. **Resolve tag cache** (RES-03: TTL-based, 1-hour default)
+   - Read or fetch tags, store in app.state.tag_cache with time.monotonic() timestamp
+   - Invalidated on instance config changes or removal
 
-### Automated Search Cycle (Scheduled Job)
+4. **Invoke cycle function** (`run_radarr_cycle`, `run_sonarr_cycle`, or `run_lidarr_cycle`)
+   - Client.get_wanted_missing() / get_wanted_cutoff() — paginated API fetch
+   - Filter by monitored status
+   - Filter by tag (if configured)
+   - Cap batch sizes (hard_max_per_cycle)
+   - Slice cursor-based batch
+   - For each item: trigger search (client.command_search) and log to DB (insert_search_entry)
+   - Update app.state.triggarr_state (cursors, last_run, connected flag)
 
-1. APScheduler fires interval job for `{app}_{instance}_search` (e.g., `radarr_Default_search`)
-2. Job closure (`make_search_job()`) reads current client, settings, state from `app.state` at execution time
-3. Calls `run_radarr_cycle()` (or sonarr/lidarr variant) with client, state, settings
-4. Cycle:
-   a. Fetches wanted/missing queue via client API (`get_wanted_missing()`)
-   b. Applies tag filters if configured (resolve tag ID → `filter_by_tag()`)
-   c. Filters monitored items only (`filter_monitored()`)
-   d. Slices batch starting at cursor with wrap-around detection (`slice_batch()`)
-   e. Caps total batch size if hard_max configured (`cap_batch_sizes()`)
-   f. Triggers search command via client POST (`search_movies()`)
-   g. Logs search entry to SQLite (`insert_search_entry()`)
-   h. Updates state cursor and stats
-5. State saved atomically to JSON (`save_state()`)
-6. Tracking check runs (post-search grab event correlation)
-7. Results logged with redacted values
+5. **Evaluate cycle outcome** (`_evaluate_cycle_outcome`)
+   - Read app.state[app_name][instance]["connected"] flag
+   - If False: increment app.state.search_failures[job_id] (consecutive-failure counter)
+   - If True or unknown: reset counter to 0
+   - May escalate WARNING→ERROR if counter >= threshold (app.state.settings.general.max_consecutive_failures)
 
-### State Persistence Flow
+6. **Persist state** (atomic write-then-rename)
+   - Call save_state(app.state.triggarr_state, state_path) in executor (non-blocking)
+   - On success: reset app.state.persistence_degraded to False
+   - On OSError/aiosqlite.Error: set app.state.persistence_degraded to True, log ERROR, re-raise for EVENT_JOB_ERROR listener
 
-1. State loaded from JSON at startup (`load_state()`) or defaults created
-2. Per-instance cursors tracked: `radarr.Default.missing_cursor = 5`, etc.
-3. After each search cycle, state updated in memory and persisted via `save_state()` with write-then-rename
-4. On container restart, state reloaded → cursors resume from last known position
-5. v2.2 flat format auto-migrated to v2.3 nested format on load
+7. **Run tracking check** (resolve pending searches from prior cycles)
+   - Query DB for pending items
+   - Correlate with history grab events
+   - Update DB outcome column (grabbed, partial, unresolved)
+   - Log summary
+
+8. **Release search_lock** (finally block)
+   - Clear app.state.search_lock_holder = None
+
+9. **If exception raised** (not swallowed by narrow-tuple catch)
+   - APScheduler's EVENT_JOB_ERROR listener (_on_job_error) logs at ERROR level
+   - Sanitizes httpx/pydantic exceptions to avoid logging API URLs with credentials
+
+### Secondary Flow: Manual Search via Web UI
+
+1. **POST /search_now** (routes.py::search_now)
+   - Rate-limit check (10s between searches per instance)
+   - Invoke cycle_fn directly (bypasses scheduler job factory)
+   - Manually build tag resolver (reads app.state.tag_cache)
+   - **NOTE**: Does NOT currently go through make_search_job, so does NOT increment/reset failure counter (SAFETY-03 TODO)
+
+2. **Return partial** (htmx card update)
+   - Render app card partial with updated state snapshot
+
+### Tertiary Flow: Config Save
+
+1. **POST /settings** (routes.py::save_settings)
+   - Acquire app.state.search_lock (serializes with scheduler)
+   - Validate InstanceConfig (Pydantic raises on invalid URL/api_key)
+   - Extract SecretStr values via .get_secret_value() (only for TOML serialization)
+   - Call _atomic_toml_write(config_path, data) — temp write + fsync + rename
+   - Reload settings from disk
+   - Invalidate tag_cache for changed instances
+   - Update app.state.settings (live for next cycle)
+   - Return redirect to /settings
 
 **State Management:**
-- In-memory: `app.state.triggarr_state` dict (loaded once, updated in-place)
-- Disk: `/config/state.json` (atomic write after each cycle)
-- Database: `/config/triggarr.db` (SQLite WAL mode, async aiosqlite)
+
+- **app.state.triggarr_state**: JSON-serializable dict (TriggarrState TypedDict)
+  - Tracks per-instance cursors, timings, connection status, tag warnings
+  - Loaded at startup, mutated by cycles, persisted after each cycle
+  - Backup: search history copied to SQLite post-v2.3 (see db.py::migrate_from_state)
+
+- **app.state.settings**: Pydantic Settings model
+  - Immutable snapshot, replaced on config save
+  - Read-only from cycle/route handlers (no in-place mutation)
+
+- **app.state.search_failures**: dict[job_id, count]
+  - Per-job consecutive-failure counter
+  - Incremented on cycle failure, reset on success
+  - Compared to max_consecutive_failures to escalate ERROR level
+
+- **app.state.persistence_degraded**: bool
+  - Set to True on save_state OSError
+  - Reset to False on next successful save
+  - Flags durability issues to operator (WR-09)
+
+- **app.state.search_lock_holder**: (job_id, monotonic_start) | None
+  - Set inside search_lock acquire in make_search_job
+  - Cleared in finally block
+  - Read by shutdown drain to log which instance is stuck (RES-01)
+
+- **app.state.tag_cache**: dict[(app_name, instance_name), (tags, fetched_at)]
+  - RES-03: Performance optimization for tag resolution
+  - Invalidated on instance config change or removal
+  - Uses time.monotonic() (not wall-clock) to avoid NTP-induced staleness
 
 ## Key Abstractions
 
-**ArrClient (Base HTTP Client):**
-- Purpose: Shared async httpx wrapper for Radarr/Sonarr/Lidarr with retry + pagination
-- Examples: `RadarrClient`, `SonarrClient`, `LidarrClient` (`triggarr/clients/`)
-- Pattern: Abstract base class with abstract methods + concrete app-specific subclasses
-- Key methods: `_request_with_retry()`, `get()`, `post()`, `get_paginated()`, `validate_connection()`
+**Search Job Closure:**
+- Purpose: Encapsulate one scheduled search cycle with built-in failure tracking
+- Examples: `triggarr/search/scheduler.py::make_search_job()` returns a closure
+- Pattern: Factory returns async callable that reads app.state at runtime (enables config hot-reload)
 
-**Settings (Pydantic BaseSettings):**
-- Purpose: Type-safe config schema with validation and defaults
-- Examples: `GeneralConfig`, `AuthConfig`, `InstanceConfig` (`triggarr/models/config.py`)
-- Pattern: Nested Pydantic models with model validators for cross-field rules
-- Key methods: `get_enabled_instances()`, `@model_validator` decorators
+**Cycle Function:**
+- Purpose: Pure orchestrator that composes filters + API calls + state mutation
+- Examples: `run_radarr_cycle()`, `run_sonarr_cycle()`, `run_lidarr_cycle()` in `triggarr/search/engine.py`
+- Pattern: Receives client, state, config, DB; returns updated state (side-effects: logs, DB inserts)
 
-**Job Factory (make_search_job):**
-- Purpose: Create closures that read from `app.state` at execution time (hot-reload safe)
-- Pattern: Higher-order function returning async callable
-- Key: Avoids capturing variables; reads clients/settings/state fresh on each job execution
+**Atomic Write Pattern:**
+- Purpose: Ensure no partial writes on crash/power loss
+- Examples: `_atomic_toml_write()` in `triggarr/config.py`, `save_state()` in `triggarr/state.py`
+- Pattern: Write to temp file in same filesystem, fsync, then rename (POSIX atomic on most filesystems)
 
-**Atomic File I/O:**
-- Purpose: Prevent corruption from mid-write crashes
-- Pattern: Write to temp file in same directory, fsync, rename atomically
-- Examples: `_atomic_toml_write()` (config.py), `save_state()` (state.py)
+**Tag Resolver:**
+- Purpose: Resolve tag names to numeric IDs with caching
+- Examples: `resolve_tag_id()` in `triggarr/search/engine.py`
+- Pattern: Search tag list by case-insensitive label match; warn on miss
+
+**Batch Cursor & Slicing:**
+- Purpose: Round-robin distribute missing/cutoff items without repeated searches
+- Examples: `slice_batch()` in `triggarr/search/engine.py`
+- Pattern: Mutable cursor per app/instance in app.state.triggarr_state, wraps at end of list
 
 ## Entry Points
 
-**CLI Entry Point:**
-- Location: `triggarr/__main__.py:main()`
-- Triggers: `python -m triggarr` or Docker `entrypoint.sh`
-- Responsibilities: Catch KeyboardInterrupt, call `_run()` async entry point
+**CLI / Systemd / Docker:**
+- Location: `triggarr/__main__.py::main()`
+- Triggers: `python -m triggarr`
+- Responsibilities: Wrap async entry point in asyncio.run(), handle KeyboardInterrupt
 
-**Async Entry Point:**
-- Location: `triggarr/__main__.py:_run()`
-- Triggers: Called by `main()`
-- Responsibilities: 
-  1. Call `startup()` to load config, validate connections, setup logging
-  2. Load root_path and trusted proxy IPs from env
-  3. Create FastAPI app with lifespan context manager
-  4. Mount static files and include router
-  5. Create uvicorn.Server and serve
+**Async Runtime Entry:**
+- Location: `triggarr/__main__.py::_run()`
+- Triggers: Called by main()
+- Responsibilities: Load config, call startup(), construct FastAPI with lifespan, run uvicorn.Server.serve()
 
-**Startup Sequence:**
-- Location: `triggarr/startup.py:startup()`
-- Triggers: Called by `_run()` before server start
-- Responsibilities:
-  1. Ensure config exists (generate default if missing)
-  2. Collect secrets for log redaction
-  3. Setup loguru with redaction filter
-  4. Print startup banner
-  5. Check for localhost URL mistakes
-  6. Validate connections to all enabled *arr instances
-  7. Return Settings object
+**FastAPI Lifespan Startup:**
+- Location: `triggarr/search/scheduler.py::create_lifespan()` context manager __aenter__
+- Triggers: On HTTP server startup
+- Responsibilities: Load state, init DB, validate schema, migrate search_log, create clients, schedule jobs, start APScheduler
 
-**Lifespan Manager:**
-- Location: `triggarr/search/scheduler.py:create_lifespan()`
-- Triggers: FastAPI calls on startup/shutdown
-- Responsibilities:
-  1. **Startup:** Load state, init database, create long-lived clients, schedule jobs, start APScheduler
-  2. **Shutdown:** Cancel scheduler, close all clients, close database connection
-
-**Web Routes:**
-- Location: `triggarr/web/routes.py`
-- Triggers: HTTP requests (GET/POST/PUT/DELETE)
-- Key routes:
-  - `GET /` → dashboard (home page with instance cards)
-  - `GET /settings` → settings form
-  - `POST /settings/save` → update config + hot-reload
-  - `POST /search-now/{app}/{instance}` → trigger manual search
-  - `GET /health` → simple health check
-  - `GET /history` → search history view
-  - `POST /login`, `GET /login` → auth entry points
+**FastAPI Lifespan Shutdown:**
+- Location: `triggarr/search/scheduler.py::create_lifespan()` context manager __aexit__
+- Triggers: On SIGTERM / graceful shutdown signal
+- Responsibilities: Stop scheduler, drain search_lock (with timeout), close clients, close DB
 
 ## Architectural Constraints
 
-- **Threading:** Single-threaded event loop (asyncio). APScheduler runs jobs via executor (no thread pool). Search cycles protected by `asyncio.Lock` to prevent overlapping runs on same instance.
-- **Global state:** `app.state.*` object exposes clients, settings, state dict, database connection, scheduler. Routes access via `request.app.state` without injection.
-- **Circular imports:** Avoided by lazy imports in route handlers (e.g., `from triggarr.startup import startup` inside `_run()`). Settings and state modules do not import from web/routes.
-- **Database access:** Single `aiosqlite.Connection` object shared across all routes and scheduler. No connection pooling (single connection handles concurrent tasks via WAL mode).
-- **Config hot-reload:** Config updated on disk + in-memory `app.state.settings`. Jobs read from `app.state` at execution time → no restart required.
-- **Secrets in memory:** API keys held as `SecretStr` and called `.get_secret_value()` only at client init and log setup. Never logged or exposed to templates.
+- **Threading:** Single-threaded async event loop. uvicorn runs with workers=1 (no multiprocessing). asyncio.Lock in app.state assumes single event loop (see SAFETY-05 in scheduler.py).
+
+- **Global state:** Module-level constants in scheduler.py (_SHUTDOWN_DRAIN_TIMEOUT, _TAG_CACHE_TTL_SECONDS). Auth.needs_setup and auth.is_disabled checked at request time to enable setup flow and Disabled mode.
+
+- **Circular imports:** Avoided via lazy imports in _run() and lifespan. update_info and auth_state dicts imported into routes.py globals at module init, then shared into templates and app.state.
+
+- **Lock coordination:** app.state.search_lock serializes (a) scheduled search cycles in make_search_job and (b) all config saves in routes.py::save_settings. Single asyncio.Lock is correct only with single uvicorn worker.
+
+- **Shutdown window:** Drain timeout (_SHUTDOWN_DRAIN_TIMEOUT) must be less than the process manager's stop-timeout. Recommended: set docker-compose stop_grace_period > 60s (default), or docker run --stop-timeout > 60s.
 
 ## Anti-Patterns
 
-### Hardcoded API Keys in Logs
+### Bare Exception Swallow (Avoided)
 
-**What happens:** Early code passed raw API keys to logger calls, risking exposure in log files.
-**Why it's wrong:** Secrets leaked to disk logs become permanent audit trail vulnerabilities.
-**Do this instead:** Use `SecretStr` from pydantic, call `.get_secret_value()` only once at startup in `collect_secrets()` (`triggarr/startup.py`), pass secret list to loguru redaction filter. Never log the key itself. Example: `logger.info("Validated {app}", app="Radarr")` not `logger.info("Using key: {key}", key=api_key)`.
+**What happens:** A search cycle fails (httpx.HTTPError), swallows the exception without logging, and returns silently.
 
-### Blocking File I/O in Async Routes
+**Why it's wrong:** Operator has no visibility into transient *arr outages. May accumulate without notification.
 
-**What happens:** Using `open()` or `json.dump()` in route handlers would block the event loop.
-**Why it's wrong:** Blocks all other requests/scheduler jobs during slow disk I/O.
-**Do this instead:** Use `aiofiles` for file reads/writes, `json.loads()` with `run_in_executor()` for CPU-bound parsing. Example in `triggarr/web/routes.py`: config writes use `_atomic_toml_write()` wrapped in executor. State saves use `run_in_executor(None, save_state, ...)`.
+**Do this instead:** Use narrow-tuple catch in make_search_job::job (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error). Log immediately in the catch block. Use _record_cycle_failure() to increment per-job counter. Let unexpected exceptions (RuntimeError, KeyError, etc.) propagate to APScheduler's EVENT_JOB_ERROR listener.
 
-### Database Writes During Config Reload
+### Implicit Config Reload (Avoided)
 
-**What happens:** Config editor re-reads settings but doesn't wait for pending search jobs to finish.
-**Why it's wrong:** Job reads stale settings mid-execution, writes corrupt state or uses wrong cursors.
-**Do this instead:** Use `asyncio.Lock` to serialize access (`app.state.search_lock`). Config reload requests acquire lock before updating `app.state.settings`. Jobs acquire lock before reading settings/state. See `triggarr/search/scheduler.py:make_search_job()` where entire cycle runs under lock.
+**What happens:** A cycle function captures the client or settings at job creation time. Config changes are not visible to running cycles.
 
-### Manual Search Bypass of Rate Limiting
+**Why it's wrong:** Users change Radarr URL mid-session, but the old URL is baked into the closure and never changes.
 
-**What happens:** User clicks "search now" repeatedly, hammering *arr API.
-**Why it's wrong:** No protection against user error or automated abuse.
-**Do this instead:** Rate limit via `SEARCH_RATE_LIMIT_SECONDS = 10` checked against `app.state.last_search_time[key]`. Reject requests within window with `429 Too Many Requests`. See `triggarr/web/routes.py:post_search_now()`.
+**Do this instead:** Use the job factory pattern in make_search_job. The returned closure reads app.state.{app_name}_clients and app.state.settings at execution time (not capture time). Config saves update app.state.settings in place, visible to the next cycle.
+
+### Unguarded Cursor Mutation (Avoided)
+
+**What happens:** Two concurrent cycles both read cursor=0, slice the same batch, and write cursor=5 twice (loss of progress).
+
+**Why it's wrong:** Without synchronization, batch distribution is unpredictable and duplicated work occurs.
+
+**Do this instead:** All cycles operate within app.state.search_lock (asyncio.Lock). Single-threaded event loop + lock enforces mutual exclusion. Cursor is advanced atomically within the lock.
+
+### Direct SQLite Writes Without Transactions (Avoided)
+
+**What happens:** An insert_search_entry call raises OSError halfway through. Table is partially updated, tracking fails, query results are inconsistent.
+
+**Why it's wrong:** Durability is broken. Pending-row cap becomes stale. History queries see partial state.
+
+**Do this instead:** All DB operations in db.py use aiosqlite (async), wrap multi-operation sequences in explicit transactions (db.execute() then db.commit()), and catch OSError/aiosqlite.Error at the call site. PendingCapExceeded exception stops the insert if pending rows exceed the cap.
 
 ## Error Handling
 
-**Strategy:** Fail-open for connection errors (log warning, skip cycle, retry next interval), fail-closed for config errors (exit on startup).
+**Strategy:** Fail-open for transient issues (network blips, *arr temporary unavailability), fail-closed for permanent config errors (bad URL, invalid API key).
 
 **Patterns:**
-- **HTTPError:** Caught by `_sanitize_exc()` → safe summary (e.g., "HTTP 429") stored in DB, never full response
-- **ValidationError:** Caught as pydantic.ValidationError → error count stored, request retried next cycle
-- **Config errors:** Caught by Pydantic validators → logged + process exits with code 1 before binding port
-- **Database errors:** aiosqlite.Error caught in cycle and tracking → logged as warning, state persisted via JSON fallback
-- **Unhandled in job:** Wrapped in try/except at job level → logged as error, state not corrupted, next cycle attempts again
+
+- **Transient *arr outage:** Cycle catch tuple swallows httpx.HTTPError (network, timeout, HTTP status), increments failure counter, returns gracefully. Next cycle retries. Operator sees WARNING after N consecutive failures → ERROR after exceeding threshold.
+
+- **Config validation error:** Pydantic raises during settings load or POST validation. Return 422 Unprocessable Entity to web UI. Do not persist to disk.
+
+- **Durability error (OSError):** save_state or DB insert raises OSError (disk full, permission denied, etc.). Set app.state.persistence_degraded = True. Log ERROR immediately. Re-raise to EVENT_JOB_ERROR listener. Operator sees ERROR + degraded flag → should investigate disk space or permissions.
+
+- **Code bug (RuntimeError, KeyError, etc.):** Not caught by narrow-tuple in cycle. Propagates to APScheduler's EVENT_JOB_ERROR listener. Logged at ERROR with job_id context. Operator sees clear ERROR message (not silent disappearance).
 
 ## Cross-Cutting Concerns
 
-**Logging:** Loguru with structured `{field}` syntax + secret redaction sink. Configured via `triggarr/logging.py:setup_logging()`. Secrets collected once in `startup.py` and passed to redaction filter.
+**Logging:** Loguru with custom redacting sink (triggarr/logging.py). All API keys extracted at startup via collect_secrets() and added to redaction list. HTTP client retry logs at DEBUG, failures at WARNING/ERROR. Never log full request/response bodies (may contain credentials).
 
-**Validation:** Pydantic models enforce schema + business rules:
-- Instance count capped at 5 per app type
-- At least one search count positive when enabled
-- API keys non-empty when instance enabled
-- TOML parseable and structurally valid
+**Validation:** Pydantic models throughout (Settings, InstanceConfig, GrabEvent, Tag, etc.). Field validators reject embedded API keys in URLs (SEC-02 D-06). at_least_one_search_count validator ensures meaningful batch sizes. reject_apikey_in_url validator runs before config persistence.
 
-**Authentication:** Three-tier approach:
-1. Session cookie (browser, persistent, checked on every request)
-2. X-Api-Key header (API clients, simple header check)
-3. Basic auth (fallback for external integrations)
-See `triggarr/web/middleware.py:AuthMiddleware` dispatch logic.
+**Authentication:** Auth module (triggarr/auth.py) provides session + Basic + API-key modes. Middleware checks in order: session cookie → X-Api-Key header → Basic Authorization header. Timing-safe compare (secrets.compare_digest) prevents timing attacks. AuthMiddleware._handle_basic_auth validates and signs session cookie. Passwords hashed with argon2-cffi.
 
 ---
 
-*Architecture analysis: 2026-05-25*
+*Architecture analysis: 2026-06-01*

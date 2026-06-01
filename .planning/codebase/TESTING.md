@@ -1,406 +1,379 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-05-25
+**Analysis Date:** 2026-06-01
 
 ## Test Framework
 
 **Runner:**
-- pytest 9.0.3+
-- Config: `pyproject.toml` with `asyncio_mode = "auto"`
-- Async support: `pytest-asyncio`
+- Framework: pytest 9.0.3+ (configured in `pyproject.toml`)
+- Async support: pytest-asyncio (auto mode enabled)
+- Config location: `pyproject.toml` `[tool.pytest.ini_options]`
+- Async mode: `asyncio_mode = "auto"` (all `async def test_*` functions are auto-wrapped)
 
 **Assertion Library:**
-- Built-in `assert` statements
+- Python standard assertions (`assert`)
+- pytest parametrization via `@pytest.mark.parametrize`
+- pytest raises for exception testing: `with pytest.raises(ValidationError, match="...")`
 
 **Run Commands:**
 ```bash
-uv run pytest tests/ -x -q             # Run all tests, stop on first failure
-uv run pytest tests/ -x -q -k search   # Run specific test by name pattern
-uv run pytest tests/ -v                # Verbose output with test names
-uv run pytest tests/test_validation.py::TestValidateArrUrl::test_valid_http_url  # Single test
+uv run pytest tests/ -x -q              # Run all tests, stop on first failure
+uv run pytest tests/ -v                 # Verbose output
+uv run pytest tests/ --cov=triggarr     # Coverage report (if coverage plugin installed)
+uv run pytest tests/test_config.py      # Single file
+uv run pytest -k test_radarr_grabbed    # Filter by test name
 ```
 
 ## Test File Organization
 
 **Location:**
-- Tests in `tests/` directory (parallel to `triggarr/` package)
-- Pattern: `tests/test_<module_name>.py` for corresponding `triggarr/<module_name>.py`
-- Example: `triggarr/auth.py` → `tests/test_auth_*.py` (multiple files for auth features)
+- Test files co-located in `tests/` directory (separate from source, not alongside)
+- Parallel structure mirrors source: `tests/test_config.py` mirrors `triggarr/config.py`, `tests/test_db.py` mirrors `triggarr/db.py`
 
 **Naming:**
-- File: `test_<component>.py` (e.g., `test_validation.py`, `test_logging.py`, `test_search.py`)
-- Test class: `Test<FunctionOrFeature>` (one class per function/behavior)
-- Test method: `test_<scenario>()` (describes the test case)
-
-**Example from `tests/test_validation.py`:**
-```
-tests/
-├── conftest.py                    # Shared fixtures
-├── test_validation.py             # URL validation, safe_int, safe_log_level
-├── test_logging.py                # Loguru setup, redaction
-├── test_search.py                 # Search engine functions, cycles
-├── test_db.py                     # SQLite operations
-├── test_web.py                    # Web routes, dashboard
-├── test_auth_config.py            # AuthConfig models
-├── test_middleware.py             # Auth middleware
-└── ... (20+ test files)
-```
+- Test modules: `test_*.py` (e.g., `test_config.py`, `test_tracking.py`, `test_middleware.py`)
+- Test functions: `test_<feature>` or `async def test_<feature>` (async for I/O-heavy tests)
+- Test count: 241 async/sync test functions across 39 test files (as of 2026-06-01)
 
 **Structure:**
-```python
-"""Test module for <component> -- <what is tested>."""
-
-from __future__ import annotations
-
-import pytest
-from <imports>
-
-# ---------------------------------------------------------------------------
-# Test Class (one per function or behavior group)
-# ---------------------------------------------------------------------------
-
-
-class TestFunctionName:
-    """Docstring describing what this test class tests."""
-    
-    def test_normal_case(self) -> None:
-        """Docstring: what is expected to pass."""
-        # Arrange, Act, Assert
-        
-    def test_edge_case(self) -> None:
-        """Docstring: boundary condition."""
-        
-    def test_error_case(self) -> None:
-        """Docstring: what should fail."""
-        with pytest.raises(ValueError):
-            ...
+```
+tests/
+├── conftest.py           # Shared fixtures and factories
+├── test_config.py        # Config loading, migration, validation
+├── test_state.py         # State persistence, atomic writes
+├── test_db.py            # Database init, migrations, queries
+├── test_tracking.py      # Grab history tracking, outcome resolution
+├── test_middleware.py    # CSRF (OriginCheckMiddleware) tests
+├── test_logging.py       # Loguru setup, redaction
+├── test_search.py        # Search engine cycles (large — 1800+ lines)
+├── test_web.py           # FastAPI routes, forms, responses
+└── ... (34 other test files)
 ```
 
 ## Test Structure
 
 **Suite Organization:**
-- One test class per function/feature
-- Test methods are independent (no shared state between tests)
-- Autouse fixtures reset module-level singletons before each test
-
-**Example from `tests/test_validation.py`:**
 ```python
-class TestValidateArrUrl:
-    """URL validation: scheme enforcement, SSRF blocking, private-IP allow."""
+# Header: docstring explaining what's tested
+"""Tests for config loading, default generation, validation, and SecretStr security."""
 
-    def test_valid_http_url(self) -> None:
-        ok, err = validate_arr_url("http://radarr:7878")
-        assert ok is True
-        assert err == ""
+from __future__ import annotations
 
-    def test_ftp_scheme_rejected(self) -> None:
-        ok, err = validate_arr_url("ftp://evil.com")
-        assert ok is False
-        assert "scheme" in err.lower()
+# Imports: standard lib, third-party, local (organized by ruff)
+import io
+import tomllib
+from pathlib import Path
+from unittest.mock import patch
 
-    def test_cloud_metadata_ip_blocked(self) -> None:
-        ok, err = validate_arr_url("http://169.254.169.254/latest/meta-data")
-        assert ok is False
+import pytest
+import tomli_w
+from loguru import logger
+from pydantic import SecretStr, ValidationError
+
+# Fixtures and helpers (if any inline)
+VALID_TOML = """\
+[general]
+log_level = "debug"
+...
+"""
+
+# Tests grouped by feature with section comments
+# --- Config loading tests ---
+
+def test_settings_loads_from_toml(tmp_path: Path) -> None:
+    """Valid TOML config loads all sections correctly."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(VALID_TOML)
+
+    settings = load_settings(config_file)
+
+    assert settings.general.log_level == "debug"
 ```
 
 **Patterns:**
 
-1. **Setup/Teardown:**
-   - Use pytest fixtures for setup/teardown
-   - Autouse fixtures for global cleanup: `@pytest.fixture(autouse=True)`
-   - Example from `tests/conftest.py`:
-     ```python
-     @pytest.fixture(autouse=True)
-     def _reset_disabled_warned():
-         """Reset AuthMiddleware._disabled_warned_at before each test."""
-         AuthMiddleware._disabled_warned_at = 0.0
-         yield
-         AuthMiddleware._disabled_warned_at = 0.0
-     ```
+1. **Setup:** Use `tmp_path` fixture (pytest-provided) for file isolation
+2. **Assertions:** One logical assertion per line; multiple assertions in same test if testing one feature
+3. **Cleanup:** pytest fixtures auto-cleanup `tmp_path`; async resources closed explicitly
 
-2. **Assertion Pattern:**
-   - Use simple `assert` statements
-   - Use `pytest.raises()` for exception testing
-   - Compare return tuples: `batch, new_cursor = slice_batch(...); assert batch == [3, 4]; assert new_cursor == 5`
-
-3. **Docstrings:**
-   - Each test method has a one-line docstring describing what is tested
-   - Example: `def test_valid_http_url(self) -> None: """HTTP URLs with valid schemes accepted."""`
+Example from `test_config.py` lines 57-72:
+```python
+def test_settings_loads_from_toml(tmp_path: Path) -> None:
+    """Valid TOML config loads all sections correctly."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(VALID_TOML)
+    
+    settings = load_settings(config_file)
+    
+    assert settings.general.log_level == "debug"
+    assert "Default" in settings.radarr
+    assert settings.radarr["Default"].api_key.get_secret_value() == "radarr-secret-key-123"
+```
 
 ## Mocking
 
-**Framework:** `unittest.mock`
+**Framework:** `unittest.mock.AsyncMock`, `unittest.mock.MagicMock`, `unittest.mock.patch`
 
 **Patterns:**
-- `MagicMock()` for class instances and methods
-- `AsyncMock()` for async functions
-- `patch()` as context manager or decorator for replacing modules/functions
 
-**Common Mocks from `tests/test_web.py`:**
+1. **Async Client Mocking:**
+   ```python
+   from unittest.mock import AsyncMock
+   
+   radarr = AsyncMock()
+   radarr.get_grab_history.return_value = [_grab(...)]
+   counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
+   ```
+   Example: `test_tracking.py` lines 115-117
 
-```python
-from unittest.mock import AsyncMock, MagicMock, patch
+2. **Database Mocking:**
+   - Avoid mocking; use real aiosqlite with `tmp_path` instead
+   - Real DB ensures migrations work and state matches production
+   - Example: `test_tracking.py` `_init_db()` creates real SQLite connection (lines 34-39)
 
-# Mock FastAPI app state
-app.state.scheduler = MagicMock()
-mock_job = MagicMock()
-mock_job.next_run_time = None
-app.state.scheduler.get_job.return_value = mock_job
-
-# Mock async HTTP clients
-radarr_client = MagicMock()
-radarr_client.close = AsyncMock()
-
-# Mock database
-db = MagicMock()
-```
+3. **Patch for Global State:**
+   ```python
+   with patch("triggarr.web.middleware.OriginCheckMiddleware._disabled_warned_at", 0.0):
+       # test code
+   ```
+   Or use autouse fixtures in `conftest.py` to reset between tests:
+   Example: `conftest.py` lines 13-26 reset AuthMiddleware and rate limiter state
 
 **What to Mock:**
-- External HTTP clients (ArrClient instances)
-- Scheduler/job state
-- Database connections (for integration tests, use real `aiosqlite` connection)
-- File system operations (use `tmp_path` fixture instead)
+- External API clients (Radarr, Sonarr, Lidarr) — use AsyncMock to return fixtures
+- HTTP response objects when testing error handling paths
+- Long-running operations (when time-dependent behavior needs control)
 
 **What NOT to Mock:**
-- Pydantic models (validate real objects)
-- Core filtering/batching logic (test the pure functions)
-- Validation helpers (test actual validation)
-- SQLite database (use in-memory or temp file with real migrations)
-
-**Example from `tests/test_web.py`:**
-```python
-# Don't mock validation -- test real validation
-ok, err = validate_arr_url("http://radarr:7878")
-assert ok is True
-
-# Do mock external HTTP client
-mock_client = MagicMock()
-mock_client.get_status = AsyncMock(return_value={"version": "5.0.0"})
-app.state.clients = {"Default": mock_client}
-```
+- Database connections — use real aiosqlite
+- Config loading — test against actual TOML files
+- File I/O — use `tmp_path` fixture for isolation
+- Loguru logger — capture output instead
 
 ## Fixtures and Factories
 
-**Test Data (Fixtures):**
-- Shared fixtures in `tests/conftest.py`
-- Factory functions for building test data
+**Test Data:**
 
-**Example from `tests/conftest.py`:**
-```python
-def make_settings(
-    radarr_url: str = "http://radarr:7878",
-    radarr_enabled: bool = True,
-    radarr_api_key: str = "radarr-test-key",
-    sonarr_url: str = "http://sonarr:8989",
-    sonarr_enabled: bool = True,
-    sonarr_api_key: str = "sonarr-test-key",
-    search_missing_count: int = 5,
-    search_cutoff_count: int = 5,
-    search_interval: int = 30,
-    general: GeneralConfig | None = None,
-) -> Settings:
-    """Build a Settings instance with sensible test defaults."""
-    return Settings(
-        general=general or GeneralConfig(),
-        radarr={"Default": InstanceConfig(
-            url=radarr_url,
-            api_key=radarr_api_key,
-            enabled=radarr_enabled,
-            search_missing_count=search_missing_count,
-            search_cutoff_count=search_cutoff_count,
-            search_interval=search_interval,
-        )},
-        # ... sonarr, lidarr ...
-    )
+1. **Settings Factory (`conftest.py`):**
+   ```python
+   def make_settings(
+       radarr_url: str = "http://radarr:7878",
+       radarr_enabled: bool = True,
+       radarr_api_key: str = "radarr-test-key",
+       ...
+   ) -> Settings:
+       """Build a Settings instance with sensible test defaults."""
+       return Settings(
+           general=general or GeneralConfig(),
+           radarr={"Default": InstanceConfig(
+               url=radarr_url,
+               api_key=radarr_api_key,
+               enabled=radarr_enabled,
+               ...
+           )},
+           ...
+       )
+   ```
+   Usage: `settings = make_settings(radarr_enabled=False)`
+   Location: `tests/conftest.py` lines 29-76
 
+2. **State Factory (`conftest.py`):**
+   ```python
+   def default_state(settings: Settings | None = None) -> TriggarrState:
+       """Return a fresh default application state."""
+       return _default_state(settings)
+   ```
+   Location: `tests/conftest.py` lines 79-89
 
-def default_state(settings: Settings | None = None) -> TriggarrState:
-    """Return a fresh default application state."""
-    return _default_state(settings)
-```
+3. **Async DB Helper (`test_tracking.py`):**
+   ```python
+   async def _init_db(tmp_path):
+       """Create a test database with migrations applied, return (db, db_path)."""
+       db_path = tmp_path / "test.db"
+       db = await aiosqlite.connect(db_path)
+       await init_db(db, db_path)
+       return db, db_path
+   ```
+   Location: `test_tracking.py` lines 34-39
 
-**Fixture Registration (pytest):**
-```python
-@pytest.fixture(autouse=True)
-def _reset_rate_limit_state():
-    """Reset rate limiter state before each test."""
-    _reset_rate_limiter()
-    yield
-    _reset_rate_limiter()
+4. **Entry Insert Helper (`test_tracking.py`):**
+   ```python
+   async def _insert_entry(
+       db,
+       *,
+       app: str = "Radarr",
+       queue_type: str = "missing",
+       item_name: str = "Test Item",
+       outcome: str = "searched",
+       timestamp: datetime | None = None,
+   ) -> int:
+       """Insert a search entry, optionally override timestamp, return its id."""
+       ...
+       return row_id
+   ```
+   Usage: `row_id = await _insert_entry(db, app="Sonarr", item_id=42, timestamp=...)`
+   Location: `test_tracking.py` lines 42-73
 
-
-@pytest.fixture
-async def test_app(tmp_path):
-    """Build a minimal FastAPI app with mocked state."""
-    app = FastAPI()
-    app.state.db = await aiosqlite.connect(tmp_path / "test.db")
-    return app
-```
+5. **Grab Event Builder (`test_tracking.py`):**
+   ```python
+   def _grab(grab_id: int, date: datetime, source: str = "Release.1080p") -> GrabEvent:
+       """Helper to build a GrabEvent with ISO date string."""
+       return GrabEvent(
+           id=grab_id,
+           date=date.isoformat().replace("+00:00", "Z"),
+           eventType="grabbed",
+           sourceTitle=source,
+       )
+   ```
+   Location: `test_tracking.py` lines 24-31
 
 **Location:**
-- Global fixtures: `tests/conftest.py`
-- Module-specific fixtures: top of test file before test classes
-- Fixture function names prefixed with underscore for autouse fixtures: `_reset_rate_limit_state`
+- Shared factories: `tests/conftest.py` (auto-discovered by pytest)
+- Test-specific helpers: Defined at top of test file as `_helper()` function (prefixed with `_`)
 
 ## Coverage
 
-**Requirements:** No enforced coverage target
+**Requirements:** No hard requirement; coverage is tracked but not enforced
 
 **View Coverage:**
 ```bash
-uv run pytest tests/ --cov=triggarr --cov-report=term-missing
+uv run pytest tests/ --cov=triggarr --cov-report=html
 ```
+
+**Gaps Noted:**
+- Test count (241 tests) is comprehensive
+- Focus areas: config migration, state persistence, database migrations, search cycles, tracking, middleware
+- Some UI routes may have lower coverage (manual testing via FastAPI TestClient)
 
 ## Test Types
 
 **Unit Tests:**
-- Pure functions: `filter_monitored()`, `slice_batch()`, `validate_arr_url()`
-- Individual methods of models
-- Validation logic
-- Example from `tests/test_search.py`:
-  ```python
-  def test_filter_monitored_keeps_only_monitored():
-      items = [
-          {"id": 1, "monitored": True},
-          {"id": 2, "monitored": False},
-          {"id": 3},
-          {"id": 4, "monitored": True},
-      ]
-      result = filter_monitored(items)
-      assert len(result) == 2
-      assert result[0]["id"] == 1
-  ```
+- Scope: Individual functions in isolation
+- Approach: Mock external dependencies (HTTP clients, DB connections)
+- Examples:
+  - `test_config.py`: Config parsing, validation, SecretStr security
+  - `test_logging.py`: Redaction sink, log format
+  - `test_state.py`: State migration, merging, cleanup
 
 **Integration Tests:**
-- Database operations with real SQLite: `tests/test_db.py`
-- Config loading and migration: `tests/test_config.py`
-- Web routes with FastAPI TestClient: `tests/test_web.py`
-- Middleware behavior: `tests/test_middleware.py`
-- Example from `tests/test_db.py`:
-  ```python
-  async def test_insert_and_retrieve(tmp_path):
-      """Inserted entries are retrieved in newest-first order."""
-      db_path = tmp_path / "test.db"
-      db = await aiosqlite.connect(db_path)
-      await init_db(db, db_path)
-      
-      await insert_search_entry(db, "Radarr", "missing", "Movie A")
-      await insert_search_entry(db, "Sonarr", "cutoff", "Show B")
-      
-      results = await get_recent_searches(db)
-      assert len(results) == 2
-  ```
+- Scope: Multiple components working together (e.g., DB + config + state)
+- Approach: Real dependencies where safe (SQLite, file I/O), mocked HTTP
+- Examples:
+  - `test_db.py`: Full migration workflow, insertion + retrieval
+  - `test_tracking.py`: DB + tracking orchestrator + mocked Radarr/Sonarr clients
+  - `test_middleware.py`: FastAPI middleware with TestClient
 
 **E2E Tests:**
-- Not formally present; web UI tested via FastAPI TestClient
-- Example from `tests/test_web.py`:
-  ```python
-  @pytest.fixture
-  async def test_app(tmp_path):
-      """Build a minimal FastAPI app with mocked state."""
-      app = FastAPI()
-      app.include_router(router)
-      return app
-  
-  # Use TestClient to make requests
-  client = TestClient(app)
-  response = client.get("/")
-  assert response.status_code == 200
-  ```
+- Framework: Not explicitly used; integration tests with real TestClient serve this role
+- Approach: `test_web.py` uses `TestClient` to test full HTTP request/response cycle
+- No separate Playwright/Selenium tests (UI is htmx-based, tested via FastAPI routing)
 
 ## Common Patterns
 
 **Async Testing:**
-- pytest-asyncio with `asyncio_mode = "auto"` (no need for `@pytest.mark.asyncio`)
-- Example from `tests/test_search.py`:
-  ```python
-  async def test_run_radarr_cycle_success(tmp_path):
-      """run_radarr_cycle fetches, filters, slices, and logs searches."""
-      db = await aiosqlite.connect(tmp_path / "test.db")
-      await init_db(db, db_path)
-      
-      settings = make_settings()
-      state = default_state(settings)
-      
-      # Async call without decorator -- pytest-asyncio handles it
-      result = await run_radarr_cycle(db, settings, state)
-      assert result is not None
-  ```
-
-**Error Testing:**
-- Use `pytest.raises()` context manager
-- Example from `tests/test_validation.py`:
-  ```python
-  def test_ftp_scheme_rejected(self) -> None:
-      ok, err = validate_arr_url("ftp://evil.com")
-      assert ok is False
-      assert "scheme" in err.lower()
-  ```
-
-**Exception Details:**
-- For ValidationError: check error count and message
-- Example from `tests/test_validation.py`:
-  ```python
-  def test_invalid_log_level(self) -> None:
-      with pytest.raises(ValidationError, match="log_level"):
-          Settings(general=GeneralConfig(log_level="critical"))
-  ```
-
-**Parametrized Tests (pytest.mark.parametrize):**
-- Not heavily used in this codebase
-- When used, groups test cases for the same function with different inputs
-
-## Database Testing
-
-**SQLite with Real Migrations:**
-- `tests/test_db.py` uses real aiosqlite connections
-- Migrations run via `init_db()` before test
-- Temp directory for each test via pytest's `tmp_path` fixture
-
-**Example from `tests/test_db.py`:**
 ```python
-async def _init_test_db(tmp_path):
-    """Create a test database with migrations applied."""
-    db_path = tmp_path / "test.db"
-    db = await aiosqlite.connect(db_path)
-    await init_db(db, db_path)
-    return db, db_path
+async def test_radarr_grabbed(tmp_path):
+    """Radarr entry with grab within window resolves to 'grabbed'."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=30)
+    row_id = await _insert_entry(db, app="Radarr", item_id=42, timestamp=searched_at)
 
+    radarr = AsyncMock()
+    grab_time = searched_at + timedelta(minutes=10)
+    radarr.get_grab_history.return_value = [_grab(100, grab_time)]
 
-async def test_insert_and_retrieve(tmp_path):
-    db, db_path = await _init_test_db(tmp_path)
-    
-    await insert_search_entry(db, "Radarr", "missing", "Movie A")
-    results = await get_recent_searches(db)
-    assert len(results) == 1
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
+
+    assert await _get_outcome(db, row_id) == "grabbed"
     await db.close()
 ```
+Location: `test_tracking.py` lines 109-125
 
-## Logging in Tests
+**Error Testing:**
+```python
+def test_instance_config_rejects_both_counts_zero_when_enabled():
+    """InstanceConfig rejects both search counts = 0 when enabled."""
+    with pytest.raises(ValidationError, match="At least one"):
+        InstanceConfig(
+            url="http://radarr:7878",
+            api_key="test-key",
+            enabled=True,
+            search_missing_count=0,
+            search_cutoff_count=0,
+        )
+```
+Location: `test_config.py` lines 123-133
 
-**Capturing Logs:**
-- Use `loguru` directly in tests
-- Example from `tests/test_logging.py`:
-  ```python
-  import io
-  from loguru import logger
-  from triggarr.logging import create_redacting_sink
-  
-  def test_redaction_filter_removes_secret() -> None:
-      secret = "my-api-key-abc123"
-      output = io.StringIO()
-      
-      logger.remove()
-      sink = create_redacting_sink([secret], stream=output)
-      logger.add(sink, format="{message}", colorize=False)
-      
-      logger.info("Connecting with key {key}", key=secret)
-      
-      result = output.getvalue()
-      assert secret not in result
-      assert "[REDACTED]" in result
-  ```
+**Fixture Isolation:**
+```python
+@pytest.fixture(autouse=True)
+def _reset_disabled_warned():
+    """Reset AuthMiddleware._disabled_warned_at before each test."""
+    AuthMiddleware._disabled_warned_at = 0.0
+    yield
+    AuthMiddleware._disabled_warned_at = 0.0
+```
+Location: `conftest.py` lines 13-18
+
+**Database Query Verification:**
+```python
+async def _get_outcome(db, row_id: int) -> str:
+    """Read the outcome column for a specific search_history row."""
+    async with db.execute("SELECT outcome FROM search_history WHERE id = ?", (row_id,)) as cursor:
+        row = await cursor.fetchone()
+    return row[0]
+
+# In test:
+assert await _get_outcome(db, row_id) == "grabbed"
+```
+Location: `test_tracking.py` lines 76-80
+
+## Recent Test Additions (v2.8)
+
+**OriginCheckMiddleware CSRF Suite:**
+- `test_middleware.py`: 15+ tests covering Origin/Referer validation, scheme comparison, suffix spoof detection
+- Pins current behavior per defense document D-10, D-11
+
+**Corrupt TOML Handling:**
+- `test_config.py`: Tests for `_log_corrupt_config_and_exit()`, TOMLDecodeError handling
+- Validates v2.2 migration detection with intentionally broken TOML
+
+**Concurrent Save Stability:**
+- `test_state.py`: Tests atomic write-then-rename, directory fsync durability
+- Verifies state round-trip (save + load) preserves nested per-instance data
+
+**Async Cleanup:**
+- All async tests call `await db.close()` explicitly
+- Fixtures use `yield` for setup/teardown
+- No resource leaks from temp files (pytest auto-cleanup `tmp_path`)
+
+## Running Tests
+
+**All Tests:**
+```bash
+uv run pytest tests/ -x -q
+```
+
+**Specific Test File:**
+```bash
+uv run pytest tests/test_tracking.py -v
+```
+
+**Single Test:**
+```bash
+uv run pytest tests/test_tracking.py::test_radarr_grabbed -v
+```
+
+**With Output Capture (see print/log output):**
+```bash
+uv run pytest tests/ -s
+```
+
+**Coverage:**
+```bash
+uv run pytest tests/ --cov=triggarr --cov-report=term-missing
+```
 
 ---
 
-*Testing analysis: 2026-05-25*
+*Testing analysis: 2026-06-01*
