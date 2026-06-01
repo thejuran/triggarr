@@ -2,47 +2,37 @@
 gsd_state_version: 1.0
 milestone: v2.8
 milestone_name: Hardening & Observability
-status: executing
-stopped_at: v2.8 phases 64-67 complete + deep-reviewed (APPROVED) — paused for remote deploy before walkthrough
-last_updated: "2026-05-31T23:30:00.000Z"
-last_activity: 2026-05-31 -- Phase 67 deep-review APPROVED (0C/0W/2 fixed Mediums); milestone held open for NAS deploy + walkthrough
+status: Awaiting next milestone
+stopped_at: Phase 67 context gathered
+last_updated: "2026-06-01T00:52:30.061Z"
+last_activity: 2026-06-01 — Milestone v2.8 completed and archived
 progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 16
   completed_plans: 16
-  percent: 98
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-25)
+See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 67 — observability-csrf-test-coverage
+**Current focus:** Planning next milestone (run `/gsd:new-milestone`)
 
 ## Current Position
 
-Phase: 67 (observability-csrf-test-coverage) — COMPLETE (deep-review APPROVED)
-Plan: 3 of 3 complete
-Status: v2.8 phases 64-67 all complete + reviewed; milestone-end paused for remote NAS deploy → walkthrough → complete-milestone
-Last activity: 2026-05-31 -- Phase 67 deep-review APPROVED (0C/0W/2 fixed Mediums); 960 tests passing, ruff clean
+Phase: Milestone v2.8 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-01 — Milestone v2.8 completed and archived
 
-```
-v2.8 Progress: [████████████████████] 100% (4/4 phases)
-Phase 64: [x] Data Safety & Config Integrity
-Phase 65: [x] Scheduler Hardening & Resilience
-Phase 66: [x] Security Hardening
-Phase 67: [x] Observability & CSRF Test Coverage
-```
+### v2.8 ship record
 
-### Milestone-end resume point
-
-v2.8 code is complete, reviewed (.turingmind/REVIEW.md ✅ APPROVED), 960 tests pass. Held open at orchestrator Phase 4c. To resume after deploying to the NAS: re-run `/julian-orchestrator:milestone` and paste the deployed URL → walkthrough (4c) → post-walkthrough review if any fixes (4d) → `/gsd:complete-milestone` (4e). Or run `/gsd:complete-milestone` directly to close without a walkthrough.
-
-⚠ Pending before/at release: bump `pyproject.toml` version 2.7.3 → 2.8.0; push 125 unpushed commits to origin/main.
+Shipped 2026-06-01. Audit passed (16/16 requirements — `.planning/milestones/v2.8-MILESTONE-AUDIT.md`); deep-review APPROVED (`.turingmind/REVIEW.md`); live walkthrough passed (caught + fixed the settings-save form bug, `542d5dd`). Released as **v2.8.0** (pyproject + `__version__` bumped, git tag `v2.8.0`), pushed to origin/main. 961 tests passing, ruff clean.
 
 ## Performance Metrics
 
@@ -118,3 +108,7 @@ Items carried forward (not in v2.8 scope):
 Last session: 2026-05-31T21:11:09.687Z
 Stopped at: Phase 67 context gathered
 Resume file: .planning/phases/67-observability-csrf-test-coverage/67-CONTEXT.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

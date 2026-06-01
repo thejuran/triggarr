@@ -1,5 +1,34 @@
 # Milestones
 
+## v2.8 Hardening & Observability (Shipped: 2026-06-01)
+
+**Phases completed:** 4 phases (64-67), 16 plans
+**LOC:** ~6,500 Python source + tests | 961 tests passing
+**Requirements:** 16/16 satisfied (SAFETY ×6, SEC ×4, RES ×3, TEST ×4) — 0 deferred
+**Audit:** `.planning/milestones/v2.8-MILESTONE-AUDIT.md` (status: passed) | Deep review: `.turingmind/REVIEW.md` (APPROVED) | Live walkthrough: passed
+
+**Delivered:** A reliability and security hardening pass — config writes and the search-history DB are now safe under concurrent access and failure, the scheduler fails safely and escalates repeated failures, the web UI's attack surface is narrowed (CSP nonce, URL/secret validation), and the dashboard surfaces a per-app "Last OK" timestamp so a silently stuck connection is visible at a glance. A settings-save bug (General fields detached from the Save button) was caught by the deployed-build walkthrough and fixed.
+
+**Key accomplishments:**
+
+- **Data safety (Phase 64):** SQLite search_history gained a two-bound contract — resolved rows trim inline to `max_history_rows`, pending rows cap at `2× max` via a `PendingCapExceeded` guard so a stalled tracker can't grow the table unboundedly. Atomic TOML config writes now log/re-raise `os.replace` failures, and a config-write lock (AST-audited in CI) serializes concurrent saves.
+- **Scheduler resilience (Phase 65):** Narrowed the cycle exception handler to a four-type tuple + an APScheduler `EVENT_JOB_ERROR` listener so code-bug exceptions become operator-visible instead of silently swallowed; per-(app,instance) consecutive-failure counter escalates WARNING→ERROR at a configurable threshold; graceful-shutdown drain extended 35s→60s and names the stuck cycle on timeout.
+- **Security hardening (Phase 66):** Removed `'unsafe-inline'` from CSP `script-src` via a per-request nonce (style-src retains it for Tailwind); settings reject an *arr URL carrying an `apikey=` query param; Basic-auth decoding rejects control-char credentials with a logged WARNING; startup warns on a too-short or unpersisted session secret.
+- **Observability (Phase 67, RES-02):** Each dashboard app card shows a "Last OK" timestamp — the last successful cycle — flagged amber when older than 2× the search interval, and shown even when the instance is unreachable.
+- **Performance (Phase 67, RES-03):** Tag lists are cached per instance for 1 hour (monotonic TTL) instead of re-fetched every cycle, with targeted invalidation on config save / instance removal; manual Search Now uses the cache too.
+- **Test coverage (Phase 67, TEST-01):** OriginCheckMiddleware CSRF suite covers missing Origin/Referer, both-absent, scheme-mismatch (pinned ALLOW, documented), and spoofed-host/suffix/port (REJECT).
+- **Walkthrough fix:** General settings fields lived in a form separate from the "Save Settings" button, so saving silently reset them (including "Skip Unreleased Movies"). Fixed via `form="settings-form"` association and verified live on the redeployed build.
+
+**Known gaps at close:** None blocking. All 16 requirements satisfied.
+
+**Minor tech debt deferred:**
+
+- REQUIREMENTS.md traceability checkboxes were stale at close (work shipped but boxes unticked); SUMMARY `requirements_completed` frontmatter sparse on several phases — evidence lives in VERIFICATION.md tables and code. Cosmetic; archived REQUIREMENTS marks all complete.
+- Phase 67 has no formal VERIFICATION.md (verified instead by deep-review + walkthrough + the 961-test suite).
+- Nyquist VALIDATION discovery flagged phases 65/66 non-compliant — a discovery-only signal; both carry `status: passed` VERIFICATION.md.
+
+---
+
 ## v2.7 Dashboard Scale Refresh (Shipped: 2026-04-18)
 
 **Phases completed:** 4 phases, 8 plans
@@ -23,6 +52,7 @@
 **Known gaps at close:** None blocking.
 
 **Minor tech debt deferred:**
+
 - Duplicate `--color-triggarr-primaryDark` (#16a34a) token declared but unused — templates use older `triggarr-green-dark` alias (same hex). Safe to collapse in future cleanup pass.
 - SUMMARY frontmatter inconsistency on plans 61-01, 62-01, 62-02 (missing `requirements-completed` field). VERIFICATION.md Requirements Coverage tables compensate; future plans should follow 60-xx/63-01 precedent.
 - UI-01/UI-02/UI-03 from v2.6 milestone close (auth pages pixel-exact verification) still carries forward — not in v2.7 scope.

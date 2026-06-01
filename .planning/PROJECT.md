@@ -10,9 +10,18 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.7 Dashboard Scale Refresh shipped 2026-04-18. 857 tests passing. 63 phases, 139 plans completed across 13 shipped milestones.
+v2.8 Hardening & Observability shipped 2026-06-01. 961 tests passing. 67 phases, 155 plans completed across 14 shipped milestones.
 
-**Latest milestone delivered (v2.7):**
+**Latest milestone delivered (v2.8):**
+- Data safety: bounded search-history (resolved trim + pending `2×` cap via `PendingCapExceeded`), hardened atomic config writes, AST-audited config-write lock, corrupted-TOML recovery
+- Scheduler resilience: narrow exception tuple + `EVENT_JOB_ERROR` listener, consecutive-failure WARNING→ERROR escalation, 60s graceful-shutdown drain naming the stuck cycle
+- Security: CSP `script-src` nonce (no `unsafe-inline`), `apikey=` URL rejection, Basic-auth control-char rejection, session-secret startup validation
+- Observability: per-app "Last OK" timestamp on the dashboard with amber stale flag (>2× interval), shown even when unreachable
+- Performance: 1h per-instance tag-list cache with targeted invalidation on config save/removal
+- Test coverage: OriginCheckMiddleware CSRF suite, corrupt-TOML, concurrent-save, async-cleanup tests
+- Walkthrough fix: General settings fields were detached from the Save button (silently reset on save) — fixed via `form="settings-form"`, verified live on the deployed build
+
+**Prior milestone delivered (v2.7):**
 - Phase 60 complete: Phosphor Icons vendored locally (no CDN), 4 new Tailwind color tokens (triggarr-radarr/sonarr/danger/primaryDark), three-zone `py-4` header with icon-paired `text-[15px]` nav, CSS pipe divider + Phosphor sign-out for logout, Geist Mono version badge, "Connection Stable" pill with htmx `load, every 30s` self-polling
 - Phase 61 complete: Stat cards scaled to `text-[32px]` hero numbers with `p-5` uniform padding, Phosphor icons per app type (chart-line-up/film-strip/television/music-notes/clock-countdown), three horizontal per-app mini bars on Grab Rate (Radarr/Sonarr/Lidarr), colored-dot subtitles; app cards with app-type colored left borders (orange/blue/green/red), sectioned header/body/footer layout, recessed Missing/Cutoff sub-cards (`bg-triggarr-bg/50`), full-width Search Now with app-colored hover accent
 - Phase 62 complete: Card-based activity rail with speech bubble pointers (`rotate-45`), double-circle timeline dots, position-based opacity fading (`opacity-75`/`opacity-60` by index), font-mono app badges with colored dot indicators, outcome-based solid/dashed cards; log viewer refined with `ph-terminal-window`/`ph-pause`/`ph-corners-out` Phosphor controls, "System Logs" title, TAILING border-container badge in `font-mono text-triggarr-primary`, GRAB row highlighting, `font-mono` level filter dropdown; `--font-mono` alias added, obsolete CSS removed (timeline-item / timeline-dot / terminal-pane / scanline-overlay)
@@ -145,36 +154,19 @@ v2.7 Dashboard Scale Refresh shipped 2026-04-18. 857 tests passing. 63 phases, 1
 - ✓ Cleaned SVG favicon master + regenerated raster bundle (16/32/180/192/512) eliminates Mar 11 white-dot aliasing artifact — v2.7
 - ✓ 24×24 in-header app icon beside "Triggarr" logo text via nested gap-2 sub-flex (preserves D-08 version badge spacing) — v2.7
 
+- ✓ Bounded search history: resolved rows trim to `max_history_rows`, pending rows cap at 2× via `PendingCapExceeded` — v2.8
+- ✓ Hardened atomic config writes (log/re-raise `os.replace` OSError) + AST-audited config-write lock serializing saves — v2.8
+- ✓ Narrowed scheduler exception handling + `EVENT_JOB_ERROR` listener + consecutive-failure WARNING→ERROR escalation — v2.8
+- ✓ Graceful-shutdown drain extended to 60s, names the stuck cycle (job_id + elapsed) on timeout — v2.8
+- ✓ CSP `script-src` nonce migration (no `unsafe-inline`); reject `apikey=` in *arr URLs; Basic-auth control-char rejection; session-secret startup validation — v2.8
+- ✓ Per-app "Last OK" timestamp on dashboard with amber stale flag (>2× interval), shown even when unreachable — v2.8
+- ✓ Per-instance tag-list cache (1h monotonic TTL) with targeted invalidation on config save/removal — v2.8
+- ✓ Test coverage: OriginCheckMiddleware CSRF suite, corrupt-TOML recovery, concurrent config save, async client cleanup — v2.8
+- ✓ Settings save form fix: General fields associated with the Save button via `form="settings-form"` (were silently reset) — v2.8
+
 ### Active
 
-**Current Milestone: v2.8 Hardening & Observability**
-
-**Goal:** Close concrete correctness, security, and observability gaps surfaced in the 2026-05-25 codebase audit without expanding feature surface.
-
-**Target features:**
-
-*Correctness & Data Safety*
-- [ ] Bounded search history enforcement (`max_history_rows` trim-after-insert) — DEBT-03
-- [ ] Narrowed scheduler exception handling with consecutive-failure escalation
-- [ ] `_atomic_toml_write` logs `OSError` before suppressing (no silent config-write loss)
-- [ ] Config write concurrency lock covering web UI saves + scheduler reads
-
-*Security Hardening*
-- [ ] CSP `unsafe-inline` removal — extract inline scripts, adopt nonce-based CSP
-- [ ] Reject `apikey=` query parameter in `*arr` URL validation
-- [ ] Basic auth header hardening — null-byte rejection + failed-decode logging
-- [ ] Session secret startup validation (length ≥ 32 chars, warn if auto-generated)
-
-*Resilience & Observability*
-- [ ] Graceful shutdown improvements (DEBT-06: longer drain timeout, log in-flight job)
-- [ ] "Last successful search" timestamp on dashboard per app type
-- [ ] Tag list caching with 1h TTL + config-change invalidation
-
-*Test Coverage Gaps*
-- [ ] `OriginCheckMiddleware` tested with missing/spoofed Origin+Referer headers
-- [ ] Corrupted TOML config startup recovery tested
-- [ ] Concurrent config save requests tested
-- [ ] Async client cleanup with in-flight requests tested
+**Next milestone: not yet scoped** — run `/gsd:new-milestone` to define it. Deferred v2-audit items (PERF-01..03, SCALE-01/02, AUDIT-01, OBS-01) and the carried-forward v2.6 UI pixel-verification items (UI-01..03) are candidates; see STATE.md Deferred Items.
 
 ### Out of Scope
 
@@ -197,7 +189,7 @@ v2.7 Dashboard Scale Refresh shipped 2026-04-18. 857 tests passing. 63 phases, 1
 
 ## Context
 
-Shipped v2.7 with ~6,178 Python LOC, 1,502 template LOC, 7,184 CSS LOC. 857 tests passing. 63 phases, 139 plans completed across 13 shipped milestones.
+Shipped v2.8 (Hardening & Observability) on 2026-06-01. 961 tests passing. 67 phases, 155 plans completed across 14 shipped milestones. v2.8 added no new runtime dependencies — it hardened existing config/scheduler/security paths and added the dashboard "Last OK" signal + tag-list cache.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff, bcrypt, itsdangerous, Phosphor Icons (vendored regular weight).
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache. `:main`/`:dev` tags on main push, `:latest` + version tag on release.
@@ -285,4 +277,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-25 after v2.8 Hardening & Observability milestone started*
+*Last updated: 2026-06-01 after v2.8 Hardening & Observability milestone shipped*
