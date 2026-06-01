@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+* Security:
+
+  * Changing your password now logs out all other active sessions. The session secret is rotated on every password change, so any other browser or device that was signed in is immediately signed out — the one you change it from stays logged in. This makes a password change an effective way to lock out a session you think may be compromised.
+
 ## v2.8.0 (2026-06-01)
 
 Hardening & Observability — a reliability-focused release. Triggarr is now sturdier under load and failure, gives you a clearer at-a-glance picture of whether searches are actually working, and tightens security around the web UI. No changes to how you configure or run it.

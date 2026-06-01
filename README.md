@@ -194,7 +194,7 @@ Triggarr includes application authentication by default. A fresh config starts i
 
 Configured in `[auth]` as `method`:
 
-- `Forms` (default) — browser login page, bcrypt password hash, signed 30-day session cookie, logout, password change, and login rate limiting.
+- `Forms` (default) — browser login page, bcrypt password hash, signed 30-day session cookie, logout, password change, and login rate limiting. Changing your password rotates the session secret, which signs you out of every other browser/device while keeping the current session active.
 - `Basic` — HTTP Basic credentials are accepted and can establish the same signed session cookie.
 - `External` — Triggarr bypasses local auth because an upstream reverse proxy or SSO layer has already authenticated and authorized the user; enable it only after direct access to port 8484 is blocked and the proxy is the sole path to Triggarr.
 - `Disabled` — all routes are accessible without Triggarr auth and a warning is logged periodically. Prefer `External` for reverse-proxy deployments.
@@ -205,7 +205,7 @@ Requests may also authenticate with `X-Api-Key` when `auth.api_key` is set. The 
 
 - **Application routes** are deny-by-default after setup unless auth is `External` or `Disabled`
 - **API keys and auth secrets** are stored as `SecretStr`, redacted from logs, and not exposed in normal settings HTML
-- **Password hashes** use bcrypt, and session cookies are signed with a generated session secret
+- **Password hashes** use bcrypt, and session cookies are signed with a generated session secret that is rotated on password change (invalidating all other sessions)
 - **Login attempts** are rate-limited per client IP
 - **Config file** is written with `0600` permissions (owner-read/write only)
 - **Config secrets** in `triggarr.toml` are plaintext on disk; protect them with file permissions and volume security
