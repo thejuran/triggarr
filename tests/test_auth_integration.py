@@ -213,9 +213,14 @@ def test_password_change_invalidates_old_sessions(tmp_path: Path):
 
     # Step 3: The pre-change cookie is now rejected (session secret rotated).
     # Pass the stale cookie explicitly so the auto-reissued client cookie does not mask it.
+    # A browser request (Accept: text/html) with an invalid cookie hits the Forms-mode
+    # fallback, which redirects to /login with 302 (middleware.py step 7). Assert that
+    # exact behavior rather than a broad "not 200" disjunction.
     resp = client.get(
         _PROTECTED_ROUTE,
         cookies={"triggarr_session": cookie},
+        headers={"Accept": "text/html"},
         follow_redirects=False,
     )
-    assert resp.status_code in (302, 303, 401)
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["location"]

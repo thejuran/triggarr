@@ -674,6 +674,80 @@ def test_change_password_reissues_acting_user_cookie(tmp_path: Path):
     assert validate_session(reissued, new_secret) == "admin"
 
 
+def test_change_password_evicts_other_device_session(tmp_path: Path):
+    """A second device's pre-change session is evicted, not just the acting one.
+
+    The security promise is "log out all OTHER devices." All old cookies share the
+    rotated secret, so a cookie that was never part of the change_password request
+    must also stop validating afterward.
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+
+    acting_cookie = sign_session("admin", _TEST_SESSION_SECRET)
+    other_device_cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": _TEST_PASSWORD,
+            "new_password": "newpass456",
+            "confirm_password": "newpass456",
+        },
+        cookies={"triggarr_session": acting_cookie},
+    )
+    assert response.status_code == 200
+
+    # The other device's cookie -- never sent in the change request -- no longer validates.
+    new_secret = tomllib.loads(config_file.read_text())["auth"]["session_secret"]
+    assert validate_session(other_device_cookie, new_secret) is None
+
+
+def test_change_password_leaves_api_key_auth_working(tmp_path: Path):
+    """Rotating the session secret must not break X-Api-Key authentication.
+
+    Password change rotates session_secret only; api_key is untouched, so header-based
+    API access (used by automations) keeps working across a password change.
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": _TEST_PASSWORD,
+            "new_password": "newpass456",
+            "confirm_password": "newpass456",
+        },
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+
+    # Use a FRESH cookieless client so the re-issued session cookie from the change
+    # response cannot mask the X-Api-Key decision. /settings is protected and does
+    # not touch app.state.db, so a passing api key yields a clean 200.
+    api_client = TestClient(app, follow_redirects=False)
+    resp = api_client.get("/settings", headers={"X-Api-Key": _TEST_API_KEY})
+    assert resp.status_code == 200
+
+    # A wrong api key (and no cookie) is still bounced to /login -- auth not bypassed.
+    resp_bad = api_client.get(
+        "/settings",
+        headers={"X-Api-Key": "wrong" + "0" * 27, "Accept": "text/html"},
+    )
+    assert resp_bad.status_code == 302
+    assert "/login" in resp_bad.headers["location"]
+
+
 def test_change_password_wrong_current(tmp_path: Path):
     """POST /settings/password with wrong current password returns error."""
     config_file = tmp_path / "triggarr.toml"
