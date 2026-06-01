@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v2.8.1 (2026-05-31)
+
+Security patch release: password changes now invalidate other sessions.
 
 * Security:
 
