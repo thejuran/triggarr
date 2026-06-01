@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from triggarr.auth import generate_session_secret, hash_password, sign_session
+from triggarr.auth import generate_session_secret, hash_password, sign_session, validate_session
 from triggarr.models.config import AuthConfig, GeneralConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.web.middleware import AuthMiddleware
@@ -599,6 +599,79 @@ def test_change_password_success(tmp_path: Path):
     # D-05: password inputs should NOT be pre-filled after success
     assert 'value="newpass456"' not in response.text
     assert 'value="' + _TEST_PASSWORD + '"' not in response.text
+
+
+def test_change_password_rotates_session_secret_and_persists(tmp_path: Path):
+    """Password change rotates session_secret so old cookies are invalidated.
+
+    Trust requirement: changing the password must evict all existing sessions.
+    The mechanism is session_secret rotation -- after the change, any cookie signed
+    with the prior secret fails validate_session everywhere.
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": _TEST_PASSWORD,
+            "new_password": "newpass456",
+            "confirm_password": "newpass456",
+        },
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+    assert "Password updated" in response.text
+
+    # The persisted secret must differ from the original (rotation happened).
+    persisted = tomllib.loads(config_file.read_text())
+    new_secret = persisted["auth"]["session_secret"]
+    assert new_secret != _TEST_SESSION_SECRET
+    assert new_secret  # non-empty
+
+    # A cookie signed with the OLD secret no longer validates under the new secret.
+    assert validate_session(cookie, new_secret) is None
+
+
+def test_change_password_reissues_acting_user_cookie(tmp_path: Path):
+    """The user who changes their password stays logged in via a fresh cookie.
+
+    Rotation evicts every session; the acting request must receive a new cookie
+    signed with the rotated secret so it is not logged out by its own action.
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text('[general]\nlog_level = "info"\n')
+
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg, config_path=config_file)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.post(
+        "/settings/password",
+        data={
+            "current_password": _TEST_PASSWORD,
+            "new_password": "newpass456",
+            "confirm_password": "newpass456",
+        },
+        cookies={"triggarr_session": cookie},
+    )
+    assert response.status_code == 200
+
+    # A fresh session cookie is set on the response.
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "triggarr_session=" in set_cookie
+
+    # That re-issued cookie validates under the rotated secret and identifies the user.
+    new_secret = tomllib.loads(config_file.read_text())["auth"]["session_secret"]
+    reissued = client.cookies.get("triggarr_session")
+    assert reissued is not None
+    assert validate_session(reissued, new_secret) == "admin"
 
 
 def test_change_password_wrong_current(tmp_path: Path):

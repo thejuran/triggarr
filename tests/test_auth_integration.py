@@ -7,7 +7,7 @@ Traceability:
   SC-2 (setup flow) + SC-3 (login/session) + SC-5 (API key):
       test_full_setup_login_use_logout_flow
   SC-5 (API key): test_setup_then_api_key_access
-  SC-3 (session lifecycle): test_password_change_old_session_still_valid
+  SC-3 (session lifecycle): test_password_change_invalidates_old_sessions
 """
 
 from __future__ import annotations
@@ -179,8 +179,13 @@ def test_setup_then_api_key_access(tmp_path: Path):
     assert resp.status_code == 200
 
 
-def test_password_change_old_session_still_valid(tmp_path: Path):
-    """Password change updates hash but session secret is unchanged -- old cookie works."""
+def test_password_change_invalidates_old_sessions(tmp_path: Path):
+    """Password change rotates the session secret, so pre-change cookies are evicted.
+
+    Reversal of prior behavior (pre-2026-05-31 this test asserted old cookies kept
+    working). Changing the password is a standard way to lock out a possibly-compromised
+    session, so every cookie signed with the old secret must stop validating.
+    """
     config_file = tmp_path / "triggarr.toml"
     config_file.write_text('[general]\nlog_level = "info"\n')
     auth_cfg = _configured_auth()
@@ -206,6 +211,11 @@ def test_password_change_old_session_still_valid(tmp_path: Path):
     text_lower = resp.text.lower()
     assert "updated" in text_lower or "success" in text_lower or "changed" in text_lower
 
-    # Step 3: Old session cookie still works (session_secret unchanged)
-    resp = client.get(_PROTECTED_ROUTE, cookies={"triggarr_session": cookie})
-    assert resp.status_code == 200
+    # Step 3: The pre-change cookie is now rejected (session secret rotated).
+    # Pass the stale cookie explicitly so the auto-reissued client cookie does not mask it.
+    resp = client.get(
+        _PROTECTED_ROUTE,
+        cookies={"triggarr_session": cookie},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303, 401)

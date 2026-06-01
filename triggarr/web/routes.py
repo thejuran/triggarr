@@ -1445,7 +1445,17 @@ async def change_password(request: Request) -> HTMLResponse:
                 name="partials/security_password.html",
                 context={"errors": {"new_password": "Password must be 72 characters or fewer"}},
             )
-        new_auth = current_settings.auth.model_copy(update={"password_hash": SecretStr(new_hash)})
+        # Rotate the session secret so every cookie signed with the old secret is
+        # invalidated immediately (validate_session fails everywhere). This logs out
+        # all other devices on password change, matching standard expectations for
+        # the "I changed my password because a session may be compromised" case.
+        new_session_secret = generate_session_secret()
+        new_auth = current_settings.auth.model_copy(
+            update={
+                "password_hash": SecretStr(new_hash),
+                "session_secret": SecretStr(new_session_secret),
+            }
+        )
         updated = current_settings.model_copy(update={"auth": new_auth})
         config_dict = _settings_to_dict(updated)
         await asyncio.get_running_loop().run_in_executor(
@@ -1459,11 +1469,26 @@ async def change_password(request: Request) -> HTMLResponse:
     setup_logging(request.app.state.settings.general.log_level, _new_secrets)
 
     # D-05: return fresh partial with empty password inputs (no value= attributes)
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="partials/security_password.html",
         context={"success": "Password updated"},
     )
+    # Re-issue the acting user's cookie under the rotated secret so this session
+    # survives the rotation while all other sessions are evicted. Cookie attributes
+    # mirror login_post (D-01) for consistency.
+    refreshed_username = request.app.state.settings.auth.username
+    if refreshed_username:
+        response.set_cookie(
+            "triggarr_session",
+            sign_session(refreshed_username, new_session_secret),
+            max_age=COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            secure=is_secure_request(request),
+        )
+    logger.info("Password changed; session secret rotated, other sessions invalidated")
+    return response
 
 
 @router.post("/settings/security")
