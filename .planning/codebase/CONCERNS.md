@@ -184,20 +184,30 @@ Triggarr v2.8.0 (Hardening & Observability) resolved major safety concerns: boun
 
 **Recommendations:** No changes. Mitigation is sound.
 
-### CSP Script-Src Nonce Injection
+### CSP Script-Src Nonce Injection — AUDITED 2026-05-31: no issue
 
-**Files:** `triggarr/web/middleware.py:49` (CSP header), `triggarr/web/routes.py:68-71` (expose nonce to Jinja)
+**Files:** `triggarr/web/middleware.py:43-57` (CSP header), `triggarr/web/routes.py` (expose nonce to Jinja)
 
-**Risk:** Inline JavaScript in templates needs a per-request nonce to pass CSP. Without it, Tailwind's JIT mode or any script tags would be blocked.
+**Risk:** Inline JavaScript in templates needs a per-request nonce to pass CSP. Without it, any inline script tags would be blocked.
 
-**Current mitigation:**
-- Middleware generates a unique nonce per request using `secrets.token_hex(16)`.
-- Nonce is exposed to Jinja as `{{ csp_nonce }}` via context processor.
-- CSP header is set: `script-src 'nonce-...' 'unsafe-inline'` — wait, this includes 'unsafe-inline', which defeats CSP.
+**Audit result (correcting a prior stale claim):** An earlier draft of this section asserted `script-src` included `'unsafe-inline'` alongside the nonce, which would defeat CSP. That is **not** the case in the current code. The actual header is:
 
-**Potential issue:** The CSP header includes both `'nonce-...'` AND `'unsafe-inline'`. The `'unsafe-inline'` fallback is documented in the comment (D-04: "style-src keeps 'unsafe-inline' for Tailwind utility output"), but script-src should NOT need unsafe-inline if all scripts use the nonce. This warrants review.
+```
+script-src 'self' 'nonce-{nonce}';
+style-src 'self' 'unsafe-inline';
+```
 
-**Recommendations:** Audit whether script-src actually needs 'unsafe-inline' or if all inline scripts are properly nonce'd. If unsafe-inline is necessary (e.g., due to a third-party library), document why and consider replacing it with a hash-source (`'sha256-...'`) for that specific script.
+`'unsafe-inline'` appears **only on `style-src`** (intentional, for Tailwind utility output — documented at middleware.py:49). `script-src` uses `'self'` + per-request nonce with **no** `'unsafe-inline'`. All four inline `<script>` blocks (base.html:116, dashboard.html:48, setup.html:70, settings.html:259) carry `nonce="{{ csp_nonce }}"`; the only non-inline script (base.html:15, htmx) is loaded from `'self'`. The nonce is generated per request via `secrets.token_urlsafe(16)`.
+
+**Recommendations:** None. script-src is correctly nonce-gated. (Optional future hardening: a `style-src` hash/nonce migration to drop the Tailwind `'unsafe-inline'`, but that is cosmetic — style injection is low-risk and the utility-class output makes hashing impractical.)
+
+### Session Invalidation on Password Change — RESOLVED 2026-05-31
+
+**Files:** `triggarr/web/routes.py` (`change_password`), `triggarr/auth.py` (`generate_session_secret`/`sign_session`)
+
+**History:** Through v2.8.0, changing the account password updated only `password_hash`; `session_secret` was left unchanged, so cookies signed with it stayed valid for the full 30-day `COOKIE_MAX_AGE`. A stolen/compromised session survived a password change (CWE-613, failure to invalidate session on credential change). This was the one trust-relevant gap the post-v2.8.0 map originally missed, and it had been an *accepted* risk in the v2.6 threat model (T-58-07 / AR-58-02 — now superseded).
+
+**Resolution:** `change_password` now rotates `session_secret` (in the same atomic, locked config write as the new hash), invalidating every existing cookie across all five validation sites, and re-issues the acting user's cookie under the new secret so they stay logged in. Covered by `test_password_change_invalidates_old_sessions`, `test_change_password_rotates_session_secret_and_persists`, `test_change_password_evicts_other_device_session`, `test_change_password_reissues_acting_user_cookie`, `test_change_password_leaves_api_key_auth_working`. X-Api-Key auth is unaffected (it does not use `session_secret`).
 
 ## Performance Bottlenecks
 

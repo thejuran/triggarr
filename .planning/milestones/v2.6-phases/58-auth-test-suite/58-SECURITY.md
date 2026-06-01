@@ -33,10 +33,12 @@ created: 2026-04-15
 | T-58-04 | Elevation of Privilege | Disabled mode bypass | accept | Intentional config choice; `_disabled_warned` flag + `logger.warning` in middleware; test verifies warning fires | closed |
 | T-58-05 | Spoofing | Setup -> login flow | mitigate | Integration test verifies credentials created during setup actually work for login (7-step E2E flow) | closed |
 | T-58-06 | Elevation of Privilege | API key after setup | mitigate | Integration test verifies API key from saved TOML config authenticates requests immediately | closed |
-| T-58-07 | Spoofing | Password change session | accept | Old session works after password change by design (session_secret unchanged); test confirms behavior | closed |
+| T-58-07 | Spoofing | Password change session | ~~accept~~ → **mitigate** | **SUPERSEDED 2026-05-31:** session_secret is now rotated on password change, invalidating all other sessions. See note below. | closed |
 
 *Status: open · closed*
 *Disposition: mitigate (implementation required) · accept (documented risk) · transfer (third-party)*
+
+> **2026-05-31 — T-58-07 / AR-58-02 superseded.** The original Phase 58 disposition accepted that a password change left existing sessions valid (session_secret unchanged). This was reversed: `change_password` now rotates `session_secret` (triggarr/web/routes.py), so every cookie signed with the old secret is invalidated and only the acting session is re-issued. Disposition changes from *accept* to *mitigate*. Covered by `test_password_change_invalidates_old_sessions`, `test_change_password_rotates_session_secret_and_persists`, `test_change_password_evicts_other_device_session`. This is a forward annotation; the historical record above is preserved intentionally.
 
 ---
 
@@ -45,7 +47,7 @@ created: 2026-04-15
 | Risk ID | Threat Ref | Rationale | Accepted By | Date |
 |---------|------------|-----------|-------------|------|
 | AR-58-01 | T-58-04 | Disabled auth mode is an intentional configuration choice for trusted networks. Warning log ensures visibility. | Phase 58 threat model | 2026-04-15 |
-| AR-58-02 | T-58-07 | Password change does not rotate session_secret — existing sessions remain valid. This is by design to avoid mass session invalidation. | Phase 58 threat model | 2026-04-15 |
+| AR-58-02 | T-58-07 | Password change does not rotate session_secret — existing sessions remain valid. This is by design to avoid mass session invalidation. **[REVOKED 2026-05-31 — session_secret is now rotated on password change; see T-58-07 superseded note above.]** | Phase 58 threat model | 2026-04-15 |
 
 ---
 
