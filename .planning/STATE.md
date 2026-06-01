@@ -4,8 +4,8 @@ milestone: v2.8
 milestone_name: Hardening & Observability
 status: Awaiting next milestone
 stopped_at: Phase 67 context gathered
-last_updated: "2026-06-01T00:52:30.061Z"
-last_activity: 2026-06-01 — Milestone v2.8 completed and archived
+last_updated: "2026-06-01T02:20:00.000Z"
+last_activity: 2026-06-01 — Patch release v2.8.1 (session invalidation on password change) + CI Node 24 bump
 progress:
   total_phases: 4
   completed_phases: 4
@@ -33,6 +33,14 @@ Last activity: 2026-06-01 — Milestone v2.8 completed and archived
 ### v2.8 ship record
 
 Shipped 2026-06-01. Audit passed (16/16 requirements — `.planning/milestones/v2.8-MILESTONE-AUDIT.md`); deep-review APPROVED (`.turingmind/REVIEW.md`); live walkthrough passed (caught + fixed the settings-save form bug, `542d5dd`). Released as **v2.8.0** (pyproject + `__version__` bumped, git tag `v2.8.0`), pushed to origin/main. 961 tests passing, ruff clean.
+
+### v2.8.1 patch (post-archive, 2026-06-01)
+
+Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD phase — hotfix scope).
+
+- **Fix:** `change_password` now rotates `session_secret`, invalidating all other sessions on password change while re-issuing the acting user's cookie (CWE-613). Supersedes v2.6 threat decision T-58-07/AR-58-02 (was *accept*, now *mitigate*). Deep-reviewed (APPROVED), docs + threat model reconciled. Commits `0866332` (fix) + `0e745ab` (tests).
+- **CI:** all workflow actions bumped to Node 24 majors (PR #20, squash `d538554`) ahead of GitHub's 2026-06-16 Node 20 forced cutover.
+- Released as **v2.8.1** (git tag `v2.8.1`, container published); 965 tests passing, ruff clean.
 
 ## Performance Metrics
 

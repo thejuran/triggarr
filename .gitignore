@@ -65,3 +65,9 @@ vendor/
 coverage/
 .cache/
 tmp/
+
+# ── GSD / tooling transients (machine-generated, not source) ──
+.planning/HANDOFF.json
+.turingmind/
+.claude/scheduled_tasks.lock
+.playwright-mcp/
