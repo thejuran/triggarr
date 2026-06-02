@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.9
 milestone_name: Launch-Hardening / Sibling Consistency
-status: ready_to_plan
-stopped_at: Phase 70 complete (1/1) — ready to discuss Phase 71
-last_updated: 2026-06-02T21:16:54.525Z
-last_activity: 2026-06-02 -- Phase 70 execution started
+status: planning
+stopped_at: Phase 71 context gathered
+last_updated: "2026-06-02T21:37:52.254Z"
+last_activity: 2026-06-02
 progress:
-  total_phases: 4
-  completed_phases: 2
+  total_phases: 5
+  completed_phases: 3
   total_plans: 5
   completed_plans: 5
-  percent: 50
+  percent: 60
 ---
 
 # Project State
@@ -143,9 +143,9 @@ Items parked this milestone (spec D-5 / §3.3) and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-02T19:50:09.343Z
-Stopped at: Phase 70 context gathered
-Resume file: .planning/phases/70-presentation-discovery/70-CONTEXT.md
+Last session: 2026-06-02T21:37:52.250Z
+Stopped at: Phase 71 context gathered
+Resume file: .planning/phases/71-presentation-rewrite/71-CONTEXT.md
 
 ## Operator Next Steps
 
