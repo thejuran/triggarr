@@ -28,9 +28,12 @@ class TestBugReportTemplate:
         assert content.count("type: dropdown") == 3, "Must have 3 dropdown fields"
 
     def test_version_dropdown_options(self):
-        content = self.path.read_text()
-        for version in ("v2.3", "v2.2", "v2.1", "Older"):
-            assert version in content, f"Version dropdown must include '{version}'"
+        data = yaml.safe_load(self.path.read_text())
+        version_options = data["body"][0]["attributes"]["options"]
+        for version in ("v2.8.1", "v2.8", "v2.7", "v2.6", "v2.5", "v2.4", "Older"):
+            assert version in version_options, f"Version dropdown must include '{version}'"
+        # Assert dropped options are absent (catches renames / stale entries)
+        assert "v2.3" not in version_options, "v2.3 should have been removed from version dropdown"
 
     def test_deployment_dropdown_options(self):
         content = self.path.read_text()
@@ -38,9 +41,12 @@ class TestBugReportTemplate:
             assert method in content, f"Deployment dropdown must include '{method}'"
 
     def test_app_type_dropdown_options(self):
-        content = self.path.read_text()
-        for app in ("Radarr", "Sonarr", "Both"):
-            assert app in content, f"App type dropdown must include '{app}'"
+        data = yaml.safe_load(self.path.read_text())
+        app_options = data["body"][2]["attributes"]["options"]
+        for app in ("Radarr", "Sonarr", "Lidarr", "All"):
+            assert app in app_options, f"App type dropdown must include '{app}'"
+        # Assert dropped options are absent
+        assert "Both" not in app_options, "'Both' should have been replaced by 'All' in App Type dropdown"
 
     def test_config_excerpt_redaction_warning(self):
         content = self.path.read_text()
