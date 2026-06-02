@@ -26,10 +26,10 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 <!-- Curated known items + folded-in discovery findings (spec §3.1.2, D-4). -->
 
-- [ ] **CHARD-01**: The repo-hygiene gap is closed — `.orchestrator.json` is git-ignored, and no untracked transient or accidentally-tracked editor/tooling artifact remains (audit-and-close, not a fixed checklist).
-- [ ] **CHARD-02**: SAFETY-03 is resolved — manual searches via `/search-now/{app}/{instance}` and scheduled cycles share one failure-counting path, so manual-search failures increment and reset the consecutive-failure counter identically to scheduled cycles; the `# TODO` at `scheduler.py:~325` is removed.
-- [ ] **CHARD-03**: A test covers manual-search failure increment/reset (proving CHARD-02), with no existing scheduler failure-counter test deleted or skipped.
-- [ ] **CHARD-04**: Every discovery finding classified fold-in (CDISC-05) is fixed; every parked finding is recorded with rationale in the findings artifact.
+- [x] **CHARD-01**: The repo-hygiene gap is closed — `.orchestrator.json` is git-ignored, and no untracked transient or accidentally-tracked editor/tooling artifact remains (audit-and-close, not a fixed checklist).
+- [x] **CHARD-02**: SAFETY-03 is resolved — manual searches via `/search-now/{app}/{instance}` and scheduled cycles share one failure-counting path, so manual-search failures increment and reset the consecutive-failure counter identically to scheduled cycles; the `# TODO` at `scheduler.py:~325` is removed.
+- [x] **CHARD-03**: A test covers manual-search failure increment/reset (proving CHARD-02), with no existing scheduler failure-counter test deleted or skipped.
+- [x] **CHARD-04**: Every discovery finding classified fold-in (CDISC-05) is fixed; every parked finding is recorded with rationale in the findings artifact.
 
 ### Presentation Discovery
 
@@ -89,10 +89,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CDISC-03 | Phase 68 | Complete |
 | CDISC-04 | Phase 68 | Complete |
 | CDISC-05 | Phase 68 | Complete |
-| CHARD-01 | Phase 69 | Pending |
-| CHARD-02 | Phase 69 | Pending |
-| CHARD-03 | Phase 69 | Pending |
-| CHARD-04 | Phase 69 | Pending |
+| CHARD-01 | Phase 69 | Complete |
+| CHARD-02 | Phase 69 | Complete |
+| CHARD-03 | Phase 69 | Complete |
+| CHARD-04 | Phase 69 | Complete |
 | PDISC-01 | Phase 70 | Pending |
 | PDISC-02 | Phase 70 | Pending |
 | PDISC-03 | Phase 70 | Pending |
