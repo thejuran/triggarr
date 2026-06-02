@@ -268,23 +268,57 @@ recorded as **P68-FI-001** in the working-tree section; not duplicated here.)
 
 ## public-surface inventory
 
-*Discovery status:* _(pending — populated in Task 4)_
+*Discovery status:* Enumerated and skimmed every launch-visible non-Python surface a skeptical
+r/selfhosted reviewer inspects first, beyond the 6 Python files. **Each item below is either skimmed (with
+a verdict) or carries an explicit not-present / covered-by / out-of-scope line — no blind spots. Zero new
+FOLD-IN: the self-hosting surface is notably well-hardened.**
 
-_(empty — populated in Task 4: each launch-visible non-Python surface item either skimmed or carries an
-explicit not-present / covered-by / out-of-scope line)_
+| Surface item | Present? | Hostile-skim verdict |
+|--------------|----------|----------------------|
+| `Dockerfile` | yes | **Clean / well-hardened.** Multi-stage build (Tailwind builder stage → slim prod image), so no build-time secret survives into a layer. No `COPY` of secrets or `.env`. Creates a non-root fallback user (`useradd -r -s /sbin/nologin triggarr_default`). `HEALTHCHECK` hits `/health` only. No `ARG`/`ENV` secrets. No finding. |
+| `entrypoint.sh` | yes | **Clean / well-hardened.** `set -e`; PUID/PGID validated numeric (`=~ ^[0-9]+$`) before use → no shell-arg injection; no secret echoed; drops privileges via `setpriv --reuid/--regid --init-groups` with `--no-new-privileges` (gracefully degraded on Synology). `exec`-into-python so PID 1 gets SIGTERM. No unquoted-expansion injection. No finding. |
+| `docker-compose.yml` | yes | **Clean / well-hardened.** Port bound to **`127.0.0.1:8484`** (not `0.0.0.0`), `cap_drop: ALL` + minimal `cap_add` (CHOWN/DAC_OVERRIDE/FOWNER/SETUID/SETGID for the PUID drop), `stop_grace_period: 90s` documented vs the drain timeout. No hardcoded secrets, no exposed-port over-reach. No finding. |
+| `triggarr/__main__.py` | yes | **Clean.** CLI entry reads only `ROOT_PATH`, `TRUSTED_PROXY_IPS` env (the latter warns loudly on `*`). Single-worker uvicorn (matches the asyncio.Lock model). Middleware order documented (Auth last = runs first). `host="0.0.0.0"` is intra-container only (compose maps `127.0.0.1`). No finding. |
+| web middleware / auth hooks (`triggarr/web/middleware.py`, `security.py`, `validation.py`) | yes | **Clean.** `validate_arr_url` enforces http/https scheme + SSRF validation (`validation.py:56-77`); Basic-auth control-char rejection; `samesite="lax"` session cookies; `OriginCheckMiddleware` for CSRF. Skimmed alongside the six files (auth surfaces). No finding. |
+| Jinja templates (`triggarr/templates/*.html`) | yes (base, base-auth, dashboard, history, login, settings, setup, partials/) | **Clean.** Jinja `autoescape=True` (`routes.py:63`); **no `\|safe`, no `{% autoescape false %}`, no raw interpolation** anywhere in templates (grep-verified). CSP nonce on every inline `<script>`. The semgrep `django-no-csrf-token` hits are a wrong-stack rule (FastAPI+htmx, defended by SameSite+Origin check) — see the Semgrep section. No finding. |
+| static / htmx assets (`triggarr/static/js/htmx.min.js`, fonts, vendor/phosphor) | yes | **Clean.** htmx is **vendored locally** and served from `'self'` via `StaticFiles` (`base.html:15`) — no CDN, so no SRI/CDN-integrity gap. `triggarr/static/.DS_Store` is **gitignored** (`git check-ignore` confirms) → not in a clone, not a hygiene finding. No finding. |
+| `.github/workflows/ci.yml` | yes | **Clean / well-hardened.** Triggers `push`/`pull_request` on `main` (NOT the dangerous `pull_request_target`); top-level least-privilege `permissions: contents: read`. No secrets in logs. No finding. |
+| `.github/workflows/release.yml` | yes | **Clean / well-hardened.** `workflow_run` + tag `push` triggers, with an `if:` guard verifying `head_repository.full_name == github.repository` (blocks fork-PR privilege escalation — the `pull_request_target` attack class is correctly avoided). Scoped `permissions: packages/contents: write`; uses `secrets.GITHUB_TOKEN`/`DOCKERHUB_TOKEN` correctly, no hardcoded secrets. No finding. |
+| README install / quickstart snippets | yes (`README.md`) | **Out of deep scope, no broken/insecure snippet observed.** Install path is the published `ghcr.io/thejuran/triggarr` image via the audited `docker-compose.yml` above (port pinned to localhost). A full README-prose teardown is Phase 70's presentation-discovery job (PDISC-01/02), not this code-track pass; the *runnable* quickstart surface (compose) is covered above and is sound. No code-track finding. |
 
 ---
 
 ## entry-point skim
 
-*Discovery status:* _(pending — populated in Task 4)_
+*Discovery status:* Hostile ~2-min-per-file surface skim (D-06 lens — *"what would a skeptical engineer
+flag in ~2 minutes"*, NOT a full correctness audit) of all six entry-point files using the extended smell
+set (bare `except`; secrets in log lines / responses; injection/SSRF; dead code; alarming `TODO`/`FIXME`;
+leaked internals; config/TOML parse edges; template/htmx escaping; Docker/env handling; auth/session
+middleware boundaries; shell/process-arg env leakage). Each file's notes below; flagged items carry
+file:line anchors. **One FOLD-IN (the curated SAFETY-03); all other smells resolved to verified-intentional,
+convention-compliant patterns.**
 
-_(empty — populated in Task 4: hostile ~2-min surface skim of the six entry-point files with the extended
-smell list, file:line anchors for anything flagged)_
+**Per-file skim notes (all six files):**
+
+| File | Skim notes |
+|------|------------|
+| `triggarr/web/routes.py` (1548 ln) | **Clean except the known SAFETY-03 path.** No bare `except`. `HTMLResponse` f-strings wrap interpolated values in `html.escape(...)` (`routes.py:783,830`). `get_secret_value()` sites are all legitimate (session/password verify, TOML serialization, `bool(...)` coercion at `:439`). Located the manual-search handler `search_now` at **`routes.py:875-876`** (`@router.post("/api/search-now/{app}/{instance}")`) — this is the SAFETY-03 manual path (FOLD-IN below). No secret in any log line. |
+| `triggarr/search/scheduler.py` (634 ln) | **One FOLD-IN: SAFETY-03.** The only `TODO`/`FIXME` in the six files is at **`scheduler.py:325`** (`TODO(SAFETY-03): refactor search_now to go through make_search_job ...`), with the bypass re-stated at `scheduler.py:342`. This is the curated known correctness gap (manual searches bypass the per-job consecutive-failure counter `app.state.search_failures`). FOLD-IN as **P68-FI-003**. Otherwise clean: narrow exception handling, documented asyncio.Lock single-worker model, `get_secret_value()` only at client init (`:435`). |
+| `triggarr/config.py` (373 ln) | **Clean.** No bare `except`. TOML parse edges handled: specific `OSError` catches + a deliberate top-level `except Exception as exc` (`:143,:277`) that routes to a corrupt-config handler with path-only logging (never config contents) — convention-compliant, not a bare-except smell. Atomic write-then-rename. No finding. |
+| `triggarr/db.py` (856 ln) | **Clean.** No bare `except`. The semgrep SQL flags (`:124/:132/:552/:703`) are verified false positives — parameterized values via `?`, allowlisted column names (`_ALLOWED_STAT_COLUMNS`), hardcoded migration identifiers (see Semgrep section). No user-input string interpolation into SQL. No finding. |
+| `triggarr/auth.py` (106 ln) | **Clean / textbook.** bcrypt 12 rounds + 72-byte guard; `secrets.token_hex` CSPRNG for API key (32-hex) and session secret (64-hex); `itsdangerous.TimestampSigner` with `max_age` expiry; narrow `(SignatureExpired, BadSignature)` / `(ValueError, TypeError)` catches; empty-username/secret guards. No secrets logged. No finding. |
+| `triggarr/startup.py` (230 ln) | **Clean.** Session-secret length validated at startup (value never logged — only `len()`). `collect_secrets()` is the documented single bulk `get_secret_value()` site that feeds the loguru redaction filter (so secrets never appear in logs) — intentional, convention-blessed. No finding. |
+
+**Verified-intentional patterns explicitly cleared (NOT flagged — cross-checked vs `CONVENTIONS.md`):**
+SecretStr discipline (`get_secret_value()` only at HTTP-client init + the documented redaction-feeder in
+`startup.py`); the loguru redacting sink (no raw secret in any log line — grep-confirmed); the single-worker
+`asyncio.Lock` concurrency model (documented SAFETY-05); the `apikey=`-in-URL rejection + http/https-scheme
+SSRF validation; the two top-level `except Exception` corrupt-config guards (path-only logging). None of
+these is a finding.
 
 | ID | Source | Locator | Rule/smell | Severity | Evidence | Rationale | Remediation | Verify cmd |
 |----|--------|---------|-----------|----------|----------|-----------|-------------|------------|
-| _(empty — populated in Task 4)_ | | | | | | | | |
+| **P68-FI-003** | skim (SAFETY-03, curated) | `triggarr/search/scheduler.py:325` (TODO + bypass note at `:342`) **and** `triggarr/web/routes.py:876` (`search_now` handler) | SAFETY-03 (manual-search failure-counter bypass) — `TODO(SAFETY-03)` | Medium (runtime-correctness; launch-visible `git log`/`TODO` grep) | `scheduler.py:325`: `TODO(SAFETY-03): refactor search_now to go through make_search_job ...`; the manual `search_now` path invokes `cycle_fn(...)` directly, so a failing manual search does NOT increment `app.state.search_failures` and a successful one does NOT reset it — escalation logging diverges between manual and scheduled paths. | **D-04: runtime-correctness defect + launch-visible** (a skeptical reviewer greps `TODO`/`git log` and sees an unresolved `TODO(SAFETY-03)` in the scheduler). Curated known item the spec already commits Phase 69 to (CHARD-02/03). Not auto-parked — it is a real correctness gap, independent of any UI-knob debt. | Extract a shared `_run_one_cycle(app, app_name, instance_name)` helper (or route `search_now` through `make_search_job`) so manual and scheduled searches share counter increment/reset semantics; remove the `TODO(SAFETY-03)` comment. Hold the `search_lock` for the full cycle+state-save (per CONCERNS.md "Safe modification"). | Add + run a test `test_search_now_failure_counter_increment` asserting a failing manual `search_now` increments `app.state.search_failures` and a success resets it (the failure-counter unification test Phase 69/CHARD-03 adds): `uv run pytest tests/ -k "search_now and failure" -x` passes, and `grep -rn "TODO(SAFETY-03)" triggarr/` returns nothing |
 
 ---
 
