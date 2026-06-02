@@ -154,7 +154,10 @@ def validate_arr_url_config(url: str) -> tuple[bool, str]:
         addr = ipaddress.ip_address(hostname)
         if addr.is_link_local or addr.is_unspecified or addr.is_multicast:
             return (False, "Blocked address")
-        # Check IPv4-mapped IPv6 addresses (e.g., ::ffff:169.254.169.254) per D-10
+        # Check IPv4-mapped IPv6 addresses (e.g., ::ffff:169.254.169.254) per D-10.
+        # mapped.is_loopback is intentionally NOT checked here: ::ffff:127.0.0.1 is an
+        # acceptable same-host loopback form, mirroring the top-level loopback allowance
+        # that distinguishes this relaxed config-load variant from strict validate_arr_url.
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
             mapped = addr.ipv4_mapped
             if (
