@@ -346,16 +346,18 @@ No ASVS categories apply to Markdown critique artifact production.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Codex model selection for PDISC-02**
    - What we know: `codex exec` defaults to the model configured in `~/.codex/config.toml`; can be overridden with `-m <model>`.
    - What's unclear: Whether a specific model override is warranted for a docs review task.
    - Recommendation: Use the default configured model (no `-m` override); if the output is thin, retry with `-m o3` as the follow-up.
+   - RESOLVED: Plan 70-01 Task 2 adopts the default-model-then-retry-with-`-m o3` recommendation verbatim.
 
 2. **Whether to run PDISC-01, PDISC-02, PDISC-03 as three separate tasks or combine some**
    - What we know: The three artifacts are independent; the only ordering constraint is that codex exec (PDISC-02) should complete before the planner merges its findings — but it doesn't block PDISC-01 or PDISC-03.
    - Recommendation: Three separate tasks, each producing one artifact. Parallelization is possible (all three activities are read-only and independent) but the planner may sequence them for simplicity.
+   - RESOLVED: Plan 70-01 implements three separate tasks (70-01-01/02/03), one per artifact, in a single autonomous Wave 1.
 
 ---
 
