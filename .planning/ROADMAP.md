@@ -234,3 +234,14 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 | 69. Code-track hardening | 3/3 | Complete    | 2026-06-02 |
 | 70. Presentation discovery | 1/1 | Complete    | 2026-06-02 |
 | 71. Presentation rewrite | 0/? | Not started | - |
+
+## Backlog
+
+### Phase 999.1: UI-based password recovery (BACKLOG)
+
+**Goal:** [Captured for future planning] Self-service password reset flow in the Triggarr web UI so a locked-out user never has to hand-edit `triggarr.toml`. Context: a user got locked out after logging out and corrupted auth by typing a plaintext value into the bcrypt `password_hash` field (silent failure — bcrypt compare against a non-hash always rejects). Current recovery requires clearing `username`/`password_hash` in the TOML and re-running `/setup`. Single-user app, so likely a recovery mechanism gated on host/filesystem access (e.g. a one-time reset token written to the config volume or logs) rather than email-based reset.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
