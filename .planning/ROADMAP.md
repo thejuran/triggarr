@@ -168,7 +168,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 ### Phases (summary)
 
 - [x] **Phase 68: Code-track hostile-reader discovery** -- Hostile "this is on Reddit" code sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) → one triaged findings artifact classifying each finding fold-in vs parked; gates Phase 69's fix scope. (completed 2026-06-02)
-- [ ] **Phase 69: Code-track hardening** -- Close the curated known items (`.orchestrator.json` gitignore audit-and-close + SAFETY-03 manual/scheduled failure-counter unification with a covering test) plus every fold-in finding from Phase 68.
+- [ ] **Phase 69: Code-track hardening** (3 plans) -- Close the curated known items (`.orchestrator.json` gitignore audit-and-close + SAFETY-03 manual/scheduled failure-counter unification with a covering test) plus every fold-in finding from Phase 68.
 - [ ] **Phase 70: Presentation discovery** -- Cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit vs SeedSyncarr → critique artifacts that gate Phase 71's rewrite.
 - [ ] **Phase 71: Presentation rewrite** -- Rewrite README / SECURITY.md / community-health files / repo-metadata text / release notes + in-app changelog driven by Phase 70's critique; fresh Playwright screenshots captured at the milestone-end NAS walkthrough.
 
@@ -196,7 +196,10 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
   2. Manual search via `/search-now/{app}/{instance}` and scheduled cycles share one failure-counting path, so a manual-search failure increments and resets the consecutive-failure counter identically to scheduled cycles, and the `# TODO` at `scheduler.py:~325` is gone (CHARD-02)
   3. A test proves manual-search failure increment/reset, and no existing scheduler failure-counter test is deleted or skipped (CHARD-03)
   4. Every discovery finding marked fold-in (from CDISC-05) is fixed; every parked finding is recorded with rationale in the findings artifact (CHARD-04)
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 69-01-PLAN.md — Repo-hygiene + secret-scan tooling: `.orchestrator.json` gitignore audit-and-close (CHARD-01) + `.gitleaksignore` 8.x fingerprint repair (CHARD-04/P68-FI-001)
+- [ ] 69-02-PLAN.md — Dependency bump: raise fastapi pin so starlette resolves ≥1.0.1, closing PYSEC-2026-161 (CHARD-04/P68-FI-002); full-suite + ruff + pip-audit gate
+- [ ] 69-03-PLAN.md — SAFETY-03 (TDD): extract shared `_run_one_cycle`, route manual + scheduled searches through it, remove `TODO(SAFETY-03)` (CHARD-02), add covering manual-path counter tests (CHARD-03)
 
 ### Phase 70: Presentation discovery
 **Goal**: A hostile reading of Triggarr's presentation has run — cynical-reader teardown, codex adversarial pass against the existing README/docs, and a same-author consistency audit against SeedSyncarr — producing critique artifacts that drive (and gate) the rewrite
@@ -227,6 +230,6 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
-| 69. Code-track hardening | 0/? | Not started | - |
+| 69. Code-track hardening | 0/3 | Planned | - |
 | 70. Presentation discovery | 0/? | Not started | - |
 | 71. Presentation rewrite | 0/? | Not started | - |
