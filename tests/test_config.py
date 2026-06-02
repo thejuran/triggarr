@@ -491,6 +491,47 @@ def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
     assert "web UI" in content or "settings" in content.lower()
 
 
+def test_ensure_config_exits_cleanly_on_invalid_url(tmp_path: Path) -> None:
+    """ensure_config translates a ValidationError into sys.exit(1), not a traceback.
+
+    A config that parses as TOML but fails a model rule (here: a placeholder
+    instance url of ``http://`` with no hostname, which the config-load SSRF
+    validator rejects) must produce a clean operator-facing exit rather than an
+    uncaught pydantic.ValidationError propagating out of asyncio.run() at startup.
+    Regression guard for the IMP-001 deep-review finding (phase 71).
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(
+        '[general]\nlog_level = "info"\n\n'
+        '[radarr.main]\nurl = "http://"\napi_key = "x"\nenabled = false\n'
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ensure_config(config_file)
+
+    assert exc_info.value.code == 1
+
+
+def test_ensure_config_exits_cleanly_on_blocked_metadata_url(tmp_path: Path) -> None:
+    """A cloud-metadata url in triggarr.toml exits cleanly via sys.exit(1).
+
+    Complements the placeholder-url case: a genuinely-unsafe url (link-local /
+    cloud-metadata) rejected by the config-load SSRF validator must also surface
+    as a friendly exit, not a bare traceback. Regression guard for IMP-001.
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(
+        '[general]\nlog_level = "info"\n\n'
+        '[radarr.main]\nurl = "http://169.254.169.254/latest/meta-data"\n'
+        'api_key = "x"\nenabled = true\n'
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ensure_config(config_file)
+
+    assert exc_info.value.code == 1
+
+
 # ---------------------------------------------------------------------------
 # v2.2 detection and migration
 # ---------------------------------------------------------------------------
