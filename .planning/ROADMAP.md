@@ -169,7 +169,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 
 - [x] **Phase 68: Code-track hostile-reader discovery** -- Hostile "this is on Reddit" code sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) → one triaged findings artifact classifying each finding fold-in vs parked; gates Phase 69's fix scope. (completed 2026-06-02)
 - [x] **Phase 69: Code-track hardening** (3 plans) -- Close the curated known items (`.orchestrator.json` gitignore audit-and-close + SAFETY-03 manual/scheduled failure-counter unification with a covering test) plus every fold-in finding from Phase 68. (completed 2026-06-02)
-- [ ] **Phase 70: Presentation discovery** -- Cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit vs SeedSyncarr → critique artifacts that gate Phase 71's rewrite.
+- [x] **Phase 70: Presentation discovery** -- Cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit vs SeedSyncarr → critique artifacts that gate Phase 71's rewrite. (completed 2026-06-02)
 - [ ] **Phase 71: Presentation rewrite** -- Rewrite README / SECURITY.md / community-health files / repo-metadata text / release notes + in-app changelog driven by Phase 70's critique; fresh Playwright screenshots captured at the milestone-end NAS walkthrough.
 
 ### Phase Details
@@ -210,7 +210,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
   2. A codex adversarial pass against the existing README + docs has run and its findings — technical-claims accuracy, broken/incomplete install/quickstart, unsupported assertions — are captured (PDISC-02)
   3. A same-author cross-repo consistency audit against SeedSyncarr (README structure, security-posture framing, badge style, "what this is" one-liner) is recorded as a list of divergences to reconcile (PDISC-03)
 **Plans**: 1 plan
-- [ ] 70-01-PLAN.md — Cynical-reader teardown (PDISC-01) + codex adversarial docs pass (PDISC-02) + SeedSyncarr cross-repo consistency audit (PDISC-03), captured as three critique artifacts that gate the Phase 71 rewrite
+- [x] 70-01-PLAN.md — Cynical-reader teardown (PDISC-01) + codex adversarial docs pass (PDISC-02) + SeedSyncarr cross-repo consistency audit (PDISC-03), captured as three critique artifacts that gate the Phase 71 rewrite
 **UI hint**: yes
 
 ### Phase 71: Presentation rewrite
@@ -232,5 +232,5 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 |-------|----------------|--------|-----------|
 | 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
 | 69. Code-track hardening | 3/3 | Complete    | 2026-06-02 |
-| 70. Presentation discovery | 0/? | Not started | - |
+| 70. Presentation discovery | 1/1 | Complete   | 2026-06-02 |
 | 71. Presentation rewrite | 0/? | Not started | - |
