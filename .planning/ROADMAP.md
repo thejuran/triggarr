@@ -251,3 +251,12 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 
 Plans:
 - [ ] TBD (promote with /gsd:review-backlog when ready)
+
+### Phase 999.2: Count-only / dry-run refresh without searching (BACKLOG)
+
+**Goal:** [Captured for future planning] Surface accurate missing & cutoff-unmet counts on demand WITHOUT triggering any indexer searches or advancing the search cursor. Context: today counting and searching are a single inseparable pass (`engine.py` fetches the full missing/cutoff lists — the source of accurate counts — then immediately slices a batch off the cursor and searches it). After a bulk quality-profile change a user wants to see the true post-change counts without launching a search wave. The expensive part (querying *arr for the lists) already exists; this is the existing cycle with the `search_movies` loop short-circuited. Design notes: (a) must NOT advance the cursor (nothing was searched, else next real cycle silently skips items); (b) prefer a thin shared fetch helper used by both the real cycle and the count-only path over a `count_only` flag tangling the hot path; (c) surface as a per-instance "Refresh counts" button and/or API endpoint.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
