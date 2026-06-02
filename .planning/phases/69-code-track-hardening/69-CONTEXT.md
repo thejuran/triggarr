@@ -150,9 +150,13 @@ Presentation/docs work is Phase 70/71, out of scope here.
   that acquires `app.state.search_lock`, runs `cycle_fn`, derives outcome from the engine `connected`
   flag, and calls the failure-counter helpers (`_record_failure` increment at ~`:280-295`; reset on
   success). The `_run_one_cycle` extraction (D-01) is carved out of this existing closure body.
-- `triggarr/web/routes.py` — manual `search_now` handler at `:875-876`
-  (`@router.post("/api/search-now/{app}/{instance}")`) currently calls `cycle_fn(...)` directly,
-  bypassing the counter + full-cycle lock. This is the call site to route through `_run_one_cycle`.
+- `triggarr/web/routes.py` — manual `search_now` handler at `:876`
+  (`@router.post("/api/search-now/{app}/{instance}")`) **already** acquires `app.state.search_lock`
+  (`:904`) and saves state (`:945`); it calls `cycle_fn(...)` directly (`:935`), bypassing **only the
+  failure-counter increment/reset calls** (`_record_cycle_failure` / `_evaluate_cycle_outcome`). This
+  is the call site to route through `_run_one_cycle` — the helper is called *inside* the already-held
+  lock; it must NOT acquire `search_lock` itself (doing so would double-acquire). [Corrected per Phase
+  69 adversarial review: the manual path was NOT lock-bypassing; the gap is the counter calls only.]
 - `tests/test_scheduler.py` — existing scheduler failure-counter tests live here; extend (don't
   replace) for CHARD-03. Other failure-counter-touching tests: `tests/test_middleware.py`,
   `tests/test_web.py`, `tests/test_config.py`.
@@ -162,9 +166,11 @@ Presentation/docs work is Phase 70/71, out of scope here.
 ### Established Patterns
 - Error handling: narrow exception catches, no bare `except:`. The SAFETY-03 refactor must preserve
   the existing dedicated OSError + persistence try/except split (SAFETY-03 Codex findings 1 & 2).
-- Concurrency: single-worker `asyncio.Lock` model (`app.state.search_lock`). The unified helper must
-  hold the lock for the full cycle + state-save — manual searches currently do not, which is part of
-  the SAFETY-03 gap.
+- Concurrency: single-worker `asyncio.Lock` model (`app.state.search_lock`). **Both** callers
+  (scheduled `job()` and manual `search_now`) already acquire `search_lock` externally and run the
+  cycle + state-save inside it. The extracted `_run_one_cycle` therefore must **NOT** acquire
+  `search_lock` itself — it runs under the caller's already-held lock. The SAFETY-03 gap is the
+  failure-counter increment/reset (manual path skips it), NOT the lock.
 - Atomic state writes (write-then-rename) for `app.state.triggarr_state` persistence.
 
 ### Integration Points
