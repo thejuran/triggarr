@@ -35,9 +35,9 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 <!-- Hostile take + cross-repo consistency, before any rewrite (spec §3.2, D-6/D-7). -->
 
-- [ ] **PDISC-01**: A framed cynical-reader ("r/selfhosted commenter") teardown of Triggarr's positioning, credibility, and first impression is captured as a written artifact.
-- [ ] **PDISC-02**: A codex adversarial pass runs against the existing README + docs (technical-claims accuracy, broken/incomplete install/quickstart, unsupported assertions), with findings captured.
-- [ ] **PDISC-03**: A same-author cross-repo consistency audit compares Triggarr's README structure, security-posture framing, badge style, and "what this is" one-liner against SeedSyncarr's, recording divergences to reconcile.
+- [x] **PDISC-01**: A framed cynical-reader ("r/selfhosted commenter") teardown of Triggarr's positioning, credibility, and first impression is captured as a written artifact.
+- [x] **PDISC-02**: A codex adversarial pass runs against the existing README + docs (technical-claims accuracy, broken/incomplete install/quickstart, unsupported assertions), with findings captured.
+- [x] **PDISC-03**: A same-author cross-repo consistency audit compares Triggarr's README structure, security-posture framing, badge style, and "what this is" one-liner against SeedSyncarr's, recording divergences to reconcile.
 
 ### Presentation Rewrite
 
@@ -93,9 +93,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CHARD-02 | Phase 69 | Complete |
 | CHARD-03 | Phase 69 | Complete |
 | CHARD-04 | Phase 69 | Complete |
-| PDISC-01 | Phase 70 | Pending |
-| PDISC-02 | Phase 70 | Pending |
-| PDISC-03 | Phase 70 | Pending |
+| PDISC-01 | Phase 70 | Complete |
+| PDISC-02 | Phase 70 | Complete |
+| PDISC-03 | Phase 70 | Complete |
 | PREW-01 | Phase 71 | Pending |
 | PREW-02 | Phase 71 | Pending |
 | PREW-03 | Phase 71 | Pending |

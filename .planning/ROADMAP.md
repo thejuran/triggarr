@@ -232,5 +232,5 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 |-------|----------------|--------|-----------|
 | 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
 | 69. Code-track hardening | 3/3 | Complete    | 2026-06-02 |
-| 70. Presentation discovery | 1/1 | Complete   | 2026-06-02 |
+| 70. Presentation discovery | 1/1 | Complete    | 2026-06-02 |
 | 71. Presentation rewrite | 0/? | Not started | - |
