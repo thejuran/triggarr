@@ -28,7 +28,7 @@ from triggarr.clients.radarr import RadarrClient
 from triggarr.db import init_db, insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
-from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, make_search_job
+from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
 from triggarr.state import _default_instance_state, _default_state, save_state
 
 
@@ -1064,3 +1064,225 @@ async def test_tag_cache_ttl_expired_triggers_fresh_fetch(tmp_path):
     # Entry was refreshed to the live value, not the stale one.
     assert [t.label for t in cached_tags] == ["triggarr"]
     assert fetched_at > stale_at
+
+
+# ---------------------------------------------------------------------------
+# CHARD-02/03 (Plan 69-03): _run_one_cycle — manual search failure-counter tests
+#
+# These tests drive _run_one_cycle directly (not the APScheduler job wrapper)
+# with a real RadarrClient on an httpx.MockTransport — identical pattern to the
+# 6 existing scheduled-path failure-counter tests. Do NOT patch
+# _record_cycle_failure or _evaluate_cycle_outcome; test the actual counter
+# logic end-to-end through the shared helper.
+# ---------------------------------------------------------------------------
+
+
+def _build_manual_app(tmp_path, *, transport_handler, max_consecutive_failures=5):
+    """Build a FastAPI app + (real_client, instance_config) for _run_one_cycle tests.
+
+    Returns (app, real_client, instance_config) instead of (app, job) so the
+    test can call _run_one_cycle directly inside its own async with search_lock.
+    """
+    settings = make_settings()
+    settings.general.max_consecutive_failures = max_consecutive_failures
+
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(transport_handler),
+        base_url="http://radarr-test:7878",
+        headers={"X-Api-Key": "test-key", "Content-Type": "application/json"},
+    )
+    real_client._app_name = "Radarr"
+
+    from triggarr.state import _default_state, _default_instance_state
+
+    state = _default_state(settings)
+    state["radarr"]["Default"] = _default_instance_state()
+    state["radarr"]["Default"]["connected"] = True
+
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": real_client}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = state
+    app.state.settings = settings
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.tag_cache = {}
+    app.state.db = AsyncMock()
+    app.state.state_path = tmp_path / "state.json"
+
+    instance_config = settings.get_enabled_instances("radarr")["Default"]
+    return app, real_client, instance_config
+
+
+async def test_search_now_failure_counter_increment(tmp_path):
+    """CHARD-03 (SAFETY-03): manual _run_one_cycle failure increments search_failures.
+
+    Mirrors test_failure_counter_increments_on_real_arr_outage but drives
+    _run_one_cycle directly (the shared helper, not the APScheduler job wrapper).
+    Does NOT patch _record_cycle_failure or _evaluate_cycle_outcome — exercises
+    the real counter logic end-to-end through the shared helper.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "Service unavailable"})
+
+    app, real_client, instance_config = _build_manual_app(tmp_path, transport_handler=handler)
+
+    async def _get_tags_cached() -> list:
+        return []
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        async with app.state.search_lock:
+            await _run_one_cycle(
+                app, "radarr", "Default", real_client, instance_config,
+                tmp_path / "state.json", _get_tags_cached,
+            )
+        async with app.state.search_lock:
+            await _run_one_cycle(
+                app, "radarr", "Default", real_client, instance_config,
+                tmp_path / "state.json", _get_tags_cached,
+            )
+
+    assert app.state.search_failures["radarr_Default_search"] == 2, (
+        f"Expected counter=2 after 2 failures, got {app.state.search_failures}"
+    )
+    assert app.state.triggarr_state["radarr"]["Default"]["connected"] is False
+
+
+async def test_search_now_failure_counter_resets_on_success(tmp_path):
+    """CHARD-03 (SAFETY-03): successful _run_one_cycle resets the failure counter to 0.
+
+    Mirrors test_failure_counter_resets_on_success: drive fail then success via
+    _run_one_cycle and assert counter trajectory: 1 → reset to 0.
+    """
+    call_count = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return httpx.Response(503, json={"error": "Service unavailable"})
+        # Second call: success — tag endpoint returns [] (flat array), paginated endpoints
+        # return empty records so the cycle completes with connected=True.
+        if request.url.path == "/api/v3/tag":
+            return httpx.Response(200, json=[])
+        return httpx.Response(
+            200,
+            json={"page": 1, "pageSize": 50, "sortKey": "id", "totalRecords": 0, "records": []},
+        )
+
+    app, real_client, instance_config = _build_manual_app(tmp_path, transport_handler=handler)
+
+    async def _get_tags_cached() -> list:
+        return []
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        async with app.state.search_lock:
+            await _run_one_cycle(
+                app, "radarr", "Default", real_client, instance_config,
+                tmp_path / "state.json", _get_tags_cached,
+            )
+        assert app.state.search_failures["radarr_Default_search"] == 1, (
+            f"Expected counter=1 after first failure, got {app.state.search_failures}"
+        )
+
+        async with app.state.search_lock:
+            await _run_one_cycle(
+                app, "radarr", "Default", real_client, instance_config,
+                tmp_path / "state.json", _get_tags_cached,
+            )
+
+    assert app.state.search_failures["radarr_Default_search"] == 0, (
+        f"Expected counter=0 after success, got {app.state.search_failures}"
+    )
+
+
+async def test_search_now_failure_returns_card_200(tmp_path):
+    """HTTP-contract guard (RESEARCH Pitfall 3): failing manual search returns HTTP 200 + card.
+
+    Drives the actual search_now route via TestClient with a 503-returning
+    MockTransport-backed client. Asserts that even on failure the response is
+    HTTP 200 and contains the app_card partial markup — never a 500.
+    This guards the always-return-card-on-failure contract through the refactor.
+    """
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.testclient import TestClient
+
+    from triggarr.web.routes import STATIC_DIR, router
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "Service unavailable"})
+
+    settings = make_settings()
+
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="http://radarr-test:7878",
+        headers={"X-Api-Key": "test-key", "Content-Type": "application/json"},
+    )
+    real_client._app_name = "Radarr"
+
+    from triggarr.state import _default_state, _default_instance_state
+
+    state = _default_state(settings)
+    state["radarr"]["Default"] = _default_instance_state()
+    state["radarr"]["Default"]["connected"] = True
+
+    app = FastAPI()
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.include_router(router)
+
+    db_path = tmp_path / "test.db"
+    import aiosqlite as _aiosqlite
+    from triggarr.db import init_db as _init_db
+    db_conn = await _aiosqlite.connect(db_path)
+    await _init_db(db_conn, db_path)
+
+    app.state.radarr_clients = {"Default": real_client}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = state
+    app.state.settings = settings
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.tag_cache = {}
+    app.state.db = db_conn
+    app.state.state_path = tmp_path / "state.json"
+    app.state.last_search_time = {}
+    app.state.last_health_check = None
+    # Minimal scheduler mock (needed for dashboard template rendering)
+    mock_scheduler = MagicMock()
+    mock_job = MagicMock()
+    mock_job.next_run_time = None
+    mock_scheduler.get_job.return_value = mock_job
+    app.state.scheduler = mock_scheduler
+
+    try:
+        with (
+            patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+            patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+            patch("triggarr.web.routes.save_state", new=MagicMock()),
+        ):
+            with TestClient(app, raise_server_exceptions=True) as tc:
+                response = tc.post("/api/search-now/radarr/Default")
+    finally:
+        await db_conn.close()
+
+    assert response.status_code == 200, (
+        f"Expected HTTP 200 on failing manual search, got {response.status_code}: {response.text}"
+    )
+    # The response should contain the app_card partial markup (not a server error page)
+    assert "app_card" in response.text or "radarr" in response.text.lower(), (
+        f"Expected app_card partial content in response, got: {response.text[:200]}"
+    )
