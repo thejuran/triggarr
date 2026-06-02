@@ -322,23 +322,64 @@ these is a finding.
 
 ---
 
-## Fold-In Summary
+## Cross-check against CONCERNS.md
 
-> **This is Phase 69's CHARD-04 fix checklist.** Every `P68-FI-NNN` that appears as FOLD-IN in a source
-> section above appears here exactly once, with the same rich metadata. One-to-one, no gaps, no duplicates.
+*Discovery status:* Reconciled this pass's findings against the standing catalogue
+`.planning/codebase/CONCERNS.md` (v2.8 audit, 2026-06-01) and confirmed both curated known items. The
+discovery pass spent its effort finding what ISN'T catalogued (P68-FI-001 broken `.gitleaksignore`,
+P68-FI-002 starlette CVE) and confirming the curated items (P68-FI-003 SAFETY-03, P68-FI-004
+`.orchestrator.json`), rather than re-discovering catalogued debt.
 
-*Discovery status:* _(pending — consolidated in Task 5)_
+**Curated known item #2 — `.orchestrator.json` gitignore gap (FOLD-IN P68-FI-004):** Confirmed by direct
+check — `.orchestrator.json` **exists in the working tree** (`{"release_intent": true}`, 29 bytes), is
+**NOT git-tracked**, and is **NOT covered by `.gitignore`** (no `orchestrator` pattern present;
+`git check-ignore` returns nothing). It has never been committed (`git log --all -- .orchestrator.json` is
+empty), so there is no history exposure — but the missing ignore rule means a stray `git add -A` could
+commit orchestrator runtime state into the public repo. Repo-hygiene FOLD-IN (launch-visible: an untracked,
+non-ignored state file is exactly what a careful reviewer flags). Recorded as **P68-FI-004** and carried
+into the Fold-In Summary.
 
-| ID | Source | Locator | Rule/Advisory | Severity | Remediation | Verify cmd |
-|----|--------|---------|---------------|----------|-------------|------------|
-| _(empty — consolidated in Task 5)_ | | | | | | |
+| ID | Source | Locator | Rule | Severity | Evidence | Rationale | Remediation | Verify cmd |
+|----|--------|---------|------|----------|----------|-----------|-------------|------------|
+| **P68-FI-004** | cross-check (curated, repo hygiene) | `.orchestrator.json` (working-tree, untracked); `.gitignore` (missing entry) | repo hygiene — untracked, non-ignored state file | Low (hygiene — launch-visible) | `git ls-files .orchestrator.json` → empty (untracked); `git check-ignore .orchestrator.json` → empty (not ignored); content `{"release_intent": true}`; `git log --all -- .orchestrator.json` → empty (never committed) | **D-04 (a) launch-visible repo hygiene.** An untracked-but-not-ignored runtime state file is a stray-`git add` away from leaking orchestrator state into a public repo. Curated item the spec commits Phase 69 to (CHARD-01: audit-and-close). Independent hygiene finding, not UI-knob debt. | Add `.orchestrator.json` (and any sibling orchestrator runtime artifacts) to `.gitignore`. Phase 69/CHARD-01 is "audit-and-close" — confirm no other untracked-but-not-ignored runtime files exist. | `git check-ignore .orchestrator.json` returns `.orchestrator.json` (now ignored) AND `git status --porcelain \| grep -q "\.orchestrator\.json"` returns nothing |
+
+**Reconciliation of relevant CONCERNS.md catalogue items (re-confirmed / disposition):**
+
+| CONCERNS.md item | This pass's disposition |
+|------------------|-------------------------|
+| **SAFETY-03** (manual-search counter bypass, `routes.py:876` / `scheduler.py:325`) | **Re-confirmed → FOLD-IN P68-FI-003** (entry-point skim). Curated known item; both anchors located exactly. |
+| **DEBT-03** (history cap not in UI), **DEBT-06** (drain timeout not in UI), **DEBT-07** (request timeout not in UI), **DEBT-08** (page size not in UI) | **PARKED — excluded from fold-in** (narrowed hard rule F-5). Rationale: *spec D-5: UI-exposure debt, invisible to launch reader, parked to v2.* No tool surfaced the missing-UI-knob itself; the files they live in (`config.py`, `scheduler.py`) were skimmed and produced no independent finding. |
+| **UI-01/02/03** (pixel-exact auth-page verification) | **PARKED — kept out of the fix scope per the pre-park rule.** Rationale: *spec D-5 / behind first-run setup, not launch-visible, `human_needed`, parked to v2.* |
+| CSP `script-src` nonce (CONCERNS "AUDITED 2026-05-31: no issue") | Re-confirmed clean in the skim/inventory — `script-src 'self' 'nonce-…'`, `'unsafe-inline'` only on `style-src`; all inline scripts carry the nonce. No finding. |
+| Session invalidation on password change (CONCERNS "RESOLVED 2026-05-31") | Re-confirmed resolved — `change_password` rotates `session_secret` (skim of `routes.py` + `auth.py`); v2.8.1 fix intact. No finding. |
+| `apikey=`-in-URL rejection, Basic-auth control-char rejection, session-secret startup validation | Re-confirmed intact in middleware/config/startup skim. No finding. |
+| Multi-worker `asyncio.Lock` limit, tag-cache TTL, pending-row cap, audit-log/Prometheus gaps | PARKED — invisible internal/scaling debt or absent-feature gaps; not launch-visible, not security. No new finding. |
+| Unused `tracking_delay_seconds` (dead config field, `config.py:110`) | PARKED — trivial dead config field, invisible to a launch reader; ruff did not flag it (it's read into the model). No finding. |
+
+**New findings NOT in CONCERNS.md (the value this pass added):** P68-FI-001 (`.gitleaksignore`
+non-functional under gitleaks 8.30.x) and P68-FI-002 (`starlette@0.52.1` PYSEC-2026-161) — neither was in
+the v2.8 catalogue.
 
 ---
 
-## Cross-check against CONCERNS.md
+## Fold-In Summary
 
-*Discovery status:* _(pending — populated in Task 5)_
+> **This is Phase 69's CHARD-04 fix checklist.** Every `P68-FI-NNN` that appears as FOLD-IN in a source
+> section above (ruff / Shield / gitleaks / skim / cross-check) appears here exactly once, with the same
+> rich metadata. One-to-one, no gaps, no duplicates. This is the LAST section so the consolidated checklist
+> is the final thing Phase 69 reads.
 
-_(empty — populated in Task 5: reconcile discovery findings against `.planning/codebase/CONCERNS.md`; for
-each relevant catalogued item note whether this pass re-confirmed it; confirm the two curated known items —
-`.orchestrator.json` gitignore gap and SAFETY-03 — are recorded and in the Fold-In Summary)_
+*Discovery status:* Consolidated in Task 5. **4 FOLD-IN findings (the `P68-FI` series, sequential, no gaps,
+no duplicates).** Each stable ID appears exactly once in this table and exactly once in its source section
+above (one-to-one). This table IS Phase 69's CHARD-04 fix checklist — copy-paste actionable.
+
+History scan was **clean** (1038 commits, all refs — no secret-exposure FOLD-IN). No discovery source
+recorded a discovery failure; every required source ran to completion. ruff was clean (0 violations);
+semgrep's 11 results were all verified false positives.
+
+| ID | Source | Locator | Rule/Advisory | Severity | Remediation | Verify cmd |
+|----|--------|---------|---------------|----------|-------------|------------|
+| **P68-FI-001** | gitleaks (working-tree) | `.gitleaksignore` (whole file) | gitleaks `Invalid .gitleaksignore entry` (8.30.x rejects bare paths) + `generic-api-key` noise | Low (hygiene/tooling, launch-visible) | Convert `.gitleaksignore` to gitleaks-8.x fingerprint entries (or a `gitleaks.toml` `[allowlist] paths` block) so the 4 test-fixture files suppress cleanly and no "Invalid entry" warnings remain. | `gitleaks git . --no-banner --redact 2>&1 \| grep -E "Invalid .gitleaksignore entry\|leaks found"` → no "Invalid entry" lines, `leaks found: 0` (or only intended fingerprints) |
+| **P68-FI-002** | pip-audit (project lock) | `starlette@0.52.1` (transitive via `fastapi@0.133.0`) | `PYSEC-2026-161` (GHSA-86qp-5c8j-p5mr), fix `1.0.1` | Medium (security, auth-relevant) | Bump `starlette` to `>=1.0.1` (raise the `fastapi` pin or add a direct `starlette>=1.0.1` constraint), `uv lock`, re-audit; verify no starlette 0.x→1.x breakage. | `uv export --no-dev --no-emit-project --format requirements-txt > /tmp/r.txt && uv run pip-audit -r /tmp/r.txt --format json \| python3 -c "import json,sys; d=json.load(sys.stdin); print('CLEAN' if not [x for x in d['dependencies'] if x.get('vulns')] else 'VULN')"` → `CLEAN` |
+| **P68-FI-003** | skim (SAFETY-03, curated) | `scheduler.py:325` (TODO) + `routes.py:876` (`search_now`) | SAFETY-03 — manual-search failure-counter bypass | Medium (runtime-correctness, launch-visible TODO) | Extract a shared `_run_one_cycle(app, app_name, instance_name)` helper (or route `search_now` through `make_search_job`) so manual + scheduled searches share counter increment/reset; hold `search_lock` for the full cycle+save; remove the `TODO(SAFETY-03)` comment. | `uv run pytest tests/ -k "search_now and failure" -x` passes (CHARD-03 test) AND `grep -rn "TODO(SAFETY-03)" triggarr/` → nothing |
+| **P68-FI-004** | cross-check (curated, hygiene) | `.orchestrator.json` (untracked) + `.gitignore` (missing entry) | repo hygiene — untracked, non-ignored runtime state file | Low (hygiene, launch-visible) | Add `.orchestrator.json` (+ any sibling orchestrator runtime artifacts) to `.gitignore`; CHARD-01 audit-and-close — confirm no other untracked-but-not-ignored runtime files. | `git check-ignore .orchestrator.json` → `.orchestrator.json` AND `git status --porcelain \| grep -q "\.orchestrator\.json"` → nothing |
