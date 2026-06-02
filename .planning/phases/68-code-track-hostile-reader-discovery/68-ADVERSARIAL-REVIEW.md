@@ -53,3 +53,17 @@ The plan has the right high-level discovery shape, but several operational assum
 ## Verdict
 
 **FAIL.** Fix F-1 (gitleaks command/count), F-2/F-3 (Shield + structured-output + exit-code handling), F-4 (public-surface inventory), F-5 (DEBT pre-park tiebreaker), F-6 (stable-ID checklist with scanner metadata) before execution.
+
+---
+
+## Round 2 — Re-review of revised plan (codex, resumed thread)
+
+**Verdict:** PASSES. No prior blocker remains open. Cleared for execution.
+
+All 10 findings confirmed RESOLVED:
+- F-1 (BLOCKER): gitleaks `git . --log-opts="--all"` + `git rev-list --count --all`, conclusive-or-fail gate. ✓
+- F-2/F-3: direct commands primary; JSON contract; non-zero finding-exit = success-with-findings; genuine failures → DISCOVERY FAILURE. ✓
+- F-4: public-surface inventory (Docker/entrypoint/compose/__main__/middleware/templates/static/workflows/README). ✓
+- F-5: DEBT hard rule narrowed to "exists in model, not exposed in UI"; independent security findings still FOLD-IN. ✓
+- F-6/F-9: P68-FI-NNN stable IDs + scanner metadata + one-to-one reconciliation gate. ✓
+- F-7/F-8/F-10: extended smell list, classification matrix, artifact authority. ✓
