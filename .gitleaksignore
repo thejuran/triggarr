@@ -1,5 +1,24 @@
-# Test fixture API keys -- not real credentials
-tests/test_auth_middleware.py
-tests/test_auth_routes.py
-tests/test_auth_integration.py
-tests/test_auth_config.py
+# False-positive fingerprints (all generic-api-key, all confirmed test fixtures or doc prose)
+df9d80bccf3ba61daf099d90c9f07392aa358b91:.planning/codebase/TESTING.md:generic-api-key:390
+bd4ae7c79b72e61e20a10a1f8240a2e03b4aa0e7:.gsd/milestones/M001/slices/S06/S06-HUMAN-UAT-GATE.md:generic-api-key:19
+11108635df17be839a09c9f59607c6311bb3f2af:.gsd/milestones/M001/slices/S05/S05-UAT.md:generic-api-key:25
+11108635df17be839a09c9f59607c6311bb3f2af:.gsd/milestones/M001/slices/S05/S05-SUMMARY.md:generic-api-key:55
+11108635df17be839a09c9f59607c6311bb3f2af:.gsd/milestones/M001/slices/S06/tasks/T03-PLAN.md:generic-api-key:16
+11108635df17be839a09c9f59607c6311bb3f2af:.gsd/milestones/M001/slices/S06/S06-RESEARCH.md:generic-api-key:40
+11108635df17be839a09c9f59607c6311bb3f2af:.gsd/milestones/M001/slices/S06/S06-RESEARCH.md:generic-api-key:43
+11108635df17be839a09c9f59607c6311bb3f2af:.gsd/exec/7953456f-0478-42af-a024-36be382f3bfd.stdout:generic-api-key:96
+049b3d326c26949623064b4f5d31abdbff124f75:reports/security-2026-04-15.md:generic-api-key:154
+ef423c96e57850b1f313cafe5d36259b76e5a852:reports/security-2026-04-15.md:generic-api-key:154
+31e2f069b9ade465f94bcd8d945874568fcb9804:tests/test_auth_routes.py:generic-api-key:953
+e2a81b0f7514fc4b1e26a7ed6462fcd828ff1550:.planning/phases/58-auth-test-suite/58-PATTERNS.md:generic-api-key:66
+e2a81b0f7514fc4b1e26a7ed6462fcd828ff1550:.planning/phases/58-auth-test-suite/58-PATTERNS.md:generic-api-key:393
+3325c89c39478076d7cf73d6f84ca9acd041f410:.planning/phases/58-auth-test-suite/58-02-PLAN.md:generic-api-key:90
+3325c89c39478076d7cf73d6f84ca9acd041f410:.planning/phases/58-auth-test-suite/58-01-PLAN.md:generic-api-key:120
+3325c89c39478076d7cf73d6f84ca9acd041f410:.planning/phases/58-auth-test-suite/58-01-PLAN.md:generic-api-key:133
+8882f65768542c501a898f555e0baa8b4fe651c6:tests/test_auth_middleware.py:generic-api-key:61
+f0cbaadba3d9a02121086ddf991af3e02d7ac676:.planning/PROJECT.md:generic-api-key:227
+0706c1b54f6dddb3c0428114a61d36159643d5cb:.planning/phases/46-test-hardening-infrastructure-failures/46-RESEARCH.md:generic-api-key:243
+4075020c433634ac3a10699ee14b313948323375:.claude/plugins/turingmind/agents/security.md:generic-api-key:122
+d7ce93342a30f54ceef827db107894195140ccf6:tests/test_config.py:generic-api-key:363
+76dddb76dd5291f88ac8a50130f27c6a7df9a2a8:tests/test_logging.py:generic-api-key:14
+76dddb76dd5291f88ac8a50130f27c6a7df9a2a8:tests/test_config.py:generic-api-key:24

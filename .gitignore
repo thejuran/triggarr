@@ -71,3 +71,4 @@ tmp/
 .turingmind/
 .claude/scheduled_tasks.lock
 .playwright-mcp/
+.orchestrator.json
