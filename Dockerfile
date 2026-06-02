@@ -6,7 +6,7 @@ FROM python:3.13-slim AS builder
 # Pin the Tailwind binary version downloaded by pytailwindcss.
 # Bump this when upgrading Tailwind CSS (must match the version used
 # during local development with `tailwindcss -w`).
-ENV TAILWINDCSS_VERSION=v4.2.1
+ENV TAILWINDCSS_VERSION=v4.2.2
 
 WORKDIR /build
 
