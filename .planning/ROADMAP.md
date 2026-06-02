@@ -184,7 +184,8 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
   3. A gitleaks scan over the full git history has run; any secret found in past commits is recorded as highest-priority (and if none, that clean result is stated) (CDISC-03)
   4. The six highest-traffic entry-point files (`web/routes.py`, `search/scheduler.py`, `config.py`, `db.py`, `auth.py`, `startup.py`) have been skimmed with hostile framing and the notes are captured (CDISC-04)
   5. A single triaged findings artifact exists in which every finding is classified fold-in (fix this milestone) or parked (with written rationale) (CDISC-05)
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 68-01-PLAN.md — Hostile-reader sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + full-history gitleaks + entry-point skim) captured and triaged into 68-FINDINGS.md
 
 ### Phase 69: Code-track hardening
 **Goal**: The curated known code holes are closed and every fold-in finding from discovery is fixed, so a skeptical repo browser finds no sloppy-tooling tell and no correctness asymmetry between manual and scheduled searches
@@ -225,7 +226,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 68. Code-track hostile-reader discovery | 0/? | Not started | - |
+| 68. Code-track hostile-reader discovery | 0/1 | Not started | - |
 | 69. Code-track hardening | 0/? | Not started | - |
 | 70. Presentation discovery | 0/? | Not started | - |
 | 71. Presentation rewrite | 0/? | Not started | - |
