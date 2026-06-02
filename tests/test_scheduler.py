@@ -21,6 +21,8 @@ import httpx
 import pytest
 from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.testclient import TestClient
 from loguru import logger
 
 from tests.conftest import make_settings
@@ -30,6 +32,7 @@ from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
 from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
 from triggarr.state import _default_instance_state, _default_state, save_state
+from triggarr.web.routes import STATIC_DIR, router
 
 
 async def test_make_search_job_client_none_returns_early():
@@ -1094,8 +1097,6 @@ def _build_manual_app(tmp_path, *, transport_handler, max_consecutive_failures=5
     )
     real_client._app_name = "Radarr"
 
-    from triggarr.state import _default_state, _default_instance_state
-
     state = _default_state(settings)
     state["radarr"]["Default"] = _default_instance_state()
     state["radarr"]["Default"]["connected"] = True
@@ -1160,14 +1161,17 @@ async def test_search_now_failure_counter_resets_on_success(tmp_path):
 
     Mirrors test_failure_counter_resets_on_success: drive fail then success via
     _run_one_cycle and assert counter trajectory: 1 → reset to 0.
+
+    Uses a cycle-counter dict (set explicitly before each _run_one_cycle call)
+    so the handler can distinguish cycle 1 (fail) vs cycle 2 (success) without
+    the retry-request count interfering.
     """
-    call_count = {"n": 0}
+    cycle = {"n": 1}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        call_count["n"] += 1
-        if call_count["n"] == 1:
+        if cycle["n"] == 1:
             return httpx.Response(503, json={"error": "Service unavailable"})
-        # Second call: success — tag endpoint returns [] (flat array), paginated endpoints
+        # Cycle 2 success: tag endpoint returns [] (flat array), paginated endpoints
         # return empty records so the cycle completes with connected=True.
         if request.url.path == "/api/v3/tag":
             return httpx.Response(200, json=[])
@@ -1185,6 +1189,8 @@ async def test_search_now_failure_counter_resets_on_success(tmp_path):
         patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
         patch("triggarr.search.scheduler.save_state", new=MagicMock()),
     ):
+        # Cycle 1 — fail (503)
+        cycle["n"] = 1
         async with app.state.search_lock:
             await _run_one_cycle(
                 app, "radarr", "Default", real_client, instance_config,
@@ -1194,6 +1200,8 @@ async def test_search_now_failure_counter_resets_on_success(tmp_path):
             f"Expected counter=1 after first failure, got {app.state.search_failures}"
         )
 
+        # Cycle 2 — success (200)
+        cycle["n"] = 2
         async with app.state.search_lock:
             await _run_one_cycle(
                 app, "radarr", "Default", real_client, instance_config,
@@ -1213,11 +1221,6 @@ async def test_search_now_failure_returns_card_200(tmp_path):
     HTTP 200 and contains the app_card partial markup — never a 500.
     This guards the always-return-card-on-failure contract through the refactor.
     """
-    from fastapi.staticfiles import StaticFiles
-    from fastapi.testclient import TestClient
-
-    from triggarr.web.routes import STATIC_DIR, router
-
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "Service unavailable"})
 
@@ -1231,8 +1234,6 @@ async def test_search_now_failure_returns_card_200(tmp_path):
     )
     real_client._app_name = "Radarr"
 
-    from triggarr.state import _default_state, _default_instance_state
-
     state = _default_state(settings)
     state["radarr"]["Default"] = _default_instance_state()
     state["radarr"]["Default"]["connected"] = True
@@ -1242,10 +1243,8 @@ async def test_search_now_failure_returns_card_200(tmp_path):
     app.include_router(router)
 
     db_path = tmp_path / "test.db"
-    import aiosqlite as _aiosqlite
-    from triggarr.db import init_db as _init_db
-    db_conn = await _aiosqlite.connect(db_path)
-    await _init_db(db_conn, db_path)
+    db_conn = await aiosqlite.connect(db_path)
+    await init_db(db_conn, db_path)
 
     app.state.radarr_clients = {"Default": real_client}
     app.state.sonarr_clients = {}
@@ -1273,9 +1272,9 @@ async def test_search_now_failure_returns_card_200(tmp_path):
             patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
             patch("triggarr.search.scheduler.save_state", new=MagicMock()),
             patch("triggarr.web.routes.save_state", new=MagicMock()),
+            TestClient(app, raise_server_exceptions=True) as tc,
         ):
-            with TestClient(app, raise_server_exceptions=True) as tc:
-                response = tc.post("/api/search-now/radarr/Default")
+            response = tc.post("/api/search-now/radarr/Default")
     finally:
         await db_conn.close()
 

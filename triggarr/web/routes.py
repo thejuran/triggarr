@@ -46,8 +46,8 @@ from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
 from triggarr.models.config import APP_TYPES, AuthConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
-from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
-from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, make_search_job
+from triggarr.search.engine import _sanitize_exc
+from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
 from triggarr.version import get_display_version
@@ -895,12 +895,6 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
         logger.info("{name}/{inst}: Manual search rate-limited", name=app_name.title(), inst=instance_name)
         return HTMLResponse("Rate limited -- try again shortly", status_code=429)
 
-    cycle_fns = {"radarr": run_radarr_cycle, "sonarr": run_sonarr_cycle, "lidarr": run_lidarr_cycle}
-    cycle_fn = cycle_fns.get(app_name)
-    if cycle_fn is None:
-        logger.warning("{app}: search cycle not implemented yet", app=app_name.title())
-        return HTMLResponse("Search not yet supported for this app type", status_code=501)
-
     async with request.app.state.search_lock:
         # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
         now = time.monotonic()
@@ -931,25 +925,28 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
             cache[cache_key] = (fresh_tags, time.monotonic())
             return fresh_tags
 
+        # SAFETY-03: route through _run_one_cycle so manual searches share
+        # the same failure-counter increment/reset + persistence semantics as
+        # scheduled cycles. This lock is already held; _run_one_cycle must NOT
+        # acquire it again (single asyncio.Lock; double-acquire deadlocks).
         try:
-            request.app.state.triggarr_state = await cycle_fn(
-                client,
-                request.app.state.triggarr_state,
+            await _run_one_cycle(
+                request.app,
+                app_name,
                 instance_name,
+                client,
                 instance_config,
-                request.app.state.settings,
-                request.app.state.db,
-                get_tags_fn=_get_tags_cached,
-            )
-            await asyncio.get_running_loop().run_in_executor(
-                None, save_state, request.app.state.triggarr_state, request.app.state.state_path
+                request.app.state.state_path,
+                _get_tags_cached,
             )
             logger.info("{name}/{inst}: Manual search triggered", name=app_name.title(), inst=instance_name)
         except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
             # CR-01: same sanitization split applied in scheduler's
             # `_on_job_error` / tracking branch — httpx/pydantic exceptions
             # may carry `?apikey=` query strings on legacy *arr installs;
-            # aiosqlite/OSError messages do not carry secrets.
+            # aiosqlite/OSError messages do not carry secrets. The exception
+            # is logged and swallowed here so the handler always falls through
+            # to the TemplateResponse (RESEARCH Pitfall 3: always 200 + card).
             logger.error(
                 "{name}/{inst}: Manual search failed -- {exc}",
                 name=app_name.title(),
