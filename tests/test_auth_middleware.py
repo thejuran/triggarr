@@ -517,6 +517,54 @@ def test_unauth_browser_redirect_includes_next_deep_path():
     assert response.headers["location"] == "/login?next=/settings"
 
 
+def test_spoofed_host_protected_route_still_redirects_with_routed_next():
+    """PYSEC-2026-161 regression guard: spoofed Host header does not bypass auth or corrupt next.
+
+    The CVE class is Host-header URL reconstruction -> auth bypass. This test verifies
+    AuthMiddleware.dispatch keys off request.url.path (the routed path) for both the
+    exempt-prefix check and the login redirect `next`, NOT off any attacker-controlled
+    Host header value.
+
+    Two assertions:
+    1. A spoofed Host (evil.example.com) on a protected route is still treated as PROTECTED
+       (302, not 200 pass-through) and next == "/login?next=/settings".
+    2. A malformed Host that embeds an exempt-looking suffix (evil.example.com/login, which
+       an old URL-reconstruction attack could expand to /login/...) also remains PROTECTED
+       and next still preserves the actual routed path.
+    Bonus: a spoofed Host on an exempt route (/health) still passes through (200), proving
+    the decision keys strictly off request.url.path regardless of Host.
+    """
+    auth = _configured_auth()
+    client = TestClient(_make_auth_app(auth), follow_redirects=False)
+
+    # Case 1: spoofed Host with unrelated value -- protected route must still be gated
+    response = client.get(
+        "/settings",
+        headers={"Accept": "text/html", "Host": "evil.example.com"},
+    )
+    assert response.status_code == 302, "Spoofed Host must not flip exempt-prefix matching to pass-through"
+    assert response.headers["location"] == "/login?next=/settings", (
+        "login next must reflect the routed path (/settings), not anything derived from the Host header"
+    )
+
+    # Case 2: malformed Host that embeds an exempt-looking suffix (/login) -- must still be gated
+    response = client.get(
+        "/settings",
+        headers={"Accept": "text/html", "Host": "evil.example.com/login"},
+    )
+    assert response.status_code == 302, "Host embedding /login suffix must not smuggle an exempt prefix"
+    assert response.headers["location"] == "/login?next=/settings", (
+        "login next must reflect the routed path (/settings) even when Host contains /login"
+    )
+
+    # Bonus: spoofed Host on an exempt route must still pass through (verifies path-based decision)
+    response = client.get(
+        "/health",
+        headers={"Accept": "text/html", "Host": "evil.example.com"},
+    )
+    assert response.status_code == 200, "Exempt route /health must pass through regardless of Host header"
+
+
 # ---------------------------------------------------------------------------
 # Phase 58 gap-fill: SC-3 session edge cases at middleware level
 # ---------------------------------------------------------------------------
