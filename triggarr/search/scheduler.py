@@ -42,7 +42,7 @@ from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
-from triggarr.models.config import APP_TYPES, Settings
+from triggarr.models.config import APP_TYPES, InstanceConfig, Settings
 from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.state import (
     TriggarrState,
@@ -292,7 +292,7 @@ async def _run_one_cycle(
     app_name: str,
     instance_name: str,
     client: ArrClient,
-    instance_config,
+    instance_config: InstanceConfig,
     state_path: Path,
     get_tags_fn: Callable[[], Awaitable[list[Tag]]],
 ) -> None:
