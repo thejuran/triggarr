@@ -225,7 +225,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
   5. A clean v2.9.0 release-notes entry is written and the in-app changelog is updated to match (PREW-06); Triggarr's quality signals (one-liner, section ordering, security framing) are reconciled against SeedSyncarr so the two repos read as one coherent author (PREW-07)
 **Plans**: 6 plans
 - [x] 71-01-PLAN.md — SSRF config-load test stubs (Wave 0, RED): TestValidateArrUrlConfig + InstanceConfig integration tests (D-03)
-- [ ] 71-02-PLAN.md — SSRF config-load validator (TDD, GREEN): validate_arr_url_config() + InstanceConfig field_validator; web-form path unchanged (D-01/D-02)
+- [x] 71-02-PLAN.md — SSRF config-load validator (TDD, GREEN): validate_arr_url_config() + InstanceConfig field_validator; web-form path unchanged (D-01/D-02)
 - [x] 71-03-PLAN.md — Community-health: bug-report.yml version + App Type (Lidarr/All) dropdowns + snapshot tests; confirm CONTRIBUTING/PR/LICENSE accurate (PREW-04/D-10)
 - [x] 71-04-PLAN.md — CHANGELOG v2.9.0 release-notes + in-app-changelog entry, user-facing scope (PREW-06/D-11/D-12)
 - [ ] 71-05-PLAN.md — README full rewrite (D-04 order) + install/systemd/Docker/tag-filter fixes + Related Projects + Tailwind align + repo-metadata text (PREW-01/02/05/07)
@@ -239,7 +239,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 | 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
 | 69. Code-track hardening | 3/3 | Complete    | 2026-06-02 |
 | 70. Presentation discovery | 1/1 | Complete    | 2026-06-02 |
-| 71. Presentation rewrite | 3/6 | In Progress|  |
+| 71. Presentation rewrite | 4/6 | In Progress|  |
 
 ## Backlog
 
