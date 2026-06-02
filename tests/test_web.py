@@ -112,6 +112,11 @@ async def test_app(tmp_path):
 
         # Search lock (needed by search_now endpoint)
         app.state.search_lock = asyncio.Lock()
+        app.state.search_lock_holder = None
+
+        # SAFETY-03: failure counter + persistence flag (needed by _run_one_cycle)
+        app.state.search_failures = {}
+        app.state.persistence_degraded = False
 
         # Rate limit state (needed by search_now rate limiter — DEBT-01)
         app.state.last_search_time = {}
@@ -357,10 +362,10 @@ def test_search_now_invalid_app(client):
 def test_search_now_happy_path(client, test_app):
     """POST /api/search-now/radarr triggers cycle and returns 200 with updated card."""
     with patch(
-        "triggarr.web.routes.run_radarr_cycle",
+        "triggarr.search.scheduler.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.triggarr_state),
     ), patch(
-        "triggarr.web.routes.save_state",
+        "triggarr.search.scheduler.save_state",
     ):
         response = client.post("/api/search-now/radarr/Default")
         assert response.status_code == 200
@@ -593,9 +598,9 @@ def test_search_now_rate_limit_concurrent_protection(client, test_app):
     Validates that the re-check inside search_lock prevents concurrent bypass.
     """
     with patch(
-        "triggarr.web.routes.run_radarr_cycle",
+        "triggarr.search.scheduler.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.triggarr_state),
-    ), patch("triggarr.web.routes.save_state"):
+    ), patch("triggarr.search.scheduler.save_state"):
         resp1 = client.post("/api/search-now/radarr/Default")
         assert resp1.status_code == 200, f"First request should succeed, got {resp1.status_code}"
 
@@ -614,9 +619,9 @@ def test_search_now_not_rate_limited_after_window(client, test_app):
     test_app.state.last_search_time["radarr_Default"] = time.monotonic() - (SEARCH_RATE_LIMIT_SECONDS + 1)
 
     with patch(
-        "triggarr.web.routes.run_radarr_cycle",
+        "triggarr.search.scheduler.run_radarr_cycle",
         new=AsyncMock(return_value=test_app.state.triggarr_state),
-    ), patch("triggarr.web.routes.save_state"):
+    ), patch("triggarr.search.scheduler.save_state"):
         response = client.post("/api/search-now/radarr/Default")
     assert response.status_code == 200, f"Expected 200 after window expired, got {response.status_code}"
 
@@ -1048,6 +1053,10 @@ async def multi_instance_app(tmp_path):
         app.state.config_path = tmp_path / "triggarr.toml"
         app.state.state_path = tmp_path / "state.json"
         app.state.search_lock = asyncio.Lock()
+        app.state.search_lock_holder = None
+        # SAFETY-03: failure counter + persistence flag (needed by _run_one_cycle)
+        app.state.search_failures = {}
+        app.state.persistence_degraded = False
         app.state.last_search_time = {}
         app.state.last_health_check = None
         # RES-03: tag cache (read by search_now resolver, popped by
