@@ -84,31 +84,31 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CDISC-01 | TBD | Pending |
-| CDISC-02 | TBD | Pending |
-| CDISC-03 | TBD | Pending |
-| CDISC-04 | TBD | Pending |
-| CDISC-05 | TBD | Pending |
-| CHARD-01 | TBD | Pending |
-| CHARD-02 | TBD | Pending |
-| CHARD-03 | TBD | Pending |
-| CHARD-04 | TBD | Pending |
-| PDISC-01 | TBD | Pending |
-| PDISC-02 | TBD | Pending |
-| PDISC-03 | TBD | Pending |
-| PREW-01 | TBD | Pending |
-| PREW-02 | TBD | Pending |
-| PREW-03 | TBD | Pending |
-| PREW-04 | TBD | Pending |
-| PREW-05 | TBD | Pending |
-| PREW-06 | TBD | Pending |
-| PREW-07 | TBD | Pending |
+| CDISC-01 | Phase 68 | Pending |
+| CDISC-02 | Phase 68 | Pending |
+| CDISC-03 | Phase 68 | Pending |
+| CDISC-04 | Phase 68 | Pending |
+| CDISC-05 | Phase 68 | Pending |
+| CHARD-01 | Phase 69 | Pending |
+| CHARD-02 | Phase 69 | Pending |
+| CHARD-03 | Phase 69 | Pending |
+| CHARD-04 | Phase 69 | Pending |
+| PDISC-01 | Phase 70 | Pending |
+| PDISC-02 | Phase 70 | Pending |
+| PDISC-03 | Phase 70 | Pending |
+| PREW-01 | Phase 71 | Pending |
+| PREW-02 | Phase 71 | Pending |
+| PREW-03 | Phase 71 | Pending |
+| PREW-04 | Phase 71 | Pending |
+| PREW-05 | Phase 71 | Pending |
+| PREW-06 | Phase 71 | Pending |
+| PREW-07 | Phase 71 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 19 ⚠️
+- Mapped to phases: 19 ✓ (Phase 68 ×5, Phase 69 ×4, Phase 70 ×3, Phase 71 ×7)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-02*
-*Last updated: 2026-06-02 after initial definition*
+*Last updated: 2026-06-02 after roadmap creation (phases 68-71 mapped)*
