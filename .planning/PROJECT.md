@@ -35,6 +35,18 @@ v2.8 Hardening & Observability shipped 2026-06-01. 961 tests passing. 67 phases,
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
+## Current Milestone: v2.9 Launch-Hardening / Sibling Consistency
+
+**Goal:** Make Triggarr's public-facing surface — both the code a skeptical engineer reads and the presentation a visitor sees — hold up to the same scrutiny as its sibling project SeedSyncarr, so cross-referencing viewers see one coherent, serious author across both repos.
+
+**Target features:**
+- Code-track hostile-reader discovery pass (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) producing a triaged findings artifact that gates fix scope
+- Code-track hardening: `.orchestrator.json` gitignore audit + SAFETY-03 manual/scheduled failure-counter unification + any high-visibility findings folded in from discovery
+- Presentation discovery: cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit against SeedSyncarr
+- Presentation rewrite: README / SECURITY.md / community-health files / release notes + in-app changelog, with fresh real screenshots captured via Playwright during the NAS walkthrough
+
+**Key context:** Triggarr is already public and launched on Reddit; this milestone closes launch-visible holes and rebuilds presentation rather than adding features. Work is isolated on a `launch-hardening` branch; `main` stays releasable throughout; merge + tag **v2.9.0** only after CI green and maintainer confirms (`release_intent=true`). Config-knob UI debt (DEBT-07 timeout, DEBT-08 page-size, DEBT-03 history cap, DEBT-06 drain) is explicitly parked — invisible to a launch reader. Spec: `docs/superpowers/specs/2026-06-02-launch-hardening-design.md`.
+
 ## Requirements
 
 ### Validated
@@ -166,7 +178,7 @@ v2.8 Hardening & Observability shipped 2026-06-01. 961 tests passing. 67 phases,
 
 ### Active
 
-**Next milestone: not yet scoped** — run `/gsd:new-milestone` to define it. Deferred v2-audit items (PERF-01..03, SCALE-01/02, AUDIT-01, OBS-01) and the carried-forward v2.6 UI pixel-verification items (UI-01..03) are candidates; see STATE.md Deferred Items.
+**Milestone v2.9 — Launch-Hardening / Sibling Consistency** (see Current Milestone section above and `.planning/REQUIREMENTS.md`). Two equal tracks — code substance (hostile-reader discovery → `.orchestrator.json` gitignore + SAFETY-03 + folded-in findings) and presentation (cynical-reader teardown + codex pass + cross-repo consistency → README/SECURITY.md/community-health/release notes + Playwright screenshots). Parked this milestone: config-knob UI debt (PERF/DEBT timeout, page-size, history-cap, drain knobs) and v2.6 UI pixel-verification (UI-01..03) — invisible to a launch reader; see STATE.md Deferred Items.
 
 ### Out of Scope
 
@@ -277,4 +289,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-01 after v2.8 Hardening & Observability milestone shipped*
+*Last updated: 2026-06-02 after v2.9 Launch-Hardening / Sibling Consistency milestone started*

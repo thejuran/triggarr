@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.8
-milestone_name: Hardening & Observability
-status: Awaiting next milestone
-stopped_at: Phase 67 context gathered
-last_updated: "2026-06-01T02:20:00.000Z"
-last_activity: 2026-06-01 — Patch release v2.8.1 (session invalidation on password change) + CI Node 24 bump
+milestone: v2.9
+milestone_name: Launch-Hardening / Sibling Consistency
+status: planning
+last_updated: "2026-06-02T17:00:26.508Z"
+last_activity: 2026-06-02
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 16
-  completed_plans: 16
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 
 ## Current Position
 
-Phase: Milestone v2.8 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-01 — Milestone v2.8 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-02 — Milestone v2.9 started
 
 ### v2.8 ship record
 
