@@ -170,7 +170,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 - [x] **Phase 68: Code-track hostile-reader discovery** -- Hostile "this is on Reddit" code sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) → one triaged findings artifact classifying each finding fold-in vs parked; gates Phase 69's fix scope. (completed 2026-06-02)
 - [x] **Phase 69: Code-track hardening** (3 plans) -- Close the curated known items (`.orchestrator.json` gitignore audit-and-close + SAFETY-03 manual/scheduled failure-counter unification with a covering test) plus every fold-in finding from Phase 68. (completed 2026-06-02)
 - [x] **Phase 70: Presentation discovery** -- Cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit vs SeedSyncarr → critique artifacts that gate Phase 71's rewrite. (completed 2026-06-02)
-- [ ] **Phase 71: Presentation rewrite** -- Rewrite README / SECURITY.md / community-health files / repo-metadata text / release notes + in-app changelog driven by Phase 70's critique; fresh Playwright screenshots captured at the milestone-end NAS walkthrough.
+- [x] **Phase 71: Presentation rewrite** -- Rewrite README / SECURITY.md / community-health files / repo-metadata text / release notes + in-app changelog driven by Phase 70's critique; fresh Playwright screenshots captured at the milestone-end NAS walkthrough. (completed 2026-06-02)
 
 ### Phase Details
 
@@ -228,8 +228,8 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 - [x] 71-02-PLAN.md — SSRF config-load validator (TDD, GREEN): validate_arr_url_config() + InstanceConfig field_validator; web-form path unchanged (D-01/D-02)
 - [x] 71-03-PLAN.md — Community-health: bug-report.yml version + App Type (Lidarr/All) dropdowns + snapshot tests; confirm CONTRIBUTING/PR/LICENSE accurate (PREW-04/D-10)
 - [x] 71-04-PLAN.md — CHANGELOG v2.9.0 release-notes + in-app-changelog entry, user-facing scope (PREW-06/D-11/D-12)
-- [ ] 71-05-PLAN.md — README full rewrite (D-04 order) + install/systemd/Docker/tag-filter fixes + Related Projects + Tailwind align + repo-metadata text (PREW-01/02/05/07)
-- [ ] 71-06-PLAN.md — SECURITY.md reconciliation: v2.8/v2.8.1 hardening + at-rest-plaintext caveat + accurate SSRF scope (PREW-03/07/D-08/D-09)
+- [x] 71-05-PLAN.md — README full rewrite (D-04 order) + install/systemd/Docker/tag-filter fixes + Related Projects + Tailwind align + repo-metadata text (PREW-01/02/05/07)
+- [x] 71-06-PLAN.md — SECURITY.md reconciliation: v2.8/v2.8.1 hardening + at-rest-plaintext caveat + accurate SSRF scope (PREW-03/07/D-08/D-09)
 **UI hint**: yes
 
 ### Progress
@@ -239,7 +239,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 | 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
 | 69. Code-track hardening | 3/3 | Complete    | 2026-06-02 |
 | 70. Presentation discovery | 1/1 | Complete    | 2026-06-02 |
-| 71. Presentation rewrite | 4/6 | In Progress|  |
+| 71. Presentation rewrite | 6/6 | Complete   | 2026-06-02 |
 
 ## Backlog
 
