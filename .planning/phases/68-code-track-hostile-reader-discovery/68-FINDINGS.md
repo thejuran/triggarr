@@ -24,12 +24,15 @@ discovery tools and records + triages their output.
 | semgrep version | `1.136.0` |
 | pip-audit version | `pip-audit 2.10.0` |
 | uv version | `uv 0.10.2 (a788db7e5 2026-02-10)` |
-| **All-refs commit count** (`git rev-list --count --all`) | **1036** |
+| **All-refs commit count** (`git rev-list --count --all`) | **1038** (at the history-scan run in Task 3; was 1036 at scaffold time — this artifact's own Task 1/2 commits advanced it) |
 | HEAD commit count (`git rev-list --count HEAD`) | 1026 |
 | ruff ruleset | `E, F, I, UP, B, SIM` (line-length 120, target py311 — from `pyproject.toml`) |
 
-> **The history section cites the ALL-REFS count (1036), not the HEAD count (1026).** On this repo the two
-> differ by 10 commits, so an all-refs scan must state the all-refs figure to be honest about coverage.
+> **The history section cites the ALL-REFS count (1038 at scan time), not the HEAD count (1026).** On this
+> repo the two differ, so an all-refs scan must state the all-refs figure to be honest about coverage. The
+> count advanced from 1036→1038 between scaffold (Task 1) and the history scan (Task 3) because this
+> artifact's own per-task commits land on `launch-hardening`; 1038 is the figure the history scan actually
+> covered.
 
 ---
 
@@ -200,11 +203,66 @@ Shield skill not used.
 
 ## gitleaks (full history)
 
-*Discovery status:* _(pending — populated in Task 3)_
+*Discovery status:* Command
+`gitleaks git . --log-opts="--all" --no-banner --report-format json --report-path <path> --redact` —
+**exit 1 = leaks-found (success-with-findings, NOT a failure)**. gitleaks reported "1008 commits scanned"
+and "leaks found: 23". `--redact` kept all secret values out of this artifact. `.gitleaksignore` is
+honored-by-default but is **non-functional** under 8.30.x (see P68-FI-001) — 4 `Invalid .gitleaksignore
+entry` warnings, so the 4 test-fixture files are NOT auto-suppressed and appear in the raw 23. The scan ran
+to completion (no tool crash, no rejected flag, parseable JSON report) and every hit was triaged below — so
+this section is conclusive, not inconclusive.
+
+**All-refs commit count (cited):** `git rev-list --count --all` = **1038** (vs HEAD = 1026). The all-refs
+figure is the coverage statement for this section. (gitleaks' own "1008 commits scanned" counts unique
+commit-blobs it walked; `git rev-list --count --all` 1038 is the canonical all-refs commit count and is the
+figure cited here per the tool contract.)
+
+**Outcome: HISTORY SCAN CLEAN — no real credential in any commit on any ref.** All 23 raw hits were
+examined by commit SHA and redacted match context; **every one is rule `generic-api-key` (gitleaks' highest
+false-positive rule), and every one resolves to a documented dummy/test/example/prose value — zero real
+Triggarr secrets.** There are **no high-confidence rule types anywhere in history** (no `aws-access-token`,
+`github-pat`, `private-key`, `stripe-access-token`, etc. — verified: the only rule present across all 23 is
+`generic-api-key`). Therefore, per D-05, the conclusive statement is:
+
+> **history scan clean, 1038 commits scanned (all refs)** — no real secret exposure; all 23 `generic-api-key`
+> hits are confirmed false positives (test-fixture dummy keys, planning-doc prose, and a third-party plugin's
+> documentation example), itemized with SHAs below.
+
+There are **no FOLD-IN exposure rows in this section** because no hit is a real credential. (The one
+launch-visible *tooling* defect this scan re-confirms — the non-functional `.gitleaksignore` — is already
+recorded as **P68-FI-001** in the working-tree section; not duplicated here.)
+
+**Itemized triage of all 23 history hits (each with commit SHA — confirming "not a real exposure"):**
+
+| Commit SHA | Locator | Redacted context | Bucket | Disposition |
+|------------|---------|------------------|--------|-------------|
+| `8882f65768` | `tests/test_auth_middleware.py:61` | `_API_KEY = "<redacted>"` | test fixture (allowlist-intended) | PARKED — dummy test key; in the 4-file allowlist (broken suppression = P68-FI-001), not a secret |
+| `31e2f069b9` | `tests/test_auth_routes.py:953` | `api_key="<redacted>"` | test fixture (allowlist-intended) | PARKED — dummy test key; allowlist-intended; not a secret |
+| `d7ce93342a` | `tests/test_config.py:363` | `api_key = "<redacted>"` | test fixture | PARKED — dummy test key; not a secret |
+| `76dddb76dd` | `tests/test_config.py:24` | `api_key = "<redacted>"` | test fixture | PARKED — dummy test key; not a secret |
+| `76dddb76dd` | `tests/test_logging.py:14` | `secret = "<redacted>"` | test fixture | PARKED — dummy value in a logging-redaction test; not a secret |
+| `df9d80bccf` | `.planning/codebase/TESTING.md:390` | `secret = "<redacted>"` | doc prose | PARKED — documentation of the test pattern; not a secret |
+| `f0cbaadba3` | `.planning/PROJECT.md:227` | `AuthConfig model, <redacted>` | doc prose | PARKED — `generic-api-key` phrase match on prose; not a secret |
+| `0706c1b54f` | `.planning/phases/46-.../46-RESEARCH.md:243` | `API-04: <redacted>` | doc prose | PARKED — requirement-ID prose match; not a secret |
+| `3325c89c39` | `.planning/phases/58-.../58-01-PLAN.md:120` | `_API_KEY = "<redacted>"` | doc (plan quoting a fixture) | PARKED — plan text quoting a test fixture; not a secret |
+| `3325c89c39` | `.planning/phases/58-.../58-01-PLAN.md:133` | `_TEST_API_KEY = "<redacted>"` | doc (plan quoting a fixture) | PARKED — plan text quoting a test fixture; not a secret |
+| `3325c89c39` | `.planning/phases/58-.../58-02-PLAN.md:90` | `_API_KEY = "<redacted>"` | doc (plan quoting a fixture) | PARKED — plan text quoting a test fixture; not a secret |
+| `e2a81b0f75` | `.planning/phases/58-.../58-PATTERNS.md:66` | `_API_KEY = "<redacted>"` | doc (patterns quoting a fixture) | PARKED — patterns doc quoting a test fixture; not a secret |
+| `e2a81b0f75` | `.planning/phases/58-.../58-PATTERNS.md:393` | `_API_KEY = "<redacted>"` | doc (patterns quoting a fixture) | PARKED — patterns doc quoting a test fixture; not a secret |
+| `049b3d326c` | `reports/security-2026-04-15.md:154` | `_API_KEY = "<redacted>"` | doc (security report) | PARKED — a *past security report* documenting this exact test-fixture-key issue and proposing `.gitleaksignore`; the "secret" is its own quoted example; not a real key |
+| `ef423c96e5` | `reports/security-2026-04-15.md:154` | `_API_KEY = "<redacted>"` | doc (security report, earlier commit) | PARKED — same report, earlier commit; not a real key |
+| `4075020c43` | `.claude/plugins/turingmind/agents/security.md:122` | `STRIPE_SECRET_KEY=<redacted>` | third-party plugin doc example | PARKED — a turingmind plugin's security-rule **teaching example** (`sk_live_abc123xyz` placeholder); not Triggarr code, not a real key |
+| `bd4ae7c79b` | `.gsd/milestones/M001/.../S06-HUMAN-UAT-GATE.md:19` | `direct-access warnings, <redacted>` | GSD planning prose | PARKED — `generic-api-key` phrase/entropy match on planning prose; not a secret |
+| `11108635df` | `.gsd/milestones/M001/.../S05-UAT.md:25` | `direct-access boundary, <redacted>` | GSD planning prose | PARKED — prose phrase match; not a secret |
+| `11108635df` | `.gsd/exec/7953456f-...stdout:96` | `direct-access blocking, <redacted>` | GSD exec log prose | PARKED — exec-log prose match; not a secret |
+| `11108635df` | `.gsd/milestones/M001/.../T03-PLAN.md:16` | `direct-access warnings, <redacted>` | GSD planning prose | PARKED — prose phrase match; not a secret |
+| `11108635df` | `.gsd/milestones/M001/.../S05-SUMMARY.md:55` | `direct-access blocking, <redacted>` | GSD planning prose | PARKED — prose phrase match; not a secret |
+| `11108635df` | `.gsd/milestones/M001/.../S06-RESEARCH.md:40` | `direct-access wording, <redacted>` | GSD planning prose | PARKED — prose phrase match; not a secret |
+| `11108635df` | `.gsd/milestones/M001/.../S06-RESEARCH.md:43` | `direct-access warnings, <redacted>` | GSD planning prose | PARKED — prose phrase match; not a secret |
 
 | ID | Source | Locator (commit SHA) | Rule | Severity | Evidence (redacted) | Rationale | Remediation | Verify cmd |
 |----|--------|----------------------|------|----------|---------------------|-----------|-------------|------------|
-| _(empty — populated in Task 3)_ | | | | | | | | |
+| _(none FOLD-IN — history scan clean, 1038 commits all-refs; all 23 `generic-api-key` hits are confirmed false positives, itemized with SHAs above. The non-functional `.gitleaksignore` tooling defect is P68-FI-001 in the working-tree section.)_ | | | | | | | | |
 
 ---
 
