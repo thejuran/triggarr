@@ -88,6 +88,28 @@ class InstanceConfig(BaseModel):
                 raise ValueError(msg)
         return v
 
+    @field_validator("url")
+    @classmethod
+    def validate_url_ssrf(cls, v: str) -> str:
+        """D-01/D-02: Apply relaxed SSRF validation at config-load time.
+
+        Permits loopback IP literals and the localhost DNS name (legitimate
+        same-host *arr installs) but still blocks cloud-metadata addresses
+        (169.254.169.254, metadata.google.internal, etc.) and link-local /
+        unspecified / multicast IP literals.
+
+        Runs on the url field unconditionally — a disabled instance with a
+        genuinely-unsafe URL (metadata / link-local / non-http / malformed)
+        is still rejected at startup (intended hardening per D-01/D-02).
+        Raises ValueError on violation so Pydantic surfaces a ValidationError.
+        """
+        from triggarr.web.validation import validate_arr_url_config
+
+        ok, err = validate_arr_url_config(v)
+        if not ok:
+            raise ValueError(err)
+        return v
+
     @model_validator(mode="after")
     def at_least_one_search_count(self) -> InstanceConfig:
         """Ensure at least one search count is positive when instance is enabled."""
