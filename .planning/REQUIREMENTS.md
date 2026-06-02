@@ -16,11 +16,11 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 <!-- Hostile-reader pass that gates the fix scope (spec §3.1.1, D-3/D-8). -->
 
-- [ ] **CDISC-01**: A hostile-reader code pass runs `ruff check triggarr/ tests/` whole-tree with launch framing and records the result in a triaged findings artifact.
-- [ ] **CDISC-02**: A hostile-reader code pass runs Shield (Semgrep SAST + gitleaks working-tree secrets + dependency audit) and records findings in the triaged artifact.
-- [ ] **CDISC-03**: A gitleaks scan runs over the full git **history** (not just working tree); any secret exposed in past commits is identified and recorded as highest-priority.
-- [ ] **CDISC-04**: The highest-traffic entry-point files (`web/routes.py`, `search/scheduler.py`, `config.py`, `db.py`, `auth.py`, `startup.py`) are skimmed with "what would a skeptical r/selfhosted engineer find" framing, with notes captured in the artifact.
-- [ ] **CDISC-05**: The discovery produces a single triaged findings artifact where each finding is classified fold-in (launch-visible, fix this milestone) or parked (with written rationale).
+- [x] **CDISC-01**: A hostile-reader code pass runs `ruff check triggarr/ tests/` whole-tree with launch framing and records the result in a triaged findings artifact.
+- [x] **CDISC-02**: A hostile-reader code pass runs Shield (Semgrep SAST + gitleaks working-tree secrets + dependency audit) and records findings in the triaged artifact.
+- [x] **CDISC-03**: A gitleaks scan runs over the full git **history** (not just working tree); any secret exposed in past commits is identified and recorded as highest-priority.
+- [x] **CDISC-04**: The highest-traffic entry-point files (`web/routes.py`, `search/scheduler.py`, `config.py`, `db.py`, `auth.py`, `startup.py`) are skimmed with "what would a skeptical r/selfhosted engineer find" framing, with notes captured in the artifact.
+- [x] **CDISC-05**: The discovery produces a single triaged findings artifact where each finding is classified fold-in (launch-visible, fix this milestone) or parked (with written rationale).
 
 ### Code Hardening
 
@@ -84,11 +84,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CDISC-01 | Phase 68 | Pending |
-| CDISC-02 | Phase 68 | Pending |
-| CDISC-03 | Phase 68 | Pending |
-| CDISC-04 | Phase 68 | Pending |
-| CDISC-05 | Phase 68 | Pending |
+| CDISC-01 | Phase 68 | Complete |
+| CDISC-02 | Phase 68 | Complete |
+| CDISC-03 | Phase 68 | Complete |
+| CDISC-04 | Phase 68 | Complete |
+| CDISC-05 | Phase 68 | Complete |
 | CHARD-01 | Phase 69 | Pending |
 | CHARD-02 | Phase 69 | Pending |
 | CHARD-03 | Phase 69 | Pending |

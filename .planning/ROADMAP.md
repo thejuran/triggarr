@@ -167,7 +167,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 
 ### Phases (summary)
 
-- [ ] **Phase 68: Code-track hostile-reader discovery** -- Hostile "this is on Reddit" code sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) → one triaged findings artifact classifying each finding fold-in vs parked; gates Phase 69's fix scope.
+- [x] **Phase 68: Code-track hostile-reader discovery** -- Hostile "this is on Reddit" code sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) → one triaged findings artifact classifying each finding fold-in vs parked; gates Phase 69's fix scope. (completed 2026-06-02)
 - [ ] **Phase 69: Code-track hardening** -- Close the curated known items (`.orchestrator.json` gitignore audit-and-close + SAFETY-03 manual/scheduled failure-counter unification with a covering test) plus every fold-in finding from Phase 68.
 - [ ] **Phase 70: Presentation discovery** -- Cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit vs SeedSyncarr → critique artifacts that gate Phase 71's rewrite.
 - [ ] **Phase 71: Presentation rewrite** -- Rewrite README / SECURITY.md / community-health files / repo-metadata text / release notes + in-app changelog driven by Phase 70's critique; fresh Playwright screenshots captured at the milestone-end NAS walkthrough.
@@ -185,7 +185,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
   4. The six highest-traffic entry-point files (`web/routes.py`, `search/scheduler.py`, `config.py`, `db.py`, `auth.py`, `startup.py`) have been skimmed with hostile framing and the notes are captured (CDISC-04)
   5. A single triaged findings artifact exists in which every finding is classified fold-in (fix this milestone) or parked (with written rationale) (CDISC-05)
 **Plans**: 1 plan
-- [ ] 68-01-PLAN.md — Hostile-reader sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + full-history gitleaks + entry-point skim) captured and triaged into 68-FINDINGS.md
+- [x] 68-01-PLAN.md — Hostile-reader sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + full-history gitleaks + entry-point skim) captured and triaged into 68-FINDINGS.md
 
 ### Phase 69: Code-track hardening
 **Goal**: The curated known code holes are closed and every fold-in finding from discovery is fixed, so a skeptical repo browser finds no sloppy-tooling tell and no correctness asymmetry between manual and scheduled searches
@@ -226,7 +226,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 68. Code-track hostile-reader discovery | 0/1 | Not started | - |
+| 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
 | 69. Code-track hardening | 0/? | Not started | - |
 | 70. Presentation discovery | 0/? | Not started | - |
 | 71. Presentation rewrite | 0/? | Not started | - |
