@@ -209,7 +209,8 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
   1. A framed cynical-reader ("r/selfhosted commenter") teardown of Triggarr's positioning, credibility, and first impression exists as a written artifact (PDISC-01)
   2. A codex adversarial pass against the existing README + docs has run and its findings — technical-claims accuracy, broken/incomplete install/quickstart, unsupported assertions — are captured (PDISC-02)
   3. A same-author cross-repo consistency audit against SeedSyncarr (README structure, security-posture framing, badge style, "what this is" one-liner) is recorded as a list of divergences to reconcile (PDISC-03)
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 70-01-PLAN.md — Cynical-reader teardown (PDISC-01) + codex adversarial docs pass (PDISC-02) + SeedSyncarr cross-repo consistency audit (PDISC-03), captured as three critique artifacts that gate the Phase 71 rewrite
 **UI hint**: yes
 
 ### Phase 71: Presentation rewrite
