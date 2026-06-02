@@ -223,7 +223,13 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
   3. SECURITY.md is reconciled with the v2.8/v2.8.1 hardening (CSP nonces, session-secret rotation on password change, `apikey=` rejection, Basic-auth control-char validation) and reads as an honest, mature threat-model + reporting policy (PREW-03)
   4. Community-health files (CONTRIBUTING.md, issue/PR templates, LICENSE) are confirmed present and accurate, with any gaps fixed (PREW-04); GitHub repo-metadata text (About, topics/tags, homepage) is drafted as copy-paste text for manual application (PREW-05)
   5. A clean v2.9.0 release-notes entry is written and the in-app changelog is updated to match (PREW-06); Triggarr's quality signals (one-liner, section ordering, security framing) are reconciled against SeedSyncarr so the two repos read as one coherent author (PREW-07)
-**Plans**: TBD
+**Plans**: 6 plans
+- [ ] 71-01-PLAN.md — SSRF config-load test stubs (Wave 0, RED): TestValidateArrUrlConfig + InstanceConfig integration tests (D-03)
+- [ ] 71-02-PLAN.md — SSRF config-load validator (TDD, GREEN): validate_arr_url_config() + InstanceConfig field_validator; web-form path unchanged (D-01/D-02)
+- [ ] 71-03-PLAN.md — Community-health: bug-report.yml version + App Type (Lidarr/All) dropdowns + snapshot tests; confirm CONTRIBUTING/PR/LICENSE accurate (PREW-04/D-10)
+- [ ] 71-04-PLAN.md — CHANGELOG v2.9.0 release-notes + in-app-changelog entry, user-facing scope (PREW-06/D-11/D-12)
+- [ ] 71-05-PLAN.md — README full rewrite (D-04 order) + install/systemd/Docker/tag-filter fixes + Related Projects + Tailwind align + repo-metadata text (PREW-01/02/05/07)
+- [ ] 71-06-PLAN.md — SECURITY.md reconciliation: v2.8/v2.8.1 hardening + at-rest-plaintext caveat + accurate SSRF scope (PREW-03/07/D-08/D-09)
 **UI hint**: yes
 
 ### Progress
@@ -233,7 +239,7 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 | 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
 | 69. Code-track hardening | 3/3 | Complete    | 2026-06-02 |
 | 70. Presentation discovery | 1/1 | Complete    | 2026-06-02 |
-| 71. Presentation rewrite | 0/? | Not started | - |
+| 71. Presentation rewrite | 0/6 | Planned     | - |
 
 ## Backlog
 
