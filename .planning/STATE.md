@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.10
 milestone_name: Recovery, Counts & Config Parity
-status: completed
+status: executing
 stopped_at: Phase 73 context gathered
-last_updated: "2026-06-03T21:58:59.767Z"
-last_activity: 2026-06-03 -- Phase 72 marked complete
+last_updated: "2026-06-03T22:55:26.536Z"
+last_activity: 2026-06-03 -- Phase 73 execution started
 progress:
   total_phases: 6
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 72 — password-reset-backend-token-lifecycle
+**Current focus:** Phase 73 — password-reset-ui
 
 ## Current Position
 
-Phase: 72 — COMPLETE
-Plan: 1 of 3
-Status: Phase 72 complete
-Last activity: 2026-06-03 -- Phase 72 marked complete
+Phase: 73 (password-reset-ui) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 73
+Last activity: 2026-06-03 -- Phase 73 execution started
 
 ### v2.10 milestone shape
 
