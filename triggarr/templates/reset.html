@@ -12,6 +12,12 @@
   {% endif %}
 
   {% if step == "request" %}
+  {% if message %}
+  <p class="text-triggarr-muted text-sm text-center mt-4" aria-live="polite">{{ message }}</p>
+  <p class="text-triggarr-muted text-sm text-center mt-4">
+    <a href="{{ request.url_for('reset_confirm_page') }}" class="hover:underline">Enter reset token</a>
+  </p>
+  {% else %}
   <p class="text-triggarr-muted text-sm text-center mt-4">
     Request a password reset token. The token will be written to the application logs
     and to <code>reset-token.txt</code> in the config volume.
@@ -22,6 +28,7 @@
       Request Reset Token
     </button>
   </form>
+  {% endif %}
   {% elif step == "confirm" %}
   <p class="text-triggarr-muted text-sm text-center mt-4">
     Enter the token from the application logs or <code>reset-token.txt</code>, then choose a new password.
@@ -60,5 +67,8 @@
     </button>
   </form>
   {% endif %}
+  <p class="text-triggarr-muted text-sm text-center mt-4">
+    <a href="{{ request.url_for('login_page') }}" class="hover:underline">Back to login</a>
+  </p>
 </div>
 {% endblock %}
