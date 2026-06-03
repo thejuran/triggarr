@@ -194,7 +194,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
   4. Hitting `/reset/request` or `/reset/confirm` while logged out succeeds (routes are exempt from the auth middleware) yet no other authenticated route becomes reachable, and both endpoints throttle rapid repeat calls.
 **Plans**: 3 plans
 - [x] 72-01-PLAN.md — Foundation: RED test_reset.py (20 tests), generate_reset_token(), /reset middleware exemption, rate-limit constants, app.state init, minimal reset.html
-- [ ] 72-02-PLAN.md — Reset-request path: reset_request_page (GET) + reset_request_post (POST mint) + atomic 0600 token-file write + 60s rate-limit
+- [x] 72-02-PLAN.md — Reset-request path: reset_request_page (GET) + reset_request_post (POST mint) + atomic 0600 token-file write + 60s rate-limit
 - [ ] 72-03-PLAN.md — Reset-confirm path: reset_confirm_post (apply) mirroring change_password — in-lock token validation, session rotation, auto-login, token-file delete, 5s rate-limit
 
 ### Phase 73: Password Reset UI
@@ -235,7 +235,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 72. Password Reset Backend & Token Lifecycle | 1/3 | In Progress|  |
+| 72. Password Reset Backend & Token Lifecycle | 2/3 | In Progress|  |
 | 73. Password Reset UI | 0/? | Not started | - |
 | 74. Count-Only Refresh | 0/? | Not started | - |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
