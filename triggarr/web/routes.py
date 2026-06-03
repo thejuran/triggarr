@@ -1254,7 +1254,7 @@ async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={"error": None, "info": info, "username": "", "next_url": next_url},
+        context={"error": None, "info": info, "username": "", "next_url": next_url, "needs_setup": auth.needs_setup},
     )
 
 
@@ -1337,6 +1337,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
                 "info": None,
                 "username": username,
                 "next_url": _safe_next_url(next_url) if next_url else "",
+                "needs_setup": auth.needs_setup,
             },
             status_code=429,
         )
@@ -1376,6 +1377,7 @@ async def login_post(request: Request) -> HTMLResponse | RedirectResponse:
             "info": None,
             "username": username,
             "next_url": _safe_next_url(next_url) if next_url else "",
+            "needs_setup": auth.needs_setup,
         },
     )
 
@@ -1638,6 +1640,19 @@ async def reset_request_page(request: Request) -> HTMLResponse:
         request=request,
         name="reset.html",
         context={"step": "request"},
+    )
+
+
+@router.get("/reset/confirm", response_class=HTMLResponse)
+async def reset_confirm_page(request: Request) -> HTMLResponse:
+    """Render the password reset confirm form (unauthenticated — exempt via the exact-or-/reset/
+    predicate in AuthMiddleware: path.startswith('/reset/'). NOT exempt via EXEMPT_PREFIXES —
+    '/reset' is NOT in that tuple — so /resetXYZ paths stay gated. No middleware.py change needed.
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="reset.html",
+        context={"step": "confirm"},
     )
 
 
