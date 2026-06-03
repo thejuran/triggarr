@@ -1712,3 +1712,158 @@ async def reset_request_post(request: Request) -> HTMLResponse:
             ),
         },
     )
+
+
+@router.post("/reset/confirm")
+async def reset_confirm_post(request: Request) -> HTMLResponse:
+    """Apply a password reset — token-validated apply path mirroring change_password (D-08..D-13).
+
+    Possession of the reset token IS authorization (D-01 — no identity check). On a valid
+    unexpired token and matching new password:
+      - Rehashes with bcrypt, rotates session_secret (invalidates all pre-reset cookies — D-12).
+      - Persists atomically with 0600 perms and reloads settings (D-10).
+      - Refreshes the redacting Loguru sink (D-11).
+      - Clears in-memory token and deletes reset-token.txt (D-07, D-19).
+      - Auto-logs-in the user with a fresh cookie under the NEW secret, 303 to dashboard (D-13).
+
+    All failure modes (bad/expired/used token, password problems, rate-limit) leave state
+    untouched (D-06, D-09, D-15). The token value NEVER appears in any confirm-time log
+    line or response (D-02). Token comparison is INSIDE search_lock (D-08, TOCTOU guard).
+    Single lock acquisition — no nested lock re-acquire (M3, mirrors routes.py:928-931).
+    """
+    form = await request.form()
+    token = str(form.get("token", ""))
+    new_password = str(form.get("new_password", ""))
+    confirm_password = str(form.get("confirm_password", ""))
+
+    # Optimistic rate-limit check BEFORE lock (fast-fail — D-15; mirrors search_now pattern)
+    rate_key = "confirm"
+    now = time.monotonic()
+    last = request.app.state.last_reset_time.get(rate_key, 0.0)
+    if now - last < RESET_CONFIRM_RATE_LIMIT_SECONDS:
+        return HTMLResponse("Rate limited -- try again shortly", status_code=429)
+
+    config_path = request.app.state.config_path
+    # ONE lock acquisition for the entire confirm path (M3: single asyncio.Lock; double-acquire
+    # deadlocks — mirrors routes.py:928-931 discipline). The in-lock rate re-check + stamp,
+    # password field validation, token validation, and the full apply block all execute within
+    # this single `async with`.
+    async with request.app.state.search_lock:
+        # In-lock rate re-check to prevent concurrent bypass (D-15, mirrors DRSEC-03).
+        # The stamp is set HERE before field/token validation so that any confirm attempt
+        # (including those returning field errors) counts against the rate window — preventing
+        # rapid cycling through field-error paths to bypass the throttle.
+        now = time.monotonic()
+        last = request.app.state.last_reset_time.get(rate_key, 0.0)
+        if now - last < RESET_CONFIRM_RATE_LIMIT_SECONDS:
+            return HTMLResponse("Rate limited -- try again shortly", status_code=429)
+        request.app.state.last_reset_time[rate_key] = now
+
+        # Password field validation (D-09, D-20) inside lock so rate-limit stamp is always set.
+        # Mirror change_password lines 1412-1426: per-field errors dict with no state change.
+        errors: dict[str, str] = {}
+        if not new_password:
+            errors["new_password"] = "New password is required"
+        elif new_password != confirm_password:
+            errors["confirm_password"] = "Passwords do not match"
+
+        if errors:
+            return templates.TemplateResponse(
+                request=request,
+                name="reset.html",
+                context={"step": "confirm", "errors": errors},
+            )
+
+        # Token validation INSIDE lock (D-08 TOCTOU guard — Pitfall 3).
+        # Replaces change_password's current-password verify (D-01: token IS authorization).
+        # Any failure → generic message, NO state change, NO detail distinguishing
+        # wrong-vs-expired-vs-superseded (D-06, T-72-enum).
+        current_settings = request.app.state.settings
+        stored = request.app.state.reset_token
+        if (
+            stored is None
+            or time.monotonic() >= stored[1]
+            or not secrets.compare_digest(token, stored[0])
+        ):
+            return templates.TemplateResponse(
+                request=request,
+                name="reset.html",
+                context={"step": "confirm", "error": "Invalid or expired reset token"},
+            )
+
+        # Valid token — proceed with apply in change_password's exact order (D-10).
+        # Hash new password; catch bcrypt 72-byte limit (D-09).
+        try:
+            new_hash = hash_password(new_password)
+        except ValueError:
+            return templates.TemplateResponse(
+                request=request,
+                name="reset.html",
+                context={"step": "confirm", "errors": {"new_password": "Password must be 72 characters or fewer"}},
+            )
+
+        # Rotate the session secret so every cookie signed with the old secret is
+        # invalidated immediately (D-12). Captured as a local — used for cookie signing
+        # AFTER load_settings (Pitfall 2 / ordering F: captured local == reloaded value,
+        # proven via the H2 read-back assertion below).
+        new_session_secret = generate_session_secret()
+        new_auth = current_settings.auth.model_copy(
+            update={
+                "password_hash": SecretStr(new_hash),
+                "session_secret": SecretStr(new_session_secret),
+            }
+        )
+        updated = current_settings.model_copy(update={"auth": new_auth})
+        config_dict = _settings_to_dict(updated)
+        await asyncio.get_running_loop().run_in_executor(
+            None, _atomic_toml_write, config_path, config_dict
+        )
+        os.chmod(config_path, 0o600)
+        request.app.state.settings = load_settings(config_path)
+
+        # H2 read-back assertion: the captured new_session_secret local MUST equal the value
+        # now in app.state.settings (proves cookie-signed-with-persisted-secret invariant
+        # rather than assuming it — Pitfall 2 / ordering F). If they differ something has gone
+        # wrong with the write/reload cycle and the cookie would fail on the very next request.
+        reloaded_secret = request.app.state.settings.auth.session_secret.get_secret_value()
+        assert reloaded_secret == new_session_secret, (
+            "H2 invariant violated: reloaded session_secret differs from captured local; "
+            "the auto-login cookie would be signed with a secret that does not match the "
+            "persisted value."
+        )
+
+        # Single-use cleanup (D-07): clear in-memory token and delete the token file.
+        request.app.state.reset_token = None
+        try:
+            (_runtime_config_dir(request) / "reset-token.txt").unlink(missing_ok=True)
+        except OSError as exc:
+            # D-19: deletion failure is non-fatal — the reset already succeeded (hash written,
+            # secret rotated, in-memory token cleared). The leftover file holds an already-consumed
+            # token that no longer validates. Log sanitized (no token value) and proceed.
+            logger.warning(
+                "Failed to delete reset token file: {exc}",
+                exc=exc,
+            )
+
+    # Post-lock refresh chain (D-11) — mirrors change_password lines 1468-1470.
+    # collect_secrets feeds session_secret + password_hash to the redacting sink;
+    # it does NOT collect the reset token (by design — the token is the deliberate log channel).
+    _sync_auth_state(request.app.state.settings)
+    _new_secrets = collect_secrets(request.app.state.settings)
+    setup_logging(request.app.state.settings.general.log_level, _new_secrets)
+
+    # Auto-login (D-13): fresh cookie under the NEW secret + 303 to dashboard.
+    # Sign with the captured new_session_secret LOCAL (proven == reloaded secret via H2 above —
+    # never re-read from app.state for the signing call; Pitfall 2 / ordering F).
+    refreshed_username = request.app.state.settings.auth.username
+    response = RedirectResponse(url=request.url_for("dashboard"), status_code=303)
+    response.set_cookie(
+        "triggarr_session",
+        sign_session(refreshed_username, new_session_secret),
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=is_secure_request(request),
+    )
+    logger.info("Password reset applied; session secret rotated, other sessions invalidated")
+    return response
