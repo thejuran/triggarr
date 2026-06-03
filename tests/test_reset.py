@@ -966,7 +966,7 @@ def test_request_confirmation_message_state(tmp_path):
     # body/headers. We assert the source directly since the rendered context is not exposed
     # via TestClient. Both message-branch context dicts must be keyed exactly {"step", "message"} —
     # verified against routes.py:1685-1692 (H1 no-op branch) and routes.py:1730-1737 (mint branch).
-    routes_source = Path("triggarr/web/routes.py").read_text()
+    routes_source = (Path(__file__).resolve().parent.parent / "triggarr" / "web" / "routes.py").read_text()
 
     # The message context dicts must contain "step": "request" and "message":
     assert '"step": "request"' in routes_source or "'step': 'request'" in routes_source, (
