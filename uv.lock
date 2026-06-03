@@ -750,7 +750,7 @@ wheels = [
 
 [[package]]
 name = "triggarr"
-version = "2.8.1"
+version = "2.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
