@@ -43,13 +43,13 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 <!-- Driven by PDISC findings (spec §3.2). -->
 
-- [ ] **PREW-01**: The README is rewritten to survive the teardown — instantly-clear one-liner, current screenshots above the fold, honest feature list, install/quickstart verified accurate against current behavior, security posture stated as a selling point.
-- [ ] **PREW-02**: Fresh, real screenshots (dashboard, search history, settings) are captured via Playwright during the NAS walkthrough against the deployed branch build with representative data and no exposed API keys/hostnames/credentials; README image refs and alt text updated to match.
-- [ ] **PREW-03**: SECURITY.md is reconciled with the v2.8/v2.8.1 hardening (CSP nonces, session-secret rotation on password change, `apikey=` rejection, Basic-auth control-char validation) and reads as an honest, mature threat-model + reporting policy.
-- [ ] **PREW-04**: Community-health files (CONTRIBUTING.md, issue/PR templates, LICENSE) are confirmed present and accurate; gaps fixed.
-- [ ] **PREW-05**: GitHub repo-metadata text (About description, topics/tags, homepage link) is drafted as copy-paste text for the maintainer to apply manually.
-- [ ] **PREW-06**: A clean v2.9.0 release-notes entry is written and the in-app changelog is updated to match.
-- [ ] **PREW-07**: Triggarr's quality signals (one-liner, section ordering, security framing) are reconciled against SeedSyncarr per the PDISC-03 audit so the two repos read as one coherent author (reconciliation of signals, not forced homogenization).
+- [x] **PREW-01**: The README is rewritten to survive the teardown — instantly-clear one-liner, current screenshots above the fold, honest feature list, install/quickstart verified accurate against current behavior, security posture stated as a selling point.
+- [x] **PREW-02**: Fresh, real screenshots (dashboard, search history, settings) are captured via Playwright during the NAS walkthrough against the deployed branch build with representative data and no exposed API keys/hostnames/credentials; README image refs and alt text updated to match.
+- [x] **PREW-03**: SECURITY.md is reconciled with the v2.8/v2.8.1 hardening (CSP nonces, session-secret rotation on password change, `apikey=` rejection, Basic-auth control-char validation) and reads as an honest, mature threat-model + reporting policy.
+- [x] **PREW-04**: Community-health files (CONTRIBUTING.md, issue/PR templates, LICENSE) are confirmed present and accurate; gaps fixed.
+- [x] **PREW-05**: GitHub repo-metadata text (About description, topics/tags, homepage link) is drafted as copy-paste text for the maintainer to apply manually.
+- [x] **PREW-06**: A clean v2.9.0 release-notes entry is written and the in-app changelog is updated to match.
+- [x] **PREW-07**: Triggarr's quality signals (one-liner, section ordering, security framing) are reconciled against SeedSyncarr per the PDISC-03 audit so the two repos read as one coherent author (reconciliation of signals, not forced homogenization).
 
 ## v2 Requirements
 
@@ -96,13 +96,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PDISC-01 | Phase 70 | Complete |
 | PDISC-02 | Phase 70 | Complete |
 | PDISC-03 | Phase 70 | Complete |
-| PREW-01 | Phase 71 | Pending |
-| PREW-02 | Phase 71 | Pending |
-| PREW-03 | Phase 71 | Pending |
-| PREW-04 | Phase 71 | Pending |
-| PREW-05 | Phase 71 | Pending |
-| PREW-06 | Phase 71 | Pending |
-| PREW-07 | Phase 71 | Pending |
+| PREW-01 | Phase 71 | Complete |
+| PREW-02 | Phase 71 | Complete |
+| PREW-03 | Phase 71 | Complete |
+| PREW-04 | Phase 71 | Complete |
+| PREW-05 | Phase 71 | Complete |
+| PREW-06 | Phase 71 | Complete |
+| PREW-07 | Phase 71 | Complete |
 
 **Coverage:**
 - v1 requirements: 19 total

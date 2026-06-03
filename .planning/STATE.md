@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.9
 milestone_name: Launch-Hardening / Sibling Consistency
-status: executing
-stopped_at: Phase 71 context gathered
-last_updated: "2026-06-02T22:58:08.212Z"
+status: ready_to_plan
+stopped_at: Phase 71 complete (6/6) — ready to discuss Phase 999.1
+last_updated: 2026-06-02T23:20:19.901Z
 last_activity: 2026-06-02 -- Phase 71 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 11
-  completed_plans: 5
-  percent: 45
+  completed_plans: 11
+  percent: 50
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 71 — Presentation rewrite
+**Current focus:** Phase 999.1 — ui based password recovery
 
 ## Current Position
 
-Phase: 71 (Presentation rewrite) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 71
-Last activity: 2026-06-02 -- Phase 71 execution started
+Phase: 999.1
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-02
 
 Progress: [██████████] 100%
 
@@ -61,7 +61,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 **Overall:**
 
-- Total plans completed: 159 across 14 shipped milestones (through v2.8)
+- Total plans completed: 165 across 14 shipped milestones (through v2.8)
 - Milestones shipped: 14 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8)
 - Tests passing: 965 (post v2.8.1)
 - Phases completed: 67 (through v2.8)
