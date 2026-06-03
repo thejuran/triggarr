@@ -286,6 +286,55 @@ def test_instance_url_accepts_without_apikey(url: str) -> None:
     assert cfg.url == url
 
 
+# ---------------------------------------------------------------------------
+# D-01/D-02/D-03: InstanceConfig config-load SSRF validation (relaxed variant)
+# ---------------------------------------------------------------------------
+
+
+def test_instance_config_loopback_url_valid() -> None:
+    """D-02: InstanceConfig accepts loopback URL (same-host *arr is a legitimate homelab pattern)."""
+    cfg = InstanceConfig(url="http://127.0.0.1:7878", api_key=SecretStr("k"), enabled=True)
+    assert cfg.url == "http://127.0.0.1:7878"
+
+
+def test_instance_config_localhost_url_valid() -> None:
+    """D-02: InstanceConfig accepts localhost hostname (falls through DNS branch)."""
+    cfg = InstanceConfig(url="http://localhost:7878", api_key=SecretStr("k"), enabled=True)
+    assert cfg.url == "http://localhost:7878"
+
+
+def test_instance_config_metadata_url_raises() -> None:
+    """D-01: InstanceConfig rejects cloud-metadata URL at config-load time."""
+    with pytest.raises(ValidationError):
+        InstanceConfig(url="http://169.254.169.254/latest/meta-data", api_key=SecretStr("k"), enabled=True)
+
+
+def test_instance_config_link_local_url_raises() -> None:
+    """D-01: InstanceConfig rejects link-local IP at config-load time."""
+    with pytest.raises(ValidationError):
+        InstanceConfig(url="http://169.254.42.42", api_key=SecretStr("k"), enabled=True)
+
+
+def test_instance_config_disabled_instance_metadata_url_still_raises() -> None:
+    """D-01/D-02: Config-load URL validation runs independent of `enabled`.
+
+    A disabled instance with a genuinely-unsafe URL is still rejected at startup —
+    the validate_url_ssrf field_validator fires on the url field regardless of enabled.
+    """
+    with pytest.raises(ValidationError):
+        InstanceConfig(url="http://169.254.169.254/latest/meta-data", api_key=SecretStr("k"), enabled=False)
+
+
+def test_instance_config_metadata_url_with_apikey_rejects_apikey_first() -> None:
+    """D-01/D-02/D-03: reject_apikey_in_url fires before/independently of validate_url_ssrf.
+
+    When the URL is both a metadata host AND contains an apikey= parameter,
+    the apikey= rejection surfaces — proving validator ordering is stable.
+    """
+    with pytest.raises(ValidationError, match="apikey="):
+        InstanceConfig(url="http://169.254.169.254?apikey=secret", api_key=SecretStr("k"), enabled=True)
+
+
 def test_multi_instance_radarr() -> None:
     """Settings accepts radarr as dict[str, InstanceConfig] with multiple named instances."""
     settings = Settings(
@@ -440,6 +489,47 @@ def test_ensure_config_exits_on_missing(tmp_path: Path) -> None:
     assert "[sonarr]" in content
     # New default config should have web UI comment and empty instance sections
     assert "web UI" in content or "settings" in content.lower()
+
+
+def test_ensure_config_exits_cleanly_on_invalid_url(tmp_path: Path) -> None:
+    """ensure_config translates a ValidationError into sys.exit(1), not a traceback.
+
+    A config that parses as TOML but fails a model rule (here: a placeholder
+    instance url of ``http://`` with no hostname, which the config-load SSRF
+    validator rejects) must produce a clean operator-facing exit rather than an
+    uncaught pydantic.ValidationError propagating out of asyncio.run() at startup.
+    Regression guard for the IMP-001 deep-review finding (phase 71).
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(
+        '[general]\nlog_level = "info"\n\n'
+        '[radarr.main]\nurl = "http://"\napi_key = "x"\nenabled = false\n'
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ensure_config(config_file)
+
+    assert exc_info.value.code == 1
+
+
+def test_ensure_config_exits_cleanly_on_blocked_metadata_url(tmp_path: Path) -> None:
+    """A cloud-metadata url in triggarr.toml exits cleanly via sys.exit(1).
+
+    Complements the placeholder-url case: a genuinely-unsafe url (link-local /
+    cloud-metadata) rejected by the config-load SSRF validator must also surface
+    as a friendly exit, not a bare traceback. Regression guard for IMP-001.
+    """
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(
+        '[general]\nlog_level = "info"\n\n'
+        '[radarr.main]\nurl = "http://169.254.169.254/latest/meta-data"\n'
+        'api_key = "x"\nenabled = true\n'
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        ensure_config(config_file)
+
+    assert exc_info.value.code == 1
 
 
 # ---------------------------------------------------------------------------

@@ -1,43 +1,62 @@
+<div align="center">
+
 # Triggarr
 
 [![CI](https://github.com/thejuran/triggarr/actions/workflows/ci.yml/badge.svg)](https://github.com/thejuran/triggarr/actions/workflows/ci.yml)
-[![Docker](https://img.shields.io/badge/ghcr.io-thejuran%2Ftriggarr-blue?logo=docker)](https://ghcr.io/thejuran/triggarr)
+[![Release](https://img.shields.io/github/v/release/thejuran/triggarr)](https://github.com/thejuran/triggarr/releases)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/thejuran/triggarr)
+[![License](https://img.shields.io/github/license/thejuran/triggarr)](LICENSE)
 
-Python automation daemon that triggers searches in Radarr, Sonarr, and Lidarr on a schedule.
+**Radarr, Sonarr, and Lidarr never auto-search for missing or upgrade-eligible media — Triggarr does. Scheduled searches, closed-loop grab tracking, runs in Docker.**
 
-Radarr, Sonarr, and Lidarr don't auto-search for missing and upgrade-eligible media on a timer. Triggarr does -- set a schedule, walk away.
+</div>
 
-## Table of Contents
+![Triggarr dashboard showing app cards, grab rate stats, and live recent activity](docs/screenshots/dashboard.png)
 
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Install](#install)
-- [Configuration Reference](#configuration-reference)
-- [Security Model](#security-model)
-  - [Reverse Proxy](#reverse-proxy)
-- [Development](#development)
+## Quick Start
+
+```yaml
+# docker-compose.yml
+services:
+  triggarr:
+    image: ghcr.io/thejuran/triggarr:latest
+    container_name: triggarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      - triggarr_config:/config
+    ports:
+      - "127.0.0.1:8484:8484"
+    restart: unless-stopped
+
+volumes:
+  triggarr_config:
+```
+
+Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:8484) to complete setup.
 
 ## Features
 
 - **Radarr, Sonarr, and Lidarr** — movies, TV shows, and music albums
 - Scheduled searches for missing and upgrade-eligible media
 - Multi-instance support — run multiple instances of each app with independent schedules
-- Tag-based filtering — scope searches to specific tags per instance
+- Tag-based filtering — scope searches to specific tags per instance; if a configured tag cannot be resolved or tag fetch fails, Triggarr logs a warning and searches all items for that queue (fail-open)
 - Closed-loop tracking — polls *arr history to confirm what was actually grabbed
 - Web dashboard with real-time connection status, grab effectiveness stats, and search history
 - In-app changelog — see what's new without leaving the UI
-- Browser-based config editor -- no manual TOML editing needed
+- Browser-based config editor — no manual TOML editing needed
 - Hard max limit to cap searches per cycle (safety ceiling)
 - Persistent SQLite search history (survives restarts)
 - Docker-first with PUID/PGID support, or standalone pip install
 
-## Screenshots
+## How It Works
 
-![Dashboard with app cards, grab rate stats, and live recent activity rail](docs/screenshots/dashboard.png?v=2)
-
-![Search history with filter chips for app, queue type, outcome, and title search](docs/screenshots/history.png?v=2)
-
-![Settings page with general options and per-instance configuration for Radarr, Sonarr, and Lidarr](docs/screenshots/settings.png?v=2)
+1. Triggarr reads `triggarr.toml` at startup and builds a schedule per instance
+2. On each cycle, it queries the configured *arr app for missing and upgrade-eligible items
+3. It triggers a search command for a configurable batch of those items
+4. It polls *arr's history to track which searches resulted in a grabbed release (closed-loop)
+5. Results appear on the web dashboard in real time; history is persisted in SQLite
 
 ## Install
 
@@ -75,14 +94,21 @@ Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:
 
 The `stop_grace_period: 90s` setting gives the in-process search-cycle drain (default 60s, configurable via the `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` environment variable) time to complete before Docker sends SIGKILL. If you run Triggarr with `docker run` directly (no compose), pass `--stop-timeout 90`.
 
-When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, Triggarr writes `/config/triggarr.toml` first; with the `restart: unless-stopped` example above, the container then starts normally on the next restart.
+When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, the first run exits with code 1 after writing a default `triggarr.toml` — this is expected, not a crash. Docker's `restart: unless-stopped` brings the container back up automatically. Edit the config at `/config/triggarr.toml`, then visit [http://localhost:8484](http://localhost:8484) to complete setup.
 
 ### Standalone (pip)
 
-Requires Python 3.11+. Download the `.whl` from the [latest release](https://github.com/thejuran/triggarr/releases/latest), or install the current release directly:
+Requires Python 3.11+. Go to the [latest release page](https://github.com/thejuran/triggarr/releases/latest), download the `.whl` asset, and install it:
 
 ```bash
-pip install https://github.com/thejuran/triggarr/releases/latest/download/triggarr-2.7.2-py3-none-any.whl
+pip install /path/to/triggarr-<version>-py3-none-any.whl
+```
+
+Or derive the download URL at runtime using the GitHub releases API (requires `curl` and Python 3.11+):
+
+```bash
+pip install "$(curl -s https://api.github.com/repos/thejuran/triggarr/releases/latest \
+  | python3 -c 'import sys,json; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".whl")))')"
 ```
 
 Set an absolute config directory before starting Triggarr:
@@ -107,6 +133,7 @@ After=network.target
 Type=simple
 User=triggarr
 Environment=TRIGGARR_CONFIG_DIR=/var/lib/triggarr
+StateDirectory=triggarr
 ExecStart=/usr/local/bin/triggarr
 Restart=on-failure
 RestartSec=10
@@ -118,11 +145,13 @@ TimeoutStopSec=90s
 WantedBy=multi-user.target
 ```
 
+`StateDirectory=triggarr` instructs systemd to create and own `/var/lib/triggarr` before the service starts, so the first boot does not fail with a missing config directory.
+
 ## Configuration Reference
 
 Runtime config lives in `${TRIGGARR_CONFIG_DIR}/triggarr.toml`; when `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config/triggarr.toml` for Docker compatibility. The config directory must be an absolute path and must be set before the Triggarr process starts.
 
-You can edit settings from the web UI at [http://localhost:8484/settings](http://localhost:8484/settings) -- changes are written to the TOML file and take effect immediately without restart. Each app type is a table of named instances, so use nested tables such as `[radarr.Default]` or `[sonarr.Anime]` rather than putting connection fields directly under the app name.
+You can edit settings from the web UI at [http://localhost:8484/settings](http://localhost:8484/settings) — changes are written to the TOML file and take effect immediately without restart. Each app type is a table of named instances, so use nested tables such as `[radarr.Default]` or `[sonarr.Anime]` rather than putting connection fields directly under the app name.
 
 ```toml
 # Triggarr Configuration
@@ -186,6 +215,14 @@ search_cutoff_count = 5             # cutoff/upgrade albums to search per cycle
 
 Startup-level environment variables such as `TRIGGARR_CONFIG_DIR`, `TRUSTED_PROXY_IPS`, and `ROOT_PATH` are read by the process before the TOML settings are loaded; they are not stored in `triggarr.toml`.
 
+## Screenshots
+
+![Triggarr dashboard showing app cards, grab rate stats, and live recent activity](docs/screenshots/dashboard.png)
+
+![Search history with filter chips for app, queue type, outcome, and title search](docs/screenshots/history.png)
+
+![Settings page with general options and per-instance configuration for Radarr, Sonarr, and Lidarr](docs/screenshots/settings.png)
+
 ## Security Model
 
 Triggarr includes application authentication by default. A fresh config starts in setup mode; the first browser visit redirects to `/setup`, where you create the local username/password and receive a generated API key. After setup, protected browser routes require either a signed `triggarr_session` cookie or another configured auth method.
@@ -196,7 +233,7 @@ Configured in `[auth]` as `method`:
 
 - `Forms` (default) — browser login page, bcrypt password hash, signed 30-day session cookie, logout, password change, and login rate limiting. Changing your password rotates the session secret, which signs you out of every other browser/device while keeping the current session active.
 - `Basic` — HTTP Basic credentials are accepted and can establish the same signed session cookie.
-- `External` — Triggarr bypasses local auth because an upstream reverse proxy or SSO layer has already authenticated and authorized the user; enable it only after direct access to port 8484 is blocked and the proxy is the sole path to Triggarr.
+- `External` — Triggarr bypasses local authentication because an upstream reverse proxy or SSO layer has already authenticated and authorized the user; enable it only after direct access to port 8484 is blocked and the proxy is the sole path to Triggarr. Upstream authentication and authorization must both be enforced by the proxy — do not enable External mode unless direct access to port 8484 is also blocked.
 - `Disabled` — all routes are accessible without Triggarr auth and a warning is logged periodically. Prefer `External` for reverse-proxy deployments.
 
 Requests may also authenticate with `X-Api-Key` when `auth.api_key` is set. The setup flow and security settings page generate API keys; do not paste real keys into examples or logs.
@@ -211,9 +248,17 @@ Requests may also authenticate with `X-Api-Key` when `auth.api_key` is set. The 
 - **Config secrets** in `triggarr.toml` are plaintext on disk; protect them with file permissions and volume security
 - **Docker container** drops all capabilities except CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID
 - **CSRF protection** via Origin/Referer checking on mutating requests
-- **Security headers** include frame denial, MIME-sniffing prevention, same-origin referrer policy, and a restrictive CSP
-- **URL validation** blocks SSRF attempts by rejecting non-HTTP schemes and metadata, link-local, loopback, unspecified, or multicast targets
+- **Security headers** include frame denial, MIME-sniffing prevention, same-origin referrer policy, and a restrictive Content Security Policy with a per-request `script-src` nonce (no `unsafe-inline`)
+- **URL validation** rejects non-HTTP schemes and blocks SSRF attempts (see below)
 - **Security hardening** via `no-new-privileges` applied after privilege setup in entrypoint when the host supports it
+
+### URL validation and SSRF protection
+
+URL inputs are validated against an allow-list of schemes (http and https) and a block-list of cloud-metadata endpoints and link-local IP literals. This validation runs both at config load (triggarr.toml at startup) and via the web settings form.
+
+The precise net behavior, per the implementation in `triggarr/web/validation.py` and `triggarr/models/config.py`:
+
+"Link-local / unspecified / multicast IP literals, and known cloud-metadata hostnames/IPs are blocked BOTH at config load (triggarr.toml at startup) AND via the web settings form. Loopback IP literals (127.0.0.1, ::1) are PERMITTED at config load (relaxed variant for same-host \*arr) and blocked ONLY by the web settings form. The DNS name `localhost` is a hostname, not an IP literal, so it is NOT resolved at validation time and is PERMITTED in BOTH paths (config load and web form) — like any other unresolved DNS hostname. Arbitrary DNS hostnames are NOT resolved at validation time and remain an accepted residual risk (DNS rebinding); network-layer egress controls are the mitigation. Config-load validation applies regardless of `enabled` — no loopback/private-LAN/localhost deployment breaks, but a configured-but-unsafe URL (link-local/metadata/non-http/malformed) will now fail at startup even if the instance is disabled."
 
 ### Recommendation
 
@@ -266,12 +311,18 @@ When no proxy is configured, the default trust list (`127.0.0.1`) ensures forwar
 
 Synology DSM ships a stripped-down `setpriv` that doesn't support `--no-new-privileges`. Triggarr detects this automatically and skips the flag — no configuration changes needed.
 
-## Development
+## Related Projects
+
+- [**SeedSyncarr**](https://github.com/thejuran/seedsyncarr) — sync files from your seedbox to your local media server, integrated with Sonarr and Radarr. SeedSyncarr handles the download-to-sync side; Triggarr handles the search-to-trigger side.
+
+## Contributing / Development
 
 ```bash
 uv sync --extra dev                    # Install dependencies
 uv run pytest tests/ -x -q             # Run tests
 uv run ruff check triggarr/ tests/     # Lint
-uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch  # CSS dev
+TAILWINDCSS_VERSION=v4.2.2 uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch  # CSS dev
 docker build -t triggarr:local .       # Local Docker build
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, commit style, and PR checklist.

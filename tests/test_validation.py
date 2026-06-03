@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url, validate_instance_name
+from triggarr.web.validation import (
+    safe_int,
+    safe_log_level,
+    validate_arr_url,
+    validate_arr_url_config,
+    validate_instance_name,
+)
 
 # ---------------------------------------------------------------------------
 # validate_arr_url
@@ -138,6 +144,49 @@ class TestValidateArrUrl:
         ok, err = validate_arr_url("http://[::ffff:10.0.0.1]:7878")
         assert ok is True
         assert err == ""
+
+
+
+# ---------------------------------------------------------------------------
+# validate_arr_url_config (config-load relaxed variant)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateArrUrlConfig:
+    """Config-load URL validation: loopback allowed, metadata/link-local still blocked."""
+
+    def test_empty_string_allowed(self) -> None:
+        ok, err = validate_arr_url_config("")
+        assert ok is True
+        assert err == ""
+
+    def test_loopback_ipv4_allowed(self) -> None:
+        ok, err = validate_arr_url_config("http://127.0.0.1:7878")
+        assert ok is True
+        assert err == ""
+
+    def test_localhost_hostname_allowed(self) -> None:
+        ok, err = validate_arr_url_config("http://localhost:7878")
+        assert ok is True
+        assert err == ""
+
+    def test_private_192_168_allowed(self) -> None:
+        ok, err = validate_arr_url_config("http://192.168.1.100:7878")
+        assert ok is True
+        assert err == ""
+
+    def test_cloud_metadata_ip_blocked(self) -> None:
+        ok, err = validate_arr_url_config("http://169.254.169.254/latest/meta-data")
+        assert ok is False
+
+    def test_link_local_ip_blocked(self) -> None:
+        ok, err = validate_arr_url_config("http://169.254.42.42")
+        assert ok is False
+        assert "blocked" in err.lower()
+
+    def test_gcp_metadata_hostname_blocked(self) -> None:
+        ok, err = validate_arr_url_config("http://metadata.google.internal")
+        assert ok is False
 
 
 # ---------------------------------------------------------------------------

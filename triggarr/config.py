@@ -13,6 +13,7 @@ from typing import NoReturn
 
 import tomli_w
 from loguru import logger
+from pydantic import ValidationError
 
 from triggarr.models.config import Settings
 
@@ -330,6 +331,33 @@ def _log_corrupt_config_and_exit(config_path: Path, exc: Exception) -> NoReturn:
     sys.exit(1)
 
 
+def _log_invalid_config_and_exit(config_path: Path, exc: ValidationError) -> NoReturn:
+    """Log a friendly schema-validation error and exit with code 1.
+
+    A `pydantic.ValidationError` at load time means the config parsed as TOML
+    but failed a model rule -- e.g. an instance ``url`` that is a placeholder
+    (``http://``), a non-http scheme, or a blocked SSRF target (cloud-metadata /
+    link-local). Without this handler the error propagates uncaught out of
+    ``asyncio.run(_run())`` as a bare traceback; here it becomes a path-scoped
+    operator message naming the offending field(s). Pydantic's ``errors()`` only
+    exposes field locations and rule messages -- never the submitted values --
+    so no config contents or secrets are logged.
+
+    Args:
+        config_path: Path to the config file that failed validation.
+        exc: The ValidationError raised while constructing Settings.
+    """
+    logger.error("Config file {path} failed validation:", path=config_path)
+    for err in exc.errors():
+        location = ".".join(str(part) for part in err["loc"]) or "(root)"
+        logger.error("  {loc}: {msg}", loc=location, msg=err["msg"])
+    logger.error(
+        "Edit {path} to correct the field(s) above and restart Triggarr.",
+        path=config_path,
+    )
+    sys.exit(1)
+
+
 def ensure_config(config_path: Path) -> Settings:
     """Ensure config file exists and load settings.
 
@@ -341,8 +369,10 @@ def ensure_config(config_path: Path) -> Settings:
     migration probe or the final load is translated into a friendly
     loguru.error line (mentioning the `.toml.bak` backup when present)
     and `sys.exit(1)` — instead of an uncaught traceback from
-    `asyncio.run(_run())` (TEST-02). `OSError` (permission denied) and
-    `pydantic.ValidationError` (schema bug) continue to propagate uncaught.
+    `asyncio.run(_run())` (TEST-02). A `pydantic.ValidationError` (e.g. a
+    placeholder/blocked instance `url` rejected at load) is likewise
+    translated into a path-scoped, field-level loguru.error and `sys.exit(1)`.
+    `OSError` (permission denied) continues to propagate uncaught.
 
     Args:
         config_path: Path to the TOML configuration file.
@@ -371,3 +401,5 @@ def ensure_config(config_path: Path) -> Settings:
         return load_settings(config_path)
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
         _log_corrupt_config_and_exit(config_path, exc)
+    except ValidationError as exc:
+        _log_invalid_config_and_exit(config_path, exc)

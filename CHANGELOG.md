@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.9.0 (2026-06-02)
+
+Security hardening, a search-reliability fix, and a documentation overhaul.
+
+* Security:
+
+  * URL validation for *arr instances now applies at config-load time, not only when saving settings via the web UI. Cloud-metadata and link-local addresses are blocked on startup; loopback addresses are permitted for same-host deployments.
+
+* Fixes:
+
+  * Fixed the manual-search failure counter not incrementing or resetting after a manual cycle, which could prematurely pause a recovered instance or suppress its paused state when searches were triggered from the UI.
+
+* Documentation:
+
+  * Full README rewrite: benefit-led introduction, accurate Quick Start, corrected pip install and systemd unit instructions, tag-filtering fail-open behavior documented.
+  * SECURITY.md updated to reflect v2.8/v2.8.1 hardening and clarify the at-rest plaintext credential caveat.
+
 ## v2.8.1 (2026-05-31)
 
 Security patch release: password changes now invalidate other sessions.

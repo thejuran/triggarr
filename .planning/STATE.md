@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.9
 milestone_name: Launch-Hardening / Sibling Consistency
-status: in_progress
-last_updated: "2026-06-02T17:30:00.000Z"
-last_activity: 2026-06-02
+status: ready_to_plan
+stopped_at: Phase 71 complete (6/6) — ready to discuss Phase 999.1
+last_updated: 2026-06-02T23:20:19.901Z
+last_activity: 2026-06-02 -- Phase 71 execution started
 progress:
-  total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 6
+  completed_phases: 3
+  total_plans: 11
+  completed_plans: 11
+  percent: 50
 ---
 
 # Project State
@@ -20,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.9 Launch-Hardening / Sibling Consistency — roadmap created (phases 68-71), ready to plan Phase 68.
+**Current focus:** Phase 999.1 — ui based password recovery
 
 ## Current Position
 
-Phase: 68 — Code-track hostile-reader discovery (not started)
-Plan: —
-Status: Roadmap created; no phase planned yet
-Last activity: 2026-06-02 — Roadmap for v2.9 created (4 phases, 68-71; 19/19 requirements mapped)
+Phase: 999.1
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-02
 
-Progress: [░░░░░░░░░░] 0% (0/4 phases)
+Progress: [██████████] 100%
 
 **Next step:** `/gsd:plan-phase 68`
 
@@ -60,7 +61,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 **Overall:**
 
-- Total plans completed: 155 across 14 shipped milestones (through v2.8)
+- Total plans completed: 165 across 14 shipped milestones (through v2.8)
 - Milestones shipped: 14 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8)
 - Tests passing: 965 (post v2.8.1)
 - Phases completed: 67 (through v2.8)
@@ -70,6 +71,8 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 ### Decisions
 
 Full decision log in PROJECT.md Key Decisions table. v2.9 design decisions (D-1..D-12) in `docs/superpowers/specs/2026-06-02-launch-hardening-design.md` §2.
+
+- [Phase ?]: Phase 68 discovery: history scan CLEAN (1038 commits all-refs, no real secret); 4 FOLD-IN findings P68-FI-001..004 gate Phase 69 CHARD-04 fix scope
 
 ### Pending Todos
 
@@ -119,6 +122,7 @@ Items parked this milestone (spec D-5 / §3.3) and carried forward:
 | v2 requirement | SCALE-02: Search history archival / PostgreSQL path | v2.8 audit | deferred |
 | v2 requirement | AUDIT-01: Config change audit log | v2.8 audit | deferred |
 | v2 requirement | OBS-01: Scheduler job dashboard | v2.8 audit | deferred |
+| Phase 68 P01 | 25min | 5 tasks | 1 files |
 
 ### Quick Tasks Completed
 
@@ -139,9 +143,9 @@ Items parked this milestone (spec D-5 / §3.3) and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-02T17:30:00.000Z
-Stopped at: v2.9 roadmap created (phases 68-71)
-Resume file: .planning/ROADMAP.md (v2.9 Phase Details)
+Last session: 2026-06-02T21:37:52.250Z
+Stopped at: Phase 71 context gathered
+Resume file: .planning/phases/71-presentation-rewrite/71-CONTEXT.md
 
 ## Operator Next Steps
 

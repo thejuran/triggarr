@@ -42,7 +42,7 @@ from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
-from triggarr.models.config import APP_TYPES, Settings
+from triggarr.models.config import APP_TYPES, InstanceConfig, Settings
 from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
 from triggarr.state import (
     TriggarrState,
@@ -161,61 +161,13 @@ def make_search_job(
                 return fresh_tags
 
             try:
-                # --- Cycle execution (narrow-tuple catch; OSError REMOVED — Codex
-                # finding 2: OSError is durability, not transient *arr blip). ---
-                try:
-                    app.state.triggarr_state = await cycle_fn(
-                        client,
-                        app.state.triggarr_state,
-                        instance_name,
-                        instance_config,
-                        app.state.settings,
-                        app.state.db,
-                        get_tags_fn=_get_tags_cached,
-                    )
-                # SAFETY-02: narrow tuple — code-bug exceptions (RuntimeError,
-                # KeyError, etc.) intentionally propagate to APScheduler's
-                # EVENT_JOB_ERROR listener (_on_job_error). Do NOT add
-                # asyncio.CancelledError here: it is BaseException, not Exception,
-                # and the shutdown drain depends on its propagation.
-                # SAFETY-03 (Codex finding 2): OSError moved to the dedicated
-                # persistence branch below; persistence durability failures must
-                # not be conflated with transient *arr cycle blips.
-                except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error) as exc:
-                    _record_cycle_failure(app, job_id, app_name, reason=_sanitize_exc(exc))
-                    return
-
-                # SAFETY-03 (Codex finding 1): cycle outcome derived from
-                # state[app][inst][connected] — covers the REAL *arr outage path
-                # where the engine catches httpx.HTTPError internally, sets
-                # connected = False, and returns state without raising.
-                _evaluate_cycle_outcome(app, app_name, instance_name, job_id)
-
-                # SAFETY-03 (Codex finding 2): persistence is its own try/except.
-                # OSError / aiosqlite.Error here are durability failures, NOT
-                # transient *arr blips. Log ERROR immediately (no threshold gate),
-                # mark persistence_degraded, and re-raise so EVENT_JOB_ERROR also
-                # logs with job_id context. The counter is NOT incremented.
-                try:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, save_state, app.state.triggarr_state, state_path
-                    )
-                    # WR-09: clear `persistence_degraded` once a save
-                    # succeeds. Without this reset the flag is sticky and
-                    # latches True forever after the first transient
-                    # OSError (e.g., one-off disk full, brief permission
-                    # blip on a remote volume), giving operators a
-                    # permanently stale degraded signal even after the
-                    # underlying durability problem has resolved.
-                    app.state.persistence_degraded = False
-                except (OSError, aiosqlite.Error) as persist_exc:
-                    app.state.persistence_degraded = True
-                    logger.error(
-                        "{app}: persistence failed -- {exc}",
-                        app=app_name.title(),
-                        exc=_sanitize_exc(persist_exc),
-                    )
-                    raise
+                # SAFETY-03: shared cycle body — counter increment/reset + persistence.
+                # Caller (this job()) already holds search_lock; _run_one_cycle must
+                # NOT acquire it again (single asyncio.Lock; double-acquire deadlocks).
+                await _run_one_cycle(
+                    app, app_name, instance_name, client, instance_config,
+                    state_path, _get_tags_cached,
+                )
 
                 # --- Tracking check: resolve pending search outcomes for this instance ---
                 try:
@@ -317,16 +269,8 @@ def _evaluate_cycle_outcome(app: FastAPI, app_name: str, instance_name: str, job
     as success (do not double-count first-ever cycle before the engine sets
     the flag).
 
-    NOTE: This helper is invoked only from `make_search_job` (the APScheduler
-    job factory). The manual-search-now endpoint in `triggarr/web/routes.py`
-    invokes `cycle_fn(...)` directly and bypasses `make_search_job`, so a
-    successful manual search does NOT currently reset the per-job counter,
-    and a failing manual search does NOT currently increment it.
-    TODO(SAFETY-03): refactor `search_now` to go through `make_search_job`
-    (or extract a shared `_run_one_cycle(app, app_name, instance_name)`
-    helper) so manual and scheduled searches share the same counter
-    semantics. Deferred to a follow-up plan in v2.8 to keep this plan's
-    diff focused on the scheduler path.
+    Called from ``_run_one_cycle``, which is the shared helper used by both
+    the scheduled ``make_search_job`` path and the manual ``search_now`` route.
     """
     # SAFETY-03 (Codex finding 1): cycle outcome derived from state[app][inst][connected],
     # not from raised exceptions.
@@ -339,10 +283,96 @@ def _evaluate_cycle_outcome(app: FastAPI, app_name: str, instance_name: str, job
         _record_cycle_failure(app, job_id, app_name, reason="instance unreachable")
         return False
     # connected is True or unknown — treat as success to avoid double-counting.
-    # SAFETY-03: manual searches via search_now bypass this reset (see TODO
-    # above). The cycle counter is per-scheduler-job today.
     app.state.search_failures[job_id] = 0
     return True
+
+
+async def _run_one_cycle(
+    app: FastAPI,
+    app_name: str,
+    instance_name: str,
+    client: ArrClient,
+    instance_config: InstanceConfig,
+    state_path: Path,
+    get_tags_fn: Callable[[], Awaitable[list[Tag]]],
+) -> None:
+    """SAFETY-03: shared cycle body for both scheduled and manual search paths.
+
+    Caller MUST hold app.state.search_lock for the full duration.
+    This helper acquires NO lock of its own — both callers (make_search_job's
+    job() and the manual search_now route) already hold app.state.search_lock
+    before calling this function. A second acquisition of the single-worker
+    asyncio.Lock would deadlock.
+
+    Counter increment/reset, persistence, and persistence_degraded flag
+    are all managed here so both paths share identical semantics.
+
+    Args:
+        app: The FastAPI application instance.
+        app_name: Lower-case *arr name ("radarr", "sonarr", "lidarr").
+        instance_name: Name of this instance (e.g., "Default", "4K").
+        client: Already-constructed ArrClient (api_key consumed at init).
+        instance_config: Per-instance settings (InstanceConfig).
+        state_path: Path to the JSON state file for persistence.
+        get_tags_fn: Async callable returning list[Tag] (caller constructs).
+    """
+    cycle_fns = {"radarr": run_radarr_cycle, "sonarr": run_sonarr_cycle, "lidarr": run_lidarr_cycle}
+    cycle_fn = cycle_fns.get(app_name)
+    if cycle_fn is None:
+        logger.warning("{app}: search cycle not implemented yet, skipping", app=app_name.title())
+        return
+
+    job_id = f"{app_name}_{instance_name}_search"
+
+    # --- Cycle execution (narrow-tuple catch; OSError REMOVED — Codex
+    # finding 2: OSError is durability, not transient *arr blip). ---
+    try:
+        app.state.triggarr_state = await cycle_fn(
+            client,
+            app.state.triggarr_state,
+            instance_name,
+            instance_config,
+            app.state.settings,
+            app.state.db,
+            get_tags_fn=get_tags_fn,
+        )
+    # SAFETY-02: narrow tuple — code-bug exceptions (RuntimeError,
+    # KeyError, etc.) intentionally propagate to APScheduler's
+    # EVENT_JOB_ERROR listener (_on_job_error). Do NOT add
+    # asyncio.CancelledError here: it is BaseException, not Exception,
+    # and the shutdown drain depends on its propagation.
+    # SAFETY-03 (Codex finding 2): OSError moved to the dedicated
+    # persistence branch below; persistence durability failures must
+    # not be conflated with transient *arr cycle blips.
+    except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error) as exc:
+        _record_cycle_failure(app, job_id, app_name, reason=_sanitize_exc(exc))
+        return
+
+    # SAFETY-03 (Codex finding 1): cycle outcome derived from
+    # state[app][inst][connected] — covers the REAL *arr outage path
+    # where the engine catches httpx.HTTPError internally, sets
+    # connected = False, and returns state without raising.
+    _evaluate_cycle_outcome(app, app_name, instance_name, job_id)
+
+    # SAFETY-03 (Codex finding 2): persistence is its own try/except.
+    # OSError / aiosqlite.Error here are durability failures, NOT
+    # transient *arr blips. Log ERROR immediately (no threshold gate),
+    # mark persistence_degraded, and re-raise so EVENT_JOB_ERROR also
+    # logs with job_id context. The counter is NOT incremented.
+    try:
+        await asyncio.get_running_loop().run_in_executor(
+            None, save_state, app.state.triggarr_state, state_path
+        )
+        # WR-09: clear `persistence_degraded` once a save succeeds.
+        app.state.persistence_degraded = False
+    except (OSError, aiosqlite.Error) as persist_exc:
+        app.state.persistence_degraded = True
+        logger.error(
+            "{app}: persistence failed -- {exc}",
+            app=app_name.title(),
+            exc=_sanitize_exc(persist_exc),
+        )
+        raise
 
 
 def _on_job_error(event) -> None:

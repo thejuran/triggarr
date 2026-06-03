@@ -108,6 +108,74 @@ def validate_arr_url(url: str) -> tuple[bool, str]:
     return (True, "")
 
 
+def validate_arr_url_config(url: str) -> tuple[bool, str]:
+    """Config-load variant of URL validation (D-02 — relaxed SSRF check).
+
+    Identical to ``validate_arr_url`` except loopback IP literals (127.0.0.1,
+    ::1) and the loopback DNS name ``localhost`` are permitted here, because
+    same-host *arr deployments (triggarr and *arr on the same machine) are a
+    legitimate homelab pattern.
+
+    What is still blocked:
+    - Link-local, unspecified, and multicast IP literals (e.g., 169.254.x.x,
+      0.0.0.0, 224.0.0.1).
+    - Known cloud-metadata hostnames / IPs (BLOCKED_HOSTS: 169.254.169.254,
+      metadata.google.internal, metadata.azure.com, 100.100.100.200).
+    - Non-http(s) URL schemes.
+
+    What is NOT resolved at validation time:
+    - Arbitrary DNS hostnames (including ``localhost``) are accepted as-is
+      without DNS resolution.  DNS rebinding is an accepted residual risk at
+      this layer; network-layer egress controls are the mitigation.
+
+    Args:
+        url: The URL string from triggarr.toml (or ``""`` for a disabled instance).
+
+    Returns:
+        A ``(valid, error_message)`` tuple. ``valid`` is True when the URL
+        is acceptable; ``error_message`` is empty on success.
+    """
+    if not url or not url.strip():
+        return (True, "")
+
+    parsed = urlparse(url.strip())
+
+    if parsed.scheme not in {"http", "https"}:
+        return (False, "URL scheme must be http or https")
+
+    hostname = parsed.hostname
+    if hostname is None:
+        return (False, "URL has no hostname")
+
+    if hostname in BLOCKED_HOSTS:
+        return (False, "Blocked hostname")
+
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if addr.is_link_local or addr.is_unspecified or addr.is_multicast:
+            return (False, "Blocked address")
+        # Check IPv4-mapped IPv6 addresses (e.g., ::ffff:169.254.169.254) per D-10.
+        # mapped.is_loopback is intentionally NOT checked here: ::ffff:127.0.0.1 is an
+        # acceptable same-host loopback form, mirroring the top-level loopback allowance
+        # that distinguishes this relaxed config-load variant from strict validate_arr_url.
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            mapped = addr.ipv4_mapped
+            if (
+                mapped.is_link_local
+                or mapped.is_unspecified
+                or mapped.is_multicast
+                or any(mapped in net for net in _BLOCKED_NETWORKS)
+            ):
+                return (False, "Blocked address")
+    except ValueError:
+        # Not an IP literal (e.g. "localhost", "radarr") -- DNS rebinding is an accepted
+        # residual risk. Hostnames are not resolved at validation time. Network-layer
+        # controls (firewall, egress filtering) are the appropriate mitigation.
+        pass
+
+    return (True, "")
+
+
 def safe_int(value: str | None, default: int, minimum: int, maximum: int) -> int:
     """Parse a form value as an integer, clamped to ``[minimum, maximum]``.
 

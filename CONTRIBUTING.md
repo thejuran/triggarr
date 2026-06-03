@@ -17,7 +17,7 @@
 uv sync --extra dev                    # install dependencies
 uv run pytest tests/ -x -q             # run tests
 uv run ruff check triggarr/ tests/     # lint
-uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch  # dev CSS
+TAILWINDCSS_VERSION=v4.2.2 uv run tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --watch  # dev CSS (must match Dockerfile TAILWINDCSS_VERSION)
 docker build -t triggarr:local .       # local Docker build
 ```
 
