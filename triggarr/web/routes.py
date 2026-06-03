@@ -1858,6 +1858,15 @@ async def reset_confirm_post(request: Request) -> HTMLResponse:
     # Sign with the captured new_session_secret LOCAL (proven == reloaded secret via H2 above —
     # never re-read from app.state for the signing call; Pitfall 2 / ordering F).
     refreshed_username = request.app.state.settings.auth.username
+    if not refreshed_username:
+        # External-auth / partial config: username is absent post-reset.
+        # The reset itself succeeded (hash written, secret rotated); skip auto-login
+        # to avoid ValueError from sign_session (which requires a non-empty username).
+        logger.info(
+            "Password reset applied; session secret rotated. "
+            "Auto-login skipped: no username configured."
+        )
+        return RedirectResponse(url=request.url_for("login_page"), status_code=303)
     response = RedirectResponse(url=request.url_for("dashboard"), status_code=303)
     response.set_cookie(
         "triggarr_session",
