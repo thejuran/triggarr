@@ -176,7 +176,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 
 ### 🚧 v2.10 Recovery, Counts & Config Parity (Phases 72-75) -- IN PROGRESS
 
-- [ ] **Phase 72: Password Reset Backend & Token Lifecycle** - Filesystem-token reset endpoints, in-memory single-use token, session rotation, rate-limit, middleware exemption
+- [ ] **Phase 72: Password Reset Backend & Token Lifecycle** (0/3 plans) - Filesystem-token reset endpoints, in-memory single-use token, session rotation, rate-limit, middleware exemption
 - [ ] **Phase 73: Password Reset UI** - "Forgot password?" affordance on the login page plus the styled request/confirm reset pages
 - [ ] **Phase 74: Count-Only Refresh** - Extract the fetch+count+filter helper and expose a per-card "Refresh counts" button + `POST /api/refresh-counts` that updates counts without searching or advancing the cursor
 - [ ] **Phase 75: Drain-Timeout Config Parity & Deferred-Record Correction** - `shutdown_drain_timeout` config field + settings input with env-override precedence, and the DEBT-06/07/08/03 deferred-record correction
@@ -192,7 +192,10 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
   2. Submitting a valid, unexpired token plus a matching new password sets a new bcrypt hash, rotates `session_secret` (so any cookie signed with the old secret is rejected), deletes the token file, and auto-logs-in the user with a fresh cookie that lands on the dashboard.
   3. A token is rejected (generic "invalid or expired" error, no state change) when it is wrong, expired past its 15-minute TTL, already used once, or superseded by a newer mint.
   4. Hitting `/reset/request` or `/reset/confirm` while logged out succeeds (routes are exempt from the auth middleware) yet no other authenticated route becomes reachable, and both endpoints throttle rapid repeat calls.
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 72-01-PLAN.md — Foundation: RED test_reset.py (20 tests), generate_reset_token(), /reset middleware exemption, rate-limit constants, app.state init, minimal reset.html
+- [ ] 72-02-PLAN.md — Reset-request path: reset_request_page (GET) + reset_request_post (POST mint) + atomic 0600 token-file write + 60s rate-limit
+- [ ] 72-03-PLAN.md — Reset-confirm path: reset_confirm_post (apply) mirroring change_password — in-lock token validation, session rotation, auto-login, token-file delete, 5s rate-limit
 
 ### Phase 73: Password Reset UI
 **Goal**: A locked-out user discovers and completes the recovery flow from the browser, with reset pages that look and behave like the existing login/setup pages.
@@ -232,7 +235,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 72. Password Reset Backend & Token Lifecycle | 0/? | Not started | - |
+| 72. Password Reset Backend & Token Lifecycle | 0/3 | Planned | - |
 | 73. Password Reset UI | 0/? | Not started | - |
 | 74. Count-Only Refresh | 0/? | Not started | - |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
