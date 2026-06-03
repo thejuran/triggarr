@@ -1745,8 +1745,11 @@ async def reset_confirm_post(request: Request) -> HTMLResponse:
     new_password = str(form.get("new_password", ""))
     confirm_password = str(form.get("confirm_password", ""))
 
-    # Optimistic rate-limit check BEFORE lock (fast-fail — D-15; mirrors search_now pattern)
-    rate_key = "confirm"
+    # Optimistic rate-limit check BEFORE lock (fast-fail — D-15; mirrors search_now pattern).
+    # Rate key is per-IP so a remote actor cannot exhaust the single global slot and block
+    # the legitimate operator from completing their reset (remote recovery-flow DoS).
+    client_ip = request.client.host if request.client else "unknown"
+    rate_key = f"confirm_{client_ip}"
     now = time.monotonic()
     last = request.app.state.last_reset_time.get(rate_key, 0.0)
     if now - last < RESET_CONFIRM_RATE_LIMIT_SECONDS:
