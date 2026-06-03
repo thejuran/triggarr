@@ -141,6 +141,8 @@ templates.env.filters["relative_time"] = _relative_time_filter
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
+RESET_REQUEST_RATE_LIMIT_SECONDS = 60  # Prevent log/file flooding (~1 mint/min)
+RESET_CONFIRM_RATE_LIMIT_SECONDS = 5   # Throttle token-guessing attempts
 
 # Regex for multi-instance form field names: {app}__{instance}__{field}
 
