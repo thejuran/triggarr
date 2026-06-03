@@ -1,0 +1,64 @@
+{% extends "base-auth.html" %}
+
+{% block title %}Password Reset - Triggarr{% endblock %}
+
+{% block content %}
+<div class="max-w-[420px] w-full bg-triggarr-card border border-triggarr-border rounded-lg p-6">
+  <p class="text-triggarr-green text-xl font-medium text-center">Triggarr</p>
+  <h1 class="text-xl font-medium text-triggarr-text text-center mt-4">Password Reset</h1>
+
+  {% if error %}
+  <p class="text-red-500 text-sm text-center mt-4" aria-live="polite">{{ error }}</p>
+  {% endif %}
+
+  {% if step == "request" %}
+  <p class="text-triggarr-muted text-sm text-center mt-4">
+    Request a password reset token. The token will be written to the application logs
+    and to <code>reset-token.txt</code> in the config volume.
+  </p>
+  <form method="post" action="/reset/request" class="mt-6">
+    <button type="submit"
+            class="w-full bg-triggarr-green hover:bg-triggarr-green-dark text-white text-sm font-medium rounded py-2 transition-colors cursor-pointer">
+      Request Reset Token
+    </button>
+  </form>
+  {% elif step == "confirm" %}
+  <p class="text-triggarr-muted text-sm text-center mt-4">
+    Enter the token from the application logs or <code>reset-token.txt</code>, then choose a new password.
+  </p>
+  <form method="post" action="/reset/confirm" class="mt-6">
+    <div class="space-y-4">
+      <div>
+        <label for="token" class="block text-sm font-medium text-triggarr-muted mb-1">Reset Token</label>
+        <input type="text" id="token" name="token"
+               autocomplete="off"
+               autofocus
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+      </div>
+      <div>
+        <label for="new_password" class="block text-sm font-medium text-triggarr-muted mb-1">New Password</label>
+        <input type="password" id="new_password" name="new_password"
+               autocomplete="new-password"
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+        {% if errors and errors.get("new_password") %}
+        <p class="text-red-500 text-xs mt-1" aria-live="polite">{{ errors["new_password"] }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <label for="confirm_password" class="block text-sm font-medium text-triggarr-muted mb-1">Confirm Password</label>
+        <input type="password" id="confirm_password" name="confirm_password"
+               autocomplete="new-password"
+               class="bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm text-triggarr-text placeholder-triggarr-muted w-full focus:ring-2 focus:ring-triggarr-green focus:outline-none">
+        {% if errors and errors.get("confirm_password") %}
+        <p class="text-red-500 text-xs mt-1" aria-live="polite">{{ errors["confirm_password"] }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <button type="submit"
+            class="w-full bg-triggarr-green hover:bg-triggarr-green-dark text-white text-sm font-medium rounded py-2 mt-6 transition-colors cursor-pointer">
+      Reset Password
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -498,6 +498,13 @@ def create_lifespan(
         # does not exist.
         # last_search_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
         app.state.last_search_time = {}
+        # reset_token: tuple[str, float] | None  (CSPRNG token string, expiry as monotonic ts)
+        # Set by reset_request_post, consumed and cleared by reset_confirm_post.
+        # A container restart sets this to None, invalidating any pending reset token (D-04, D-18).
+        app.state.reset_token = None
+        # last_reset_time: dict[str, float]  (key: "request"/"confirm", value: monotonic ts)
+        # Rate-limit gate for both reset endpoints (D-14, D-15).
+        app.state.last_reset_time = {}
         app.state.last_health_check = None
         # SAFETY-03: per-job consecutive-failure counter keyed by
         # f"{app_name}_{instance_name}_search". Incremented when the engine

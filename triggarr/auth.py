@@ -67,6 +67,15 @@ def generate_session_secret() -> str:
     return secrets.token_hex(32)
 
 
+def generate_reset_token() -> str:
+    """Generate a URL-safe reset token using CSPRNG.
+
+    Returns:
+        Cryptographically random URL-safe string (32 bytes of entropy, ~43 chars).
+    """
+    return secrets.token_urlsafe(32)
+
+
 def sign_session(username: str, secret: str) -> str:
     """Create a signed session cookie value.
 

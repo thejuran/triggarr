@@ -19,6 +19,9 @@ from triggarr.web.security import is_secure_request
 # Paths that bypass authentication entirely.
 # Prefix matching is intentional: /static covers all static assets,
 # /login covers GET and POST, /setup covers the setup flow.
+# NOTE: /reset is NOT added as a bare prefix here — a bare startswith("/reset") would
+# also exempt a hypothetical /resetXYZ route (M2 over-exposure). The reset exemption
+# uses an exact-or-/reset/ predicate in the dispatch method below (see _is_reset_path).
 EXEMPT_PREFIXES = ("/health", "/static", "/login", "/setup")
 
 
@@ -108,8 +111,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Gate every non-exempt route through authentication checks."""
         path = request.url.path
 
-        # Exempt paths pass through without auth
-        if any(path.startswith(prefix) for prefix in EXEMPT_PREFIXES):
+        # Exempt paths pass through without auth.
+        # The /reset exemption uses an exact-or-/reset/ predicate (M2-tightened): a bare
+        # startswith("/reset") would also exempt /resetXYZ, so we match only path == "/reset"
+        # or path.startswith("/reset/") to keep any future /resetXYZ routes gated.
+        if path == "/reset" or path.startswith("/reset/") or any(path.startswith(prefix) for prefix in EXEMPT_PREFIXES):
             return await call_next(request)
 
         auth = request.app.state.settings.auth
