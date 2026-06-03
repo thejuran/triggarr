@@ -69,16 +69,18 @@ def generate_reset_token() -> str:
 EXEMPT_PREFIXES = ("/health", "/static", "/login", "/setup")
 ```
 
-**Prefix-match logic** (lines 112–113) — confirms `startswith` semantics, so `/reset` covers `/reset`, `/reset/request`, `/reset/confirm`:
+**Prefix-match logic** (lines 112–113) — `startswith` semantics. NOTE: a bare `/reset` prefix would ALSO exempt a hypothetical future `/resetXYZ` route (codex M2 over-exposure). The reset exemption MUST be scoped to exact `/reset` or the `/reset/` sub-prefix:
 ```python
 if any(path.startswith(prefix) for prefix in EXEMPT_PREFIXES):
     return await call_next(request)
 ```
 
-**Adaptation:** Append `"/reset"` as the fifth element. One-line change:
+**Adaptation (M2-tightened — do NOT append a bare `"/reset"` to EXEMPT_PREFIXES):** add a scoped reset predicate so `/reset` and `/reset/...` are exempt but `/resetXYZ` stays gated, e.g.:
 ```python
-EXEMPT_PREFIXES = ("/health", "/static", "/login", "/setup", "/reset")
+if path == "/reset" or path.startswith("/reset/") or any(path.startswith(p) for p in EXEMPT_PREFIXES):
+    return await call_next(request)
 ```
+Plan 01 owns the exact final shape; the invariant is: `/reset`, `/reset/request`, `/reset/confirm` reachable unauthenticated; `/resetXYZ` NOT exempt (test_no_other_route_exposed).
 
 ---
 
@@ -169,12 +171,16 @@ async def reset_request_page(request: Request) -> HTMLResponse:
 - Inside the lock after timestamp update: mint token, store in `app.state`, log at `warning`, write token file via `run_in_executor(_write_reset_token_file, ...)`, return neutral HTML
 - Token value NEVER in the HTML response body or context dict
 
-**Token mint + store (inside lock, after rate-stamp update):**
+**Token mint + store (inside lock, after rate-stamp update; only when no LIVE token exists — H1):**
 ```python
         token = generate_reset_token()
         request.app.state.reset_token = (token, time.monotonic() + 900)
-        logger.warning("Password reset token minted. Read from docker logs or reset-token.txt in the config volume.")
-        # D-17: log line first (operator can recover from log if file write fails)
+        # D-02 + RESEARCH #4: the warning log line INCLUDES the token value — it is the
+        # deliberate operator-only recovery channel (the reset token is intentionally NOT
+        # added to the redacting sink, unlike session_secret/password_hash). The token must
+        # NEVER appear in any HTTP response and is NEVER logged at confirm time.
+        logger.warning("Password reset token minted (read from docker logs or reset-token.txt): {token}", token=token)
+        # D-17: log-line-WITH-TOKEN first, so the operator can recover from the log if the file write fails.
         try:
             await asyncio.get_running_loop().run_in_executor(
                 None, _write_reset_token_file, token_path, token
@@ -314,11 +320,11 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
 **Adaptation for `_write_reset_token_file(path: Path, token: str) -> None`:**
 - Open fd in `"w"` (text) mode instead of `"wb"` (binary) — write `token` string directly with `f.write(token)`
 - No `tomli_w.dump` — plain text write
-- On `OSError` before rename: log at `error` with path and exception only — NEVER include `token` in the message (D-17)
+- **M1 — set 0600 on the TEMP fd BEFORE rename:** call `os.fchmod(fd, 0o600)` on the open temp descriptor (or `os.chmod(tmp_path, 0o600)`) BEFORE `os.replace`, so the final file is already 0600. Do NOT do a post-rename `os.chmod(path, 0o600)` — on a failed write the final file may not exist and a post-rename chmod would raise `FileNotFoundError`, defeating the non-fatal guarantee.
+- On `OSError` before rename: log at `error` with path and exception only — NEVER include `token` in the message (the token is recoverable from the mint warning log; the error path must not leak it). Close/unlink the temp fd/file. Do NOT reach any chmod on the final path.
 - On `OSError` after rename (dir fsync): log at `warning` (same as `_atomic_toml_write`)
-- After successful rename: call `os.chmod(path, 0o600)` (same position as in `change_password` after `os.replace`)
 - Dispatch via `run_in_executor` from the route handler (same as `_atomic_toml_write`)
-- `OSError` is NOT re-raised (D-17: in-memory token is the authority; file write failure is non-fatal)
+- `OSError` is NOT re-raised (D-17: in-memory token is the authority AND the token is already in the warning log; file write failure is non-fatal)
 
 ---
 
