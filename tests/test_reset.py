@@ -715,3 +715,75 @@ api_key = "{_TEST_API_KEY}"
 """
     config_path.write_text(toml_content)
     return secret
+
+
+# ---------------------------------------------------------------------------
+# Phase 73 — Task 1: GET /reset/confirm reachability and exemption non-widening
+# ---------------------------------------------------------------------------
+
+
+def test_get_reset_confirm_reachable_unauthenticated(tmp_path):
+    """GET /reset/confirm with no session cookie (auth active) → 200 and renders the confirm form.
+
+    The route is exempt via the exact-or-/reset/ predicate in AuthMiddleware (middleware.py:118).
+    Uses _make_reset_app (not _make_route_app) so app.state.reset_token / last_reset_time
+    are initialized.
+    """
+    config_path = tmp_path / "triggarr.toml"
+    auth = _configured_reset_auth()
+    app = _make_reset_app(auth_config=auth, config_path=config_path)
+    auth_state["active"] = True
+    auth_state["method"] = "Forms"
+
+    client = TestClient(app, follow_redirects=False)
+    resp = client.get("/reset/confirm")
+
+    assert resp.status_code == 200, (
+        f"Expected GET /reset/confirm to be reachable unauthenticated (200), got {resp.status_code}"
+    )
+    # The confirm form must render the Reset Token label and a new_password field
+    assert "Reset Token" in resp.text, (
+        "Expected 'Reset Token' label to appear in the confirm form"
+    )
+    assert "new_password" in resp.text, (
+        "Expected 'new_password' field to appear in the confirm form"
+    )
+
+
+def test_reset_confirm_route_did_not_widen_exemption(tmp_path):
+    """Regression: adding GET /reset/confirm must NOT widen the auth exemption.
+
+    The exact-or-/reset/ predicate (middleware.py:118) exempts path == "/reset" or
+    path.startswith("/reset/") — deliberately NOT a bare startswith("/reset") so
+    /resetXYZ stays gated.
+
+    This test proves the AUTH BOUNDARY (not a routing-level smoke check):
+    GET /resetXYZ with a browser Accept header returns 302 with /login in Location,
+    because AuthMiddleware dispatch step 7 takes the browser-redirect branch.
+
+    IMPORTANT: 404 must NOT be treated as passing. A 404 would mean the request
+    bypassed AuthMiddleware and reached the router (no matching route), which is
+    the exact exemption-widening failure this test guards against. The only valid
+    gated response for a browser request is 302 → /login (verified against dispatch
+    step 7 at middleware.py:161-163).
+    """
+    config_path = tmp_path / "triggarr.toml"
+    auth = _configured_reset_auth()
+    app = _make_reset_app(auth_config=auth, config_path=config_path)
+    auth_state["active"] = True
+    auth_state["method"] = "Forms"
+
+    client = TestClient(app, follow_redirects=False)
+    # Browser request to a non-exempt path triggers the 302 → /login fallback (step 7)
+    resp = client.get("/resetXYZ", headers={"Accept": "text/html"})
+
+    # Must be 302 with /login in Location (auth boundary) — NOT 404 (bypass) and NOT 200
+    assert resp.status_code == 302, (
+        f"GET /resetXYZ must be gated at the auth boundary (expected 302), got {resp.status_code}. "
+        "A 404 would mean the request bypassed AuthMiddleware (exemption widened). "
+        "A 200 would mean the route is accessible (also widened). "
+        "Only 302 → /login proves the auth boundary is intact."
+    )
+    assert "/login" in resp.headers.get("location", ""), (
+        f"GET /resetXYZ 302 redirect must point to /login, got location={resp.headers.get('location', '')!r}"
+    )
