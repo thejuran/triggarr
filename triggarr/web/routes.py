@@ -1821,16 +1821,18 @@ async def reset_confirm_post(request: Request) -> HTMLResponse:
         os.chmod(config_path, 0o600)
         request.app.state.settings = load_settings(config_path)
 
-        # H2 read-back assertion: the captured new_session_secret local MUST equal the value
+        # H2 read-back guard: the captured new_session_secret local MUST equal the value
         # now in app.state.settings (proves cookie-signed-with-persisted-secret invariant
         # rather than assuming it — Pitfall 2 / ordering F). If they differ something has gone
         # wrong with the write/reload cycle and the cookie would fail on the very next request.
+        # Uses an explicit RuntimeError (not assert) so the guard survives python -O / PYTHONOPTIMIZE.
         reloaded_secret = request.app.state.settings.auth.session_secret.get_secret_value()
-        assert reloaded_secret == new_session_secret, (
-            "H2 invariant violated: reloaded session_secret differs from captured local; "
-            "the auto-login cookie would be signed with a secret that does not match the "
-            "persisted value."
-        )
+        if reloaded_secret != new_session_secret:
+            raise RuntimeError(
+                "H2 invariant violated: reloaded session_secret differs from captured local; "
+                "the auto-login cookie would be signed with a secret that does not match the "
+                "persisted value."
+            )
 
         # Single-use cleanup (D-07): clear in-memory token and delete the token file.
         request.app.state.reset_token = None
