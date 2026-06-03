@@ -177,7 +177,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 ### 🚧 v2.10 Recovery, Counts & Config Parity (Phases 72-75) -- IN PROGRESS
 
 - [x] **Phase 72: Password Reset Backend & Token Lifecycle** (0/3 plans) - Filesystem-token reset endpoints, in-memory single-use token, session rotation, rate-limit, middleware exemption (completed 2026-06-03)
-- [ ] **Phase 73: Password Reset UI** - "Forgot password?" affordance on the login page plus the styled request/confirm reset pages
+- [x] **Phase 73: Password Reset UI** - "Forgot password?" affordance on the login page plus the styled request/confirm reset pages (completed 2026-06-03)
 - [ ] **Phase 74: Count-Only Refresh** - Extract the fetch+count+filter helper and expose a per-card "Refresh counts" button + `POST /api/refresh-counts` that updates counts without searching or advancing the cursor
 - [ ] **Phase 75: Drain-Timeout Config Parity & Deferred-Record Correction** - `shutdown_drain_timeout` config field + settings input with env-override precedence, and the DEBT-06/07/08/03 deferred-record correction
 
@@ -206,7 +206,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
   2. Following that link reaches a reset-request page styled to match `login.html`/`setup.html`, and submitting it shows the neutral confirmation telling the operator where to read the token.
   3. The reset-confirm page accepts the token + new password + confirmation, surfaces field-level errors (mismatch, empty, over the 72-byte bcrypt limit) inline, and on success transitions the user to the logged-in dashboard.
 **Plans**: 1 plan
-- [ ] 73-01-PLAN.md — "Forgot password?" link (conditional on not needs_setup), GET /reset/confirm route, request-confirmation message + onward link, Back-to-login on both reset steps, and Phase 73 UI tests
+- [x] 73-01-PLAN.md — "Forgot password?" link (conditional on not needs_setup), GET /reset/confirm route, request-confirmation message + onward link, Back-to-login on both reset steps, and Phase 73 UI tests
 **UI hint**: yes
 
 ### Phase 74: Count-Only Refresh
@@ -237,7 +237,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 72. Password Reset Backend & Token Lifecycle | 3/3 | Complete   | 2026-06-03 |
-| 73. Password Reset UI | 0/1 | Not started | - |
+| 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
 | 74. Count-Only Refresh | 0/? | Not started | - |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
 
