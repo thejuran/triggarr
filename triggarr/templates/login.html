@@ -39,5 +39,10 @@
       Sign In
     </button>
   </form>
+  {% if needs_setup is defined and not needs_setup %}
+  <p class="text-triggarr-muted text-sm text-center mt-4">
+    <a href="{{ request.url_for('reset_request_page') }}" class="hover:underline">Forgot password?</a>
+  </p>
+  {% endif %}
 </div>
 {% endblock %}
