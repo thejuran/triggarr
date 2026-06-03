@@ -35,7 +35,7 @@ from triggarr.auth import generate_session_secret, hash_password, sign_session, 
 from triggarr.models.config import AuthConfig, GeneralConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.web.middleware import AuthMiddleware
-from triggarr.web.routes import auth_state, router
+from triggarr.web.routes import _record_failure, auth_state, router
 
 # ---------------------------------------------------------------------------
 # Test constants
@@ -787,3 +787,234 @@ def test_reset_confirm_route_did_not_widen_exemption(tmp_path):
     assert "/login" in resp.headers.get("location", ""), (
         f"GET /resetXYZ 302 redirect must point to /login, got location={resp.headers.get('location', '')!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 73 — Task 2: "Forgot password?" link (defensive guard), reset.html
+#             message-state, onward link, and Back-to-login
+# ---------------------------------------------------------------------------
+
+
+def test_forgot_password_link_shown_when_configured(tmp_path):
+    """GET /login with a configured app (needs_setup=False) → 'Forgot password?' in response."""
+    config_path = tmp_path / "triggarr.toml"
+    auth = _configured_reset_auth()
+    app = _make_reset_app(auth_config=auth, config_path=config_path)
+    auth_state["active"] = True
+    auth_state["method"] = "Forms"
+
+    client = TestClient(app, follow_redirects=False)
+    resp = client.get("/login")
+
+    assert "Forgot password?" in resp.text, (
+        "Expected 'Forgot password?' link to appear on the login page when auth is configured"
+    )
+
+
+def test_forgot_password_link_absent_during_setup_get(tmp_path):
+    """GET /login with a default app (needs_setup=True) → 'Forgot password?' NOT in response."""
+    # Default AuthConfig() has needs_setup=True (no credentials set)
+    app = _make_reset_app()
+    # Default app has active=False so /login is reachable without redirect to setup
+    auth_state["active"] = False
+    auth_state["method"] = "Disabled"
+
+    client = TestClient(app, follow_redirects=False)
+    resp = client.get("/login")
+
+    assert "Forgot password?" not in resp.text, (
+        "Expected 'Forgot password?' link to be ABSENT on the login page during first-run setup"
+    )
+
+
+def test_forgot_password_link_absent_during_setup_post(tmp_path):
+    """POST /login invalid-credentials re-render during first-run setup → link absent.
+
+    The /login path is in EXEMPT_PREFIXES so the POST passes the middleware even during setup.
+    The INVALID-CREDENTIALS re-render must NOT show the 'Forgot password?' link when
+    needs_setup=True (the link must not leak on a POST re-render before auth is configured).
+    """
+    app = _make_reset_app()  # default: needs_setup=True
+    auth_state["active"] = False
+    auth_state["method"] = "Disabled"
+
+    client = TestClient(app, follow_redirects=False)
+    # Deliberately wrong credentials → invalid-credentials re-render fires
+    resp = client.post("/login", data={"username": "x", "password": "wrong"})
+
+    # Should re-render login.html (not redirect)
+    assert "Sign In" in resp.text, "Expected login.html to re-render (invalid-credentials path)"
+    assert "Forgot password?" not in resp.text, (
+        "Expected 'Forgot password?' link to be ABSENT on the invalid-credentials POST re-render "
+        "during first-run setup (needs_setup=True)"
+    )
+
+
+def test_forgot_password_link_absent_during_setup_rate_limit(tmp_path):
+    """POST /login 429 rate-limit re-render during first-run setup → link absent.
+
+    Proves the THIRD login.html render site (the 429 rate-limit re-render at routes.py:1335-1340)
+    carries needs_setup=True during setup so the recovery link stays hidden.
+
+    Strategy: seed 10 failures via _record_failure("testclient") to push the TestClient IP
+    over the _MAX_ATTEMPTS=10 limit. The conftest autouse _reset_rate_limit_state fixture
+    clears _login_failures before/after each test so this seeding does not leak.
+    """
+    app = _make_reset_app()  # default: needs_setup=True
+    auth_state["active"] = False
+    auth_state["method"] = "Disabled"
+
+    # Seed failures to trigger the 429 rate-limit path on the next POST
+    for _ in range(10):
+        _record_failure("testclient")
+
+    client = TestClient(app, follow_redirects=False)
+    # POST /login — the rate-limit check fires before credential verification → 429 re-render
+    resp = client.post("/login", data={"username": "x", "password": "wrong"})
+
+    # Prove the 429 render path was taken
+    assert resp.status_code == 429, (
+        f"Expected 429 rate-limit response (seeded 10 failures), got {resp.status_code}"
+    )
+    # Prove login.html was re-rendered
+    assert "Sign In" in resp.text, "Expected login.html to re-render on 429 path"
+    # Prove the link stays hidden during setup even on the 429 render path
+    assert "Forgot password?" not in resp.text, (
+        "Expected 'Forgot password?' link to be ABSENT on the 429 rate-limit POST re-render "
+        "during first-run setup (needs_setup=True) — the third login.html render site must "
+        "carry needs_setup=True so the recovery link stays hidden before auth is configured"
+    )
+
+
+def test_request_confirmation_message_state(tmp_path):
+    """MANDATORY (Finding 2): message-state on both mint and live-token no-op paths.
+
+    Covers:
+    (i)   First-mint path: neutral message + onward /reset/confirm link + button absent +
+          token absent from body and headers.
+    (ii)  H1 live-token no-op path: same contract.
+    (iii) Context-boundary token-absence (exact source assertion): both reset_request_post
+          message-branch context dicts are keyed exactly {step, message} with no token key.
+          Verified against routes.py source text (routes.py:1685-1692 and 1730-1737).
+    """
+    # (i) First-mint path
+    config_path = tmp_path / "triggarr.toml"
+    auth = _configured_reset_auth()
+    app_mint = _make_reset_app(auth_config=auth, config_path=config_path)
+
+    client_mint = TestClient(app_mint, follow_redirects=False)
+    resp_mint = client_mint.post("/reset/request")
+
+    # Capture the minted token (the only way to get it without reading the log)
+    assert app_mint.state.reset_token is not None, "Token must be minted after POST /reset/request"
+    token_value = app_mint.state.reset_token[0]
+
+    # Neutral message must render
+    assert resp_mint.status_code == 200, f"Expected 200 from POST /reset/request, got {resp_mint.status_code}"
+    # Some neutral confirmation text must be present (the message context key renders)
+    assert len(resp_mint.text) > 0, "Response body must not be empty"
+    # The message is present (a non-empty string in the page)
+    assert "reset token" in resp_mint.text.lower() or "config" in resp_mint.text.lower(), (
+        "Expected neutral confirmation message text in the response"
+    )
+    # Onward link to /reset/confirm must be present
+    assert "/reset/confirm" in resp_mint.text, (
+        "Expected onward link to /reset/confirm to appear after a successful mint"
+    )
+    # The 'Request Reset Token' submit button must be ABSENT in the confirmation state
+    assert "Request Reset Token" not in resp_mint.text, (
+        "Expected 'Request Reset Token' button to be absent in the message/confirmation state"
+    )
+    # Token value must be absent from body and headers
+    assert token_value not in resp_mint.text, (
+        "Token value must NOT appear in the response body (D-02b invariant)"
+    )
+    assert token_value not in str(dict(resp_mint.headers)), (
+        "Token value must NOT appear in any response header (D-02b invariant)"
+    )
+
+    # (ii) H1 live-token no-op path
+    config_path2 = tmp_path / "triggarr2.toml"
+    auth2 = _configured_reset_auth()
+    app_noop = _make_reset_app(auth_config=auth2, config_path=config_path2)
+    # Pre-seed a LIVE token to exercise the H1 no-op branch (mirror test_live_token_request_is_noop)
+    live_token = "livetoken_abc123xyz"
+    app_noop.state.reset_token = (live_token, time.monotonic() + 900)
+    app_noop.state.last_reset_time = {}
+
+    client_noop = TestClient(app_noop, follow_redirects=False)
+    resp_noop = client_noop.post("/reset/request")
+
+    assert resp_noop.status_code == 200, f"Expected 200 from H1 no-op POST /reset/request, got {resp_noop.status_code}"
+    # Same message-state contract
+    assert "/reset/confirm" in resp_noop.text, (
+        "Expected onward link to /reset/confirm on H1 live-token no-op path"
+    )
+    assert "Request Reset Token" not in resp_noop.text, (
+        "Expected 'Request Reset Token' button absent on H1 live-token no-op path"
+    )
+    # Live token must be absent from body and headers
+    assert live_token not in resp_noop.text, (
+        "Live token value must NOT appear in the response body on H1 no-op path (D-02b invariant)"
+    )
+    assert live_token not in str(dict(resp_noop.headers)), (
+        "Live token value must NOT appear in any response header on H1 no-op path (D-02b invariant)"
+    )
+
+    # (iii) Context-boundary token-absence: exact source assertion over reset_request_post
+    # The real invariant is "token NEVER appears in any template/response CONTEXT", not just
+    # body/headers. We assert the source directly since the rendered context is not exposed
+    # via TestClient. Both message-branch context dicts must be keyed exactly {"step", "message"} —
+    # verified against routes.py:1685-1692 (H1 no-op branch) and routes.py:1730-1737 (mint branch).
+    routes_source = Path("triggarr/web/routes.py").read_text()
+
+    # The message context dicts must contain "step": "request" and "message":
+    assert '"step": "request"' in routes_source or "'step': 'request'" in routes_source, (
+        "Expected message context dicts to include step='request'"
+    )
+    assert '"message":' in routes_source or "'message':" in routes_source, (
+        "Expected message context dicts to include the message key"
+    )
+
+    # The token local must NOT appear as a context value in the message branches.
+    # We assert there is no `: token` binding inside any message-branch context dict.
+    # The pattern ": token" as a dict value would mean the token variable is in the context.
+    # We check specifically that neither message branch assigns the token to any context key.
+    # Strategy: find the two return statements that include "message" context and verify
+    # neither contains a ": token" binding (i.e., token as a value, not "token" as a key name).
+    import re
+
+    # Find both message-branch return blocks in reset_request_post
+    # The key invariant: in both TemplateResponse calls within reset_request_post that include
+    # "message", the context dict must have ONLY "step" and "message" keys — no token-valued key.
+    # We assert that within those blocks, the token variable name does not appear as a dict value.
+    # Regex: find context dicts in reset_request_post that include "message" key and check no
+    # token assignment appears as a value.
+
+    # Find all context dict literals that include both "step": "request" and "message":
+    # These are the two message-branch context dicts the plan pins.
+    message_context_pattern = re.compile(
+        r'context=\{[^}]*"step":\s*"request"[^}]*"message":[^}]*\}',
+        re.DOTALL,
+    )
+    message_contexts = message_context_pattern.findall(routes_source)
+
+    assert len(message_contexts) >= 2, (
+        f"Expected at least 2 message-branch context dicts in reset_request_post, "
+        f"found {len(message_contexts)}. Both the H1 no-op and mint branches must use "
+        f"context={{step, message}} shape."
+    )
+
+    # Each message context dict must not contain ": token" as a value binding
+    for ctx in message_contexts:
+        assert ": token" not in ctx and ": token," not in ctx, (
+            f"Token variable must NOT appear as a context value in the message branch. "
+            f"Found unexpected context dict: {ctx!r}"
+        )
+        # Also assert the context has exactly two keys (step and message)
+        # Count quoted key occurrences — must be 2
+        key_count = len(re.findall(r'"step"|"message"', ctx))
+        assert key_count == 2, (
+            f"Message-branch context dict must have exactly 2 keys (step, message), "
+            f"found {key_count} in: {ctx!r}"
+        )
