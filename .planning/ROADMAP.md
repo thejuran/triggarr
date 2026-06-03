@@ -205,7 +205,8 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
   1. The login page shows a "Forgot password?" link only when auth is already configured (`not needs_setup`); during first-run setup the link is absent.
   2. Following that link reaches a reset-request page styled to match `login.html`/`setup.html`, and submitting it shows the neutral confirmation telling the operator where to read the token.
   3. The reset-confirm page accepts the token + new password + confirmation, surfaces field-level errors (mismatch, empty, over the 72-byte bcrypt limit) inline, and on success transitions the user to the logged-in dashboard.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 73-01-PLAN.md — "Forgot password?" link (conditional on not needs_setup), GET /reset/confirm route, request-confirmation message + onward link, Back-to-login on both reset steps, and Phase 73 UI tests
 **UI hint**: yes
 
 ### Phase 74: Count-Only Refresh
@@ -236,7 +237,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 72. Password Reset Backend & Token Lifecycle | 3/3 | Complete   | 2026-06-03 |
-| 73. Password Reset UI | 0/? | Not started | - |
+| 73. Password Reset UI | 0/1 | Not started | - |
 | 74. Count-Only Refresh | 0/? | Not started | - |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
 
