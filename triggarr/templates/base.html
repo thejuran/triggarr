@@ -31,7 +31,7 @@
         <button id="changelog-badge" type="button"
                 class="font-geist-mono px-2 py-0.5 rounded-md bg-triggarr-card border border-triggarr-border text-triggarr-muted text-[10px] font-bold uppercase tracking-wider relative top-px hover:text-white transition-colors cursor-pointer"
                 title="View changelog">
-          v{{ triggarr_version }}
+          {{ triggarr_version }}
         </button>
         {% if update_info and update_info.update_available %}
         <a href="{{ update_info.html_url if update_info.get('html_url', '').startswith('https://github.com/') else '#' }}" target="_blank" rel="noopener"
