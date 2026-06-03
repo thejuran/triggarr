@@ -74,26 +74,28 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RCOV-01 | TBD | Pending |
-| RCOV-02 | TBD | Pending |
-| RCOV-03 | TBD | Pending |
-| RCOV-04 | TBD | Pending |
-| RCOV-05 | TBD | Pending |
-| RCOV-06 | TBD | Pending |
-| CNT-01 | TBD | Pending |
-| CNT-02 | TBD | Pending |
-| CNT-03 | TBD | Pending |
-| CNT-04 | TBD | Pending |
-| CNT-05 | TBD | Pending |
-| CFG-03 | TBD | Pending |
-| CFG-04 | TBD | Pending |
-| DOCS-01 | TBD | Pending |
+| RCOV-01 | Phase 73 | Pending |
+| RCOV-02 | Phase 72 | Pending |
+| RCOV-03 | Phase 72 | Pending |
+| RCOV-04 | Phase 72 | Pending |
+| RCOV-05 | Phase 72 | Pending |
+| RCOV-06 | Phase 72 | Pending |
+| CNT-01 | Phase 74 | Pending |
+| CNT-02 | Phase 74 | Pending |
+| CNT-03 | Phase 74 | Pending |
+| CNT-04 | Phase 74 | Pending |
+| CNT-05 | Phase 74 | Pending |
+| CFG-03 | Phase 75 | Pending |
+| CFG-04 | Phase 75 | Pending |
+| DOCS-01 | Phase 75 | Pending |
 
 **Coverage:**
 - v1 requirements: 14 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 14 ⚠️ (roadmapper will resolve)
+- Mapped to phases: 14 ✓
+- Unmapped: 0 ✓
+
+Track A (Password Recovery, RCOV-01..06) → Phases 72-73 · Track B (Count-Only Refresh, CNT-01..05) → Phase 74 · Track C (Config Parity, CFG-03/CFG-04/DOCS-01) → Phase 75.
 
 ---
 *Requirements defined: 2026-06-02*
-*Last updated: 2026-06-02 after initial definition*
+*Last updated: 2026-06-02 after roadmap creation (phases 72-75 mapped, 100% coverage)*

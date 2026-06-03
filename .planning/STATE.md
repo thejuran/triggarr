@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-06-03T02:19:16.410Z"
 last_activity: 2026-06-03
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,25 +20,35 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.9 shipped — run /gsd:new-milestone to scope the next milestone
+**Current focus:** v2.10 roadmap created (Phases 72-75) — run /gsd:plan-phase 72 to begin
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 72 — Password Reset Backend & Token Lifecycle (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-03 — Milestone v2.10 started
+Status: Roadmap created, awaiting phase planning
+Last activity: 2026-06-03 — Milestone v2.10 roadmap created (4 phases, 14 requirements, 100% coverage)
 
-### v2.9 milestone shape
+### v2.10 milestone shape
 
-Two largely-disjoint tracks (Python code vs. Markdown/docs/repo-metadata), each opening with a discovery/hostile pass that GATES the subsequent fix work. Work isolated on a `launch-hardening` branch; `main` stays releasable; merge + tag **v2.9.0** handled by the orchestrator at milestone-end (`release_intent=true`), not as a roadmap phase. Spec: `docs/superpowers/specs/2026-06-02-launch-hardening-design.md`.
+Three disjoint, independently-phaseable tracks (no shared code), per the approved design spec `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md`. Phase numbering continues from v2.9's Phase 71 (starts at 72, not reset to 1). Track A is the largest/riskiest (auth surface) and is split into a backend phase + a UI phase; Tracks B and C are each a single phase. A cross-track documentation deliverable (DOCS-01) corrects the stale deferred record (DEBT-07/08/03 already shipped; DEBT-06 now shipped) and rides in Phase 75. Milestone-end NAS walkthrough exercises all three tracks against the deployed build; release/tag handled by the orchestrator, not as a roadmap phase.
 
 | Phase | Goal | Requirements | Depends on |
 |-------|------|--------------|------------|
-| 68 — Code-track hostile-reader discovery | Hostile code+history sweep → one triaged findings artifact that gates fix scope | CDISC-01..05 | — |
-| 69 — Code-track hardening | `.orchestrator.json` gitignore audit + SAFETY-03 failure-counter unification (with test) + every fold-in finding | CHARD-01..04 | Phase 68 |
-| 70 — Presentation discovery | Cynical-reader teardown + codex pass + SeedSyncarr cross-repo consistency audit → critique artifacts | PDISC-01..03 | Phase 69 |
-| 71 — Presentation rewrite | Rewrite README / SECURITY.md / community-health / repo-metadata text / release notes + in-app changelog; Playwright screenshots at walkthrough | PREW-01..07 | Phase 70 |
+| 72 — Password Reset Backend & Token Lifecycle | Filesystem-token reset endpoints: in-memory single-use 15-min token (log + `0600` file, never in any response), confirm rotates `session_secret` + auto-login, both endpoints rate-limited, `/reset` exempt from auth middleware | RCOV-02..06 | — (builds on shipped v2.6 auth) |
+| 73 — Password Reset UI | "Forgot password?" link on login (only when `not needs_setup`) + styled request/confirm reset pages mirroring login.html/setup.html, inline field errors, success → dashboard | RCOV-01 | Phase 72 |
+| 74 — Count-Only Refresh | Extract fetch+count+filter helper from `run_*_cycle` (cursor-non-advance structural); `POST /api/refresh-counts/{app}/{instance}` mirrors `search_now` minus search; per-card "Refresh counts" button; updates health+counts but NOT `last_run`/`last_success` or the SAFETY-03 failure counter | CNT-01..05 | — (disjoint; sequenced after Track A) |
+| 75 — Drain-Timeout Config Parity & Deferred-Record Correction | `shutdown_drain_timeout` GeneralConfig field (`ge=1.0`) + settings numeric input; config is default, `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` overrides, `>=1.0` clamp on both; DOCS-01 deferred-record correction | CFG-03, CFG-04, DOCS-01 | — (disjoint; smallest rider, sequenced last) |
+
+### Key v2.10 Phasing Rationale
+
+- **Track A split into 72 (backend) + 73 (UI):** Track A is the high-risk auth-surface track. The token lifecycle (mint/store/validate, single-use, 15-min TTL, supersession), the confirm path (bcrypt rehash under `search_lock`, `session_secret` rotation, atomic TOML write + `chmod 0600`, auto-login cookie, token-file delete), the rate-limit on both endpoints (mirroring the `search_now` monotonic-timestamp pattern), and the `/reset` middleware exemption are all backend invariants that carry the milestone's adversarial test weight (token redaction, session rotation, rate-limit, unauthenticated reachability) — Phase 72. The user-facing surface (conditional "Forgot password?" link, request/confirm pages styled like login/setup) is a coherent UI phase — Phase 73, depends on 72. Pattern anchors: mirror the existing `change_password` route and the `search_now` rate-limit; `/reset` added to `EXEMPT_PREFIXES` alongside `/login`/`/setup`.
+- **Track B is one phase (74):** The engine seam extraction (shared fetch+count+filter helper), the structural cursor guarantee (slicing lives only in the cycle fn), the `POST /api/refresh-counts` endpoint mirroring `search_now`, and the app-card "Refresh counts" button are one tightly-coupled deliverable — splitting them would create thin phases. Key invariants: count path updates connection health + counts but never advances the cursor, never stamps `last_run`/`last_success`, and never touches `app.state.search_failures` (SAFETY-03); existing cycle tests must stay green (behavior-preserving refactor).
+- **Track C is one small phase (75):** Drain-timeout knob (config field + settings input + scheduler precedence wiring) plus the DOCS-01 deferred-record correction. Smallest track; the docs correction is folded in here rather than spun into a standalone documentation phase (anti-thin-phase). Precedence decision: config value is the default, `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` env overrides when set, `>=1.0` clamp on both — preserves the documented env knob for existing deployments (no silent behavior change).
+
+### v2.9 ship record
+
+Shipped 2026-06-03 (released as **v2.9.0**). Audit passed (19/19 requirements); cross-phase integration 8/8 wired; live NAS walkthrough passed (caught + fixed 2 UX bugs: version badge "vv2.8.1"→"v2.8.1"; Search Now in-flight feedback). 984 tests passing, ruff clean. 4 phases (68-71), 11 plans. Two disjoint tracks each gated by a discovery phase: code (68→69) and presentation (70→71). Archived roadmap: `.planning/milestones/v2.9-ROADMAP.md`.
 
 ### v2.8 ship record
 
@@ -48,7 +58,7 @@ Shipped 2026-06-01. Audit passed (16/16 requirements — `.planning/milestones/v
 
 Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD phase — hotfix scope).
 
-- **Fix:** `change_password` now rotates `session_secret`, invalidating all other sessions on password change while re-issuing the acting user's cookie (CWE-613). Supersedes v2.6 threat decision T-58-07/AR-58-02 (was *accept*, now *mitigate*). Deep-reviewed (APPROVED), docs + threat model reconciled. Commits `0866332` (fix) + `0e745ab` (tests).
+- **Fix:** `change_password` now rotates `session_secret`, invalidating all other sessions on password change while re-issuing the acting user's cookie (CWE-613). Supersedes v2.6 threat decision T-58-07/AR-58-02 (was *accept*, now *mitigate*). Deep-reviewed (APPROVED), docs + threat model reconciled. Commits `0866332` (fix) + `0e745ab` (tests). **Note:** Track A's reset-confirm session rotation deliberately mirrors this `change_password` pattern.
 - **CI:** all workflow actions bumped to Node 24 majors (PR #20, squash `d538554`) ahead of GitHub's 2026-06-16 Node 20 forced cutover.
 - Released as **v2.8.1** (git tag `v2.8.1`, container published); 965 tests passing, ruff clean.
 
@@ -56,18 +66,16 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 **Overall:**
 
-- Total plans completed: 165 across 14 shipped milestones (through v2.8)
-- Milestones shipped: 14 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8)
-- Tests passing: 965 (post v2.8.1)
-- Phases completed: 67 (through v2.8)
+- Total plans completed: 166 across 15 shipped milestones (through v2.9)
+- Milestones shipped: 15 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8, v2.9)
+- Tests passing: 984 (post v2.9.0)
+- Phases completed: 71 (through v2.9)
 
 ## Accumulated Context
 
 ### Decisions
 
-Full decision log in PROJECT.md Key Decisions table. v2.9 design decisions (D-1..D-12) in `docs/superpowers/specs/2026-06-02-launch-hardening-design.md` §2.
-
-- [Phase ?]: Phase 68 discovery: history scan CLEAN (1038 commits all-refs, no real secret); 4 FOLD-IN findings P68-FI-001..004 gate Phase 69 CHARD-04 fix scope
+Full decision log in PROJECT.md Key Decisions table. v2.10 design decisions resolved in brainstorming and recorded in `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` §7 (recovery trust model: filesystem-token; token lifecycle: in-memory/15-min/single-use/restart-invalidated; abuse defense: rate-limit both endpoints; engine seam: extract helper, no `count_only` flag; count-path state: health yes, `last_run`/failure-counter no; DEBT-06 precedence: config default, env overrides).
 
 ### Pending Todos
 
@@ -75,22 +83,15 @@ None.
 
 ### Roadmap Evolution
 
-v2.7 shipped as planned (4 phases, 8 plans, all 22 requirements satisfied). Phase 63 inserted mid-milestone as gap-closure for HDR-06 (favicon asset quality deferral from Phase 60 D-05) — closed cleanly in 1 plan + 1 day.
+v2.8 roadmap created 2026-05-25 from codebase audit (CONCERNS.md). 16 v1 requirements across 4 phases (64-67). No deferred requirements.
 
-v2.8 roadmap created 2026-05-25 from codebase audit (CONCERNS.md). 16 v1 requirements across 4 phases (64-67). No deferred requirements — 100% coverage in milestone scope.
+v2.9 roadmap created 2026-06-02 from the launch-hardening design spec. 19 v1 requirements across 4 phases (68-71). Two disjoint tracks, each gated by a discovery phase. Shipped 2026-06-03 as v2.9.0.
 
-v2.9 roadmap created 2026-06-02 from the launch-hardening design spec. 19 v1 requirements across 4 phases (68-71, continuing from v2.8's Phase 67 — not reset to 1). Two disjoint tracks, each gated by a discovery phase: code (68→69) and presentation (70→71). 100% coverage; config-knob UI debt (DEBT-03/06/07/08) and v2.6 UI-01..03 pixel verification explicitly parked to v2 (spec D-5). Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7/v2.8 convention.
-
-### Key v2.9 Phasing Rationale
-
-- **Phase 68 first (discovery gates fix):** The hostile-reader sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) must produce the triaged findings artifact *before* Phase 69 can know its full fix scope. Per spec D-3, only genuinely high-visibility findings fold into Phase 69; everything else is parked with rationale in the same artifact. The git-history scan (CDISC-03) is the launch-visible-risk addition unique to an already-public repo with 13 milestones of commits.
-- **Phase 69 second (code hardening), depends on 68:** Closes the curated known items — `.orchestrator.json` gitignore audit-and-close (CHARD-01; confirmed as of 2026-06-02 that `.DS_Store`/`.playwright-mcp/` are already ignored, so this is audit-and-close not a fixed checklist) and SAFETY-03 manual/scheduled failure-counter unification (CHARD-02) with a covering test (CHARD-03) — plus every fold-in finding from Phase 68 (CHARD-04). SAFETY-03 bar: the `# TODO` at `scheduler.py:~325` is resolved; no existing scheduler failure-counter test deleted/skipped.
-- **Phase 70 third (presentation discovery):** Cynical-reader teardown (PDISC-01) + codex adversarial pass against existing README/docs (PDISC-02) + same-author cross-repo consistency audit vs SeedSyncarr (PDISC-03). Touches docs/Markdown only — disjoint from the code track, so it *could* run in parallel with 68/69, but is sequenced after 69 for a clean single-threaded milestone. Its critique artifacts gate Phase 71.
-- **Phase 71 last (presentation rewrite), depends on 70:** Rewrites README/SECURITY.md/community-health/repo-metadata text/release notes + in-app changelog (PREW-01,03,04,05,06,07) driven by Phase 70's critique. PREW-02 (fresh Playwright screenshots) is captured at the milestone-end NAS walkthrough against the deployed branch build, so that requirement's verification completes at walkthrough time, not mid-phase. PREW-07 cross-repo signal reconciliation closes the loop with the PDISC-03 audit.
+v2.10 roadmap created 2026-06-03 from the recovery/counts/config design spec. 14 v1 requirements across 4 phases (72-75, continuing from v2.9's Phase 71 — not reset to 1). Three disjoint tracks: Track A (RCOV-01..06, Phases 72-73), Track B (CNT-01..05, Phase 74), Track C (CFG-03/CFG-04/DOCS-01, Phase 75). 100% coverage, no orphans. Track A split backend/UI given its auth-surface risk and adversarial test weight; Tracks B and C each a single phase; DOCS-01 deferred-record correction folded into Phase 75 (no standalone docs phase). Backlog phases 999.1 (password recovery) and 999.2 (count-only refresh) promoted into this milestone. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7/v2.8/v2.9 convention.
 
 ### Cross-cutting thread
 
-The only coupling between the two tracks is the *security framing*: the v2.8/v2.8.1 hardening the code track confirms intact (CSP nonces, session rotation on password change, `apikey=` rejection, Basic-auth control-char validation) is the same posture the presentation track states plainly as a selling point in README/SECURITY.md (PREW-03).
+The three tracks share no code (confirmed in spec §1). The only cross-track coupling is the milestone-end NAS walkthrough and the security posture: Track A must add zero new network attack surface (token never in any HTTP response; rate-limited endpoints; SecretStr discipline on `password_hash`/`session_secret` maintained through the redacting sink). Track A's reset-confirm session rotation reuses the v2.8.1 `change_password` rotation pattern.
 
 ### Blockers/Concerns
 
@@ -98,18 +99,16 @@ None.
 
 ### Deferred Items
 
-Items parked this milestone (spec D-5 / §3.3) and carried forward:
+Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave this table at v2.10 close — DEBT-07/08/03 were already shipped (DOCS-01 corrects the record) and DEBT-06 ships in Phase 75.
 
 | Category | Item | Source Milestone | Status |
 |----------|------|------------------|--------|
-| v2 requirement | DEBT-07: Expose HTTP request timeout in settings UI | v2.9 (spec D-5) | parked (invisible to launch reader) |
-| v2 requirement | DEBT-08: Expose *arr API page size in settings UI | v2.9 (spec D-5) | parked (invisible to launch reader) |
-| v2 requirement | DEBT-03: Expose search-history cap in settings UI | v2.9 (spec D-5) | parked (invisible to launch reader) |
-| v2 requirement | DEBT-06: Surface graceful-shutdown drain timeout in settings UI | v2.9 (spec D-5) | parked (invisible to launch reader) |
+| record correction | DEBT-07/08/03 (request timeout / page size / search-history cap) | v2.9 (mis-recorded as parked) | already shipped — DOCS-01 corrects record in Phase 75 |
+| shipping in v2.10 | DEBT-06: Surface graceful-shutdown drain timeout in settings UI | v2.9 (spec D-5) | in scope — Phase 75 (CFG-03/CFG-04) |
 | requirement | UI-01: Login page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
 | requirement | UI-02: Setup page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
 | requirement | UI-03: Settings security pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| tech-debt | `--color-triggarr-primaryDark` duplicate token (unused in templates) | v2.7 | cosmetic cleanup (invisible to launch reader) |
+| tech-debt | `--color-triggarr-primaryDark` duplicate token (unused in templates) | v2.7 | cosmetic cleanup (unrelated to v2.10 tracks) |
 | v2 requirement | PERF-01: Per-endpoint request timeout overrides | v2.8 audit | deferred |
 | v2 requirement | PERF-02: Per-endpoint pagination page-size overrides | v2.8 audit | deferred |
 | v2 requirement | PERF-03: State JSON streaming/compression | v2.8 audit | deferred |
@@ -117,7 +116,7 @@ Items parked this milestone (spec D-5 / §3.3) and carried forward:
 | v2 requirement | SCALE-02: Search history archival / PostgreSQL path | v2.8 audit | deferred |
 | v2 requirement | AUDIT-01: Config change audit log | v2.8 audit | deferred |
 | v2 requirement | OBS-01: Scheduler job dashboard | v2.8 audit | deferred |
-| Phase 68 P01 | 25min | 5 tasks | 1 files |
+| v2.9-audit follow-up | validate_arr_url dedup; Retry-Connection hx-disabled-elt; bug-report.yml v2.9 dropdown option | v2.9 | deferred |
 
 ### Quick Tasks Completed
 
@@ -127,21 +126,19 @@ Items parked this milestone (spec D-5 / §3.3) and carried forward:
 
 ### Reference Artifacts
 
-- `docs/superpowers/specs/2026-06-02-launch-hardening-design.md` -- v2.9 design spec (source of truth for this milestone)
+- `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` -- v2.10 design spec (source of truth for this milestone)
+- `docs/superpowers/specs/2026-06-02-launch-hardening-design.md` -- v2.9 design spec
+- `.planning/milestones/v2.9-ROADMAP.md` -- archived v2.9 roadmap
 - `.planning/milestones/v2.8-ROADMAP.md` -- archived v2.8 roadmap
-- `.planning/milestones/v2.7-ROADMAP.md` -- archived v2.7 roadmap
-- `.planning/milestones/v2.7-REQUIREMENTS.md` -- archived v2.7 requirements
-- `.planning/milestones/v2.7-MILESTONE-AUDIT.md` -- archived v2.7 milestone audit
-- `.aidesigner/runs/2026-04-16T00-05-51-229Z-triggarr-full-dashboard-redesign-v3-/design.html` -- v2.7 design spec (preserved for future reference)
-- `.planning/milestones/v2.6-ROADMAP.md` -- archived v2.6 roadmap
 - `.planning/codebase/CONCERNS.md` -- v2.8 source audit (2026-05-25); file:line pointers
+- **Note:** `.planning/research/SUMMARY.md` is STALE (prior milestone) — v2.10 skipped research because the design spec resolved all technical decisions against the live codebase. Do NOT treat that SUMMARY.md as current research for v2.10.
 
 ## Session Continuity
 
-Last session: 2026-06-02T21:37:52.250Z
-Stopped at: Phase 71 context gathered
-Resume file: .planning/phases/71-presentation-rewrite/71-CONTEXT.md
+Last session: 2026-06-03
+Stopped at: v2.10 roadmap created (Phases 72-75)
+Resume file: .planning/ROADMAP.md (Phase Details for 72-75)
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first phase with /gsd:plan-phase 72
