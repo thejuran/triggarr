@@ -746,7 +746,10 @@ app.state.last_reset_time = {}
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> Both resolved during planning — recommendations below are implemented in the plans
+> (lock scope → Plan 72-02; single combined template → Plan 72-01 Task 2).
 
 1. **Lock scope for `/reset/request` mint**
    - What we know: D-08 mandates `search_lock` for the confirm apply path. D-14/D-15 mandate the optimistic+locked rate-check pattern from `search_now`.
