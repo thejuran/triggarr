@@ -12,6 +12,7 @@ import html
 import os
 import re
 import secrets
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,6 +30,7 @@ from pydantic import SecretStr
 from triggarr.auth import (
     COOKIE_MAX_AGE,
     generate_api_key,
+    generate_reset_token,
     generate_session_secret,
     hash_password,
     sign_session,
@@ -1544,4 +1546,169 @@ async def regenerate_api_key_endpoint(request: Request) -> HTMLResponse:
         request=request,
         name="partials/security_apikey.html",
         context={"api_key": new_key, "revealed": True, "success": "Key regenerated"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 72 — Password Reset Request Path (D-02, D-03, D-14, D-15, D-16, D-17)
+# ---------------------------------------------------------------------------
+
+
+def _write_reset_token_file(path: Path, token: str) -> None:
+    """Write the reset token to an atomic 0600 file (synchronous; dispatch via run_in_executor).
+
+    Mirrors _atomic_toml_write (config.py:95-163) with one deliberate deviation for M1:
+    the 0600 permission is set on the OPEN temp fd BEFORE os.replace, so the renamed file
+    is already 0600 and no post-rename os.chmod is needed (avoids a FileNotFoundError
+    crash-path if the write failed, defeating the D-17 non-fatal guarantee).
+
+    On OSError before rename: log at error (path + exception ONLY — never the token value,
+    per Pitfall 1) and unlink the temp file. Do NOT re-raise (D-17: in-memory token is the
+    authority AND the token is already in the warning log).
+
+    On OSError after rename (dir fsync): log at warning and proceed — file is there.
+    """
+    dir_fd = None
+    renamed = False
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        # M1: set 0600 on the temp fd BEFORE writing or replacing, so the final file
+        # is already 0600 after os.replace with no post-rename chmod window.
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(token)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        renamed = True
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        os.fsync(dir_fd)
+    except OSError as exc:
+        if renamed:
+            # File is at the final path; only the dir fsync failed — proceed.
+            logger.warning(
+                "Reset token file written but directory fsync failed: {path} - {exc}",
+                path=path,
+                exc=exc,
+            )
+        else:
+            # File was NOT renamed — log sanitized error (never the token value, Pitfall 1).
+            logger.error(
+                "Reset token file write failed: {path} - {exc}",
+                path=path,
+                exc=exc,
+            )
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+            except OSError as cleanup_exc:
+                logger.error(
+                    "Failed to clean up temp file during reset token write: {tmp} - {exc}",
+                    tmp=tmp_path,
+                    exc=cleanup_exc,
+                )
+            # D-17: do NOT re-raise — in-memory token is the authority; file write is non-fatal.
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
+
+
+@router.get("/reset/request", response_class=HTMLResponse)
+async def reset_request_page(request: Request) -> HTMLResponse:
+    """Render the password reset request form (unauthenticated — exempt via M2 predicate)."""
+    return templates.TemplateResponse(
+        request=request,
+        name="reset.html",
+        context={"step": "request"},
+    )
+
+
+@router.post("/reset/request")
+async def reset_request_post(request: Request) -> HTMLResponse:
+    """Mint a CSPRNG reset token and write it to the operator-only sinks (log + 0600 file).
+
+    Rate-limit: RESET_REQUEST_RATE_LIMIT_SECONDS (60s), optimistic + locked double-check
+    mirroring search_now (D-14, D-15).
+
+    H1 live-token guard: while a live (unexpired) token already exists, this is a no-op —
+    the existing tuple is unchanged, no file is rewritten, and the same neutral confirmation
+    is returned. Minting (supersession) applies ONLY when no live token exists.
+
+    Token value appears exactly once, at mint, in two operator-only sinks:
+      1. A warning-level log line (docker logs) — DELIBERATELY includes the token (D-02 + RESEARCH #4).
+      2. A 0600 reset-token.txt in the config volume.
+    The token NEVER appears in any HTTP response body, header, or template context.
+    """
+    # Optimistic rate-limit check BEFORE lock (fast-fail for obvious cases — D-15)
+    rate_key = "request"
+    now = time.monotonic()
+    last = request.app.state.last_reset_time.get(rate_key, 0.0)
+    if now - last < RESET_REQUEST_RATE_LIMIT_SECONDS:
+        return HTMLResponse("Rate limited -- try again shortly", status_code=429)
+
+    async with request.app.state.search_lock:
+        # Re-check inside lock to prevent concurrent bypass (D-15, mirrors DRSEC-03)
+        now = time.monotonic()
+        last = request.app.state.last_reset_time.get(rate_key, 0.0)
+        if now - last < RESET_REQUEST_RATE_LIMIT_SECONDS:
+            return HTMLResponse("Rate limited -- try again shortly", status_code=429)
+        request.app.state.last_reset_time[rate_key] = now
+
+        # H1 live-token guard: if a valid unexpired token already exists, this request
+        # is a no-op (unauthenticated-supersession-DoS mitigation per D-05 H1 refinement).
+        # A remote attacker hitting /reset/request every 60s cannot perpetually invalidate
+        # a legitimate operator's in-progress token.
+        stored = request.app.state.reset_token
+        if stored is not None and time.monotonic() < stored[1]:
+            # Live token exists — do NOT mint, do NOT reset TTL, do NOT rewrite file.
+            return templates.TemplateResponse(
+                request=request,
+                name="reset.html",
+                context={
+                    "step": "request",
+                    "message": (
+                        "If recovery is available, a reset token has been written to the "
+                        "application logs and the config volume. "
+                        "Check 'docker logs' or reset-token.txt in the config directory."
+                    ),
+                },
+            )
+
+        # No live token — mint a fresh one (D-05; overwrites any expired/absent prior token).
+        token = generate_reset_token()
+        request.app.state.reset_token = (token, time.monotonic() + 900)
+
+        # D-02 + RESEARCH #4: the warning log line INCLUDES the token value — it is the
+        # deliberate operator-only recovery channel. The reset token is intentionally NOT
+        # added to collect_secrets / the redacting sink (unlike session_secret/password_hash),
+        # so the operator can read it from 'docker logs'. The token MUST NOT appear in any
+        # HTTP response. This is the ONLY log line that will ever contain the token value.
+        # D-17: log line first, THEN file write — so a file-write failure still leaves the
+        # token recoverable from the log.
+        logger.warning(
+            "Password reset token minted. Read from 'docker logs' or reset-token.txt: {token}",
+            token=token,
+        )
+
+    # File write outside the lock (run_in_executor is non-blocking; file write does not
+    # touch search_lock). OSError is handled inside _write_reset_token_file and is NOT
+    # re-raised (D-17: in-memory token is the authority; file write failure is non-fatal).
+    token_path = _runtime_config_dir(request) / "reset-token.txt"
+    await asyncio.get_running_loop().run_in_executor(
+        None, _write_reset_token_file, token_path, token
+    )
+
+    # Neutral confirmation — MUST NOT include the token value in the context (Pitfall 5).
+    return templates.TemplateResponse(
+        request=request,
+        name="reset.html",
+        context={
+            "step": "request",
+            "message": (
+                "If recovery is available, a reset token has been written to the "
+                "application logs and the config volume. "
+                "Check 'docker logs' or reset-token.txt in the config directory."
+            ),
+        },
     )
