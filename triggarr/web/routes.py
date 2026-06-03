@@ -1572,8 +1572,13 @@ def _write_reset_token_file(path: Path, token: str) -> None:
     dir_fd = None
     renamed = False
     fd_owned = False  # True once os.fdopen has taken ownership of fd (must not close manually after)
-    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    # M1: mkstemp itself can raise OSError (ENOSPC / EACCES / ENOENT on the config dir).
+    # It MUST be inside the try so that failure is caught and the function returns without
+    # re-raising (D-17: file write is non-fatal — the token is already in the warning log).
+    fd = None
+    tmp_path = None
     try:
+        fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
         # M1: set 0600 on the temp fd BEFORE writing or replacing, so the final file
         # is already 0600 after os.replace with no post-rename chmod window.
         os.fchmod(fd, 0o600)
@@ -1603,20 +1608,23 @@ def _write_reset_token_file(path: Path, token: str) -> None:
                 path=path,
                 exc=exc,
             )
-            if not fd_owned:
+            if fd is not None and not fd_owned:
                 # os.fdopen never took ownership — close the raw fd to avoid a leak.
+                # (fd is None when mkstemp itself failed — nothing to close.)
                 with contextlib.suppress(OSError):
                     os.close(fd)
-            try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
-            except OSError as cleanup_exc:
-                logger.error(
-                    "Failed to clean up temp file during reset token write: {tmp} - {exc}",
-                    tmp=tmp_path,
-                    exc=cleanup_exc,
-                )
+            if tmp_path is not None:
+                # tmp_path is None when mkstemp failed before creating the temp file.
+                try:
+                    os.unlink(tmp_path)
+                except FileNotFoundError:
+                    pass
+                except OSError as cleanup_exc:
+                    logger.error(
+                        "Failed to clean up temp file during reset token write: {tmp} - {exc}",
+                        tmp=tmp_path,
+                        exc=cleanup_exc,
+                    )
             # D-17: do NOT re-raise — in-memory token is the authority; file write is non-fatal.
     finally:
         if dir_fd is not None:
@@ -1688,21 +1696,28 @@ async def reset_request_post(request: Request) -> HTMLResponse:
         token = generate_reset_token()
         request.app.state.reset_token = (token, time.monotonic() + 900)
 
-        # D-02 + RESEARCH #4: the warning log line INCLUDES the token value — it is the
-        # deliberate operator-only recovery channel. The reset token is intentionally NOT
-        # added to collect_secrets / the redacting sink (unlike session_secret/password_hash),
-        # so the operator can read it from 'docker logs'. The token MUST NOT appear in any
-        # HTTP response. This is the ONLY log line that will ever contain the token value.
-        # D-17: log line first, THEN file write — so a file-write failure still leaves the
-        # token recoverable from the log.
-        logger.warning(
-            "Password reset token minted. Read from 'docker logs' or reset-token.txt: {token}",
-            token=token,
-        )
+    # M3: emit the mint warning AFTER releasing search_lock — the Loguru sink does a blocking
+    # write/flush, and holding the global search_lock across it would briefly stall the
+    # scheduler. The token local is already captured and app.state.reset_token is already set
+    # inside the lock, so the log line is unaffected by the release.
+    # D-02 + RESEARCH #4: the warning log line INCLUDES the token value — it is the deliberate
+    # operator-only recovery channel. The reset token is intentionally NOT added to
+    # collect_secrets / the redacting sink (unlike session_secret/password_hash), so the
+    # operator can read it from 'docker logs'. The token MUST NOT appear in any HTTP response.
+    # This is the ONLY log line that will ever contain the token value.
+    # D-17: log line FIRST, THEN file write — so a file-write failure still leaves the token
+    # recoverable from the log.
+    logger.warning(
+        "Password reset token minted. Read from 'docker logs' or reset-token.txt: {token}",
+        token=token,
+    )
 
     # File write outside the lock (run_in_executor is non-blocking; file write does not
     # touch search_lock). OSError is handled inside _write_reset_token_file and is NOT
     # re-raised (D-17: in-memory token is the authority; file write failure is non-fatal).
+    # L1 (benign): a concurrent /reset/confirm can consume + unlink the token before this
+    # executor write lands, recreating a stale reset-token.txt. In-memory state is the
+    # authority and the file is 0600, so the stale file authorizes nothing — acceptable.
     token_path = _runtime_config_dir(request) / "reset-token.txt"
     await asyncio.get_running_loop().run_in_executor(
         None, _write_reset_token_file, token_path, token
