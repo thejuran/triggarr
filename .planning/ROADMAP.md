@@ -18,7 +18,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - ✅ v2.6 Built-In Authentication -- Phases 54-59 (shipped 2026-04-15) -- [archive](milestones/v2.6-ROADMAP.md)
 - ✅ v2.7 Dashboard Scale Refresh -- Phases 60-63 (shipped 2026-04-18) -- [archive](milestones/v2.7-ROADMAP.md)
 - ✅ v2.8 Hardening & Observability -- Phases 64-67 (shipped 2026-06-01) -- [archive](milestones/v2.8-ROADMAP.md)
-- 🚧 v2.9 Launch-Hardening / Sibling Consistency -- Phases 68-71 (in progress, started 2026-06-02)
+- ✅ v2.9 Launch-Hardening / Sibling Consistency -- Phases 68-71 (shipped 2026-06-03) -- [archive](milestones/v2.9-ROADMAP.md)
 
 ## Phases
 
@@ -161,85 +161,17 @@ Full phase details: [milestones/v2.8-ROADMAP.md](milestones/v2.8-ROADMAP.md)
 
 </details>
 
-## v2.9 Launch-Hardening / Sibling Consistency (Phases 68-71) -- IN PROGRESS
+<details>
+<summary>✅ v2.9 Launch-Hardening / Sibling Consistency (Phases 68-71) -- SHIPPED 2026-06-03</summary>
 
-**Milestone goal:** Make Triggarr's public-facing surface — both the code a skeptical engineer reads and the presentation a visitor sees — hold up to the same scrutiny as its sibling project SeedSyncarr, so cross-referencing viewers see one coherent, serious author across both repos. Two largely-disjoint tracks (Python code vs. Markdown/docs/repo-metadata), each opening with its own hostile/discovery take that GATES the subsequent fix work. Spec: `docs/superpowers/specs/2026-06-02-launch-hardening-design.md`. Work isolated on a `launch-hardening` branch; merge + tag **v2.9.0** handled by the orchestrator at milestone-end (`release_intent=true`), not as a roadmap phase.
+- [x] Phase 68: Code-track hostile-reader discovery (1/1 plan) -- completed 2026-06-02
+- [x] Phase 69: Code-track hardening (3/3 plans) -- completed 2026-06-02
+- [x] Phase 70: Presentation discovery (1/1 plan) -- completed 2026-06-02
+- [x] Phase 71: Presentation rewrite (6/6 plans) -- completed 2026-06-02
 
-### Phases (summary)
+Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 
-- [x] **Phase 68: Code-track hostile-reader discovery** -- Hostile "this is on Reddit" code sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) → one triaged findings artifact classifying each finding fold-in vs parked; gates Phase 69's fix scope. (completed 2026-06-02)
-- [x] **Phase 69: Code-track hardening** (3 plans) -- Close the curated known items (`.orchestrator.json` gitignore audit-and-close + SAFETY-03 manual/scheduled failure-counter unification with a covering test) plus every fold-in finding from Phase 68. (completed 2026-06-02)
-- [x] **Phase 70: Presentation discovery** -- Cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit vs SeedSyncarr → critique artifacts that gate Phase 71's rewrite. (completed 2026-06-02)
-- [x] **Phase 71: Presentation rewrite** -- Rewrite README / SECURITY.md / community-health files / repo-metadata text / release notes + in-app changelog driven by Phase 70's critique; fresh Playwright screenshots captured at the milestone-end NAS walkthrough. (completed 2026-06-02)
-
-### Phase Details
-
-### Phase 68: Code-track hostile-reader discovery
-**Goal**: A skeptical-engineer pass over the whole code surface (and full git history) has run and produced a single triaged findings artifact that decides what the code-hardening phase must fix
-**Depends on**: Nothing (first phase of milestone)
-**Requirements**: CDISC-01, CDISC-02, CDISC-03, CDISC-04, CDISC-05
-**Success Criteria** (what must be TRUE):
-  1. `ruff check triggarr/ tests/` has been run whole-tree with launch framing and its result is recorded in the findings artifact (CDISC-01)
-  2. Shield (Semgrep SAST + gitleaks working-tree secrets + dependency audit) has been run and its findings are recorded in the artifact (CDISC-02)
-  3. A gitleaks scan over the full git history has run; any secret found in past commits is recorded as highest-priority (and if none, that clean result is stated) (CDISC-03)
-  4. The six highest-traffic entry-point files (`web/routes.py`, `search/scheduler.py`, `config.py`, `db.py`, `auth.py`, `startup.py`) have been skimmed with hostile framing and the notes are captured (CDISC-04)
-  5. A single triaged findings artifact exists in which every finding is classified fold-in (fix this milestone) or parked (with written rationale) (CDISC-05)
-**Plans**: 1 plan
-- [x] 68-01-PLAN.md — Hostile-reader sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + full-history gitleaks + entry-point skim) captured and triaged into 68-FINDINGS.md
-
-### Phase 69: Code-track hardening
-**Goal**: The curated known code holes are closed and every fold-in finding from discovery is fixed, so a skeptical repo browser finds no sloppy-tooling tell and no correctness asymmetry between manual and scheduled searches
-**Depends on**: Phase 68 (the triaged findings artifact defines the fold-in fix scope)
-**Requirements**: CHARD-01, CHARD-02, CHARD-03, CHARD-04
-**Success Criteria** (what must be TRUE):
-  1. `.orchestrator.json` is git-ignored and a `git status --ignored` / `git ls-files` re-scan confirms no untracked transient or accidentally-tracked editor/tooling artifact remains (audit-and-close, no already-ignored entries re-added) (CHARD-01)
-  2. Manual search via `/search-now/{app}/{instance}` and scheduled cycles share one failure-counting path, so a manual-search failure increments and resets the consecutive-failure counter identically to scheduled cycles, and the `# TODO` at `scheduler.py:~325` is gone (CHARD-02)
-  3. A test proves manual-search failure increment/reset, and no existing scheduler failure-counter test is deleted or skipped (CHARD-03)
-  4. Every discovery finding marked fold-in (from CDISC-05) is fixed; every parked finding is recorded with rationale in the findings artifact (CHARD-04)
-**Plans**: 3 plans
-- [x] 69-01-PLAN.md — Repo-hygiene + secret-scan tooling: `.orchestrator.json` gitignore audit-and-close (CHARD-01) + `.gitleaksignore` 8.x fingerprint repair (CHARD-04/P68-FI-001)
-- [x] 69-02-PLAN.md — Dependency bump: raise fastapi pin so starlette resolves ≥1.0.1, closing PYSEC-2026-161 (CHARD-04/P68-FI-002); full-suite + ruff + pip-audit gate
-- [x] 69-03-PLAN.md — SAFETY-03 (TDD): extract shared `_run_one_cycle`, route manual + scheduled searches through it, remove `TODO(SAFETY-03)` (CHARD-02), add covering manual-path counter tests (CHARD-03)
-
-### Phase 70: Presentation discovery
-**Goal**: A hostile reading of Triggarr's presentation has run — cynical-reader teardown, codex adversarial pass against the existing README/docs, and a same-author consistency audit against SeedSyncarr — producing critique artifacts that drive (and gate) the rewrite
-**Depends on**: Phase 69 (sequenced after the code track for a clean single-threaded milestone; disjoint files mean no hard file coupling)
-**Requirements**: PDISC-01, PDISC-02, PDISC-03
-**Success Criteria** (what must be TRUE):
-  1. A framed cynical-reader ("r/selfhosted commenter") teardown of Triggarr's positioning, credibility, and first impression exists as a written artifact (PDISC-01)
-  2. A codex adversarial pass against the existing README + docs has run and its findings — technical-claims accuracy, broken/incomplete install/quickstart, unsupported assertions — are captured (PDISC-02)
-  3. A same-author cross-repo consistency audit against SeedSyncarr (README structure, security-posture framing, badge style, "what this is" one-liner) is recorded as a list of divergences to reconcile (PDISC-03)
-**Plans**: 1 plan
-- [x] 70-01-PLAN.md — Cynical-reader teardown (PDISC-01) + codex adversarial docs pass (PDISC-02) + SeedSyncarr cross-repo consistency audit (PDISC-03), captured as three critique artifacts that gate the Phase 71 rewrite
-**UI hint**: yes
-
-### Phase 71: Presentation rewrite
-**Goal**: Triggarr's public presentation has been rebuilt to survive the teardown and reconciled with SeedSyncarr, so genuine quality is evident within 30 seconds and the two repos read as one coherent author
-**Depends on**: Phase 70 (the critique + consistency-audit artifacts drive the rewrite)
-**Requirements**: PREW-01, PREW-02, PREW-03, PREW-04, PREW-05, PREW-06, PREW-07
-**Success Criteria** (what must be TRUE):
-  1. The README is rewritten to survive the teardown — instantly-clear one-liner, current screenshots above the fold, honest feature list, install/quickstart verified accurate against current behavior, security posture stated as a selling point (PREW-01)
-  2. Fresh, real screenshots (dashboard, search history, settings) are captured via Playwright during the NAS walkthrough against the deployed branch build with representative data and no exposed API keys/hostnames/credentials, and README image refs + alt text are updated to match (PREW-02; verification completes at the milestone-end walkthrough deploy)
-  3. SECURITY.md is reconciled with the v2.8/v2.8.1 hardening (CSP nonces, session-secret rotation on password change, `apikey=` rejection, Basic-auth control-char validation) and reads as an honest, mature threat-model + reporting policy (PREW-03)
-  4. Community-health files (CONTRIBUTING.md, issue/PR templates, LICENSE) are confirmed present and accurate, with any gaps fixed (PREW-04); GitHub repo-metadata text (About, topics/tags, homepage) is drafted as copy-paste text for manual application (PREW-05)
-  5. A clean v2.9.0 release-notes entry is written and the in-app changelog is updated to match (PREW-06); Triggarr's quality signals (one-liner, section ordering, security framing) are reconciled against SeedSyncarr so the two repos read as one coherent author (PREW-07)
-**Plans**: 6 plans
-- [x] 71-01-PLAN.md — SSRF config-load test stubs (Wave 0, RED): TestValidateArrUrlConfig + InstanceConfig integration tests (D-03)
-- [x] 71-02-PLAN.md — SSRF config-load validator (TDD, GREEN): validate_arr_url_config() + InstanceConfig field_validator; web-form path unchanged (D-01/D-02)
-- [x] 71-03-PLAN.md — Community-health: bug-report.yml version + App Type (Lidarr/All) dropdowns + snapshot tests; confirm CONTRIBUTING/PR/LICENSE accurate (PREW-04/D-10)
-- [x] 71-04-PLAN.md — CHANGELOG v2.9.0 release-notes + in-app-changelog entry, user-facing scope (PREW-06/D-11/D-12)
-- [x] 71-05-PLAN.md — README full rewrite (D-04 order) + install/systemd/Docker/tag-filter fixes + Related Projects + Tailwind align + repo-metadata text (PREW-01/02/05/07)
-- [x] 71-06-PLAN.md — SECURITY.md reconciliation: v2.8/v2.8.1 hardening + at-rest-plaintext caveat + accurate SSRF scope (PREW-03/07/D-08/D-09)
-**UI hint**: yes
-
-### Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 68. Code-track hostile-reader discovery | 1/1 | Complete   | 2026-06-02 |
-| 69. Code-track hardening | 3/3 | Complete    | 2026-06-02 |
-| 70. Presentation discovery | 1/1 | Complete    | 2026-06-02 |
-| 71. Presentation rewrite | 6/6 | Complete    | 2026-06-02 |
+</details>
 
 ## Backlog
 

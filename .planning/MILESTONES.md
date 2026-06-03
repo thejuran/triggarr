@@ -1,5 +1,24 @@
 # Milestones
 
+## v2.9 Launch-Hardening / Sibling Consistency (Shipped: 2026-06-03)
+
+**Phases completed:** 4 phases (68-71), 11 plans
+**Requirements:** 19/19 satisfied (CDISC ×5, CHARD ×4, PDISC ×3, PREW ×7) — 0 deferred
+**Tests:** 984 passing, ruff clean | Released as v2.9.0
+**Audit:** passed (19/19); cross-phase integration 8/8 wired; live NAS walkthrough passed
+
+**Delivered:** Hardened Triggarr's public-facing surface — both the code a skeptical engineer reads and the presentation a visitor sees — to match sibling project SeedSyncarr, so the two repos read as one coherent author.
+
+**Key accomplishments:**
+
+- Hostile-reader code + full-git-history sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + gitleaks over 1038 commits — history CLEAN, no secrets) producing one triaged findings artifact that gated the fix scope.
+- SAFETY-03 resolved: manual `/search-now` and scheduled cycles unified through one `_run_one_cycle` failure-counting path (TODO removed, covering tests added); dependency hardening (starlette ≥1.0.1 closing PYSEC-2026-161); `.orchestrator.json` gitignore + `.gitleaksignore` 8.x fingerprint repair.
+- SSRF config-load URL validation: `validate_arr_url_config` rejects cloud-metadata/link-local at startup (clean `sys.exit(1)` on bad config), permits loopback for same-host; web-form path unchanged.
+- Presentation overhaul: full README rewrite (benefit-led, accurate Quick Start, corrected install/systemd/Docker), SECURITY.md reconciled with v2.8/v2.8.1 hardening + at-rest caveat, community-health files + repo-metadata text, v2.9.0 release notes + in-app changelog, SeedSyncarr signal reconciliation.
+- Live NAS walkthrough against the deployed v2.9 build caught and fixed 2 UX bugs (version badge "vv2.8.1"→"v2.8.1"; Search Now in-flight feedback), plus refreshed README screenshots and recompiled output.css to match production.
+
+---
+
 ## v2.8 Hardening & Observability (Shipped: 2026-06-01)
 
 **Phases completed:** 4 phases (64-67), 16 plans

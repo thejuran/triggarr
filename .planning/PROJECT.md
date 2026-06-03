@@ -10,9 +10,15 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.8 Hardening & Observability shipped 2026-06-01. 961 tests passing. 67 phases, 155 plans completed across 14 shipped milestones.
+v2.9 Launch-Hardening / Sibling Consistency shipped 2026-06-03 (released as v2.9.0). 984 tests passing, ruff clean. 71 phases, 166 plans completed across 15 shipped milestones.
 
-**Latest milestone delivered (v2.8):**
+**Latest milestone delivered (v2.9):**
+- Code hardening: hostile-reader code + full-git-history sweep (history clean, no secrets); SAFETY-03 unified manual/scheduled failure-counter path (`_run_one_cycle`); starlette ≥1.0.1 (PYSEC-2026-161); repo hygiene (`.orchestrator.json` gitignore, `.gitleaksignore` 8.x fingerprints)
+- SSRF config-load URL validation: rejects cloud-metadata/link-local at startup with a clean exit, permits loopback for same-host; web-form path unchanged
+- Presentation overhaul: full README rewrite, SECURITY.md reconciled with v2.8/v2.8.1 hardening + at-rest caveat, community-health files + repo-metadata text, v2.9.0 release notes + in-app changelog, SeedSyncarr signal reconciliation
+- Live NAS walkthrough caught + fixed 2 UX bugs (version badge "vv2.8.1"→"v2.8.1"; Search Now in-flight feedback) + refreshed README screenshots + recompiled output.css to match production
+
+**Prior milestone delivered (v2.8):**
 - Data safety: bounded search-history (resolved trim + pending `2×` cap via `PendingCapExceeded`), hardened atomic config writes, AST-audited config-write lock, corrupted-TOML recovery
 - Scheduler resilience: narrow exception tuple + `EVENT_JOB_ERROR` listener, consecutive-failure WARNING→ERROR escalation, 60s graceful-shutdown drain naming the stuck cycle
 - Security: CSP `script-src` nonce (no `unsafe-inline`), `apikey=` URL rejection, Basic-auth control-char rejection, session-secret startup validation
@@ -35,17 +41,11 @@ v2.8 Hardening & Observability shipped 2026-06-01. 961 tests passing. 67 phases,
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
-## Current Milestone: v2.9 Launch-Hardening / Sibling Consistency
+## Next Milestone
 
-**Goal:** Make Triggarr's public-facing surface — both the code a skeptical engineer reads and the presentation a visitor sees — hold up to the same scrutiny as its sibling project SeedSyncarr, so cross-referencing viewers see one coherent, serious author across both repos.
+No milestone scoped yet. Run `/gsd:new-milestone` to scope the next one.
 
-**Target features:**
-- Code-track hostile-reader discovery pass (ruff whole-tree + Shield SAST/secrets/dep-audit + git-history secrets scan + entry-point skim) producing a triaged findings artifact that gates fix scope
-- Code-track hardening: `.orchestrator.json` gitignore audit + SAFETY-03 manual/scheduled failure-counter unification + any high-visibility findings folded in from discovery
-- Presentation discovery: cynical-reader teardown + codex adversarial pass against existing README/docs + same-author cross-repo consistency audit against SeedSyncarr
-- Presentation rewrite: README / SECURITY.md / community-health files / release notes + in-app changelog, with fresh real screenshots captured via Playwright during the NAS walkthrough
-
-**Key context:** Triggarr is already public and launched on Reddit; this milestone closes launch-visible holes and rebuilds presentation rather than adding features. Work is isolated on a `launch-hardening` branch; `main` stays releasable throughout; merge + tag **v2.9.0** only after CI green and maintainer confirms (`release_intent=true`). Config-knob UI debt (DEBT-07 timeout, DEBT-08 page-size, DEBT-03 history cap, DEBT-06 drain) is explicitly parked — invisible to a launch reader. Spec: `docs/superpowers/specs/2026-06-02-launch-hardening-design.md`.
+**Parked for a future milestone** (deferred during v2.9 as invisible to a launch reader): config-knob UI debt (DEBT-07 request timeout, DEBT-08 *arr page size, DEBT-03 search-history cap, DEBT-06 graceful-shutdown drain), v2.6 UI pixel-verification (UI-01..03), and follow-ups noted in the v2.9 audit (validate_arr_url/validate_arr_url_config dedup; Retry-Connection button hx-disabled-elt; bug-report.yml v2.9 dropdown option). See STATE.md Deferred Items.
 
 ## Requirements
 
@@ -175,10 +175,16 @@ v2.8 Hardening & Observability shipped 2026-06-01. 961 tests passing. 67 phases,
 - ✓ Per-instance tag-list cache (1h monotonic TTL) with targeted invalidation on config save/removal — v2.8
 - ✓ Test coverage: OriginCheckMiddleware CSRF suite, corrupt-TOML recovery, concurrent config save, async client cleanup — v2.8
 - ✓ Settings save form fix: General fields associated with the Save button via `form="settings-form"` (were silently reset) — v2.8
+- ✓ Hostile-reader code + full-git-history sweep (ruff whole-tree + Shield SAST/secrets/dep-audit + gitleaks over 1038 commits) → triaged findings artifact gating fix scope; history clean — v2.9 (CDISC-01..05)
+- ✓ SAFETY-03: manual `/search-now` + scheduled cycles unified through one `_run_one_cycle` failure-counting path with covering tests; `.orchestrator.json` gitignore + `.gitleaksignore` 8.x repair; starlette ≥1.0.1 (PYSEC-2026-161) — v2.9 (CHARD-01..04)
+- ✓ SSRF config-load URL validation: cloud-metadata/link-local blocked at startup with clean exit, loopback permitted for same-host; web-form path unchanged — v2.9 (PREW-02 code half)
+- ✓ Presentation overhaul: README rewrite, SECURITY.md reconciled with v2.8/v2.8.1 hardening + at-rest caveat, community-health + repo-metadata, v2.9.0 release notes + in-app changelog, SeedSyncarr signal reconciliation, fresh Playwright screenshots — v2.9 (PDISC-01..03, PREW-01..07)
 
 ### Active
 
-**Milestone v2.9 — Launch-Hardening / Sibling Consistency** (see Current Milestone section above and `.planning/REQUIREMENTS.md`). Two equal tracks — code substance (hostile-reader discovery → `.orchestrator.json` gitignore + SAFETY-03 + folded-in findings) and presentation (cynical-reader teardown + codex pass + cross-repo consistency → README/SECURITY.md/community-health/release notes + Playwright screenshots). Parked this milestone: config-knob UI debt (PERF/DEBT timeout, page-size, history-cap, drain knobs) and v2.6 UI pixel-verification (UI-01..03) — invisible to a launch reader; see STATE.md Deferred Items.
+No active requirements — v2.9 shipped. Run `/gsd:new-milestone` to scope the next set.
+
+Parked for a future milestone: config-knob UI debt (DEBT-07 timeout, DEBT-08 page-size, DEBT-03 history-cap, DEBT-06 drain), v2.6 UI pixel-verification (UI-01..03), and v2.9-audit follow-ups (SSRF-validator dedup, Retry-Connection `hx-disabled-elt`, bug-report.yml v2.9 option). See STATE.md Deferred Items.
 
 ### Out of Scope
 
@@ -289,4 +295,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-02 after v2.9 Launch-Hardening / Sibling Consistency milestone started*
+*Last updated: 2026-06-03 after v2.9 Launch-Hardening / Sibling Consistency milestone shipped*

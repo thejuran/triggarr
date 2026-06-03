@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.9
 milestone_name: Launch-Hardening / Sibling Consistency
-status: ready_to_plan
-stopped_at: Phase 71 complete (6/6) — ready to discuss Phase 999.1
-last_updated: 2026-06-02T23:20:19.901Z
-last_activity: 2026-06-02 -- Phase 71 execution started
+status: Awaiting next milestone
+stopped_at: v2.9 shipped 2026-06-03 (released v2.9.0)
+last_updated: "2026-06-03T01:31:11.572Z"
+last_activity: 2026-06-03 — Milestone v2.9 completed and archived
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 11
   completed_plans: 11
-  percent: 50
+  percent: 67
 ---
 
 # Project State
@@ -21,18 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 999.1 — ui based password recovery
+**Current focus:** v2.9 shipped — run /gsd:new-milestone to scope the next milestone
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-06-02
-
-Progress: [██████████] 100%
-
-**Next step:** `/gsd:plan-phase 68`
+Phase: Milestone v2.9 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-03 — Milestone v2.9 completed and archived
 
 ### v2.9 milestone shape
 
@@ -149,5 +145,4 @@ Resume file: .planning/phases/71-presentation-rewrite/71-CONTEXT.md
 
 ## Operator Next Steps
 
-- Confirm the working branch is `launch-hardening` before planning (all v2.9 work is branch-isolated; `main` stays releasable).
-- Plan the first phase: `/gsd:plan-phase 68`
+- Start the next milestone with /gsd-new-milestone
