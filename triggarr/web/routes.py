@@ -8,6 +8,7 @@ and partial endpoints for htmx fragment updates.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html
 import os
 import re
@@ -1570,11 +1571,15 @@ def _write_reset_token_file(path: Path, token: str) -> None:
     """
     dir_fd = None
     renamed = False
+    fd_owned = False  # True once os.fdopen has taken ownership of fd (must not close manually after)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         # M1: set 0600 on the temp fd BEFORE writing or replacing, so the final file
         # is already 0600 after os.replace with no post-rename chmod window.
         os.fchmod(fd, 0o600)
+        # os.fdopen takes ownership of fd; set fd_owned BEFORE the with-block so that
+        # any OSError raised inside the with-block does not trigger a double-close.
+        fd_owned = True
         with os.fdopen(fd, "w") as f:
             f.write(token)
             f.flush()
@@ -1598,6 +1603,10 @@ def _write_reset_token_file(path: Path, token: str) -> None:
                 path=path,
                 exc=exc,
             )
+            if not fd_owned:
+                # os.fdopen never took ownership — close the raw fd to avoid a leak.
+                with contextlib.suppress(OSError):
+                    os.close(fd)
             try:
                 os.unlink(tmp_path)
             except FileNotFoundError:
