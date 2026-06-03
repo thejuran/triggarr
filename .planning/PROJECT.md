@@ -41,11 +41,18 @@ v2.9 Launch-Hardening / Sibling Consistency shipped 2026-06-03 (released as v2.9
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
-## Next Milestone
+## Current Milestone: v2.10 Recovery, Counts & Config Parity
 
-No milestone scoped yet. Run `/gsd:new-milestone` to scope the next one.
+**Goal:** Ship two parked backlog features plus a small config-parity rider — without expanding the network attack surface or relaxing any existing security invariant.
 
-**Parked for a future milestone** (deferred during v2.9 as invisible to a launch reader): config-knob UI debt (DEBT-07 request timeout, DEBT-08 *arr page size, DEBT-03 search-history cap, DEBT-06 graceful-shutdown drain), v2.6 UI pixel-verification (UI-01..03), and follow-ups noted in the v2.9 audit (validate_arr_url/validate_arr_url_config dedup; Retry-Connection button hx-disabled-elt; bug-report.yml v2.9 dropdown option). See STATE.md Deferred Items.
+**Target features:**
+- **UI password recovery** (Track A) — self-service reset so a locked-out user never hand-edits `triggarr.toml`. Filesystem-token model: a CSPRNG token written to logs + the config volume proves host access; in-memory, 15-min TTL, single-use, rotates `session_secret`, both endpoints rate-limited, `/reset` exempt from auth middleware.
+- **Count-only refresh** (Track B) — surface accurate missing/cutoff counts on demand without triggering searches or advancing the cursor. Extract a fetch+count+filter helper from the engine cycle functions so the count path *structurally* cannot advance the cursor. `POST /api/refresh-counts/{app}/{instance}` mirrors `search_now`; updates connection health + counts but NOT `last_run`/`last_success` or the SAFETY-03 failure counter.
+- **DEBT-06 drain-timeout settings knob** (Track C) — expose the graceful-shutdown drain timeout as a `GeneralConfig` field + settings-UI input. Precedence: config value is the default, `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` env overrides it when set; `>=1.0` clamp preserved.
+
+**Key context:** Three disjoint, independently-phaseable tracks (no shared code), per the approved design spec `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md`. Cross-track documentation deliverable: correct the stale deferred record — **DEBT-07 (request timeout), DEBT-08 (page size), DEBT-03 (search-history cap) are already shipped** (present in `settings.html`), so only DEBT-06 remained genuinely unexposed. Phase numbering continues from v2.9 (last phase 71).
+
+**Still parked for a future milestone:** v2.6 UI pixel-verification (UI-01..03, human-needed, behind first-run), PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, the `--color-triggarr-primaryDark` cosmetic token cleanup, and v2.9-audit follow-ups (validate_arr_url dedup; Retry-Connection hx-disabled-elt; bug-report.yml dropdown). See STATE.md Deferred Items.
 
 ## Requirements
 
@@ -295,4 +302,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-03 after v2.9 Launch-Hardening / Sibling Consistency milestone shipped*
+*Last updated: 2026-06-02 after v2.10 Recovery, Counts & Config Parity milestone scoped*

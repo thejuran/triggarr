@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.9
-milestone_name: Launch-Hardening / Sibling Consistency
-status: Awaiting next milestone
-stopped_at: v2.9 shipped 2026-06-03 (released v2.9.0)
-last_updated: "2026-06-03T01:31:11.572Z"
-last_activity: 2026-06-03 — Milestone v2.9 completed and archived
+milestone: v2.10
+milestone_name: Recovery, Counts & Config Parity
+status: planning
+last_updated: "2026-06-03T02:19:16.410Z"
+last_activity: 2026-06-03
 progress:
-  total_phases: 6
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-  percent: 67
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 ## Current Position
 
-Phase: Milestone v2.9 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-03 — Milestone v2.9 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-03 — Milestone v2.10 started
 
 ### v2.9 milestone shape
 
