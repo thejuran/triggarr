@@ -184,7 +184,9 @@ def prioritize_batch(
     searched = [it for it in eligible_items if key_fn(it) in logset]
 
     # 4. Batch: unsearched first, top up oldest-searched-first (log front = oldest)
-    batch: list = unsearched[:batch_size]
+    # Clamp to max(0, batch_size) so a negative batch_size always yields [] even
+    # when unsearched items exist (Python's unsearched[:-1] would return all-but-last).
+    batch: list = unsearched[:max(0, batch_size)]
     if batch_size > 0 and len(batch) < batch_size:
         order = {key_fn(it): it for it in searched}
         for sid in log:

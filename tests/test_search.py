@@ -230,6 +230,21 @@ def test_prioritize_batch_negative_batch_size_guard():
     assert new_log == ["1", "2", "3"]
 
 
+def test_prioritize_batch_negative_batch_size_with_unsearched():
+    """Regression: negative batch_size must yield [] even when unsearched items exist.
+
+    Prior to the max(0, batch_size) clamp, unsearched[:-1] would return all-but-last
+    instead of an empty list, silently searching items against the contract.
+    """
+    # 3 eligible items, none yet searched (empty log)
+    items = _items(10, 20, 30)
+    batch, new_log, pass_completed = prioritize_batch(items, [], -1, _id_key)
+    assert batch == [], "negative batch_size must yield empty batch even with unsearched items"
+    assert pass_completed is False
+    # Log must not grow beyond the pruned existing log (which is [] here)
+    assert new_log == []
+
+
 def test_prioritize_batch_key_fn_sonarr_composite():
     """QUEUE-02: Sonarr composite key distinguishes seasons of the same series."""
     # S1 and S2 of series 1 must be distinct keys
