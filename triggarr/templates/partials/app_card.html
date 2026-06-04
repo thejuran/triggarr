@@ -116,13 +116,22 @@
         <i class="ph ph-arrows-clockwise"></i>Retry Connection
       </button>
     {% else %}
-      <button hx-post="{{ request.url_for('search_now', app_name=app.name, instance_name=app.instance) }}"
-              hx-target="#{{ app.card_id }}-card"
-              hx-swap="outerHTML"
-              hx-disabled-elt="this"
-              class="w-full flex items-center justify-center gap-2 py-2 rounded-md bg-triggarr-elevated hover:bg-triggarr-border border border-triggarr-border text-xs font-semibold transition-colors text-triggarr-text group disabled:opacity-50 disabled:cursor-not-allowed">
-        <i class="ph ph-magnifying-glass {% if app.name == 'radarr' %}group-hover:text-triggarr-radarr{% elif app.name == 'sonarr' %}group-hover:text-triggarr-sonarr{% elif app.name == 'lidarr' %}group-hover:text-triggarr-green{% endif %} transition-colors"></i>Search Now
-      </button>
+      <div class="flex gap-2">
+        <button hx-post="{{ request.url_for('search_now', app_name=app.name, instance_name=app.instance) }}"
+                hx-target="#{{ app.card_id }}-card"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                class="flex-1 flex items-center justify-center gap-2 py-2 rounded-md bg-triggarr-elevated hover:bg-triggarr-border border border-triggarr-border text-xs font-semibold transition-colors text-triggarr-text group disabled:opacity-50 disabled:cursor-not-allowed">
+          <i class="ph ph-magnifying-glass {% if app.name == 'radarr' %}group-hover:text-triggarr-radarr{% elif app.name == 'sonarr' %}group-hover:text-triggarr-sonarr{% elif app.name == 'lidarr' %}group-hover:text-triggarr-green{% endif %} transition-colors"></i>Search Now
+        </button>
+        <button hx-post="{{ request.url_for('refresh_counts', app_name=app.name, instance_name=app.instance) }}"
+                hx-target="#{{ app.card_id }}-card"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                class="flex-1 flex items-center justify-center gap-2 py-2 rounded-md bg-triggarr-card hover:bg-triggarr-elevated border border-triggarr-border text-xs font-semibold transition-colors text-triggarr-muted disabled:opacity-50 disabled:cursor-not-allowed">
+          <i class="ph ph-arrows-clockwise"></i>Refresh counts
+        </button>
+      </div>
     {% endif %}
   </div>
 </div>

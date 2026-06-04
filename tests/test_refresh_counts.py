@@ -1017,3 +1017,19 @@ def test_refresh_counts_does_not_touch_last_search_time(refresh_client, refresh_
     ):
         refresh_client.post("/api/refresh-counts/radarr/Default")
     assert "radarr_Default" not in refresh_test_app.state.last_search_time
+
+
+def test_app_card_connected_has_refresh_counts_button(refresh_client):
+    """CNT-05: connected card partial contains 'Refresh counts' button (D-09/D-11)."""
+    response = refresh_client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Refresh counts" in response.text
+
+
+def test_app_card_disconnected_no_refresh_counts_button(refresh_client, refresh_test_app):
+    """CNT-05: disconnected card does NOT contain 'Refresh counts'; DOES contain 'Retry Connection' (D-10)."""
+    refresh_test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
+    response = refresh_client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Refresh counts" not in response.text
+    assert "Retry Connection" in response.text
