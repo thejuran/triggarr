@@ -172,6 +172,31 @@ def test_general_config_default_max_consecutive_failures() -> None:
         GeneralConfig(max_consecutive_failures=101)
 
 
+def test_general_config_default_shutdown_drain_timeout() -> None:
+    """DEBT-06/D-01: GeneralConfig().shutdown_drain_timeout defaults to 60.0, bounded ge=1.0.
+
+    The bound is enforced via Field(ge=1.0, allow_inf_nan=False) so out-of-bounds and
+    non-finite values raise pydantic.ValidationError at model construction time.
+    allow_inf_nan=False is load-bearing: ge=1.0 alone ACCEPTS +inf (pydantic v2 default
+    allow_inf_nan=True), which would allow asyncio.timeout(inf) to never bound the drain.
+    """
+    assert GeneralConfig().shutdown_drain_timeout == 60.0
+
+    # Below ge=1.0 → rejected
+    with pytest.raises(ValidationError):
+        GeneralConfig(shutdown_drain_timeout=0.0)
+
+    # Valid fractional value accepted and preserved
+    assert GeneralConfig(shutdown_drain_timeout=120.5).shutdown_drain_timeout == 120.5
+
+    # Non-finite values rejected (allow_inf_nan=False is the load-bearing guard)
+    with pytest.raises(ValidationError):
+        GeneralConfig(shutdown_drain_timeout=float("inf"))
+
+    with pytest.raises(ValidationError):
+        GeneralConfig(shutdown_drain_timeout=float("nan"))
+
+
 def test_skip_unreleased_from_toml(tmp_path: Path) -> None:
     """skip_unreleased=false in TOML loads as False."""
     config_file = tmp_path / "triggarr.toml"
