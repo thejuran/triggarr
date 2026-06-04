@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.11
 milestone_name: Never-Searched-First Search Queue Priority
 status: Awaiting next milestone
-stopped_at: Phase 76 context gathered
+stopped_at: Milestone v2.11 shipped and archived (released as v2.11.0; tag held locally, unpushed)
 last_updated: "2026-06-04T21:59:58.515Z"
 last_activity: 2026-06-04 — Milestone v2.11 completed and archived
 progress:
@@ -21,7 +21,9 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 999.1 — ui based password recovery (backlog — promoted to v2.10 track a)
+**Current focus:** Planning next milestone (v2.11 shipped 2026-06-04 as v2.11.0)
+
+> **Release tags held locally, unpushed:** `v2.11.0` (this milestone) and `v2.10.0` (prior milestone) are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
 
 ## Current Position
 
