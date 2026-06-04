@@ -189,8 +189,8 @@ def _default_instance_state() -> AppState:
     return AppState(missing_searched=[], cutoff_searched=[], last_run=None, last_success=None)
 ```
 
-**No new write/load path (RESEARCH "Don't Hand-Roll"):**
-- `_merge_defaults` @ state.py:129-151 already two-level-deep merges each instance against `_default_instance_state()` — new `*_searched` fields flow through automatically; leftover `*_cursor` keys in old files are harmless and overwritten on next save (QUEUE-03). **Touch nothing in `_merge_defaults` / `load_state` / `save_state`.**
+**Minimal write/load path (RESEARCH "Don't Hand-Roll") — CORRECTED per codex round-1 HIGH-1:**
+- `_merge_defaults` @ state.py:129-151 already two-level-deep merges each instance against `_default_instance_state()` — new `*_searched` fields flow through automatically. **CORRECTION (this supersedes the original round-1 assumption below):** leftover `*_cursor` keys are NOT harmless / NOT auto-overwritten — `{**_default_instance_state(), **instance_data}` (state.py:143) PRESERVES unknown keys, and `save_state` (`json.dump`) writes them back, so they persist indefinitely. **Plan 02 therefore adds an explicit one-line strip in `_merge_defaults`** right after the merge: `for legacy_key in ("missing_cursor", "cutoff_cursor"): merged.pop(legacy_key, None)` (idempotent; no version bump / no separate migrate function — still within spec §9 YAGNI and D-09's "no migration STEP"). A load→save round-trip test (test_state.py) asserts the keys are ABSENT from the written JSON (QUEUE-03). `load_state` / `save_state` themselves are unchanged.
 - `save_state` @ state.py:185 is the single atomic write-then-rename commit point, called once from `scheduler.py:377-379` after the cycle returns (QUEUE-11). No change.
 - **Leave the v2.2 migration (`_is_v22_state_format` :98 / `_migrate_v22_state` :113) untouched** — those keep their v2.2 fixture shape; only the *merged-output* assertions in their tests change (RESEARCH test table, test_state.py l.53-128).
 - Update the module docstring's "round-robin cursor positions" wording (state.py:3-9, :44) if convenient — cosmetic, not load-bearing.

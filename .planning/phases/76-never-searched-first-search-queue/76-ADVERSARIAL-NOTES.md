@@ -67,3 +67,27 @@ same-series seasons including season 0, batch smaller than eligible count, asser
 
 All four findings accepted. Rewrite 1/2 dispatched to `/gsd:plan-phase 76` with this critique
 embedded. The two high findings are blocker-class (codex "No-ship") and gate execution.
+
+## Round 2 — verdict: needs-attention (1 high + 1 medium, both NEW, introduced by the round-1 fixes)
+
+codex confirmed the round-1 high/medium findings are RESOLVED against live code. Two new issues
+from the revision:
+
+### [HIGH-3] Plan 03 static guard would delete the tests that prove HIGH-1 — VERIFIED TRUE, FIXED
+Plan 02 requires test_state.py to KEEP a pre-upgrade fixture writing missing_cursor/cutoff_cursor +
+a load→save test asserting they're stripped. Plan 03's guard `! grep -rqE "missing_cursor|cutoff_cursor" tests/`
+forbids those keys anywhere in tests/ — so a compliant executor would delete the very regression test
+that keeps HIGH-1 fixed. **Fix applied directly:** scoped the Plan 03 cursor guard to EXCLUDE
+tests/test_state.py, and added a companion gate requiring `grep -qE "missing_cursor" tests/test_state.py`
+to HIT (the safety net must remain present). Updated truths, verify block, acceptance criteria,
+verification, threat model T-76-08, and success criteria.
+
+### [MED-3] PATTERNS.md still encoded the rejected round-1 assumption — VERIFIED TRUE, FIXED
+76-PATTERNS.md:192-193 still said leftover cursor keys are "harmless and overwritten on next save" and
+"Touch nothing in _merge_defaults" — contradicting the revised Plan 02 strip-pop, and PATTERNS.md is in
+the plans' read_first. **Fix applied directly:** corrected that section to describe the active strip-on-load
+(`merged.pop(...)`) and the load→save absence test, explicitly marking it as superseding the round-1 assumption.
+
+## Disposition (round 2)
+Both fixed directly (surgical doc/guard edits, no structural replan). This was rewrite 2/2.
+Re-running codex (round 3) to confirm.
