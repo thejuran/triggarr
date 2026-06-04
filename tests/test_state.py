@@ -26,11 +26,11 @@ def test_nested_state_round_trip(tmp_path: Path) -> None:
     state_file = tmp_path / "state.json"
     state = TriggarrState(
         radarr={
-            "Default": AppState(missing_cursor=42, cutoff_cursor=7, last_run="2026-01-15T10:00:00Z"),
-            "4K": AppState(missing_cursor=10, cutoff_cursor=3, last_run="2026-01-15T11:00:00Z"),
+            "Default": AppState(missing_searched=["1", "2"], last_run="2026-01-15T10:00:00Z"),
+            "4K": AppState(cutoff_searched=["3"], last_run="2026-01-15T11:00:00Z"),
         },
         sonarr={
-            "Default": AppState(missing_cursor=100, cutoff_cursor=25, last_run="2026-01-15T10:05:00Z"),
+            "Default": AppState(missing_pass=3, last_run="2026-01-15T10:05:00Z"),
         },
         search_log=[],
     )
@@ -38,16 +38,22 @@ def test_nested_state_round_trip(tmp_path: Path) -> None:
     save_state(state, state_file)
     loaded = load_state(state_file)
 
-    assert loaded["radarr"]["Default"]["missing_cursor"] == 42
-    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 7
-    assert loaded["radarr"]["4K"]["missing_cursor"] == 10
-    assert loaded["radarr"]["4K"]["cutoff_cursor"] == 3
-    assert loaded["sonarr"]["Default"]["missing_cursor"] == 100
-    assert loaded["sonarr"]["Default"]["cutoff_cursor"] == 25
+    assert loaded["radarr"]["Default"]["missing_searched"] == ["1", "2"]
+    assert loaded["radarr"]["Default"]["cutoff_searched"] == []
+    assert loaded["radarr"]["4K"]["cutoff_searched"] == ["3"]
+    assert loaded["radarr"]["4K"]["missing_searched"] == []
+    assert loaded["sonarr"]["Default"]["missing_pass"] == 3
+    assert "missing_cursor" not in loaded["radarr"]["Default"]
+    assert "cutoff_cursor" not in loaded["radarr"]["Default"]
 
 
 def test_v22_state_migration(tmp_path: Path) -> None:
-    """v2.2 flat state.json auto-migrates to nested per-instance format with 'Default' key."""
+    """v2.2 flat state.json auto-migrates to nested per-instance format with 'Default' key.
+
+    The v2.2 fixture legitimately contains missing_cursor (that's how _is_v22_state_format
+    detects the old format), but after _migrate_v22_state + _merge_defaults the legacy
+    cursor keys are stripped. Only non-cursor fields survive in the merged output.
+    """
     state_file = tmp_path / "state.json"
     v22_state = {
         "radarr": {"missing_cursor": 5, "cutoff_cursor": 2, "last_run": "2026-01-15T10:00:00Z"},
@@ -58,11 +64,16 @@ def test_v22_state_migration(tmp_path: Path) -> None:
 
     loaded = load_state(state_file)
 
-    assert loaded["radarr"]["Default"]["missing_cursor"] == 5
-    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 2
+    # Cursor keys are STRIPPED by _merge_defaults (HIGH-1)
+    assert "missing_cursor" not in loaded["radarr"]["Default"]
+    assert "cutoff_cursor" not in loaded["radarr"]["Default"]
+    assert "missing_cursor" not in loaded["sonarr"]["Default"]
+    assert "cutoff_cursor" not in loaded["sonarr"]["Default"]
+    # Non-cursor fields survive
     assert loaded["radarr"]["Default"]["last_run"] == "2026-01-15T10:00:00Z"
-    assert loaded["sonarr"]["Default"]["missing_cursor"] == 3
-    assert loaded["sonarr"]["Default"]["cutoff_cursor"] == 0
+    # Searched-logs default to empty
+    assert loaded["radarr"]["Default"]["missing_searched"] == []
+    assert loaded["sonarr"]["Default"]["missing_searched"] == []
 
 
 def test_is_v22_state_format_detection() -> None:
@@ -90,11 +101,11 @@ def test_orphan_cleanup(tmp_path: Path) -> None:
     settings = make_settings()
     state = TriggarrState(
         radarr={
-            "Default": AppState(missing_cursor=5, cutoff_cursor=2, last_run=None),
-            "OldInstance": AppState(missing_cursor=99, cutoff_cursor=88, last_run=None),
+            "Default": AppState(missing_searched=["1"], last_run=None),
+            "OldInstance": AppState(missing_searched=["99"], last_run=None),
         },
         sonarr={
-            "Default": AppState(missing_cursor=3, cutoff_cursor=0, last_run=None),
+            "Default": AppState(missing_searched=[], last_run=None),
         },
         search_log=[],
     )
@@ -107,26 +118,26 @@ def test_orphan_cleanup(tmp_path: Path) -> None:
 
 
 def test_no_cross_contamination(tmp_path: Path) -> None:
-    """Two instances of the same app type do not share or corrupt each other's cursors."""
+    """Two instances of the same app type do not share or corrupt each other's searched-logs."""
     state_file = tmp_path / "state.json"
     state = TriggarrState(
         radarr={
-            "A": AppState(missing_cursor=10, cutoff_cursor=5, last_run=None),
-            "B": AppState(missing_cursor=20, cutoff_cursor=15, last_run=None),
+            "A": AppState(missing_searched=["10", "5"], last_run=None),
+            "B": AppState(missing_searched=["20"], cutoff_searched=["15"], last_run=None),
         },
         sonarr={},
         search_log=[],
     )
 
-    # Modify A's cursor only
-    state["radarr"]["A"]["missing_cursor"] = 99
+    # Modify A's log only
+    state["radarr"]["A"]["missing_searched"] = ["99"]
 
     save_state(state, state_file)
     loaded = load_state(state_file)
 
-    assert loaded["radarr"]["A"]["missing_cursor"] == 99
-    assert loaded["radarr"]["B"]["missing_cursor"] == 20  # Unchanged
-    assert loaded["radarr"]["B"]["cutoff_cursor"] == 15  # Unchanged
+    assert loaded["radarr"]["A"]["missing_searched"] == ["99"]
+    assert loaded["radarr"]["B"]["missing_searched"] == ["20"]  # Unchanged
+    assert loaded["radarr"]["B"]["cutoff_searched"] == ["15"]  # Unchanged
 
 
 def test_default_state_without_settings() -> None:
@@ -139,26 +150,33 @@ def test_default_state_without_settings() -> None:
 
 
 def test_default_state_with_settings() -> None:
-    """_default_state(settings) returns per-instance entries at cursor 0 for each configured instance."""
+    """_default_state(settings) returns per-instance entries with empty searched-logs for each configured instance."""
     from tests.conftest import make_settings
 
     settings = make_settings()
     state = _default_state(settings)
 
     assert "Default" in state["radarr"]
-    assert state["radarr"]["Default"]["missing_cursor"] == 0
-    assert state["radarr"]["Default"]["cutoff_cursor"] == 0
+    assert state["radarr"]["Default"]["missing_searched"] == []
+    assert state["radarr"]["Default"]["cutoff_searched"] == []
     assert state["radarr"]["Default"]["last_run"] is None
     assert "Default" in state["sonarr"]
-    assert state["sonarr"]["Default"]["missing_cursor"] == 0
+    assert state["sonarr"]["Default"]["missing_searched"] == []
+    # Cursor fields are gone
+    assert "missing_cursor" not in state["radarr"]["Default"]
+    assert "cutoff_cursor" not in state["radarr"]["Default"]
 
 
 def test_merge_defaults_nested(tmp_path: Path) -> None:
-    """Partial nested state (missing some AppState fields) gets missing fields filled with defaults."""
+    """Partial nested state (missing some AppState fields) gets missing fields filled with defaults.
+
+    Legacy cursor keys are stripped; non-cursor fields and new searched-log fields default correctly.
+    """
     state_file = tmp_path / "state.json"
     partial_state = {
         "radarr": {
-            "Default": {"missing_cursor": 42},
+            # Simulates an on-disk state that still has legacy cursor keys
+            "Default": {"missing_cursor": 42, "missing_pass": 3},
         },
         "sonarr": {
             "Default": {},
@@ -168,37 +186,43 @@ def test_merge_defaults_nested(tmp_path: Path) -> None:
 
     loaded = load_state(state_file)
 
-    # Preserved from file
-    assert loaded["radarr"]["Default"]["missing_cursor"] == 42
-    # Filled from defaults
-    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 0
+    # Legacy cursor keys STRIPPED (HIGH-1)
+    assert "missing_cursor" not in loaded["radarr"]["Default"]
+    assert "cutoff_cursor" not in loaded["radarr"]["Default"]
+    # Non-cursor fields preserved
+    assert loaded["radarr"]["Default"]["missing_pass"] == 3
+    # Searched-logs filled from defaults
+    assert loaded["radarr"]["Default"]["missing_searched"] == []
     assert loaded["radarr"]["Default"]["last_run"] is None
-    # Sonarr default filled
-    assert loaded["sonarr"]["Default"]["missing_cursor"] == 0
-    assert loaded["sonarr"]["Default"]["cutoff_cursor"] == 0
+    # Sonarr defaults filled
+    assert loaded["sonarr"]["Default"]["missing_searched"] == []
+    assert "missing_cursor" not in loaded["sonarr"]["Default"]
 
 
 # --- Updated existing tests for nested format ---
 
 
 def test_state_round_trip(tmp_path: Path) -> None:
-    """State saved and loaded back retains all cursor values (nested format)."""
+    """State saved and loaded back retains all searched-log values (nested format)."""
     state_file = tmp_path / "state.json"
     state = TriggarrState(
-        radarr={"Default": AppState(missing_cursor=42, cutoff_cursor=7, last_run="2026-01-15T10:00:00Z")},
-        sonarr={"Default": AppState(missing_cursor=100, cutoff_cursor=25, last_run="2026-01-15T10:05:00Z")},
+        radarr={"Default": AppState(missing_searched=["42", "7"], last_run="2026-01-15T10:00:00Z")},
+        sonarr={"Default": AppState(cutoff_searched=["100", "25"], last_run="2026-01-15T10:05:00Z")},
         search_log=[{"action": "search", "count": 5}],
     )
 
     save_state(state, state_file)
     loaded = load_state(state_file)
 
-    assert loaded["radarr"]["Default"]["missing_cursor"] == 42
-    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 7
+    assert loaded["radarr"]["Default"]["missing_searched"] == ["42", "7"]
+    assert loaded["radarr"]["Default"]["cutoff_searched"] == []
     assert loaded["radarr"]["Default"]["last_run"] == "2026-01-15T10:00:00Z"
-    assert loaded["sonarr"]["Default"]["missing_cursor"] == 100
-    assert loaded["sonarr"]["Default"]["cutoff_cursor"] == 25
+    assert loaded["sonarr"]["Default"]["cutoff_searched"] == ["100", "25"]
+    assert loaded["sonarr"]["Default"]["missing_searched"] == []
     assert loaded["search_log"] == [{"action": "search", "count": 5}]
+    # Cursor fields are gone
+    assert "missing_cursor" not in loaded["radarr"]["Default"]
+    assert "cutoff_cursor" not in loaded["radarr"]["Default"]
 
 
 def test_state_default_on_missing_file(tmp_path: Path) -> None:
@@ -216,8 +240,8 @@ def test_state_atomic_write(tmp_path: Path) -> None:
     """After save, state file exists and no .tmp files remain."""
     state_file = tmp_path / "state.json"
     state = TriggarrState(
-        radarr={"Default": AppState(missing_cursor=1, cutoff_cursor=2, last_run=None)},
-        sonarr={"Default": AppState(missing_cursor=3, cutoff_cursor=4, last_run=None)},
+        radarr={"Default": AppState(missing_searched=["1"], last_run=None)},
+        sonarr={"Default": AppState(cutoff_searched=["3"], last_run=None)},
         search_log=[],
     )
 
@@ -232,8 +256,8 @@ def test_state_creates_parent_dirs(tmp_path: Path) -> None:
     """Saving to a path with non-existent parents creates them."""
     state_file = tmp_path / "deep" / "nested" / "state.json"
     state = TriggarrState(
-        radarr={"Default": AppState(missing_cursor=0, cutoff_cursor=0, last_run=None)},
-        sonarr={"Default": AppState(missing_cursor=0, cutoff_cursor=0, last_run=None)},
+        radarr={"Default": AppState(missing_searched=[], last_run=None)},
+        sonarr={"Default": AppState(cutoff_searched=[], last_run=None)},
         search_log=[],
     )
 
@@ -241,7 +265,7 @@ def test_state_creates_parent_dirs(tmp_path: Path) -> None:
 
     assert state_file.exists()
     loaded = load_state(state_file)
-    assert loaded["radarr"]["Default"]["missing_cursor"] == 0
+    assert loaded["radarr"]["Default"]["missing_searched"] == []
 
 
 def test_state_corrupt_recovers_to_defaults(tmp_path: Path) -> None:
@@ -257,44 +281,55 @@ def test_state_corrupt_recovers_to_defaults(tmp_path: Path) -> None:
 
 
 def test_state_schema_migration_fills_missing_keys(tmp_path: Path) -> None:
-    """Old nested state file missing new keys loads successfully with defaults filled in."""
+    """Old nested state file missing new keys loads successfully with defaults filled in.
+
+    Legacy cursor keys are stripped; searched-log fields default to empty.
+    """
     state_file = tmp_path / "state.json"
     partial_state = {
-        "radarr": {"Default": {"missing_cursor": 42}},
+        "radarr": {"Default": {"missing_cursor": 42, "missing_pass": 5}},
         "sonarr": {"Default": {}},
     }
     state_file.write_text(json.dumps(partial_state))
 
     state = load_state(state_file)
 
-    # Preserved from file
-    assert state["radarr"]["Default"]["missing_cursor"] == 42
-    # Filled from defaults
-    assert state["radarr"]["Default"]["cutoff_cursor"] == 0
+    # Legacy cursor keys stripped (HIGH-1)
+    assert "missing_cursor" not in state["radarr"]["Default"]
+    assert "cutoff_cursor" not in state["radarr"]["Default"]
+    # Non-cursor fields preserved
+    assert state["radarr"]["Default"]["missing_pass"] == 5
+    # Searched-logs filled from defaults
+    assert state["radarr"]["Default"]["missing_searched"] == []
     assert state["radarr"]["Default"]["last_run"] is None
     # Sonarr filled from defaults
-    assert state["sonarr"]["Default"]["missing_cursor"] == 0
-    assert state["sonarr"]["Default"]["cutoff_cursor"] == 0
+    assert state["sonarr"]["Default"]["missing_searched"] == []
     assert state["sonarr"]["Default"]["last_run"] is None
     # search_log filled from defaults
     assert state["search_log"] == []
 
 
 def test_state_schema_migration_preserves_all_existing(tmp_path: Path) -> None:
-    """A valid nested state file still loads correctly with all values preserved."""
+    """A valid nested state file still loads correctly with non-cursor values preserved.
+
+    Legacy cursor keys in the file are stripped on load; all other fields survive.
+    """
     state_file = tmp_path / "state.json"
     complete_state = {
         "radarr": {
             "Default": {
-                "missing_cursor": 42,
-                "cutoff_cursor": 7,
+                "missing_cursor": 42,  # legacy — will be stripped
+                "cutoff_cursor": 7,    # legacy — will be stripped
+                "missing_pass": 3,
+                "missing_searched": ["1", "2"],
                 "last_run": "2026-01-15T10:00:00Z",
             },
         },
         "sonarr": {
             "Default": {
-                "missing_cursor": 100,
-                "cutoff_cursor": 25,
+                "missing_cursor": 100,  # legacy — will be stripped
+                "cutoff_cursor": 25,    # legacy — will be stripped
+                "cutoff_searched": ["99"],
                 "last_run": "2026-01-15T10:05:00Z",
             },
         },
@@ -304,11 +339,16 @@ def test_state_schema_migration_preserves_all_existing(tmp_path: Path) -> None:
 
     state = load_state(state_file)
 
-    assert state["radarr"]["Default"]["missing_cursor"] == 42
-    assert state["radarr"]["Default"]["cutoff_cursor"] == 7
+    # Cursor keys stripped (HIGH-1)
+    assert "missing_cursor" not in state["radarr"]["Default"]
+    assert "cutoff_cursor" not in state["radarr"]["Default"]
+    assert "missing_cursor" not in state["sonarr"]["Default"]
+    assert "cutoff_cursor" not in state["sonarr"]["Default"]
+    # Non-cursor fields preserved
+    assert state["radarr"]["Default"]["missing_pass"] == 3
+    assert state["radarr"]["Default"]["missing_searched"] == ["1", "2"]
     assert state["radarr"]["Default"]["last_run"] == "2026-01-15T10:00:00Z"
-    assert state["sonarr"]["Default"]["missing_cursor"] == 100
-    assert state["sonarr"]["Default"]["cutoff_cursor"] == 25
+    assert state["sonarr"]["Default"]["cutoff_searched"] == ["99"]
     assert state["sonarr"]["Default"]["last_run"] == "2026-01-15T10:05:00Z"
     assert state["search_log"] == [{"action": "search", "count": 5}]
 
@@ -317,8 +357,8 @@ def test_save_state_cleans_temp_on_replace_failure(tmp_path: Path) -> None:
     """Temp files from failed os.replace calls are cleaned up, not left as orphans."""
     state_file = tmp_path / "state.json"
     state = TriggarrState(
-        radarr={"Default": AppState(missing_cursor=1, cutoff_cursor=2, last_run=None)},
-        sonarr={"Default": AppState(missing_cursor=3, cutoff_cursor=4, last_run=None)},
+        radarr={"Default": AppState(missing_searched=["1"], last_run=None)},
+        sonarr={"Default": AppState(cutoff_searched=["3"], last_run=None)},
         search_log=[],
     )
 
@@ -406,8 +446,8 @@ def test_last_success_persists_round_trip(tmp_path: Path) -> None:
     state = TriggarrState(
         radarr={
             "Default": AppState(
-                missing_cursor=0,
-                cutoff_cursor=0,
+                missing_searched=[],
+                cutoff_searched=[],
                 last_run="2026-05-31T10:00:00Z",
                 last_success="2026-05-31T10:00:00Z",
             )
@@ -451,8 +491,6 @@ def test_searched_log_round_trip(tmp_path: Path) -> None:
     state = TriggarrState(
         radarr={
             "Default": AppState(
-                missing_cursor=0,
-                cutoff_cursor=0,
                 missing_searched=["1", "2"],
                 cutoff_searched=["9"],
                 last_run="2026-06-04T10:00:00Z",
@@ -467,9 +505,9 @@ def test_searched_log_round_trip(tmp_path: Path) -> None:
 
     assert loaded["radarr"]["Default"]["missing_searched"] == ["1", "2"]
     assert loaded["radarr"]["Default"]["cutoff_searched"] == ["9"]
-    # Cursor fields still present this plan (removed in Plan 02)
-    assert loaded["radarr"]["Default"]["missing_cursor"] == 0
-    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 0
+    # Cursor fields are gone (removed in Plan 02)
+    assert "missing_cursor" not in loaded["radarr"]["Default"]
+    assert "cutoff_cursor" not in loaded["radarr"]["Default"]
 
 
 def test_default_instance_state_has_empty_searched_logs() -> None:
@@ -479,9 +517,9 @@ def test_default_instance_state_has_empty_searched_logs() -> None:
     state = _default_instance_state()
     assert state["missing_searched"] == []
     assert state["cutoff_searched"] == []
-    # Cursor fields still present this plan (removed in Plan 02)
-    assert state["missing_cursor"] == 0
-    assert state["cutoff_cursor"] == 0
+    # Cursor fields removed in Plan 02 (this plan)
+    assert "missing_cursor" not in state
+    assert "cutoff_cursor" not in state
 
 
 def test_default_state_with_settings_includes_searched_logs() -> None:
@@ -495,11 +533,11 @@ def test_default_state_with_settings_includes_searched_logs() -> None:
 
 
 def test_back_compat_load_pre_upgrade_state(tmp_path: Path) -> None:
-    """Pre-upgrade state.json with cursor keys but no searched-logs loads clean.
+    """Pre-upgrade state.json with cursor keys but no searched-logs loads clean (QUEUE-03).
 
-    Dispatch treats everything as unsearched (default empty searched-logs).
-    missing_pass is carried forward. Cursor keys are preserved this plan
-    (Plan 02 adds the strip); here we only assert the new fields default correctly.
+    Cursor keys are stripped on load by _merge_defaults (HIGH-1).
+    Searched-logs default to empty (everything-unsearched semantics).
+    missing_pass is carried forward.
     """
     state_file = tmp_path / "state.json"
     pre_upgrade = {
@@ -520,6 +558,54 @@ def test_back_compat_load_pre_upgrade_state(tmp_path: Path) -> None:
     assert loaded["radarr"]["Default"]["cutoff_searched"] == []
     # Pass counter carried forward
     assert loaded["radarr"]["Default"]["missing_pass"] == 2
-    # Cursor values are still present this plan (strip happens in Plan 02)
-    assert loaded["radarr"]["Default"]["missing_cursor"] == 7
-    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 3
+    # Cursor keys stripped by _merge_defaults (HIGH-1)
+    assert "missing_cursor" not in loaded["radarr"]["Default"]
+    assert "cutoff_cursor" not in loaded["radarr"]["Default"]
+
+
+def test_strip_on_load_save_round_trip(tmp_path: Path) -> None:
+    """HIGH-1: legacy cursor keys are absent from the WRITTEN JSON after a load→save round-trip.
+
+    Proves that _merge_defaults actively pops cursor keys on load and that save_state
+    never writes them back — even when the pre-upgrade state.json carries non-zero
+    cursor values alongside existing searched-log entries.
+    """
+    state_file = tmp_path / "state.json"
+    save_file = tmp_path / "saved_state.json"
+
+    # Pre-upgrade state.json: cursor keys present, alongside new searched-log fields
+    pre_upgrade = {
+        "radarr": {
+            "Default": {
+                "missing_cursor": 7,
+                "cutoff_cursor": 3,
+                "missing_pass": 2,
+                "missing_searched": ["1"],
+            }
+        }
+    }
+    state_file.write_text(json.dumps(pre_upgrade))
+
+    # Load the pre-upgrade file
+    loaded = load_state(state_file)
+
+    # Save to a different path so we can inspect what was written
+    save_state(loaded, save_file)
+
+    # Re-read the WRITTEN JSON file directly (not the in-memory object)
+    with open(save_file, encoding="utf-8") as f:
+        written = json.load(f)
+
+    saved_instance = written["radarr"]["Default"]
+
+    # HIGH-1: cursor keys MUST be absent from the written JSON
+    assert "missing_cursor" not in saved_instance, (
+        "missing_cursor survived load→save round-trip — strip in _merge_defaults is broken"
+    )
+    assert "cutoff_cursor" not in saved_instance, (
+        "cutoff_cursor survived load→save round-trip — strip in _merge_defaults is broken"
+    )
+
+    # Non-cursor fields MUST survive
+    assert saved_instance["missing_pass"] == 2
+    assert saved_instance["missing_searched"] == ["1"]

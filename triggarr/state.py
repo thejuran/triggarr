@@ -1,11 +1,11 @@
 """Atomic JSON state persistence for Triggarr.
 
-State tracks round-robin cursor positions and search history
+State tracks searched-log positions and search history
 across container restarts. All writes use atomic write-then-rename
 to prevent corruption if the process crashes mid-write.
 
 v2.3: State is nested per-instance -- each configured instance
-(e.g., "Default", "4K Radarr") maintains independent cursors.
+(e.g., "Default", "4K Radarr") maintains independent searched-logs.
 """
 
 from __future__ import annotations
@@ -41,10 +41,8 @@ STATE_PATH = get_state_path()
 
 
 class AppState(TypedDict, total=False):
-    """Per-instance cursor, searched-log, and timing state."""
+    """Per-instance searched-log and timing state."""
 
-    missing_cursor: int  # KEPT: removed in Plan 02 with call-site rewrite (HIGH-2)
-    cutoff_cursor: int  # KEPT: removed in Plan 02 with call-site rewrite (HIGH-2)
     missing_pass: int  # How many times missing queue has completed a full pass (0-based, first pass sets to 1)
     cutoff_pass: int  # How many times cutoff queue has completed a full pass (0-based, first pass sets to 1)
     missing_searched: list[str]  # Ordered searched-log (oldest first) for the missing queue
@@ -77,16 +75,8 @@ class TriggarrState(TypedDict, total=False):
 
 
 def _default_instance_state() -> AppState:
-    """Return a fresh AppState for a single instance with empty searched-logs.
-
-    cursor fields (missing_cursor/cutoff_cursor) are kept here for Plan 01 —
-    they are removed in Plan 02 together with the 6 call-site rewrites (HIGH-2).
-    searched-logs are seeded empty so Plan 02's call sites can read them safely
-    via ``ist.get("<q>_searched", [])``.
-    """
+    """Return a fresh AppState for a single instance with empty searched-logs."""
     return AppState(
-        missing_cursor=0,
-        cutoff_cursor=0,
         missing_searched=[],
         cutoff_searched=[],
         last_run=None,
@@ -155,7 +145,13 @@ def _merge_defaults(loaded: dict) -> TriggarrState:
             merged_section: dict[str, AppState] = {}
             for instance_name, instance_data in loaded_section.items():
                 if isinstance(instance_data, dict):
-                    merged_section[instance_name] = {**_default_instance_state(), **instance_data}
+                    merged = {**_default_instance_state(), **instance_data}
+                    # HIGH-1: strip legacy cursor keys that pre-upgrade state.json may carry.
+                    # {**defaults, **instance_data} preserves unknown keys; without this pop
+                    # save_state would write them back indefinitely.
+                    for legacy_key in ("missing_cursor", "cutoff_cursor"):
+                        merged.pop(legacy_key, None)
+                    merged_section[instance_name] = merged
                 else:
                     merged_section[instance_name] = _default_instance_state()
             defaults[app_key] = merged_section

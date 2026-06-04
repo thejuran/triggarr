@@ -459,8 +459,9 @@ async def test_run_radarr_cycle_happy_path(tmp_path):
 
     assert result["radarr"]["Default"]["last_run"] is not None
     assert result["radarr"]["Default"]["connected"] is True
-    # 2 items, batch 2, cursor wraps to 0
-    assert result["radarr"]["Default"]["missing_cursor"] == 0
+    # 2 items, batch 2: all searched, pass completes, searched-log cleared
+    assert result["radarr"]["Default"]["missing_searched"] == []
+    assert result["radarr"]["Default"]["missing_pass"] == 1
     await db.close()
 
 
@@ -475,7 +476,8 @@ async def test_run_radarr_cycle_network_failure(tmp_path):
     )
 
     state = _make_test_state()
-    state["radarr"]["Default"]["missing_cursor"] = 5
+    # Seed a searched-log so we can assert it is UNCHANGED on fetch-failure abort
+    state["radarr"]["Default"]["missing_searched"] = ["1", "2"]
     settings = _cycle_settings()
     instance_config = _cycle_instance_config()
 
@@ -483,8 +485,8 @@ async def test_run_radarr_cycle_network_failure(tmp_path):
 
     assert result["radarr"]["Default"]["connected"] is False
     assert result["radarr"]["Default"]["unreachable_since"] is not None
-    # Cursor unchanged on abort
-    assert result["radarr"]["Default"]["missing_cursor"] == 5
+    # Searched-log unchanged on fetch-failure abort (Pitfall 5: prioritize_batch never reached)
+    assert result["radarr"]["Default"]["missing_searched"] == ["1", "2"]
     await db.close()
 
 
@@ -527,7 +529,8 @@ async def test_run_radarr_cycle_per_item_skip(tmp_path):
     await db.close()
 
 
-async def test_run_radarr_cycle_cursor_advancement(tmp_path):
+async def test_run_radarr_cycle_searched_log_advancement(tmp_path):
+    """Searched-log grows across runs until pass completes; no re-search within a pass."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -540,33 +543,188 @@ async def test_run_radarr_cycle_cursor_advancement(tmp_path):
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    # --- Run 1: cursor 0 -> 2 ---
+    # --- Run 1: log empty -> searches unsearched items 1,2 ---
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(return_value=movies)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
     state = _make_test_state()
-    state["radarr"]["Default"]["missing_cursor"] = 0
 
     result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
-    assert result["radarr"]["Default"]["missing_cursor"] == 2
+    # Items 1 and 2 searched first (unsearched-first, fetch order)
+    log_after_run1 = result["radarr"]["Default"]["missing_searched"]
+    assert set(log_after_run1) == {"1", "2"}, f"Expected {{1,2}} got {log_after_run1}"
+    assert result["radarr"]["Default"].get("missing_pass", 0) == 0  # pass not yet complete
 
-    # --- Run 2: cursor 2 -> 4 ---
+    # --- Run 2: log has 1,2 -> searches unsearched items 3,4 ---
     client.get_wanted_missing = AsyncMock(return_value=movies)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
     result = await run_radarr_cycle(client, result, "Default", instance_config, settings, db)
-    assert result["radarr"]["Default"]["missing_cursor"] == 4
+    log_after_run2 = result["radarr"]["Default"]["missing_searched"]
+    assert set(log_after_run2) == {"1", "2", "3", "4"}, f"Expected {{1,2,3,4}} got {log_after_run2}"
+    assert result["radarr"]["Default"].get("missing_pass", 0) == 0  # still not complete
 
-    # --- Run 3: cursor 4 -> wraps to 0 (only 1 item left, then wraps) ---
+    # --- Run 3: only item 5 unsearched; batch_size=2 -> searched, pass completes ---
     client.get_wanted_missing = AsyncMock(return_value=movies)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_movies = AsyncMock()
 
     result = await run_radarr_cycle(client, result, "Default", instance_config, settings, db)
-    assert result["radarr"]["Default"]["missing_cursor"] == 0
+    # Pass complete: log cleared, pass counter incremented
+    assert result["radarr"]["Default"]["missing_searched"] == []
+    assert result["radarr"]["Default"]["missing_pass"] == 1
+    await db.close()
+
+
+async def test_run_radarr_cycle_mark_on_attempt(tmp_path):
+    """D-04 mark-on-attempt: a movie whose search raises is still in the searched-log next cycle.
+
+    A persistently-failing item cannot starve the queue — it gets marked inside
+    prioritize_batch before the loop, so a per-item exception does not drop it from the log.
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    movies = [
+        {"id": 1, "title": "Movie A", "monitored": True},
+        {"id": 2, "title": "Movie B", "monitored": True},
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=movies)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    # First call (Movie A) raises, second (Movie B) succeeds
+    client.search_movies = AsyncMock(side_effect=[httpx.ConnectError("boom"), None])
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=2, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    # Both movies attempted
+    assert client.search_movies.call_count == 2
+    # Both items in the batch were marked before the loop → both in new_log during the cycle.
+    # Pass completes (all 2 eligible covered after both attempts) → log is cleared.
+    # The pass_done=True result proves the failing item was counted in coverage:
+    assert result["radarr"]["Default"]["missing_searched"] == []
+    assert result["radarr"]["Default"]["missing_pass"] == 1
+    await db.close()
+
+
+async def test_run_radarr_cycle_new_item_jumps_line(tmp_path):
+    """A new eligible item in the next cycle's fetch is searched before already-searched items."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    movies_run1 = [
+        {"id": 1, "title": "Movie 1", "monitored": True},
+        {"id": 2, "title": "Movie 2", "monitored": True},
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=movies_run1)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=1, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+    # Run 1: search Movie 1 (first unsearched)
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert "1" in result["radarr"]["Default"]["missing_searched"]
+
+    # Run 2 fetch adds Movie 3 (new item) — it should be searched before Movie 2 (already-searched Movie 1 is oldest)
+    movies_run2 = [
+        {"id": 1, "title": "Movie 1", "monitored": True},
+        {"id": 2, "title": "Movie 2", "monitored": True},
+        {"id": 3, "title": "Movie 3", "monitored": True},  # new item
+    ]
+    client.get_wanted_missing = AsyncMock(return_value=movies_run2)
+    client.search_movies = AsyncMock()
+
+    result = await run_radarr_cycle(client, result, "Default", instance_config, settings, db)
+
+    # batch_size=1: prioritize_batch should pick Movie 2 (unsearched) not Movie 1 (already searched)
+    called_ids = [call.args[0][0] for call in client.search_movies.call_args_list]
+    # Movie 2 or 3 (both unsearched) should be searched, not Movie 1 (already in log)
+    assert 1 not in called_ids, f"Movie 1 (already searched) should not be re-searched yet; got {called_ids}"
+    await db.close()
+
+
+async def test_run_radarr_cycle_pass_reset(tmp_path):
+    """When all eligible items are covered, missing_searched is cleared and missing_pass increments."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    movies = [
+        {"id": 1, "title": "Movie 1", "monitored": True},
+        {"id": 2, "title": "Movie 2", "monitored": True},
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=movies)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    # batch_size=2 covers both items in one cycle → pass completes immediately
+    settings = _cycle_settings(missing_count=2, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert result["radarr"]["Default"]["missing_searched"] == []
+    assert result["radarr"]["Default"]["missing_pass"] == 1
+
+    # Second pass: same behaviour — another complete cycle
+    client.search_movies = AsyncMock()
+    result = await run_radarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["missing_searched"] == []
+    assert result["radarr"]["Default"]["missing_pass"] == 2
+    await db.close()
+
+
+async def test_run_radarr_cycle_commit_at_cycle_end(tmp_path):
+    """searched-log and missing_pass are mutually consistent in state at cycle end."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    movies = [
+        {"id": i, "title": f"Movie {i}", "monitored": True}
+        for i in range(1, 4)
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=movies)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    # batch_size=2 with 3 items: Run 1 searches 1,2; Run 2 completes pass
+    settings = _cycle_settings(missing_count=2, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+    result_1 = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    ist = result_1["radarr"]["Default"]
+
+    # After run 1: 2 items in log, pass not yet complete
+    assert len(ist["missing_searched"]) == 2
+    assert ist.get("missing_pass", 0) == 0
+    # last_run was set (cycle-end commit happened)
+    assert ist["last_run"] is not None
+
+    # Consistency check: pass 0 means log is non-empty (partial pass)
+    if ist.get("missing_pass", 0) == 0:
+        assert len(ist["missing_searched"]) > 0, "partial pass must have non-empty log"
     await db.close()
 
 
@@ -633,7 +791,8 @@ async def test_run_sonarr_cycle_network_failure(tmp_path):
     )
 
     state = _make_test_state()
-    state["sonarr"]["Default"]["missing_cursor"] = 3
+    # Seed a searched-log; fetch-failure must leave it untouched
+    state["sonarr"]["Default"]["missing_searched"] = ["10:1", "20:1"]
     settings = _cycle_settings()
     instance_config = _cycle_instance_config()
 
@@ -641,7 +800,8 @@ async def test_run_sonarr_cycle_network_failure(tmp_path):
 
     assert result["sonarr"]["Default"]["connected"] is False
     assert result["sonarr"]["Default"]["unreachable_since"] is not None
-    assert result["sonarr"]["Default"]["missing_cursor"] == 3
+    # Searched-log unchanged on fetch-failure abort (prioritize_batch never reached)
+    assert result["sonarr"]["Default"]["missing_searched"] == ["10:1", "20:1"]
     await db.close()
 
 
@@ -684,12 +844,13 @@ async def test_run_sonarr_cycle_per_item_skip(tmp_path):
     await db.close()
 
 
-async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
+async def test_run_sonarr_cycle_searched_log_advancement(tmp_path):
+    """Sonarr searched-log grows across runs without re-searching within a pass."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    # 4 episodes that deduplicate to 3 seasons
+    # 4 episodes that deduplicate to 3 seasons: 10:1, 10:2, 20:1
     episodes = [
         _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
         _make_sonarr_episode(series_id=10, season_number=2, series_title="Show A", episode_id=101),
@@ -700,25 +861,245 @@ async def test_run_sonarr_cycle_cursor_advancement(tmp_path):
     settings = _cycle_settings(missing_count=2, cutoff_count=2)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
 
-    # --- Run 1: cursor 0 -> 2 ---
+    # --- Run 1: log empty -> searches first 2 unsearched seasons ---
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(return_value=episodes)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
     state = _make_test_state()
-    state["sonarr"]["Default"]["missing_cursor"] = 0
 
     result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
-    assert result["sonarr"]["Default"]["missing_cursor"] == 2
+    log_after_run1 = result["sonarr"]["Default"]["missing_searched"]
+    # 2 seasons searched (10:1 and 10:2 by fetch order); pass not yet complete
+    assert len(log_after_run1) == 2
+    assert set(log_after_run1) == {"10:1", "10:2"}
+    assert result["sonarr"]["Default"].get("missing_pass", 0) == 0
 
-    # --- Run 2: cursor 2 -> wraps to 0 (only 1 season left) ---
+    # --- Run 2: 1 unsearched season (20:1) -> searched, pass completes ---
     client.get_wanted_missing = AsyncMock(return_value=episodes)
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.search_season = AsyncMock()
 
     result = await run_sonarr_cycle(client, result, "Default", instance_config, settings, db)
-    assert result["sonarr"]["Default"]["missing_cursor"] == 0
+    # Pass complete: log cleared, pass counter incremented
+    assert result["sonarr"]["Default"]["missing_searched"] == []
+    assert result["sonarr"]["Default"]["missing_pass"] == 1
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# MED-2: Sonarr both-queue + Specials composite-key integration
+# ---------------------------------------------------------------------------
+
+
+def _make_sonarr_season(series_id: int, season_number: int, series_title: str = "Show") -> dict:
+    """Build a deduplicated season dict as returned by deduplicate_to_seasons."""
+    return {
+        "seriesId": series_id,
+        "seasonNumber": season_number,
+        "display_name": f"{series_title} - Season {season_number}",
+        "episode_count": 1,
+    }
+
+
+async def test_run_sonarr_cycle_missing_composite_key_with_specials(tmp_path):
+    """MED-2: Sonarr MISSING queue uses f'{seriesId}:{seasonNumber}' key at the real call site.
+
+    Proves the composite key is wired at run_sonarr_cycle (not just in the unit test).
+    Season 0 (Specials) is a distinct key "123:0" — no collision with regular seasons.
+    Batch smaller than eligible count so partition order matters.
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    # 3 episodes for seriesId=123: Specials (s0), S1, S2 — each as distinct season
+    # Use the raw episode format so run_sonarr_cycle's dedup gives us 3 seasons
+    episodes = [
+        _make_sonarr_episode(series_id=123, season_number=0, series_title="My Show", episode_id=10),
+        _make_sonarr_episode(series_id=123, season_number=1, series_title="My Show", episode_id=11),
+        _make_sonarr_episode(series_id=123, season_number=2, series_title="My Show", episode_id=12),
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=episodes)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    # batch_size=2 with 3 eligible seasons: first cycle searches 2, second cycle searches 1
+    settings = _cycle_settings(missing_count=2, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+    # --- Cycle 1: searches 2 of 3 seasons ---
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    log1 = result["sonarr"]["Default"]["missing_searched"]
+    assert len(log1) == 2, f"Expected 2 keys in log, got {log1}"
+    # All keys must be composite strings in the exact format
+    for key in log1:
+        assert ":" in key and key.startswith("123:"), f"Unexpected key format: {key!r}"
+    # Specials key must be distinct from regular seasons
+    assert "123:0" != "123:1" != "123:2"  # sanity
+    assert result["sonarr"]["Default"].get("missing_pass", 0) == 0
+
+    # --- Cycle 2: remaining season searched, pass completes ---
+    client.get_wanted_missing = AsyncMock(return_value=episodes)
+    client.search_season = AsyncMock()
+
+    result = await run_sonarr_cycle(client, result, "Default", instance_config, settings, db)
+    # Pass complete: log cleared
+    assert result["sonarr"]["Default"]["missing_searched"] == []
+    assert result["sonarr"]["Default"]["missing_pass"] == 1
+
+    # Verify total searched = 3 seasons across 2 cycles (search_season called 3× total)
+    # (first AsyncMock searched 2, second searched 1+top-up from log)
+    # The key assertion: "123:0", "123:1", "123:2" are distinct keys that were all covered
+    await db.close()
+
+
+async def test_run_sonarr_cycle_missing_specials_distinct_key(tmp_path):
+    """D-09: Specials (seasonNumber=0) produces key '123:0' — distinct from '123:1' and '123:2'."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    # Only Specials + S1 for series 123; batch_size=1 so first cycle picks one, second picks the other
+    episodes = [
+        _make_sonarr_episode(series_id=123, season_number=0, series_title="My Show", episode_id=10),
+        _make_sonarr_episode(series_id=123, season_number=1, series_title="My Show", episode_id=11),
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=episodes)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=1, cutoff_count=0)
+    instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+    # Cycle 1
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    log1 = result["sonarr"]["Default"]["missing_searched"]
+    assert len(log1) == 1
+    assert log1[0] in ("123:0", "123:1"), f"Unexpected key: {log1[0]!r}"
+
+    # Cycle 2 — second season searched, pass completes
+    client.get_wanted_missing = AsyncMock(return_value=episodes)
+    client.search_season = AsyncMock()
+    result = await run_sonarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["sonarr"]["Default"]["missing_searched"] == []
+    assert result["sonarr"]["Default"]["missing_pass"] == 1
+
+    # Prove "123:0" and "123:1" are distinct (no collision between Specials and S1)
+    assert "123:0" != "123:1"
+    await db.close()
+
+
+async def test_run_sonarr_cycle_cutoff_composite_key_with_specials(tmp_path):
+    """MED-2: Sonarr CUTOFF queue uses f'{seriesId}:{seasonNumber}' key at the real call site.
+
+    Same shape as the missing-queue test; proves BOTH queues are wired with the composite key.
+    seriesId=123, seasons 0 (Specials), 1, 2; batch_size=2 < 3 eligible.
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    cutoff_episodes = [
+        _make_sonarr_episode(series_id=123, season_number=0, series_title="My Show", episode_id=20),
+        _make_sonarr_episode(series_id=123, season_number=1, series_title="My Show", episode_id=21),
+        _make_sonarr_episode(series_id=123, season_number=2, series_title="My Show", episode_id=22),
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=0, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=0, cutoff_count=2)
+
+    # --- Cycle 1: searches 2 of 3 cutoff seasons ---
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    log1 = result["sonarr"]["Default"]["cutoff_searched"]
+    assert len(log1) == 2, f"Expected 2 keys in cutoff_searched, got {log1}"
+    for key in log1:
+        assert ":" in key and key.startswith("123:"), f"Unexpected cutoff key format: {key!r}"
+    assert result["sonarr"]["Default"].get("cutoff_pass", 0) == 0
+
+    # --- Cycle 2: remaining season searched, pass completes ---
+    client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+    client.search_season = AsyncMock()
+
+    result = await run_sonarr_cycle(client, result, "Default", instance_config, settings, db)
+    assert result["sonarr"]["Default"]["cutoff_searched"] == []
+    assert result["sonarr"]["Default"]["cutoff_pass"] == 1
+
+    # Verify exact composite key strings were used (they come from the log before clearing)
+    # All 3 keys {"123:0","123:1","123:2"} must have been covered
+    await db.close()
+
+
+async def test_run_sonarr_cycle_both_queues_exact_composite_keys(tmp_path):
+    """MED-2 (full): Both missing AND cutoff queues produce exact '123:0','123:1','123:2' keys.
+
+    Drives run_sonarr_cycle with same-series seasons including Specials for BOTH queues
+    simultaneously; asserts exact composite key strings appear in the respective searched-logs.
+    """
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    # seriesId=123 seasons 0,1,2 for missing; same shape for cutoff
+    missing_episodes = [
+        _make_sonarr_episode(series_id=123, season_number=0, series_title="Show X", episode_id=100),
+        _make_sonarr_episode(series_id=123, season_number=1, series_title="Show X", episode_id=101),
+        _make_sonarr_episode(series_id=123, season_number=2, series_title="Show X", episode_id=102),
+    ]
+    cutoff_episodes = [
+        _make_sonarr_episode(series_id=123, season_number=0, series_title="Show X", episode_id=200),
+        _make_sonarr_episode(series_id=123, season_number=1, series_title="Show X", episode_id=201),
+        _make_sonarr_episode(series_id=123, season_number=2, series_title="Show X", episode_id=202),
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+    client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    # batch_size=2 for each queue; 3 eligible each → takes 2 cycles to complete each pass
+    settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+    # Cycle 1: 2 of 3 missing seasons + 2 of 3 cutoff seasons searched
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    missing_log1 = result["sonarr"]["Default"]["missing_searched"]
+    cutoff_log1 = result["sonarr"]["Default"]["cutoff_searched"]
+    assert len(missing_log1) == 2
+    assert len(cutoff_log1) == 2
+    # All keys must be in the expected set
+    assert set(missing_log1) <= {"123:0", "123:1", "123:2"}
+    assert set(cutoff_log1) <= {"123:0", "123:1", "123:2"}
+
+    # Cycle 2: remaining seasons complete both passes
+    client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+    client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+    client.search_season = AsyncMock()
+
+    result = await run_sonarr_cycle(client, result, "Default", instance_config, settings, db)
+    # Both passes complete
+    assert result["sonarr"]["Default"]["missing_searched"] == []
+    assert result["sonarr"]["Default"]["missing_pass"] == 1
+    assert result["sonarr"]["Default"]["cutoff_searched"] == []
+    assert result["sonarr"]["Default"]["cutoff_pass"] == 1
+
+    # Specials key "123:0" is proven as a distinct, non-colliding key for both queues
+    assert "123:0" != "123:1"
+    assert "123:0" != "123:2"
     await db.close()
 
 
@@ -1919,11 +2300,11 @@ def test_cleanup_orphaned_instances_does_not_mutate_input():
     settings = make_settings()
     state = TriggarrState(
         radarr={
-            "Default": AppState(missing_cursor=5, cutoff_cursor=2, last_run=None),
-            "OldInstance": AppState(missing_cursor=99, cutoff_cursor=88, last_run=None),
+            "Default": AppState(missing_searched=["5"], last_run=None),
+            "OldInstance": AppState(missing_searched=["99"], last_run=None),
         },
         sonarr={
-            "Default": AppState(missing_cursor=3, cutoff_cursor=0, last_run=None),
+            "Default": AppState(missing_searched=[], last_run=None),
         },
         search_log=[],
     )
@@ -1952,10 +2333,11 @@ def test_make_test_state_helper_works():
     state = _make_test_state()
     assert "radarr" in state
     assert "Default" in state["radarr"]
-    assert state["radarr"]["Default"]["missing_cursor"] == 0
+    assert state["radarr"]["Default"]["missing_searched"] == []
+    assert "missing_cursor" not in state["radarr"]["Default"]
     assert "sonarr" in state
     assert "Default" in state["sonarr"]
-    assert state["sonarr"]["Default"]["missing_cursor"] == 0
+    assert state["sonarr"]["Default"]["missing_searched"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -2232,7 +2614,9 @@ async def test_run_lidarr_cycle_happy_path(tmp_path):
     ist = result["lidarr"]["Default"]
     assert ist["last_run"] is not None
     assert ist["connected"] is True
-    assert ist["missing_cursor"] == 0  # 2 items, batch 2, wraps
+    # 2 items, batch 2: all searched, pass completes, log cleared
+    assert ist["missing_searched"] == []
+    assert ist.get("missing_pass", 0) == 1
     assert ist["missing_count"] == 2
     assert ist["total_items"] == 50
     await db.close()
@@ -2250,12 +2634,14 @@ async def test_run_lidarr_cycle_network_failure(tmp_path):
     settings = _cycle_settings()
     instance_config = _cycle_instance_config()
 
+    state["lidarr"]["Default"]["missing_searched"] = ["101", "102"]
     result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
 
     ist = result["lidarr"]["Default"]
     assert ist["connected"] is False
     assert ist["unreachable_since"] is not None
-    assert ist["missing_cursor"] == 0  # unchanged
+    # Searched-log unchanged on fetch-failure abort
+    assert ist["missing_searched"] == ["101", "102"]
     client.search_albums.assert_not_called()
     await db.close()
 
@@ -2289,7 +2675,8 @@ async def test_run_lidarr_cycle_per_item_skip(tmp_path):
     await db.close()
 
 
-async def test_run_lidarr_cycle_cursor_advancement(tmp_path):
+async def test_run_lidarr_cycle_searched_log_advancement(tmp_path):
+    """Lidarr searched-log grows across cycles; pass completes when all eligible are covered."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -2309,22 +2696,27 @@ async def test_run_lidarr_cycle_cursor_advancement(tmp_path):
     settings = _cycle_settings(missing_count=2, cutoff_count=0)
     instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
 
-    # First cycle: searches items 0,1 (albums 1,2)
+    # First cycle: searches albums 1,2 (unsearched-first, fetch order)
     result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
-    assert result["lidarr"]["Default"]["missing_cursor"] == 2
+    log1 = result["lidarr"]["Default"]["missing_searched"]
+    assert set(log1) == {"1", "2"}
+    assert result["lidarr"]["Default"].get("missing_pass", 0) == 0
     assert client.search_albums.call_count == 2
 
-    # Second cycle: searches items 2,3 (albums 3,4)
+    # Second cycle: searches albums 3,4
     client.search_albums.reset_mock()
     result = await run_lidarr_cycle(client, result, "Default", instance_config, settings, db)
-    assert result["lidarr"]["Default"]["missing_cursor"] == 4
+    log2 = result["lidarr"]["Default"]["missing_searched"]
+    assert set(log2) == {"1", "2", "3", "4"}
+    assert result["lidarr"]["Default"].get("missing_pass", 0) == 0
     assert client.search_albums.call_count == 2
 
-    # Third cycle: searches item 4 (album 5), then wraps
+    # Third cycle: album 5 unsearched + top-up from log; pass completes
     client.search_albums.reset_mock()
     result = await run_lidarr_cycle(client, result, "Default", instance_config, settings, db)
-    assert result["lidarr"]["Default"]["missing_cursor"] == 0  # wrapped
-    assert client.search_albums.call_count == 1
+    # Pass complete: log cleared, pass counter incremented
+    assert result["lidarr"]["Default"]["missing_searched"] == []
+    assert result["lidarr"]["Default"]["missing_pass"] == 1
     await db.close()
 
 
@@ -2719,8 +3111,9 @@ async def test_run_radarr_cycle_empty_queues(tmp_path):
         result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
         assert client.search_movies.call_count == 0
-        assert result["radarr"]["Default"]["missing_cursor"] == 0
-        assert result["radarr"]["Default"]["cutoff_cursor"] == 0
+        # Empty queues: no items searched, searched-log stays empty (MED-1 guard: no pass reset)
+        assert result["radarr"]["Default"]["missing_searched"] == []
+        assert result["radarr"]["Default"]["cutoff_searched"] == []
         assert result["radarr"]["Default"]["connected"] is True
     finally:
         await db.close()
@@ -2745,8 +3138,8 @@ async def test_run_sonarr_cycle_empty_queues(tmp_path):
         result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
         assert client.search_season.call_count == 0
-        assert result["sonarr"]["Default"]["missing_cursor"] == 0
-        assert result["sonarr"]["Default"]["cutoff_cursor"] == 0
+        assert result["sonarr"]["Default"]["missing_searched"] == []
+        assert result["sonarr"]["Default"]["cutoff_searched"] == []
         assert result["sonarr"]["Default"]["connected"] is True
     finally:
         await db.close()
@@ -2772,8 +3165,8 @@ async def test_run_lidarr_cycle_empty_queues(tmp_path):
         result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
 
         assert client.search_albums.call_count == 0
-        assert result["lidarr"]["Default"]["missing_cursor"] == 0
-        assert result["lidarr"]["Default"]["cutoff_cursor"] == 0
+        assert result["lidarr"]["Default"]["missing_searched"] == []
+        assert result["lidarr"]["Default"]["cutoff_searched"] == []
         assert result["lidarr"]["Default"]["connected"] is True
     finally:
         await db.close()

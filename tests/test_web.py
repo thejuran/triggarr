@@ -1847,7 +1847,9 @@ def test_save_settings_creates_state_for_new_instance(client, test_app, tmp_path
     # State should now have entries for the enabled instances
     state = test_app.state.triggarr_state
     assert "Default" in state.get("radarr", {}), "State should have Default radarr entry after save_settings"
-    assert state["radarr"]["Default"]["missing_cursor"] == 0
+    # Cursor fields removed in Plan 02; new instances carry empty searched-logs
+    assert state["radarr"]["Default"]["missing_searched"] == []
+    assert "missing_cursor" not in state["radarr"]["Default"]
     assert "Default" in state.get("sonarr", {}), "State should have Default sonarr entry after save_settings"
 
 
