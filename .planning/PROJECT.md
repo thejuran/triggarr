@@ -43,9 +43,19 @@ v2.10 Recovery, Counts & Config Parity shipped 2026-06-04 (released as v2.10.0).
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
-## Next Milestone: (planning)
+## Current Milestone: v2.11 Never-Searched-First Search Queue Priority
 
-v2.10 shipped 2026-06-04. Run `/gsd:new-milestone` to scope the next one. Candidate parked items remain in STATE.md Deferred Items (v2.6 UI pixel-verification, PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, v2.9-audit follow-ups) plus the v2.10 deep-review tech-debt follow-ups (retire the dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; migrate `request_timeout` to `safe_float`).
+**Goal:** Replace the blind integer-cursor search walk with per-item memory so the scheduler prioritizes items it has never searched before.
+
+**Target features:**
+- **Ordered searched-log on `AppState`** — per instance, per queue (missing/cutoff), storing *arr item IDs in the order they were searched (oldest first). Radarr/Lidarr = `id`; Sonarr = composite `seriesId:seasonNumber`. Replaces the integer cursor for dispatch.
+- **`prioritize_batch()` pure function** — assembles each cycle's batch never-searched-first (in fetched API order), then tops up oldest-searched-first. Swapped into all 6 cycle call sites (Radarr/Sonarr/Lidarr × missing/cutoff), replacing `slice_batch`.
+- **Mark-on-attempt, reset-per-pass, prune-to-eligible, commit-at-cycle-end** — an ID joins the log once its search fires (success or failure, so no item starves the queue); when every eligible item has been searched the log clears and the existing `*_pass` counter bumps; the log is pruned to currently-eligible IDs each cycle (bounded); state commits in the single atomic `save_state()` at cycle end (at-least-once).
+- **Removals** — `missing_cursor`/`cutoff_cursor` drop from `AppState` and `slice_batch` is deleted. No migration step: pre-upgrade `state.json` files tolerate the leftover cursor keys until the next save overwrites them.
+
+**Key context:** Source of truth is the approved design spec `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md` (10 locked decisions in §3, explicit YAGNI scope fence in §9, anticipated affected files in §10). Behavior-preserving on a cold start (empty log = everything unsearched = identical to today's first cycle). Phase numbering continues from v2.10 (last phase 75). Explicitly **untouched**: fetch/filter phases, batch-size config (`search_missing_count`/`search_cutoff_count`), `hard_max_per_cycle`, the global `search_lock`, scheduler intervals, the manual-search rate limit, the SAFETY-03 consecutive-failure counter, and the count-only refresh path.
+
+**Still parked for a future milestone:** v2.6 UI pixel-verification (UI-01..03, human-needed, behind first-run), PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, the `--color-triggarr-primaryDark` cosmetic token cleanup, v2.9-audit follow-ups, and the v2.10 deep-review tech-debt follow-ups (retire the dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; migrate `request_timeout` to `safe_float`). See STATE.md Deferred Items.
 
 <details>
 <summary>Shipped milestone: v2.10 Recovery, Counts & Config Parity (2026-06-04)</summary>
@@ -198,9 +208,9 @@ v2.10 shipped 2026-06-04. Run `/gsd:new-milestone` to scope the next one. Candid
 
 ### Active
 
-No active requirements — v2.9 shipped. Run `/gsd:new-milestone` to scope the next set.
+**v2.11 Never-Searched-First Search Queue Priority** — see `.planning/REQUIREMENTS.md` for the scoped REQ-IDs. Replace the integer-cursor search walk with an ordered per-item searched-log on `AppState` that prioritizes never-searched items, tops up oldest-searched-first, marks on attempt, resets per pass, and prunes to eligible. Source of truth: `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md`.
 
-Parked for a future milestone: config-knob UI debt (DEBT-07 timeout, DEBT-08 page-size, DEBT-03 history-cap, DEBT-06 drain), v2.6 UI pixel-verification (UI-01..03), and v2.9-audit follow-ups (SSRF-validator dedup, Retry-Connection `hx-disabled-elt`, bug-report.yml v2.9 option). See STATE.md Deferred Items.
+Parked for a future milestone: v2.6 UI pixel-verification (UI-01..03), PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, v2.9-audit follow-ups, and v2.10 deep-review tech-debt follow-ups (dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; `request_timeout` → `safe_float`). See STATE.md Deferred Items.
 
 ### Out of Scope
 
@@ -311,4 +321,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-04 after v2.10 Recovery, Counts & Config Parity milestone shipped (v2.10.0)*
+*Last updated: 2026-06-04 after v2.11 Never-Searched-First Search Queue Priority milestone started*

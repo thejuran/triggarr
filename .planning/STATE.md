@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.10
-milestone_name: Recovery, Counts & Config Parity
-status: Awaiting next milestone
-stopped_at: Milestone v2.10 shipped and archived (released as v2.10.0; tag held locally, unpushed)
-last_updated: "2026-06-04T12:06:05.625Z"
-last_activity: 2026-06-04 — Milestone v2.10 completed and archived
+milestone: v2.11
+milestone_name: Never-Searched-First Search Queue Priority
+status: planning
+last_updated: "2026-06-04T17:37:28.833Z"
+last_activity: 2026-06-04
 progress:
-  total_phases: 6
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-  percent: 67
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: Milestone v2.10 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-04 — Milestone v2.10 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-04 — Milestone v2.11 started
 
 ### v2.10 milestone shape
 
