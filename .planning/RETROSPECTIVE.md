@@ -367,6 +367,40 @@
 
 ---
 
+## Milestone: v2.11 — Never-Searched-First Search Queue Priority
+
+**Shipped:** 2026-06-04
+**Phases:** 1 (Phase 76) | **Plans:** 3
+
+### What Was Built
+Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` + `slice_batch`) with an ordered per-instance searched-log on `AppState` and a single pure `prioritize_batch()` dispatcher shared across all three apps: never-searched-first in fetch order, top-up oldest-searched-first, mark-on-attempt, reset-per-pass, prune-to-eligible, commit-at-cycle-end. `_merge_defaults` strips legacy cursor keys on load (no migration step); count-only refresh stays queue-independent.
+
+### What Worked
+- A brainstorming spec that resolved every technical decision against the live codebase (10 locked decisions) made discuss/plan fast and gave codex + the review agents a tight, unambiguous target.
+- The TDD-first Plan 01 (RED unit matrix + cold-start oracle before any caller depended on `prioritize_batch`) locked the behavior-preservation guarantee early; the oracle-before-`slice_batch`-removal sequencing held across all three waves.
+- Codex adversarial review at the **plan** stage caught two genuine design blockers (stale-key persistence — the merge preserves unknown keys, so the "overwritten on next save" assumption was false; and a broken per-plan runtime checkpoint) plus two mediums BEFORE any code was written — far cheaper than catching them in execution or review.
+- The deep-review impact + architecture agents caught a real cross-file regression that compile + the full test suite + build-verify all missed: the cursor removal left the dashboard read-side half-migrated (`routes.py`/`app_card.html` still read the deleted keys → "0 of N" frozen). `.get(default)` never raises, so only a diff-aware reviewer reasoning about blast radius found it.
+- Live NAS walkthrough confirmed the fix end-to-end (the dashboard numerator climbed in real time as scheduled cycles searched) and exercised the Sonarr composite-key path on real season-level searches.
+
+### What Was Inefficient
+- The codex adversarial loop ran **10 rounds** — but only round 1 found design blockers; rounds 2–10 were a long tail of propagating the *same two corrected facts* (strip-on-load; the `bool(batch)` pass guard) through every supporting doc (PATTERNS → RESEARCH → VALIDATION → ROADMAP → PROJECT → the design spec), one file per round. The plans the executor actually used were correct after round 1's fix; the tail was doc-consistency whack-a-mole. A single "propagate this correction across the whole read_first corpus" sweep up front would have collapsed rounds 2–10 into one.
+- The walkthrough harness couldn't drive the polled app-card buttons (live htmx re-render races the snapshot→click two-step), so "Search Now" / "Refresh counts" were verified via the identical scheduled-cycle code path + static-page observation rather than direct clicks.
+
+### Patterns Established
+- **Diff-aware review catches what compile + tests can't.** A field removal that silently breaks an unchanged consumer via `.get(removed_key, default)` is invisible to the compiler, the test suite, and an import-graph build-verify — but obvious to an impact agent reasoning about blast radius. Keep the impact/architecture agents in the deep-review fan-out even for "internal refactor" phases.
+- **Propagate a corrected fact corpus-wide in one pass.** When adversarial review overturns an assumption, grep the entire read_first corpus (plans + all phase docs + the upstream spec + PROJECT/ROADMAP) for every echo and fix them together, rather than letting each subsequent round surface one more stale copy.
+
+### Key Lessons
+- A great design spec front-loads quality but can still carry a wrong assumption (here, "leftover cursor keys are overwritten on next save"); adversarial review at the plan stage is where that gets caught cheaply.
+- "Internal refactor, low risk" is exactly when to keep the cross-file impact analysis on — the riskiest bug this milestone was a UI regression in a file the phase never touched.
+
+### Cost Observations
+- Model mix: ~45% opus (orchestration, planning, 10 codex adversarial rounds, deep-review architecture, verification, audit), ~55% sonnet (3 executor agents, the bug/security/impact/compliance/python review agents, integration check, triage).
+- Sessions: 1 long orchestrated session (brainstorm → new-milestone → discuss/plan/adversarial/execute/deep-review for the single phase → deploy/walkthrough/audit/complete).
+- Notable: 10-round adversarial loop (1 substantive round + 9 doc-propagation rounds — the inefficiency above); deep review found a regression the test suite missed; live walkthrough confirmed the fix with 0 bugs.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
