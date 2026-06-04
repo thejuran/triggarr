@@ -120,6 +120,7 @@ async def test_app(tmp_path):
 
         # Rate limit state (needed by search_now rate limiter — DEBT-01)
         app.state.last_search_time = {}
+        app.state.last_refresh_time = {}          # Phase 74: sibling rate-limit dict for refresh_counts
         app.state.last_health_check = None
 
         # RES-03: tag cache (read by search_now resolver, popped by

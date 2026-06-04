@@ -1,4 +1,4 @@
-"""Tests for count-only refresh: engine helpers (refresh_*_counts).
+"""Tests for count-only refresh: engine helpers (refresh_*_counts) and route.
 
 Covers:
 - CNT-01: helper returns correct raw + eligible counts (ist mutation)
@@ -8,15 +8,23 @@ Covers:
   without raising on AttributeError/KeyError/TypeError from filter/dedup/tag
 - Per-app (Radarr/Sonarr/Lidarr) search-call-order and cutoff-fault-before-missing
   regression tests driving the real run_*_cycle functions
+- Route tests (CNT-04): POST /api/refresh-counts/{app}/{instance} guards, rate-limit,
+  always-200, DRSEC-03, discard-return, ist-build, malformed-data always-200
 """
 
 from __future__ import annotations
 
+import asyncio
+import time
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
 import httpx
+import pytest
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.testclient import TestClient
 
 from tests.conftest import make_settings
 from triggarr.db import init_db
@@ -30,6 +38,7 @@ from triggarr.search.engine import (
     run_sonarr_cycle,
 )
 from triggarr.state import _default_instance_state, _default_state
+from triggarr.web.routes import STATIC_DIR, router
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -721,3 +730,290 @@ async def test_run_lidarr_cycle_cutoff_fault_does_not_block_missing_search(tmp_p
     assert 1 in missing_search_calls, (
         f"Missing album search did NOT run! calls={missing_search_calls}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Route tests: POST /api/refresh-counts/{app}/{instance}
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def refresh_test_app(tmp_path):
+    """Minimal FastAPI app with last_refresh_time initialized (mirrors test_app in test_web.py)."""
+    app = FastAPI()
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.include_router(router)
+
+    db_path = tmp_path / "test.db"
+    async with aiosqlite.connect(db_path) as db:
+        await init_db(db, db_path)
+        app.state.db = db
+        app.state.triggarr_state = {
+            "radarr": {
+                "Default": {
+                    "missing_cursor": 0,
+                    "cutoff_cursor": 0,
+                    "last_run": None,
+                    "last_success": None,
+                    "connected": True,
+                    "unreachable_since": None,
+                    "missing_count": 5,
+                    "cutoff_count": 2,
+                    "missing_eligible": 5,
+                    "missing_monitored": 5,
+                    "tag_warnings": [],
+                    "total_items": None,
+                    "missing_searchable": None,
+                    "cutoff_searchable": None,
+                    "missing_pass": 0,
+                    "cutoff_pass": 0,
+                },
+            },
+            "sonarr": {
+                "Default": {
+                    "missing_cursor": 0, "cutoff_cursor": 0,
+                    "last_run": None, "last_success": None,
+                    "connected": None, "unreachable_since": None,
+                    "missing_count": None, "cutoff_count": None,
+                    "missing_eligible": None, "missing_searchable": None,
+                    "cutoff_searchable": None, "tag_warnings": [],
+                    "total_items": None, "missing_monitored": None,
+                    "missing_pass": 0, "cutoff_pass": 0,
+                },
+            },
+            "lidarr": {
+                "Default": {
+                    "missing_cursor": 0, "cutoff_cursor": 0,
+                    "last_run": None, "last_success": None,
+                    "connected": None, "unreachable_since": None,
+                    "missing_count": None, "cutoff_count": None,
+                    "missing_eligible": None, "missing_searchable": None,
+                    "cutoff_searchable": None, "tag_warnings": [],
+                    "total_items": None, "missing_monitored": None,
+                    "missing_pass": 0, "cutoff_pass": 0,
+                },
+            },
+            "search_log": [],
+        }
+        app.state.settings = make_settings(radarr_enabled=True, sonarr_enabled=True)
+        mock_scheduler = MagicMock()
+        mock_job = MagicMock()
+        mock_job.next_run_time = None
+        mock_scheduler.get_job.return_value = mock_job
+        app.state.scheduler = mock_scheduler
+
+        radarr_client = MagicMock()
+        radarr_client.close = AsyncMock()
+        sonarr_client = MagicMock()
+        sonarr_client.close = AsyncMock()
+        lidarr_client = MagicMock()
+        lidarr_client.close = AsyncMock()
+        app.state.radarr_clients = {"Default": radarr_client}
+        app.state.sonarr_clients = {"Default": sonarr_client}
+        app.state.lidarr_clients = {"Default": lidarr_client}
+
+        app.state.config_path = tmp_path / "triggarr.toml"
+        app.state.state_path = tmp_path / "state.json"
+        app.state.search_lock = asyncio.Lock()
+        app.state.search_lock_holder = None
+        app.state.search_failures = {}
+        app.state.persistence_degraded = False
+        app.state.last_search_time = {}
+        app.state.last_refresh_time = {}  # NEW: sibling rate-limit dict (D-08)
+        app.state.last_health_check = None
+        app.state.tag_cache = {}
+
+        yield app
+
+
+@pytest.fixture
+def refresh_client(refresh_test_app):
+    return TestClient(refresh_test_app)
+
+
+def test_refresh_counts_invalid_app(refresh_client):
+    """POST /api/refresh-counts/invalid returns 400 with 'Invalid app' (CNT-04)."""
+    response = refresh_client.post("/api/refresh-counts/invalid/Default")
+    assert response.status_code == 400
+    assert "Invalid app" in response.text
+
+
+def test_refresh_counts_instance_name_too_long(refresh_client):
+    """POST with instance name >64 chars returns 400 (CNT-04)."""
+    long_name = "x" * 65
+    response = refresh_client.post(f"/api/refresh-counts/radarr/{long_name}")
+    assert response.status_code == 400
+
+
+def test_refresh_counts_happy_path(refresh_client, refresh_test_app):
+    """POST /api/refresh-counts/radarr/Default returns 200 with Radarr card (CNT-04).
+
+    Helper patched to return the real 3-tuple shape ([], [], None) — NOT a 2-tuple.
+    """
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(return_value=([], [], None)),
+    ):
+        response = refresh_client.post("/api/refresh-counts/radarr/Default")
+    assert response.status_code == 200
+    assert "Radarr" in response.text
+
+
+def test_refresh_counts_three_tuple_passes_through(refresh_client, refresh_test_app):
+    """Codex rewrite-2: 3-tuple helper return flows through without error (CNT-04).
+
+    Proves the endpoint does NOT unpack or inspect the helper result.
+    A 3-tuple (not a 2-tuple) is required — if the endpoint accidentally unpacks
+    a 2-tuple this test's mock would fail the unpack differently, exposing the bug.
+    """
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(return_value=(["m"], ["c"], 7)),
+    ):
+        response = refresh_client.post("/api/refresh-counts/radarr/Default")
+    assert response.status_code == 200
+    assert "Radarr" in response.text
+
+
+def test_refresh_counts_builds_card_from_ist_not_return(refresh_client, refresh_test_app):
+    """Codex rewrite-2: card is built from in-place ist mutation, NOT the return value (CNT-04).
+
+    Side effect mutates state["radarr"]["Default"]["missing_eligible"] to sentinel 4242
+    and returns throwaway 3-tuple. Assert the card reflects 4242 (from ist), proving
+    the endpoint reads ist after the helper runs — not the return value.
+    """
+    state = refresh_test_app.state.triggarr_state
+
+    def _mutate_and_return(_client, _state, _instance_name, _instance_config, _settings, **_kwargs):
+        state["radarr"]["Default"]["missing_eligible"] = 4242
+        return (["throw"], ["away"], 0)
+
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(side_effect=_mutate_and_return),
+    ):
+        response = refresh_client.post("/api/refresh-counts/radarr/Default")
+
+    assert response.status_code == 200
+    # The card must reflect the ist-mutation sentinel 4242
+    assert "4242" in response.text
+
+
+def test_refresh_counts_malformed_data_returns_200_card(refresh_client, refresh_test_app):
+    """Rewrite-3 route regression (CNT-03/CNT-04): helper returning None (data fault) yields
+    200 + disconnected card — NOT a 500.
+
+    The side_effect simulates the rewrite-3 helper data-fault contract:
+    (1) mutates state to disconnected (as the helper's internal (Attr/Key/TypeError) catch does),
+    (2) returns None — NOT raises. The endpoint must NOT 500; it must build the card from
+    the (now disconnected) ist and return 200.
+    """
+    state = refresh_test_app.state.triggarr_state
+    timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+    def _data_fault_side_effect(
+        _client, _state, _instance_name, _instance_config, _settings, **_kwargs
+    ):
+        state["radarr"]["Default"]["connected"] = False
+        state["radarr"]["Default"]["unreachable_since"] = timestamp
+        return None
+
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(side_effect=_data_fault_side_effect),
+    ):
+        response = refresh_client.post("/api/refresh-counts/radarr/Default")
+
+    assert response.status_code == 200, (
+        f"Expected 200 (always-200 contract on helper None), got {response.status_code}"
+    )
+    assert response.status_code != 500
+    assert "Radarr" in response.text  # disconnected card still contains app name
+
+
+def test_refresh_counts_malformed_data_does_not_mutate_search_state(
+    refresh_client, refresh_test_app
+):
+    """Rewrite-3 route regression (CNT-03): helper returning None (data fault) must NOT
+    mutate search_failures, last_search_time, cursors, or last_run/last_success.
+
+    Proves a malformed-data refresh is inert w.r.t. the search path.
+    """
+    state = refresh_test_app.state.triggarr_state
+    timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+    # Seed search state that must NOT be touched
+    refresh_test_app.state.search_failures["radarr_Default"] = 2
+    state["radarr"]["Default"]["missing_cursor"] = 77
+    state["radarr"]["Default"]["cutoff_cursor"] = 88
+
+    def _data_fault_side_effect(
+        _client, _state, _instance_name, _instance_config, _settings, **_kwargs
+    ):
+        state["radarr"]["Default"]["connected"] = False
+        state["radarr"]["Default"]["unreachable_since"] = timestamp
+        return None
+
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(side_effect=_data_fault_side_effect),
+    ):
+        response = refresh_client.post("/api/refresh-counts/radarr/Default")
+
+    assert response.status_code == 200
+
+    # search_failures must be unchanged
+    assert refresh_test_app.state.search_failures.get("radarr_Default") == 2
+
+    # Cursors must be unchanged (count path never advances them)
+    assert state["radarr"]["Default"]["missing_cursor"] == 77
+    assert state["radarr"]["Default"]["cutoff_cursor"] == 88
+
+    # last_search_time must NOT have been touched (independent dicts)
+    assert "radarr_Default" not in refresh_test_app.state.last_search_time
+
+    # last_run / last_success must remain unset
+    assert state["radarr"]["Default"].get("last_run") is None
+    assert state["radarr"]["Default"].get("last_success") is None
+
+
+def test_refresh_counts_rate_limited(refresh_client, refresh_test_app):
+    """Pre-seeded rate limit returns 429 (CNT-04)."""
+    refresh_test_app.state.last_refresh_time["radarr_Default"] = time.monotonic()
+    response = refresh_client.post("/api/refresh-counts/radarr/Default")
+    assert response.status_code == 429
+    assert "Rate limited" in response.text
+
+
+def test_refresh_counts_rate_limit_concurrent_protection(refresh_client, refresh_test_app):
+    """Two rapid requests: first 200, second 429 (DRSEC-03 in-lock re-check, CNT-04)."""
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(return_value=([], [], None)),
+    ):
+        resp1 = refresh_client.post("/api/refresh-counts/radarr/Default")
+        assert resp1.status_code == 200
+        resp2 = refresh_client.post("/api/refresh-counts/radarr/Default")
+        assert resp2.status_code == 429
+        assert "Rate limited" in resp2.text
+
+
+def test_refresh_counts_does_not_touch_failure_counter(refresh_client, refresh_test_app):
+    """search_failures dict untouched by a successful refresh (CNT-03, T-74-09)."""
+    refresh_test_app.state.search_failures["radarr_Default"] = 3
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(return_value=([], [], None)),
+    ):
+        refresh_client.post("/api/refresh-counts/radarr/Default")
+    assert refresh_test_app.state.search_failures.get("radarr_Default") == 3
+
+
+def test_refresh_counts_does_not_touch_last_search_time(refresh_client, refresh_test_app):
+    """last_search_time dict untouched after refresh (independent rate-limit dicts, CNT-03)."""
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(return_value=([], [], None)),
+    ):
+        refresh_client.post("/api/refresh-counts/radarr/Default")
+    assert "radarr_Default" not in refresh_test_app.state.last_search_time
