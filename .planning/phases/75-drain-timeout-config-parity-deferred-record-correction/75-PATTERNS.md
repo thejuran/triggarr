@@ -10,6 +10,16 @@ config-knob loop. There is no novel architecture. The single substantive design 
 (D-06: config default, env overrides) is wired into one existing function
 (`_read_shutdown_drain_timeout`) and one existing shutdown block.
 
+> **Finite-only contract (adversarial-pass correction, 2026-06-03):** every snippet below
+> that produces a drain value (the `GeneralConfig` field, `safe_float`,
+> `_read_shutdown_drain_timeout`) carries the FINITE-ONLY contract. `float()` parses
+> `"nan"`/`"inf"`/`"-inf"` without raising, and a non-finite value survives a
+> `max(value, 1.0)` clamp (`max(nan, 1.0) == nan`, `max(inf, 1.0) == inf`). So the field uses
+> `allow_inf_nan=False`, and `safe_float` / `_read_shutdown_drain_timeout` add a `math.isfinite`
+> guard BEFORE the clamp. This closes the "nan/inf disables/unbounds the drain" vector the
+> codex pass found (`asyncio.timeout(inf)` waits until SIGKILL; `asyncio.timeout(nan)` fires
+> immediately). Do NOT copy any pre-fix snippet that omits these guards.
+
 ## File Classification
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
@@ -57,22 +67,29 @@ class GeneralConfig(BaseModel):
 ```
 
 **Action:** Add one line to `GeneralConfig`, mirroring the `Field(...)`-with-bound idiom of
-`max_consecutive_failures` but as a `float` (like `request_timeout`):
+`max_consecutive_failures` but as a `float` (like `request_timeout`), AND with
+`allow_inf_nan=False` (FINITE-ONLY):
 ```python
     # DEBT-06: graceful-shutdown drain timeout (seconds). ge=1.0 defends against a
-    # typo (e.g. 0) disabling the drain. Config is the default; TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT
-    # env var overrides at shutdown time. No upper bound on the model; the form clamp (3600.0)
-    # is the practical UI ceiling.
-    shutdown_drain_timeout: float = Field(default=60.0, ge=1.0)
+    # typo (e.g. 0) disabling the drain. allow_inf_nan=False rejects a non-finite (inf/nan/-inf)
+    # config value that ge=1.0 ALONE would admit (+inf) — a TOML inf would otherwise make
+    # asyncio.timeout(inf) never bound the drain. Config is the default;
+    # TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env var overrides at shutdown time. No upper bound on the
+    # model; the form clamp (3600.0) is the practical UI ceiling.
+    shutdown_drain_timeout: float = Field(default=60.0, ge=1.0, allow_inf_nan=False)
 ```
 `Field` is already imported (used by `max_consecutive_failures`). No upper bound on the model
-per D-01 — the `safe_float(..., 3600.0)` form clamp supplies the UI ceiling.
+per D-01 — the `safe_float(..., 3600.0)` form clamp supplies the UI ceiling. NOTE (confirmed in
+the project venv): `Field(ge=1.0)` ALONE accepts `+inf` (Pydantic v2 default
+`allow_inf_nan=True`); `ge=1.0` rejects `nan` but NOT `inf`. `allow_inf_nan=False` rejects `inf`,
+`nan`, AND `-inf` cleanly — it is load-bearing, not cosmetic.
 
 ---
 
 ### `triggarr/web/validation.py` (utility, parse+clamp) — D-03
 
-**Analog:** `safe_int` (validation.py:179-199) — copy signature shape and clamp idiom exactly.
+**Analog:** `safe_int` (validation.py:179-199) — copy signature shape and clamp idiom, then
+ADD the `math.isfinite` guard.
 
 **Pattern to copy** (validation.py:179-199):
 ```python
@@ -91,24 +108,30 @@ def safe_int(value: str | None, default: int, minimum: int, maximum: int) -> int
     return max(minimum, min(maximum, n))
 ```
 
-**Action:** Add a sibling `safe_float` immediately after `safe_int` (validation.py:~200),
-identical structure with `float()` in place of `int()`:
+**Action:** Add `import math` at the top of the module (ruff I sorts it among the stdlib
+imports), then add a sibling `safe_float` immediately after `safe_int` (validation.py:~200),
+identical structure with `float()` in place of `int()`, PLUS a non-finite guard before the clamp
+(FINITE-ONLY):
 ```python
 def safe_float(value: str | None, default: float, minimum: float, maximum: float) -> float:
     """Parse a form value as a float, clamped to ``[minimum, maximum]``.
 
-    Returns *default* when the value is None, empty, or unparseable. Unlike
-    :func:`safe_int`, this preserves fractional input (e.g. accepts "1.5") and
-    coerces int-like strings via ``float()``.
+    Returns *default* when the value is None, empty, unparseable, or non-finite.
+    Unlike :func:`safe_int`, this preserves fractional input (e.g. accepts "1.5") and
+    coerces int-like strings via ``float()``. ``float()`` parses "nan"/"inf"/"-inf"
+    WITHOUT raising and a non-finite value survives ``max(...)`` (``max(nan, 1.0) == nan``,
+    ``max(inf, 1.0) == inf``), so a ``math.isfinite`` guard rejects them and returns
+    *default* exactly as a malformed string does — the caller is guaranteed a finite,
+    bounded value.
 
     Args:
         value: Raw form string (may be None).
-        default: Fallback when *value* is missing or invalid.
+        default: Fallback when *value* is missing, invalid, or non-finite.
         minimum: Lower bound (inclusive).
         maximum: Upper bound (inclusive).
 
     Returns:
-        A float guaranteed to be within ``[minimum, maximum]``.
+        A finite float guaranteed to be within ``[minimum, maximum]``.
     """
     if value is None or value == "":
         return default
@@ -116,10 +139,14 @@ def safe_float(value: str | None, default: float, minimum: float, maximum: float
         n = float(value)
     except (ValueError, TypeError):
         return default
+    if not math.isfinite(n):
+        return default
     return max(minimum, min(maximum, n))
 ```
 Note: the `except (ValueError, TypeError)` tuple matches the project convention (no bare
 `except:`, per CLAUDE.md). `float("abc")` raises `ValueError`; `float(None)` raises `TypeError`.
+The `math.isfinite(n)` guard runs AFTER coercion (the string parsed fine) and BEFORE the clamp
+(the clamp would not neutralize a non-finite value).
 
 ---
 
@@ -178,7 +205,8 @@ adjacent to `max_consecutive_failures` (routes.py:445).
 ```
 Per D-03: `request_timeout` is a float field parsed via `safe_int` (a known wrinkle) — do NOT
 propagate that to the new knob; use `safe_float` so `1.5` survives. Defaults `60.0, 1.0, 3600.0`
-match the model default, the `ge=1.0` floor, and the agreed UI ceiling.
+match the model default, the `ge=1.0` floor, and the agreed UI ceiling. `safe_float`'s
+`math.isfinite` guard means a `"nan"`/`"inf"` form value also falls back to `60.0`.
 
 ---
 
@@ -222,8 +250,8 @@ The `value="{{ shutdown_drain_timeout }}"` context var is supplied by the GET re
 ### `triggarr/search/scheduler.py` (service, shutdown event handler) — D-04, D-05, D-06
 
 This is the one real wiring change. Two edits: (1) refactor the helper to take a `configured`
-default; (2) resolve `drain` once at the top of the shutdown block and replace the ~6
-constant references with the local.
+default AND add the finite guard; (2) resolve `drain` once at the top of the shutdown block and
+replace the ~6 constant references with the local.
 
 **Helper refactor analog/target** (scheduler.py:58-75) — current:
 ```python
@@ -238,8 +266,10 @@ def _read_shutdown_drain_timeout() -> float:
         value = 60.0
     return max(value, 1.0)
 ```
-**Action (D-04/D-06):** accept `configured: float = 60.0`; env overrides when set; on malformed
-env, fall back to `configured`; clamp `>=1.0` applies to both sources:
+**Action (D-04/D-06, FINITE-ONLY):** add `import math` to the module; accept
+`configured: float = 60.0`; env overrides when set; on malformed env, fall back to `configured`;
+THEN guard non-finite with `math.isfinite` BEFORE the clamp; clamp `>=1.0` applies to both
+sources. The helper NEVER returns nan/inf:
 ```python
 def _read_shutdown_drain_timeout(configured: float = 60.0) -> float:
     """RES-01 / DEBT-06: resolve the graceful-shutdown drain timeout.
@@ -247,8 +277,13 @@ def _read_shutdown_drain_timeout(configured: float = 60.0) -> float:
     Precedence (D-06, 12-factor): the *configured* value (from
     GeneralConfig.shutdown_drain_timeout) is the default; the
     TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env var overrides it when set. A malformed
-    env value falls back to *configured* rather than crashing. The result is
-    clamped to >= 1.0 so neither source can disable the drain (e.g. "0").
+    env value falls back to *configured* rather than crashing. A non-finite
+    resolved value (env "nan"/"inf"/"-inf", or a non-finite *configured* value)
+    is treated as malformed and falls back to a finite default — float() parses
+    those WITHOUT raising and max(value, 1.0) does NOT neutralize them
+    (max(nan, 1.0) == nan, max(inf, 1.0) == inf), so the isfinite guard is
+    required. The result is clamped to >= 1.0 so neither source can disable the
+    drain (e.g. "0"), and is always finite so asyncio.timeout gets a real bound.
     ...
     """
     raw = os.environ.get("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT")
@@ -259,17 +294,20 @@ def _read_shutdown_drain_timeout(configured: float = 60.0) -> float:
             value = float(raw)
         except (ValueError, TypeError):
             value = configured
+    if not math.isfinite(value):
+        value = configured if math.isfinite(configured) else 60.0
     return max(value, 1.0)
 ```
-Keep the existing deployment-guidance docstring tail (`stop_grace_period >` note).
+Keep the existing deployment-guidance docstring tail (`stop_grace_period >` note). The
+`math.isfinite` guard catches an `inf`/`nan`/`-inf` from EITHER source; if `configured` itself
+is non-finite (unreachable from 75-01's model but possible in a direct test call), it falls back
+to the module default 60.0.
 
 **Module constant** (scheduler.py:81) — `_SHUTDOWN_DRAIN_TIMEOUT = _read_shutdown_drain_timeout()`.
-Per D-05 (and Claude's discretion): the shutdown path must no longer read this import-time
-constant. Either delete it, or retain it as an unreferenced legacy default. NOTE: the
-existing test `test_shutdown_timeout_default_is_60s` (test_scheduler.py:628) imports and asserts
-`_SHUTDOWN_DRAIN_TIMEOUT == 60.0`; if the constant is removed, that test must be updated/removed
-(see test mapping below). If retained as a no-default-config call (`_read_shutdown_drain_timeout()`
-with no env set → 60.0) it stays green for free. Planner picks; recommend keeping it (cheaper).
+Per D-05: the shutdown path must no longer read this import-time constant. RETAIN it as a no-arg
+call (env-unset → 60.0) so the existing tests `test_shutdown_timeout_default_is_60s`
+(test_scheduler.py:628) and `test_shutdown_timeout_env_var_override` (test_scheduler.py:636) stay
+green for free (FLAG 1). The shutdown PATH simply uses the `drain` local instead.
 
 **Shutdown-drain block** (scheduler.py:600-657) — current references `_SHUTDOWN_DRAIN_TIMEOUT`
 at lines 611, 618, 634, 648, 656:
@@ -312,19 +350,26 @@ references with `drain`:
 ```python
             # DEBT-06 (D-05): resolve drain timeout from config at shutdown time
             # (env overrides). settings is already in scope here, like search_lock /
-            # search_lock_holder below — no new state-access pattern.
+            # search_lock_holder below — no new state-access pattern. The helper is
+            # finite-guaranteed, so asyncio.timeout always gets a bounded argument.
             drain = _read_shutdown_drain_timeout(app.state.settings.general.shutdown_drain_timeout)
 ```
 Then `t=drain` (×2), `asyncio.timeout(drain)`, `timeout=drain` (×2). The `asyncio.timeout()`
 mechanism (WR-01) is unchanged — only the value source changes.
 
-**Verify `app.state.settings` is set in lifespan before shutdown.** The block already reads
-`app.state.search_lock` and `app.state.search_lock_holder`; confirm `app.state.settings` is
-assigned during lifespan startup (it is referenced by the settings routes, so it is on app
-state, but the planner should confirm the lifespan sets `app.state.settings = settings` so the
-shutdown read does not `AttributeError`). If lifespan binds the local `settings` closure var but
-not `app.state.settings`, prefer reading the closure `settings.general.shutdown_drain_timeout`
-directly (it is in scope in `create_lifespan`).
+**Verify `app.state.settings` is set in lifespan before shutdown.** CONFIRMED:
+`app.state.settings = settings` is bound during lifespan startup at scheduler.py:473, before the
+shutdown block. The block already reads `app.state.search_lock` and `app.state.search_lock_holder`,
+so reading `app.state.settings.general.shutdown_drain_timeout` introduces no new state-access
+pattern (FLAG 2). The closure-scoped `settings` var in `create_lifespan` (scheduler.py:405) is an
+equivalent safe read path.
+
+**Log seam for the discriminating test (FINDING A).** The drain-ENTRY logs embed the resolved
+`drain`: the holder branch (`t=drain` at 611, rendering `timeout={t}s`) and the no-holder branch
+(`t=drain` at 618, rendering `timeout={t}s`). The drain-entry INFO log fires BEFORE the
+`asyncio.timeout` wait, so a test with the lock UNHELD (uncontested acquire → instant) can capture
+`timeout=<configured>s` without any real wait — the seam the discriminating config-read test
+(75-03 Task 2) asserts on.
 
 ---
 
@@ -400,14 +445,23 @@ from the siblings is using `safe_float` instead of `safe_int` (D-03).
 
 ### Bounded-field defensive validation
 **Source:** `max_consecutive_failures: int = Field(default=5, ge=1, le=100)` (config.py:134).
-**Apply to:** the new `shutdown_drain_timeout` field. Same `Field(..., ge=...)` idiom; pydantic
-raises `ValidationError` at construction for out-of-bound values. Defense in depth: the route
-`safe_float(..., 1.0, 3600.0)` clamp also bounds the form value before it reaches the model.
+**Apply to:** the new `shutdown_drain_timeout` field. Same `Field(..., ge=...)` idiom plus
+`allow_inf_nan=False`; pydantic raises `ValidationError` at construction for out-of-bound OR
+non-finite values. Defense in depth: the route `safe_float(..., 1.0, 3600.0)` clamp + isfinite
+guard also bounds the form value before it reaches the model.
 
-### Parse-and-clamp helper
+### Parse-and-clamp helper (finite-only)
 **Source:** `safe_int` (validation.py:179). Returns default on `None`/empty/unparseable,
 catches `(ValueError, TypeError)` (no bare except — CLAUDE.md), clamps with
-`max(minimum, min(maximum, n))`. `safe_float` is a structural clone.
+`max(minimum, min(maximum, n))`. `safe_float` is a structural clone PLUS a `math.isfinite(n)`
+guard after coercion and before the clamp (a non-finite value returns `default`).
+
+### Finite-only drain value
+**Source:** the adversarial pass — `float()` parses `"nan"`/`"inf"`/`"-inf"` and they survive
+`max(value, 1.0)`. **Apply to:** `GeneralConfig.shutdown_drain_timeout` (`allow_inf_nan=False`),
+`safe_float` (`math.isfinite` guard), and `_read_shutdown_drain_timeout` (`math.isfinite` guard).
+Goal: `asyncio.timeout(drain)` always receives a finite bound — `inf` would never bound the drain,
+`nan` would fire immediately, both effectively disabling it.
 
 ### Shutdown reads app/lifespan state (no new pattern)
 **Source:** the drain block already reads `app.state.search_lock` and
@@ -435,7 +489,10 @@ def test_general_config_default_max_consecutive_failures() -> None:
 ```
 **New test (per spec §4.4):** `test_general_config_default_shutdown_drain_timeout` — assert
 default `== 60.0`; `pytest.raises(ValidationError)` for a value `< 1.0` (e.g. `0.0`); accept a
-valid float (e.g. `GeneralConfig(shutdown_drain_timeout=120.5).shutdown_drain_timeout == 120.5`).
+valid float (e.g. `GeneralConfig(shutdown_drain_timeout=120.5).shutdown_drain_timeout == 120.5`);
+AND `pytest.raises(ValidationError)` for BOTH `GeneralConfig(shutdown_drain_timeout=float("inf"))`
+and `GeneralConfig(shutdown_drain_timeout=float("nan"))` (FINITE-ONLY — the `inf` case is
+load-bearing: `ge=1.0` alone accepts `+inf`, so it fails until `allow_inf_nan=False` is added).
 No upper-bound assertion (model has no `le=`). `ValidationError` is already imported in this file.
 
 ### `safe_float` helper test → `tests/test_validation.py`
@@ -454,7 +511,11 @@ class TestSafeInt:
 **New test:** `class TestSafeFloat` mirroring each case, PLUS a float-specific case proving the
 fractional-preservation rationale for the helper:
 `safe_float("1.5", default=60.0, minimum=1.0, maximum=3600.0) == 1.5` (this is the line that
-would FAIL with `safe_int`, justifying the new helper). Add `safe_float` to the
+would FAIL with `safe_int`, justifying the new helper), AND the three FINITE-ONLY cases —
+`safe_float("nan", default=60.0, minimum=1.0, maximum=3600.0) == 60.0`,
+`safe_float("inf", ...) == 60.0`, `safe_float("-inf", ...) == 60.0` (each non-finite value
+returns the default, because `float("nan")` parses without raising and `max(nan, 1.0) == nan`,
+so the `math.isfinite` guard must catch it). Add `safe_float` to the
 `from triggarr.web.validation import ...` line at the top of the test file.
 
 ### Settings POST round-trip test → `tests/test_web.py`
@@ -481,41 +542,66 @@ the full instance-field payload shape from the analog (the POST handler rejects 
 instance data).
 
 ### Scheduler precedence tests → `tests/test_scheduler.py`
-**Analog (must update):** `test_shutdown_timeout_default_is_60s` (test_scheduler.py:628-633) and
-`test_shutdown_timeout_env_var_override` (test_scheduler.py:636-662). These currently assert the
-import-time module constant `_SHUTDOWN_DRAIN_TIMEOUT` via `importlib.reload`. After the refactor:
-- If the module constant is **kept** as `_read_shutdown_drain_timeout()` (no configured arg, no
-  env) → both stay green unchanged.
-- If **removed** → rewrite them to call `_read_shutdown_drain_timeout(configured=...)` directly.
+**Analog (kept green):** `test_shutdown_timeout_default_is_60s` (test_scheduler.py:628-633) and
+`test_shutdown_timeout_env_var_override` (test_scheduler.py:636-662). These assert the import-time
+module constant `_SHUTDOWN_DRAIN_TIMEOUT` via `importlib.reload`. After the refactor the module
+constant is RETAINED as a no-arg call (`_read_shutdown_drain_timeout()` — no configured arg, env
+unset → 60.0), so BOTH stay green unchanged (FLAG 1).
 
-**New tests (per spec §4.4 — the precedence matrix):** test `_read_shutdown_drain_timeout`
-directly (pure function, no lifespan needed):
+**New tests (per spec §4.4 — the precedence matrix, FINITE-ONLY):** test
+`_read_shutdown_drain_timeout` directly (pure function, no lifespan needed):
 - env unset → returns `configured` (e.g. `_read_shutdown_drain_timeout(45.0) == 45.0`).
 - env set → env wins over configured (`monkeypatch.setenv(..., "15.0")`;
   `_read_shutdown_drain_timeout(45.0) == 15.0`).
 - clamp on both sources: `configured=0.5` → `>= 1.0`; env `"0"` → `1.0`.
 - malformed env → falls back to `configured` (`monkeypatch.setenv(..., "abc")`;
   `_read_shutdown_drain_timeout(45.0) == 45.0`).
+- non-finite env → falls back to `configured` and is finite: `monkeypatch.setenv(..., "nan")` /
+  `"inf"` / `"-inf"` each → `_read_shutdown_drain_timeout(45.0) == 45.0`, asserting
+  `math.isfinite(result)`.
+- non-finite configured (defense in depth): `_read_shutdown_drain_timeout(float("inf"))` returns
+  a finite `60.0` and `math.isfinite(...)` is True.
 
 **Must stay green (behavior-preserving):** `test_shutdown_drains_search_lock`
 (test_scheduler.py:564) and `test_shutdown_timeout_logs_holder_identity`
-(test_scheduler.py:665). The latter sets `monkeypatch.setattr(sched, "_SHUTDOWN_DRAIN_TIMEOUT", 0.1)`
-to force a fast drain — after the refactor the shutdown path reads `drain` from settings, NOT the
-constant, so this test must be updated to set the drain via the configured value, e.g. construct
-`make_settings(general=GeneralConfig(shutdown_drain_timeout=1.0))`. NOTE: the forced value MUST be
+(test_scheduler.py:665). The latter currently sets
+`monkeypatch.setattr(sched, "_SHUTDOWN_DRAIN_TIMEOUT", 0.1)` (test_scheduler.py:678) to force a
+fast drain — after the refactor the shutdown path reads `drain` from settings, NOT the constant,
+so this test is MIGRATED to set the drain via the configured value: construct
+`make_settings(general=GeneralConfig(shutdown_drain_timeout=1.0))`. The forced value MUST be
 `1.0` (the field minimum), NOT `0.1` — Plan 75-01 adds `Field(ge=1.0, allow_inf_nan=False)`, so
 `GeneralConfig(shutdown_drain_timeout=0.1)` raises `ValidationError` at construction. The
 holder-identity test holds the lock and never releases it, so the drain times out regardless of
-value; `1.0` proves the config-read path just as well as `0.1` did. The planner MUST flag this:
-the existing holder-identity test's force-fast-drain target moves from the module constant to a
-valid (`>= 1.0`) configured settings value.
+value; `1.0` proves the config-read path's HOLDER LOGGING just as well as `0.1` did (just a ~1.0s
+wait). Import `GeneralConfig` in the test file (currently only `InstanceConfig, Settings` are
+imported from `triggarr.models.config`).
+
+**New discriminating config-read test (FINDING A — codex second pass) →
+`test_shutdown_drain_reads_configured_value`:** the holder-identity test holds the lock and ALWAYS
+times out regardless of whether the block read the configured value or a hardcoded default — it
+proves the holder LOGGING but NOT that the configured value flowed into the block. Add a SEPARATE
+fast test that asserts on the LOGGED drain value:
+- `make_settings(general=GeneralConfig(shutdown_drain_timeout=7.0), radarr_enabled=False, sonarr_enabled=False)`
+  — a DISTINCTIVE value (not the 60.0 default, not the 1.0 minimum).
+- Do NOT acquire the lock and do NOT inject a holder. The uncontested no-holder branch logs the
+  drain-entry INFO `Shutdown: draining search lock (timeout=7.0s); no current holder`, and
+  `asyncio.timeout(7.0)` then succeeds INSTANTLY on `await app.state.search_lock.acquire()` — no
+  real wait (the 7.0 is logged but never waited on).
+- Capture loguru with the SAME idiom the holder-identity test uses
+  (`sink = io.StringIO(); sink_id = logger.add(sink, format="{level} | {message}", level="INFO")`,
+  `logger.remove(sink_id)` in finally), and assert `"timeout=7.0s" in output`. A shutdown block
+  reading a hardcoded `60.0` would log `timeout=60.0s` and the assertion would FAIL — so the test
+  genuinely discriminates "config was read" from "config was ignored", and runs in well under a
+  second.
 
 ---
 
 ## No Analog Found
 
 None. Every surface in this phase has a direct in-repo analog — this is the defining property of
-the "config-knob parity" rider (spec §1, Track C risk: Low — "mirrors existing knobs").
+the "config-knob parity" rider (spec §1, Track C risk: Low — "mirrors existing knobs"). The
+finite-only guards reuse the existing `(ValueError, TypeError)` + `max(...)` idiom plus a one-line
+`math.isfinite` check; no new pattern.
 
 ---
 
@@ -529,5 +615,5 @@ STATE.md.
 **Project conventions honored:** Python 3.11+, ruff E/F/I/UP/B/SIM, line length 120, no bare
 `except:` (use `(ValueError, TypeError)`), loguru logging, atomic TOML writes (existing
 settings-POST persist path), pytest-asyncio `asyncio_mode=auto`.
-**Pattern extraction date:** 2026-06-03
-```
+**Pattern extraction date:** 2026-06-03 (finite-only contract synced 2026-06-03, adversarial pass 2)
+</content>
