@@ -29,7 +29,7 @@ from tests.conftest import make_settings
 from triggarr.clients.radarr import RadarrClient
 from triggarr.db import init_db, insert_search_entry
 from triggarr.models.arr import Tag
-from triggarr.models.config import InstanceConfig, Settings
+from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
 from triggarr.state import _default_instance_state, _default_state, save_state
 from triggarr.web.routes import STATIC_DIR, router
@@ -662,7 +662,132 @@ def test_shutdown_timeout_env_var_override(monkeypatch):
         assert original_timeout == sched._SHUTDOWN_DRAIN_TIMEOUT
 
 
-async def test_shutdown_timeout_logs_holder_identity(tmp_path, monkeypatch):
+# ---------------------------------------------------------------------------
+# D-04/D-06 (Plan 75-03): _read_shutdown_drain_timeout precedence matrix
+#
+# Tests the refactored helper that accepts a `configured` default and
+# applies env override on top, with >= 1.0 clamp on both sources and a
+# finite guard (math.isfinite) so the helper NEVER returns nan/inf.
+# ---------------------------------------------------------------------------
+
+
+def test_drain_timeout_configured_default_used_when_env_unset(monkeypatch):
+    """D-04: env unset → configured value is returned (clamped to >= 1.0)."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.delenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", raising=False)
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_env_overrides_configured(monkeypatch):
+    """D-06: env set → env value wins over configured."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "15.0")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 15.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_clamp_on_configured(monkeypatch):
+    """D-06: configured value below 1.0 is clamped up to 1.0."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.delenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", raising=False)
+    result = _read_shutdown_drain_timeout(0.5)
+    assert result == 1.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_clamp_on_env(monkeypatch):
+    """D-06: env value below 1.0 is clamped up to 1.0."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "0")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 1.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_malformed_env_falls_back_to_configured(monkeypatch):
+    """D-06: malformed env value falls back to configured (no crash)."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "abc")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_env_nan_falls_back_to_configured(monkeypatch):
+    """D-06 finite guard: env 'nan' is non-finite → falls back to configured."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "nan")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result) is True
+
+
+def test_drain_timeout_env_inf_falls_back_to_configured(monkeypatch):
+    """D-06 finite guard: env 'inf' is non-finite → falls back to configured.
+
+    Without the isfinite guard, max(inf, 1.0) == inf would pass through.
+    """
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "inf")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result) is True
+
+
+def test_drain_timeout_env_neg_inf_falls_back_to_configured(monkeypatch):
+    """D-06 finite guard: env '-inf' is non-finite → falls back to configured."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "-inf")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result) is True
+
+
+def test_drain_timeout_configured_inf_returns_finite(monkeypatch):
+    """D-06 finite guard (defense in depth): non-finite configured → finite 60.0.
+
+    75-01's allow_inf_nan=False makes this unreachable from the model, but the
+    helper guards it defensively since it is the single choke point feeding
+    asyncio.timeout.
+    """
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.delenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", raising=False)
+    result = _read_shutdown_drain_timeout(float("inf"))
+    assert math.isfinite(result) is True
+    assert result == 60.0
+
+
+async def test_shutdown_timeout_logs_holder_identity(tmp_path):
     """RES-01 (Codex finding 3): shutdown drain logs holder identity twice.
 
     On entry to the drain (INFO) AND on timeout (WARNING), the log must
@@ -670,14 +795,20 @@ async def test_shutdown_timeout_logs_holder_identity(tmp_path, monkeypatch):
     log fires immediately so that even if Docker SIGKILLs the process
     before the drain timeout completes, the operator still has visibility
     into which instance was stuck.
+
+    Uses config-driven drain (shutdown_drain_timeout=1.0, the field minimum)
+    instead of monkeypatching the module constant. The lock is held and never
+    released, so the drain always times out regardless of the value.
     """
-    import triggarr.search.scheduler as sched
     from triggarr.search.scheduler import create_lifespan
 
-    # Force a very short drain timeout so the test finishes in <1s.
-    monkeypatch.setattr(sched, "_SHUTDOWN_DRAIN_TIMEOUT", 0.1)
-
-    settings = make_settings(radarr_enabled=False, sonarr_enabled=False)
+    # Force a fast drain via config (1.0 is the field minimum under ge=1.0).
+    # Do NOT use 0.1 — that raises ValidationError under 75-01's ge=1.0 bound.
+    settings = make_settings(
+        general=GeneralConfig(shutdown_drain_timeout=1.0),
+        radarr_enabled=False,
+        sonarr_enabled=False,
+    )
     state_path = tmp_path / "state.json"
     config_path = tmp_path / "triggarr.toml"
 
@@ -697,7 +828,7 @@ async def test_shutdown_timeout_logs_holder_identity(tmp_path, monkeypatch):
                 time.monotonic() - 100.0,
             )
             # On block exit, the finally runs: INFO-on-entry log fires
-            # immediately; wait_for times out at 0.1s; WARNING-on-timeout fires.
+            # immediately; asyncio.timeout fires at 1.0s; WARNING-on-timeout fires.
     finally:
         logger.remove(sink_id)
 
@@ -721,8 +852,54 @@ async def test_shutdown_timeout_logs_holder_identity(tmp_path, monkeypatch):
     assert warning_lines, (
         f"Expected WARNING-on-timeout log naming radarr_Default_search, got:\n{output!r}"
     )
-    assert re.search(r"elapsed=(99|100)\.\d", warning_lines[0]), (
-        f"Expected elapsed=99.x or 100.x in WARNING line: {warning_lines[0]!r}"
+    # elapsed = (time of timeout check) - started ≈ 100s injected + drain 1.0s + overhead.
+    # Allow 100–103s to tolerate wall-clock jitter across platforms.
+    assert re.search(r"elapsed=(100|101|102|103)\.\d", warning_lines[0]), (
+        f"Expected elapsed=100.x–103.x in WARNING line: {warning_lines[0]!r}"
+    )
+
+
+async def test_shutdown_drain_reads_configured_value(tmp_path):
+    """D-05 / FINDING A: shutdown block reads the CONFIGURED drain value, not a hardcoded default.
+
+    Uses a DISTINCTIVE shutdown_drain_timeout=7.0 (not the 60.0 default, not the 1.0 minimum)
+    with the lock UNHELD so asyncio.timeout(7.0) returns instantly on the uncontested acquire
+    — no real timeout wait. Asserts the no-holder drain-entry INFO log contains 'timeout=7.0s'.
+    A shutdown block reading a hardcoded 60.0 would log 'timeout=60.0s' and the assertion
+    would FAIL — proving the configured value genuinely reached the block.
+    """
+    from triggarr.search.scheduler import create_lifespan
+
+    # Distinctive value: clearly not 60.0 (default) or 1.0 (minimum).
+    settings = make_settings(
+        general=GeneralConfig(shutdown_drain_timeout=7.0),
+        radarr_enabled=False,
+        sonarr_enabled=False,
+    )
+    state_path = tmp_path / "state.json"
+    config_path = tmp_path / "triggarr.toml"
+
+    lifespan_fn = create_lifespan(settings, state_path, config_path)
+    app = FastAPI(lifespan=lifespan_fn)
+
+    sink = io.StringIO()
+    sink_id = logger.add(sink, format="{level} | {message}", level="INFO")
+    try:
+        async with lifespan_fn(app):
+            # Lock is UNHELD — no acquire, no holder injected.
+            # The no-holder branch logs the drain-entry INFO and then
+            # asyncio.timeout(7.0) returns instantly on the uncontested acquire.
+            pass
+    finally:
+        logger.remove(sink_id)
+
+    output = sink.getvalue()
+
+    # The no-holder drain-entry INFO line must contain 'timeout=7.0s'.
+    # If the shutdown block reads a hardcoded 60.0, it would log 'timeout=60.0s'
+    # and this assertion would fail — genuinely discriminating config-read from config-ignored.
+    assert "timeout=7.0s" in output, (
+        f"Expected drain-entry INFO to log 'timeout=7.0s' (configured value), got:\n{output!r}"
     )
 
 

@@ -22,6 +22,7 @@ Phase 65 hardening layered on top of the original wiring:
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -55,23 +56,36 @@ from triggarr.tracking import run_tracking_check
 from triggarr.update_check import check_for_update
 
 
-def _read_shutdown_drain_timeout() -> float:
-    """RES-01 (Codex finding 3): read TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env var.
+def _read_shutdown_drain_timeout(configured: float = 60.0) -> float:
+    """RES-01 / DEBT-06: resolve the graceful-shutdown drain timeout.
 
-    Defaults to 60.0s. Clamped to >= 1.0 so a misconfiguration (e.g. setting
-    the env var to "0") cannot disable the shutdown drain entirely.
-    Malformed values fall back to the default rather than crashing import.
+    Precedence (D-06, 12-factor): the *configured* value (from
+    GeneralConfig.shutdown_drain_timeout) is the default; the
+    TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env var overrides it when set. A
+    malformed env value falls back to *configured* rather than crashing.
+    A non-finite resolved value (env "nan"/"inf"/"-inf", or a non-finite
+    *configured* value) is treated as malformed and falls back to a finite
+    default — float() parses those WITHOUT raising and max(value, 1.0)
+    does NOT neutralize them (max(nan, 1.0) == nan, max(inf, 1.0) == inf),
+    so the isfinite guard is required. The result is clamped to >= 1.0 so
+    neither source can disable the drain (e.g. "0"), and is always finite
+    so asyncio.timeout gets a real bound.
 
     Recommended deployment: set the host process manager's stop-timeout
     greater than this value (e.g. docker-compose stop_grace_period: 90s,
     docker run --stop-timeout 90, systemd TimeoutStopSec=90) so the
     in-process drain has time to complete before SIGKILL.
     """
-    raw = os.environ.get("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "60.0")
-    try:
-        value = float(raw)
-    except (ValueError, TypeError):
-        value = 60.0
+    raw = os.environ.get("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT")
+    if raw is None:
+        value = configured
+    else:
+        try:
+            value = float(raw)
+        except (ValueError, TypeError):
+            value = configured
+    if not math.isfinite(value):
+        value = configured if math.isfinite(configured) else 60.0
     return max(value, 1.0)
 
 
@@ -598,6 +612,12 @@ def create_lifespan(
             scheduler.shutdown(wait=False)
 
             # 2. Drain any in-flight search cycle before closing resources (DEBT-06)
+            # DEBT-06 (D-05): resolve drain timeout from config at shutdown time
+            # (env overrides). settings is already in scope here, bound at lifespan
+            # startup — no new state-access pattern (same as search_lock /
+            # search_lock_holder below). The helper is finite-guaranteed, so
+            # asyncio.timeout always gets a bounded argument (FLAG 2 confirmed).
+            drain = _read_shutdown_drain_timeout(app.state.settings.general.shutdown_drain_timeout)
             # RES-01 (Codex finding 3): log holder identity on entry to the drain
             # so the operator sees which instance is stuck even if Docker SIGKILLs
             # the process before the timeout fires. Then await with the
@@ -608,14 +628,14 @@ def create_lifespan(
                 elapsed = time.monotonic() - started
                 logger.info(
                     "Shutdown: draining search lock (timeout={t}s); holder={job} elapsed={e:.1f}s",
-                    t=_SHUTDOWN_DRAIN_TIMEOUT,
+                    t=drain,
                     job=job_id,
                     e=elapsed,
                 )
             else:
                 logger.info(
                     "Shutdown: draining search lock (timeout={t}s); no current holder",
-                    t=_SHUTDOWN_DRAIN_TIMEOUT,
+                    t=drain,
                 )
             # WR-01: use `asyncio.timeout()` (Python 3.11+) instead of
             # `asyncio.wait_for(lock.acquire(), ...)`. The wait_for idiom
@@ -631,7 +651,7 @@ def create_lifespan(
             acquired = False
             try:
                 try:
-                    async with asyncio.timeout(_SHUTDOWN_DRAIN_TIMEOUT):
+                    async with asyncio.timeout(drain):
                         await app.state.search_lock.acquire()
                         acquired = True
                 except TimeoutError:
@@ -645,7 +665,7 @@ def create_lifespan(
                         logger.warning(
                             "Shutdown: search cycle did not finish in {timeout}s -- "
                             "job={job} elapsed={elapsed:.1f}s -- forcing close",
-                            timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                            timeout=drain,
                             job=job_id,
                             elapsed=elapsed,
                         )
@@ -653,7 +673,7 @@ def create_lifespan(
                         logger.warning(
                             "Shutdown: search lock did not drain in {timeout}s "
                             "(no holder recorded) -- forcing close",
-                            timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                            timeout=drain,
                         )
             finally:
                 # WR-01: release only when acquire actually succeeded. A
