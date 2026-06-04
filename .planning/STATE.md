@@ -2,11 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.11
 milestone_name: Never-Searched-First Search Queue Priority
-status: roadmapped
-last_updated: "2026-06-04T18:10:00.000Z"
-last_activity: 2026-06-04
+status: "Roadmapped — ready for /gsd:plan-phase 76"
+stopped_at: Phase 76 context gathered
+last_updated: "2026-06-04T17:56:25.983Z"
+last_activity: 2026-06-04 — v2.11 roadmap created (Phase 76; 11/11 requirements mapped)
 progress:
-  total_phases: 1
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -153,9 +154,9 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-06-04T02:57:07.705Z
-Stopped at: Phase 75 context gathered
-Resume file: .planning/phases/75-drain-timeout-config-parity-deferred-record-correction/75-CONTEXT.md
+Last session: 2026-06-04T17:56:25.979Z
+Stopped at: Phase 76 context gathered
+Resume file: .planning/phases/76-never-searched-first-search-queue/76-CONTEXT.md
 
 ## Operator Next Steps
 
