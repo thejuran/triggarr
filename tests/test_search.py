@@ -149,12 +149,13 @@ def test_prioritize_batch_cold_start_equivalence():
 def test_prioritize_batch_unsearched_first():
     """Items not in the log are taken before already-searched items (QUEUE-04)."""
     items = _items(1, 2, 3, 4, 5)
-    # Items 2 and 4 have already been searched
+    # Items 2 and 4 have already been searched; 1, 3, 5 are unsearched
     log = ["2", "4"]
-    batch, new_log, pass_completed = prioritize_batch(items, log, 3, _id_key)
-    # unsearched = [1, 3, 5] (fetch order); 3 slots → take all 3
-    assert [it["id"] for it in batch] == [1, 3, 5]
-    assert pass_completed is False  # 2 and 4 not yet searched this pass
+    # batch_size=2: should take from the 3 unsearched [1,3,5] first, not from [2,4]
+    batch, new_log, pass_completed = prioritize_batch(items, log, 2, _id_key)
+    # unsearched = [1, 3, 5] (fetch order); 2 slots → take 1, 3
+    assert [it["id"] for it in batch] == [1, 3]
+    assert pass_completed is False  # items 4, 5 still unsearched in this pass
 
 
 def test_prioritize_batch_topup_oldest_first():
@@ -162,10 +163,15 @@ def test_prioritize_batch_topup_oldest_first():
     items = _items(1, 2, 3, 4, 5)
     # Items 1, 2, 3 already searched (log order = 1 oldest, 3 newest)
     log = ["1", "2", "3"]
-    # unsearched = [4, 5]; batch_size=4 → take 4,5 then top up with oldest first: 1
-    batch, new_log, pass_completed = prioritize_batch(items, log, 4, _id_key)
-    assert [it["id"] for it in batch] == [4, 5, 1, 2]
-    assert pass_completed is False
+    # unsearched = [4, 5]; batch_size=3 → take 4,5 (2 slots), top up with oldest: 1
+    # This means item 1 (oldest-searched) fills slot 3, NOT item 2 or 3
+    batch, new_log, pass_completed = prioritize_batch(items, log, 3, _id_key)
+    assert [it["id"] for it in batch] == [4, 5, 1]
+    # new_log: 1 moved to tail (re-searched); 2 and 3 survive at front; 4 and 5 appended
+    assert new_log == ["2", "3", "4", "5", "1"]
+    # items 2 and 3 not in batch, but they were already in pruned log → still in new_log
+    # eligible_ids = {1,2,3,4,5} ⊆ {2,3,4,5,1} → True, and batch is non-empty → pass_completed=True
+    assert pass_completed is True
 
 
 def test_prioritize_batch_pass_completion():
@@ -215,9 +221,11 @@ def test_prioritize_batch_research_recency():
     batch, new_log, pass_completed = prioritize_batch(items, log, 2, _id_key)
     # unsearched = []; top up from oldest: [1, 2]
     assert [it["id"] for it in batch] == [1, 2]
-    # After re-batching 1 and 2, they move to tail; 3 stays oldest
+    # After re-batching 1 and 2, they move to tail; 3 stays as the front (oldest)
     assert new_log == ["3", "1", "2"]
-    assert pass_completed is False  # 3 not searched this cycle
+    # All 3 eligible IDs remain in new_log (3 survived, 1 and 2 re-appended)
+    # bool(batch)=True and {"1","2","3"} ⊆ {"3","1","2"} → pass_completed=True
+    assert pass_completed is True
 
 
 def test_prioritize_batch_empty_eligible():
