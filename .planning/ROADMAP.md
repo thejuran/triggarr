@@ -218,7 +218,10 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
   2. A count-only refresh never advances the search cursor (structural — slicing stays only in the cycle function), so the next scheduled cycle resumes exactly where it left off.
   3. A count-only refresh does not stamp `last_run`/`last_success` and does not touch the SAFETY-03 scheduled-search failure counter; a fetch failure flips the card to disconnected without escalating the scheduler.
   4. `POST /api/refresh-counts/{app}/{instance}` works for scripts and mirrors `search_now` (same `search_lock`, rate-limit, app/instance validation, and app-card partial response) minus the search, while existing scheduled-cycle search behavior is unchanged.
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 74-01-PLAN.md — Extract refresh_radarr/sonarr/lidarr_counts helpers from run_*_cycle (structural cursor-non-advance); behavior-preserving refactor (TDD)
+- [ ] 74-02-PLAN.md — POST /api/refresh-counts/{app}/{instance} mirroring search_now minus the search; sibling last_refresh_time rate-limit dict (TDD)
+- [ ] 74-03-PLAN.md — Split connected app-card footer into Search Now + "Refresh counts" buttons
 **UI hint**: yes
 
 ### Phase 75: Drain-Timeout Config Parity & Deferred-Record Correction
@@ -238,7 +241,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 |-------|----------------|--------|-----------|
 | 72. Password Reset Backend & Token Lifecycle | 3/3 | Complete   | 2026-06-03 |
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
-| 74. Count-Only Refresh | 0/? | Not started | - |
+| 74. Count-Only Refresh | 0/3 | Planned | - |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
 
 ## Backlog
