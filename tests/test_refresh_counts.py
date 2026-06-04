@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock
 
 import aiosqlite
 import httpx
-import pytest
 
 from tests.conftest import make_settings
 from triggarr.db import init_db
@@ -31,7 +30,6 @@ from triggarr.search.engine import (
     run_sonarr_cycle,
 )
 from triggarr.state import _default_instance_state, _default_state
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
