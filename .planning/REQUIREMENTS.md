@@ -11,12 +11,12 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Password Recovery (Track A)
 
-- [ ] **RCOV-01**: User sees a "Forgot password?" link on the login page, shown only when auth is already configured (not during first-run setup).
-- [ ] **RCOV-02**: User can request a reset, which mints a CSPRNG token written to the application log AND a `0600` file in the config volume — and the token value never appears in any HTTP response.
-- [ ] **RCOV-03**: A reset token is held in memory only, expires 15 minutes after minting, is single-use, and is invalidated when a newer token is minted.
-- [ ] **RCOV-04**: User can submit the token plus a new password to set a new bcrypt hash, which rotates `session_secret` (invalidating other sessions) and auto-logs-in the user with a fresh cookie.
-- [ ] **RCOV-05**: Both reset endpoints (request and confirm) are rate-limited to resist log/file flooding and token-submission abuse.
-- [ ] **RCOV-06**: The `/reset` routes are reachable without authentication (added to middleware `EXEMPT_PREFIXES`), and the token file is deleted on a successful reset.
+- [x] **RCOV-01**: User sees a "Forgot password?" link on the login page, shown only when auth is already configured (not during first-run setup).
+- [x] **RCOV-02**: User can request a reset, which mints a CSPRNG token written to the application log AND a `0600` file in the config volume — and the token value never appears in any HTTP response.
+- [x] **RCOV-03**: A reset token is held in memory only, expires 15 minutes after minting, is single-use, and is invalidated when a newer token is minted.
+- [x] **RCOV-04**: User can submit the token plus a new password to set a new bcrypt hash, which rotates `session_secret` (invalidating other sessions) and auto-logs-in the user with a fresh cookie.
+- [x] **RCOV-05**: Both reset endpoints (request and confirm) are rate-limited to resist log/file flooding and token-submission abuse.
+- [x] **RCOV-06**: The `/reset` routes are reachable without authentication (added to middleware `EXEMPT_PREFIXES`), and the token file is deleted on a successful reset.
 
 ### Count-Only Refresh (Track B)
 
@@ -28,8 +28,8 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Config Parity (Track C)
 
-- [ ] **CFG-03**: User can set the graceful-shutdown drain timeout via a `GeneralConfig` field and a settings-UI numeric input, bounded `>= 1.0`.
-- [ ] **CFG-04**: The configured drain timeout is the default value; `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` overrides it when set; the `>= 1.0` clamp applies to both sources.
+- [x] **CFG-03**: User can set the graceful-shutdown drain timeout via a `GeneralConfig` field and a settings-UI numeric input, bounded `>= 1.0`.
+- [x] **CFG-04**: The configured drain timeout is the default value; `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` overrides it when set; the `>= 1.0` clamp applies to both sources.
 - [x] **DOCS-01**: Project documentation and the deferred record are corrected to reflect that DEBT-07 (request timeout), DEBT-08 (page size), and DEBT-03 (search-history cap) are already shipped, and DEBT-06 (drain timeout) is now shipped.
 
 ## v2 Requirements
@@ -74,19 +74,19 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RCOV-01 | Phase 73 | Pending |
-| RCOV-02 | Phase 72 | Pending |
-| RCOV-03 | Phase 72 | Pending |
-| RCOV-04 | Phase 72 | Pending |
-| RCOV-05 | Phase 72 | Pending |
-| RCOV-06 | Phase 72 | Pending |
+| RCOV-01 | Phase 73 | Complete |
+| RCOV-02 | Phase 72 | Complete |
+| RCOV-03 | Phase 72 | Complete |
+| RCOV-04 | Phase 72 | Complete |
+| RCOV-05 | Phase 72 | Complete |
+| RCOV-06 | Phase 72 | Complete |
 | CNT-01 | Phase 74 | Complete |
 | CNT-02 | Phase 74 | Complete |
 | CNT-03 | Phase 74 | Complete |
 | CNT-04 | Phase 74 | Complete |
 | CNT-05 | Phase 74 | Complete |
-| CFG-03 | Phase 75 | Pending |
-| CFG-04 | Phase 75 | Pending |
+| CFG-03 | Phase 75 | Complete |
+| CFG-04 | Phase 75 | Complete |
 | DOCS-01 | Phase 75 | Complete |
 
 **Coverage:**

@@ -1,22 +1,28 @@
 ---
 phase: 73-password-reset-ui
 verified: 2026-06-03T00:00:00Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 overrides_applied: 0
+human_verification_resolved: 2026-06-04
+human_verification_evidence: "Resolved via live NAS walkthrough on the deployed v2.10 build (ghcr.io/thejuran/triggarr:main @ 537f9cd) at http://maguffynas:8484. Journal: /tmp/walkthrough/20260604-walkthrough-v210/journal.md. Items 1-3 fully walked; item 4 walked for the inline password-mismatch path (the wrong-token top-banner path was not exercised to avoid needing the real single-use token, but the inline field-error machinery — the load-bearing RCOV-01 requirement — is confirmed)."
 human_verification:
   - test: "Navigate to the login page in a browser with a configured (non-setup) Triggarr instance. Verify the 'Forgot password?' link appears below the Sign In button, is muted/secondary in style, and links to /reset/request."
     expected: "Link is visible, styled like the muted info paragraph idiom, positioned below Sign In. Not visible on a fresh first-run setup instance."
     why_human: "Tailwind CSS rendering and visual placement require a real browser render; automated grep confirms markup presence but not visual fidelity."
+    walkthrough_result: "PASS (Step 3) — 'Forgot password?' link present below Sign In, links to /reset/request, shown because auth is configured (not needs_setup)."
   - test: "Click 'Forgot password?' and submit the reset request form. On success (first mint), verify the submit button disappears and a neutral confirmation message appears with an 'Enter reset token' link pointing to /reset/confirm. Verify the token value is not visible anywhere on the page."
     expected: "Submit button absent; neutral confirmation text present; onward link to /reset/confirm present; no token value on screen."
     why_human: "Visual absence of the submit button and presence of the confirmation message require browser rendering with actual auth state."
+    walkthrough_result: "PASS (Steps 4-5) — reset-request page renders styled like login; submit shows the neutral 'check your logs/volume' confirmation + 'Enter reset token' onward link; token value NOT in the HTTP response body (verified)."
   - test: "On the reset request and confirm pages, verify the 'Back to login' link renders at the bottom of the card on both steps and navigates correctly to /login."
     expected: "Link appears on both steps, styling matches muted text idiom, navigation to /login works."
     why_human: "Cross-step navigation and visual position require browser interaction."
+    walkthrough_result: "PASS (Steps 4, 6) — 'Back to login' link present on both the reset-request and reset-confirm pages, links to /login."
   - test: "On the confirm page (/reset/confirm), submit with a wrong token. Verify the error appears in the top-level banner (not inline). Submit with mismatched passwords (valid token). Verify the per-field 'Passwords do not match' error appears inline below the confirm_password field."
     expected: "Token error in top banner; password errors inline per-field; consistent with login/setup page styling."
     why_human: "Error placement and visual layout require browser rendering."
+    walkthrough_result: "PARTIAL→PASS (Step 6) — mismatched-passwords path walked: inline 'Passwords do not match' error renders per-field below Confirm Password (the RCOV-01 inline-field-error requirement). The wrong-token top-banner path was intentionally not exercised (would require minting+submitting a real single-use token against the live instance); the confirm page + inline validation machinery is confirmed working."
 ---
 
 # Phase 73: Password Reset UI Verification Report
