@@ -1,5 +1,20 @@
 # Milestones
 
+## v2.10 Recovery, Counts & Config Parity (Shipped: 2026-06-04)
+
+**Phases completed:** 4 phases (72-75), 11 plans. Released as **v2.10.0**. 1067 tests passing, ruff clean. Three disjoint tracks. Deep-review APPROVED (0 critical/warning); milestone audit passed (14/14 requirements, 4/4 phases verified, 11/11 cross-phase connections wired); live NAS walkthrough on the deployed build exercised all three tracks end-to-end with 0 bugs found.
+
+**Key accomplishments:**
+
+- **Track A — Self-service password recovery (RCOV-01..06, Phases 72-73):** A locked-out operator can reset the admin password entirely over HTTP without hand-editing `triggarr.toml`. "Forgot password?" link on the login page (only when auth is configured) → request mints a single-use, 15-minute CSPRNG token written to the app log + a `0600` `reset-token.txt` (never in any HTTP response) → confirm sets a new bcrypt hash, rotates `session_secret` (invalidating other sessions), deletes the token file, and auto-logs-in. Both endpoints rate-limited; `/reset` routes auth-exempt via a tight exact-or-`/reset/` predicate.
+- **Track B — Count-only refresh (CNT-01..05, Phase 74):** Per-card "Refresh counts" button + `POST /api/refresh-counts/{app}/{instance}` shows true post-change missing/cutoff/eligible counts on demand without launching a search wave or advancing the cursor. Extracted a shared fetch+count+filter helper from `run_*_cycle` (behavior-preserving); the count path updates health + counts but never stamps `last_run`/`last_success` or touches the SAFETY-03 failure counter.
+- **Track C — Drain-timeout config parity (CFG-03/CFG-04, Phase 75):** Graceful-shutdown drain timeout is now an editable `GeneralConfig` field + settings-UI numeric input (`>= 1.0`, finite-only via `allow_inf_nan=False` + a `math.isfinite` guard), with documented env-override precedence (config is the default; `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` wins; clamp on both sources). The scheduler reads it at shutdown time (hot-reloadable) instead of from an import-time constant.
+- **DOCS-01 deferred-record correction (Phase 75):** Corrected the stale planning record — DEBT-07/08/03 were already shipped; DEBT-06 now shipped — across STATE.md, README, and the in-app CHANGELOG.
+
+**Notes:** Phase 73 human-verification (visual reset-flow checks) and the deferred 73-HUMAN-UAT were resolved by the milestone-end NAS walkthrough. Non-blocking tech debt deferred to backlog (see v2.10-MILESTONE-AUDIT.md): retire the dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; migrate `request_timeout` to `safe_float`; tighten the `safe_float` docstring; optional `DEFAULT_CONFIG` drain example.
+
+---
+
 ## v2.9 Launch-Hardening / Sibling Consistency (Shipped: 2026-06-03)
 
 **Phases completed:** 4 phases (68-71), 11 plans

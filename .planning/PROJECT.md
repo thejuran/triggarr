@@ -10,13 +10,15 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.9 Launch-Hardening / Sibling Consistency shipped 2026-06-03 (released as v2.9.0). 984 tests passing, ruff clean. 71 phases, 166 plans completed across 15 shipped milestones.
+v2.10 Recovery, Counts & Config Parity shipped 2026-06-04 (released as v2.10.0). 1067 tests passing, ruff clean. 75 phases, 177 plans completed across 16 shipped milestones.
 
-**Latest milestone delivered (v2.9):**
-- Code hardening: hostile-reader code + full-git-history sweep (history clean, no secrets); SAFETY-03 unified manual/scheduled failure-counter path (`_run_one_cycle`); starlette ≥1.0.1 (PYSEC-2026-161); repo hygiene (`.orchestrator.json` gitignore, `.gitleaksignore` 8.x fingerprints)
-- SSRF config-load URL validation: rejects cloud-metadata/link-local at startup with a clean exit, permits loopback for same-host; web-form path unchanged
-- Presentation overhaul: full README rewrite, SECURITY.md reconciled with v2.8/v2.8.1 hardening + at-rest caveat, community-health files + repo-metadata text, v2.9.0 release notes + in-app changelog, SeedSyncarr signal reconciliation
-- Live NAS walkthrough caught + fixed 2 UX bugs (version badge "vv2.8.1"→"v2.8.1"; Search Now in-flight feedback) + refreshed README screenshots + recompiled output.css to match production
+**Latest milestone delivered (v2.10):**
+- Track A — Self-service password recovery (RCOV-01..06): "Forgot password?" → single-use 15-min CSPRNG token written to log + `0600` `reset-token.txt` (never in any HTTP response) → confirm sets new bcrypt hash, rotates `session_secret`, deletes token file, auto-logs-in. Both endpoints rate-limited; `/reset` auth-exempt via a tight exact-or-`/reset/` predicate.
+- Track B — Count-only refresh (CNT-01..05): per-card "Refresh counts" button + `POST /api/refresh-counts/{app}/{instance}` updates missing/cutoff/eligible counts + health without launching a search or advancing the cursor; never stamps `last_run`/`last_success` or touches the SAFETY-03 failure counter. Shared fetch+count+filter helper extracted from `run_*_cycle` (behavior-preserving).
+- Track C — Drain-timeout config parity (CFG-03/CFG-04): `shutdown_drain_timeout` `GeneralConfig` field + settings input (`>= 1.0`, finite-only via `allow_inf_nan=False` + `math.isfinite`), config-default-with-env-override precedence read at shutdown time (hot-reloadable). DOCS-01 corrected the stale deferred record (DEBT-07/08/03 already shipped; DEBT-06 now shipped).
+- Deep-review APPROVED (0 critical/warning); milestone audit passed (14/14 requirements, 11/11 cross-phase connections wired); live NAS walkthrough exercised all three tracks end-to-end with 0 bugs found.
+
+**Previous milestone (v2.9, shipped 2026-06-03):** Launch-hardening / sibling consistency — hostile-reader code sweep + clean git history, SAFETY-03 unified failure-counter path, SSRF config-load URL validation, full presentation overhaul.
 
 **Prior milestone delivered (v2.8):**
 - Data safety: bounded search-history (resolved trim + pending `2×` cap via `PendingCapExceeded`), hardened atomic config writes, AST-audited config-write lock, corrupted-TOML recovery
@@ -41,7 +43,12 @@ v2.9 Launch-Hardening / Sibling Consistency shipped 2026-06-03 (released as v2.9
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
-## Current Milestone: v2.10 Recovery, Counts & Config Parity
+## Next Milestone: (planning)
+
+v2.10 shipped 2026-06-04. Run `/gsd:new-milestone` to scope the next one. Candidate parked items remain in STATE.md Deferred Items (v2.6 UI pixel-verification, PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, v2.9-audit follow-ups) plus the v2.10 deep-review tech-debt follow-ups (retire the dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; migrate `request_timeout` to `safe_float`).
+
+<details>
+<summary>Shipped milestone: v2.10 Recovery, Counts & Config Parity (2026-06-04)</summary>
 
 **Goal:** Ship two parked backlog features plus a small config-parity rider — without expanding the network attack surface or relaxing any existing security invariant.
 
@@ -53,6 +60,8 @@ v2.9 Launch-Hardening / Sibling Consistency shipped 2026-06-03 (released as v2.9
 **Key context:** Three disjoint, independently-phaseable tracks (no shared code), per the approved design spec `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md`. Cross-track documentation deliverable: correct the stale deferred record — **DEBT-07 (request timeout), DEBT-08 (page size), DEBT-03 (search-history cap) are already shipped** (present in `settings.html`), so only DEBT-06 remained genuinely unexposed. Phase numbering continues from v2.9 (last phase 71).
 
 **Still parked for a future milestone:** v2.6 UI pixel-verification (UI-01..03, human-needed, behind first-run), PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, the `--color-triggarr-primaryDark` cosmetic token cleanup, and v2.9-audit follow-ups (validate_arr_url dedup; Retry-Connection hx-disabled-elt; bug-report.yml dropdown). See STATE.md Deferred Items.
+
+</details>
 
 ## Requirements
 
@@ -302,4 +311,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-02 after v2.10 Recovery, Counts & Config Parity milestone scoped*
+*Last updated: 2026-06-04 after v2.10 Recovery, Counts & Config Parity milestone shipped (v2.10.0)*

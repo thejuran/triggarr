@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.10
 milestone_name: Recovery, Counts & Config Parity
-status: executing
+status: Awaiting next milestone
 stopped_at: Phase 75 context gathered
-last_updated: "2026-06-04T02:57:07.708Z"
-last_activity: 2026-06-04 -- Phase 75 execution started
+last_updated: "2026-06-04T12:06:05.625Z"
+last_activity: 2026-06-04 — Milestone v2.10 completed and archived
 progress:
   total_phases: 6
   completed_phases: 4
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-06-02)
 
 ## Current Position
 
-Phase: 75 (drain-timeout-config-parity-deferred-record-correction) — EXECUTING
-Plan: 2 of 4
-Status: Executing Phase 75
-Last activity: 2026-06-04 -- Phase 75 execution started
+Phase: Milestone v2.10 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-04 — Milestone v2.10 completed and archived
 
 ### v2.10 milestone shape
 
@@ -144,4 +144,4 @@ Resume file: .planning/phases/75-drain-timeout-config-parity-deferred-record-cor
 
 ## Operator Next Steps
 
-- Plan the first phase with /gsd:plan-phase 72
+- Start the next milestone with /gsd-new-milestone
