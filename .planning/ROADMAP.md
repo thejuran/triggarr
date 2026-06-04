@@ -178,7 +178,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 
 - [x] **Phase 72: Password Reset Backend & Token Lifecycle** (0/3 plans) - Filesystem-token reset endpoints, in-memory single-use token, session rotation, rate-limit, middleware exemption (completed 2026-06-03)
 - [x] **Phase 73: Password Reset UI** - "Forgot password?" affordance on the login page plus the styled request/confirm reset pages (completed 2026-06-03)
-- [ ] **Phase 74: Count-Only Refresh** - Extract the fetch+count+filter helper and expose a per-card "Refresh counts" button + `POST /api/refresh-counts` that updates counts without searching or advancing the cursor
+- [x] **Phase 74: Count-Only Refresh** - Extract the fetch+count+filter helper and expose a per-card "Refresh counts" button + `POST /api/refresh-counts` that updates counts without searching or advancing the cursor (completed 2026-06-04)
 - [ ] **Phase 75: Drain-Timeout Config Parity & Deferred-Record Correction** - `shutdown_drain_timeout` config field + settings input with env-override precedence, and the DEBT-06/07/08/03 deferred-record correction
 
 ## Phase Details
@@ -221,7 +221,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 **Plans**: 3 plans
 - [x] 74-01-PLAN.md — Extract refresh_radarr/sonarr/lidarr_counts helpers from run_*_cycle (structural cursor-non-advance); behavior-preserving refactor (TDD)
 - [x] 74-02-PLAN.md — POST /api/refresh-counts/{app}/{instance} mirroring search_now minus the search; sibling last_refresh_time rate-limit dict (TDD)
-- [ ] 74-03-PLAN.md — Split connected app-card footer into Search Now + "Refresh counts" buttons
+- [x] 74-03-PLAN.md — Split connected app-card footer into Search Now + "Refresh counts" buttons
 **UI hint**: yes
 
 ### Phase 75: Drain-Timeout Config Parity & Deferred-Record Correction
@@ -241,7 +241,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 |-------|----------------|--------|-----------|
 | 72. Password Reset Backend & Token Lifecycle | 3/3 | Complete   | 2026-06-03 |
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
-| 74. Count-Only Refresh | 2/3 | In Progress|  |
+| 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
 
 ## Backlog
