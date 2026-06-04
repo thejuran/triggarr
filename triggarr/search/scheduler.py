@@ -612,6 +612,12 @@ def create_lifespan(
             scheduler.shutdown(wait=False)
 
             # 2. Drain any in-flight search cycle before closing resources (DEBT-06)
+            # DEBT-06 (D-05): resolve drain timeout from config at shutdown time
+            # (env overrides). settings is already in scope here, bound at lifespan
+            # startup — no new state-access pattern (same as search_lock /
+            # search_lock_holder below). The helper is finite-guaranteed, so
+            # asyncio.timeout always gets a bounded argument (FLAG 2 confirmed).
+            drain = _read_shutdown_drain_timeout(app.state.settings.general.shutdown_drain_timeout)
             # RES-01 (Codex finding 3): log holder identity on entry to the drain
             # so the operator sees which instance is stuck even if Docker SIGKILLs
             # the process before the timeout fires. Then await with the
@@ -622,14 +628,14 @@ def create_lifespan(
                 elapsed = time.monotonic() - started
                 logger.info(
                     "Shutdown: draining search lock (timeout={t}s); holder={job} elapsed={e:.1f}s",
-                    t=_SHUTDOWN_DRAIN_TIMEOUT,
+                    t=drain,
                     job=job_id,
                     e=elapsed,
                 )
             else:
                 logger.info(
                     "Shutdown: draining search lock (timeout={t}s); no current holder",
-                    t=_SHUTDOWN_DRAIN_TIMEOUT,
+                    t=drain,
                 )
             # WR-01: use `asyncio.timeout()` (Python 3.11+) instead of
             # `asyncio.wait_for(lock.acquire(), ...)`. The wait_for idiom
@@ -645,7 +651,7 @@ def create_lifespan(
             acquired = False
             try:
                 try:
-                    async with asyncio.timeout(_SHUTDOWN_DRAIN_TIMEOUT):
+                    async with asyncio.timeout(drain):
                         await app.state.search_lock.acquire()
                         acquired = True
                 except TimeoutError:
@@ -659,7 +665,7 @@ def create_lifespan(
                         logger.warning(
                             "Shutdown: search cycle did not finish in {timeout}s -- "
                             "job={job} elapsed={elapsed:.1f}s -- forcing close",
-                            timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                            timeout=drain,
                             job=job_id,
                             elapsed=elapsed,
                         )
@@ -667,7 +673,7 @@ def create_lifespan(
                         logger.warning(
                             "Shutdown: search lock did not drain in {timeout}s "
                             "(no holder recorded) -- forcing close",
-                            timeout=_SHUTDOWN_DRAIN_TIMEOUT,
+                            timeout=drain,
                         )
             finally:
                 # WR-01: release only when acquire actually succeeded. A

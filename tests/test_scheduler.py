@@ -852,8 +852,10 @@ async def test_shutdown_timeout_logs_holder_identity(tmp_path):
     assert warning_lines, (
         f"Expected WARNING-on-timeout log naming radarr_Default_search, got:\n{output!r}"
     )
-    assert re.search(r"elapsed=(99|100)\.\d", warning_lines[0]), (
-        f"Expected elapsed=99.x or 100.x in WARNING line: {warning_lines[0]!r}"
+    # elapsed = (time of timeout check) - started ≈ 100s injected + drain 1.0s + overhead.
+    # Allow 100–103s to tolerate wall-clock jitter across platforms.
+    assert re.search(r"elapsed=(100|101|102|103)\.\d", warning_lines[0]), (
+        f"Expected elapsed=100.x–103.x in WARNING line: {warning_lines[0]!r}"
     )
 
 
