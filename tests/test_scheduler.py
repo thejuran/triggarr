@@ -662,6 +662,131 @@ def test_shutdown_timeout_env_var_override(monkeypatch):
         assert original_timeout == sched._SHUTDOWN_DRAIN_TIMEOUT
 
 
+# ---------------------------------------------------------------------------
+# D-04/D-06 (Plan 75-03): _read_shutdown_drain_timeout precedence matrix
+#
+# Tests the refactored helper that accepts a `configured` default and
+# applies env override on top, with >= 1.0 clamp on both sources and a
+# finite guard (math.isfinite) so the helper NEVER returns nan/inf.
+# ---------------------------------------------------------------------------
+
+
+def test_drain_timeout_configured_default_used_when_env_unset(monkeypatch):
+    """D-04: env unset → configured value is returned (clamped to >= 1.0)."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.delenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", raising=False)
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_env_overrides_configured(monkeypatch):
+    """D-06: env set → env value wins over configured."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "15.0")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 15.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_clamp_on_configured(monkeypatch):
+    """D-06: configured value below 1.0 is clamped up to 1.0."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.delenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", raising=False)
+    result = _read_shutdown_drain_timeout(0.5)
+    assert result == 1.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_clamp_on_env(monkeypatch):
+    """D-06: env value below 1.0 is clamped up to 1.0."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "0")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 1.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_malformed_env_falls_back_to_configured(monkeypatch):
+    """D-06: malformed env value falls back to configured (no crash)."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "abc")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result)
+
+
+def test_drain_timeout_env_nan_falls_back_to_configured(monkeypatch):
+    """D-06 finite guard: env 'nan' is non-finite → falls back to configured."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "nan")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result) is True
+
+
+def test_drain_timeout_env_inf_falls_back_to_configured(monkeypatch):
+    """D-06 finite guard: env 'inf' is non-finite → falls back to configured.
+
+    Without the isfinite guard, max(inf, 1.0) == inf would pass through.
+    """
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "inf")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result) is True
+
+
+def test_drain_timeout_env_neg_inf_falls_back_to_configured(monkeypatch):
+    """D-06 finite guard: env '-inf' is non-finite → falls back to configured."""
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.setenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", "-inf")
+    result = _read_shutdown_drain_timeout(45.0)
+    assert result == 45.0
+    assert math.isfinite(result) is True
+
+
+def test_drain_timeout_configured_inf_returns_finite(monkeypatch):
+    """D-06 finite guard (defense in depth): non-finite configured → finite 60.0.
+
+    75-01's allow_inf_nan=False makes this unreachable from the model, but the
+    helper guards it defensively since it is the single choke point feeding
+    asyncio.timeout.
+    """
+    import math
+
+    from triggarr.search.scheduler import _read_shutdown_drain_timeout
+
+    monkeypatch.delenv("TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT", raising=False)
+    result = _read_shutdown_drain_timeout(float("inf"))
+    assert math.isfinite(result) is True
+    assert result == 60.0
+
+
 async def test_shutdown_timeout_logs_holder_identity(tmp_path, monkeypatch):
     """RES-01 (Codex finding 3): shutdown drain logs holder identity twice.
 
