@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from triggarr.web.validation import (
+    safe_float,
     safe_int,
     safe_log_level,
     validate_arr_url,
@@ -245,6 +246,51 @@ class TestSafeLogLevel:
 
     def test_none_defaults(self) -> None:
         assert safe_log_level(None) == "info"
+
+
+# ---------------------------------------------------------------------------
+# safe_float
+# ---------------------------------------------------------------------------
+
+
+class TestSafeFloat:
+    """Float parsing with clamping, fractional preservation, and non-finite rejection."""
+
+    def test_valid_value(self) -> None:
+        assert safe_float("30", default=5.0, minimum=1.0, maximum=1440.0) == 30.0
+
+    def test_none_returns_default(self) -> None:
+        assert safe_float(None, default=60.0, minimum=1.0, maximum=3600.0) == 60.0
+
+    def test_empty_string_returns_default(self) -> None:
+        assert safe_float("", default=60.0, minimum=1.0, maximum=3600.0) == 60.0
+
+    def test_non_numeric_returns_default(self) -> None:
+        assert safe_float("abc", default=60.0, minimum=1.0, maximum=3600.0) == 60.0
+
+    def test_below_minimum_clamped(self) -> None:
+        assert safe_float("0.5", default=60.0, minimum=1.0, maximum=3600.0) == 1.0
+
+    def test_above_maximum_clamped(self) -> None:
+        assert safe_float("9999", default=60.0, minimum=1.0, maximum=3600.0) == 3600.0
+
+    def test_fractional_preserved(self) -> None:
+        """safe_float preserves fractional input unlike safe_int (the key reason for a separate helper)."""
+        assert safe_float("1.5", default=60.0, minimum=1.0, maximum=3600.0) == 1.5
+
+    def test_nan_returns_default(self) -> None:
+        """float('nan') parses without raising; max(nan, 1.0) == nan so clamp does not neutralize it.
+        The math.isfinite guard must catch it and return the default."""
+        assert safe_float("nan", default=60.0, minimum=1.0, maximum=3600.0) == 60.0
+
+    def test_inf_returns_default(self) -> None:
+        """float('inf') parses without raising; max(inf, 1.0) == inf would pass an unbounded value through.
+        The math.isfinite guard must catch it and return the default."""
+        assert safe_float("inf", default=60.0, minimum=1.0, maximum=3600.0) == 60.0
+
+    def test_neg_inf_returns_default(self) -> None:
+        """float('-inf') parses without raising; the math.isfinite guard must return the default."""
+        assert safe_float("-inf", default=60.0, minimum=1.0, maximum=3600.0) == 60.0
 
 
 # ---------------------------------------------------------------------------
