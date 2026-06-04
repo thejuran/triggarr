@@ -208,7 +208,7 @@ v2.10 Recovery, Counts & Config Parity shipped 2026-06-04 (released as v2.10.0).
 
 ### Active
 
-**v2.11 Never-Searched-First Search Queue Priority** — see `.planning/REQUIREMENTS.md` for the scoped REQ-IDs. Replace the integer-cursor search walk with an ordered per-item searched-log on `AppState` that prioritizes never-searched items, tops up oldest-searched-first, marks on attempt, resets per pass, and prunes to eligible. Source of truth: `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md`.
+**v2.11 Never-Searched-First Search Queue Priority** — Phase 76 complete (verified 2026-06-04, 9/9 must-haves, full suite green). Replaced the integer-cursor search walk with an ordered per-item searched-log on `AppState` and a pure `prioritize_batch()` dispatcher: never-searched-first, top-up oldest-searched-first, mark-on-attempt, reset-per-pass (`bool(batch)` guard so a zero-search cycle never completes a pass), prune-to-eligible, commit-at-cycle-end; `_merge_defaults` strips legacy cursor keys on load; `slice_batch` removed. QUEUE-01..11 implemented. Awaiting milestone-end deploy/walkthrough + release. Source of truth: `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md`.
 
 Parked for a future milestone: v2.6 UI pixel-verification (UI-01..03), PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, v2.9-audit follow-ups, and v2.10 deep-review tech-debt follow-ups (dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; `request_timeout` → `safe_float`). See STATE.md Deferred Items.
 
@@ -321,4 +321,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-04 after v2.11 Never-Searched-First Search Queue Priority milestone started*
+*Last updated: 2026-06-04 after v2.11 Phase 76 (Never-Searched-First Search Queue) completed and verified*
