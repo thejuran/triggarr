@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.10
 milestone_name: Recovery, Counts & Config Parity
-status: completed
+status: executing
 stopped_at: Phase 74 context gathered
-last_updated: "2026-06-04T00:18:51.844Z"
-last_activity: 2026-06-03 -- Phase 73 marked complete
+last_updated: "2026-06-04T01:12:08.164Z"
+last_activity: 2026-06-04 -- Phase 74 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 33
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 73 — password-reset-ui
+**Current focus:** Phase 74 — count-only-refresh
 
 ## Current Position
 
-Phase: 73 — COMPLETE
-Plan: 1 of 1
-Status: Phase 73 complete
-Last activity: 2026-06-03 -- Phase 73 marked complete
+Phase: 74 (count-only-refresh) — EXECUTING
+Plan: 2 of 3
+Status: Executing Phase 74
+Last activity: 2026-06-04 -- Phase 74 execution started
 
 ### v2.10 milestone shape
 
@@ -118,6 +118,7 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 | v2 requirement | AUDIT-01: Config change audit log | v2.8 audit | deferred |
 | v2 requirement | OBS-01: Scheduler job dashboard | v2.8 audit | deferred |
 | v2.9-audit follow-up | validate_arr_url dedup; Retry-Connection hx-disabled-elt; bug-report.yml v2.9 dropdown option | v2.9 | deferred |
+| Phase 74-count-only-refresh P01 | 35m | 3 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -136,7 +137,7 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-06-03T23:45:34.915Z
+Last session: 2026-06-04T01:12:08.161Z
 Stopped at: Phase 74 context gathered
 Resume file: .planning/phases/74-count-only-refresh/74-CONTEXT.md
 
