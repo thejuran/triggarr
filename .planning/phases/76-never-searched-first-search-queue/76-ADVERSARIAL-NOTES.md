@@ -115,3 +115,15 @@ Fix applied directly — mechanical doc-sync of the HIGH-1 correction codex alre
 round 2, no new design decision. Rewrite cap (2/2) is reached, so per the orchestrator contract
 this is a user-pause point. Re-running codex once more to confirm the propagation is complete
 before surfacing the decision.
+
+## Rounds 4–6 — convergence to clean (mechanical propagation, no design changes)
+
+- **Round 4 [HIGH]:** strip-on-load correction was incompletely propagated — fixed 7 stale spots across PATTERNS/RESEARCH/VALIDATION.
+- **Round 4/5 [HIGH]:** unscoped `! grep _cursor` guards at RESEARCH:393/:402 and VALIDATION:34/83 → replaced with the scoped exception model (state.py v2.2-detector + _merge_defaults pop allowed; tests/ → test_state.py only + companion grep-must-hit).
+- **Round 5 [HIGH]:** Plan 03 `<automated>` verify command used `|| true` masking pytest + slice_batch-guard failures → rewritten as a single unmasked `&&` chain (full suite → no slice_batch → no cursor in tests except test_state.py → test_state.py regression present → no cursor in engine.py → ruff). bash -n validated.
+- **Round 6 [HIGH]:** ROADMAP.md:202 Phase-76 success criterion 2 still carried the rejected "overwrites the stale keys on its next save" wording (loaded by every plan as context) → corrected to the active `_merge_defaults` strip-on-load + load→save absence test.
+
+All findings across all 6 rounds were verified true against live code and fixed. Rounds 2–6 were
+mechanical propagations/corrections of the two round-1 design decisions (strip-on-load; runtime-safe
+checkpoint), not new design. Final corpus sweep: no active stale passive-overwrite guidance, no
+blanket `_cursor` guard, no masked verify command remains.
