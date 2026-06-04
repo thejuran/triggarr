@@ -502,9 +502,13 @@ directly (pure function, no lifespan needed):
 (test_scheduler.py:665). The latter sets `monkeypatch.setattr(sched, "_SHUTDOWN_DRAIN_TIMEOUT", 0.1)`
 to force a fast drain — after the refactor the shutdown path reads `drain` from settings, NOT the
 constant, so this test must be updated to set the drain via the configured value, e.g. construct
-`make_settings(...)` with `shutdown_drain_timeout=0.1` (or monkeypatch
-`app.state.settings.general.shutdown_drain_timeout`). The planner MUST flag this: the existing
-holder-identity test's monkeypatch target moves from the module constant to the settings value.
+`make_settings(general=GeneralConfig(shutdown_drain_timeout=1.0))`. NOTE: the forced value MUST be
+`1.0` (the field minimum), NOT `0.1` — Plan 75-01 adds `Field(ge=1.0, allow_inf_nan=False)`, so
+`GeneralConfig(shutdown_drain_timeout=0.1)` raises `ValidationError` at construction. The
+holder-identity test holds the lock and never releases it, so the drain times out regardless of
+value; `1.0` proves the config-read path just as well as `0.1` did. The planner MUST flag this:
+the existing holder-identity test's force-fast-drain target moves from the module constant to a
+valid (`>= 1.0`) configured settings value.
 
 ---
 
