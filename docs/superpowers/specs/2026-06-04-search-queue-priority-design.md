@@ -49,7 +49,7 @@ These were resolved during brainstorming and are not open for re-litigation duri
 | D-6 | Memory representation | **Ordered searched-log**: a list of IDs in the order they were searched (oldest at the front). Provides both membership ("searched?") and recency ("oldest = front"). **Replaces** the integer cursor for dispatch. |
 | D-7 | Mark on attempt vs. success | **Mark on attempt** (success OR failure). The literal reading of "never searched before" = never *attempted*. Starvation-free: a persistently-failing item cannot sit permanently at the front. |
 | D-8 | Commit timing | **At cycle end**, in the same atomic `save_state()` that persists the rest of the cycle's state. At-least-once semantics; the searched-log and `*_pass` can never disagree. |
-| D-9 | Old cursor keys | **Removed outright** from the `AppState` TypedDict (no tombstone, no migration step). `total=False` + plain-dict runtime means pre-upgrade `state.json` files tolerate the leftover keys harmlessly until the next save overwrites them. This matches the project's real precedent for retiring a state field (the v2.2→v2.3 transform-and-drop), not the still-live `search_log` carry-forward. |
+| D-9 | Old cursor keys | **Removed outright** from the `AppState` TypedDict (no tombstone, no separate versioned migration function). **CORRECTION (found during Phase 76 planning, codex HIGH-1 — supersedes the original wording):** pre-upgrade `state.json` files do NOT "tolerate the leftover keys harmlessly until the next save overwrites them" — `_merge_defaults` uses `{**default, **instance_data}`, which PRESERVES unknown keys, and `save_state` writes them back, so they would persist indefinitely. The fix is an inline strip in `_merge_defaults` on load: `for legacy_key in ("missing_cursor","cutoff_cursor"): merged.pop(legacy_key, None)`, with a load→save round-trip test asserting the keys are ABSENT from the written JSON. Still no separate migration function (matches the v2.2→v2.3 transform-and-drop precedent, not the still-live `search_log` carry-forward). |
 | D-10 | `slice_batch` | **Removed** along with its tests once all 6 callers move to `prioritize_batch`. No dead code left. |
 
 ## 4. Architecture & Policy
@@ -97,12 +97,16 @@ class AppState(TypedDict, total=False):
 
 - **ID normalization** — a small per-app `item_key(item) -> str` helper:
   Radarr/Lidarr `str(item["id"])`; Sonarr `f'{item["seriesId"]}:{item["seasonNumber"]}'`.
-- **Migration** — none required. Both new fields are `total=False`; existing `state.json`
-  files simply lack them and dispatch reads them with `.get("<q>_searched", [])`. The first
-  cycle after upgrade starts with an empty log → treats every item as unsearched → one
-  rediscovery pass where everything gets searched once (correct and harmless). Leftover
-  `missing_cursor`/`cutoff_cursor` keys in old files are ignored at runtime and overwritten on
-  the next save.
+- **Migration** — no separate versioned migration function. Both new fields are `total=False`;
+  existing `state.json` files simply lack them and dispatch reads them with
+  `.get("<q>_searched", [])`. The first cycle after upgrade starts with an empty log → treats
+  every item as unsearched → one rediscovery pass where everything gets searched once.
+  **CORRECTION (Phase 76 planning, codex HIGH-1):** leftover `missing_cursor`/`cutoff_cursor`
+  keys are NOT merely "ignored and overwritten on the next save" — `_merge_defaults`'
+  `{**default, **instance_data}` preserves unknown keys, so they persist unless actively
+  removed. `_merge_defaults` therefore performs an inline strip on load
+  (`merged.pop("missing_cursor"/"cutoff_cursor", None)`); a load→save round-trip test asserts
+  the keys are ABSENT from the written JSON.
 - **`_default_instance_state()`** — returns empty searched-logs (and no cursors).
 - **Bound** — pruning to eligible each cycle caps log size at the eligible-item count for that
   queue; reset-on-pass-complete returns it to empty. No unbounded growth.
@@ -231,8 +235,10 @@ today's cursor semantic (at-least-once, never lost).
 **Migration / back-compat:**
 
 - Load a pre-upgrade `state.json` containing `missing_cursor`/`cutoff_cursor` but no
-  searched-logs → loads clean, dispatch treats everything as unsearched, leftover cursor keys
-  ignored and overwritten on next save.
+  searched-logs → loads clean, dispatch treats everything as unsearched. **CORRECTION (Phase 76
+  planning, codex HIGH-1):** the leftover cursor keys are NOT "ignored and overwritten on next
+  save" — they are actively STRIPPED by `_merge_defaults` on load (`merged.pop(...)`); the test
+  loads → saves → reloads and asserts the keys are ABSENT from the written JSON.
 
 **Regression / preservation:**
 
