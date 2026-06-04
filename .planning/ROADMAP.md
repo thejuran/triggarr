@@ -20,6 +20,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - ✅ v2.8 Hardening & Observability -- Phases 64-67 (shipped 2026-06-01) -- [archive](milestones/v2.8-ROADMAP.md)
 - ✅ v2.9 Launch-Hardening / Sibling Consistency -- Phases 68-71 (shipped 2026-06-03) -- [archive](milestones/v2.9-ROADMAP.md)
 - ✅ v2.10 Recovery, Counts & Config Parity -- Phases 72-75 (shipped 2026-06-04) -- [archive](milestones/v2.10-ROADMAP.md)
+- 🔄 v2.11 Never-Searched-First Search Queue Priority -- Phase 76 (in progress)
 
 ## Phases
 
@@ -186,6 +187,24 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
 
 </details>
 
+## v2.11 Never-Searched-First Search Queue Priority (Phase 76)
+
+- [ ] **Phase 76: Never-Searched-First Search Queue** - Replace the integer-cursor walk with an ordered per-instance searched-log on `AppState` and a pure `prioritize_batch()` dispatcher that searches never-tried items first, tops up oldest-searched-first, marks on attempt, resets per pass, and prunes to eligible.
+
+## Phase Details
+
+### Phase 76: Never-Searched-First Search Queue
+**Goal**: The scheduler remembers which items it has already searched (per instance, per queue) and prioritizes never-searched items each cycle, while staying behavior-identical to today on a cold start.
+**Depends on**: Phase 75 (v2.10 shipped; builds on the existing `AppState`, `state.py` atomic `save_state()`, and the three `run_*_cycle` functions in `search/engine.py`)
+**Requirements**: QUEUE-01, QUEUE-02, QUEUE-03, QUEUE-04, QUEUE-05, QUEUE-06, QUEUE-07, QUEUE-08, QUEUE-09, QUEUE-10, QUEUE-11
+**Success Criteria** (what must be TRUE):
+  1. Each instance persists an ordered searched-log per queue in `state.json` — `missing_searched`/`cutoff_searched` lists of string IDs, oldest at the front; Radarr/Lidarr keyed by `id`, Sonarr by composite `"{seriesId}:{seasonNumber}"` so one season's mark never marks another season of the same series (QUEUE-01, QUEUE-02).
+  2. `missing_cursor`/`cutoff_cursor` are gone from `AppState` and `slice_batch` is deleted; a pre-upgrade `state.json` carrying the old cursor keys (and no searched-logs) loads cleanly, is treated as everything-unsearched, and overwrites the stale keys on its next save — no migration step (QUEUE-03, QUEUE-07).
+  3. Within a cycle, a fresh `prioritize_batch()` fills the (already `hard_max`-capped) batch with never-searched eligible items first in fetched API order, then tops up remaining slots with already-searched items oldest-searched-first; on an empty searched-log the batch is identical to today's first-cycle cursor walk, and existing cycle tests asserting search counts / history rows stay green (QUEUE-04, QUEUE-05, QUEUE-06, QUEUE-07).
+  4. An item joins the searched-log the moment its search command fires — success or failure — so a persistently-failing item can never starve the queue; each cycle the log is pruned to currently-eligible IDs so grabbed/unmonitored/deleted items drop out and the log stays bounded (QUEUE-08, QUEUE-10).
+  5. When every currently-eligible item in a queue has been searched, that queue's log clears and the existing `missing_pass`/`cutoff_pass` counter increments; the searched-log and the pass counter commit together only in the single atomic `save_state()` at cycle end, so they can never disagree (at-least-once), and the count-only refresh path (`refresh_*_counts`) remains queue-independent — it never reads or writes the searched-log (QUEUE-09, QUEUE-11).
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -194,6 +213,7 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
+| 76. Never-Searched-First Search Queue | 0/0 | Not started | - |
 
 ## Backlog
 

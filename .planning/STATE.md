@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v2.11
 milestone_name: Never-Searched-First Search Queue Priority
-status: planning
-last_updated: "2026-06-04T17:37:28.833Z"
+status: roadmapped
+last_updated: "2026-06-04T18:10:00.000Z"
 last_activity: 2026-06-04
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Planning next milestone (v2.10 shipped 2026-06-04)
+**Current focus:** v2.11 Never-Searched-First Search Queue Priority — roadmap created (1 phase: 76), ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 76 — Never-Searched-First Search Queue (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-04 — Milestone v2.11 started
+Status: Roadmapped — ready for /gsd:plan-phase 76
+Last activity: 2026-06-04 — v2.11 roadmap created (Phase 76; 11/11 requirements mapped)
+
+### v2.11 milestone shape
+
+A single-phase milestone. v2.11 is a tightly-coupled internal refactor of the search dispatch path — NOT independent tracks. The state-model change (QUEUE-01/02/03), the never-searched-first dispatch (QUEUE-04..07), and the searched-log lifecycle (QUEUE-08..11) are realized by the SAME pure function (`prioritize_batch`) wired into the SAME 6 cycle call sites (Radarr/Sonarr/Lidarr × missing/cutoff). `prioritize_batch` reads the searched-log fields, partitions unsearched-first, marks on attempt, returns a pass-complete signal, and the call sites commit the log + `*_pass` in the single atomic `save_state()` at cycle end. Splitting state vs. dispatch vs. lifecycle would fracture one function across phases and produce thin, task-shaped phases — so the honest decomposition is one coherent, independently-verifiable phase (Phase 76). Phase numbering continues from v2.10's Phase 75 (starts at 76, not reset to 1). Source of truth: `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md` (10 locked decisions §3, YAGNI fence §9, affected files §10). Flat phase layout (`.planning/phases/76-<slug>/`) per the v2.7–v2.10 convention.
+
+| Phase | Goal | Requirements | Depends on |
+|-------|------|--------------|------------|
+| 76 — Never-Searched-First Search Queue | Replace the integer cursor with an ordered per-instance searched-log on `AppState` + a pure `prioritize_batch()` (never-searched-first, top-up oldest-first, mark-on-attempt, prune-to-eligible, pass-reset, commit-at-cycle-end) swapped into all 6 cycle call sites; remove `missing_cursor`/`cutoff_cursor` and `slice_batch`. Behavior-identical on cold start. | QUEUE-01..11 | — (builds on shipped v2.10 state/engine) |
+
+### Key v2.11 Phasing Rationale
+
+- **One phase, not three:** The design spec §1/§6 and the milestone instructions both confirm the three requirement clusters share code. `prioritize_batch` is a single pure function that simultaneously implements dispatch (QUEUE-04/05/06), mark-on-attempt (QUEUE-08), and prune-to-eligible (QUEUE-10); the call-site wiring (QUEUE-07) realizes pass-reset (QUEUE-09) and commit-at-cycle-end (QUEUE-11); and the state-model change (QUEUE-01/02/03) is the substrate all of that reads/writes. None of these is independently verifiable without the others (you cannot drive real cycles through `prioritize_batch` without the `AppState` fields, nor verify the lifecycle without the call sites). A single phase keeps the function whole and the phase independently testable.
+- **Behavior-preserving constraints encoded as success criteria:** cold-start dispatch (empty searched-log) must produce the same batch as today's first cycle; existing cycle tests asserting search counts / history rows must stay green; count-only refresh (`refresh_*_counts`) must remain queue-independent (never reads/writes the searched-log). These are pinned in Phase 76's criteria 3 and 5.
+- **Removals are part of the same phase:** dropping the cursor fields and deleting `slice_batch` (with its tests) happen as the 6 callers migrate to `prioritize_batch` — no dead code, no tombstone, no migration step (D-9/D-10). Cursor-value test assertions migrate to searched-log assertions in the same phase.
 
 ### v2.10 milestone shape
 
@@ -89,6 +103,8 @@ v2.9 roadmap created 2026-06-02 from the launch-hardening design spec. 19 v1 req
 
 v2.10 roadmap created 2026-06-03 from the recovery/counts/config design spec. 14 v1 requirements across 4 phases (72-75, continuing from v2.9's Phase 71 — not reset to 1). Three disjoint tracks: Track A (RCOV-01..06, Phases 72-73), Track B (CNT-01..05, Phase 74), Track C (CFG-03/CFG-04/DOCS-01, Phase 75). 100% coverage, no orphans. Track A split backend/UI given its auth-surface risk and adversarial test weight; Tracks B and C each a single phase; DOCS-01 deferred-record correction folded into Phase 75 (no standalone docs phase). Backlog phases 999.1 (password recovery) and 999.2 (count-only refresh) promoted into this milestone. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7/v2.8/v2.9 convention.
 
+v2.11 roadmap created 2026-06-04 from the search-queue-priority design spec. 11 v1 requirements (QUEUE-01..11) mapped to a single phase (76, continuing from v2.10's Phase 75 — not reset to 1). 100% coverage, no orphans, no double-mapping. One coherent phase because the requirements are not independent tracks: a single pure `prioritize_batch()` + the same 6 cycle call sites realize the state model, the dispatch, and the lifecycle together. Flat phase layout (`.planning/phases/76-<slug>/`).
+
 ### Cross-cutting thread
 
 The three tracks share no code (confirmed in spec §1). The only cross-track coupling is the milestone-end NAS walkthrough and the security posture: Track A must add zero new network attack surface (token never in any HTTP response; rate-limited endpoints; SecretStr discipline on `password_hash`/`session_secret` maintained through the redacting sink). Track A's reset-confirm session rotation reuses the v2.8.1 `change_password` rotation pattern.
@@ -143,4 +159,4 @@ Resume file: .planning/phases/75-drain-timeout-config-parity-deferred-record-cor
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the single phase with /gsd:plan-phase 76

@@ -57,23 +57,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| QUEUE-01 | TBD | Pending |
-| QUEUE-02 | TBD | Pending |
-| QUEUE-03 | TBD | Pending |
-| QUEUE-04 | TBD | Pending |
-| QUEUE-05 | TBD | Pending |
-| QUEUE-06 | TBD | Pending |
-| QUEUE-07 | TBD | Pending |
-| QUEUE-08 | TBD | Pending |
-| QUEUE-09 | TBD | Pending |
-| QUEUE-10 | TBD | Pending |
-| QUEUE-11 | TBD | Pending |
+| QUEUE-01 | Phase 76 | Pending |
+| QUEUE-02 | Phase 76 | Pending |
+| QUEUE-03 | Phase 76 | Pending |
+| QUEUE-04 | Phase 76 | Pending |
+| QUEUE-05 | Phase 76 | Pending |
+| QUEUE-06 | Phase 76 | Pending |
+| QUEUE-07 | Phase 76 | Pending |
+| QUEUE-08 | Phase 76 | Pending |
+| QUEUE-09 | Phase 76 | Pending |
+| QUEUE-10 | Phase 76 | Pending |
+| QUEUE-11 | Phase 76 | Pending |
 
 **Coverage:**
 - v1 requirements: 11 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 11 ⚠️ (filled by roadmapper)
+- Mapped to phases: 11 (all to Phase 76)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after initial definition*
+*Last updated: 2026-06-04 after roadmap creation (all 11 reqs mapped to Phase 76)*
