@@ -94,6 +94,8 @@ Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:
 
 The `stop_grace_period: 90s` setting gives the in-process search-cycle drain (default 60s, configurable via the `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` environment variable) time to complete before Docker sends SIGKILL. If you run Triggarr with `docker run` directly (no compose), pass `--stop-timeout 90`.
 
+The drain timeout is also a persisted config field (`general.shutdown_drain_timeout`, settable in the Settings UI, default 60 s, minimum 1 s). The `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` environment variable **overrides** the configured value when set — the config field is the default, the env var wins. Keep `stop_grace_period` (or `--stop-timeout`) greater than the effective drain timeout so Docker does not SIGKILL mid-drain.
+
 When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`, `state.json`, and `triggarr.db` live on the mounted volume. On an empty volume, the first run exits with code 1 after writing a default `triggarr.toml` — this is expected, not a crash. Docker's `restart: unless-stopped` brings the container back up automatically. Edit the config at `/config/triggarr.toml`, then visit [http://localhost:8484](http://localhost:8484) to complete setup.
 
 ### Standalone (pip)

@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.10.0 (2026-06-04)
+
+Password recovery, per-card count refresh, and a configurable shutdown drain timeout.
+
+* Features:
+
+  * Password recovery flow — operators can now reset the admin password without SSH access. A "Forgot password?" link appears on the login page once initial setup is complete; a single-use, 15-minute token is written to the config directory (logged at startup, never returned over HTTP). Confirming the reset rotates the session secret and signs in automatically, invalidating all other active sessions.
+
+  * Per-card count refresh — each app card now has a "Refresh counts" button that fetches current missing/cutoff counts from *arr and updates the dashboard without triggering a search cycle. Counts update instantly; last-searched time and the consecutive-failure counter are unchanged.
+
+  * Configurable shutdown drain timeout — the graceful-shutdown drain (how long Triggarr waits for an in-flight search cycle to finish before forcing close) is now a persisted config field (`general.shutdown_drain_timeout`, settable in Settings, default 60 s, minimum 1 s). The `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` environment variable overrides the configured value when set.
+
 ## v2.9.0 (2026-06-02)
 
 Security hardening, a search-reliability fix, and a documentation overhaul.
