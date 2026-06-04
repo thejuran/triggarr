@@ -189,7 +189,7 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
 
 ## v2.11 Never-Searched-First Search Queue Priority (Phase 76)
 
-- [ ] **Phase 76: Never-Searched-First Search Queue** - Replace the integer-cursor walk with an ordered per-instance searched-log on `AppState` and a pure `prioritize_batch()` dispatcher that searches never-tried items first, tops up oldest-searched-first, marks on attempt, resets per pass, and prunes to eligible.
+- [x] **Phase 76: Never-Searched-First Search Queue** - Replace the integer-cursor walk with an ordered per-instance searched-log on `AppState` and a pure `prioritize_batch()` dispatcher that searches never-tried items first, tops up oldest-searched-first, marks on attempt, resets per pass, and prunes to eligible. (completed 2026-06-04)
 
 ## Phase Details
 
@@ -206,7 +206,7 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
 **Plans**: 3 plans (3 waves, sequential — shared engine.py/state.py/test files)
 - [x] 76-01-PLAN.md — TDD core: pure `prioritize_batch` + exhaustive unit matrix + cold-start oracle; `AppState` searched-log field swap + back-compat state tests (wave 1)
 - [x] 76-02-PLAN.md — Rewire all 6 cycle call sites (thin caller + per-app `key_fn` + pass-complete INFO line); migrate behavioral cycle tests + cycle-integration coverage (wave 2)
-- [ ] 76-03-PLAN.md — Delete `slice_batch` + tests + add post-deletion cold-start test; re-express refresh-counts queue-independence; strip 7 incidental fixtures; static guards (wave 3)
+- [x] 76-03-PLAN.md — Delete `slice_batch` + tests + add post-deletion cold-start test; re-express refresh-counts queue-independence; strip 7 incidental fixtures; static guards (wave 3)
 
 ## Progress
 
@@ -216,7 +216,7 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
-| 76. Never-Searched-First Search Queue | 2/3 | In Progress|  |
+| 76. Never-Searched-First Search Queue | 3/3 | Complete   | 2026-06-04 |
 
 ## Backlog
 
