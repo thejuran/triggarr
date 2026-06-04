@@ -390,7 +390,7 @@ None blocking. The design spec + CONTEXT resolve all WHAT/WHY/HOW; this research
 ### Sampling Rate
 - **Per task commit:** `uv run pytest tests/test_search.py tests/test_state.py -x -q` (the two behavioral hot files) + `uv run ruff check triggarr/ tests/`
 - **Per wave merge:** `uv run pytest tests/ -x -q` (full suite — 924 test functions baseline; must stay green)
-- **Phase gate:** Full suite green + `ruff check` clean + static check `! grep -rq "slice_batch" triggarr/ tests/` and `! grep -rq "_cursor" triggarr/state.py triggarr/search/engine.py` before `/gsd:verify-work`.
+- **Phase gate:** Full suite green + `ruff check` clean + SCOPED static guards before `/gsd:verify-work`: `! grep -rq "slice_batch" triggarr/ tests/`; in `triggarr/state.py`/`triggarr/search/engine.py`, `*_cursor` survives ONLY inside the v2.2 detector (`_is_v22_state_format`/`_migrate_v22_state`) and the `_merge_defaults` strip-pop (`merged.pop(...)`) — confirm by reading, NOT a blanket `! grep -rq "_cursor"`; in `tests/`, `*_cursor` survives ONLY in `tests/test_state.py` (legacy strip regression + v2.2 fixtures), with `grep -qE "missing_cursor" tests/test_state.py` required to HIT. (codex HIGH-3/HIGH-4: a blanket `_cursor` grep would force deletion of required compat/strip code.)
 
 ### Wave 0 Gaps
 - [ ] New `prioritize_batch` unit-test suite in `tests/test_search.py` (10-case matrix per spec §8) — covers QUEUE-02/04/05/09/10 + key_fn
@@ -399,7 +399,7 @@ None blocking. The design spec + CONTEXT resolve all WHAT/WHY/HOW; this research
 - [ ] Searched-log round-trip + default-state tests in `tests/test_state.py` — covers QUEUE-01
 - [ ] Re-expressed queue-independence tests in `tests/test_refresh_counts.py` (×3 apps) — covers the invariant (D-06)
 - [ ] Per-app cycle-integration extensions (mark-on-attempt, pass-reset, new-item-jumps-line, commit-at-cycle-end) — covers QUEUE-07/08/09/11
-- [ ] Static guard: no `slice_batch` / no `*_cursor` survivors (CI-style grep assertion or verify-work check)
+- [ ] Static guard (SCOPED — not a blanket `_cursor` grep): no `slice_batch` survivors; `*_cursor` only in the state.py v2.2-detector + `_merge_defaults` strip-pop and in `tests/test_state.py` (legacy regression must remain) — codex HIGH-3/HIGH-4
 
 *Framework install: none needed — pytest-asyncio auto mode already configured. No new test dependencies (spec §8).*
 
