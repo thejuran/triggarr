@@ -127,3 +127,19 @@ All findings across all 6 rounds were verified true against live code and fixed.
 mechanical propagations/corrections of the two round-1 design decisions (strip-on-load; runtime-safe
 checkpoint), not new design. Final corpus sweep: no active stale passive-overwrite guidance, no
 blanket `_cursor` guard, no masked verify command remains.
+
+## Rounds 7–10 + final disposition
+
+- **Round 7 [HIGH]:** PROJECT.md:54 milestone summary still passive-overwrite → corrected to strip-on-load.
+- **Round 8 [HIGH]:** RESEARCH.md:215 "Don't Hand-Roll" row still "tolerate leftover keys; no migration code" → corrected.
+- **Round 9 [HIGH]:** the upstream design spec (D-9 + Migration + back-compat test, the SOURCE of the propagated assumption) still passive-overwrite → corrected at source with CORRECTION notes.
+- **Round 10 [HIGH/MED-1]:** pass-completion pseudo-code in spec §6/§7/§8 + RESEARCH:198/Pitfall-2 + PATTERNS:93/76 still `bool(eligible_ids)` (missing the mandatory `bool(batch)` term) → corrected everywhere to `bool(batch) and eligible_ids.issubset(set(new_log))`, added batch_size<=0 edge case to spec §7/§8.
+
+**DISPOSITION (user decision after round 10): ACCEPT PLANS → EXECUTE.**
+The 2 round-1 DESIGN blockers (HIGH-1 stale-key persistence; HIGH-2 broken runtime checkpoint) and
+both mediums (MED-1 bool(batch) guard; MED-2 Sonarr both-queue+Specials integration) are fully
+resolved in the EXECUTABLE plans and verified against live code. Rounds 2–10 were a long tail of
+propagating those same fixes through supporting docs (one file per round) — all corrected, including
+the upstream spec. The plans the executor implements from (esp. 76-02-PLAN.md) have carried the
+correct contract since round 1's fix. Past the rewrite cap (2); diminishing returns on further
+plan-doc passes. turingmind deep review (Sub-step 5) independently re-checks the IMPLEMENTED code.
