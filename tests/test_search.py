@@ -36,7 +36,6 @@ from triggarr.search.engine import (
     run_lidarr_cycle,
     run_radarr_cycle,
     run_sonarr_cycle,
-    slice_batch,
 )
 from triggarr.state import _default_state
 
@@ -62,53 +61,6 @@ def test_filter_monitored_empty_list():
     assert filter_monitored([]) == []
 
 
-# ---------------------------------------------------------------------------
-# slice_batch
-# ---------------------------------------------------------------------------
-
-
-def test_slice_batch_normal():
-    items = list(range(10))
-    batch, new_cursor = slice_batch(items, cursor=3, batch_size=2)
-    assert batch == [3, 4]
-    assert new_cursor == 5
-
-
-def test_slice_batch_wraps_at_end():
-    items = list(range(5))
-    batch, new_cursor = slice_batch(items, cursor=3, batch_size=3)
-    assert batch == [3, 4]
-    assert new_cursor == 0
-
-
-def test_slice_batch_cursor_past_end():
-    items = list(range(5))
-    batch, new_cursor = slice_batch(items, cursor=99, batch_size=2)
-    assert batch == [0, 1]
-    assert new_cursor == 2
-
-
-def test_slice_batch_empty_list():
-    batch, new_cursor = slice_batch([], cursor=0, batch_size=5)
-    assert batch == []
-    assert new_cursor == 0
-
-
-# SRCH-04 (batch exceeds available): Covered by test_slice_batch_batch_larger_than_remaining below.
-# The search cycle functions call slice_batch() which handles this correctly -- items=[0,1,2],
-# cursor=1, batch_size=10 -> batch=[1,2], new_cursor=0. No integration test needed.
-#
-# SRCH-05 (cursor past end): Covered by test_slice_batch_cursor_past_end above.
-# Cursor resets to 0 and slices from beginning -- items=[0..4], cursor=99, batch_size=2 ->
-# batch=[0,1], new_cursor=2. No integration test needed.
-
-
-def test_slice_batch_batch_larger_than_remaining():
-    items = list(range(3))
-    batch, new_cursor = slice_batch(items, cursor=1, batch_size=10)
-    assert batch == [1, 2]
-    assert new_cursor == 0
-
 
 # ---------------------------------------------------------------------------
 # prioritize_batch (QUEUE-02/04/05/06/09/10)
@@ -133,17 +85,22 @@ def test_prioritize_batch_cold_start():
     assert pass_completed is False  # items 4 and 5 still unsearched
 
 
-def test_prioritize_batch_cold_start_equivalence():
-    """QUEUE-06: prioritize_batch(items, [], N, key_fn)[0] == slice_batch(items, 0, N)[0].
+def test_prioritize_batch_cold_start_fixed_expectation():
+    """QUEUE-06 (post-deletion): cold start (empty log) must return first N items in fetch order.
 
-    This is the load-bearing cold-start behavior-preservation oracle:
-    an empty searched-log must produce the same batch as the prior first-cycle cursor walk.
+    Fixed-expectation variant: hardcoded expected values, no oracle comparison.
+    Preserves the cold-start-equivalence guarantee (QUEUE-06) with no dead-code dependency.
+
+    With an empty searched-log every item is unsearched, so the batch is exactly
+    eligible_items[:batch_size] in the original fetch order.
     """
     items = _items(10, 20, 30, 40, 50)
-    for n in (0, 1, 3, 5, 7):
-        pb_batch = prioritize_batch(items, [], n, _id_key)[0]
-        sb_batch = slice_batch(items, 0, n)[0]
-        assert pb_batch == sb_batch, f"cold-start divergence at N={n}: {pb_batch} != {sb_batch}"
+    assert prioritize_batch(items, [], 0, _id_key)[0] == []
+    assert prioritize_batch(items, [], 1, _id_key)[0] == [{"id": 10}]
+    assert prioritize_batch(items, [], 3, _id_key)[0] == [{"id": 10}, {"id": 20}, {"id": 30}]
+    assert prioritize_batch(items, [], 5, _id_key)[0] == [{"id": 10}, {"id": 20}, {"id": 30}, {"id": 40}, {"id": 50}]
+    # N > len(items): return all items in fetch order
+    assert prioritize_batch(items, [], 7, _id_key)[0] == [{"id": 10}, {"id": 20}, {"id": 30}, {"id": 40}, {"id": 50}]
 
 
 def test_prioritize_batch_unsearched_first():
@@ -3089,7 +3046,7 @@ async def test_run_radarr_cycle_malformed_json_aborts(tmp_path):
 # --- Empty queue and tag filtering edge cases (SRCH-01, SRCH-02) ---
 # These provide integration-level confidence that empty/fully-filtered queues
 # propagate correctly through the full cycle, complementing unit-level coverage
-# in test_slice_batch_empty_list and test_filter_by_tag_empty_list.
+# in test_prioritize_batch_empty_eligible and test_filter_by_tag_empty_list.
 
 
 async def test_run_radarr_cycle_empty_queues(tmp_path):

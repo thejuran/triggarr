@@ -203,31 +203,6 @@ def prioritize_batch(
     return batch, new_log, pass_completed
 
 
-def slice_batch(items: list, cursor: int, batch_size: int) -> tuple[list, int]:
-    """Slice a batch starting at cursor position with wrap-around.
-
-    If cursor is past the end of the list, wraps to 0.
-    Callers are responsible for logging wrap-around events.
-
-    Args:
-        items: Full list of items to batch from.
-        cursor: Current position in the list.
-        batch_size: Maximum number of items to return.
-
-    Returns:
-        Tuple of (batch, new_cursor). New cursor wraps to 0
-        when it reaches or passes the end of the list.
-    """
-    if not items:
-        return [], 0
-    if cursor >= len(items):
-        cursor = 0
-    batch = items[cursor : cursor + batch_size]
-    new_cursor = cursor + len(batch)
-    if new_cursor >= len(items):
-        new_cursor = 0
-    return batch, new_cursor
-
 
 def deduplicate_to_seasons(episodes: list[dict]) -> list[dict]:
     """Deduplicate Sonarr episode records to unique (seriesId, seasonNumber) pairs.
@@ -1127,7 +1102,7 @@ async def refresh_radarr_counts(
 
     Performs the full fetch -> raw-count -> health -> tag -> filter -> eligible-count
     work for Radarr and caches ALL count fields in ist = state["radarr"][instance_name]
-    in place.  Does NOT call slice_batch, does NOT write missing_cursor/cutoff_cursor,
+    in place.  Does NOT read or write missing_searched/cutoff_searched,
     does NOT write last_run/last_success.
 
     FAILURE CONTRACT (extends D-04):
@@ -1263,7 +1238,7 @@ async def refresh_sonarr_counts(
     Performs the full fetch -> raw-count -> health -> tag -> filter -> eligible-count
     work for Sonarr and caches ALL count fields in ist = state["sonarr"][instance_name]
     in place, including missing_eligible, missing_searchable, and cutoff_searchable.
-    Does NOT call slice_batch, does NOT write missing_cursor/cutoff_cursor,
+    Does NOT read or write missing_searched/cutoff_searched,
     does NOT write last_run/last_success.
 
     FAILURE CONTRACT (extends D-04):
@@ -1402,7 +1377,7 @@ async def refresh_lidarr_counts(
 
     Performs the full fetch -> raw-count -> health -> tag -> filter -> eligible-count
     work for Lidarr and caches ALL count fields in ist = state["lidarr"][instance_name]
-    in place.  Does NOT call slice_batch, does NOT write missing_cursor/cutoff_cursor,
+    in place.  Does NOT read or write missing_searched/cutoff_searched,
     does NOT write last_run/last_success.  Lidarr has no cutoff_searchable field.
 
     FAILURE CONTRACT (extends D-04):
