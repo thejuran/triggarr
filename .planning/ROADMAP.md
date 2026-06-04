@@ -216,7 +216,7 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
-| 76. Never-Searched-First Search Queue | 3/3 | Complete   | 2026-06-04 |
+| 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
 
 ## Backlog
 

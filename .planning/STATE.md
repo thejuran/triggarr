@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.11
 milestone_name: Never-Searched-First Search Queue Priority
-status: executing
-stopped_at: Phase 76 context gathered
-last_updated: "2026-06-04T20:16:17.750Z"
+status: ready_to_plan
+stopped_at: Phase 76 complete (3/3) — ready to discuss Phase 999.1
+last_updated: 2026-06-04T21:06:46.292Z
 last_activity: 2026-06-04 -- Phase 76 execution started
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 3
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 76 — Never-Searched-First Search Queue
+**Current focus:** Phase 999.1 — ui based password recovery (backlog — promoted to v2.10 track a)
 
 ## Current Position
 
-Phase: 76 (Never-Searched-First Search Queue) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 76
-Last activity: 2026-06-04 -- Phase 76 execution started
+Phase: 999.1
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-04
 
 ### v2.11 milestone shape
 
@@ -81,7 +81,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 **Overall:**
 
-- Total plans completed: 166 across 15 shipped milestones (through v2.9)
+- Total plans completed: 169 across 15 shipped milestones (through v2.9)
 - Milestones shipped: 15 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8, v2.9)
 - Tests passing: 984 (post v2.9.0)
 - Phases completed: 71 (through v2.9)

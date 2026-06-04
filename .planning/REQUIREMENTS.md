@@ -12,23 +12,23 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Searched-Log State Model
 
-- [ ] **QUEUE-01**: Each instance persists an ordered "searched-log" of *arr item IDs per queue (missing and cutoff) in `state.json`, recording the order items were searched (oldest at the front).
-- [ ] **QUEUE-02**: Item IDs are normalized to strings per app type — Radarr and Lidarr use the item `id`; Sonarr uses the composite `seriesId:seasonNumber` — so marking one season searched never marks a different season of the same series.
-- [ ] **QUEUE-03**: The integer `missing_cursor`/`cutoff_cursor` fields are removed from `AppState`, and a pre-upgrade `state.json` (containing cursor keys but no searched-logs) loads cleanly and is treated as everything-unsearched (no migration step).
+- [x] **QUEUE-01**: Each instance persists an ordered "searched-log" of *arr item IDs per queue (missing and cutoff) in `state.json`, recording the order items were searched (oldest at the front).
+- [x] **QUEUE-02**: Item IDs are normalized to strings per app type — Radarr and Lidarr use the item `id`; Sonarr uses the composite `seriesId:seasonNumber` — so marking one season searched never marks a different season of the same series.
+- [x] **QUEUE-03**: The integer `missing_cursor`/`cutoff_cursor` fields are removed from `AppState`, and a pre-upgrade `state.json` (containing cursor keys but no searched-logs) loads cleanly and is treated as everything-unsearched (no migration step).
 
 ### Never-Searched-First Dispatch
 
-- [ ] **QUEUE-04**: Each cycle's batch is filled with never-searched eligible items first, in fetched API order.
-- [ ] **QUEUE-05**: When unsearched items do not fill the batch, the remaining slots are topped up with already-searched items, oldest-searched-first.
-- [ ] **QUEUE-06**: On a cold start (empty searched-log), dispatch produces the same batch the prior first-cycle cursor walk produced (behavior-preserving).
-- [ ] **QUEUE-07**: `slice_batch` is replaced by a pure `prioritize_batch()` function at all six cycle call sites (Radarr, Sonarr, Lidarr × missing, cutoff), and `slice_batch` is removed.
+- [x] **QUEUE-04**: Each cycle's batch is filled with never-searched eligible items first, in fetched API order.
+- [x] **QUEUE-05**: When unsearched items do not fill the batch, the remaining slots are topped up with already-searched items, oldest-searched-first.
+- [x] **QUEUE-06**: On a cold start (empty searched-log), dispatch produces the same batch the prior first-cycle cursor walk produced (behavior-preserving).
+- [x] **QUEUE-07**: `slice_batch` is replaced by a pure `prioritize_batch()` function at all six cycle call sites (Radarr, Sonarr, Lidarr × missing, cutoff), and `slice_batch` is removed.
 
 ### Searched-Log Lifecycle
 
-- [ ] **QUEUE-08**: An item is marked searched on attempt (its search command is fired), whether the individual search succeeds or fails, so a persistently-failing item cannot starve the queue.
-- [ ] **QUEUE-09**: When every currently-eligible item in a queue has been searched, that queue's searched-log is cleared and the existing `missing_pass`/`cutoff_pass` counter increments (a completed pass).
-- [ ] **QUEUE-10**: Each cycle the searched-log is pruned to currently-eligible IDs, so items that left the list (grabbed, unmonitored, deleted) drop out and the log stays bounded.
-- [ ] **QUEUE-11**: Searched-log and pass-counter updates commit only at cycle end, in the same atomic `save_state()` as the rest of the cycle's state, so the searched-log and pass counter can never disagree (at-least-once semantics).
+- [x] **QUEUE-08**: An item is marked searched on attempt (its search command is fired), whether the individual search succeeds or fails, so a persistently-failing item cannot starve the queue.
+- [x] **QUEUE-09**: When every currently-eligible item in a queue has been searched, that queue's searched-log is cleared and the existing `missing_pass`/`cutoff_pass` counter increments (a completed pass).
+- [x] **QUEUE-10**: Each cycle the searched-log is pruned to currently-eligible IDs, so items that left the list (grabbed, unmonitored, deleted) drop out and the log stays bounded.
+- [x] **QUEUE-11**: Searched-log and pass-counter updates commit only at cycle end, in the same atomic `save_state()` as the rest of the cycle's state, so the searched-log and pass counter can never disagree (at-least-once semantics).
 
 ## v2 Requirements
 
@@ -57,17 +57,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| QUEUE-01 | Phase 76 | Pending |
-| QUEUE-02 | Phase 76 | Pending |
-| QUEUE-03 | Phase 76 | Pending |
-| QUEUE-04 | Phase 76 | Pending |
-| QUEUE-05 | Phase 76 | Pending |
-| QUEUE-06 | Phase 76 | Pending |
-| QUEUE-07 | Phase 76 | Pending |
-| QUEUE-08 | Phase 76 | Pending |
-| QUEUE-09 | Phase 76 | Pending |
-| QUEUE-10 | Phase 76 | Pending |
-| QUEUE-11 | Phase 76 | Pending |
+| QUEUE-01 | Phase 76 | Complete |
+| QUEUE-02 | Phase 76 | Complete |
+| QUEUE-03 | Phase 76 | Complete |
+| QUEUE-04 | Phase 76 | Complete |
+| QUEUE-05 | Phase 76 | Complete |
+| QUEUE-06 | Phase 76 | Complete |
+| QUEUE-07 | Phase 76 | Complete |
+| QUEUE-08 | Phase 76 | Complete |
+| QUEUE-09 | Phase 76 | Complete |
+| QUEUE-10 | Phase 76 | Complete |
+| QUEUE-11 | Phase 76 | Complete |
 
 **Coverage:**
 - v1 requirements: 11 total
