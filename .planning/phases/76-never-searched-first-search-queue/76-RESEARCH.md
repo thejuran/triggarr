@@ -212,7 +212,7 @@ def prioritize_batch(eligible_items, searched_log, batch_size, key_fn):
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
 | Atomic state persistence | A new write path for the log | Existing `save_state()` (state.py:185) called at scheduler.py:377 | Already does write-temp → fsync → `os.replace` → dir-fsync; D-08 mandates the single commit point |
-| Back-compat state load | A migration step for the cursor removal | `total=False` TypedDict + `_merge_defaults` (state.py:129) | Spec D-9/QUEUE-03: pre-upgrade files tolerate leftover keys; no migration code |
+| Back-compat state load | A separate versioned migration function for the cursor removal | `total=False` TypedDict + an inline `_merge_defaults` strip (state.py:129) | Spec D-9/QUEUE-03: no separate migration function, BUT `_merge_defaults` MUST do an inline legacy-key strip (`merged.pop("missing_cursor"/"cutoff_cursor", None)`) — the merge preserves unknown keys, so without the pop they persist across saves. A load→save round-trip test asserts the keys are ABSENT from written JSON (codex HIGH-1). |
 | Sonarr episode→season collapse | New season-keying | Existing `deduplicate_to_seasons()` (engine.py:159) unchanged | D-10: already preserves first-occurrence order; produces the exact dict keys `key_fn` needs |
 | Batch-size cap | Re-capping inside `prioritize_batch` | Existing `cap_batch_sizes()` (engine.py:92) runs first (engine.py:346) | Spec §7: `prioritize_batch` receives the already-capped `batch_size`; do not re-derive |
 
