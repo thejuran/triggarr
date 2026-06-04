@@ -30,7 +30,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 - [ ] **CFG-03**: User can set the graceful-shutdown drain timeout via a `GeneralConfig` field and a settings-UI numeric input, bounded `>= 1.0`.
 - [ ] **CFG-04**: The configured drain timeout is the default value; `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` overrides it when set; the `>= 1.0` clamp applies to both sources.
-- [ ] **DOCS-01**: Project documentation and the deferred record are corrected to reflect that DEBT-07 (request timeout), DEBT-08 (page size), and DEBT-03 (search-history cap) are already shipped, and DEBT-06 (drain timeout) is now shipped.
+- [x] **DOCS-01**: Project documentation and the deferred record are corrected to reflect that DEBT-07 (request timeout), DEBT-08 (page size), and DEBT-03 (search-history cap) are already shipped, and DEBT-06 (drain timeout) is now shipped.
 
 ## v2 Requirements
 
@@ -87,7 +87,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CNT-05 | Phase 74 | Complete |
 | CFG-03 | Phase 75 | Pending |
 | CFG-04 | Phase 75 | Pending |
-| DOCS-01 | Phase 75 | Pending |
+| DOCS-01 | Phase 75 | Complete |
 
 **Coverage:**
 - v1 requirements: 14 total

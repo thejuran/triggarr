@@ -179,7 +179,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 - [x] **Phase 72: Password Reset Backend & Token Lifecycle** (0/3 plans) - Filesystem-token reset endpoints, in-memory single-use token, session rotation, rate-limit, middleware exemption (completed 2026-06-03)
 - [x] **Phase 73: Password Reset UI** - "Forgot password?" affordance on the login page plus the styled request/confirm reset pages (completed 2026-06-03)
 - [x] **Phase 74: Count-Only Refresh** - Extract the fetch+count+filter helper and expose a per-card "Refresh counts" button + `POST /api/refresh-counts` that updates counts without searching or advancing the cursor (completed 2026-06-04)
-- [ ] **Phase 75: Drain-Timeout Config Parity & Deferred-Record Correction** - `shutdown_drain_timeout` config field + settings input with env-override precedence, and the DEBT-06/07/08/03 deferred-record correction
+- [x] **Phase 75: Drain-Timeout Config Parity & Deferred-Record Correction** - `shutdown_drain_timeout` config field + settings input with env-override precedence, and the DEBT-06/07/08/03 deferred-record correction (completed 2026-06-04)
 
 ## Phase Details
 
@@ -236,7 +236,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 - [x] 75-01-PLAN.md — Foundation: shutdown_drain_timeout GeneralConfig field (ge=1.0) + safe_float parse-and-clamp helper (TDD)
 - [x] 75-02-PLAN.md — Settings round-trip: GET render + POST safe_float parse + settings.html input with env-override help text (TDD)
 - [x] 75-03-PLAN.md — Scheduler precedence refactor: config-default-with-env-override drain resolution at shutdown time; holder-identity test migration (TDD)
-- [ ] 75-04-PLAN.md — DOCS-01 record correction: STATE.md deferred table, README drain docs, v2.10 in-app CHANGELOG entry
+- [x] 75-04-PLAN.md — DOCS-01 record correction: STATE.md deferred table, README drain docs, v2.10 in-app CHANGELOG entry
 **UI hint**: yes
 
 ## Progress
@@ -246,7 +246,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 | 72. Password Reset Backend & Token Lifecycle | 3/3 | Complete   | 2026-06-03 |
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
-| 75. Drain-Timeout Config Parity & Deferred-Record Correction | 3/4 | In Progress|  |
+| 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
 
 ## Backlog
 
