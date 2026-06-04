@@ -691,6 +691,7 @@ def test_settings_page_renders_new_config_fields(client):
     assert "request_timeout" in response.text, "Settings should show request timeout input"
     assert "page_size" in response.text, "Settings should show page size input"
     assert "How long to wait for grabs" in response.text, "Settings should show tracking window hint"
+    assert "shutdown_drain_timeout" in response.text, "Settings should show drain timeout input (75-02 D-02)"
 
 
 def test_save_settings_with_new_fields(client, test_app):
@@ -731,6 +732,78 @@ def test_save_settings_with_new_fields(client, test_app):
     assert new_settings.general.request_timeout == 60
     assert new_settings.general.page_size == 100
     assert new_settings.general.tracking_window_minutes == 120
+
+
+def test_save_settings_drain_timeout_round_trip(client, test_app):
+    """POST /settings with shutdown_drain_timeout persists the float value (75-02 D-03)."""
+    response = client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "shutdown_drain_timeout": "120.5",
+            "radarr__Default__url": "http://radarr:7878",
+            "radarr__Default__api_key": "",
+            "radarr__Default__enabled": "on",
+            "radarr__Default__search_interval": "30",
+            "radarr__Default__search_missing_count": "5",
+            "radarr__Default__search_cutoff_count": "5",
+            "radarr__Default__missing_tag": "",
+            "radarr__Default__cutoff_tag": "",
+            "sonarr__Default__url": "http://sonarr:8989",
+            "sonarr__Default__api_key": "",
+            "sonarr__Default__enabled": "on",
+            "sonarr__Default__search_interval": "30",
+            "sonarr__Default__search_missing_count": "5",
+            "sonarr__Default__search_cutoff_count": "5",
+            "sonarr__Default__missing_tag": "",
+            "sonarr__Default__cutoff_tag": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    new_settings = test_app.state.settings
+    assert new_settings.general.shutdown_drain_timeout == 120.5
+
+
+def test_save_settings_drain_timeout_clamp_floor(client, test_app):
+    """POST /settings with shutdown_drain_timeout below 1.0 clamps to 1.0 (75-02 D-03)."""
+    response = client.post(
+        "/settings",
+        data={
+            "log_level": "info",
+            "hard_max_per_cycle": "0",
+            "max_history_rows": "1000",
+            "request_timeout": "30",
+            "page_size": "50",
+            "tracking_window_minutes": "60",
+            "shutdown_drain_timeout": "0.5",
+            "radarr__Default__url": "http://radarr:7878",
+            "radarr__Default__api_key": "",
+            "radarr__Default__enabled": "on",
+            "radarr__Default__search_interval": "30",
+            "radarr__Default__search_missing_count": "5",
+            "radarr__Default__search_cutoff_count": "5",
+            "radarr__Default__missing_tag": "",
+            "radarr__Default__cutoff_tag": "",
+            "sonarr__Default__url": "http://sonarr:8989",
+            "sonarr__Default__api_key": "",
+            "sonarr__Default__enabled": "on",
+            "sonarr__Default__search_interval": "30",
+            "sonarr__Default__search_missing_count": "5",
+            "sonarr__Default__search_cutoff_count": "5",
+            "sonarr__Default__missing_tag": "",
+            "sonarr__Default__cutoff_tag": "",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    new_settings = test_app.state.settings
+    assert new_settings.general.shutdown_drain_timeout == 1.0
 
 
 async def test_history_outcome_badge_colors(test_app):
