@@ -203,7 +203,10 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
   3. Within a cycle, a fresh `prioritize_batch()` fills the (already `hard_max`-capped) batch with never-searched eligible items first in fetched API order, then tops up remaining slots with already-searched items oldest-searched-first; on an empty searched-log the batch is identical to today's first-cycle cursor walk, and existing cycle tests asserting search counts / history rows stay green (QUEUE-04, QUEUE-05, QUEUE-06, QUEUE-07).
   4. An item joins the searched-log the moment its search command fires — success or failure — so a persistently-failing item can never starve the queue; each cycle the log is pruned to currently-eligible IDs so grabbed/unmonitored/deleted items drop out and the log stays bounded (QUEUE-08, QUEUE-10).
   5. When every currently-eligible item in a queue has been searched, that queue's log clears and the existing `missing_pass`/`cutoff_pass` counter increments; the searched-log and the pass counter commit together only in the single atomic `save_state()` at cycle end, so they can never disagree (at-least-once), and the count-only refresh path (`refresh_*_counts`) remains queue-independent — it never reads or writes the searched-log (QUEUE-09, QUEUE-11).
-**Plans**: TBD
+**Plans**: 3 plans (3 waves, sequential — shared engine.py/state.py/test files)
+- [ ] 76-01-PLAN.md — TDD core: pure `prioritize_batch` + exhaustive unit matrix + cold-start oracle; `AppState` searched-log field swap + back-compat state tests (wave 1)
+- [ ] 76-02-PLAN.md — Rewire all 6 cycle call sites (thin caller + per-app `key_fn` + pass-complete INFO line); migrate behavioral cycle tests + cycle-integration coverage (wave 2)
+- [ ] 76-03-PLAN.md — Delete `slice_batch` + tests + add post-deletion cold-start test; re-express refresh-counts queue-independence; strip 7 incidental fixtures; static guards (wave 3)
 
 ## Progress
 
@@ -213,7 +216,7 @@ Full phase details: [milestones/v2.10-ROADMAP.md](milestones/v2.10-ROADMAP.md)
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
-| 76. Never-Searched-First Search Queue | 0/0 | Not started | - |
+| 76. Never-Searched-First Search Queue | 0/3 | Not started | - |
 
 ## Backlog
 
