@@ -624,7 +624,7 @@ async def test_run_radarr_cycle_cutoff_fault_does_not_block_missing_search(tmp_p
     # The cycle may raise (or not) during cutoff; we only care that missing searches ran first
     try:
         await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
-    except Exception:
+    except (AttributeError, KeyError, TypeError):
         pass  # Fault in cutoff branch is pre-existing behavior; we only check missing ran
     finally:
         await db.close()
@@ -676,7 +676,7 @@ async def test_run_sonarr_cycle_cutoff_fault_does_not_block_missing_search(tmp_p
 
     try:
         await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
-    except Exception:
+    except (AttributeError, KeyError, TypeError):
         pass  # Cutoff fault in cycle is pre-existing; only check missing ran
     finally:
         await db.close()
@@ -722,7 +722,7 @@ async def test_run_lidarr_cycle_cutoff_fault_does_not_block_missing_search(tmp_p
 
     try:
         await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
-    except Exception:
+    except (AttributeError, KeyError, TypeError):
         pass  # Fault in cutoff branch is pre-existing; only check missing ran
     finally:
         await db.close()
