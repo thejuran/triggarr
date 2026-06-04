@@ -141,9 +141,15 @@ def prioritize_batch(
    log (front = oldest-searched) until full or exhausted.
 5. **Mark (mark-on-attempt):** append each batched item's key to `log`. New unsearched keys
    append to the end; a re-searched key moves to the end (becomes most-recent).
-6. **Pass-complete check:** if after this batch every `eligible_id` is in `log` →
-   `pass_completed = True`. (Empty eligible list → `([], [], False)`: an empty queue does not
-   falsely "complete" a pass.)
+6. **Pass-complete check (CORRECTED — codex MED-1):** `pass_completed = bool(batch) and
+   eligible_ids.issubset(set(new_log))`. The `bool(batch)` term is MANDATORY (matching the old
+   wrap semantic `if new_cursor == 0 and batch`): a pass completes only when this cycle actually
+   searched something AND every eligible id is now in the log. This prevents a **zero-search**
+   pass reset — with `batch_size <= 0` (reachable via `hard_max` proportional capping) or a
+   zero-cap queue whose pruned log already covers a now-tiny eligible set, the batch can be empty
+   while `eligible_ids.issubset(...)` is `True`; without `bool(batch)` that would clear the log
+   and bump `*_pass` having searched nothing. (Empty eligible list → `([], [], False)` falls out
+   of the same guard: no batch ⇒ no completion.)
 
 **Caller changes — 6 sites** (missing + cutoff in each of Radarr/Sonarr/Lidarr cycle fns).
 Replace:
@@ -184,8 +190,12 @@ today's cursor semantic (at-least-once, never lost).
   prioritization. The existing `except` block still logs, writes a `failed` history row, and
   increments `skipped_count`. No starvation.
 - **Empty eligible list:** `([], [], False)` — nothing to do, pass not falsely completed.
-- **Eligible smaller than batch size:** all eligible searched, `pass_completed=True`, log
-  clears, `*_pass` bumps.
+- **Zero-search batch (`batch_size <= 0`, or zero-cap queue whose pruned log already covers the
+  eligible set) — codex MED-1:** `batch == []` ⇒ `pass_completed = False` (the `bool(batch)`
+  guard), and the log is NOT cleared and `*_pass` is NOT bumped. A cycle that searches nothing
+  never completes a pass.
+- **Eligible smaller than batch size:** all eligible searched (non-empty batch),
+  `pass_completed=True`, log clears, `*_pass` bumps.
 - **`hard_max_per_cycle`:** unchanged. The proportional cap (`cap_batch_sizes`) still computes
   `missing_limit`/`cutoff_limit` before `prioritize_batch`, which receives the already-capped
   `batch_size`.
@@ -216,7 +226,10 @@ today's cursor semantic (at-least-once, never lost).
 - Prune → log holds no-longer-eligible IDs → dropped, survivor order preserved.
 - Re-search recency → a re-batched already-searched item moves to the log tail.
 - Empty eligible → `([], [], False)`.
-- Eligible < `N` → all searched, pass completes.
+- **Zero-search batch (codex MED-1)** → `batch_size <= 0`, AND a zero-cap queue whose pruned log
+  already covers a non-empty eligible set → both return `batch == []`, `pass_completed == False`,
+  and do NOT mutate/grow the log (the `bool(batch)` guard).
+- Eligible < `N` → all searched (non-empty batch), pass completes.
 - `key_fn` correctness → Sonarr composite distinguishes S1/S2 of one series; Radarr/Lidarr
   int→str.
 

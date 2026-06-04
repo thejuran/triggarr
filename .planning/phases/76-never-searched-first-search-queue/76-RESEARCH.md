@@ -195,7 +195,7 @@ def prioritize_batch(eligible_items, searched_log, batch_size, key_fn):
     new_log = [i for i in log if i not in {key_fn(it) for it in batch}]
     new_log += [key_fn(it) for it in batch]
     # 6. pass-complete: every eligible id now in the log
-    pass_completed = bool(eligible_ids) and eligible_ids.issubset(set(new_log))
+    pass_completed = bool(batch) and eligible_ids.issubset(set(new_log))  # MED-1: bool(batch), not bool(eligible_ids) — zero-search batch must not complete a pass
     return batch, new_log, pass_completed
 ```
 *(Internal structure is Claude's discretion per CONTEXT — this is one correct shape, not a mandate; the contract is the D-01 tuple + spec §6 semantics.)*
@@ -240,10 +240,10 @@ def prioritize_batch(eligible_items, searched_log, batch_size, key_fn):
 **How to avoid:** Keep marking inside `prioritize_batch`, before the loop. Test: an item whose `search_*` raises is still in the log next cycle (spec §8 mark-on-attempt test). Do not move the append.
 **Warning signs:** A test asserting a failed item is re-prioritized next cycle; a `new_log` write inside the `try` block.
 
-### Pitfall 2: Pass-complete on an empty queue
-**What goes wrong:** An empty eligible list falsely "completes" a pass, bumping `*_pass` every cycle and spamming the log.
-**Why it happens:** `set().issubset(anything)` is `True`. A naive subset check fires on empty eligible.
-**How to avoid:** Guard `pass_completed = bool(eligible_ids) and eligible_ids.issubset(...)`. Empty eligible ⇒ `([], [], False)` (spec §7). Test: empty-eligible returns `([], [], False)` (spec §8).
+### Pitfall 2: Pass-complete on an empty/zero-search batch
+**What goes wrong:** An empty eligible list — OR a non-empty eligible set whose pruned log already covers it while this cycle's batch is empty (batch_size<=0 / zero-cap) — falsely "completes" a pass, bumping `*_pass` every cycle and spamming the log with zero searches.
+**Why it happens:** `set().issubset(anything)` is `True`, and `eligible_ids.issubset(set(new_log))` is also `True` whenever the log already covers the eligible set even if nothing was batched this cycle. A check keyed on `bool(eligible_ids)` fires in both cases.
+**How to avoid (MED-1):** Guard on a non-empty BATCH, not on eligibility: `pass_completed = bool(batch) and eligible_ids.issubset(set(new_log))`. This matches the OLD wrap semantic (`if new_cursor == 0 and batch`). Empty eligible ⇒ `([], [], False)`; zero-search batch ⇒ `pass_completed=False`, log NOT mutated (spec §7). Tests: empty-eligible AND batch_size<=0/zero-cap both return `pass_completed=False` and do not grow the log (spec §8).
 **Warning signs:** `*_pass` incrementing on cycles where `searched_count == 0`.
 
 ### Pitfall 3: Sonarr composite key collapsing distinct seasons

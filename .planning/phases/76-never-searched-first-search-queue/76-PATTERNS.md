@@ -73,7 +73,7 @@ def prioritize_batch(
     already-searched oldest-first. Returns (batch, new_searched_log, pass_completed)."""
 ```
 - `Callable` is already imported at `engine.py:13` (`from collections.abc import Awaitable, Callable`) — and `filter_by_tag` @ engine.py:59 already takes a `Callable[[dict], list[int]]` param, so the `key_fn` parameter style is an established in-module precedent. **Mirror `filter_by_tag`'s parameter convention exactly.**
-- Empty-input early return matches `slice_batch`'s `if not items: return [], 0` → here `if not eligible_items: return [], [], False` (covers the empty-eligible edge case + RESEARCH Pitfall 2's `bool(eligible_ids) and …` guard).
+- Empty-input early return matches `slice_batch`'s `if not items: return [], 0` → here `if not eligible_items: return [], [], False` (covers the empty-eligible edge case). The pass-completion guard is `bool(batch) and eligible_ids.issubset(set(new_log))` (MED-1) — keyed on a non-empty BATCH, not on `bool(eligible_ids)`, so a zero-search batch (batch_size<=0 or a zero-cap queue whose pruned log already covers the eligible set) never completes a pass.
 
 **Core algorithm (RESEARCH §"Pattern 2", verbatim from spec §6 — internal structure is Claude's discretion, the tuple contract + semantics are not):**
 ```python
@@ -90,7 +90,7 @@ if len(batch) < batch_size:
         if sid in order: batch.append(order[sid])
 batched_keys = {key_fn(it) for it in batch}                    # 5. MARK on attempt
 new_log = [i for i in log if i not in batched_keys] + [key_fn(it) for it in batch]
-pass_completed = bool(eligible_ids) and eligible_ids.issubset(set(new_log))  # 6.
+pass_completed = bool(batch) and eligible_ids.issubset(set(new_log))  # 6. MED-1: bool(batch), NOT bool(eligible_ids) — a zero-search batch (batch_size<=0 / zero-cap after prune) must NOT complete a pass
 return batch, new_log, pass_completed
 ```
 
