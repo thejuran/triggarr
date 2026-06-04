@@ -260,7 +260,8 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
 
     Returns:
         Dict with name, instance, last_run, next_run, missing_cursor, cutoff_cursor
-        or None if app/instance is not enabled.
+        (missing_cursor/cutoff_cursor reflect searched-log length, i.e. within-pass
+        progress numerator), or None if app/instance is not enabled.
     """
     settings = request.app.state.settings
     enabled = settings.get_enabled_instances(app_name)
@@ -303,8 +304,8 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
         "last_success": last_success,
         "last_success_stale": last_success_stale,
         "next_run": next_run,
-        "missing_cursor": app_state.get("missing_cursor", 0),
-        "cutoff_cursor": app_state.get("cutoff_cursor", 0),
+        "missing_cursor": len(app_state.get("missing_searched", [])),
+        "cutoff_cursor": len(app_state.get("cutoff_searched", [])),
         "missing_pass": app_state.get("missing_pass", 0),
         "cutoff_pass": app_state.get("cutoff_pass", 0),
         "connected": app_state.get("connected"),
