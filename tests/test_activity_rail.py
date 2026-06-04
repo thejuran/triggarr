@@ -47,7 +47,6 @@ async def rail_app(tmp_path):
         app.state.triggarr_state = {
             "radarr": {
                 "Default": {
-                    "missing_cursor": 0, "cutoff_cursor": 0,
                     "last_run": None, "connected": True,
                     "unreachable_since": None,
                     "missing_count": None, "cutoff_count": None,
@@ -55,7 +54,6 @@ async def rail_app(tmp_path):
             },
             "sonarr": {
                 "Default": {
-                    "missing_cursor": 0, "cutoff_cursor": 0,
                     "last_run": None, "connected": True,
                     "unreachable_since": None,
                     "missing_count": None, "cutoff_count": None,
@@ -63,7 +61,6 @@ async def rail_app(tmp_path):
             },
             "lidarr": {
                 "Default": {
-                    "missing_cursor": 0, "cutoff_cursor": 0,
                     "last_run": None, "connected": None,
                     "unreachable_since": None,
                     "missing_count": None, "cutoff_count": None,
@@ -97,7 +94,7 @@ async def empty_rail_app(tmp_path):
         app.state.db = db
 
         _default = {
-            "missing_cursor": 0, "cutoff_cursor": 0, "last_run": None,
+            "last_run": None,
             "connected": None, "unreachable_since": None,
             "missing_count": None, "cutoff_count": None,
         }
@@ -136,7 +133,7 @@ async def rail_app_many(tmp_path):
         await insert_search_entry(db, "Radarr", "missing", "Movie 5", outcome="grabbed")
         app.state.db = db
         _inst = {
-            "missing_cursor": 0, "cutoff_cursor": 0, "last_run": None,
+            "last_run": None,
             "connected": True, "unreachable_since": None,
             "missing_count": None, "cutoff_count": None,
         }
