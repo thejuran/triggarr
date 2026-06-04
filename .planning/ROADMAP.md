@@ -232,7 +232,11 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
   1. A user can set the graceful-shutdown drain timeout via a settings-UI numeric input bounded `>= 1.0`, and the value persists through the settings POST handler and reloads on the next page view.
   2. The configured drain timeout is used as the default at shutdown, `TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT` overrides it when set, and the `>= 1.0` clamp applies to both sources — with the precedence documented in the field help text.
   3. Project documentation and the deferred record state correctly that DEBT-07 (request timeout), DEBT-08 (page size), and DEBT-03 (search-history cap) were already shipped, and DEBT-06 (drain timeout) is now shipped.
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 75-01-PLAN.md — Foundation: shutdown_drain_timeout GeneralConfig field (ge=1.0) + safe_float parse-and-clamp helper (TDD)
+- [ ] 75-02-PLAN.md — Settings round-trip: GET render + POST safe_float parse + settings.html input with env-override help text (TDD)
+- [ ] 75-03-PLAN.md — Scheduler precedence refactor: config-default-with-env-override drain resolution at shutdown time; holder-identity test migration (TDD)
+- [ ] 75-04-PLAN.md — DOCS-01 record correction: STATE.md deferred table, README drain docs, v2.10 in-app CHANGELOG entry
 **UI hint**: yes
 
 ## Progress
@@ -242,7 +246,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 | 72. Password Reset Backend & Token Lifecycle | 3/3 | Complete   | 2026-06-03 |
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
-| 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
+| 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/4 | Not started | - |
 
 ## Backlog
 
