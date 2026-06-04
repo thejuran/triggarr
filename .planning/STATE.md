@@ -104,8 +104,8 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 | Category | Item | Source Milestone | Status |
 |----------|------|------------------|--------|
-| record correction | DEBT-07/08/03 (request timeout / page size / search-history cap) | v2.9 (mis-recorded as parked) | already shipped — DOCS-01 corrects record in Phase 75 |
-| shipping in v2.10 | DEBT-06: Surface graceful-shutdown drain timeout in settings UI | v2.9 (spec D-5) | in scope — Phase 75 (CFG-03/CFG-04) |
+| shipped (record corrected) | DEBT-07/08/03 (request timeout / page size / search-history cap) | v2.9 (mis-recorded as parked) | shipped — config fields config.py:128-130 + settings inputs; DOCS-01 corrected the record in Phase 75 |
+| shipped in v2.10 | DEBT-06: Surface graceful-shutdown drain timeout in settings UI | v2.9 (spec D-5) | shipped — Phase 75 (CFG-03/CFG-04); general.shutdown_drain_timeout config field + settings input + env-override precedence |
 | requirement | UI-01: Login page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
 | requirement | UI-02: Setup page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
 | requirement | UI-03: Settings security pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
