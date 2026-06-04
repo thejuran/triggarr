@@ -31,7 +31,7 @@ created: 2026-06-04
 
 - **After every task commit:** Run `uv run pytest tests/test_search.py tests/test_state.py -x -q` + `uv run ruff check triggarr/ tests/`
 - **After every plan wave:** Run `uv run pytest tests/ -x -q` (full suite must stay green)
-- **Before `/gsd:verify-work`:** Full suite green + `ruff check` clean + static guards: `! grep -rq "slice_batch" triggarr/ tests/` and `! grep -rq "_cursor" triggarr/state.py triggarr/search/engine.py`
+- **Before `/gsd:verify-work`:** Full suite green + `ruff check` clean + static guards: `! grep -rq "slice_batch" triggarr/ tests/`; and `*_cursor` survives in `triggarr/state.py`/`triggarr/search/engine.py` ONLY inside the v2.2 detector (`_is_v22_state_format`/`_migrate_v22_state`) and the `_merge_defaults` strip-pop (`merged.pop("missing_cursor"/"cutoff_cursor", None)`) — confirm those are the only occurrences by reading, not a blanket `! grep _cursor`; and `*_cursor` survives in `tests/` ONLY inside `tests/test_state.py` (legacy-cursor strip regression + v2.2 fixtures), with `grep -qE "missing_cursor" tests/test_state.py` required to HIT (the HIGH-1 safety net is present, not deleted)
 - **Max feedback latency:** ~30 seconds
 
 ---
@@ -66,7 +66,7 @@ created: 2026-06-04
 
 3. **Per-app cycle integration (extend existing `run_*_cycle` tests):** two-cycle no-re-search-within-a-pass; new-item-jumps-the-line; mark-on-attempt (a `search_*`-raising item still in log next cycle); pass-reset bumps `*_pass` + clears log; fetch-failure ⇒ log untouched + `connected=False`; commit-at-cycle-end (state saved once, log + `*_pass` consistent). Run for all three apps.
 
-4. **Back-compat state load (QUEUE-03):** load a pre-upgrade `state.json` with `missing_cursor`/`cutoff_cursor` and no searched-logs → loads clean, dispatch treats everything unsearched, leftover keys ignored + overwritten on next save. New test in `test_state.py`.
+4. **Back-compat state load (QUEUE-03):** load a pre-upgrade `state.json` with `missing_cursor`/`cutoff_cursor` and no searched-logs → loads clean, dispatch treats everything unsearched. **CORRECTED (codex HIGH-1):** `_merge_defaults` actively STRIPS the legacy cursor keys on load (NOT "overwritten on next save"); the test loads→saves→reloads and asserts those keys are ABSENT from the written JSON. New test in `test_state.py` (this file is the one allowed exception to the cursor static guard).
 
 5. **Count-only queue-independence invariant (D-06):** re-express the 3 `test_refresh_counts.py` "cursor unchanged" tests as "searched-log unchanged after refresh-counts" for Radarr/Sonarr/Lidarr.
 
@@ -80,7 +80,7 @@ created: 2026-06-04
 - [ ] Searched-log round-trip + default-state tests in `tests/test_state.py` — covers QUEUE-01
 - [ ] Re-expressed queue-independence tests in `tests/test_refresh_counts.py` (×3 apps) — covers the invariant (D-06)
 - [ ] Per-app cycle-integration extensions (mark-on-attempt, pass-reset, new-item-jumps-line, commit-at-cycle-end) — covers QUEUE-07/08/09/11
-- [ ] Static guard: no `slice_batch` / no `*_cursor` survivors (grep assertion / verify-work check)
+- [ ] Static guard: no `slice_batch` survivors; `*_cursor` survives ONLY in the state.py v2.2-detector + `_merge_defaults` strip-pop and in `tests/test_state.py` (legacy regression) — scoped grep, not a blanket `! grep _cursor` (codex HIGH-3)
 
 *Framework install: none needed — pytest-asyncio auto mode already configured. No new test dependencies.*
 

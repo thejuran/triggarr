@@ -91,3 +91,27 @@ the plans' read_first. **Fix applied directly:** corrected that section to descr
 ## Disposition (round 2)
 Both fixed directly (surgical doc/guard edits, no structural replan). This was rewrite 2/2.
 Re-running codex (round 3) to confirm.
+
+## Round 3 — verdict: needs-attention (1 high — incomplete propagation of the HIGH-1 correction)
+
+codex confirmed the round-2 Plan-03 guard scoping is correct, but found the HIGH-1 correction was
+only applied to ONE PATTERNS.md section — the same rejected "harmless/overwritten on next save"
+guidance still lived in 6 other read_first/source-of-truth spots an executor would follow:
+PATTERNS.md:255 + :312, RESEARCH.md:64/227/233/386, VALIDATION.md:69, plus VALIDATION.md:34's
+unscoped `! grep _cursor` guard (conflicts with the v2.2-detector + _merge_defaults pop exceptions).
+
+### [HIGH-4] Stale passive-overwrite guidance across read_first corpus — VERIFIED TRUE, FIXED
+**Fix applied directly (rewrite 2/2 already consumed — this is a mechanical propagation of the
+already-decided HIGH-1 correction, not new design):** updated all 7 spots to the active
+strip-on-load design (`_merge_defaults` pops the legacy cursor keys; load→save test asserts
+absence) and replaced VALIDATION.md's unscoped `_cursor` guard with the same scoped exception
+model used in Plan 03 (state.py v2.2-detector + _merge_defaults pop allowed; tests/test_state.py
+excluded + required to retain the regression). Verified by grep: no "overwritten/harmless/touch
+nothing" guidance survives except inside explicit "this was WRONG, here is the correction" text;
+no unscoped cursor guard remains.
+
+## Disposition (round 3)
+Fix applied directly — mechanical doc-sync of the HIGH-1 correction codex already validated in
+round 2, no new design decision. Rewrite cap (2/2) is reached, so per the orchestrator contract
+this is a user-pause point. Re-running codex once more to confirm the propagation is complete
+before surfacing the decision.

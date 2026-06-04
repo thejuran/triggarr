@@ -252,7 +252,7 @@ state_file.write_text(json.dumps(pre_upgrade))
 loaded = load_state(state_file)
 assert loaded["radarr"]["Default"]["missing_searched"] == []   # treated as everything-unsearched
 assert loaded["radarr"]["Default"]["missing_pass"] == 2        # KEPT, carries forward
-# leftover cursor key is harmless (ignored, overwritten next save)
+# leftover cursor key is actively STRIPPED on load by _merge_defaults (merged.pop) — NOT left to be overwritten
 ```
 
 ---
@@ -309,7 +309,7 @@ No bare `except:` (project rule). Mark-on-attempt means the failed item's key is
 
 ### Back-compat via TypedDict `total=False` (apply to cursor removal)
 **Source:** `_merge_defaults` @ state.py:129-151 + `total=False` on `AppState`.
-**Apply to:** cursor removal — no migration code. Old `*_cursor` keys tolerated and overwritten; new `*_searched` read via `.get("<q>_searched", [])` at the call sites (QUEUE-03/D-09).
+**Apply to:** cursor removal — no separate migration function, but `_merge_defaults` ACTIVELY STRIPS old `*_cursor` keys on load (`for legacy_key in ("missing_cursor","cutoff_cursor"): merged.pop(legacy_key, None)`), so they never get written back; new `*_searched` read via `.get("<q>_searched", [])` at the call sites (QUEUE-03/D-09). The load→save round-trip test asserts the keys are ABSENT from the written JSON.
 
 ### Test fixtures (apply to all new/migrated tests)
 **Source:** `_make_test_state()` @ test_search.py:230 & test_refresh_counts.py:48 (both build on `_default_instance_state()` → auto-inherit the new fields), `_cycle_settings()`/`_cycle_instance_config()` @ test_search.py:211/219, `tmp_path / "state.json"` round-trip idiom @ test_state.py:24.
