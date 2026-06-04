@@ -23,7 +23,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 - [x] **CNT-01**: The shared fetch + raw-count + filter + eligible-count logic is extracted from each `run_*_cycle` into a reusable helper, with existing scheduled-cycle search behavior unchanged.
 - [x] **CNT-02**: User can trigger a count-only refresh that updates missing/cutoff/eligible counts and connection health, and the search cursor is never advanced on this path (structural — slicing lives only in the cycle function).
 - [x] **CNT-03**: A count-only refresh does NOT stamp `last_run`/`last_success` and does NOT touch the SAFETY-03 scheduled-search failure counter.
-- [ ] **CNT-04**: User (and scripts) can call `POST /api/refresh-counts/{app}/{instance}`, which mirrors `search_now` (same `search_lock`, rate-limit, app/instance validation, app-card partial response) minus the search.
+- [x] **CNT-04**: User (and scripts) can call `POST /api/refresh-counts/{app}/{instance}`, which mirrors `search_now` (same `search_lock`, rate-limit, app/instance validation, app-card partial response) minus the search.
 - [ ] **CNT-05**: User sees a "Refresh counts" button on each app card that triggers the count-only refresh and updates the card in place.
 
 ### Config Parity (Track C)
@@ -83,7 +83,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CNT-01 | Phase 74 | Complete |
 | CNT-02 | Phase 74 | Complete |
 | CNT-03 | Phase 74 | Complete |
-| CNT-04 | Phase 74 | Pending |
+| CNT-04 | Phase 74 | Complete |
 | CNT-05 | Phase 74 | Pending |
 | CFG-03 | Phase 75 | Pending |
 | CFG-04 | Phase 75 | Pending |

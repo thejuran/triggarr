@@ -220,7 +220,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
   4. `POST /api/refresh-counts/{app}/{instance}` works for scripts and mirrors `search_now` (same `search_lock`, rate-limit, app/instance validation, and app-card partial response) minus the search, while existing scheduled-cycle search behavior is unchanged.
 **Plans**: 3 plans
 - [x] 74-01-PLAN.md — Extract refresh_radarr/sonarr/lidarr_counts helpers from run_*_cycle (structural cursor-non-advance); behavior-preserving refactor (TDD)
-- [ ] 74-02-PLAN.md — POST /api/refresh-counts/{app}/{instance} mirroring search_now minus the search; sibling last_refresh_time rate-limit dict (TDD)
+- [x] 74-02-PLAN.md — POST /api/refresh-counts/{app}/{instance} mirroring search_now minus the search; sibling last_refresh_time rate-limit dict (TDD)
 - [ ] 74-03-PLAN.md — Split connected app-card footer into Search Now + "Refresh counts" buttons
 **UI hint**: yes
 
@@ -241,7 +241,7 @@ Full phase details: [milestones/v2.9-ROADMAP.md](milestones/v2.9-ROADMAP.md)
 |-------|----------------|--------|-----------|
 | 72. Password Reset Backend & Token Lifecycle | 3/3 | Complete   | 2026-06-03 |
 | 73. Password Reset UI | 1/1 | Complete   | 2026-06-03 |
-| 74. Count-Only Refresh | 1/3 | In Progress|  |
+| 74. Count-Only Refresh | 2/3 | In Progress|  |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 0/? | Not started | - |
 
 ## Backlog
