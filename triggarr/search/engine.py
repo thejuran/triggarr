@@ -1004,3 +1004,415 @@ async def run_lidarr_cycle(
     ist["last_run"] = now_iso
     ist["last_success"] = now_iso
     return state
+
+
+# ---------------------------------------------------------------------------
+# Count-only helpers (Plan 02 count endpoint — NOT called by run_*_cycle)
+# ---------------------------------------------------------------------------
+
+
+async def refresh_radarr_counts(
+    client: RadarrClient,
+    state: TriggarrState,
+    instance_name: str,
+    instance_config: InstanceConfig,
+    settings: Settings,
+    *,
+    get_tags_fn: Callable[[], Awaitable[list[Tag]]] | None = None,
+) -> tuple[list[dict], list[dict], int | None] | None:
+    """Fetch Radarr counts and cache them in state without advancing the search cursor.
+
+    Performs the full fetch -> raw-count -> health -> tag -> filter -> eligible-count
+    work for Radarr and caches ALL count fields in ist = state["radarr"][instance_name]
+    in place.  Does NOT call slice_batch, does NOT write missing_cursor/cutoff_cursor,
+    does NOT write last_run/last_success.
+
+    FAILURE CONTRACT (extends D-04):
+      (a) FETCH failure: sets connected=False + unreachable_since, returns None.
+      (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
+          on a malformed nested record -> sets connected=False + unreachable_since,
+          clears eligible count fields, returns None (never propagates to caller).
+
+    Args:
+        client: Connected Radarr API client.
+        state: Mutable application state (modified in place).
+        instance_name: Name of this Radarr instance.
+        instance_config: Configuration for this specific instance.
+        settings: Application settings.
+        get_tags_fn: Optional cache-aware tag resolver (RES-03 parity).
+
+    Returns:
+        3-tuple (filtered_missing, raw_cutoff, cutoff_tag_id) on success, or
+        None on fetch failure or malformed-data fault.
+    """
+    if instance_name not in state.get("radarr", {}):
+        logger.warning("Radarr: instance {name} not in state -- skipping count refresh", name=instance_name)
+        return None
+    ist = state["radarr"][instance_name]
+
+    # --- FETCH PHASE ---
+    try:
+        missing = await client.get_wanted_missing()
+        cutoff = await client.get_wanted_cutoff()
+    except (httpx.HTTPError, pydantic.ValidationError) as exc:
+        logger.warning("Radarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
+        ist["connected"] = False
+        ist["tag_warnings"] = []
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        return None
+
+    # Library count is cosmetic -- never abort on failure.
+    try:
+        total_items = await client.get_library_count()
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError):
+        total_items = ist.get("total_items")
+
+    # Health + raw counts (always committed after a successful fetch)
+    ist["connected"] = True
+    ist["unreachable_since"] = None
+    ist["missing_count"] = len(missing)
+    ist["cutoff_count"] = len(cutoff)
+    ist["total_items"] = total_items
+
+    # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    try:
+        ist["tag_warnings"] = []
+        if instance_config.missing_tag or instance_config.cutoff_tag:
+            tag_fetch_ok = False
+            try:
+                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
+                tag_fetch_ok = True
+            except (httpx.HTTPError, pydantic.ValidationError) as exc:
+                logger.warning(
+                    "Radarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
+                    exc=_sanitize_exc(exc),
+                )
+                tags = []
+
+            if instance_config.missing_tag:
+                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
+                if missing_tag_id is None and tag_fetch_ok:
+                    logger.warning(
+                        "Radarr: Tag '{tag}' not found -- counting all missing items",
+                        tag=instance_config.missing_tag,
+                    )
+                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
+
+            if instance_config.cutoff_tag:
+                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
+                if cutoff_tag_id is None and tag_fetch_ok:
+                    logger.warning(
+                        "Radarr: Tag '{tag}' not found -- counting all cutoff items",
+                        tag=instance_config.cutoff_tag,
+                    )
+                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
+
+        # Missing filter chain (compute into locals first, then commit to ist)
+        filtered_missing = filter_monitored(missing)
+        missing_monitored_count = len(filtered_missing)
+        if missing_tag_id is not None:
+            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _radarr_tags)
+        if settings.general.skip_unreleased:
+            filtered_missing = filter_unreleased_movies(filtered_missing)
+        missing_eligible_count = len(filtered_missing)
+
+        # Cutoff filter chain on a local copy (Radarr has no cutoff_searchable ist write)
+        filtered_cutoff = filter_monitored(cutoff)
+        if cutoff_tag_id is not None:
+            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _radarr_tags)
+
+        # Commit eligible counts to ist only after successful filtering (no-partial-state guarantee)
+        ist["missing_monitored"] = missing_monitored_count
+        ist["missing_eligible"] = missing_eligible_count
+
+    except (AttributeError, KeyError, TypeError) as exc:
+        # Malformed nested record (non-dict series/artist, non-iterable tags, etc.)
+        # Treat as upstream-DATA failure: same disconnected outcome as a fetch failure.
+        logger.warning(
+            "Radarr: Count refresh data fault ({etype}) -- treating as disconnected",
+            etype=type(exc).__name__,
+        )
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        # Clear eligible counts so no half-updated set is left behind
+        ist["missing_monitored"] = None
+        ist["missing_eligible"] = None
+        return None
+
+    return (filtered_missing, cutoff, cutoff_tag_id)
+
+
+async def refresh_sonarr_counts(
+    client: SonarrClient,
+    state: TriggarrState,
+    instance_name: str,
+    instance_config: InstanceConfig,
+    settings: Settings,
+    *,
+    get_tags_fn: Callable[[], Awaitable[list[Tag]]] | None = None,
+) -> tuple[list[dict], list[dict], int | None] | None:
+    """Fetch Sonarr counts and cache them in state without advancing the search cursor.
+
+    Performs the full fetch -> raw-count -> health -> tag -> filter -> eligible-count
+    work for Sonarr and caches ALL count fields in ist = state["sonarr"][instance_name]
+    in place, including missing_eligible, missing_searchable, and cutoff_searchable.
+    Does NOT call slice_batch, does NOT write missing_cursor/cutoff_cursor,
+    does NOT write last_run/last_success.
+
+    FAILURE CONTRACT (extends D-04):
+      (a) FETCH failure: sets connected=False + unreachable_since, returns None.
+      (b) DATA failure: filter/dedup/tag phase raises (AttributeError, KeyError, TypeError)
+          on a malformed nested record -> sets connected=False + unreachable_since,
+          clears eligible/searchable count fields, returns None (never propagates to caller).
+
+    Args:
+        client: Connected Sonarr API client.
+        state: Mutable application state (modified in place).
+        instance_name: Name of this Sonarr instance.
+        instance_config: Configuration for this specific instance.
+        settings: Application settings.
+        get_tags_fn: Optional cache-aware tag resolver (RES-03 parity).
+
+    Returns:
+        3-tuple (filtered_missing_seasons, raw_cutoff_episodes, cutoff_tag_id) on success, or
+        None on fetch failure or malformed-data fault.
+    """
+    if instance_name not in state.get("sonarr", {}):
+        logger.warning("Sonarr: instance {name} not in state -- skipping count refresh", name=instance_name)
+        return None
+    ist = state["sonarr"][instance_name]
+
+    # --- FETCH PHASE ---
+    try:
+        missing_episodes = await client.get_wanted_missing()
+        cutoff_episodes = await client.get_wanted_cutoff()
+    except (httpx.HTTPError, pydantic.ValidationError) as exc:
+        logger.warning("Sonarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
+        ist["connected"] = False
+        ist["tag_warnings"] = []
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        return None
+
+    # Library count is cosmetic -- never abort on failure.
+    try:
+        total_items = await client.get_library_count()
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError):
+        total_items = ist.get("total_items")
+
+    # Health + raw counts (always committed after a successful fetch)
+    ist["connected"] = True
+    ist["unreachable_since"] = None
+    ist["missing_count"] = len(missing_episodes)
+    ist["cutoff_count"] = len(cutoff_episodes)
+    ist["total_items"] = total_items
+
+    # --- FILTER/DEDUP/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    try:
+        ist["tag_warnings"] = []
+        if instance_config.missing_tag or instance_config.cutoff_tag:
+            tag_fetch_ok = False
+            try:
+                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
+                tag_fetch_ok = True
+            except (httpx.HTTPError, pydantic.ValidationError) as exc:
+                logger.warning(
+                    "Sonarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
+                    exc=_sanitize_exc(exc),
+                )
+                tags = []
+
+            if instance_config.missing_tag:
+                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
+                if missing_tag_id is None and tag_fetch_ok:
+                    logger.warning(
+                        "Sonarr: Tag '{tag}' not found -- counting all missing items",
+                        tag=instance_config.missing_tag,
+                    )
+                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
+
+            if instance_config.cutoff_tag:
+                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
+                if cutoff_tag_id is None and tag_fetch_ok:
+                    logger.warning(
+                        "Sonarr: Tag '{tag}' not found -- counting all cutoff items",
+                        tag=instance_config.cutoff_tag,
+                    )
+                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
+
+        # Missing filter/dedup chain (compute into locals first, then commit to ist)
+        filtered_missing = filter_sonarr_episodes(missing_episodes)
+        if missing_tag_id is not None:
+            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _sonarr_tags)
+        missing_seasons = deduplicate_to_seasons(filtered_missing)
+        missing_eligible_count = len(filtered_missing)
+        missing_searchable_count = len(missing_seasons)
+
+        # Cutoff filter/dedup chain on a local copy
+        filtered_cutoff = filter_sonarr_episodes(cutoff_episodes)
+        if cutoff_tag_id is not None:
+            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _sonarr_tags)
+        cutoff_seasons = deduplicate_to_seasons(filtered_cutoff)
+        cutoff_searchable_count = len(cutoff_seasons)
+
+        # Commit eligible/searchable counts to ist only after successful filtering
+        # (no-partial-state guarantee: either all three are committed or none are)
+        ist["missing_eligible"] = missing_eligible_count
+        ist["missing_searchable"] = missing_searchable_count
+        ist["cutoff_searchable"] = cutoff_searchable_count
+
+    except (AttributeError, KeyError, TypeError) as exc:
+        # Malformed nested record (non-dict series, non-iterable tags, etc.)
+        # Treat as upstream-DATA failure: same disconnected outcome as a fetch failure.
+        logger.warning(
+            "Sonarr: Count refresh data fault ({etype}) -- treating as disconnected",
+            etype=type(exc).__name__,
+        )
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        # Clear eligible/searchable counts so no half-updated set is left behind
+        ist["missing_eligible"] = None
+        ist["missing_searchable"] = None
+        ist["cutoff_searchable"] = None
+        return None
+
+    return (missing_seasons, cutoff_episodes, cutoff_tag_id)
+
+
+async def refresh_lidarr_counts(
+    client: LidarrClient,
+    state: TriggarrState,
+    instance_name: str,
+    instance_config: InstanceConfig,
+    settings: Settings,
+    *,
+    get_tags_fn: Callable[[], Awaitable[list[Tag]]] | None = None,
+) -> tuple[list[dict], list[dict], int | None] | None:
+    """Fetch Lidarr counts and cache them in state without advancing the search cursor.
+
+    Performs the full fetch -> raw-count -> health -> tag -> filter -> eligible-count
+    work for Lidarr and caches ALL count fields in ist = state["lidarr"][instance_name]
+    in place.  Does NOT call slice_batch, does NOT write missing_cursor/cutoff_cursor,
+    does NOT write last_run/last_success.  Lidarr has no cutoff_searchable field.
+
+    FAILURE CONTRACT (extends D-04):
+      (a) FETCH failure: sets connected=False + unreachable_since, returns None.
+      (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
+          on a malformed nested record -> sets connected=False + unreachable_since,
+          clears eligible count fields, returns None (never propagates to caller).
+
+    Args:
+        client: Connected Lidarr API client.
+        state: Mutable application state (modified in place).
+        instance_name: Name of this Lidarr instance.
+        instance_config: Configuration for this specific instance.
+        settings: Application settings.
+        get_tags_fn: Optional cache-aware tag resolver (RES-03 parity).
+
+    Returns:
+        3-tuple (filtered_missing, raw_cutoff, cutoff_tag_id) on success, or
+        None on fetch failure or malformed-data fault.
+    """
+    if instance_name not in state.get("lidarr", {}):
+        logger.warning("Lidarr: instance {name} not in state -- skipping count refresh", name=instance_name)
+        return None
+    ist = state["lidarr"][instance_name]
+
+    # --- FETCH PHASE ---
+    try:
+        missing = await client.get_wanted_missing()
+        cutoff = await client.get_wanted_cutoff()
+    except (httpx.HTTPError, pydantic.ValidationError) as exc:
+        logger.warning("Lidarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
+        ist["connected"] = False
+        ist["tag_warnings"] = []
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        return None
+
+    # Library count is cosmetic -- never abort on failure.
+    try:
+        total_items = await client.get_library_count()
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError):
+        total_items = ist.get("total_items")
+
+    # Health + raw counts (always committed after a successful fetch)
+    ist["connected"] = True
+    ist["unreachable_since"] = None
+    ist["missing_count"] = len(missing)
+    ist["cutoff_count"] = len(cutoff)
+    ist["total_items"] = total_items
+
+    # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    try:
+        ist["tag_warnings"] = []
+        if instance_config.missing_tag or instance_config.cutoff_tag:
+            tag_fetch_ok = False
+            try:
+                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
+                tag_fetch_ok = True
+            except (httpx.HTTPError, pydantic.ValidationError) as exc:
+                logger.warning(
+                    "Lidarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
+                    exc=_sanitize_exc(exc),
+                )
+                tags = []
+
+            if instance_config.missing_tag:
+                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
+                if missing_tag_id is None and tag_fetch_ok:
+                    logger.warning(
+                        "Lidarr: Tag '{tag}' not found -- counting all missing items",
+                        tag=instance_config.missing_tag,
+                    )
+                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
+
+            if instance_config.cutoff_tag:
+                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
+                if cutoff_tag_id is None and tag_fetch_ok:
+                    logger.warning(
+                        "Lidarr: Tag '{tag}' not found -- counting all cutoff items",
+                        tag=instance_config.cutoff_tag,
+                    )
+                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
+
+        # Missing filter chain (compute into locals first, then commit to ist)
+        filtered_missing = filter_monitored(missing)
+        missing_monitored_count = len(filtered_missing)
+        if missing_tag_id is not None:
+            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _lidarr_tags)
+        missing_eligible_count = len(filtered_missing)
+
+        # Cutoff filter chain on a local copy (Lidarr has no cutoff_searchable ist write)
+        filtered_cutoff = filter_monitored(cutoff)
+        if cutoff_tag_id is not None:
+            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _lidarr_tags)
+
+        # Commit eligible counts to ist only after successful filtering (no-partial-state guarantee)
+        ist["missing_monitored"] = missing_monitored_count
+        ist["missing_eligible"] = missing_eligible_count
+
+    except (AttributeError, KeyError, TypeError) as exc:
+        # Malformed nested record -> upstream-DATA failure: same disconnected outcome as fetch failure.
+        logger.warning(
+            "Lidarr: Count refresh data fault ({etype}) -- treating as disconnected",
+            etype=type(exc).__name__,
+        )
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        # Clear eligible counts so no half-updated set is left behind
+        ist["missing_monitored"] = None
+        ist["missing_eligible"] = None
+        return None
+
+    return (filtered_missing, cutoff, cutoff_tag_id)

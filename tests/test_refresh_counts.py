@@ -50,8 +50,8 @@ def _make_test_state():
 def _instance_config(
     missing_count: int = 2,
     cutoff_count: int = 2,
-    missing_tag: str | None = None,
-    cutoff_tag: str | None = None,
+    missing_tag: str = "",
+    cutoff_tag: str = "",
 ) -> InstanceConfig:
     return InstanceConfig(
         url="http://radarr:7878",
