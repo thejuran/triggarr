@@ -4,12 +4,12 @@ milestone: v2.11
 milestone_name: Never-Searched-First Search Queue Priority
 status: "Roadmapped — ready for /gsd:plan-phase 76"
 stopped_at: Phase 76 context gathered
-last_updated: "2026-06-04T17:56:25.983Z"
+last_updated: "2026-06-04T19:25:17.963Z"
 last_activity: 2026-06-04 — v2.11 roadmap created (Phase 76; 11/11 requirements mapped)
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
