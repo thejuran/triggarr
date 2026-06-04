@@ -10,9 +10,14 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.10 Recovery, Counts & Config Parity shipped 2026-06-04 (released as v2.10.0). 1067 tests passing, ruff clean. 75 phases, 177 plans completed across 16 shipped milestones.
+v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as v2.11.0). 1090 tests passing, ruff clean. 76 phases, 180 plans completed across 17 shipped milestones.
 
-**Latest milestone delivered (v2.10):**
+**Latest milestone delivered (v2.11):**
+- Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` + `slice_batch`) with an ordered per-instance searched-log on `AppState` + a pure `prioritize_batch()` dispatcher: never-searched-first, top-up oldest-searched-first, mark-on-attempt (`bool(batch)` pass guard so a zero-search cycle never completes a pass), reset-per-pass, prune-to-eligible, commit-at-cycle-end. Wired into all 6 cycle call sites; `slice_batch` removed.
+- Per-app `key_fn` (Radarr/Lidarr `str(id)`, Sonarr composite `seriesId:seasonNumber`); `_merge_defaults` strips legacy cursor keys on load (load→save absence test); count-only refresh stays queue-independent.
+- Codex adversarial review caught 2 design blockers + 2 mediums at the plan stage; deep review APPROVED after fixing a dashboard half-migration (cursor read → "0 of N" frozen, rewired to searched-log length) + a negative-batch_size clamp. Audit passed (11/11 reqs, 11/11 wired); live NAS walkthrough confirmed the dashboard numerator climbs + Sonarr composite-key path end-to-end, 0 bugs.
+
+**Prior milestone delivered (v2.10):**
 - Track A — Self-service password recovery (RCOV-01..06): "Forgot password?" → single-use 15-min CSPRNG token written to log + `0600` `reset-token.txt` (never in any HTTP response) → confirm sets new bcrypt hash, rotates `session_secret`, deletes token file, auto-logs-in. Both endpoints rate-limited; `/reset` auth-exempt via a tight exact-or-`/reset/` predicate.
 - Track B — Count-only refresh (CNT-01..05): per-card "Refresh counts" button + `POST /api/refresh-counts/{app}/{instance}` updates missing/cutoff/eligible counts + health without launching a search or advancing the cursor; never stamps `last_run`/`last_success` or touches the SAFETY-03 failure counter. Shared fetch+count+filter helper extracted from `run_*_cycle` (behavior-preserving).
 - Track C — Drain-timeout config parity (CFG-03/CFG-04): `shutdown_drain_timeout` `GeneralConfig` field + settings input (`>= 1.0`, finite-only via `allow_inf_nan=False` + `math.isfinite`), config-default-with-env-override precedence read at shutdown time (hot-reloadable). DOCS-01 corrected the stale deferred record (DEBT-07/08/03 already shipped; DEBT-06 now shipped).
@@ -43,7 +48,12 @@ v2.10 Recovery, Counts & Config Parity shipped 2026-06-04 (released as v2.10.0).
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
-## Current Milestone: v2.11 Never-Searched-First Search Queue Priority
+## Next Milestone: (planning)
+
+v2.11 shipped 2026-06-04 (released as v2.11.0). Run `/gsd:new-milestone` to scope the next one. Candidate parked items remain in STATE.md Deferred Items (v2.6 UI pixel-verification, PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, v2.9-audit follow-ups) plus the v2.10 deep-review tech-debt follow-ups (retire the dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; migrate `request_timeout` to `safe_float`).
+
+<details>
+<summary>Shipped milestone: v2.11 Never-Searched-First Search Queue Priority (2026-06-04)</summary>
 
 **Goal:** Replace the blind integer-cursor search walk with per-item memory so the scheduler prioritizes items it has never searched before.
 
@@ -53,7 +63,11 @@ v2.10 Recovery, Counts & Config Parity shipped 2026-06-04 (released as v2.10.0).
 - **Mark-on-attempt, reset-per-pass, prune-to-eligible, commit-at-cycle-end** — an ID joins the log once its search fires (success or failure, so no item starves the queue); when every eligible item has been searched the log clears and the existing `*_pass` counter bumps; the log is pruned to currently-eligible IDs each cycle (bounded); state commits in the single atomic `save_state()` at cycle end (at-least-once).
 - **Removals** — `missing_cursor`/`cutoff_cursor` drop from `AppState` and `slice_batch` is deleted. No separate migration function, but `_merge_defaults` actively STRIPS the legacy cursor keys on load (`merged.pop(...)`) — the merge preserves unknown keys, so they would otherwise persist; a load→save round-trip test asserts the keys are ABSENT from the written `state.json`.
 
-**Key context:** Source of truth is the approved design spec `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md` (10 locked decisions in §3, explicit YAGNI scope fence in §9, anticipated affected files in §10). Behavior-preserving on a cold start (empty log = everything unsearched = identical to today's first cycle). Phase numbering continues from v2.10 (last phase 75). Explicitly **untouched**: fetch/filter phases, batch-size config (`search_missing_count`/`search_cutoff_count`), `hard_max_per_cycle`, the global `search_lock`, scheduler intervals, the manual-search rate limit, the SAFETY-03 consecutive-failure counter, and the count-only refresh path.
+**Key context:** Source of truth is the approved design spec `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md` (10 locked decisions in §3, explicit YAGNI scope fence in §9, anticipated affected files in §10). Behavior-preserving on a cold start (empty log = everything unsearched = identical to today's first cycle). Phase numbering continued from v2.10 (Phase 76). Explicitly **untouched**: fetch/filter phases, batch-size config (`search_missing_count`/`search_cutoff_count`), `hard_max_per_cycle`, the global `search_lock`, scheduler intervals, the manual-search rate limit, the SAFETY-03 consecutive-failure counter, and the count-only refresh path.
+
+**Shipped:** Codex adversarial review caught 2 design blockers (stale-key persistence; broken runtime checkpoint) + 2 mediums before execution; deep review APPROVED after fixing a dashboard half-migration + a negative-batch_size clamp; audit passed (11/11 reqs, 11/11 wired); live NAS walkthrough 0 bugs.
+
+</details>
 
 **Still parked for a future milestone:** v2.6 UI pixel-verification (UI-01..03, human-needed, behind first-run), PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, the `--color-triggarr-primaryDark` cosmetic token cleanup, v2.9-audit follow-ups, and the v2.10 deep-review tech-debt follow-ups (retire the dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; migrate `request_timeout` to `safe_float`). See STATE.md Deferred Items.
 
@@ -205,10 +219,11 @@ v2.10 Recovery, Counts & Config Parity shipped 2026-06-04 (released as v2.10.0).
 - ✓ SAFETY-03: manual `/search-now` + scheduled cycles unified through one `_run_one_cycle` failure-counting path with covering tests; `.orchestrator.json` gitignore + `.gitleaksignore` 8.x repair; starlette ≥1.0.1 (PYSEC-2026-161) — v2.9 (CHARD-01..04)
 - ✓ SSRF config-load URL validation: cloud-metadata/link-local blocked at startup with clean exit, loopback permitted for same-host; web-form path unchanged — v2.9 (PREW-02 code half)
 - ✓ Presentation overhaul: README rewrite, SECURITY.md reconciled with v2.8/v2.8.1 hardening + at-rest caveat, community-health + repo-metadata, v2.9.0 release notes + in-app changelog, SeedSyncarr signal reconciliation, fresh Playwright screenshots — v2.9 (PDISC-01..03, PREW-01..07)
+- ✓ Never-searched-first search queue: ordered per-instance searched-log on `AppState` + pure `prioritize_batch()` dispatcher (never-searched-first, top-up oldest-first, mark-on-attempt, `bool(batch)` pass guard, reset-per-pass, prune-to-eligible, commit-at-cycle-end); per-app `key_fn` (Sonarr composite key); `_merge_defaults` strip-on-load; `slice_batch` removed; count-only refresh stays queue-independent — v2.11 (QUEUE-01..11)
 
 ### Active
 
-**v2.11 Never-Searched-First Search Queue Priority** — Phase 76 complete (verified 2026-06-04, 9/9 must-haves, full suite green). Replaced the integer-cursor search walk with an ordered per-item searched-log on `AppState` and a pure `prioritize_batch()` dispatcher: never-searched-first, top-up oldest-searched-first, mark-on-attempt, reset-per-pass (`bool(batch)` guard so a zero-search cycle never completes a pass), prune-to-eligible, commit-at-cycle-end; `_merge_defaults` strips legacy cursor keys on load; `slice_batch` removed. QUEUE-01..11 implemented. Awaiting milestone-end deploy/walkthrough + release. Source of truth: `docs/superpowers/specs/2026-06-04-search-queue-priority-design.md`.
+No active requirements — v2.11 shipped. Run `/gsd:new-milestone` to scope the next set.
 
 Parked for a future milestone: v2.6 UI pixel-verification (UI-01..03), PERF-01/02/03, SCALE-01/02, AUDIT-01, OBS-01, v2.9-audit follow-ups, and v2.10 deep-review tech-debt follow-ups (dead `_SHUTDOWN_DRAIN_TIMEOUT` constant; `request_timeout` → `safe_float`). See STATE.md Deferred Items.
 
@@ -321,4 +336,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-04 after v2.11 Phase 76 (Never-Searched-First Search Queue) completed and verified*
+*Last updated: 2026-06-04 after v2.11 Never-Searched-First Search Queue Priority milestone shipped (v2.11.0)*

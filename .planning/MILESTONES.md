@@ -1,5 +1,19 @@
 # Milestones
 
+## v2.11 Never-Searched-First Search Queue Priority (Shipped: 2026-06-04)
+
+**Phases completed:** 1 phase (76), 3 plans, 8 tasks. Released as **v2.11.0**. 1090 tests passing, ruff clean.
+
+**Key accomplishments:**
+
+- Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` + `slice_batch`) with an ordered per-instance **searched-log** on `AppState` (`missing_searched`/`cutoff_searched: list[str]`) and a pure `prioritize_batch(eligible_items, searched_log, batch_size, key_fn)` dispatcher — never-searched-first in fetch order, top-up oldest-searched-first, mark-on-attempt, reset-per-pass, prune-to-eligible, commit-at-cycle-end. Wired into all 6 cycle call sites (Radarr/Sonarr/Lidarr × missing/cutoff); `slice_batch` removed.
+- Per-app key normalization via `key_fn` (Radarr/Lidarr `str(id)`, Sonarr composite `seriesId:seasonNumber` — Specials season 0 distinct); pass-completion guarded by `bool(batch)` so a zero-search cycle never completes a pass.
+- `_merge_defaults` actively **strips legacy cursor keys on load** (`merged.pop(...)`) with a load→save round-trip test asserting absence from the written JSON — no separate migration function. Count-only refresh stays queue-independent.
+- **Codex adversarial review (plan stage)** caught 2 design blockers (stale-key persistence; broken runtime checkpoint) + 2 mediums before execution. **Deep review APPROVED** (0 unfixed critical/warning) after fixing 2 findings: a dashboard half-migration (cursor read left in `routes.py`/`app_card.html` → "0 of N" frozen; rewired to searched-log length) and a negative-`batch_size` slice clamp.
+- Milestone audit passed (11/11 requirements, 1/1 phase verified, 11/11 cross-phase connections wired); **live NAS walkthrough** on the deployed build confirmed the searched-log numerator climbs (the review-fix surface), never-searched-first dispatch + Sonarr composite-key path work end-to-end, and refresh-counts stays queue-independent — 0 bugs found.
+
+---
+
 ## v2.10 Recovery, Counts & Config Parity (Shipped: 2026-06-04)
 
 **Phases completed:** 4 phases (72-75), 11 plans. Released as **v2.10.0**. 1067 tests passing, ruff clean. Three disjoint tracks. Deep-review APPROVED (0 critical/warning); milestone audit passed (14/14 requirements, 4/4 phases verified, 11/11 cross-phase connections wired); live NAS walkthrough on the deployed build exercised all three tracks end-to-end with 0 bugs found.

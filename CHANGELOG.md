@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.11.0 (2026-06-04)
+
+Smarter search ordering — Triggarr now prioritizes items it has never searched before.
+
+* Features:
+
+  * Never-searched-first search queue — instead of walking each *arr's wanted/cutoff list with a blind position cursor, Triggarr now remembers which items it has already searched (per instance, per queue) and prioritizes never-tried items each cycle. When everything eligible has been searched, the pass completes and the cycle starts fresh. Newly-added items jump to the front automatically. A failed search still counts as "tried" so a single broken item can never starve the queue, and the per-card "X of N" progress on the dashboard now reflects real within-pass progress.
+
+* Internal:
+
+  * The integer search cursor (`missing_cursor`/`cutoff_cursor`) and the old batch-slicing helper were replaced by an ordered per-instance searched-log and a single pure dispatch function shared across Radarr, Sonarr, and Lidarr. Existing `state.json` files upgrade automatically — the legacy cursor keys are stripped on load, no manual migration needed. Behavior is unchanged on a cold start, and the count-only "Refresh counts" path remains fully independent of the search queue.
+
 ## v2.10.0 (2026-06-04)
 
 Password recovery, per-card count refresh, and a configurable shutdown drain timeout.
