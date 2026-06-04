@@ -49,7 +49,12 @@ from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
 from triggarr.models.config import APP_TYPES, AuthConfig, InstanceConfig
 from triggarr.models.config import Settings as SettingsModel
-from triggarr.search.engine import _sanitize_exc
+from triggarr.search.engine import (
+    _sanitize_exc,
+    refresh_lidarr_counts,
+    refresh_radarr_counts,
+    refresh_sonarr_counts,
+)
 from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
@@ -964,6 +969,113 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
             )
 
     # Return updated card partial
+    app_data = _build_app_context(request, app_name, instance_name)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/app_card.html",
+        context={"app": app_data},
+    )
+
+
+@router.post("/api/refresh-counts/{app_name}/{instance_name}", response_class=HTMLResponse)
+async def refresh_counts(request: Request, app_name: str, instance_name: str) -> HTMLResponse:
+    """Trigger a count-only refresh for a specific instance and return updated card.
+
+    Mirrors search_now field-for-field (guards, rate-limit, lock, tag-cache resolver,
+    always-200 card response) minus the search call and failure-counter/last_run semantics.
+    Uses sibling last_refresh_time dict so a refresh does not rate-limit a search (D-08).
+    The helper return value is DISCARDED; the card is built from the in-place ist mutation.
+    Always returns 200 + card even when the helper returns None (fetch OR data fault).
+    """
+    if len(instance_name) > 64:
+        return HTMLResponse("Instance name too long", status_code=400)
+    if app_name not in APP_TYPES:
+        return HTMLResponse("Invalid app", status_code=400)
+
+    clients = getattr(request.app.state, f"{app_name}_clients", {})
+    enabled = request.app.state.settings.get_enabled_instances(app_name)
+    if instance_name not in enabled or instance_name not in clients:
+        return HTMLResponse("Instance not enabled", status_code=400)
+    client = clients[instance_name]
+    instance_config = enabled[instance_name]
+
+    # Optimistic rate limit check BEFORE lock (fast-fail for obvious cases)
+    rate_key = f"{app_name}_{instance_name}"
+    now = time.monotonic()
+    last = request.app.state.last_refresh_time.get(rate_key, 0.0)
+    if now - last < SEARCH_RATE_LIMIT_SECONDS:
+        logger.info("{name}/{inst}: Count refresh rate-limited", name=app_name.title(), inst=instance_name)
+        return HTMLResponse("Rate limited -- try again shortly", status_code=429)
+
+    async with request.app.state.search_lock:
+        # Re-check inside lock to prevent concurrent bypass (DRSEC-03)
+        now = time.monotonic()
+        last = request.app.state.last_refresh_time.get(rate_key, 0.0)
+        if now - last < SEARCH_RATE_LIMIT_SECONDS:
+            logger.info(
+                "{name}/{inst}: Count refresh rate-limited (after lock)",
+                name=app_name.title(), inst=instance_name,
+            )
+            return HTMLResponse("Rate limited -- try again shortly", status_code=429)
+        request.app.state.last_refresh_time[rate_key] = now
+
+        # RES-03 parity: count refreshes read/populate the tag cache exactly like
+        # scheduled cycles and manual searches (same resolver shape as search_now).
+        cache_key = (app_name, instance_name)
+
+        async def _get_tags_cached() -> list[Tag]:
+            cache = request.app.state.tag_cache
+            entry = cache.get(cache_key)
+            if entry is not None:
+                cached_tags, fetched_at = entry
+                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                    return cached_tags
+            fresh_tags = await client.get_tags()
+            cache[cache_key] = (fresh_tags, time.monotonic())
+            return fresh_tags
+
+        # D-06: call per-app helper directly — NEVER route through _run_one_cycle.
+        # D-05: no search_failures touch, no last_run/last_success stamp.
+        # Codex rewrite-2: await as a BARE statement — return value discarded.
+        # The helper mutates state[app_name][instance_name] in place; the card is
+        # built from that mutated ist UNCONDITIONALLY after the try/except so that
+        # a helper None return (fetch failure OR rewrite-3 data fault) still yields
+        # 200 + the disconnected card rather than a 500.
+        refresh_fns = {
+            "radarr": refresh_radarr_counts,
+            "sonarr": refresh_sonarr_counts,
+            "lidarr": refresh_lidarr_counts,
+        }
+        try:
+            await refresh_fns[app_name](
+                client,
+                request.app.state.triggarr_state,
+                instance_name,
+                instance_config,
+                request.app.state.settings,
+                get_tags_fn=_get_tags_cached,
+            )
+            logger.info("{name}/{inst}: Count refresh triggered", name=app_name.title(), inst=instance_name)
+        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
+            # Same sanitization split as search_now: httpx/pydantic may carry
+            # ?apikey= query strings; aiosqlite/OSError messages do not.
+            # Catch tuple stays exactly as-is (no AttributeError/KeyError/TypeError) —
+            # the rewrite-3 helper handles those internally and returns None; widening
+            # the tuple here would mask future helper regressions.
+            logger.error(
+                "{name}/{inst}: Count refresh failed -- {exc}",
+                name=app_name.title(),
+                inst=instance_name,
+                exc=(
+                    _sanitize_exc(exc)
+                    if isinstance(exc, httpx.HTTPError | pydantic.ValidationError)
+                    else str(exc)
+                ),
+            )
+
+    # Return updated card partial — built UNCONDITIONALLY from the in-place ist
+    # mutation (which the helper has already applied, whether it returned a tuple
+    # or None). Always 200 + card; never 500. (Mirrors search_now's always-200.)
     app_data = _build_app_context(request, app_name, instance_name)
     return templates.TemplateResponse(
         request=request,

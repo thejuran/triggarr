@@ -498,6 +498,11 @@ def create_lifespan(
         # does not exist.
         # last_search_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
         app.state.last_search_time = {}
+        # last_refresh_time: dict[str, float]  (key: rate-limit token, value: monotonic ts)
+        # Sibling rate-limit dict for the refresh_counts endpoint (D-08, Phase 74).
+        # Independent of last_search_time so a count refresh and a manual search
+        # do not rate-limit each other.
+        app.state.last_refresh_time = {}
         # reset_token: tuple[str, float] | None  (CSPRNG token string, expiry as monotonic ts)
         # Set by reset_request_post, consumed and cleared by reset_confirm_post.
         # A container restart sets this to None, invalidating any pending reset token (D-04, D-18).
