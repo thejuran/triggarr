@@ -1059,6 +1059,7 @@ async def multi_instance_app(tmp_path):
         app.state.search_failures = {}
         app.state.persistence_degraded = False
         app.state.last_search_time = {}
+        app.state.last_refresh_time = {}
         app.state.last_health_check = None
         # RES-03: tag cache (read by search_now resolver, popped by
         # save_settings / remove_instance invalidation).
