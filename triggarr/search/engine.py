@@ -477,8 +477,10 @@ async def run_radarr_cycle(
         if skipped_unreleased > 0:
             logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
     ist["missing_eligible"] = len(missing)
-    cursor = ist["missing_cursor"]
-    batch, new_cursor = slice_batch(missing, cursor, missing_limit)
+    batch, new_log, pass_done = prioritize_batch(
+        missing, ist.get("missing_searched", []), missing_limit,
+        key_fn=lambda m: str(m["id"]),
+    )
     for movie in batch:
         try:
             await client.search_movies([movie["id"]])
@@ -515,19 +517,24 @@ async def run_radarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    ist["missing_cursor"] = new_cursor
-    if new_cursor == 0 and batch:
+    ist["missing_searched"] = [] if pass_done else new_log
+    if pass_done:
         ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        pass_num = ist["missing_pass"]
-        logger.info("Radarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
+        logger.info(
+            "Radarr: Missing pass {p} complete ({n} searched)",
+            p=ist["missing_pass"],
+            n=len(new_log),
+        )
 
     # --- Cutoff queue ---
     cutoff = filter_monitored(cutoff)
     if cutoff_tag_id is not None:
         cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
         logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
-    cursor = ist["cutoff_cursor"]
-    batch, new_cursor = slice_batch(cutoff, cursor, cutoff_limit)
+    batch, new_log, pass_done = prioritize_batch(
+        cutoff, ist.get("cutoff_searched", []), cutoff_limit,
+        key_fn=lambda m: str(m["id"]),
+    )
     for movie in batch:
         try:
             await client.search_movies([movie["id"]])
@@ -564,11 +571,14 @@ async def run_radarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    ist["cutoff_cursor"] = new_cursor
-    if new_cursor == 0 and batch:
+    ist["cutoff_searched"] = [] if pass_done else new_log
+    if pass_done:
         ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        pass_num = ist["cutoff_pass"]
-        logger.info("Radarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
+        logger.info(
+            "Radarr: Cutoff pass {p} complete ({n} searched)",
+            p=ist["cutoff_pass"],
+            n=len(new_log),
+        )
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
@@ -716,8 +726,10 @@ async def run_sonarr_cycle(
     missing_seasons = deduplicate_to_seasons(missing_episodes)
     ist["missing_eligible"] = len(missing_episodes)
     ist["missing_searchable"] = len(missing_seasons)
-    cursor = ist["missing_cursor"]
-    batch, new_cursor = slice_batch(missing_seasons, cursor, missing_limit)
+    batch, new_log, pass_done = prioritize_batch(
+        missing_seasons, ist.get("missing_searched", []), missing_limit,
+        key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+    )
     for season in batch:
         try:
             await client.search_season(season["seriesId"], season["seasonNumber"])
@@ -758,11 +770,14 @@ async def run_sonarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    ist["missing_cursor"] = new_cursor
-    if new_cursor == 0 and batch:
+    ist["missing_searched"] = [] if pass_done else new_log
+    if pass_done:
         ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        pass_num = ist["missing_pass"]
-        logger.info("Sonarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
+        logger.info(
+            "Sonarr: Missing pass {p} complete ({n} searched)",
+            p=ist["missing_pass"],
+            n=len(new_log),
+        )
 
     # --- Cutoff queue ---
     cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
@@ -771,8 +786,10 @@ async def run_sonarr_cycle(
         logger.debug("Sonarr: Tag filter applied -- {n} cutoff episodes match tag", n=len(cutoff_episodes))
     cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
     ist["cutoff_searchable"] = len(cutoff_seasons)
-    cursor = ist["cutoff_cursor"]
-    batch, new_cursor = slice_batch(cutoff_seasons, cursor, cutoff_limit)
+    batch, new_log, pass_done = prioritize_batch(
+        cutoff_seasons, ist.get("cutoff_searched", []), cutoff_limit,
+        key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+    )
     for season in batch:
         try:
             await client.search_season(season["seriesId"], season["seasonNumber"])
@@ -813,11 +830,14 @@ async def run_sonarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    ist["cutoff_cursor"] = new_cursor
-    if new_cursor == 0 and batch:
+    ist["cutoff_searched"] = [] if pass_done else new_log
+    if pass_done:
         ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        pass_num = ist["cutoff_pass"]
-        logger.info("Sonarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
+        logger.info(
+            "Sonarr: Cutoff pass {p} complete ({n} searched)",
+            p=ist["cutoff_pass"],
+            n=len(new_log),
+        )
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
@@ -967,8 +987,10 @@ async def run_lidarr_cycle(
         missing = filter_by_tag(missing, missing_tag_id, _lidarr_tags)
         logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
     ist["missing_eligible"] = len(missing)
-    cursor = ist["missing_cursor"]
-    batch, new_cursor = slice_batch(missing, cursor, missing_limit)
+    batch, new_log, pass_done = prioritize_batch(
+        missing, ist.get("missing_searched", []), missing_limit,
+        key_fn=lambda a: str(a["id"]),
+    )
     for album in batch:
         title = album.get("title", "unknown")
         try:
@@ -1006,19 +1028,24 @@ async def run_lidarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    ist["missing_cursor"] = new_cursor
-    if new_cursor == 0 and batch:
+    ist["missing_searched"] = [] if pass_done else new_log
+    if pass_done:
         ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        pass_num = ist["missing_pass"]
-        logger.info("Lidarr: Missing queue wrapped around — starting pass {p}", p=pass_num)
+        logger.info(
+            "Lidarr: Missing pass {p} complete ({n} searched)",
+            p=ist["missing_pass"],
+            n=len(new_log),
+        )
 
     # --- Cutoff queue ---
     cutoff = filter_monitored(cutoff)
     if cutoff_tag_id is not None:
         cutoff = filter_by_tag(cutoff, cutoff_tag_id, _lidarr_tags)
         logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
-    cursor = ist["cutoff_cursor"]
-    batch, new_cursor = slice_batch(cutoff, cursor, cutoff_limit)
+    batch, new_log, pass_done = prioritize_batch(
+        cutoff, ist.get("cutoff_searched", []), cutoff_limit,
+        key_fn=lambda a: str(a["id"]),
+    )
     for album in batch:
         title = album.get("title", "unknown")
         try:
@@ -1056,11 +1083,14 @@ async def run_lidarr_cycle(
                 max_rows=settings.general.max_history_rows,
             )
             skipped_count += 1
-    ist["cutoff_cursor"] = new_cursor
-    if new_cursor == 0 and batch:
+    ist["cutoff_searched"] = [] if pass_done else new_log
+    if pass_done:
         ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        pass_num = ist["cutoff_pass"]
-        logger.info("Lidarr: Cutoff queue wrapped around — starting pass {p}", p=pass_num)
+        logger.info(
+            "Lidarr: Cutoff pass {p} complete ({n} searched)",
+            p=ist["cutoff_pass"],
+            n=len(new_log),
+        )
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
