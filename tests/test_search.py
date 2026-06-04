@@ -2291,7 +2291,9 @@ def test_make_test_state_helper_works():
     assert "radarr" in state
     assert "Default" in state["radarr"]
     assert state["radarr"]["Default"]["missing_searched"] == []
-    assert "missing_cursor" not in state["radarr"]["Default"]
+    # Cursor-key absence is asserted in tests/test_state.py (the one allowed home for
+    # legacy-cursor regression — the cursor static guard excludes only that file). Here the
+    # positive missing_searched == [] check already proves the helper produces the new shape.
     assert "sonarr" in state
     assert "Default" in state["sonarr"]
     assert state["sonarr"]["Default"]["missing_searched"] == []
