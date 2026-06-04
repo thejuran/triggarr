@@ -43,8 +43,6 @@ async def test_app(tmp_path):
         app.state.triggarr_state = {
             "radarr": {
                 "Default": {
-                    "missing_cursor": 3,
-                    "cutoff_cursor": 1,
                     "last_run": "2026-01-15T10:30:00Z",
                     "connected": True,
                     "unreachable_since": None,
@@ -54,8 +52,6 @@ async def test_app(tmp_path):
             },
             "sonarr": {
                 "Default": {
-                    "missing_cursor": 0,
-                    "cutoff_cursor": 0,
                     "last_run": None,
                     "connected": None,
                     "unreachable_since": None,
@@ -65,8 +61,6 @@ async def test_app(tmp_path):
             },
             "lidarr": {
                 "Default": {
-                    "missing_cursor": 0,
-                    "cutoff_cursor": 0,
                     "last_run": None,
                     "connected": None,
                     "unreachable_since": None,
@@ -379,13 +373,16 @@ def test_search_now_happy_path(client, test_app):
 
 
 def test_dashboard_shows_position_x_of_y(client):
-    """Dashboard app card shows position in 'X of Y' format (WEBU-09)."""
+    """Dashboard app card renders app counts (WEBU-09).
+
+    Cursor-based position display removed in v2.11 (cursor fields replaced by searched-log).
+    The dashboard renders count data (missing_count, cutoff_count) from instance state.
+    """
     response = client.get("/")
     assert response.status_code == 200
-    # Radarr mock state: missing_cursor=3, missing_count=42
-    assert "3 of 42" in response.text, "Missing position should show 'X of Y' format"
-    # Radarr mock state: cutoff_cursor=1, cutoff_count=7
-    assert "1 of 7" in response.text, "Cutoff position should show 'X of Y' format"
+    # Radarr mock state: missing_count=42 and cutoff_count=7 are present in fixture
+    assert "42" in response.text, "Missing count should appear in dashboard"
+    assert "7" in response.text, "Cutoff count should appear in dashboard"
 
 
 async def test_activity_rail_shows_outcome_badge(test_app, tmp_path):
@@ -1067,14 +1064,14 @@ async def multi_instance_app(tmp_path):
 
         app.state.triggarr_state = {
             "radarr": {
-                "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
-                "4K": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+                "Default": {"last_run": None, "connected": True},
+                "4K": {"last_run": None, "connected": True},
             },
             "sonarr": {
-                "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": True},
+                "Default": {"last_run": None, "connected": True},
             },
             "lidarr": {
-                "Default": {"missing_cursor": 0, "cutoff_cursor": 0, "last_run": None, "connected": None},
+                "Default": {"last_run": None, "connected": None},
             },
             "search_log": [],
         }
@@ -1847,9 +1844,8 @@ def test_save_settings_creates_state_for_new_instance(client, test_app, tmp_path
     # State should now have entries for the enabled instances
     state = test_app.state.triggarr_state
     assert "Default" in state.get("radarr", {}), "State should have Default radarr entry after save_settings"
-    # Cursor fields removed in Plan 02; new instances carry empty searched-logs
+    # New instances carry empty searched-logs (cursor fields removed in v2.11)
     assert state["radarr"]["Default"]["missing_searched"] == []
-    assert "missing_cursor" not in state["radarr"]["Default"]
     assert "Default" in state.get("sonarr", {}), "State should have Default sonarr entry after save_settings"
 
 

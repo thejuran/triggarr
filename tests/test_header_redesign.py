@@ -42,8 +42,6 @@ async def test_app(tmp_path):
         app.state.triggarr_state = {
             "radarr": {
                 "Default": {
-                    "missing_cursor": 3,
-                    "cutoff_cursor": 1,
                     "last_run": "2026-01-15T10:30:00Z",
                     "connected": True,
                     "unreachable_since": None,
@@ -57,8 +55,6 @@ async def test_app(tmp_path):
             },
             "sonarr": {
                 "Default": {
-                    "missing_cursor": 0,
-                    "cutoff_cursor": 0,
                     "last_run": None,
                     "connected": True,
                     "unreachable_since": None,
