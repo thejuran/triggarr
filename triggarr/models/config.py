@@ -132,6 +132,11 @@ class GeneralConfig(BaseModel):
     tracking_delay_seconds: int = 90  # Delay before tracking check (unused)
     # SAFETY-03: bounded 1..100 to defend against typos at config edit time
     max_consecutive_failures: int = Field(default=5, ge=1, le=100)
+    # DEBT-06: ge=1.0 defends against a typo (e.g. 0) disabling the drain; allow_inf_nan=False
+    # rejects a non-finite (inf/nan) config value that ge=1.0 alone would admit (+inf, verified).
+    # Defense in depth: a TOML inf cannot unbound the drain. Config value is the default;
+    # TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT env overrides at shutdown; form clamp (3600.0) is the UI ceiling.
+    shutdown_drain_timeout: float = Field(default=60.0, ge=1.0, allow_inf_nan=False)
     # v2.2: skip Radarr movies without past digital/physical release date
     skip_unreleased: bool = True
 

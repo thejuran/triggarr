@@ -7,6 +7,7 @@ log level allowlisting, and instance name validation for the settings form.
 from __future__ import annotations
 
 import ipaddress
+import math
 import re
 from urllib.parse import urlparse
 
@@ -195,6 +196,38 @@ def safe_int(value: str | None, default: int, minimum: int, maximum: int) -> int
     try:
         n = int(value)
     except (ValueError, TypeError):
+        return default
+    return max(minimum, min(maximum, n))
+
+
+def safe_float(value: str | None, default: float, minimum: float, maximum: float) -> float:
+    """Parse a form value as a float, clamped to ``[minimum, maximum]``.
+
+    Unlike :func:`safe_int`, this helper preserves fractional input (e.g. ``"1.5"``
+    returns ``1.5``, not ``1``).  It also explicitly rejects non-finite values:
+    ``float("nan")``, ``float("inf")``, and ``float("-inf")`` all parse without raising,
+    and the clamp does NOT neutralize them (``max(nan, 1.0) == nan``,
+    ``max(inf, 1.0) == inf``). The :func:`math.isfinite` guard returns *default*
+    for any non-finite input, guaranteeing the caller receives a finite, bounded value.
+
+    Returns *default* when the value is None, empty, unparseable, or non-finite.
+
+    Args:
+        value: Raw form string (may be None).
+        default: Fallback when *value* is missing, invalid, or non-finite.
+        minimum: Lower bound (inclusive).
+        maximum: Upper bound (inclusive).
+
+    Returns:
+        A float guaranteed to be finite and within ``[minimum, maximum]``.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        n = float(value)
+    except (ValueError, TypeError):
+        return default
+    if not math.isfinite(n):
         return default
     return max(minimum, min(maximum, n))
 
