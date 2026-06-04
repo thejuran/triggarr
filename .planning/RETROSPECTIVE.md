@@ -332,6 +332,41 @@
 
 ---
 
+## Milestone: v2.10 — Recovery, Counts & Config Parity
+
+**Shipped:** 2026-06-04 (released as v2.10.0; tag held locally pending manual push)
+**Phases:** 4 (72-75) | **Plans:** 11
+
+### What Was Built
+- Track A — self-service HTTP password recovery (single-use 15-min token to log + 0600 file, never in any response; session rotation + auto-login; rate-limited; tight `/reset` auth exemption).
+- Track B — per-card "Refresh counts" + `POST /api/refresh-counts` updating counts/health without a search wave or cursor advance (shared helper extracted, behavior-preserving).
+- Track C — `shutdown_drain_timeout` config field + settings input (`>=1.0`, finite-only) with env-override precedence read at shutdown time; DOCS-01 deferred-record correction.
+
+### What Worked
+- The adversarial-review gate earned its keep on Phase 75: codex caught two real planning defects before any code was written — a self-contradicting test (forcing `shutdown_drain_timeout=0.1` against a `ge=1.0` field) and a non-finite-value gap (`nan`/`inf` surviving the clamp into `asyncio.timeout`). Both were fixed in plan rewrites, not in post-hoc debugging.
+- Build-verify-before-review (py_compile + ruff + full suite green) let the deep-review reviewers self-filter speculative "this won't compile" findings — the review came back clean with the one medium being a verified false positive.
+- The milestone-end NAS walkthrough closed Phase 73's `human_needed` visual-verification gap exactly as the deferred 73-HUMAN-UAT intended — the artifact was designed to be resolved by this walkthrough, and it was.
+
+### What Was Inefficient
+- Stale bookkeeping accumulated: Phase 74 shipped in a prior session without a VERIFICATION.md (verifier step skipped); RCOV/CFG requirement checkboxes stayed `[ ]`/Pending despite being shipped. The milestone audit had to reconcile all three before it could pass. Lesson: run the verifier at phase close, every phase, even for phases executed outside the orchestrator.
+- The decision-coverage gate fired a false negative because the plan cited decision IDs as `D-01` (no colon) in body text rather than `D-01:` in `must_haves.truths` — a token-format mismatch, not a real coverage gap. And a planner edit silently dropped the `</decisions>` closing tag, making the gate read 0 decisions (a vacuous pass). Both needed manual reconciliation.
+
+### Patterns Established
+- For a release deploy where CI builds the image on push (not local), push `main` first to publish the rolling `:main` tag (via the CI→release `workflow_run` chain), pull on the NAS, then hold the version tag for the explicit release cut. Decouples "deploy for walkthrough" from "cut the public release."
+- A dedicated `safe_float` (not reusing `safe_int`) for a float config knob, with a `math.isfinite` guard placed after coercion and before the clamp — because `max(nan, 1.0)`/`max(inf, 1.0)` do not neutralize non-finite values.
+
+### Key Lessons
+1. Adversarial plan review pays for itself when the defect is a logical contradiction the plan-checker's structural validation can't see (a forbidden test value, a non-finite edge case).
+2. Reconcile requirement checkboxes + VERIFICATION.md at phase close, not at milestone audit — stale bookkeeping is cheap to prevent and expensive to untangle later.
+3. A "version badge shows the old version" observation at walkthrough time is expected, not a bug — the bump happens at the release tag, after the walkthrough.
+
+### Cost Observations
+- Model mix: ~50% opus (orchestration, planning, deep-review architecture, verification, audit), ~50% sonnet (execution, the bug/security/impact/compliance/python review agents, integration check).
+- Sessions: 1 long orchestrated session (discuss→plan→adversarial→execute→review per phase, then milestone-end deploy/walkthrough/audit/complete).
+- Notable: 2 adversarial rewrites on Phase 75 before codex approved; 6-agent parallel deep-review fan-out; live Playwright walkthrough resolved a deferred human-UAT.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
