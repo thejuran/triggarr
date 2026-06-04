@@ -126,8 +126,12 @@ async def test_refresh_radarr_counts_returns_counts():
     assert ist["missing_eligible"] == 1
 
 
-async def test_refresh_radarr_counts_does_not_advance_cursor():
-    """CNT-02: helper must not touch missing_cursor or cutoff_cursor."""
+async def test_refresh_radarr_counts_does_not_touch_searched_log():
+    """CNT-02: Radarr count-only helper must not read or write the searched-log (queue-independence).
+
+    Proves that refresh_radarr_counts neither reads nor writes missing_searched/cutoff_searched,
+    preserving the v2.10 invariant that count refresh is independent of the search queue.
+    """
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
         return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
@@ -136,16 +140,20 @@ async def test_refresh_radarr_counts_does_not_advance_cursor():
     client.get_library_count = AsyncMock(return_value=1)
 
     state = _make_test_state()
-    state["radarr"]["Default"]["missing_cursor"] = 5
-    state["radarr"]["Default"]["cutoff_cursor"] = 3
+    state["radarr"]["Default"]["missing_searched"] = ["1", "2", "3"]
+    state["radarr"]["Default"]["cutoff_searched"] = ["9"]
 
     settings = make_settings()
     instance_config = _instance_config()
 
     await refresh_radarr_counts(client, state, "Default", instance_config, settings)
 
-    assert state["radarr"]["Default"]["missing_cursor"] == 5  # unchanged
-    assert state["radarr"]["Default"]["cutoff_cursor"] == 3  # unchanged
+    # searched-logs must be UNCHANGED — refresh must not read or write them
+    assert state["radarr"]["Default"]["missing_searched"] == ["1", "2", "3"]
+    assert state["radarr"]["Default"]["cutoff_searched"] == ["9"]
+    # counts/health must have been updated (proves the refresh actually ran)
+    assert state["radarr"]["Default"]["connected"] is True
+    assert state["radarr"]["Default"]["missing_count"] == 1
 
 
 async def test_refresh_radarr_counts_does_not_stamp_last_run():
@@ -240,8 +248,12 @@ async def test_refresh_sonarr_counts_returns_counts():
     assert ist["cutoff_searchable"] == 1   # 1 cutoff season
 
 
-async def test_refresh_sonarr_counts_does_not_advance_cursor():
-    """CNT-02: Sonarr helper must not touch missing_cursor or cutoff_cursor."""
+async def test_refresh_sonarr_counts_does_not_touch_searched_log():
+    """CNT-02: Sonarr count-only helper must not read or write the searched-log (queue-independence).
+
+    Proves that refresh_sonarr_counts neither reads nor writes missing_searched/cutoff_searched,
+    preserving the v2.10 invariant that count refresh is independent of the search queue.
+    """
     ep = _make_sonarr_episode(series_id=1, season_number=1, episode_id=1)
 
     client = AsyncMock()
@@ -250,16 +262,19 @@ async def test_refresh_sonarr_counts_does_not_advance_cursor():
     client.get_library_count = AsyncMock(return_value=5)
 
     state = _make_test_state()
-    state["sonarr"]["Default"]["missing_cursor"] = 7
-    state["sonarr"]["Default"]["cutoff_cursor"] = 4
+    state["sonarr"]["Default"]["missing_searched"] = ["1", "2", "3"]
+    state["sonarr"]["Default"]["cutoff_searched"] = ["9"]
 
     settings = make_settings()
     instance_config = _instance_config()
 
     await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
 
-    assert state["sonarr"]["Default"]["missing_cursor"] == 7  # unchanged
-    assert state["sonarr"]["Default"]["cutoff_cursor"] == 4  # unchanged
+    # searched-logs must be UNCHANGED — refresh must not read or write them
+    assert state["sonarr"]["Default"]["missing_searched"] == ["1", "2", "3"]
+    assert state["sonarr"]["Default"]["cutoff_searched"] == ["9"]
+    # counts/health must have been updated (proves the refresh actually ran)
+    assert state["sonarr"]["Default"]["connected"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -299,8 +314,12 @@ async def test_refresh_lidarr_counts_returns_counts():
     assert ist.get("cutoff_searchable") is None
 
 
-async def test_refresh_lidarr_counts_does_not_advance_cursor():
-    """CNT-02: Lidarr helper must not touch missing_cursor or cutoff_cursor."""
+async def test_refresh_lidarr_counts_does_not_touch_searched_log():
+    """CNT-02: Lidarr count-only helper must not read or write the searched-log (queue-independence).
+
+    Proves that refresh_lidarr_counts neither reads nor writes missing_searched/cutoff_searched,
+    preserving the v2.10 invariant that count refresh is independent of the search queue.
+    """
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(
         return_value=[{"id": 1, "title": "Album A", "monitored": True}]
@@ -309,16 +328,19 @@ async def test_refresh_lidarr_counts_does_not_advance_cursor():
     client.get_library_count = AsyncMock(return_value=5)
 
     state = _make_test_state()
-    state["lidarr"]["Default"]["missing_cursor"] = 9
-    state["lidarr"]["Default"]["cutoff_cursor"] = 6
+    state["lidarr"]["Default"]["missing_searched"] = ["1", "2", "3"]
+    state["lidarr"]["Default"]["cutoff_searched"] = ["9"]
 
     settings = make_settings()
     instance_config = _instance_config()
 
     await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
 
-    assert state["lidarr"]["Default"]["missing_cursor"] == 9  # unchanged
-    assert state["lidarr"]["Default"]["cutoff_cursor"] == 6  # unchanged
+    # searched-logs must be UNCHANGED — refresh must not read or write them
+    assert state["lidarr"]["Default"]["missing_searched"] == ["1", "2", "3"]
+    assert state["lidarr"]["Default"]["cutoff_searched"] == ["9"]
+    # counts/health must have been updated (proves the refresh actually ran)
+    assert state["lidarr"]["Default"]["connected"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -751,8 +773,6 @@ async def refresh_test_app(tmp_path):
         app.state.triggarr_state = {
             "radarr": {
                 "Default": {
-                    "missing_cursor": 0,
-                    "cutoff_cursor": 0,
                     "last_run": None,
                     "last_success": None,
                     "connected": True,
@@ -767,11 +787,12 @@ async def refresh_test_app(tmp_path):
                     "cutoff_searchable": None,
                     "missing_pass": 0,
                     "cutoff_pass": 0,
+                    "missing_searched": [],
+                    "cutoff_searched": [],
                 },
             },
             "sonarr": {
                 "Default": {
-                    "missing_cursor": 0, "cutoff_cursor": 0,
                     "last_run": None, "last_success": None,
                     "connected": None, "unreachable_since": None,
                     "missing_count": None, "cutoff_count": None,
@@ -779,11 +800,11 @@ async def refresh_test_app(tmp_path):
                     "cutoff_searchable": None, "tag_warnings": [],
                     "total_items": None, "missing_monitored": None,
                     "missing_pass": 0, "cutoff_pass": 0,
+                    "missing_searched": [], "cutoff_searched": [],
                 },
             },
             "lidarr": {
                 "Default": {
-                    "missing_cursor": 0, "cutoff_cursor": 0,
                     "last_run": None, "last_success": None,
                     "connected": None, "unreachable_since": None,
                     "missing_count": None, "cutoff_count": None,
@@ -791,6 +812,7 @@ async def refresh_test_app(tmp_path):
                     "cutoff_searchable": None, "tag_warnings": [],
                     "total_items": None, "missing_monitored": None,
                     "missing_pass": 0, "cutoff_pass": 0,
+                    "missing_searched": [], "cutoff_searched": [],
                 },
             },
             "search_log": [],
@@ -935,7 +957,7 @@ def test_refresh_counts_malformed_data_does_not_mutate_search_state(
     refresh_client, refresh_test_app
 ):
     """Rewrite-3 route regression (CNT-03): helper returning None (data fault) must NOT
-    mutate search_failures, last_search_time, cursors, or last_run/last_success.
+    mutate search_failures, last_search_time, searched-logs, or last_run/last_success.
 
     Proves a malformed-data refresh is inert w.r.t. the search path.
     """
@@ -944,8 +966,8 @@ def test_refresh_counts_malformed_data_does_not_mutate_search_state(
 
     # Seed search state that must NOT be touched
     refresh_test_app.state.search_failures["radarr_Default"] = 2
-    state["radarr"]["Default"]["missing_cursor"] = 77
-    state["radarr"]["Default"]["cutoff_cursor"] = 88
+    state["radarr"]["Default"]["missing_searched"] = ["10", "20"]
+    state["radarr"]["Default"]["cutoff_searched"] = ["99"]
 
     def _data_fault_side_effect(
         _client, _state, _instance_name, _instance_config, _settings, **_kwargs
@@ -965,9 +987,9 @@ def test_refresh_counts_malformed_data_does_not_mutate_search_state(
     # search_failures must be unchanged
     assert refresh_test_app.state.search_failures.get("radarr_Default") == 2
 
-    # Cursors must be unchanged (count path never advances them)
-    assert state["radarr"]["Default"]["missing_cursor"] == 77
-    assert state["radarr"]["Default"]["cutoff_cursor"] == 88
+    # Searched-logs must be unchanged (count path never reads or writes them)
+    assert state["radarr"]["Default"]["missing_searched"] == ["10", "20"]
+    assert state["radarr"]["Default"]["cutoff_searched"] == ["99"]
 
     # last_search_time must NOT have been touched (independent dicts)
     assert "radarr_Default" not in refresh_test_app.state.last_search_time
