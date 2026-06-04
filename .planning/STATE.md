@@ -4,8 +4,8 @@ milestone: v2.10
 milestone_name: Recovery, Counts & Config Parity
 status: executing
 stopped_at: Phase 75 context gathered
-last_updated: "2026-06-04T02:05:50.574Z"
-last_activity: 2026-06-04 -- Phase 74 execution started
+last_updated: "2026-06-04T02:37:55.198Z"
+last_activity: 2026-06-04 -- Phase 75 execution started
 progress:
   total_phases: 6
   completed_phases: 3
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-02)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 74 — count-only-refresh
+**Current focus:** Phase 75 — drain-timeout-config-parity-deferred-record-correction
 
 ## Current Position
 
-Phase: 74 (count-only-refresh) — EXECUTING
-Plan: 3 of 3
-Status: Executing Phase 74
-Last activity: 2026-06-04 -- Phase 74 execution started
+Phase: 75 (drain-timeout-config-parity-deferred-record-correction) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 75
+Last activity: 2026-06-04 -- Phase 75 execution started
 
 ### v2.10 milestone shape
 
