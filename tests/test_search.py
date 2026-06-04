@@ -31,6 +31,7 @@ from triggarr.search.engine import (
     filter_monitored,
     filter_sonarr_episodes,
     filter_unreleased_movies,
+    prioritize_batch,
     resolve_tag_id,
     run_lidarr_cycle,
     run_radarr_cycle,
@@ -107,6 +108,198 @@ def test_slice_batch_batch_larger_than_remaining():
     batch, new_cursor = slice_batch(items, cursor=1, batch_size=10)
     assert batch == [1, 2]
     assert new_cursor == 0
+
+
+# ---------------------------------------------------------------------------
+# prioritize_batch (QUEUE-02/04/05/06/09/10)
+# ---------------------------------------------------------------------------
+
+# Shared fake key_fn for generic (Radarr/Lidarr-style) tests.
+_id_key = lambda it: str(it["id"])  # noqa: E731
+_sonarr_key = lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}'  # noqa: E731
+
+
+def _items(*ids: int) -> list[dict]:
+    """Build a list of fake item dicts with numeric ids."""
+    return [{"id": i} for i in ids]
+
+
+def test_prioritize_batch_cold_start():
+    """Empty log: batch == first N items in fetch order; new_log == their keys."""
+    items = _items(1, 2, 3, 4, 5)
+    batch, new_log, pass_completed = prioritize_batch(items, [], 3, _id_key)
+    assert [it["id"] for it in batch] == [1, 2, 3]
+    assert new_log == ["1", "2", "3"]
+    assert pass_completed is False  # items 4 and 5 still unsearched
+
+
+def test_prioritize_batch_cold_start_equivalence():
+    """QUEUE-06: prioritize_batch(items, [], N, key_fn)[0] == slice_batch(items, 0, N)[0].
+
+    This is the load-bearing cold-start behavior-preservation oracle:
+    an empty searched-log must produce the same batch as the prior first-cycle cursor walk.
+    """
+    items = _items(10, 20, 30, 40, 50)
+    for n in (0, 1, 3, 5, 7):
+        pb_batch = prioritize_batch(items, [], n, _id_key)[0]
+        sb_batch = slice_batch(items, 0, n)[0]
+        assert pb_batch == sb_batch, f"cold-start divergence at N={n}: {pb_batch} != {sb_batch}"
+
+
+def test_prioritize_batch_unsearched_first():
+    """Items not in the log are taken before already-searched items (QUEUE-04)."""
+    items = _items(1, 2, 3, 4, 5)
+    # Items 2 and 4 have already been searched; 1, 3, 5 are unsearched
+    log = ["2", "4"]
+    # batch_size=2: should take from the 3 unsearched [1,3,5] first, not from [2,4]
+    batch, new_log, pass_completed = prioritize_batch(items, log, 2, _id_key)
+    # unsearched = [1, 3, 5] (fetch order); 2 slots → take 1, 3
+    assert [it["id"] for it in batch] == [1, 3]
+    assert pass_completed is False  # items 4, 5 still unsearched in this pass
+
+
+def test_prioritize_batch_topup_oldest_first():
+    """When unsearched < N, top up from already-searched oldest-first (QUEUE-05)."""
+    items = _items(1, 2, 3, 4, 5)
+    # Items 1, 2, 3 already searched (log order = 1 oldest, 3 newest)
+    log = ["1", "2", "3"]
+    # unsearched = [4, 5]; batch_size=3 → take 4,5 (2 slots), top up with oldest: 1
+    # This means item 1 (oldest-searched) fills slot 3, NOT item 2 or 3
+    batch, new_log, pass_completed = prioritize_batch(items, log, 3, _id_key)
+    assert [it["id"] for it in batch] == [4, 5, 1]
+    # new_log: 1 moved to tail (re-searched); 2 and 3 survive at front; 4 and 5 appended
+    assert new_log == ["2", "3", "4", "5", "1"]
+    # items 2 and 3 not in batch, but they were already in pruned log → still in new_log
+    # eligible_ids = {1,2,3,4,5} ⊆ {2,3,4,5,1} → True, and batch is non-empty → pass_completed=True
+    assert pass_completed is True
+
+
+def test_prioritize_batch_pass_completion():
+    """When the last unsearched item is batched, pass_completed is True (QUEUE-09)."""
+    items = _items(1, 2, 3)
+    # Items 1 and 2 already searched; 3 is the last unsearched
+    log = ["1", "2"]
+    batch, new_log, pass_completed = prioritize_batch(items, log, 3, _id_key)
+    # batch = [3] (only unsearched), top up with 1, 2 → [3, 1, 2]
+    assert {it["id"] for it in batch} == {1, 2, 3}
+    assert pass_completed is True
+    # new_log contains all eligible IDs
+    assert set(new_log) == {"1", "2", "3"}
+
+
+def test_prioritize_batch_mid_pass_no_completion():
+    """When unsearched items remain after batch, pass_completed is False (QUEUE-09)."""
+    items = _items(1, 2, 3, 4, 5)
+    log = ["1"]  # only 1 searched; still need to search 2, 3, 4, 5
+    batch, new_log, pass_completed = prioritize_batch(items, log, 2, _id_key)
+    # unsearched = [2, 3, 4, 5]; batch = [2, 3]
+    assert [it["id"] for it in batch] == [2, 3]
+    assert pass_completed is False
+    # log grew: 1 (survivor), 2, 3 appended
+    assert new_log == ["1", "2", "3"]
+
+
+def test_prioritize_batch_prune_departed_items():
+    """Log entries for items no longer eligible are dropped, survivor order preserved (QUEUE-10)."""
+    items = _items(1, 2, 4)  # item 3 has left (no longer eligible)
+    log = ["1", "3", "2"]  # 3 was searched but is now gone
+    batch, new_log, pass_completed = prioritize_batch(items, log, 5, _id_key)
+    # pruned log: ["1", "2"] (3 dropped, order preserved)
+    # unsearched = [4]; batch = [4, 1, 2] (4 unsearched first, then top up oldest: 1, 2)
+    assert [it["id"] for it in batch] == [4, 1, 2]
+    # new_log: 1 and 2 moved to tail (re-searched), 3 gone
+    assert "3" not in new_log
+    assert set(new_log) == {"1", "2", "4"}
+    assert pass_completed is True
+
+
+def test_prioritize_batch_research_recency():
+    """A re-batched already-searched item moves to the log tail (most recent)."""
+    items = _items(1, 2, 3)
+    # All already searched, log order: 1 oldest, 3 newest
+    log = ["1", "2", "3"]
+    batch, new_log, pass_completed = prioritize_batch(items, log, 2, _id_key)
+    # unsearched = []; top up from oldest: [1, 2]
+    assert [it["id"] for it in batch] == [1, 2]
+    # After re-batching 1 and 2, they move to tail; 3 stays as the front (oldest)
+    assert new_log == ["3", "1", "2"]
+    # All 3 eligible IDs remain in new_log (3 survived, 1 and 2 re-appended)
+    # bool(batch)=True and {"1","2","3"} ⊆ {"3","1","2"} → pass_completed=True
+    assert pass_completed is True
+
+
+def test_prioritize_batch_empty_eligible():
+    """Empty eligible list always returns ([], [], False) — no pass completion (Pitfall 2)."""
+    batch, new_log, pass_completed = prioritize_batch([], ["1", "2"], 5, _id_key)
+    assert batch == []
+    assert new_log == []
+    assert pass_completed is False
+
+
+def test_prioritize_batch_eligible_smaller_than_batch():
+    """All eligible items fit in one batch: pass_completed=True (non-empty batch guard)."""
+    items = _items(1, 2)
+    log = ["1"]  # item 2 still unsearched
+    batch, new_log, pass_completed = prioritize_batch(items, log, 10, _id_key)
+    # unsearched = [2]; top up with [1]; batch = [2, 1]
+    assert {it["id"] for it in batch} == {1, 2}
+    assert pass_completed is True
+    assert set(new_log) == {"1", "2"}
+
+
+def test_prioritize_batch_zero_batch_size_guard():
+    """MED-1: batch_size=0 → batch==[], pass_completed=False, log NOT grown.
+
+    Proves the bool(batch) guard prevents a zero-search pass reset when the
+    pruned log already covers the entire eligible set.
+    """
+    items = _items(1, 2, 3)
+    # Log already covers all eligible items
+    log = ["1", "2", "3"]
+    batch, new_log, pass_completed = prioritize_batch(items, log, 0, _id_key)
+    assert batch == []
+    assert pass_completed is False
+    # Log must NOT have grown (no new entries appended)
+    assert new_log == ["1", "2", "3"]
+
+
+def test_prioritize_batch_negative_batch_size_guard():
+    """MED-1 (defensive): batch_size<0 → batch==[], pass_completed=False, log NOT grown."""
+    items = _items(1, 2, 3)
+    log = ["1", "2", "3"]
+    batch, new_log, pass_completed = prioritize_batch(items, log, -1, _id_key)
+    assert batch == []
+    assert pass_completed is False
+    assert new_log == ["1", "2", "3"]
+
+
+def test_prioritize_batch_key_fn_sonarr_composite():
+    """QUEUE-02: Sonarr composite key distinguishes seasons of the same series."""
+    # S1 and S2 of series 1 must be distinct keys
+    s1_e1 = {"seriesId": 1, "seasonNumber": 1}
+    s2_e1 = {"seriesId": 1, "seasonNumber": 2}
+    specials = {"seriesId": 1, "seasonNumber": 0}  # D-09: Specials are ordinary key "1:0"
+    items = [s1_e1, s2_e1, specials]
+    # Nothing searched yet
+    batch, new_log, pass_completed = prioritize_batch(items, [], 2, _sonarr_key)
+    assert len(batch) == 2
+    assert new_log == ["1:1", "1:2"]
+    assert pass_completed is False  # specials (1:0) still unsearched
+
+    # Now search with S1 already in log; S2 and Specials unsearched
+    batch2, new_log2, pass_completed2 = prioritize_batch(items, ["1:1"], 2, _sonarr_key)
+    # unsearched = [s2_e1, specials]; batch = [s2_e1, specials]
+    assert new_log2 == ["1:1", "1:2", "1:0"]
+    assert pass_completed2 is True  # all 3 now in log
+
+
+def test_prioritize_batch_key_fn_radarr_int_to_str():
+    """QUEUE-02: Radarr key_fn converts int id to str for uniform list[str] log."""
+    items = [{"id": 101}, {"id": 202}]
+    batch, new_log, _pc = prioritize_batch(items, [], 5, _id_key)
+    assert new_log == ["101", "202"]
+    for key in new_log:
+        assert isinstance(key, str)
 
 
 # ---------------------------------------------------------------------------

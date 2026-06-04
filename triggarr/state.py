@@ -41,12 +41,14 @@ STATE_PATH = get_state_path()
 
 
 class AppState(TypedDict, total=False):
-    """Per-instance cursor and timing state."""
+    """Per-instance cursor, searched-log, and timing state."""
 
-    missing_cursor: int
-    cutoff_cursor: int
-    missing_pass: int  # How many times missing queue has wrapped around (0-based, first wrap sets to 1)
-    cutoff_pass: int  # How many times cutoff queue has wrapped around (0-based, first wrap sets to 1)
+    missing_cursor: int  # KEPT: removed in Plan 02 with call-site rewrite (HIGH-2)
+    cutoff_cursor: int  # KEPT: removed in Plan 02 with call-site rewrite (HIGH-2)
+    missing_pass: int  # How many times missing queue has completed a full pass (0-based, first pass sets to 1)
+    cutoff_pass: int  # How many times cutoff queue has completed a full pass (0-based, first pass sets to 1)
+    missing_searched: list[str]  # Ordered searched-log (oldest first) for the missing queue
+    cutoff_searched: list[str]  # Ordered searched-log (oldest first) for the cutoff queue
     last_run: str | None  # ISO timestamp
     last_success: str | None  # ISO timestamp — last cycle that reached connected=True
     connected: bool | None  # True after successful fetch, False after failure
@@ -75,8 +77,21 @@ class TriggarrState(TypedDict, total=False):
 
 
 def _default_instance_state() -> AppState:
-    """Return a fresh AppState for a single instance at cursor 0."""
-    return AppState(missing_cursor=0, cutoff_cursor=0, last_run=None, last_success=None)
+    """Return a fresh AppState for a single instance with empty searched-logs.
+
+    cursor fields (missing_cursor/cutoff_cursor) are kept here for Plan 01 —
+    they are removed in Plan 02 together with the 6 call-site rewrites (HIGH-2).
+    searched-logs are seeded empty so Plan 02's call sites can read them safely
+    via ``ist.get("<q>_searched", [])``.
+    """
+    return AppState(
+        missing_cursor=0,
+        cutoff_cursor=0,
+        missing_searched=[],
+        cutoff_searched=[],
+        last_run=None,
+        last_success=None,
+    )
 
 
 def _default_state(settings: Settings | None = None) -> TriggarrState:

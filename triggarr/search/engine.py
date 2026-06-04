@@ -130,6 +130,79 @@ def filter_monitored(items: list[dict]) -> list[dict]:
     return [item for item in items if item.get("monitored", False)]
 
 
+def prioritize_batch(
+    eligible_items: list,
+    searched_log: list[str],
+    batch_size: int,
+    key_fn: Callable[[dict], str],
+) -> tuple[list, list[str], bool]:
+    """Assemble a batch: never-searched first (fetch order), then top up
+    already-searched oldest-first.
+
+    Implements the never-searched-first dispatch algorithm (QUEUE-04/05/08/09/10):
+    1. Build the set of eligible IDs from the current fetch.
+    2. Prune the searched-log to currently-eligible IDs (QUEUE-10).
+    3. Partition eligible items into unsearched and already-searched.
+    4. Fill batch with unsearched[:batch_size]; if short, top up from the pruned
+       log front (oldest-searched-first) until full or exhausted (QUEUE-05).
+    5. Mark every batched item on attempt — append keys to the log; a re-searched
+       item moves to the tail (most-recent) (QUEUE-08).
+    6. Pass-complete check (MED-1): pass_completed = bool(batch) AND every eligible
+       ID is in the new log.  The bool(batch) guard is MANDATORY — it prevents a
+       zero-search pass reset when batch_size<=0 and the pruned log already covers
+       a tiny eligible set (matches the old ``if new_cursor == 0 and batch`` wrap
+       guard).
+
+    Args:
+        eligible_items: Full list of eligible items for this queue (fetch order,
+            already filtered).  Must not be sorted by this function (D-10).
+        searched_log: Ordered searched-log for this queue (oldest at front).
+            Callers pass ``ist.get("<q>_searched", [])``.  Must NOT be a mutable
+            default argument.
+        batch_size: Maximum number of items to return.  May be 0 or negative
+            (e.g., after hard_max proportional capping to zero).
+        key_fn: Callable that extracts a stable string ID from an item dict.
+            Radarr/Lidarr: ``lambda m: str(m["id"])``.
+            Sonarr: ``lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}'``.
+
+    Returns:
+        Tuple of (batch, new_searched_log, pass_completed).
+        ``new_searched_log`` has all departed items pruned and all batched items
+        appended (marking on attempt).  ``pass_completed`` is True only when this
+        call produced a non-empty batch AND every eligible ID is now in the log.
+    """
+    if not eligible_items:
+        return [], [], False
+
+    eligible_ids = {key_fn(it) for it in eligible_items}
+    # 2. Prune log to currently-eligible IDs only (QUEUE-10)
+    log = [i for i in searched_log if i in eligible_ids]
+    logset = set(log)
+
+    # 3. Partition into unsearched (fetch order) and already-searched
+    unsearched = [it for it in eligible_items if key_fn(it) not in logset]
+    searched = [it for it in eligible_items if key_fn(it) in logset]
+
+    # 4. Batch: unsearched first, top up oldest-searched-first (log front = oldest)
+    batch: list = unsearched[:batch_size]
+    if batch_size > 0 and len(batch) < batch_size:
+        order = {key_fn(it): it for it in searched}
+        for sid in log:
+            if len(batch) >= batch_size:
+                break
+            if sid in order:
+                batch.append(order[sid])
+
+    # 5. Mark on attempt: re-searched keys move to tail (most-recent)
+    batched_keys = {key_fn(it) for it in batch}
+    new_log = [i for i in log if i not in batched_keys] + [key_fn(it) for it in batch]
+
+    # 6. Pass-complete: bool(batch) is MANDATORY (MED-1)
+    pass_completed = bool(batch) and eligible_ids.issubset(set(new_log))
+
+    return batch, new_log, pass_completed
+
+
 def slice_batch(items: list, cursor: int, batch_size: int) -> tuple[list, int]:
     """Slice a batch starting at cursor position with wrap-around.
 

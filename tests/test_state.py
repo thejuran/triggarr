@@ -438,3 +438,88 @@ def test_last_success_defaults_to_none_for_fresh_state(tmp_path: Path) -> None:
     loaded = load_state(state_file)
 
     assert loaded["radarr"]["Default"].get("last_success") is None
+
+
+# ---------------------------------------------------------------------------
+# QUEUE-01/03: searched-log round-trip, default-state, back-compat (Plan 01)
+# ---------------------------------------------------------------------------
+
+
+def test_searched_log_round_trip(tmp_path: Path) -> None:
+    """Searched-log fields survive save_state -> load_state intact (QUEUE-01)."""
+    state_file = tmp_path / "state.json"
+    state = TriggarrState(
+        radarr={
+            "Default": AppState(
+                missing_cursor=0,
+                cutoff_cursor=0,
+                missing_searched=["1", "2"],
+                cutoff_searched=["9"],
+                last_run="2026-06-04T10:00:00Z",
+            )
+        },
+        sonarr={},
+        search_log=[],
+    )
+
+    save_state(state, state_file)
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"]["missing_searched"] == ["1", "2"]
+    assert loaded["radarr"]["Default"]["cutoff_searched"] == ["9"]
+    # Cursor fields still present this plan (removed in Plan 02)
+    assert loaded["radarr"]["Default"]["missing_cursor"] == 0
+    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 0
+
+
+def test_default_instance_state_has_empty_searched_logs() -> None:
+    """_default_instance_state() seeds missing_searched=[] and cutoff_searched=[] (QUEUE-01)."""
+    from triggarr.state import _default_instance_state
+
+    state = _default_instance_state()
+    assert state["missing_searched"] == []
+    assert state["cutoff_searched"] == []
+    # Cursor fields still present this plan (removed in Plan 02)
+    assert state["missing_cursor"] == 0
+    assert state["cutoff_cursor"] == 0
+
+
+def test_default_state_with_settings_includes_searched_logs() -> None:
+    """A freshly-merged instance via _default_state(settings) carries empty searched-logs."""
+    from tests.conftest import make_settings
+
+    settings = make_settings()
+    state = _default_state(settings)
+    assert state["radarr"]["Default"]["missing_searched"] == []
+    assert state["radarr"]["Default"]["cutoff_searched"] == []
+
+
+def test_back_compat_load_pre_upgrade_state(tmp_path: Path) -> None:
+    """Pre-upgrade state.json with cursor keys but no searched-logs loads clean.
+
+    Dispatch treats everything as unsearched (default empty searched-logs).
+    missing_pass is carried forward. Cursor keys are preserved this plan
+    (Plan 02 adds the strip); here we only assert the new fields default correctly.
+    """
+    state_file = tmp_path / "state.json"
+    pre_upgrade = {
+        "radarr": {
+            "Default": {
+                "missing_cursor": 7,
+                "cutoff_cursor": 3,
+                "missing_pass": 2,
+            }
+        }
+    }
+    state_file.write_text(json.dumps(pre_upgrade))
+
+    loaded = load_state(state_file)
+
+    # New fields default to empty (everything-unsearched semantics)
+    assert loaded["radarr"]["Default"]["missing_searched"] == []
+    assert loaded["radarr"]["Default"]["cutoff_searched"] == []
+    # Pass counter carried forward
+    assert loaded["radarr"]["Default"]["missing_pass"] == 2
+    # Cursor values are still present this plan (strip happens in Plan 02)
+    assert loaded["radarr"]["Default"]["missing_cursor"] == 7
+    assert loaded["radarr"]["Default"]["cutoff_cursor"] == 3
