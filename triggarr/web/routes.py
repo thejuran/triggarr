@@ -60,7 +60,7 @@ from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
 from triggarr.version import get_display_version
 from triggarr.web.security import is_secure_request
-from triggarr.web.validation import safe_int, safe_log_level, validate_arr_url, validate_instance_name
+from triggarr.web.validation import safe_float, safe_int, safe_log_level, validate_arr_url, validate_instance_name
 
 _PKG_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = _PKG_DIR / "templates"
@@ -443,6 +443,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "tracking_window_minutes": settings.general.tracking_window_minutes,
             "tracking_delay_seconds": settings.general.tracking_delay_seconds,
             "max_consecutive_failures": settings.general.max_consecutive_failures,
+            "shutdown_drain_timeout": settings.general.shutdown_drain_timeout,
             "skip_unreleased": settings.general.skip_unreleased,
             "auth_method": settings.auth.method,
             "auth_is_disabled": settings.auth.is_disabled,
@@ -546,6 +547,7 @@ async def save_settings(request: Request) -> RedirectResponse:
             "tracking_window_minutes": safe_int(form.get("tracking_window_minutes"), 60, 5, 1440),
             "tracking_delay_seconds": current_settings.general.tracking_delay_seconds,
             "max_consecutive_failures": safe_int(form.get("max_consecutive_failures"), 5, 1, 100),
+            "shutdown_drain_timeout": safe_float(form.get("shutdown_drain_timeout"), 60.0, 1.0, 3600.0),
             "skip_unreleased": form.get("skip_unreleased") == "on",
         },
     }

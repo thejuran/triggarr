@@ -77,6 +77,17 @@
                 <p class="text-xs text-triggarr-muted mt-1">After N consecutive search cycle failures, escalate log level from warning to error.</p>
             </div>
             <div>
+                <label class="block text-sm text-triggarr-muted mb-1">Shutdown Drain Timeout (seconds)</label>
+                <input form="settings-form" type="number" name="shutdown_drain_timeout" value="{{ shutdown_drain_timeout }}"
+                       min="1" max="3600" step="0.5"
+                       class="w-full bg-triggarr-bg border border-triggarr-border rounded px-3 py-2 text-sm">
+                <p class="text-xs text-triggarr-muted mt-1">
+                    How long a graceful shutdown waits for an in-flight search cycle to finish
+                    before forcing close. The <code>TRIGGARR_SHUTDOWN_DRAIN_TIMEOUT</code>
+                    environment variable overrides this value when set. Minimum 1s.
+                </p>
+            </div>
+            <div>
                 <div class="flex items-center gap-3 mt-2">
                     <input form="settings-form" type="checkbox" name="skip_unreleased"
                            {% if skip_unreleased %}checked{% endif %}
