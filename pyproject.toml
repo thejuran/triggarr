@@ -19,7 +19,7 @@ dependencies = [
     "jinja2",
     "aiofiles",
     "aiosqlite",
-    "python-multipart>=0.0.27",
+    "python-multipart>=0.0.31",
     "bcrypt",
     "itsdangerous",
 ]
