@@ -1,36 +1,56 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.11
-milestone_name: Never-Searched-First Search Queue Priority
-status: Awaiting next milestone
-stopped_at: Milestone v2.11 shipped and archived (released as v2.11.0; tag held locally, unpushed)
-last_updated: "2026-06-04T21:59:58.515Z"
-last_activity: 2026-06-04 — Milestone v2.11 completed and archived
+milestone: v2.12
+milestone_name: Search Correctness & Trustworthy Feedback
+status: executing
+stopped_at: Completed 77-01-PLAN.md
+last_updated: "2026-10-08T22:28:48.797Z"
+last_activity: 2026-10-08 -- Phase 77 execution started
 progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 33
+  total_phases: 18
+  completed_phases: 0
+  total_plans: 5
+  completed_plans: 1
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-04)
+See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Planning next milestone (v2.11 shipped 2026-06-04 as v2.11.0)
+**Current focus:** Phase 77 — Secret & Reset-Token Log Hygiene
 
-> **Release tags held locally, unpushed:** `v2.11.0` (this milestone) and `v2.10.0` (prior milestone) are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
+> **Release tags held locally, unpushed:** `v2.11.0` (prior milestone) and `v2.10.0` are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
 
 ## Current Position
 
-Phase: Milestone v2.11 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-04 — Milestone v2.11 completed and archived
+Phase: 77 (Secret & Reset-Token Log Hygiene) — EXECUTING
+Plan: 2 of 5
+Status: Executing Phase 77
+Last activity: 2026-10-08 -- Phase 77 execution started
+
+### v2.12 milestone shape
+
+Five phases derived 1:1 from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` §4, each phase matching one of the spec's five numbered subsections — a natural fit for Standard granularity (4-6 phases). Phase numbering continues from v2.11's Phase 76 (starts at 77, not reset to 1). 77 and 81 are independent fixes (77 sequenced first for risk reduction — isolated, small, highest-stakes; 81 last because it carries the only DB migration and config addition and is independent of 79/80 per spec §5); 78 defines the outcome-grading model that 79 and 80 both depend on. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention.
+
+| Phase | Goal | Requirements | Depends on |
+|-------|------|--------------|------------|
+| 77 — Secret & Reset-Token Log Hygiene | Redact the reset token from the in-app log viewer buffer permanently; route every *arr HTTP-error log line (incl. Sonarr `detect_api_version`) through the existing sanitizer | LOGSEC-01..03 | — (independent; sequenced first for risk reduction) |
+| 78 — Honest Cycle Outcomes | Grade each instance's last cycle Success/Partial/Failed/Nothing-needed per §3.1; split "last successful search" from "last checked"; drive the SAFETY-03 counter off the grade; dashboard card shows grade+counts+relative time | OUTCOME-01..06 | — (independent of 77; defines the model 79/80 build on) |
+| 79 — Tag-Scoped Searches Stay in Scope | An unresolved tag skips its queue (zero searches) instead of falling back to searching everything; persistent card warning; skipped queue counts as unevaluated for grading | TAGSCOPE-01..04 | Phase 78 (grading model) |
+| 80 — Cycle Robustness & Sonarr Season Dedup | A malformed *arr record is skipped, not fatal; history-insert failures never abort a batch or flip an accepted command to failed; each Sonarr season gets ≤1 engine dispatch per cycle across missing+upgrade queues | ROBUST-01..04, DEDUP-01..02 | Phase 78 (grading model) |
+| 81 — Correct Sonarr Grab Attribution | Grabs credit the matching series+season exactly once ever, keyed by (app, stable instance ID, grab ID); atomic ownership surviving restarts/pruning; pre-cutover rows frozen as "Legacy — tracking discontinued"; stats cutover note | ATTR-01..06 | — (independent of 79/80 per spec §5; carries the only DB migration + config addition) |
+
+### Key v2.12 Phasing Rationale
+
+- **One phase per spec subsection, not split further:** The approved design spec §4 already groups the 25 requirements into exactly five behaviorally-coherent clusters (log hygiene; grading; tag scope; robustness+dedup; attribution), each independently testable and each matching a real delivery boundary.
+- **OUTCOME-06 stays in 78, not 80:** OUTCOME-06 (an accepted command whose history write fails still counts as accepted and updates "last successful search") is a grading rule — it defines what "accepted" means for §3.1 — so it rides with the rest of the grading model in Phase 78. Phase 80's ROBUST-02 covers the mechanical guarantee (the insert-failure code path doesn't abort the batch); the two requirements describe the same scenario from two different layers (policy vs. mechanism) and are deliberately kept in separate phases.
+- **80 bundles robustness + dedup because they share code:** Both touch the same Sonarr cycle loop (malformed-record guards and season-claim bookkeeping sit in the same call sites), and 80's malformed-record counts feed into 78's grading model — splitting them would fracture one code path across two phases.
+- **81 is last and fully independent:** Per spec §5, it carries the only DB migration (ownership table + cutover marker) and the only config-schema addition (stable per-instance ID), and doesn't depend on 79 or 80's behavior.
+- **Backlog promotions:** 999.3 (reset-token log-viewer exposure) and 999.6 (secret-redaction gaps across log paths) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. 999.4, 999.7-999.13, and POST-retry semantics stay deferred (spec §2).
 
 ### v2.11 milestone shape
 
@@ -85,14 +105,20 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 - Total plans completed: 169 across 15 shipped milestones (through v2.9)
 - Milestones shipped: 15 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8, v2.9)
-- Tests passing: 984 (post v2.9.0)
+- Tests passing: 1097 (post Phase 77 Plan 01)
 - Phases completed: 71 (through v2.9)
+
+| Phase | Duration | Tasks | Files |
+|-------|----------|-------|-------|
+| Phase 77 P01 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
 ### Decisions
 
-Full decision log in PROJECT.md Key Decisions table. v2.10 design decisions resolved in brainstorming and recorded in `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` §7 (recovery trust model: filesystem-token; token lifecycle: in-memory/15-min/single-use/restart-invalidated; abuse defense: rate-limit both endpoints; engine seam: extract helper, no `count_only` flag; count-path state: health yes, `last_run`/failure-counter no; DEBT-06 precedence: config default, env overrides).
+Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
+
+- [Phase 77]: 77-01: create_buffer_sink reads a bound extra['viewer_message'] before falling back to record['message'], structurally excluding a value from log_buffer (D-03) rather than scrubbing it after insertion — Enables Plan 04 to bind the exact D-01 viewer wording at the reset-token mint call site with no further sink-side changes
 
 ### Pending Todos
 
@@ -108,9 +134,11 @@ v2.10 roadmap created 2026-06-03 from the recovery/counts/config design spec. 14
 
 v2.11 roadmap created 2026-06-04 from the search-queue-priority design spec. 11 v1 requirements (QUEUE-01..11) mapped to a single phase (76, continuing from v2.10's Phase 75 — not reset to 1). 100% coverage, no orphans, no double-mapping. One coherent phase because the requirements are not independent tracks: a single pure `prioritize_batch()` + the same 6 cycle call sites realize the state model, the dispatch, and the lifecycle together. Flat phase layout (`.planning/phases/76-<slug>/`).
 
+v2.12 roadmap created 2026-10-08 from the approved search-correctness design spec. 25 v1 requirements across 5 phases (77-81, continuing from v2.11's Phase 76 — not reset to 1). 100% coverage, no orphans, no double-mapping. Phases derived 1:1 from spec §4's five numbered subsections; 79 and 80 depend on 78 (grading model); 77 and 81 are independent of each other and of 79/80. Backlog phases 999.3 and 999.6 (log-hygiene findings) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention.
+
 ### Cross-cutting thread
 
-The three tracks share no code (confirmed in spec §1). The only cross-track coupling is the milestone-end NAS walkthrough and the security posture: Track A must add zero new network attack surface (token never in any HTTP response; rate-limited endpoints; SecretStr discipline on `password_hash`/`session_secret` maintained through the redacting sink). Track A's reset-confirm session rotation reuses the v2.8.1 `change_password` rotation pattern.
+77 and 81 are isolated fixes; 78 is the shared substrate for 79 and 80 (the grading model both consume). Every phase carries the same constraints from the project (spec §7): SecretStr discipline (`.get_secret_value()` only at HTTP client init), loguru-only logging through the redacting sink, atomic write-then-rename for config/state, and the established `httpx.HTTPError` + `pydantic.ValidationError` error-handling pattern, widened only where the spec says so (Phase 80's malformed-record guards). Phase 81's stable per-instance ID (backfilled via the atomic config write) is the only new config-schema addition this milestone, and its ownership-table migration is the only new DB migration.
 
 ### Blockers/Concerns
 
@@ -122,12 +150,15 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 | Category | Item | Source Milestone | Status |
 |----------|------|------------------|--------|
+| backlog | 999.4: Run bcrypt off the event loop | v2.9 deep-review | deferred — out of v2.12 scope per spec §2 |
+| backlog | 999.7-999.13: client-dispatch registry, atomic-write helper consolidation, remove_instance rollback guard, auth/CSRF/cookie hardening, SSRF-validator startup brick, changelog XSS surface, lifecycle/blocking-I/O correctness | v2.9 deep-review | deferred — out of v2.12 scope per spec §2 |
+| follow-up | HTTP client's automatic single POST retry can duplicate an accepted command after a timeout | v2.12 design spec §2 | deferred to next hardening milestone (explicitly out of scope) |
 | shipped (record corrected) | DEBT-07/08/03 (request timeout / page size / search-history cap) | v2.9 (mis-recorded as parked) | shipped — config fields config.py:128-130 + settings inputs; DOCS-01 corrected the record in Phase 75 |
 | shipped in v2.10 | DEBT-06: Surface graceful-shutdown drain timeout in settings UI | v2.9 (spec D-5) | shipped — Phase 75 (CFG-03/CFG-04); general.shutdown_drain_timeout config field + settings input + env-override precedence |
 | requirement | UI-01: Login page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
 | requirement | UI-02: Setup page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
 | requirement | UI-03: Settings security pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| tech-debt | `--color-triggarr-primaryDark` duplicate token (unused in templates) | v2.7 | cosmetic cleanup (unrelated to v2.10 tracks) |
+| tech-debt | `--color-triggarr-primaryDark` duplicate token (unused in templates) | v2.7 | cosmetic cleanup (unrelated to v2.12 phases) |
 | v2 requirement | PERF-01: Per-endpoint request timeout overrides | v2.8 audit | deferred |
 | v2 requirement | PERF-02: Per-endpoint pagination page-size overrides | v2.8 audit | deferred |
 | v2 requirement | PERF-03: State JSON streaming/compression | v2.8 audit | deferred |
@@ -136,8 +167,6 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 | v2 requirement | AUDIT-01: Config change audit log | v2.8 audit | deferred |
 | v2 requirement | OBS-01: Scheduler job dashboard | v2.8 audit | deferred |
 | v2.9-audit follow-up | validate_arr_url dedup; Retry-Connection hx-disabled-elt; bug-report.yml v2.9 dropdown option | v2.9 | deferred |
-| Phase 74-count-only-refresh P01 | 35m | 3 tasks | 2 files |
-| Phase 74-count-only-refresh P03 | 8m | 1 tasks | 2 files |
 
 ### Quick Tasks Completed
 
@@ -147,19 +176,20 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ### Reference Artifacts
 
-- `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` -- v2.10 design spec (source of truth for this milestone)
+- `docs/superpowers/specs/2026-10-08-search-correctness-design.md` -- v2.12 design spec (source of truth for this milestone)
+- `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` -- v2.10 design spec
 - `docs/superpowers/specs/2026-06-02-launch-hardening-design.md` -- v2.9 design spec
 - `.planning/milestones/v2.9-ROADMAP.md` -- archived v2.9 roadmap
 - `.planning/milestones/v2.8-ROADMAP.md` -- archived v2.8 roadmap
 - `.planning/codebase/CONCERNS.md` -- v2.8 source audit (2026-05-25); file:line pointers
-- **Note:** `.planning/research/SUMMARY.md` is STALE (prior milestone) — v2.10 skipped research because the design spec resolved all technical decisions against the live codebase. Do NOT treat that SUMMARY.md as current research for v2.10.
+- **Note:** `.planning/research/SUMMARY.md` is STALE (prior milestone) — v2.12 skipped research because the approved design spec resolved all technical decisions against the live codebase. Do NOT treat that SUMMARY.md as current research for v2.12.
 
 ## Session Continuity
 
-Last session: 2026-06-04T17:56:25.979Z
-Stopped at: Phase 76 context gathered
-Resume file: .planning/phases/76-never-searched-first-search-queue/76-CONTEXT.md
+Last session: 2026-10-08T22:28:48.787Z
+Stopped at: Completed 77-01-PLAN.md
+Resume file: .planning/phases/77-secret-reset-token-log-hygiene/77-02-PLAN.md
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 77 with `/bm:plan-phase 77`
