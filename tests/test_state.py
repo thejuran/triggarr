@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from loguru import logger
 
 from triggarr.state import (
     AppState,
@@ -433,6 +435,47 @@ def test_state_wrong_nested_type_recovers(tmp_path: Path) -> None:
     assert state["radarr"] == {}
     assert state["sonarr"] == {}
     assert state["search_log"] == []
+
+
+def test_state_corrupt_warning_names_reason_without_contents(tmp_path: Path) -> None:
+    """Corrupt state file warning names the exception type and reason, never the contents (D-09)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text('{"radarr": "SENTINEL-CONTENT-7f3a", oops')
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+    assert "JSONDecodeError" in captured
+    assert "line 1" in captured
+    assert "SENTINEL-CONTENT-7f3a" not in captured
+
+
+def test_state_unreadable_warning_names_reason(tmp_path: Path) -> None:
+    """A state file that raises PermissionError on open names the exception type (D-09)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {}, "sonarr": {}, "search_log": []}))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with patch("builtins.open", side_effect=PermissionError(13, "Permission denied")):
+            state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+    assert "PermissionError" in captured
 
 
 # ---------------------------------------------------------------------------
