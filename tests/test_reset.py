@@ -1046,9 +1046,11 @@ def viewer_sinks():
 
     A successful POST /reset/confirm calls setup_logging(), which calls
     logger.remove() with no arguments and replaces EVERY registered loguru
-    handler (including the two this fixture adds) with production's own sinks.
-    Teardown therefore tolerates the handler ids already being gone (ValueError
-    on logger.remove) rather than asserting removal succeeded.
+    handler (including the two this fixture adds) with its own, orphaning
+    this fixture's handler ids. Teardown therefore tolerates those ids
+    already being gone (suppresses ValueError), then does a catch-all
+    logger.remove() to clear any such orphaned production sinks too --
+    otherwise they would leak into (and double-log for) the next test.
     """
     log_buffer.clear()
     stderr_capture = io.StringIO()
@@ -1065,6 +1067,9 @@ def viewer_sinks():
         for sink_id in (buffer_sink_id, redact_sink_id):
             with contextlib.suppress(ValueError):
                 logger.remove(sink_id)
+        # Catch-all: a mid-test setup_logging() call (POST /reset/confirm) replaces
+        # every handler with its own pair, under ids this fixture never recorded.
+        logger.remove()
         log_buffer.clear()
 
 

@@ -152,6 +152,13 @@ SEARCH_RATE_LIMIT_SECONDS = 10
 RESET_REQUEST_RATE_LIMIT_SECONDS = 60  # Prevent log/file flooding (~1 mint/min)
 RESET_CONFIRM_RATE_LIMIT_SECONDS = 5   # Throttle token-guessing attempts
 
+# D-01: the in-app log viewer's rendering of a reset-token mint. Retrieval
+# instructions only -- never a token value, never a "[hidden]"/"[REDACTED]" marker.
+RESET_MINT_VIEWER_MESSAGE = (
+    "Password reset requested. Retrieve the token from the server logs "
+    "(Docker: docker logs) or reset-token.txt in the config directory."
+)
+
 # Regex for multi-instance form field names: {app}__{instance}__{field}
 
 
@@ -1786,6 +1793,8 @@ async def reset_request_post(request: Request) -> HTMLResponse:
       1. A warning-level log line (docker logs) — DELIBERATELY includes the token (D-02 + RESEARCH #4).
       2. A 0600 reset-token.txt in the config volume.
     The token NEVER appears in any HTTP response body, header, or template context.
+    The in-app web log viewer (GET /partials/log-viewer) receives only the fixed
+    RESET_MINT_VIEWER_MESSAGE retrieval-instructions sentence, never the token (D-01).
     """
     # Optimistic rate-limit check BEFORE lock (fast-fail for obvious cases — D-15)
     rate_key = "request"
@@ -1837,7 +1846,12 @@ async def reset_request_post(request: Request) -> HTMLResponse:
     # This is the ONLY log line that will ever contain the token value.
     # D-17: log line FIRST, THEN file write — so a file-write failure still leaves the token
     # recoverable from the log.
-    logger.warning(
+    # D-01/D-03: the in-app web log viewer receives ONLY RESET_MINT_VIEWER_MESSAGE via the
+    # bound viewer_message key -- create_buffer_sink (triggarr/logging.py) reads that bound
+    # value instead of this record's real message, so the token structurally never enters
+    # log_buffer. This holds for every lifecycle state (live, consumed, expired, replaced).
+    # Never scrub log_buffer after the fact -- the token must never be written there at all.
+    logger.bind(viewer_message=RESET_MINT_VIEWER_MESSAGE).warning(
         "Password reset token minted. Read from 'docker logs' or reset-token.txt: {token}",
         token=token,
     )
