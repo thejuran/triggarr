@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 from loguru import logger
+from pydantic import SecretStr
 
 from tests.conftest import make_settings
 from triggarr.clients.radarr import RadarrClient
@@ -181,7 +182,7 @@ def _build_outage_app(tmp_path, *, max_consecutive_failures=5, transport_handler
     # Real RadarrClient with its httpx.AsyncClient swapped for one driven
     # by the MockTransport. base_url must match the original so any path
     # the engine constructs (e.g. /api/v3/wanted/missing) resolves correctly.
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(transport_handler),
         base_url="http://radarr-test:7878",
@@ -449,7 +450,7 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
         },
     )
 
-    default_client = RadarrClient(base_url="http://radarr-default:7878", api_key="key-default")
+    default_client = RadarrClient(base_url="http://radarr-default:7878", api_key=SecretStr("key-default"))
     default_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(default_handler),
         base_url="http://radarr-default:7878",
@@ -457,7 +458,7 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
     )
     default_client._app_name = "Radarr"
 
-    fourk_client = RadarrClient(base_url="http://radarr-4k:7878", api_key="key-4k")
+    fourk_client = RadarrClient(base_url="http://radarr-4k:7878", api_key=SecretStr("key-4k"))
     fourk_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(fourk_handler),
         base_url="http://radarr-4k:7878",
@@ -1120,7 +1121,7 @@ def _build_tag_cache_app(tmp_path, *, tag_handler):
             },
         )
 
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="http://radarr-test:7878",
@@ -1266,7 +1267,7 @@ def _build_manual_app(tmp_path, *, transport_handler, max_consecutive_failures=5
     settings = make_settings()
     settings.general.max_consecutive_failures = max_consecutive_failures
 
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(transport_handler),
         base_url="http://radarr-test:7878",
@@ -1403,7 +1404,7 @@ async def test_search_now_failure_returns_card_200(tmp_path):
 
     settings = make_settings()
 
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="http://radarr-test:7878",

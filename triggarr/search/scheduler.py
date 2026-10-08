@@ -476,7 +476,7 @@ def create_lifespan(
             for inst_name, cfg in settings.get_enabled_instances(app_type).items():
                 clients[inst_name] = cls(
                     base_url=cfg.url,
-                    api_key=cfg.api_key.get_secret_value(),
+                    api_key=cfg.api_key,
                     timeout=settings.general.request_timeout,
                     page_size=settings.general.page_size,
                 )

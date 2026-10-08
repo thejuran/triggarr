@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import pydantic
 from loguru import logger
+from pydantic import SecretStr
 
 from triggarr.clients.base import ArrClient, _sanitize_exc
 from triggarr.models.arr import GrabEvent
@@ -21,7 +22,7 @@ class SonarrClient(ArrClient):
     messages and season-level deduplication in the search engine.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
+    def __init__(self, base_url: str, api_key: SecretStr, timeout: float = 30.0, page_size: int = 50) -> None:
         super().__init__(base_url, api_key, timeout, page_size)
         self._app_name = "Sonarr"
 

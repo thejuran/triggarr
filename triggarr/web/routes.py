@@ -455,7 +455,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "skip_unreleased": settings.general.skip_unreleased,
             "auth_method": settings.auth.method,
             "auth_is_disabled": settings.auth.is_disabled,
-            "auth_api_key_set": bool(settings.auth.api_key.get_secret_value()),
+            "auth_api_key_set": bool(settings.auth.api_key),
             "auth_username": settings.auth.username,
         },
     )
@@ -681,7 +681,7 @@ async def save_settings(request: Request) -> RedirectResponse:
                         clients_to_close.append(old_client)
                     clients_dict[inst_name] = client_class(
                         base_url=new_cfg.url,
-                        api_key=new_cfg.api_key.get_secret_value(),
+                        api_key=new_cfg.api_key,
                         timeout=new_settings.general.request_timeout,
                         page_size=new_settings.general.page_size,
                     )

@@ -305,7 +305,7 @@ async def test_detect_api_version_parses_v3() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
@@ -320,7 +320,7 @@ async def test_detect_api_version_parses_v4() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
@@ -335,7 +335,7 @@ async def test_detect_api_version_handles_error() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
 
         sink = io.StringIO()
@@ -359,7 +359,7 @@ async def test_detect_api_version_error_redacts_apikey_in_url() -> None:
     async with httpx.AsyncClient(
         transport=transport, base_url="http://test", params={"apikey": "SUPERSECRET123"}
     ) as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
 
         sink = io.StringIO()
@@ -385,7 +385,7 @@ async def test_detect_api_version_timeout_logs_sanitized() -> None:
     async with httpx.AsyncClient(
         transport=transport, base_url="http://test", params={"apikey": "SUPERSECRET123"}
     ) as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
 
         sink = io.StringIO()
@@ -563,7 +563,7 @@ async def test_detect_api_version_future_major() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
@@ -578,7 +578,7 @@ async def test_detect_api_version_empty_version() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
@@ -593,7 +593,7 @@ async def test_detect_api_version_missing_version_key() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
@@ -608,7 +608,7 @@ async def test_detect_api_version_beta_format() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
@@ -623,7 +623,7 @@ async def test_detect_api_version_connect_error_fallback() -> None:
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
         sonarr._client = client
         result = await sonarr.detect_api_version()
 

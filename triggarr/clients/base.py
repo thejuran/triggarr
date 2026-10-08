@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 import pydantic
 from loguru import logger
+from pydantic import SecretStr
 
 from triggarr.models.arr import GrabEvent, PaginatedResponse, SystemStatus, Tag
 
@@ -42,13 +43,15 @@ class ArrClient(ABC):
     _status_path: str = "/api/v3/system/status"
     """API path for system/status endpoint. Override in subclasses with different API versions."""
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
+    def __init__(self, base_url: str, api_key: SecretStr, timeout: float = 30.0, page_size: int = 50) -> None:
+        if not isinstance(api_key, SecretStr):
+            raise TypeError("api_key must be a pydantic SecretStr")
         self._app_name: str = ""
         self._page_size = page_size
         self._client = httpx.AsyncClient(
             base_url=base_url,
             headers={
-                "X-Api-Key": api_key,
+                "X-Api-Key": api_key.get_secret_value(),
                 "Content-Type": "application/json",
             },
             timeout=httpx.Timeout(timeout),

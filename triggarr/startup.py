@@ -153,7 +153,7 @@ async def validate_connections(settings: Settings) -> dict[str, bool]:
         for inst_name, cfg in settings.get_enabled_instances(app_type).items():
             client = cls(
                 base_url=cfg.url,
-                api_key=cfg.api_key.get_secret_value(),
+                api_key=cfg.api_key,
             )
             try:
                 key = f"{app_type}/{inst_name}"
