@@ -28,6 +28,7 @@ This milestone fixes those four, plus three backlog items on the same theme:
 - new features
 - Lidarr/Radarr attribution changes (the season bug is Sonarr-specific)
 - recomputing historical stats
+- changing the HTTP client's automatic single retry of POST requests. A timeout after the server already accepted a command can still produce a duplicate command. This is recorded as a follow-up for the next hardening milestone.
 
 ## 3. Locked definitions
 
@@ -50,6 +51,11 @@ Consequences:
 - A blocked queue (e.g. an unresolved tag) plus an empty queue is **Failed**, never "Nothing needed searching". The app could not establish that nothing needed searching.
 - Malformed search-side records are counted separately from failed commands but degrade the grade: some accepted → Partial; none accepted and evaluation incomplete → Failed.
 - Malformed *tracking* events affect tracking diagnostics only, never the search-cycle grade.
+- **Persistence failures never change command outcomes.** If a command is accepted but its history insert fails:
+  - the command still counts as accepted
+  - **last successful search** updates
+  - a separate **persistence warning** is shown on the card
+  - it is never classified as a failed command, and the search is never retried because logging failed
 
 ### 3.2 Timestamps
 
@@ -123,19 +129,21 @@ Consequences:
   - a malformed or naive grab date in correlation
   - a non-string version in `detect_api_version`
 - The bad item is skipped and logged, the rest of the cycle runs, and state persists.
-- A failure inside the failure-path history insert is logged and does not abort the batch.
+- A failure inside any history insert, on either the failure path or the success path, is logged and does not abort the batch.
+- An accepted command whose history insert fails stays accepted and raises the persistence warning (§3.1). It is never counted as failed and never retried.
 - `tag_autocomplete` returns its documented empty-`<datalist>` fallback on `ValueError`/JSON errors instead of a 500.
 - Skipped malformed items are reported in the cycle detail and graded per §3.1. They are not counted as failed commands.
 
 **Dedup behavior**
-- Within one Sonarr cycle, each (series, season) receives at most one SeasonSearch.
+- Within one Sonarr cycle, each (series, season) receives at most **one engine dispatch** across both queues. The HTTP client's transport-level POST retry is outside this guarantee (§2).
 - The missing queue claims a season **on attempt**: once the missing queue attempts it, the upgrade queue does not attempt it in the same cycle, even if the missing-queue command failed.
 - The upgrade queue skips claimed seasons without consuming batch slots, so its batch fills with other eligible seasons.
 - Exclusion preserves the season's existing position in the upgrade rotation (searched-log). It is neither marked as searched nor removed from prior history.
 
 **Acceptance**
 - One test per malformed-record case: the cycle completes, state persists, and the grade is correct.
-- A season in both queues gets exactly one command, including when that command fails.
+- **Success-path insert failure:** an accepted command whose history insert fails is counted as accepted, updates last successful search, and shows the persistence warning. It is not retried.
+- A season in both queues gets exactly one engine dispatch, including when that command fails.
 - The upgrade batch is still filled to its limit from other seasons.
 - The excluded season's upgrade searched-log entry is unchanged.
 
@@ -152,6 +160,9 @@ Consequences:
 - **Distinct episodes.** Results count distinct episodes; multiple grab events for the same episode count once.
 - **Cutover.** Exactly one DB migration adds the ownership table and records a cutover marker. The marker is recorded once, only after the migration succeeds.
 - **Pre-cutover searches.** Searches created before the cutover that are still pending keep their rows and existing counters but are **excluded** from corrected attribution, so grabs already counted under the old logic are not credited again.
+  - These frozen legacy rows are **excluded from the active pending cap** (`PENDING_CAP_MULTIPLIER * max_rows`), so they can never block new history.
+  - In history views they display as **"Legacy — tracking discontinued"**. Their stored outcomes are not rewritten.
+- **Ownership retention.** Ownership records are independent of `search_history` rows. Pruning or deleting history never cascades to ownership records (no cascading foreign key or cleanup), so "each grab credited at most once, ever" holds after pruning. Ownership rows are small, one per credited grab, and this milestone does not prune them.
 - **Stats note.** A persistent note beside Sonarr effectiveness stats reads: *"Attribution corrected on <date>. Earlier results may include misattributed or double-counted grabs."* Totals that include pre-cutover data are labelled *"Lifetime — includes historical estimates."*
 - Existing history rows and counters are never modified or reset.
 
@@ -161,6 +172,8 @@ Consequences:
 - **Rename:** renaming an instance does not re-credit old grabs.
 - **Partial → complete:** a search accumulates owned grabs across checks; distinct-episode counting holds.
 - **Restart persistence:** ownership survives a process restart; no re-credit afterward.
+- **History pruning:** history pruning followed by another tracking check must not re-credit a grab whose owning search row was pruned.
+- **Legacy pending cap:** pre-cutover pending rows don't count toward the pending cap; new searches insert even when legacy rows alone would exceed it; legacy rows render as "Legacy — tracking discontinued".
 - **Pre-cutover pending searches:** excluded from corrected attribution, and their rows and counters are preserved.
 - **Migration:** existing rows survive and the cutover is recorded exactly once.
 
