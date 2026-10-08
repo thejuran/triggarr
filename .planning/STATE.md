@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Completed 77-01-PLAN.md
-last_updated: "2026-10-08T22:28:48.797Z"
+stopped_at: Completed 77-02-PLAN.md
+last_updated: "2026-10-08T22:38:24.570Z"
 last_activity: 2026-10-08 -- Phase 77 execution started
 progress:
   total_phases: 18
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 ## Current Position
 
 Phase: 77 (Secret & Reset-Token Log Hygiene) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Executing Phase 77
 Last activity: 2026-10-08 -- Phase 77 execution started
 
@@ -111,6 +111,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase | Duration | Tasks | Files |
 |-------|----------|-------|-------|
 | Phase 77 P01 | 25min | 2 tasks | 2 files |
+| Phase 77 P02 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
 
 - [Phase 77]: 77-01: create_buffer_sink reads a bound extra['viewer_message'] before falling back to record['message'], structurally excluding a value from log_buffer (D-03) rather than scrubbing it after insertion — Enables Plan 04 to bind the exact D-01 viewer wording at the reset-token mint call site with no further sink-side changes
+- [Phase 77]: 77-02: _sanitize_exc relocated from search/engine.py to clients/base.py (single definition, no upward import), closing the circular-import blocker so SonarrClient.detect_api_version can route its warning through it -- Sonarr detect_api_version failures now log a sanitized HTTP-status/timeout summary instead of the raw exception, so a legacy install's apikey-bearing URL never reaches a log sink
 
 ### Pending Todos
 
@@ -186,9 +188,9 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-08T22:28:48.787Z
-Stopped at: Completed 77-01-PLAN.md
-Resume file: .planning/phases/77-secret-reset-token-log-hygiene/77-02-PLAN.md
+Last session: 2026-10-08T22:38:24.565Z
+Stopped at: Completed 77-02-PLAN.md
+Resume file: .planning/phases/77-secret-reset-token-log-hygiene/77-03-PLAN.md
 
 ## Operator Next Steps
 
