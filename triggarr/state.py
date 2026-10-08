@@ -182,8 +182,15 @@ def load_state(state_path: Path | None = None) -> TriggarrState:
     try:
         with open(resolved_state_path, encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        logger.warning("Corrupt state file at {path} -- resetting to defaults", path=resolved_state_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        # type(exc).__name__ + str(exc) names why loading failed (e.g. parser reason
+        # and position for JSONDecodeError) without ever touching exc.doc, which holds
+        # the raw file contents and must never be logged.
+        logger.warning(
+            "Corrupt state file at {path} -- resetting to defaults: {exc}",
+            path=resolved_state_path,
+            exc=f"{type(exc).__name__}: {exc}",
+        )
         return _default_state()
 
     if _is_v22_state_format(data):
