@@ -349,6 +349,67 @@ async def test_detect_api_version_handles_error() -> None:
     assert "version detection failed" in sink.getvalue()
 
 
+async def test_detect_api_version_error_redacts_apikey_in_url() -> None:
+    """detect_api_version never logs an apikey carried in the request URL (legacy Sonarr installs)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="Internal Server Error")
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", params={"apikey": "SUPERSECRET123"}
+    ) as client:
+        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr._client = client
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await sonarr.detect_api_version()
+        finally:
+            logger.remove(handler_id)
+
+    assert result == "v3"
+    captured = sink.getvalue()
+    assert "SUPERSECRET123" not in captured
+    assert "HTTP 500" in captured
+
+
+async def test_detect_api_version_timeout_logs_sanitized() -> None:
+    """detect_api_version logs a sanitized summary on timeout, never the raw exception text."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", params={"apikey": "SUPERSECRET123"}
+    ) as client:
+        sonarr = SonarrClient("http://test", "fake-key")
+        sonarr._client = client
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await sonarr.detect_api_version()
+        finally:
+            logger.remove(handler_id)
+
+    assert result == "v3"
+    captured = sink.getvalue()
+    assert "request timeout" in captured
+    assert "SUPERSECRET123" not in captured
+
+
+def test_sanitize_exc_lives_in_clients_base() -> None:
+    """_sanitize_exc has a single definition in clients.base, re-exported (same object) by search.engine."""
+    from triggarr.clients.base import _sanitize_exc as base_fn
+    from triggarr.search.engine import _sanitize_exc as engine_fn
+
+    assert base_fn is engine_fn
+    assert base_fn(KeyError("x")) == "KeyError"
+
+
 # ---------------------------------------------------------------------------
 # Sonarr API version detection -- integration tests via validate_connections
 # ---------------------------------------------------------------------------
