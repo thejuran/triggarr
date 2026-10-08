@@ -1238,6 +1238,28 @@ def test_settings_page_does_not_leak_raw_api_key():
     assert "unique_secret_key_12345678901234" not in response.text
 
 
+def test_settings_page_api_key_mask_reflects_key_presence():
+    """GET /settings shows the 32-asterisk mask only when auth.api_key is set (D-08 characterization)."""
+    auth_cfg = _configured_auth()
+    app = _make_route_app(auth_config=auth_cfg)
+    client = TestClient(app, follow_redirects=False)
+    cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    response = client.get("/settings", cookies={"triggarr_session": cookie})
+    assert response.status_code == 200
+    assert "*" * 32 in response.text
+    assert _TEST_API_KEY not in response.text
+
+    empty_key_cfg = _configured_auth(api_key="")
+    empty_app = _make_route_app(auth_config=empty_key_cfg)
+    empty_client = TestClient(empty_app, follow_redirects=False)
+    empty_cookie = sign_session("admin", _TEST_SESSION_SECRET)
+
+    empty_response = empty_client.get("/settings", cookies={"triggarr_session": empty_cookie})
+    assert empty_response.status_code == 200
+    assert "*" * 32 not in empty_response.text
+
+
 def test_login_failure_log_is_generic_no_username(tmp_path: Path):
     """Login failure log is generic without username or boolean oracle (D-11)."""
     from unittest.mock import patch

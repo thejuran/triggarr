@@ -6,12 +6,14 @@ import asyncio
 import contextlib
 import io
 import json
+import typing
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pydantic
 import pytest
 from loguru import logger
+from pydantic import SecretStr
 
 from triggarr.clients.base import ArrClient
 from triggarr.clients.lidarr import LidarrClient
@@ -29,13 +31,13 @@ class _ConcreteClient(ArrClient):
 
 def test_arr_client_sets_api_key_header() -> None:
     """ArrClient sets X-Api-Key in httpx client headers."""
-    client = _ConcreteClient(base_url="http://localhost:7878", api_key="test-key-123")
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key=SecretStr("test-key-123"))
     assert client._client.headers["X-Api-Key"] == "test-key-123"
 
 
 def test_arr_client_sets_timeout() -> None:
     """ArrClient respects custom timeout parameter."""
-    client = _ConcreteClient(base_url="http://localhost:7878", api_key="key", timeout=30)
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key=SecretStr("key"), timeout=30)
     # httpx.Timeout stores timeout as a Timeout object; check the connect/read values
     assert client._client.timeout.connect == 30
     assert client._client.timeout.read == 30
@@ -43,7 +45,7 @@ def test_arr_client_sets_timeout() -> None:
 
 def test_arr_client_sets_content_type() -> None:
     """ArrClient sets Content-Type: application/json in default headers."""
-    client = _ConcreteClient(base_url="http://localhost:7878", api_key="key")
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key=SecretStr("key"))
     assert client._client.headers["Content-Type"] == "application/json"
 
 
@@ -59,22 +61,47 @@ def test_sonarr_client_is_arr_client_subclass() -> None:
 
 def test_radarr_client_app_name() -> None:
     """RadarrClient sets _app_name to 'Radarr'."""
-    client = RadarrClient(base_url="http://localhost:7878", api_key="key")
+    client = RadarrClient(base_url="http://localhost:7878", api_key=SecretStr("key"))
     assert client._app_name == "Radarr"
 
 
 def test_sonarr_client_app_name() -> None:
     """SonarrClient sets _app_name to 'Sonarr'."""
-    client = SonarrClient(base_url="http://localhost:8989", api_key="key")
+    client = SonarrClient(base_url="http://localhost:8989", api_key=SecretStr("key"))
     assert client._app_name == "Sonarr"
 
 
 def test_api_key_not_in_url() -> None:
     """API key is in headers only, not in the base URL."""
     api_key = "super-secret-key"
-    client = _ConcreteClient(base_url="http://localhost:7878", api_key=api_key)
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key=SecretStr(api_key))
     assert api_key not in str(client._client.base_url)
     assert client._client.headers["X-Api-Key"] == api_key
+
+
+# ---------------------------------------------------------------------------
+# SecretStr contract (D-07 / R6)
+# ---------------------------------------------------------------------------
+
+
+def test_arr_client_secretstr_sets_plain_header() -> None:
+    """ArrClient accepts a SecretStr api_key and still sets the plain value in the X-Api-Key header."""
+    client = _ConcreteClient(base_url="http://localhost:7878", api_key=SecretStr("test-key-123"))
+    assert client._client.headers["X-Api-Key"] == "test-key-123"
+
+
+def test_arr_client_rejects_plain_str_api_key() -> None:
+    """ArrClient raises TypeError for a plain str api_key, without leaking the value in the message."""
+    with pytest.raises(TypeError) as excinfo:
+        _ConcreteClient(base_url="http://localhost:7878", api_key="plain-key-xyz")
+    assert "plain-key-xyz" not in str(excinfo.value)
+
+
+def test_arr_client_init_annotations_require_secretstr() -> None:
+    """ArrClient and all three *arr subclasses type api_key as SecretStr."""
+    for cls in (ArrClient, RadarrClient, SonarrClient, LidarrClient):
+        hints = typing.get_type_hints(cls.__init__)
+        assert hints["api_key"] is SecretStr
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +116,7 @@ async def test_request_with_retry_first_attempt_success() -> None:
         return httpx.Response(200, json={"ok": True})
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -111,7 +138,7 @@ async def test_request_with_retry_retries_on_failure() -> None:
         return httpx.Response(200, json={"ok": True})
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -130,7 +157,7 @@ async def test_request_with_retry_reraises_when_retry_fails() -> None:
         return httpx.Response(500, request=request)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -236,7 +263,7 @@ async def test_aclose_with_mocktransport_returns_quickly_after_cancel() -> None:
         return httpx.Response(200, json={"ok": True})
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
 
@@ -277,7 +304,7 @@ async def test_aclose_with_real_asgi_transport_in_flight_returns_within_2s() -> 
     request_started = asyncio.Event()
     app = _build_slow_asgi_app(request_started)
 
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
@@ -335,7 +362,7 @@ async def test_aclose_with_real_asgi_transport_no_cancel_raises_specific_excepti
     # already been set by the handler before the sleep begins).
     app = _build_slow_asgi_app(request_started, sleep_seconds=0.5)
 
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
@@ -384,7 +411,7 @@ async def test_get_paginated_single_page() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -418,7 +445,7 @@ async def test_get_paginated_multi_page() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -442,7 +469,7 @@ async def test_get_paginated_empty_results() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -459,7 +486,7 @@ async def test_get_paginated_malformed_response() -> None:
         return httpx.Response(200, json={"bad": "data"})
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -481,7 +508,7 @@ async def test_validate_connection_success() -> None:
         return httpx.Response(200, json={"version": "5.0.0"})
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -498,7 +525,7 @@ async def test_validate_connection_401() -> None:
         return httpx.Response(401, request=request)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -515,7 +542,7 @@ async def test_validate_connection_connect_error() -> None:
         raise httpx.ConnectError("refused")
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -532,7 +559,7 @@ async def test_validate_connection_timeout() -> None:
         raise httpx.TimeoutException("timed out")
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -549,7 +576,7 @@ async def test_validate_connection_dns_failure() -> None:
         raise httpx.ConnectError("[Errno -2] Name or service not known")
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://nonexistent.invalid", api_key="key")
+    client = _ConcreteClient(base_url="http://nonexistent.invalid", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -566,7 +593,7 @@ async def test_validate_connection_ssl_error() -> None:
         raise httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="https://test", api_key="key")
+    client = _ConcreteClient(base_url="https://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="https://test")
     try:
@@ -583,7 +610,7 @@ async def test_validate_connection_connect_error_logs_warning() -> None:
         raise httpx.ConnectError("refused")
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
 
@@ -607,13 +634,13 @@ async def test_validate_connection_connect_error_logs_warning() -> None:
 
 def test_client_default_page_size() -> None:
     """ArrClient defaults to page_size=50."""
-    client = _ConcreteClient(base_url="http://test:7878", api_key="key")
+    client = _ConcreteClient(base_url="http://test:7878", api_key=SecretStr("key"))
     assert client._page_size == 50
 
 
 def test_client_accepts_page_size() -> None:
     """ArrClient stores custom page_size."""
-    client = _ConcreteClient(base_url="http://test:7878", api_key="key", page_size=100)
+    client = _ConcreteClient(base_url="http://test:7878", api_key=SecretStr("key"), page_size=100)
     assert client._page_size == 100
 
 
@@ -648,7 +675,7 @@ async def test_radarr_get_grab_history_returns_grab_events() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = RadarrClient(base_url="http://test", api_key="key")
+    client = RadarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_grab_history(movie_id=42)
@@ -674,7 +701,7 @@ async def test_radarr_get_grab_history_empty() -> None:
         return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
-    client = RadarrClient(base_url="http://test", api_key="key")
+    client = RadarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_grab_history(movie_id=999)
@@ -693,7 +720,7 @@ async def test_radarr_get_grab_history_passes_correct_params() -> None:
         return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
-    client = RadarrClient(base_url="http://test", api_key="key")
+    client = RadarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         await client.get_grab_history(movie_id=42)
@@ -727,7 +754,7 @@ async def test_sonarr_get_grab_history_returns_grab_events() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = SonarrClient(base_url="http://test", api_key="key")
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_grab_history(series_id=10)
@@ -753,7 +780,7 @@ async def test_sonarr_get_grab_history_empty() -> None:
         return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
-    client = SonarrClient(base_url="http://test", api_key="key")
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_grab_history(series_id=999)
@@ -792,7 +819,7 @@ async def test_get_tags_returns_tag_list() -> None:
         ])
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -814,7 +841,7 @@ async def test_get_tags_empty_response() -> None:
         return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -834,7 +861,7 @@ async def test_sonarr_get_grab_history_passes_correct_params() -> None:
         return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
-    client = SonarrClient(base_url="http://test", api_key="key")
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         await client.get_grab_history(series_id=10)
@@ -854,7 +881,7 @@ def test_lidarr_client_is_arr_client_subclass() -> None:
 
 def test_lidarr_client_app_name() -> None:
     """LidarrClient sets _app_name to 'Lidarr'."""
-    client = LidarrClient(base_url="http://localhost:8686", api_key="key")
+    client = LidarrClient(base_url="http://localhost:8686", api_key=SecretStr("key"))
     assert client._app_name == "Lidarr"
 
 
@@ -870,7 +897,7 @@ async def test_lidarr_get_wanted_missing_uses_v1_with_include_artist() -> None:
         })
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_wanted_missing()
@@ -891,7 +918,7 @@ async def test_lidarr_get_wanted_cutoff_uses_v1_with_include_artist() -> None:
         })
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_wanted_cutoff()
@@ -912,7 +939,7 @@ async def test_lidarr_get_library_count_counts_artists() -> None:
         ])
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         count = await client.get_library_count()
@@ -933,7 +960,7 @@ async def test_lidarr_get_tags_uses_v1_endpoint() -> None:
         ])
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_tags()
@@ -978,7 +1005,7 @@ async def test_lidarr_get_grab_history_returns_grab_events() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_grab_history(album_id=42)
@@ -1000,7 +1027,7 @@ async def test_lidarr_get_grab_history_empty() -> None:
         })
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.get_grab_history(album_id=999)
@@ -1021,7 +1048,7 @@ async def test_lidarr_validate_connection_uses_v1_endpoint() -> None:
         })
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.validate_connection()
@@ -1037,7 +1064,7 @@ async def test_lidarr_validate_connection_returns_false_on_401() -> None:
         return httpx.Response(401, json={"error": "Unauthorized"})
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="bad-key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("bad-key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         result = await client.validate_connection()
@@ -1058,7 +1085,7 @@ async def test_lidarr_search_albums_sends_correct_command() -> None:
         return httpx.Response(200, json={"id": 1, "name": "AlbumSearch", "status": "queued"})
 
     transport = httpx.MockTransport(handler)
-    client = LidarrClient(base_url="http://test", api_key="key")
+    client = LidarrClient(base_url="http://test", api_key=SecretStr("key"))
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         response = await client.search_albums(album_ids=[10, 20, 30])
@@ -1079,7 +1106,7 @@ async def test_validate_connection_403() -> None:
         return httpx.Response(403, request=request)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -1096,7 +1123,7 @@ async def test_validate_connection_502() -> None:
         return httpx.Response(502, request=request)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -1113,7 +1140,7 @@ async def test_get_paginated_invalid_json() -> None:
         return httpx.Response(200, content=b"not json at all", headers={"content-type": "application/json"})
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -1137,7 +1164,7 @@ async def test_get_paginated_truncated_response() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -1172,7 +1199,7 @@ async def test_get_paginated_mid_pagination_empty_page() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
@@ -1190,7 +1217,7 @@ async def test_get_paginated_missing_records_key() -> None:
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(handler)
-    client = _ConcreteClient(base_url="http://test", api_key="key")
+    client = _ConcreteClient(base_url="http://test", api_key=SecretStr("key"))
     client._app_name = "Test"
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
