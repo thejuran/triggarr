@@ -13,6 +13,25 @@ from loguru import logger
 from triggarr.models.arr import GrabEvent, PaginatedResponse, SystemStatus, Tag
 
 
+def _sanitize_exc(exc: Exception) -> str:
+    """Return a safe, type-based summary of an exception for storage.
+
+    Avoids storing raw str(exc) which may contain internal paths, URLs,
+    or API keys that bypass the loguru redacting sink. Lives in clients/
+    so client modules (e.g. SonarrClient) can use it without importing
+    from search/, which would create a circular import.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    if isinstance(exc, httpx.TimeoutException):
+        return "request timeout"
+    if isinstance(exc, httpx.HTTPError):
+        return f"HTTP error: {type(exc).__name__}"
+    if isinstance(exc, pydantic.ValidationError):
+        return f"validation error ({exc.error_count()} issues)"
+    return type(exc).__name__
+
+
 class ArrClient(ABC):
     """Base httpx async client wrapping *arr API communication.
 

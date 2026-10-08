@@ -18,6 +18,7 @@ import httpx
 import pydantic
 from loguru import logger
 
+from triggarr.clients.base import _sanitize_exc
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
@@ -25,23 +26,6 @@ from triggarr.db import PendingCapExceeded, insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
 from triggarr.state import TriggarrState
-
-
-def _sanitize_exc(exc: Exception) -> str:
-    """Return a safe, type-based summary of an exception for storage.
-
-    Avoids storing raw str(exc) which may contain internal paths, URLs,
-    or API keys that bypass the loguru redacting sink.
-    """
-    if isinstance(exc, httpx.HTTPStatusError):
-        return f"HTTP {exc.response.status_code}"
-    if isinstance(exc, httpx.TimeoutException):
-        return "request timeout"
-    if isinstance(exc, httpx.HTTPError):
-        return f"HTTP error: {type(exc).__name__}"
-    if isinstance(exc, pydantic.ValidationError):
-        return f"validation error ({exc.error_count()} issues)"
-    return type(exc).__name__
 
 
 def resolve_tag_id(tag_name: str, tags: list[Tag]) -> int | None:

@@ -8,7 +8,7 @@ import httpx
 import pydantic
 from loguru import logger
 
-from triggarr.clients.base import ArrClient
+from triggarr.clients.base import ArrClient, _sanitize_exc
 from triggarr.models.arr import GrabEvent
 
 
@@ -46,7 +46,7 @@ class SonarrClient(ArrClient):
         except (httpx.HTTPError, pydantic.ValidationError, KeyError) as exc:
             logger.warning(
                 "Sonarr: API version detection failed -- assuming v3: {exc}",
-                exc=exc,
+                exc=_sanitize_exc(exc),
             )
             return "v3"
 
