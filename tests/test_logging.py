@@ -8,7 +8,7 @@ import pytest
 from loguru import logger
 
 from triggarr.log_buffer import log_buffer
-from triggarr.logging import create_redacting_sink, setup_logging
+from triggarr.logging import create_buffer_sink, create_redacting_sink, setup_logging
 
 
 @pytest.fixture(autouse=True)
@@ -216,3 +216,18 @@ def test_stderr_sink_keeps_full_redacted_traceback() -> None:
     entries = log_buffer.get_recent(200)
     assert entries, "Expected at least one buffer entry"
     assert all("Traceback" not in entry.message for entry in entries)
+
+
+def test_create_buffer_sink_redacts_secret_in_viewer_message() -> None:
+    """create_buffer_sink registered directly (no setup_logging) still redacts a
+    secret appearing inside a bound viewer_message.
+    """
+    secret = "super-secret-api-key"
+    logger.add(create_buffer_sink([secret]), format="{message}")
+
+    logger.bind(viewer_message=f"token is {secret}").warning("irrelevant real message")
+
+    entries = log_buffer.get_recent(200)
+    assert entries, "Expected at least one buffer entry"
+    assert "[REDACTED]" in entries[0].message
+    assert secret not in entries[0].message
