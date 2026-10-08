@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Completed 77-03-PLAN.md
-last_updated: "2026-10-08T22:46:09.446Z"
+stopped_at: Completed 77-04-PLAN.md
+last_updated: "2026-10-08T22:58:06.359Z"
 last_activity: 2026-10-08 -- Phase 77 execution started
 progress:
   total_phases: 18
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 ## Current Position
 
 Phase: 77 (Secret & Reset-Token Log Hygiene) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Executing Phase 77
 Last activity: 2026-10-08 -- Phase 77 execution started
 
@@ -113,6 +113,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 77 P01 | 25min | 2 tasks | 2 files |
 | Phase 77 P02 | 12min | 2 tasks | 4 files |
 | Phase 77 P03 | 8min | 2 tasks | 2 files |
+| Phase 77 P04 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,7 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 77]: 77-01: create_buffer_sink reads a bound extra['viewer_message'] before falling back to record['message'], structurally excluding a value from log_buffer (D-03) rather than scrubbing it after insertion — Enables Plan 04 to bind the exact D-01 viewer wording at the reset-token mint call site with no further sink-side changes
 - [Phase 77]: 77-02: _sanitize_exc relocated from search/engine.py to clients/base.py (single definition, no upward import), closing the circular-import blocker so SonarrClient.detect_api_version can route its warning through it -- Sonarr detect_api_version failures now log a sanitized HTTP-status/timeout summary instead of the raw exception, so a legacy install's apikey-bearing URL never reaches a log sink
 - [Phase 77]: 77-03: load_state's corrupt-file warning now binds the caught exception and logs type(exc).__name__ plus str(exc), naming the failure reason without ever touching exc.doc — Closes backlog 999.6(e)/D-09(R7); JSONDecodeError/OSError text carries only parser-position or errno info, never file contents
+- [Phase 77]: 77-04: logger.bind(viewer_message=RESET_MINT_VIEWER_MESSAGE) on the reset-token mint warning lands LOGSEC-01/LOGSEC-02 end-to-end -- the token is absent from log_buffer/partials/log-viewer across live, consumed, expired, and replaced states, while docker logs and reset-token.txt keep it unchanged — Closes backlog 999.3; the viewer_sinks test fixture needed a catch-all logger.remove() in teardown because a successful /reset/confirm's own setup_logging() call replaces every loguru handler mid-test, orphaning the fixture's tracked ids and leaking duplicate buffer sinks into the next test
 
 ### Pending Todos
 
@@ -190,9 +192,9 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-08T22:46:09.439Z
-Stopped at: Completed 77-03-PLAN.md
-Resume file: .planning/phases/77-secret-reset-token-log-hygiene/77-04-PLAN.md
+Last session: 2026-10-08T22:58:06.351Z
+Stopped at: Completed 77-04-PLAN.md
+Resume file: .planning/phases/77-secret-reset-token-log-hygiene/77-05-PLAN.md
 
 ## Operator Next Steps
 
