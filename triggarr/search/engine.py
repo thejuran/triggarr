@@ -25,7 +25,8 @@ from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import PendingCapExceeded, insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
-from triggarr.state import TriggarrState
+from triggarr.search.outcome import CycleTally, active_queues
+from triggarr.state import AppState, TriggarrState
 
 
 def resolve_tag_id(tag_name: str, tags: list[Tag]) -> int | None:
@@ -306,6 +307,115 @@ def filter_unreleased_movies(movies: list[dict]) -> list[dict]:
     return result
 
 
+async def _search_and_record(
+    *,
+    command: Callable[[], Awaitable[object]],
+    tally: CycleTally,
+    db: aiosqlite.Connection,
+    app_label: str,
+    queue: str,
+    item_name: str,
+    instance_name: str,
+    max_rows: int,
+    item_id: int | None = None,
+    season_number: int | None = None,
+    missing_count: int | None = None,
+) -> bool:
+    """Run one *arr search command and record its outcome (R-04).
+
+    Splits the *arr command call from the search-history insert into two
+    independent error boundaries so a history-insert failure can never be
+    mistaken for a failed search command and can never abort the cycle
+    (OUTCOME-06). ``command`` is invoked at most once -- neither stage
+    ever retries it.
+
+    Returns True when the *arr command was accepted (regardless of whether
+    its history insert succeeded), False when the command itself failed.
+    """
+    try:
+        await command()
+    except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
+        reason = _sanitize_exc(exc)
+        logger.warning(
+            "{app}: Failed to search {name}: {exc}",
+            app=app_label,
+            name=item_name,
+            exc=reason,
+        )
+        tally.record_failed(reason)
+        try:
+            await insert_search_entry(
+                db, app_label, queue, item_name,
+                outcome="failed", detail=reason,
+                item_id=item_id,
+                season_number=season_number,
+                missing_count=missing_count,
+                instance_id=instance_name,
+                max_rows=max_rows,
+            )
+        except (aiosqlite.Error, OSError) as insert_exc:
+            logger.warning(
+                "{app}: Could not record failed search for {name}: {exc}",
+                app=app_label,
+                name=item_name,
+                exc=_sanitize_exc(insert_exc),
+            )
+        return False
+
+    # Command accepted -- the *arr committed to the search regardless of what
+    # happens next (OUTCOME-06). tally.accepted is unconditional from here.
+    tally.record_accepted()
+    try:
+        await insert_search_entry(
+            db, app_label, queue, item_name,
+            outcome="searched", detail="search triggered",
+            item_id=item_id,
+            season_number=season_number,
+            missing_count=missing_count,
+            instance_id=instance_name,
+            max_rows=max_rows,
+        )
+        logger.info("{app}: Searched {name} ({queue})", app=app_label, name=item_name, queue=queue)
+    except PendingCapExceeded as cap_exc:
+        logger.warning(
+            "Skipping search history insert -- pending-row cap reached "
+            "for {app}/{instance} {item!r}",
+            app=cap_exc.app,
+            instance=cap_exc.instance_id,
+            item=cap_exc.item_name,
+        )
+        tally.record_persistence_failure()
+    except (aiosqlite.Error, OSError) as insert_exc:
+        logger.warning(
+            "{app}: Search accepted but history not saved for {name}: {exc}",
+            app=app_label,
+            name=item_name,
+            exc=_sanitize_exc(insert_exc),
+        )
+        tally.record_persistence_failure()
+    return True
+
+
+def _finalize_cycle(ist: AppState, tally: CycleTally, instance_config: InstanceConfig) -> None:
+    """Grade the cycle and stamp its timestamps (R-04/R-05/OUTCOME-01/02).
+
+    Writes ``ist["last_cycle"]`` (graded via ``CycleTally.to_record`` per
+    spec Sec 3.1), ``ist["last_run"]`` unconditionally ("last checked"), and
+    ``ist["last_successful_search"]`` only when at least one command was
+    accepted this cycle. Never writes the legacy ``ist["last_success"]``
+    field (R-05) -- it stays frozen at its pre-upgrade value for the
+    "Last success (legacy)" label and the documented downgrade fallback.
+    """
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    ist["last_cycle"] = tally.to_record(
+        active_queues=active_queues(instance_config.search_missing_count, instance_config.search_cutoff_count),
+        finished_at=now_iso,
+    )
+    ist["last_run"] = now_iso
+    if tally.accepted >= 1:
+        ist["last_successful_search"] = now_iso
+
+
 async def run_radarr_cycle(
     client: RadarrClient,
     state: TriggarrState,
@@ -342,6 +452,7 @@ async def run_radarr_cycle(
         logger.warning("Radarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["radarr"][instance_name]
+    tally = CycleTally()
 
     try:
         missing = await client.get_wanted_missing()
@@ -354,6 +465,8 @@ async def run_radarr_cycle(
             ist["unreachable_since"] = (
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")
             )
+        tally.record_fetch_failure(_sanitize_exc(exc))
+        _finalize_cycle(ist, tally, instance_config)
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -423,9 +536,6 @@ async def run_radarr_cycle(
                 )
                 ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
 
-    searched_count = 0
-    skipped_count = 0
-
     # --- Missing queue ---
     missing = filter_monitored(missing)
     ist["missing_monitored"] = len(missing)
@@ -443,41 +553,17 @@ async def run_radarr_cycle(
         key_fn=lambda m: str(m["id"]),
     )
     for movie in batch:
-        try:
-            await client.search_movies([movie["id"]])
-            await insert_search_entry(
-                db, "Radarr", "missing", movie["title"],
-                outcome="searched", detail="search triggered",
-                item_id=movie["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Radarr: Searched {title} (missing)", title=movie["title"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Radarr: Failed to search {title}: {exc}",
-                title=movie.get("title", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Radarr", "missing", movie.get("title", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=movie.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
+        await _search_and_record(
+            command=lambda mid=movie["id"]: client.search_movies([mid]),
+            tally=tally,
+            db=db,
+            app_label="Radarr",
+            queue="missing",
+            item_name=movie.get("title", "unknown"),
+            instance_name=instance_name,
+            max_rows=settings.general.max_history_rows,
+            item_id=movie.get("id"),
+        )
     ist["missing_searched"] = [] if pass_done else new_log
     if pass_done:
         ist["missing_pass"] = ist.get("missing_pass", 0) + 1
@@ -497,41 +583,17 @@ async def run_radarr_cycle(
         key_fn=lambda m: str(m["id"]),
     )
     for movie in batch:
-        try:
-            await client.search_movies([movie["id"]])
-            await insert_search_entry(
-                db, "Radarr", "cutoff", movie["title"],
-                outcome="searched", detail="search triggered",
-                item_id=movie["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Radarr: Searched {title} (cutoff)", title=movie["title"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Radarr: Failed to search {title}: {exc}",
-                title=movie.get("title", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Radarr", "cutoff", movie.get("title", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=movie.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
+        await _search_and_record(
+            command=lambda mid=movie["id"]: client.search_movies([mid]),
+            tally=tally,
+            db=db,
+            app_label="Radarr",
+            queue="cutoff",
+            item_name=movie.get("title", "unknown"),
+            instance_name=instance_name,
+            max_rows=settings.general.max_history_rows,
+            item_id=movie.get("id"),
+        )
     ist["cutoff_searched"] = [] if pass_done else new_log
     if pass_done:
         ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
@@ -541,20 +603,22 @@ async def run_radarr_cycle(
             n=len(new_log),
         )
 
+    # --- Grade the cycle and stamp timestamps (R-04/R-05/OUTCOME-01/02) ---
+    _finalize_cycle(ist, tally, instance_config)
+
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
     logger.info(
-        "Radarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
+        "Radarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {accepted} accepted, "
+        "{failed} failed, {unsaved} history not saved -- grade {grade}",
         elapsed=elapsed,
         fetched=ist["missing_count"] + ist["cutoff_count"],
-        searched=searched_count,
-        skipped=skipped_count,
+        accepted=tally.accepted,
+        failed=tally.failed,
+        unsaved=tally.persistence_failed,
+        grade=ist["last_cycle"]["grade"],
     )
 
-    # --- Update last_run and last_success ---
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    ist["last_run"] = now_iso
-    ist["last_success"] = now_iso
     return state
 
 

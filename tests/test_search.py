@@ -3448,34 +3448,26 @@ async def test_radarr_grade_inactive_queue_ignored(tmp_path):
         assert ist["last_cycle"]["grade"] == "success"
         assert ist["last_cycle"]["accepted"] == 1
         assert "cutoff" not in ist["last_cycle"]["eligible"]
-    finally:
-        await db.close()
 
-
-async def test_radarr_grade_both_queues_inactive_is_nothing_needed(tmp_path):
-    """Both queues configured inactive -> grade nothing_needed, regardless of fetched items."""
-    db_path = tmp_path / "test.db"
-    db = await aiosqlite.connect(db_path)
-    await init_db(db, db_path)
-    try:
-        client = AsyncMock()
-        client.get_wanted_missing = AsyncMock(
-            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        # Both queues configured inactive (disabled instance, both counts 0) -> nothing_needed,
+        # regardless of what the fetch returns. InstanceConfig/Settings reject
+        # search_missing_count=0 and search_cutoff_count=0 together while enabled=True, so this
+        # scenario is only reachable via a disabled instance -- engine functions never read
+        # instance_config.enabled, so this still exercises the grading path directly.
+        state2 = _make_test_state()
+        settings2 = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
         )
-        client.get_wanted_cutoff = AsyncMock(
-            return_value=[{"id": 2, "title": "Movie B", "monitored": True}]
+        instance_config2 = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
         )
-        client.search_movies = AsyncMock()
+        result2 = await run_radarr_cycle(client, state2, "Default", instance_config2, settings2, db)
+        ist2 = result2["radarr"]["Default"]
 
-        state = _make_test_state()
-        settings = _cycle_settings(missing_count=0, cutoff_count=0)
-        instance_config = _cycle_instance_config(missing_count=0, cutoff_count=0)
-
-        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
-        ist = result["radarr"]["Default"]
-
-        assert ist["last_cycle"]["grade"] == "nothing_needed"
-        assert client.search_movies.call_count == 0
+        assert ist2["last_cycle"]["grade"] == "nothing_needed"
+        assert client.search_movies.call_count == 1  # only the first scenario's missing item
     finally:
         await db.close()
 
@@ -3646,6 +3638,7 @@ async def test_radarr_last_cycle_never_contains_apikey(tmp_path):
             return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
         )
         client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=100)
         client.search_movies = AsyncMock(
             side_effect=httpx.HTTPStatusError("err", request=request, response=response)
         )
