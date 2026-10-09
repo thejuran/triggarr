@@ -5458,3 +5458,224 @@ async def test_refresh_counts_never_touch_last_cycle(tmp_path):
             assert ist["last_success"] == "2025-01-01T00:00:00Z"
     finally:
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: _resolve_tag_scope (TAGSCOPE-01..03, D-01..05, OQ1)
+# ---------------------------------------------------------------------------
+
+
+def _tag_scope_instance_config(
+    *,
+    missing_tag: str = "",
+    cutoff_tag: str = "",
+    missing_count: int = 5,
+    cutoff_count: int = 5,
+) -> InstanceConfig:
+    """Build an InstanceConfig for _resolve_tag_scope unit tests."""
+    return InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=missing_count, search_cutoff_count=cutoff_count,
+        missing_tag=missing_tag, cutoff_tag=cutoff_tag,
+    )
+
+
+async def test_resolve_tag_scope_no_tags_configured_never_fetches():
+    """Neither queue has a tag configured -- fetch_tags is never awaited, nothing unresolved."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    ist["tag_warnings"] = [{"tag": "stale", "field": "missing"}]
+    ist["unresolved_tag_scopes"] = {"missing": "old"}
+    tally = CycleTally()
+    fetch_tags = AsyncMock()
+    instance_config = _tag_scope_instance_config()
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    fetch_tags.assert_not_awaited()
+    assert scope.missing_tag_id is None
+    assert scope.cutoff_tag_id is None
+    assert scope.missing_unresolved is False
+    assert scope.cutoff_unresolved is False
+    assert ist["tag_warnings"] == []
+    assert ist["unresolved_tag_scopes"] == {}
+
+
+async def test_resolve_tag_scope_both_resolve():
+    """Both configured tags resolve -- no warnings, no unevaluated entries, no unresolved markers."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[Tag(id=5, label="4k"), Tag(id=6, label="upgrade")])
+    instance_config = _tag_scope_instance_config(missing_tag="4K ", cutoff_tag="upgrade")
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    assert scope.missing_tag_id == 5
+    assert scope.cutoff_tag_id == 6
+    assert scope.missing_unresolved is False
+    assert scope.cutoff_unresolved is False
+    assert ist["tag_warnings"] == []
+    assert tally.unevaluated == []
+    assert ist["unresolved_tag_scopes"] == {}
+
+
+async def test_resolve_tag_scope_missing_not_found_active():
+    """Configured tag is not in the tag list -- missing queue unresolved, warned, graded."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[Tag(id=1, label="other")])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", missing_count=5, cutoff_count=0)
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+            app_label="Radarr", tally=tally,
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert scope.missing_unresolved is True
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+    assert tally.unevaluated == [{"queue": "missing", "reason": "tag 'gone' not found"}]
+    log_output = sink.getvalue()
+    assert "Missing queue skipped" in log_output
+    assert "not found" in log_output
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_resolve_tag_scope_fetch_failure_active_both_queues():
+    """Tag-list fetch itself fails -- both configured queues unresolved with fetch_failed reason."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(side_effect=httpx.ConnectError("boom apikey=SECRET123"))
+    instance_config = _tag_scope_instance_config(missing_tag="a", cutoff_tag="b")
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+            app_label="Radarr", tally=tally,
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert scope.missing_unresolved is True
+    assert scope.cutoff_unresolved is True
+    assert len(ist["tag_warnings"]) == 2
+    assert all(w["reason"] == "fetch_failed" for w in ist["tag_warnings"])
+    assert len(tally.unevaluated) == 2
+    assert all(entry["reason"] == "couldn't load tags" for entry in tally.unevaluated)
+    log_output = sink.getvalue()
+    assert "Failed to fetch tags" in log_output
+    serialized = repr(ist["tag_warnings"]) + repr(tally.unevaluated) + repr(ist["unresolved_tag_scopes"])
+    assert "boom" not in serialized
+    assert "SECRET123" not in serialized
+    assert ist["unresolved_tag_scopes"] == {"missing": "a", "cutoff": "b"}
+
+
+async def test_resolve_tag_scope_inactive_queue_unresolved_no_warning_no_grade():
+    """D-04/OQ1: an inactive queue's unresolved tag freezes counts but never warns or grades."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", missing_count=0, cutoff_count=5)
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    assert scope.missing_unresolved is True
+    assert ist["tag_warnings"] == []
+    assert tally.unevaluated == []
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_resolve_tag_scope_tally_none_still_warns():
+    """Refresh-mode call (tally=None) still records the warning without raising."""
+    from triggarr.search.engine import _resolve_tag_scope
+
+    ist = _make_test_state()["radarr"]["Default"]
+    fetch_tags = AsyncMock(return_value=[])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", missing_count=5, cutoff_count=0)
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=None,
+    )
+
+    assert scope.missing_unresolved is True
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+
+
+async def test_resolve_tag_scope_one_queue_resolves_other_not():
+    """Independent per-queue resolution: one tag resolves while the other doesn't."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", cutoff_tag="4k")
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    assert scope.missing_unresolved is True
+    assert scope.cutoff_unresolved is False
+    assert scope.cutoff_tag_id == 5
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: _stamp_scoped_counts
+# ---------------------------------------------------------------------------
+
+
+def test_stamp_scoped_counts_creates_and_preserves_other_field():
+    from triggarr.search.engine import _stamp_scoped_counts
+
+    ist = _make_test_state()["radarr"]["Default"]
+    assert "scoped_count_tags" not in ist
+
+    _stamp_scoped_counts(ist, "missing", "4k")
+    assert ist["scoped_count_tags"] == {"missing": "4k"}
+
+    _stamp_scoped_counts(ist, "cutoff", None)
+    assert ist["scoped_count_tags"] == {"missing": "4k", "cutoff": None}
+
+
+def test_stamp_scoped_counts_replaces_non_dict_value():
+    from triggarr.search.engine import _stamp_scoped_counts
+
+    ist = _make_test_state()["radarr"]["Default"]
+    ist["scoped_count_tags"] = "garbage"
+
+    _stamp_scoped_counts(ist, "missing", "4k")
+
+    assert ist["scoped_count_tags"] == {"missing": "4k"}
