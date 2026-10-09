@@ -499,3 +499,22 @@ def test_cycle_view_eligible_non_dict_treated_as_empty() -> None:
     view = cycle_view(record, "Radarr")
     assert view is not None
     assert view["reasons"] == []
+
+
+def test_cycle_view_unhashable_unevaluated_queue_is_skipped() -> None:
+    """A tampered unevaluated entry whose queue is a list/dict never crashes the card."""
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "unevaluated": [
+            {"queue": ["cutoff"], "reason": "x"},
+            {"queue": {"q": "missing"}, "reason": "y"},
+            {"queue": "cutoff", "reason": "malformed data (TypeError)"},
+        ],
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert view["reasons"] == [
+        {"text": "Cutoff unmet queue not evaluated: malformed data (TypeError)", "count": 1}
+    ]

@@ -252,7 +252,9 @@ def cycle_view(record: object, app_label: str) -> dict | None:
             reason = entry.get("reason")
             if not isinstance(reason, str):
                 continue
-            label = _UNEVALUATED_QUEUE_LABELS.get(entry.get("queue"))
+            queue = entry.get("queue")
+            # A tampered list/dict queue is unhashable -- check the type before the lookup.
+            label = _UNEVALUATED_QUEUE_LABELS.get(queue) if isinstance(queue, str) else None
             if label is None:
                 continue
             reasons.append({"text": _truncate(f"{label} queue not evaluated: {reason}"), "count": 1})
