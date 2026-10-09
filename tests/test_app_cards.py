@@ -446,7 +446,7 @@ def test_tag_warning_uses_svg_icon(client, test_app):
     """Tag warning badge uses SVG icon instead of HTML entity (D-25)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
-        {"field": "missing", "tag": "hdr"},
+        {"field": "missing", "tag": "hdr", "reason": "not_found"},
     ]
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
@@ -544,7 +544,7 @@ def test_grade_line_precedes_tag_warning_and_last_checked(client, test_app):
     """D-03/Pitfall 6: the grade line is the first row, before the tag badge and Last checked."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
-        {"field": "missing", "tag": "hdr"},
+        {"field": "missing", "tag": "hdr", "reason": "not_found"},
     ]
     test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
         grade="success", accepted=5, failed=0,
@@ -552,7 +552,7 @@ def test_grade_line_precedes_tag_warning_and_last_checked(client, test_app):
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     grade_index = response.text.index("Success ·")
-    tag_index = response.text.index("not found")
+    tag_index = response.text.index("queue skipped")
     last_checked_index = response.text.index("Last checked")
     assert grade_index < tag_index
     assert grade_index < last_checked_index
@@ -751,3 +751,84 @@ def test_dashboard_preserves_open_detail_panel_across_refresh(client):
     assert "addEventListener('toggle'" in response.text
     assert "openCycleDetails" in response.text
     assert 'nonce="' in response.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: tag-skip badge (D-01, D-03, OQ2)
+# ---------------------------------------------------------------------------
+
+
+def test_tag_skip_badge_single_not_found(client, test_app):
+    """A single not-found tag names the queue and the not-found reason (D-01/D-03)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "4k", "reason": "not_found"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Missing queue skipped" in response.text
+    assert "tag '4k' not found" in response.text
+    assert "Tags not found" not in response.text
+
+
+def test_tag_skip_badge_single_fetch_failed(client, test_app):
+    """A single fetch-failure names the queue and the fetch-failure reason (D-01/D-03)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "cutoff", "tag": "upgrade", "reason": "fetch_failed"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Cutoff queue skipped" in response.text
+    assert "couldn't load tags from Radarr" in response.text
+    assert "tag 'upgrade' not found" not in response.text
+
+
+def test_tag_skip_badge_two_queues_names_both(client, test_app):
+    """Two skipped queues are both named, each with its own reason, in one badge (D-01)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "4k", "reason": "not_found"},
+        {"field": "cutoff", "tag": "upgrade", "reason": "fetch_failed"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Missing" in response.text
+    assert "tag '4k' not found" in response.text
+    assert "Cutoff" in response.text
+    assert "couldn't load tags from Radarr" in response.text
+    assert response.text.count("bg-amber-500/15") == 1
+
+
+def test_tag_skip_badge_legacy_entry_without_reason(client, test_app):
+    """A pre-upgrade entry without a reason key defaults to the not-found wording (Pitfall 4)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "hdr"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Missing queue skipped" in response.text
+    assert "tag 'hdr' not found" in response.text
+    assert "Undefined" not in response.text
+
+
+def test_tag_skip_badge_escapes_tag_name(client, test_app):
+    """The user-configured tag name is HTML-escaped in the badge (T-79-05)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "<b>x</b>", "reason": "not_found"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "&lt;b&gt;x&lt;/b&gt;" in response.text
+    assert "<b>x</b>" not in response.text
+
+
+def test_tag_skip_badge_absent_when_no_warnings(client, test_app):
+    """No tag_warnings -> no badge rendered at all."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = []
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "queue skipped" not in response.text
