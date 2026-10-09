@@ -1077,54 +1077,39 @@ async def run_sonarr_cycle(
         )
 
     # --- Tag resolution (only when at least one tag is configured) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
-    ist["tag_warnings"] = []
-    if instance_config.missing_tag or instance_config.cutoff_tag:
-        tag_fetch_ok = False
-        try:
-            # RES-03: resolve via the cache-aware resolver when supplied
-            # (scheduler/search_now), else fall back to the direct client call
-            # (backward-compatible None default — keeps existing tests passing).
-            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-            tag_fetch_ok = True
-        except (httpx.HTTPError, pydantic.ValidationError) as exc:
-            logger.warning(
-                "Sonarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=_sanitize_exc(exc),
-            )
-            tags = []
-
-        if instance_config.missing_tag:
-            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Sonarr: Tag '{tag}' not found -- searching all missing items",
-                    tag=instance_config.missing_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-        if instance_config.cutoff_tag:
-            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Sonarr: Tag '{tag}' not found -- searching all cutoff items",
-                    tag=instance_config.cutoff_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
+    # RES-03: resolve via the cache-aware resolver when supplied
+    # (scheduler/search_now), else fall back to the direct client call
+    # (backward-compatible None default — keeps existing tests passing).
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config,
+        fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+        ist=ist,
+        app_label="Sonarr",
+        tally=tally,
+    )
+    # TAGSCOPE-01 / D-05 / OQ1 -- a tag-scoped queue whose tag can't be
+    # resolved is never widened. None reuses the Phase 78 contract: no
+    # dispatch, eligible/searchable counts and searched-log untouched.
+    # Applies to inactive queues too; warning and grading were already
+    # gated on active inside _resolve_tag_scope.
+    if scope.missing_unresolved:
+        missing_episodes = None
+    if scope.cutoff_unresolved:
+        cutoff_episodes = None
 
     # --- Missing queue: filter chain (guarded -- None means the fetch
-    # didn't run or failed, R-07; the previous eligible/searchable counts
-    # and searched-log stay untouched rather than being wiped to zero) ---
+    # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/searchable
+    # counts and searched-log stay untouched rather than being wiped to zero) ---
     missing_seasons: list[dict] = []
     if missing_episodes is not None:
         missing_episodes = filter_sonarr_episodes(missing_episodes)
-        if missing_tag_id is not None:
-            missing_episodes = filter_by_tag(missing_episodes, missing_tag_id, _sonarr_tags)
+        if scope.missing_tag_id is not None:
+            missing_episodes = filter_by_tag(missing_episodes, scope.missing_tag_id, _sonarr_tags)
             logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
         missing_seasons = deduplicate_to_seasons(missing_episodes)
         ist["missing_eligible"] = len(missing_episodes)
         ist["missing_searchable"] = len(missing_seasons)
+        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
@@ -1141,11 +1126,12 @@ async def run_sonarr_cycle(
     if cutoff_episodes is not None:
         try:
             cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
-            if cutoff_tag_id is not None:
-                cutoff_episodes = filter_by_tag(cutoff_episodes, cutoff_tag_id, _sonarr_tags)
+            if scope.cutoff_tag_id is not None:
+                cutoff_episodes = filter_by_tag(cutoff_episodes, scope.cutoff_tag_id, _sonarr_tags)
                 logger.debug("Sonarr: Tag filter applied -- {n} cutoff episodes match tag", n=len(cutoff_episodes))
             cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
             ist["cutoff_searchable"] = len(cutoff_seasons)
+            _stamp_scoped_counts(ist, "cutoff", instance_config.cutoff_tag or None)
         except (AttributeError, KeyError, TypeError) as exc:
             logger.warning(
                 "Sonarr: Cutoff queue filter chain faulted on malformed data ({etype}) -- "
