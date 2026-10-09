@@ -77,9 +77,18 @@ def test_tracked_docs_do_not_reintroduce_stale_auth_or_config_dir_claims() -> No
         "config directory is not configurable",
         "todo: configurable config",
         "todo - configurable config",
+        "searches all items for that queue (fail-open)",
+        "logs a warning and searches all items",
     )
     for claim in stale_claims:
         assert claim not in combined, f"stale documentation claim is present: {claim}"
+
+
+def test_readme_describes_tag_skip_behavior() -> None:
+    """README describes skip-and-warn tag behavior, not the retired fail-open fallback (D-06)."""
+    readme = _normalized(_read(README))
+    assert "skips that queue" in readme
+    assert "until the tag resolves" in readme
 
 
 def test_readme_toml_examples_parse_and_validate_as_settings() -> None:
