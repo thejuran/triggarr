@@ -233,7 +233,7 @@ v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as
 ### Active
 
 - [x] Reset token never reaches the in-app log viewer or any HTTP response; *arr HTTP errors always logged sanitized (v2.12) — Validated in Phase 77: Secret & Reset-Token Log Hygiene
-- [ ] Each instance's last cycle is graded Success / Partial / Failed / Nothing needed searching, with "last successful search" and "last checked" tracked separately and the failure counter driven by the grade (v2.12)
+- [x] Each instance's last cycle is graded Success / Partial / Failed / Nothing needed searching, with "last successful search" and "last checked" tracked separately and the failure counter driven by the grade (v2.12) — Validated in Phase 78: Honest Cycle Outcomes
 - [ ] A tag-scoped queue whose tag can't be resolved is skipped and flagged, never widened to all items (v2.12)
 - [ ] A malformed *arr record never aborts a cycle; each Sonarr season receives at most one engine dispatch per cycle (v2.12)
 - [ ] Sonarr grabs credit only the matching series+season search, exactly once ever, with a visible attribution cutover note (v2.12)
@@ -347,4 +347,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-08 after Phase 77 (Secret & Reset-Token Log Hygiene) complete*
+*Last updated: 2026-10-09 after Phase 78 (Honest Cycle Outcomes) complete*

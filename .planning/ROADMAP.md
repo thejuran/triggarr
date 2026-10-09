@@ -324,7 +324,7 @@ Plans:
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete    | 2026-10-08 |
-| 78. Honest Cycle Outcomes | 5/5 | Complete   | 2026-10-09 |
+| 78. Honest Cycle Outcomes | 5/5 | Complete    | 2026-10-09 |
 | 79. Tag-Scoped Searches Stay in Scope | 0/TBD | Not started | - |
 | 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
 | 81. Correct Sonarr Grab Attribution | 0/TBD | Not started | - |
