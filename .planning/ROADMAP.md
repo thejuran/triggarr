@@ -251,8 +251,25 @@ Plans:
   4. The consecutive-failure counter increments only on Failed and resets on Success, Partial, or Nothing needed searching.
   5. A pre-upgrade `last_success` timestamp displays as "Last success (legacy)" until the instance's first new cycle completes, and an accepted command whose history write fails still counts as accepted, still updates "last successful search," and surfaces a separate persistence warning instead of being retried.
 
-**Plans**: TBD
+**Plans:** 5 plans
 **UI hint**: yes
+Plans:
+**Wave 1**
+
+- [ ] 78-01-PLAN.md — outcome model: grade_cycle (§3.1), CycleTally with Phase 79/80 hooks, cycle_view, LastCycleRecord + legacy-safe load (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 78-02-PLAN.md — engine helpers (_search_and_record split command/insert, _finalize_cycle) + Radarr honest grading, OUTCOME-06 persistence path (wave 2)
+- [ ] 78-04-PLAN.md — dashboard card: grade line/colors, Last checked staleness, legacy + Not run yet, unreachable grade, grouped detail panel kept open across refresh, persistence warning (wave 2)
+
+**Wave 3** *(blocked on 78-02)*
+
+- [ ] 78-03-PLAN.md — Sonarr + Lidarr honest grading; refresh helpers proven untouched (wave 3)
+
+**Wave 4** *(blocked on 78-02 and 78-03)*
+
+- [ ] 78-05-PLAN.md — SAFETY-03 counter driven by grade for scheduled + Search Now; refresh-counts route boundary (wave 4)
 
 ### Phase 79: Tag-Scoped Searches Stay in Scope
 
