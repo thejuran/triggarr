@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: planning
+status: executing
 stopped_at: Phase 79 context gathered
-last_updated: "2026-10-09T13:18:26.677Z"
-last_activity: 2026-10-09
+last_updated: "2026-10-09T14:25:28.876Z"
+last_activity: 2026-10-09 -- Phase 79 execution started
 progress:
   total_phases: 18
   completed_phases: 2
-  total_plans: 10
+  total_plans: 14
   completed_plans: 10
   percent: 11
 ---
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 79 — tag scoped searches stay in scope
+**Current focus:** Phase 79 — tag-scoped-searches-stay-in-scope
 
 > **Release tags held locally, unpushed:** `v2.11.0` (prior milestone) and `v2.10.0` are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
 
 ## Current Position
 
-Phase: 79
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-10-09
+Phase: 79 (tag-scoped-searches-stay-in-scope) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 79
+Last activity: 2026-10-09 -- Phase 79 execution started
 
 ### v2.12 milestone shape
 
@@ -134,7 +134,7 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 77]: 77-05: ArrClient.__init__ (and the three *arr subclasses) now require api_key: SecretStr with a value-free TypeError guard; .get_secret_value() unwraps exactly once, at the X-Api-Key header line; startup.py/scheduler.py/routes.py pass the SecretStr straight through; auth_api_key_set now uses bool(settings.auth.api_key) — Closes backlog 999.6(c)/(d); strict SecretStr contract chosen over str|SecretStr per RESEARCH.md's resolved Open Question 2, migrating all 64 test call sites in the same wave
 - [Phase 78]: 78-01: grade_cycle's amended-R-01 backstop (accepted=0, failed=0, eligible_active>0) grades Failed, not Partial — the engine did no work while work existed, which should trip the SAFETY-03 alert; supersedes RESEARCH Open Question 1's Partial recommendation
 - [Phase 78]: 78-01: AppState.last_successful_search is never derived from the legacy last_success field — last_success stays frozen verbatim for the Last success (legacy) label and the documented NAS downgrade fallback (R-05)
-- [Phase 78]: 78-02: cutoff's hard-max eligible count is computed as a defensive preview (catches malformed-data faults, falls back to 0) ahead of rebalance_batch_sizes, while cutoff's authoritative filter+dispatch stays at its original later position — Preserves the pre-existing per-app guarantee that a cutoff-side data fault can never block the missing queue's dispatch, which Task 2's literal 'move both filter chains up' instruction would have broken
+- [Phase 78]: 78-02: the cutoff filter chain, moved ahead of both dispatches so rebalance_batch_sizes sees both eligible counts, is guarded against malformed data (AttributeError/KeyError/TypeError) and degrades cutoff to empty for that cycle on fault — Preserves the pre-existing per-app guarantee that a cutoff-side data fault can never block the missing queue's dispatch, which the unguarded reordering broke
 - [Phase 78]: 78-02: insert_search_entry rolls back on any failure after its INSERT (catching bare Exception, not just aiosqlite.Error, since a driver-thread OSError leaves the same open transaction) — Prevents a partial write from staying pending on the shared connection -- a later successful insert can no longer commit a phantom row alongside it, and the pending-cap check only ever counts committed rows (R-08)
 - [Phase 78]: 78-04: Last successful search / Last success (legacy) row stays duplicated verbatim in both card bodies (connected and unreachable) rather than a second shared include, matching the plan's instruction and the file's existing per-body duplication convention for that row — cycle_grade.html's color dispatch collapses nothing_needed and any unexpected grade into one else branch since cycle_view() already restricts grade to exactly the four GRADE_LABELS keys
 - [Phase 78]: 78-03: run_sonarr_cycle and run_lidarr_cycle route through the same CycleTally/_fetch_wanted_queues/_search_and_record/_finalize_cycle/rebalance_batch_sizes helpers as Radarr, with a matching malformed-data guard on each app's cutoff filter chain so the pre-existing cross-queue fault-isolation guarantee survives the R-01-amended filter-chain reordering — Mirrors run_radarr_cycle exactly per the plan; the guard was required (not optional) because per-app regression tests (test_run_sonarr_cycle_cutoff_fault_does_not_block_missing_search, test_run_lidarr_cycle_cutoff_fault_does_not_block_missing_search) already pinned that a cutoff-side data fault must never block the missing queue's dispatch, and moving the cutoff filter chain earlier would otherwise break that guarantee
