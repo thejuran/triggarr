@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: planning
+status: executing
 stopped_at: Phase 78 context gathered
-last_updated: "2026-10-09T01:26:43.530Z"
-last_activity: 2026-10-09 -- Phase 78 planning complete
+last_updated: "2026-10-09T01:48:41.969Z"
+last_activity: 2026-10-09 -- Phase 78 execution started
 progress:
   total_phases: 18
   completed_phases: 1
   total_plans: 10
-  completed_plans: 5
+  completed_plans: 6
   percent: 6
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 78 — honest cycle outcomes
+**Current focus:** Phase 78 — Honest Cycle Outcomes
 
 > **Release tags held locally, unpushed:** `v2.11.0` (prior milestone) and `v2.10.0` are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
 
 ## Current Position
 
-Phase: 78
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-10-09 -- Phase 78 planning complete
+Phase: 78 (Honest Cycle Outcomes) — EXECUTING
+Plan: 2 of 5
+Status: Executing Phase 78
+Last activity: 2026-10-09 -- Phase 78 execution started
 
 ### v2.12 milestone shape
 
@@ -115,6 +115,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 77 P03 | 8min | 2 tasks | 2 files |
 | Phase 77 P04 | 10min | 2 tasks | 2 files |
 | Phase 77 P05 | 11min | 2 tasks | 11 files |
+| Phase 78 P01 | 10min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,8 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 77]: 77-03: load_state's corrupt-file warning now binds the caught exception and logs type(exc).__name__ plus str(exc), naming the failure reason without ever touching exc.doc — Closes backlog 999.6(e)/D-09(R7); JSONDecodeError/OSError text carries only parser-position or errno info, never file contents
 - [Phase 77]: 77-04: logger.bind(viewer_message=RESET_MINT_VIEWER_MESSAGE) on the reset-token mint warning lands LOGSEC-01/LOGSEC-02 end-to-end -- the token is absent from log_buffer/partials/log-viewer across live, consumed, expired, and replaced states, while docker logs and reset-token.txt keep it unchanged — Closes backlog 999.3; the viewer_sinks test fixture needed a catch-all logger.remove() in teardown because a successful /reset/confirm's own setup_logging() call replaces every loguru handler mid-test, orphaning the fixture's tracked ids and leaking duplicate buffer sinks into the next test
 - [Phase 77]: 77-05: ArrClient.__init__ (and the three *arr subclasses) now require api_key: SecretStr with a value-free TypeError guard; .get_secret_value() unwraps exactly once, at the X-Api-Key header line; startup.py/scheduler.py/routes.py pass the SecretStr straight through; auth_api_key_set now uses bool(settings.auth.api_key) — Closes backlog 999.6(c)/(d); strict SecretStr contract chosen over str|SecretStr per RESEARCH.md's resolved Open Question 2, migrating all 64 test call sites in the same wave
+- [Phase 78]: 78-01: grade_cycle's amended-R-01 backstop (accepted=0, failed=0, eligible_active>0) grades Failed, not Partial — the engine did no work while work existed, which should trip the SAFETY-03 alert; supersedes RESEARCH Open Question 1's Partial recommendation
+- [Phase 78]: 78-01: AppState.last_successful_search is never derived from the legacy last_success field — last_success stays frozen verbatim for the Last success (legacy) label and the documented NAS downgrade fallback (R-05)
 
 ### Pending Todos
 
@@ -194,7 +197,7 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-09T00:13:21.408Z
+Last session: 2026-10-09T01:47:55.975Z
 Stopped at: Phase 78 context gathered
 Resume file: .planning/phases/78-honest-cycle-outcomes/78-CONTEXT.md
 
