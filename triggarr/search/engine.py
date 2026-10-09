@@ -819,50 +819,34 @@ async def run_radarr_cycle(
         )
 
     # --- Tag resolution (only when at least one tag is configured) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
-    ist["tag_warnings"] = []
-    if instance_config.missing_tag or instance_config.cutoff_tag:
-        tag_fetch_ok = False
-        try:
-            # RES-03: resolve via the cache-aware resolver when supplied
-            # (scheduler/search_now), else fall back to the direct client call
-            # (backward-compatible None default — keeps existing tests passing).
-            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-            tag_fetch_ok = True
-        except (httpx.HTTPError, pydantic.ValidationError) as exc:
-            logger.warning(
-                "Radarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=_sanitize_exc(exc),
-            )
-            tags = []
-
-        if instance_config.missing_tag:
-            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Radarr: Tag '{tag}' not found -- searching all missing items",
-                    tag=instance_config.missing_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-        if instance_config.cutoff_tag:
-            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Radarr: Tag '{tag}' not found -- searching all cutoff items",
-                    tag=instance_config.cutoff_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
+    # RES-03: resolve via the cache-aware resolver when supplied
+    # (scheduler/search_now), else fall back to the direct client call
+    # (backward-compatible None default — keeps existing tests passing).
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config,
+        fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+        ist=ist,
+        app_label="Radarr",
+        tally=tally,
+    )
+    # TAGSCOPE-01 / D-05 / OQ1 -- a tag-scoped queue whose tag can't be
+    # resolved is never widened. None reuses the Phase 78 contract: no
+    # dispatch, eligible/monitored counts and searched-log untouched.
+    # Applies to inactive queues too; warning and grading were already
+    # gated on active inside _resolve_tag_scope.
+    if scope.missing_unresolved:
+        missing = None
+    if scope.cutoff_unresolved:
+        cutoff = None
 
     # --- Missing queue: filter chain (guarded -- None means the fetch
-    # didn't run or failed, R-07; the previous eligible/monitored counts
-    # and searched-log stay untouched rather than being wiped to zero) ---
+    # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
+    # counts and searched-log stay untouched rather than being wiped to zero) ---
     if missing is not None:
         missing = filter_monitored(missing)
         ist["missing_monitored"] = len(missing)
-        if missing_tag_id is not None:
-            missing = filter_by_tag(missing, missing_tag_id, _radarr_tags)
+        if scope.missing_tag_id is not None:
+            missing = filter_by_tag(missing, scope.missing_tag_id, _radarr_tags)
             logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
         if settings.general.skip_unreleased:
             missing = filter_unreleased_movies(missing)
@@ -870,6 +854,7 @@ async def run_radarr_cycle(
             if skipped_unreleased > 0:
                 logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
         ist["missing_eligible"] = len(missing)
+        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
@@ -884,8 +869,8 @@ async def run_radarr_cycle(
     if cutoff is not None:
         try:
             cutoff = filter_monitored(cutoff)
-            if cutoff_tag_id is not None:
-                cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
+            if scope.cutoff_tag_id is not None:
+                cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _radarr_tags)
                 logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
         except (AttributeError, KeyError, TypeError) as exc:
             logger.warning(
@@ -1372,52 +1357,37 @@ async def run_lidarr_cycle(
         )
 
     # --- Tag resolution (only when at least one tag is configured) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
-    ist["tag_warnings"] = []
-    if instance_config.missing_tag or instance_config.cutoff_tag:
-        tag_fetch_ok = False
-        try:
-            # RES-03: resolve via the cache-aware resolver when supplied
-            # (scheduler/search_now), else fall back to the direct client call
-            # (backward-compatible None default — keeps existing tests passing).
-            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-            tag_fetch_ok = True
-        except (httpx.HTTPError, pydantic.ValidationError) as exc:
-            logger.warning(
-                "Lidarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=_sanitize_exc(exc),
-            )
-            tags = []
-
-        if instance_config.missing_tag:
-            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Lidarr: Tag '{tag}' not found -- searching all missing items",
-                    tag=instance_config.missing_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-        if instance_config.cutoff_tag:
-            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Lidarr: Tag '{tag}' not found -- searching all cutoff items",
-                    tag=instance_config.cutoff_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
+    # RES-03: resolve via the cache-aware resolver when supplied
+    # (scheduler/search_now), else fall back to the direct client call
+    # (backward-compatible None default — keeps existing tests passing).
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config,
+        fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+        ist=ist,
+        app_label="Lidarr",
+        tally=tally,
+    )
+    # TAGSCOPE-01 / D-05 / OQ1 -- a tag-scoped queue whose tag can't be
+    # resolved is never widened. None reuses the Phase 78 contract: no
+    # dispatch, eligible/monitored counts and searched-log untouched.
+    # Applies to inactive queues too; warning and grading were already
+    # gated on active inside _resolve_tag_scope.
+    if scope.missing_unresolved:
+        missing = None
+    if scope.cutoff_unresolved:
+        cutoff = None
 
     # --- Missing queue: filter chain (guarded -- None means the fetch
-    # didn't run or failed, R-07; the previous eligible/monitored counts
-    # and searched-log stay untouched rather than being wiped to zero) ---
+    # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
+    # counts and searched-log stay untouched rather than being wiped to zero) ---
     if missing is not None:
         missing = filter_monitored(missing)
         ist["missing_monitored"] = len(missing)
-        if missing_tag_id is not None:
-            missing = filter_by_tag(missing, missing_tag_id, _lidarr_tags)
+        if scope.missing_tag_id is not None:
+            missing = filter_by_tag(missing, scope.missing_tag_id, _lidarr_tags)
             logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
         ist["missing_eligible"] = len(missing)
+        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
@@ -1432,8 +1402,8 @@ async def run_lidarr_cycle(
     if cutoff is not None:
         try:
             cutoff = filter_monitored(cutoff)
-            if cutoff_tag_id is not None:
-                cutoff = filter_by_tag(cutoff, cutoff_tag_id, _lidarr_tags)
+            if scope.cutoff_tag_id is not None:
+                cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _lidarr_tags)
                 logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
         except (AttributeError, KeyError, TypeError) as exc:
             logger.warning(
