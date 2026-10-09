@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Completed 78-03-PLAN.md
-last_updated: "2026-10-09T03:11:37.779Z"
+stopped_at: Completed 78-05-PLAN.md
+last_updated: "2026-10-09T03:33:30.076Z"
 last_activity: 2026-10-09 -- Phase 78 execution started
 progress:
   total_phases: 18
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
-  completed_plans: 8
-  percent: 6
+  completed_plans: 10
+  percent: 11
 ---
 
 # Project State
@@ -119,6 +119,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 78 P02 | 38min | 4 tasks | 4 files |
 | Phase 78 P04 | 13min | 3 tasks | 7 files |
 | Phase 78 P03 | 18min | 2 tasks | 2 files |
+| Phase 78 P05 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,8 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 78]: 78-02: insert_search_entry rolls back on any failure after its INSERT (catching bare Exception, not just aiosqlite.Error, since a driver-thread OSError leaves the same open transaction) — Prevents a partial write from staying pending on the shared connection -- a later successful insert can no longer commit a phantom row alongside it, and the pending-cap check only ever counts committed rows (R-08)
 - [Phase 78]: 78-04: Last successful search / Last success (legacy) row stays duplicated verbatim in both card bodies (connected and unreachable) rather than a second shared include, matching the plan's instruction and the file's existing per-body duplication convention for that row — cycle_grade.html's color dispatch collapses nothing_needed and any unexpected grade into one else branch since cycle_view() already restricts grade to exactly the four GRADE_LABELS keys
 - [Phase 78]: 78-03: run_sonarr_cycle and run_lidarr_cycle route through the same CycleTally/_fetch_wanted_queues/_search_and_record/_finalize_cycle/rebalance_batch_sizes helpers as Radarr, with a matching malformed-data guard on each app's cutoff filter chain so the pre-existing cross-queue fault-isolation guarantee survives the R-01-amended filter-chain reordering — Mirrors run_radarr_cycle exactly per the plan; the guard was required (not optional) because per-app regression tests (test_run_sonarr_cycle_cutoff_fault_does_not_block_missing_search, test_run_lidarr_cycle_cutoff_fault_does_not_block_missing_search) already pinned that a cutoff-side data fault must never block the missing queue's dispatch, and moving the cutoff filter chain earlier would otherwise break that guarantee
+- [Phase 78]: 78-05: _evaluate_cycle_outcome now derives the SAFETY-03 counter from state[app][inst]["last_cycle"]["grade"] instead of connected -- a reachable *arr that rejects every command now grades Failed and increments the counter — Previously connected=True reset the counter even when every search command was rejected, suppressing the alert; threshold/escalation logic in _record_cycle_failure is untouched
+- [Phase 78]: 78-05: tests/test_outcome_upgrade.py drives the real engine end-to-end (load_state -> run_*_cycle -> actual app-card route) rather than fabricating last_cycle dicts — Proves the engine's _finalize_cycle output actually renders correctly through the real route, which the Plan 04 fabricated-dict template tests cannot prove; all 6 tests passed on first run against Plans 01-04 as already built
 
 ### Pending Todos
 
@@ -204,8 +207,8 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-09T03:11:37.768Z
-Stopped at: Completed 78-03-PLAN.md
+Last session: 2026-10-09T03:33:30.072Z
+Stopped at: Completed 78-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -206,7 +206,7 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 **Source of truth:** `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4).
 
 - [x] **Phase 77: Secret & Reset-Token Log Hygiene** - Reset token never reaches the in-app log viewer; *arr HTTP errors always logged with secrets redacted (completed 2026-10-08)
-- [ ] **Phase 78: Honest Cycle Outcomes** - Each instance's last cycle grades Success/Partial/Failed/Nothing-needed, shown honestly on the dashboard
+- [x] **Phase 78: Honest Cycle Outcomes** - Each instance's last cycle grades Success/Partial/Failed/Nothing-needed, shown honestly on the dashboard (completed 2026-10-09)
 - [ ] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag skips its queue instead of searching everything
 - [ ] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle
 - [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note
@@ -251,7 +251,7 @@ Plans:
   4. The consecutive-failure counter increments only on Failed and resets on Success, Partial, or Nothing needed searching.
   5. A pre-upgrade `last_success` timestamp displays as "Last success (legacy)" until the instance's first new cycle completes, and an accepted command whose history write fails still counts as accepted, still updates "last successful search," and surfaces a separate persistence warning instead of being retried.
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 **UI hint**: yes
 Plans:
 **Wave 1**
@@ -269,7 +269,7 @@ Plans:
 
 **Wave 4** *(blocked on 78-02 and 78-03)*
 
-- [ ] 78-05-PLAN.md — SAFETY-03 counter driven by grade for scheduled + Search Now; refresh-counts route boundary (wave 4)
+- [x] 78-05-PLAN.md — SAFETY-03 counter driven by grade for scheduled + Search Now; refresh-counts route boundary (wave 4)
 
 ### Phase 79: Tag-Scoped Searches Stay in Scope
 
@@ -324,7 +324,7 @@ Plans:
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete    | 2026-10-08 |
-| 78. Honest Cycle Outcomes | 4/5 | In Progress|  |
+| 78. Honest Cycle Outcomes | 5/5 | Complete   | 2026-10-09 |
 | 79. Tag-Scoped Searches Stay in Scope | 0/TBD | Not started | - |
 | 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
 | 81. Correct Sonarr Grab Attribution | 0/TBD | Not started | - |
