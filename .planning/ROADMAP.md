@@ -293,7 +293,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 79-03-PLAN.md — Refresh counts never widen (active or inactive queue); end-to-end engine-to-card proof (wave 2)
+- [x] 79-03-PLAN.md — Refresh counts never widen (active or inactive queue); end-to-end engine-to-card proof (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -339,7 +339,7 @@ Plans:
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete    | 2026-10-08 |
 | 78. Honest Cycle Outcomes | 5/5 | Complete    | 2026-10-09 |
-| 79. Tag-Scoped Searches Stay in Scope | 2/4 | In Progress|  |
+| 79. Tag-Scoped Searches Stay in Scope | 3/4 | In Progress|  |
 | 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
 | 81. Correct Sonarr Grab Attribution | 0/TBD | Not started | - |
 

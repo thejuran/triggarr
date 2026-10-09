@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Completed 79-02-PLAN.md
-last_updated: "2026-10-09T15:04:59.132Z"
+stopped_at: Completed 79-03-PLAN.md
+last_updated: "2026-10-09T15:33:55.361Z"
 last_activity: 2026-10-09 -- Phase 79 execution started
 progress:
   total_phases: 18
   completed_phases: 2
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
   percent: 11
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 ## Current Position
 
 Phase: 79 (tag-scoped-searches-stay-in-scope) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Executing Phase 79
 Last activity: 2026-10-09 -- Phase 79 execution started
 
@@ -122,6 +122,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 78 P05 | 25min | 3 tasks | 5 files |
 | Phase 79 P01 | 15min | 3 tasks | 2 files |
 | Phase 79 P02 | 5min | 3 tasks | 6 files |
+| Phase 79 P03 | 26min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,8 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 79]: 79-02: a tag_warnings entry with no reason key (pre-upgrade state.json) renders the 'not found' wording via an explicit {% else %} branch, never Jinja's implicit Undefined
 - [Phase 79]: 79-02: a legacy scoped count with no scoped_count_tags provenance stamp is never trusted even if a current unresolved_tag_scopes marker exists -- only a count stamped with the exact tag name that is now unresolved is kept, everything else shows the em dash
 - [Phase 79]: 79-02: the unresolved-tag skip gate for progress denominators applies regardless of whether the queue is currently flagged in tag_warnings (badge/grading stay gated on active per D-04), so an inactive unresolved queue's count also shows unknown (OQ1)
+- [Phase 79]: 79-03: _clear_faulted_scoped_counts is a pure per-queue gate, never reading or writing ist['scoped_count_tags']/ist['unresolved_tag_scopes'] -- the card already treats a None count as unknown regardless of the stamp — Keeps the fault-clearing logic simple and additive to Plan 02's card-side trust decision rather than a parallel reimplementation
+- [Phase 79]: 79-03: all six engine entry points (3 cycles + 3 refreshes) now share one tag-resolution path via _resolve_tag_scope and one provenance-stamping path via _stamp_scoped_counts — No inline tag-resolution code remains anywhere in engine.py; refresh functions pass tally=None so refresh never touches the grade
 
 ### Pending Todos
 
@@ -214,8 +217,8 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-09T15:04:45.712Z
-Stopped at: Completed 79-02-PLAN.md
+Last session: 2026-10-09T15:33:55.357Z
+Stopped at: Completed 79-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
