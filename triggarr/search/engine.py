@@ -688,7 +688,10 @@ async def run_radarr_cycle(
     # a cutoff-side data fault must never block the missing queue's
     # dispatch below -- this is the pre-existing per-app guarantee this
     # reordering must not regress. Phase 80 owns richer per-item
-    # malformed-record counting; this is just the crash guard. ---
+    # malformed-record counting; this is just the crash guard. On a fault
+    # the queue is left unprocessed (None): never dispatched, its
+    # searched-log untouched, and -- when active -- marked unevaluated so
+    # the cycle can never grade Nothing needed searching (spec 3.1). ---
     if cutoff is not None:
         try:
             cutoff = filter_monitored(cutoff)
@@ -701,7 +704,9 @@ async def run_radarr_cycle(
                 "skipping cutoff this cycle",
                 etype=type(exc).__name__,
             )
-            cutoff = []
+            cutoff = None
+            if cutoff_active:
+                tally.mark_unevaluated("cutoff", f"malformed data ({type(exc).__name__})")
 
     missing_eligible_count = len(missing) if missing is not None else 0
     cutoff_eligible_count = len(cutoff) if cutoff is not None else 0
@@ -968,7 +973,11 @@ async def run_sonarr_cycle(
     # a cutoff-side data fault must never block the missing queue's
     # dispatch below -- this is the pre-existing per-app guarantee this
     # reordering must not regress. Phase 80 owns richer per-item
-    # malformed-record counting; this is just the crash guard. ---
+    # malformed-record counting; this is just the crash guard. On a fault
+    # the queue is left unprocessed (None): never dispatched, its
+    # searched-log and searchable count untouched, and -- when active --
+    # marked unevaluated so the cycle can never grade Nothing needed
+    # searching (spec 3.1). ---
     cutoff_seasons: list[dict] = []
     if cutoff_episodes is not None:
         try:
@@ -985,7 +994,9 @@ async def run_sonarr_cycle(
                 etype=type(exc).__name__,
             )
             cutoff_seasons = []
-            ist["cutoff_searchable"] = 0
+            cutoff_episodes = None
+            if cutoff_active:
+                tally.mark_unevaluated("cutoff", f"malformed data ({type(exc).__name__})")
 
     tally.record_eligible("missing", len(missing_seasons))
     tally.record_eligible("cutoff", len(cutoff_seasons))
@@ -1255,7 +1266,10 @@ async def run_lidarr_cycle(
     # a cutoff-side data fault must never block the missing queue's
     # dispatch below -- this is the pre-existing per-app guarantee this
     # reordering must not regress. Phase 80 owns richer per-item
-    # malformed-record counting; this is just the crash guard. ---
+    # malformed-record counting; this is just the crash guard. On a fault
+    # the queue is left unprocessed (None): never dispatched, its
+    # searched-log untouched, and -- when active -- marked unevaluated so
+    # the cycle can never grade Nothing needed searching (spec 3.1). ---
     if cutoff is not None:
         try:
             cutoff = filter_monitored(cutoff)
@@ -1268,7 +1282,9 @@ async def run_lidarr_cycle(
                 "skipping cutoff this cycle",
                 etype=type(exc).__name__,
             )
-            cutoff = []
+            cutoff = None
+            if cutoff_active:
+                tally.mark_unevaluated("cutoff", f"malformed data ({type(exc).__name__})")
 
     missing_eligible_count = len(missing) if missing is not None else 0
     cutoff_eligible_count = len(cutoff) if cutoff is not None else 0
