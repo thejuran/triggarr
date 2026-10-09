@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -565,6 +566,154 @@ async def _fetch_wanted_queues(
             )
 
     return missing, cutoff
+
+
+@dataclass(frozen=True)
+class _TagScope:
+    """Per-queue tag-resolution result for one cycle (TAGSCOPE-01..03, D-01..05, OQ1).
+
+    ``missing_unresolved``/``cutoff_unresolved`` is True whenever that
+    queue's configured tag could not be resolved -- the tag no longer
+    exists in the *arr's tag list, or the tag-list fetch itself failed --
+    set for an active OR inactive queue (OQ1): callers must force that
+    queue's working variable to ``None`` either way so its counts and
+    searched-log are never widened to the unscoped set. The warning
+    (``ist["tag_warnings"]``) and the grading call
+    (``CycleTally.mark_unevaluated``) only fire for an active queue (D-04)
+    -- that gating happens inside ``_resolve_tag_scope``, not here.
+    """
+
+    missing_tag_id: int | None
+    cutoff_tag_id: int | None
+    missing_unresolved: bool
+    cutoff_unresolved: bool
+
+
+async def _resolve_tag_scope(
+    *,
+    instance_config: InstanceConfig,
+    fetch_tags: Callable[[], Awaitable[list[Tag]]],
+    ist: AppState,
+    app_label: str,
+    tally: CycleTally | None,
+) -> _TagScope:
+    """Resolve each configured queue's tag, deciding resolved vs skipped.
+
+    Shared by all three ``run_*_cycle`` functions. Always resets
+    ``ist["tag_warnings"]`` and ``ist["unresolved_tag_scopes"]`` first --
+    this is TAGSCOPE-02's auto-clear: a tag that resolves on a later cycle
+    leaves no stale warning or marker behind.
+
+    When neither queue has a tag configured, returns immediately without
+    calling ``fetch_tags``. Otherwise awaits ``fetch_tags()`` inside the
+    existing ``(httpx.HTTPError, pydantic.ValidationError)`` catch tuple --
+    unwidened, per spec Sec7 (D-03/T-79-03). A fetch failure unresolves
+    every configured queue with the fixed reason "couldn't load tags"; a
+    successful fetch that simply lacks the configured tag name unresolves
+    it with ``f"tag '{name}' not found"`` (D-02/D-03). Both reasons are
+    derived from ``tag_fetch_ok``, never from the caught exception's text
+    (D-02, CLAUDE.md absolute rule) -- only the log line carries
+    ``_sanitize_exc(exc)``.
+
+    For every unresolved queue -- active OR inactive -- records
+    ``ist["unresolved_tag_scopes"][field] = name`` (OQ1/D-05 revision 1):
+    this is how a caller (and, downstream, the dashboard card) knows a
+    queue's scope is unresolved even when it's inactive and shows no
+    warning badge. The warning entry and the ``tally.mark_unevaluated``
+    grading call are gated on the queue being active (D-04) -- an inactive
+    queue's unresolved tag never produces a visible warning or grade
+    effect, but its working variable is still forced to ``None`` by the
+    caller so its counts freeze (TAGSCOPE-01).
+    """
+    ist["tag_warnings"] = []
+    ist["unresolved_tag_scopes"] = {}
+
+    if not instance_config.missing_tag and not instance_config.cutoff_tag:
+        return _TagScope(
+            missing_tag_id=None,
+            cutoff_tag_id=None,
+            missing_unresolved=False,
+            cutoff_unresolved=False,
+        )
+
+    tag_fetch_ok = False
+    try:
+        tags = await fetch_tags()
+        tag_fetch_ok = True
+    except (httpx.HTTPError, pydantic.ValidationError) as exc:
+        logger.warning(
+            "{app}: Failed to fetch tags -- tag-scoped queues skipped this cycle: {exc}",
+            app=app_label,
+            exc=_sanitize_exc(exc),
+        )
+        tags = []
+
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    missing_unresolved = False
+    cutoff_unresolved = False
+
+    for field, tag_name, queue_label in (
+        ("missing", instance_config.missing_tag, "Missing"),
+        ("cutoff", instance_config.cutoff_tag, "Cutoff"),
+    ):
+        if not tag_name:
+            continue
+        tag_id = resolve_tag_id(tag_name, tags)
+        if tag_id is None:
+            reason = f"tag '{tag_name}' not found" if tag_fetch_ok else "couldn't load tags"
+            ist["unresolved_tag_scopes"][field] = tag_name
+            active = getattr(instance_config, f"search_{field}_count") > 0
+            if active:
+                logger.warning(
+                    "{app}: {queue} queue skipped -- {reason}",
+                    app=app_label,
+                    queue=queue_label,
+                    reason=reason,
+                )
+                ist["tag_warnings"].append({
+                    "tag": tag_name,
+                    "field": field,
+                    "reason": "not_found" if tag_fetch_ok else "fetch_failed",
+                })
+                if tally is not None:
+                    tally.mark_unevaluated(field, reason)
+            else:
+                logger.debug(
+                    "{app}: {queue} queue tag unresolved but inactive -- counts frozen, no warning",
+                    app=app_label,
+                    queue=queue_label,
+                )
+            if field == "missing":
+                missing_unresolved = True
+            else:
+                cutoff_unresolved = True
+        elif field == "missing":
+            missing_tag_id = tag_id
+        else:
+            cutoff_tag_id = tag_id
+
+    return _TagScope(
+        missing_tag_id=missing_tag_id,
+        cutoff_tag_id=cutoff_tag_id,
+        missing_unresolved=missing_unresolved,
+        cutoff_unresolved=cutoff_unresolved,
+    )
+
+
+def _stamp_scoped_counts(ist: AppState, field: str, tag_name: str | None) -> None:
+    """Record the tag a committed scoped count was computed under (D-05 revision 1).
+
+    Called at every scoped-count commit, never for a skipped queue -- the
+    card trusts a kept count only if it was computed under the tag that is
+    now configured. Replaces a missing or non-dict ``scoped_count_tags``
+    value with a fresh dict first, preserving the other field's stamp.
+    """
+    existing = ist.get("scoped_count_tags")
+    if not isinstance(existing, dict):
+        existing = {}
+    existing[field] = tag_name
+    ist["scoped_count_tags"] = existing
 
 
 async def run_radarr_cycle(
