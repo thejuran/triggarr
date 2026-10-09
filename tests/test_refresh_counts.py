@@ -1041,6 +1041,47 @@ def test_refresh_counts_does_not_touch_last_search_time(refresh_client, refresh_
     assert "radarr_Default" not in refresh_test_app.state.last_search_time
 
 
+def test_refresh_counts_route_preserves_grade_timestamps_and_counter(refresh_client, refresh_test_app):
+    """D-01 / R2 (78-05): refresh-counts never touches the grade, either timestamp, or the counter.
+
+    Regression guard, expected to pass on first run -- refresh_radarr_counts was
+    already proven queue-independent and last_run/last_success-independent in
+    Phase 74 (CNT-01..03); this pins the Phase 78 fields (last_cycle,
+    last_successful_search) into the same guarantee at the route level.
+    """
+    state = refresh_test_app.state.triggarr_state
+    seeded_last_cycle = {
+        "grade": "failed",
+        "accepted": 0,
+        "failed": 2,
+        "malformed_skipped": 0,
+        "persistence_failed": 0,
+        "failure_reasons": [{"reason": "HTTP 500", "count": 2}],
+        "unevaluated": [],
+        "eligible": {"missing": 2, "cutoff": 0},
+        "fetch_error": None,
+        "finished_at": "2026-01-01T00:00:00Z",
+    }
+    state["radarr"]["Default"]["last_cycle"] = seeded_last_cycle
+    state["radarr"]["Default"]["last_run"] = "2026-01-01T00:00:00Z"
+    state["radarr"]["Default"]["last_successful_search"] = "2025-12-31T00:00:00Z"
+    state["radarr"]["Default"]["last_success"] = "2025-12-30T00:00:00Z"
+    refresh_test_app.state.search_failures["radarr_Default_search"] = 2
+
+    with patch(
+        "triggarr.web.routes.refresh_radarr_counts",
+        new=AsyncMock(return_value=([], [], None)),
+    ):
+        response = refresh_client.post("/api/refresh-counts/radarr/Default")
+
+    assert response.status_code == 200
+    assert state["radarr"]["Default"]["last_cycle"] == seeded_last_cycle
+    assert state["radarr"]["Default"]["last_run"] == "2026-01-01T00:00:00Z"
+    assert state["radarr"]["Default"]["last_successful_search"] == "2025-12-31T00:00:00Z"
+    assert state["radarr"]["Default"]["last_success"] == "2025-12-30T00:00:00Z"
+    assert refresh_test_app.state.search_failures["radarr_Default_search"] == 2
+
+
 def test_app_card_connected_has_refresh_counts_button(refresh_client):
     """CNT-05: connected card partial contains 'Refresh counts' button (D-09/D-11)."""
     response = refresh_client.get("/partials/app-card/radarr/Default")
