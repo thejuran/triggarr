@@ -716,6 +716,39 @@ def _stamp_scoped_counts(ist: AppState, field: str, tag_name: str | None) -> Non
     ist["scoped_count_tags"] = existing
 
 
+def _clear_faulted_scoped_counts(
+    ist: AppState,
+    scope: _TagScope | None,
+    instance_config: InstanceConfig,
+    *,
+    missing_fields: tuple[str, ...],
+    cutoff_fields: tuple[str, ...],
+) -> None:
+    """Clear a refresh data fault's scoped counts without erasing a skipped queue's last-good counts (D-05).
+
+    A malformed record in one queue must never widen OR erase the OTHER
+    queue's counts when that queue's tag is unresolved -- or when its scope
+    was never determined because the fault happened before/during tag
+    resolution (``scope is None``). Only a queue whose tag scope RESOLVED
+    this refresh has its listed fields cleared to None. Never reads or
+    writes ``ist["scoped_count_tags"]`` or ``ist["unresolved_tag_scopes"]``
+    -- the card already treats a None count as unknown regardless of the
+    stamp.
+    """
+    missing_preserved = (scope is not None and scope.missing_unresolved) or (
+        scope is None and bool(instance_config.missing_tag)
+    )
+    cutoff_preserved = (scope is not None and scope.cutoff_unresolved) or (
+        scope is None and bool(instance_config.cutoff_tag)
+    )
+    if not missing_preserved:
+        for field in missing_fields:
+            ist[field] = None
+    if not cutoff_preserved:
+        for field in cutoff_fields:
+            ist[field] = None
+
+
 async def run_radarr_cycle(
     client: RadarrClient,
     state: TriggarrState,
@@ -1516,8 +1549,11 @@ async def refresh_radarr_counts(
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
       (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -> sets connected=False + unreachable_since,
-          clears eligible count fields, returns None (never propagates to caller).
+          on a malformed nested record -- clears the scoped count fields of queues
+          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+          keeps its last good counts and stamp (Phase 79 D-05), returns None.
+      (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
+          at their previous values, never widened, and its tuple slot is [].
 
     Args:
         client: Connected Radarr API client.
@@ -1560,57 +1596,44 @@ async def refresh_radarr_counts(
     ist["total_items"] = total_items
 
     # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
+    scope: _TagScope | None = None
     try:
-        ist["tag_warnings"] = []
-        if instance_config.missing_tag or instance_config.cutoff_tag:
-            tag_fetch_ok = False
-            try:
-                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-                tag_fetch_ok = True
-            except (httpx.HTTPError, pydantic.ValidationError) as exc:
-                logger.warning(
-                    "Radarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
-                    exc=_sanitize_exc(exc),
-                )
-                tags = []
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config,
+            fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+            ist=ist,
+            app_label="Radarr",
+            tally=None,
+        )
 
-            if instance_config.missing_tag:
-                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-                if missing_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Radarr: Tag '{tag}' not found -- counting all missing items",
-                        tag=instance_config.missing_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-            if instance_config.cutoff_tag:
-                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-                if cutoff_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Radarr: Tag '{tag}' not found -- counting all cutoff items",
-                        tag=instance_config.cutoff_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-        # Missing filter chain (compute into locals first, then commit to ist)
-        filtered_missing = filter_monitored(missing)
-        missing_monitored_count = len(filtered_missing)
-        if missing_tag_id is not None:
-            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _radarr_tags)
-        if settings.general.skip_unreleased:
-            filtered_missing = filter_unreleased_movies(filtered_missing)
-        missing_eligible_count = len(filtered_missing)
+        # Missing filter chain (compute into locals first, then commit after the
+        # cutoff chain -- no-partial-state guarantee). A tag-unresolved queue
+        # never widens past its last-good counts (TAGSCOPE-01/D-05).
+        filtered_missing: list[dict] = []
+        missing_monitored_count: int | None = None
+        missing_eligible_count: int | None = None
+        if not scope.missing_unresolved:
+            filtered_missing = filter_monitored(missing)
+            missing_monitored_count = len(filtered_missing)
+            if scope.missing_tag_id is not None:
+                filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _radarr_tags)
+            if settings.general.skip_unreleased:
+                filtered_missing = filter_unreleased_movies(filtered_missing)
+            missing_eligible_count = len(filtered_missing)
 
         # Cutoff filter chain on a local copy (Radarr has no cutoff_searchable ist write)
-        filtered_cutoff = filter_monitored(cutoff)
-        if cutoff_tag_id is not None:
-            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _radarr_tags)
+        filtered_cutoff: list[dict] = []
+        if not scope.cutoff_unresolved:
+            filtered_cutoff = filter_monitored(cutoff)
+            if scope.cutoff_tag_id is not None:
+                filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _radarr_tags)
 
-        # Commit eligible counts to ist only after successful filtering (no-partial-state guarantee)
-        ist["missing_monitored"] = missing_monitored_count
-        ist["missing_eligible"] = missing_eligible_count
+        # Commit eligible counts to ist only after successful filtering (no-partial-state
+        # guarantee); a tag-unresolved missing queue's fields are never committed.
+        if not scope.missing_unresolved:
+            ist["missing_monitored"] = missing_monitored_count
+            ist["missing_eligible"] = missing_eligible_count
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
         # Malformed nested record (non-dict series/artist, non-iterable tags, etc.)
@@ -1620,12 +1643,13 @@ async def refresh_radarr_counts(
             etype=type(exc).__name__,
         )
         _mark_unreachable(ist)
-        # Clear eligible counts so no half-updated set is left behind
-        ist["missing_monitored"] = None
-        ist["missing_eligible"] = None
+        _clear_faulted_scoped_counts(ist, scope, instance_config,
+            missing_fields=("missing_monitored", "missing_eligible"),
+            cutoff_fields=(),
+        )
         return None
 
-    return (filtered_missing, cutoff, cutoff_tag_id)
+    return (filtered_missing, cutoff if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
 
 
 async def refresh_sonarr_counts(
@@ -1783,8 +1807,11 @@ async def refresh_lidarr_counts(
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
       (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -> sets connected=False + unreachable_since,
-          clears eligible count fields, returns None (never propagates to caller).
+          on a malformed nested record -- clears the scoped count fields of queues
+          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+          keeps its last good counts and stamp (Phase 79 D-05), returns None.
+      (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
+          at their previous values, never widened, and its tuple slot is [].
 
     Args:
         client: Connected Lidarr API client.
@@ -1827,55 +1854,42 @@ async def refresh_lidarr_counts(
     ist["total_items"] = total_items
 
     # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
+    scope: _TagScope | None = None
     try:
-        ist["tag_warnings"] = []
-        if instance_config.missing_tag or instance_config.cutoff_tag:
-            tag_fetch_ok = False
-            try:
-                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-                tag_fetch_ok = True
-            except (httpx.HTTPError, pydantic.ValidationError) as exc:
-                logger.warning(
-                    "Lidarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
-                    exc=_sanitize_exc(exc),
-                )
-                tags = []
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config,
+            fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+            ist=ist,
+            app_label="Lidarr",
+            tally=None,
+        )
 
-            if instance_config.missing_tag:
-                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-                if missing_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Lidarr: Tag '{tag}' not found -- counting all missing items",
-                        tag=instance_config.missing_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-            if instance_config.cutoff_tag:
-                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-                if cutoff_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Lidarr: Tag '{tag}' not found -- counting all cutoff items",
-                        tag=instance_config.cutoff_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-        # Missing filter chain (compute into locals first, then commit to ist)
-        filtered_missing = filter_monitored(missing)
-        missing_monitored_count = len(filtered_missing)
-        if missing_tag_id is not None:
-            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _lidarr_tags)
-        missing_eligible_count = len(filtered_missing)
+        # Missing filter chain (compute into locals first, then commit after the
+        # cutoff chain -- no-partial-state guarantee). A tag-unresolved queue
+        # never widens past its last-good counts (TAGSCOPE-01/D-05).
+        filtered_missing: list[dict] = []
+        missing_monitored_count: int | None = None
+        missing_eligible_count: int | None = None
+        if not scope.missing_unresolved:
+            filtered_missing = filter_monitored(missing)
+            missing_monitored_count = len(filtered_missing)
+            if scope.missing_tag_id is not None:
+                filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _lidarr_tags)
+            missing_eligible_count = len(filtered_missing)
 
         # Cutoff filter chain on a local copy (Lidarr has no cutoff_searchable ist write)
-        filtered_cutoff = filter_monitored(cutoff)
-        if cutoff_tag_id is not None:
-            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _lidarr_tags)
+        filtered_cutoff: list[dict] = []
+        if not scope.cutoff_unresolved:
+            filtered_cutoff = filter_monitored(cutoff)
+            if scope.cutoff_tag_id is not None:
+                filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _lidarr_tags)
 
-        # Commit eligible counts to ist only after successful filtering (no-partial-state guarantee)
-        ist["missing_monitored"] = missing_monitored_count
-        ist["missing_eligible"] = missing_eligible_count
+        # Commit eligible counts to ist only after successful filtering (no-partial-state
+        # guarantee); a tag-unresolved missing queue's fields are never committed.
+        if not scope.missing_unresolved:
+            ist["missing_monitored"] = missing_monitored_count
+            ist["missing_eligible"] = missing_eligible_count
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
         # Malformed nested record -> upstream-DATA failure: same disconnected outcome as fetch failure.
@@ -1884,9 +1898,10 @@ async def refresh_lidarr_counts(
             etype=type(exc).__name__,
         )
         _mark_unreachable(ist)
-        # Clear eligible counts so no half-updated set is left behind
-        ist["missing_monitored"] = None
-        ist["missing_eligible"] = None
+        _clear_faulted_scoped_counts(ist, scope, instance_config,
+            missing_fields=("missing_monitored", "missing_eligible"),
+            cutoff_fields=(),
+        )
         return None
 
-    return (filtered_missing, cutoff, cutoff_tag_id)
+    return (filtered_missing, cutoff if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
