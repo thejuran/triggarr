@@ -275,6 +275,57 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
+def _scoped_count_unknown(app_state: dict) -> dict[str, bool]:
+    """Decide whether missing/cutoff progress counts must show as unknown (Phase 79 D-05/OQ1).
+
+    A tag-scoped queue whose tag is unresolved must never show the unscoped
+    whole-library count. Legacy (pre-upgrade) scoped counts carry no provenance
+    stamp and may have been computed fail-open, so they are not trusted; a kept
+    count is trusted only when it was computed under the same tag that is now
+    unresolved.
+
+    Everything read here comes from persisted state.json (possibly legacy or
+    tampered) and is validated before use -- never trusted by shape.
+    """
+    unresolved: dict[str, str] = {}
+    raw_unresolved = app_state.get("unresolved_tag_scopes")
+    if isinstance(raw_unresolved, dict):
+        for field in ("missing", "cutoff"):
+            tag_name = raw_unresolved.get(field)
+            if isinstance(tag_name, str) and tag_name:
+                unresolved[field] = tag_name
+
+    # Legacy/pre-first-cycle state has no unresolved_tag_scopes marker yet --
+    # fall back to tag_warnings, but let the engine marker win when both exist.
+    raw_warnings = app_state.get("tag_warnings")
+    if isinstance(raw_warnings, list):
+        for warning in raw_warnings:
+            if not isinstance(warning, dict):
+                continue
+            field = warning.get("field")
+            tag_name = warning.get("tag")
+            if field in ("missing", "cutoff") and isinstance(tag_name, str) and tag_name:
+                unresolved.setdefault(field, tag_name)
+
+    raw_stamps = app_state.get("scoped_count_tags")
+    stamps = raw_stamps if isinstance(raw_stamps, dict) else {}
+
+    missing_scoped_value = app_state.get("missing_searchable")
+    if missing_scoped_value is None:
+        missing_scoped_value = app_state.get("missing_eligible")
+    cutoff_scoped_value = app_state.get("cutoff_searchable")
+    scoped_values = {"missing": missing_scoped_value, "cutoff": cutoff_scoped_value}
+
+    result: dict[str, bool] = {}
+    for field in ("missing", "cutoff"):
+        if field not in unresolved:
+            result[field] = False
+            continue
+        trusted = stamps.get(field) == unresolved[field] and isinstance(scoped_values[field], int)
+        result[field] = not trusted
+    return result
+
+
 def _build_app_context(request: Request, app_name: str, instance_name: str | None = None) -> dict | None:
     """Build a template context dict for a single app instance.
 
@@ -324,6 +375,7 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
             last_checked_stale = False
 
     last_cycle = app_state.get("last_cycle")
+    scope_unknown = _scoped_count_unknown(app_state)
 
     return {
         "name": app_name,
@@ -353,6 +405,8 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
         "total_items": app_state.get("total_items"),
         "skip_unreleased": settings.general.skip_unreleased,
         "tag_warnings": app_state.get("tag_warnings", []),
+        "missing_scope_unknown": scope_unknown["missing"],
+        "cutoff_scope_unknown": scope_unknown["cutoff"],
     }
 
 

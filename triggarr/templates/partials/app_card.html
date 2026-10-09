@@ -99,12 +99,13 @@
         </span>
         {% if app.missing_count is not none %}
         <p class="text-[10px] text-triggarr-muted mt-0.5 flex items-center gap-1.5">
-          <span>{{ app.missing_cursor }} of {{ app.missing_searchable if app.missing_searchable is not none else (app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?')) }}</span>
+          {# Phase 79 D-05: unresolved tag scope -> unknown, never the raw whole-library fallback #}
+          <span>{{ app.missing_cursor }} of {% if app.missing_scope_unknown %}&mdash;{% else %}{{ app.missing_searchable if app.missing_searchable is not none else (app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?')) }}{% endif %}</span>
           {%- if app.missing_pass is defined and app.missing_pass > 0 %}
           <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.missing_pass }}</span>
           {%- endif %}
         </p>
-        {%- if app.skip_unreleased and app.name == 'radarr' and app.missing_eligible is not none and app.missing_monitored is not none and app.missing_eligible < app.missing_monitored %}
+        {%- if app.skip_unreleased and app.name == 'radarr' and not app.missing_scope_unknown and app.missing_eligible is not none and app.missing_monitored is not none and app.missing_eligible < app.missing_monitored %}
         <p class="text-[10px] text-amber-400 mt-0.5">{{ app.missing_monitored - app.missing_eligible }} skipped</p>
         {%- endif %}
         {% endif %}
@@ -116,7 +117,8 @@
         </span>
         {% if app.cutoff_count is not none %}
         <p class="text-[10px] text-triggarr-muted mt-0.5 flex items-center gap-1.5">
-          <span>{{ app.cutoff_cursor }} of {{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}</span>
+          {# Phase 79 D-05: unresolved tag scope -> unknown, never the raw whole-library fallback #}
+          <span>{{ app.cutoff_cursor }} of {% if app.cutoff_scope_unknown %}&mdash;{% else %}{{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}{% endif %}</span>
           {%- if app.cutoff_pass is defined and app.cutoff_pass > 0 %}
           <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.cutoff_pass }}</span>
           {%- endif %}

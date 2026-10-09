@@ -85,6 +85,12 @@ class AppState(TypedDict, total=False):
     # [{"tag": name, "field": "missing"|"cutoff", "reason": "not_found"|"fetch_failed"}] --
     # active tag-scoped queues skipped this cycle
     tag_warnings: list[dict]
+    # Phase 79: {field: configured tag} for queues whose tag is unresolved this
+    # cycle (active or inactive)
+    unresolved_tag_scopes: dict[str, str]
+    # Phase 79: tag each committed scoped count was computed under (None =
+    # untagged); absent pre-upgrade
+    scoped_count_tags: dict[str, str | None]
 
 
 class TriggarrState(TypedDict, total=False):
