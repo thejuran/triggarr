@@ -838,10 +838,18 @@ async def run_sonarr_cycle(
         logger.warning("Sonarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["sonarr"][instance_name]
+    tally = CycleTally()
+    missing_active = instance_config.search_missing_count > 0
+    cutoff_active = instance_config.search_cutoff_count > 0
 
     try:
-        missing_episodes = await client.get_wanted_missing()
-        cutoff_episodes = await client.get_wanted_cutoff()
+        missing_episodes, cutoff_episodes = await _fetch_wanted_queues(
+            fetch_missing=client.get_wanted_missing,
+            fetch_cutoff=client.get_wanted_cutoff,
+            missing_active=missing_active,
+            cutoff_active=cutoff_active,
+            app_label="Sonarr",
+        )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
         ist["connected"] = False
@@ -850,6 +858,25 @@ async def run_sonarr_cycle(
             ist["unreachable_since"] = (
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")
             )
+        tally.record_fetch_failure(_sanitize_exc(exc))
+        _finalize_cycle(ist, tally, instance_config)
+        return state
+
+    if missing_episodes is None and cutoff_episodes is None:
+        # R-07: both queues are inactive and neither fetch could refresh its
+        # count. That is real evidence the host is unreachable, but nothing
+        # was configured to search this cycle -- grade nothing_needed (no
+        # active queues), never Failed.
+        logger.warning(
+            "Sonarr: both queues inactive and neither could be fetched -- "
+            "marked unreachable; not graded Failed"
+        )
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = (
+                datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            )
+        _finalize_cycle(ist, tally, instance_config)
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -863,9 +890,12 @@ async def run_sonarr_cycle(
     ist["connected"] = True
     ist["unreachable_since"] = None
 
-    # Cache raw item counts before filtering (WEBU-04)
-    ist["missing_count"] = len(missing_episodes)
-    ist["cutoff_count"] = len(cutoff_episodes)
+    # Cache raw item counts before filtering (WEBU-04). A queue that could
+    # not be fetched (inactive + failed) keeps its previous value (R-07).
+    if missing_episodes is not None:
+        ist["missing_count"] = len(missing_episodes)
+    if cutoff_episodes is not None:
+        ist["cutoff_count"] = len(cutoff_episodes)
     ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
@@ -919,144 +949,141 @@ async def run_sonarr_cycle(
                 )
                 ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
 
-    searched_count = 0
-    skipped_count = 0
+    # --- Missing queue: filter chain (guarded -- None means the fetch
+    # didn't run or failed, R-07; the previous eligible/searchable counts
+    # and searched-log stay untouched rather than being wiped to zero) ---
+    missing_seasons: list[dict] = []
+    if missing_episodes is not None:
+        missing_episodes = filter_sonarr_episodes(missing_episodes)
+        if missing_tag_id is not None:
+            missing_episodes = filter_by_tag(missing_episodes, missing_tag_id, _sonarr_tags)
+            logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
+        missing_seasons = deduplicate_to_seasons(missing_episodes)
+        ist["missing_eligible"] = len(missing_episodes)
+        ist["missing_searchable"] = len(missing_seasons)
 
-    # --- Missing queue ---
-    missing_episodes = filter_sonarr_episodes(missing_episodes)
-    if missing_tag_id is not None:
-        missing_episodes = filter_by_tag(missing_episodes, missing_tag_id, _sonarr_tags)
-        logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
-    missing_seasons = deduplicate_to_seasons(missing_episodes)
-    ist["missing_eligible"] = len(missing_episodes)
-    ist["missing_searchable"] = len(missing_seasons)
-    batch, new_log, pass_done = prioritize_batch(
-        missing_seasons, ist.get("missing_searched", []), missing_limit,
-        key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
-    )
-    for season in batch:
+    # --- Cutoff queue: filter chain (moved up so both queues' eligible
+    # counts are known before rebalancing hard-max slots, R-01 amended).
+    # Guarded against malformed nested records (e.g. a non-dict "series"):
+    # a cutoff-side data fault must never block the missing queue's
+    # dispatch below -- this is the pre-existing per-app guarantee this
+    # reordering must not regress. Phase 80 owns richer per-item
+    # malformed-record counting; this is just the crash guard. ---
+    cutoff_seasons: list[dict] = []
+    if cutoff_episodes is not None:
         try:
-            await client.search_season(season["seriesId"], season["seasonNumber"])
-            await insert_search_entry(
-                db, "Sonarr", "missing", season["display_name"],
-                outcome="searched", detail="search triggered",
-                item_id=season["seriesId"],
-                season_number=season["seasonNumber"],
-                missing_count=season["episode_count"],
-                instance_id=instance_name,
+            cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
+            if cutoff_tag_id is not None:
+                cutoff_episodes = filter_by_tag(cutoff_episodes, cutoff_tag_id, _sonarr_tags)
+                logger.debug("Sonarr: Tag filter applied -- {n} cutoff episodes match tag", n=len(cutoff_episodes))
+            cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
+            ist["cutoff_searchable"] = len(cutoff_seasons)
+        except (AttributeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Sonarr: Cutoff queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping cutoff this cycle",
+                etype=type(exc).__name__,
+            )
+            cutoff_seasons = []
+            ist["cutoff_searchable"] = 0
+
+    tally.record_eligible("missing", len(missing_seasons))
+    tally.record_eligible("cutoff", len(cutoff_seasons))
+
+    # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
+    capped_missing_limit, capped_cutoff_limit = missing_limit, cutoff_limit
+    missing_limit, cutoff_limit = rebalance_batch_sizes(
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=orig_missing,
+        cutoff_configured=orig_cutoff,
+        missing_eligible=len(missing_seasons),
+        cutoff_eligible=len(cutoff_seasons),
+        hard_max=hard_max,
+    )
+    if hard_max > 0 and (missing_limit, cutoff_limit) != (capped_missing_limit, capped_cutoff_limit):
+        logger.debug(
+            "Sonarr: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
+            max=hard_max,
+            m=missing_limit,
+            c=cutoff_limit,
+        )
+
+    # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
+    # and its searched-log is left exactly as it was, R-07) ---
+    if missing_episodes is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            missing_seasons, ist.get("missing_searched", []), missing_limit,
+            key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+        )
+        for season in batch:
+            await _search_and_record(
+                command=lambda sid=season["seriesId"], sn=season["seasonNumber"]: client.search_season(sid, sn),
+                tally=tally,
+                db=db,
+                app_label="Sonarr",
+                queue="missing",
+                item_name=season.get("display_name", "unknown"),
+                instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Sonarr: Searched {name} (missing)", name=season["display_name"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Sonarr: Failed to search {name}: {exc}",
-                name=season.get("display_name", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Sonarr", "missing", season.get("display_name", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
             )
-            skipped_count += 1
-    ist["missing_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        logger.info(
-            "Sonarr: Missing pass {p} complete ({n} searched)",
-            p=ist["missing_pass"],
-            n=len(new_log),
-        )
+        ist["missing_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+            logger.info(
+                "Sonarr: Missing pass {p} complete ({n} searched)",
+                p=ist["missing_pass"],
+                n=len(new_log),
+            )
 
-    # --- Cutoff queue ---
-    cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
-    if cutoff_tag_id is not None:
-        cutoff_episodes = filter_by_tag(cutoff_episodes, cutoff_tag_id, _sonarr_tags)
-        logger.debug("Sonarr: Tag filter applied -- {n} cutoff episodes match tag", n=len(cutoff_episodes))
-    cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
-    ist["cutoff_searchable"] = len(cutoff_seasons)
-    batch, new_log, pass_done = prioritize_batch(
-        cutoff_seasons, ist.get("cutoff_searched", []), cutoff_limit,
-        key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
-    )
-    for season in batch:
-        try:
-            await client.search_season(season["seriesId"], season["seasonNumber"])
-            await insert_search_entry(
-                db, "Sonarr", "cutoff", season["display_name"],
-                outcome="searched", detail="search triggered",
-                item_id=season["seriesId"],
-                season_number=season["seasonNumber"],
-                missing_count=season["episode_count"],
-                instance_id=instance_name,
+    # --- Cutoff queue: dispatch ---
+    if cutoff_episodes is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            cutoff_seasons, ist.get("cutoff_searched", []), cutoff_limit,
+            key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+        )
+        for season in batch:
+            await _search_and_record(
+                command=lambda sid=season["seriesId"], sn=season["seasonNumber"]: client.search_season(sid, sn),
+                tally=tally,
+                db=db,
+                app_label="Sonarr",
+                queue="cutoff",
+                item_name=season.get("display_name", "unknown"),
+                instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Sonarr: Searched {name} (cutoff)", name=season["display_name"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Sonarr: Failed to search {name}: {exc}",
-                name=season.get("display_name", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Sonarr", "cutoff", season.get("display_name", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
             )
-            skipped_count += 1
-    ist["cutoff_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        logger.info(
-            "Sonarr: Cutoff pass {p} complete ({n} searched)",
-            p=ist["cutoff_pass"],
-            n=len(new_log),
-        )
+        ist["cutoff_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+            logger.info(
+                "Sonarr: Cutoff pass {p} complete ({n} searched)",
+                p=ist["cutoff_pass"],
+                n=len(new_log),
+            )
+
+    # --- Grade the cycle and stamp timestamps (R-04/R-05/OUTCOME-01/02) ---
+    _finalize_cycle(ist, tally, instance_config)
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
     logger.info(
-        "Sonarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
+        "Sonarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {accepted} accepted, "
+        "{failed} failed, {unsaved} history not saved -- grade {grade}",
         elapsed=elapsed,
-        fetched=ist["missing_count"] + ist["cutoff_count"],
-        searched=searched_count,
-        skipped=skipped_count,
+        fetched=(ist.get("missing_count") or 0) + (ist.get("cutoff_count") or 0),
+        accepted=tally.accepted,
+        failed=tally.failed,
+        unsaved=tally.persistence_failed,
+        grade=ist["last_cycle"]["grade"],
     )
 
-    # --- Update last_run and last_success ---
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    ist["last_run"] = now_iso
-    ist["last_success"] = now_iso
     return state
 
 

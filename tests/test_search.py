@@ -1268,7 +1268,7 @@ async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
 
 
 async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
-    """Sonarr cycle logs a summary with fetched/searched/skipped counts."""
+    """Sonarr cycle logs a summary with fetched/accepted/failed counts and the graded outcome."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -1296,11 +1296,14 @@ async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
         logger.remove(handler_id)
 
     output = sink.getvalue()
+    # 78-03 / R-04: the cycle-completed line now reports tally counts and the
+    # graded outcome instead of the old searched/skipped counters.
     assert "Sonarr: Cycle completed in" in output
     # 3 episodes fetched (raw count before filtering/dedup)
     assert "3 fetched" in output
-    assert "searched" in output
-    assert "skipped" in output
+    assert "3 accepted" in output
+    assert "0 failed" in output
+    assert "grade success" in output
     await db.close()
 
 
