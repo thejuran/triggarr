@@ -24,7 +24,6 @@ from tests.conftest import make_settings
 from triggarr.db import init_db
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig
-from triggarr.search.outcome import cycle_view
 from triggarr.search.engine import (
     _lidarr_tags,
     cap_batch_sizes,
@@ -39,6 +38,7 @@ from triggarr.search.engine import (
     run_radarr_cycle,
     run_sonarr_cycle,
 )
+from triggarr.search.outcome import cycle_view
 from triggarr.state import _default_state
 
 # ---------------------------------------------------------------------------

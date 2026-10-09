@@ -101,6 +101,51 @@ def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tup
     return (effective_missing, effective_cutoff)
 
 
+def rebalance_batch_sizes(
+    *,
+    missing_limit: int,
+    cutoff_limit: int,
+    missing_configured: int,
+    cutoff_configured: int,
+    missing_eligible: int,
+    cutoff_eligible: int,
+    hard_max: int,
+) -> tuple[int, int]:
+    """Reallocate unused hard-max budget to a starved queue with eligible work (amended R-01).
+
+    ``cap_batch_sizes`` can give an active queue with eligible work zero
+    slots while the other queue has no eligible work this cycle (e.g.
+    ``missing_count=50, cutoff_count=50, hard_max=1`` -> ``(0, 1)``). If the
+    cutoff queue then has nothing eligible, the cycle would dispatch zero
+    commands despite real missing-queue work existing -- the exact
+    counterexample from RESEARCH.md Pitfall 4. This reallocates any slot a
+    queue cannot use (because it lacks eligible items) to the other queue,
+    up to that queue's own configured count and eligible count, without
+    ever exceeding ``hard_max`` in total.
+
+    ``missing_limit``/``cutoff_limit`` are the already-capped values from
+    ``cap_batch_sizes`` (pre-hard-max totals, i.e. ``missing_configured``/
+    ``cutoff_configured``, are passed separately since the cap already
+    consumed them). When ``hard_max <= 0`` (unlimited), the capped inputs
+    are returned unchanged -- there is no budget to reallocate.
+    """
+    if hard_max <= 0:
+        return (missing_limit, cutoff_limit)
+
+    m = min(missing_limit, missing_eligible)
+    c = min(cutoff_limit, cutoff_eligible)
+    leftover = hard_max - m - c
+
+    top_up_missing = max(0, min(leftover, min(missing_configured, missing_eligible) - m))
+    m += top_up_missing
+    leftover -= top_up_missing
+
+    top_up_cutoff = max(0, min(leftover, min(cutoff_configured, cutoff_eligible) - c))
+    c += top_up_cutoff
+
+    return (m, c)
+
+
 def filter_monitored(items: list[dict]) -> list[dict]:
     """Filter out items where ``monitored`` is not True.
 
@@ -536,7 +581,7 @@ async def run_radarr_cycle(
                 )
                 ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
 
-    # --- Missing queue ---
+    # --- Missing queue: filter chain ---
     missing = filter_monitored(missing)
     ist["missing_monitored"] = len(missing)
     if missing_tag_id is not None:
@@ -548,6 +593,37 @@ async def run_radarr_cycle(
         if skipped_unreleased > 0:
             logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
     ist["missing_eligible"] = len(missing)
+
+    # --- Cutoff queue: filter chain (moved up so both queues' eligible
+    # counts are known before rebalancing hard-max slots, R-01 amended) ---
+    cutoff = filter_monitored(cutoff)
+    if cutoff_tag_id is not None:
+        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
+        logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+
+    tally.record_eligible("missing", len(missing))
+    tally.record_eligible("cutoff", len(cutoff))
+
+    # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
+    capped_missing_limit, capped_cutoff_limit = missing_limit, cutoff_limit
+    missing_limit, cutoff_limit = rebalance_batch_sizes(
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=orig_missing,
+        cutoff_configured=orig_cutoff,
+        missing_eligible=len(missing),
+        cutoff_eligible=len(cutoff),
+        hard_max=hard_max,
+    )
+    if hard_max > 0 and (missing_limit, cutoff_limit) != (capped_missing_limit, capped_cutoff_limit):
+        logger.debug(
+            "Radarr: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
+            max=hard_max,
+            m=missing_limit,
+            c=cutoff_limit,
+        )
+
+    # --- Missing queue: dispatch ---
     batch, new_log, pass_done = prioritize_batch(
         missing, ist.get("missing_searched", []), missing_limit,
         key_fn=lambda m: str(m["id"]),
@@ -573,11 +649,7 @@ async def run_radarr_cycle(
             n=len(new_log),
         )
 
-    # --- Cutoff queue ---
-    cutoff = filter_monitored(cutoff)
-    if cutoff_tag_id is not None:
-        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
-        logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+    # --- Cutoff queue: dispatch ---
     batch, new_log, pass_done = prioritize_batch(
         cutoff, ist.get("cutoff_searched", []), cutoff_limit,
         key_fn=lambda m: str(m["id"]),
