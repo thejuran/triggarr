@@ -45,6 +45,7 @@ from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
 from triggarr.models.config import APP_TYPES, InstanceConfig, Settings
 from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
+from triggarr.search.outcome import GRADE_FAILED
 from triggarr.state import (
     TriggarrState,
     _default_instance_state,
@@ -271,32 +272,43 @@ def _record_cycle_failure(app: FastAPI, job_id: str, app_name: str, reason: str)
 
 
 def _evaluate_cycle_outcome(app: FastAPI, app_name: str, instance_name: str, job_id: str) -> bool:
-    """SAFETY-03 (Codex finding 1): derive cycle outcome from the engine's `connected` signal.
+    """OUTCOME-04 (spec Sec 3.3): derive cycle outcome from the cycle's grade, not `connected`.
 
-    Production engine cycles catch ``httpx.HTTPError`` / ``pydantic.ValidationError``
-    internally, set ``state[app][inst]["connected"] = False``, and return state
-    rather than raising. The scheduler MUST observe this outcome to count
-    real *arr outages — the rare narrow-tuple raise path alone is not enough.
+    The engine grades every cycle Success / Partial / Failed / Nothing needed
+    searching and persists it as ``state[app][inst]["last_cycle"]["grade"]``
+    (triggarr.search.outcome). A reachable *arr that rejects every command
+    still grades Failed, so the counter must read the grade, not `connected`
+    — a *arr that is up but rejecting commands must still trip the alert.
+    `connected` remains a separate health signal the counter no longer reads;
+    it still drives the dashboard's connected/unreachable card body.
 
-    Returns True on success (counter reset), False on failure (counter
-    incremented + escalation logged). Missing or None ``connected`` is treated
-    as success (do not double-count first-ever cycle before the engine sets
-    the flag).
+    Returns True on success (counter reset), False on Failed (counter
+    incremented + escalation logged). A missing or non-dict ``last_cycle``
+    (pre-first-cycle, or a tampered/garbage record) is treated as success so
+    the pre-first-cycle state never double-counts and a malformed record
+    never crashes or false-escalates (T-78-15).
 
     Called from ``_run_one_cycle``, which is the shared helper used by both
     the scheduled ``make_search_job`` path and the manual ``search_now`` route.
     """
-    # SAFETY-03 (Codex finding 1): cycle outcome derived from state[app][inst][connected],
-    # not from raised exceptions.
-    connected = (
-        app.state.triggarr_state.get(app_name, {})
-        .get(instance_name, {})
-        .get("connected")
-    )
-    if connected is False:
-        _record_cycle_failure(app, job_id, app_name, reason="instance unreachable")
+    ist = app.state.triggarr_state.get(app_name, {}).get(instance_name, {})
+    record = ist.get("last_cycle")
+    grade = record.get("grade") if isinstance(record, dict) else None
+    if grade == GRADE_FAILED:
+        if isinstance(record, dict) and record.get("fetch_error"):
+            # Log-line continuity: operators already search logs/alerts for
+            # this exact phrase from the pre-78-05 connected-based path.
+            reason = "instance unreachable"
+        else:
+            failed = record.get("failed") if isinstance(record, dict) else None
+            unevaluated = record.get("unevaluated") if isinstance(record, dict) else None
+            failed_count = failed if isinstance(failed, int) else 0
+            unevaluated_count = len(unevaluated) if isinstance(unevaluated, list) else 0
+            reason = f"cycle graded Failed ({failed_count} failed, {unevaluated_count} queue(s) not evaluated)"
+        _record_cycle_failure(app, job_id, app_name, reason=reason)
         return False
-    # connected is True or unknown — treat as success to avoid double-counting.
+    # Success / Partial / Nothing needed searching / unknown-or-missing record
+    # (pre-first-cycle) -- all reset the counter per spec Sec 3.3.
     app.state.search_failures[job_id] = 0
     return True
 
