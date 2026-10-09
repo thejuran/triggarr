@@ -1257,10 +1257,13 @@ async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
         logger.remove(handler_id)
 
     output = sink.getvalue()
+    # 78-02 / R-04: the cycle-completed line now reports tally counts and the
+    # graded outcome instead of the old searched/skipped counters.
     assert "Radarr: Cycle completed in" in output
     assert "5 fetched" in output
-    assert "5 searched" in output
-    assert "0 skipped" in output
+    assert "5 accepted" in output
+    assert "0 failed" in output
+    assert "grade success" in output
     await db.close()
 
 
@@ -1333,10 +1336,13 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
         logger.remove(handler_id)
 
     output = sink.getvalue()
+    # 78-02 / R-04: the cycle-completed line now reports tally counts and the
+    # graded outcome instead of the old searched/skipped counters.
     assert "Radarr: Cycle completed in" in output
     assert "3 fetched" in output
-    assert "2 searched" in output
-    assert "1 skipped" in output
+    assert "2 accepted" in output
+    assert "1 failed" in output
+    assert "grade partial" in output
     await db.close()
 
 
@@ -3049,6 +3055,8 @@ async def test_run_radarr_cycle_all_searches_fail(tmp_path):
     assert result["radarr"]["Default"]["connected"] is True
     # Both items attempted (even though both failed)
     assert client.search_movies.call_count == 2
+    # 78-02 / R-01: accepted=0 with failed>0 grades failed, never nothing_needed.
+    assert result["radarr"]["Default"]["last_cycle"]["grade"] == "failed"
     await db.close()
 
 
@@ -3187,6 +3195,8 @@ async def test_run_radarr_cycle_empty_queues(tmp_path):
         assert result["radarr"]["Default"]["missing_searched"] == []
         assert result["radarr"]["Default"]["cutoff_searched"] == []
         assert result["radarr"]["Default"]["connected"] is True
+        # 78-02 / OUTCOME-02: no eligible work and no fetch failure grades nothing_needed.
+        assert result["radarr"]["Default"]["last_cycle"]["grade"] == "nothing_needed"
     finally:
         await db.close()
 
@@ -3317,7 +3327,7 @@ async def test_sonarr_cycle_all_filtered_by_tag(tmp_path):
 
 
 async def test_run_radarr_cycle_writes_last_success_on_success(tmp_path):
-    """A successful run_radarr_cycle sets last_success to a non-None ISO timestamp."""
+    """A successful run_radarr_cycle sets last_successful_search; legacy last_success is untouched."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -3335,7 +3345,10 @@ async def test_run_radarr_cycle_writes_last_success_on_success(tmp_path):
 
     result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert result["radarr"]["Default"]["last_success"] is not None
+    # 78-02 / R-05: confirmed-search time lives in last_successful_search; the
+    # engine never writes the legacy last_success field.
+    assert result["radarr"]["Default"]["last_successful_search"] is not None
+    assert result["radarr"]["Default"]["last_success"] is None
     await db.close()
 
 

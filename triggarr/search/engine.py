@@ -461,6 +461,64 @@ def _finalize_cycle(ist: AppState, tally: CycleTally, instance_config: InstanceC
         ist["last_successful_search"] = now_iso
 
 
+async def _fetch_wanted_queues(
+    *,
+    fetch_missing: Callable[[], Awaitable[list]],
+    fetch_cutoff: Callable[[], Awaitable[list]],
+    missing_active: bool,
+    cutoff_active: bool,
+    app_label: str,
+) -> tuple[list | None, list | None]:
+    """Fetch both wanted queues, isolating an inactive queue's fetch failure (R-07).
+
+    Spec Sec 3.1: inactive queues (configured search count 0) are ignored
+    for grading. Active queues are fetched first, with no try -- an
+    exception there propagates to the caller's existing abort block,
+    because an active queue that cannot be fetched is unevaluated, which
+    is Failed. Fetching active queues first also means a dead host aborts
+    before any inactive endpoint is probed.
+
+    Inactive queues are fetched afterward, each in its own error boundary:
+    a failure there is logged (sanitized) and that queue's result stays
+    None -- its dashboard count stays stale rather than zeroed. This
+    helper never grades a cycle and never touches the instance's
+    reachability state.
+
+    Returns (missing, cutoff); a queue is None only when it was neither
+    active nor fetched successfully.
+    """
+    missing: list | None = None
+    cutoff: list | None = None
+
+    if missing_active:
+        missing = await fetch_missing()
+    if cutoff_active:
+        cutoff = await fetch_cutoff()
+
+    if not missing_active:
+        try:
+            missing = await fetch_missing()
+        except (httpx.HTTPError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "{app}: Missing queue is inactive (search count 0) -- could not refresh "
+                "its count, keeping previous value: {exc}",
+                app=app_label,
+                exc=_sanitize_exc(exc),
+            )
+    if not cutoff_active:
+        try:
+            cutoff = await fetch_cutoff()
+        except (httpx.HTTPError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "{app}: Cutoff queue is inactive (search count 0) -- could not refresh "
+                "its count, keeping previous value: {exc}",
+                app=app_label,
+                exc=_sanitize_exc(exc),
+            )
+
+    return missing, cutoff
+
+
 async def run_radarr_cycle(
     client: RadarrClient,
     state: TriggarrState,
@@ -498,10 +556,17 @@ async def run_radarr_cycle(
         return state
     ist = state["radarr"][instance_name]
     tally = CycleTally()
+    missing_active = instance_config.search_missing_count > 0
+    cutoff_active = instance_config.search_cutoff_count > 0
 
     try:
-        missing = await client.get_wanted_missing()
-        cutoff = await client.get_wanted_cutoff()
+        missing, cutoff = await _fetch_wanted_queues(
+            fetch_missing=client.get_wanted_missing,
+            fetch_cutoff=client.get_wanted_cutoff,
+            missing_active=missing_active,
+            cutoff_active=cutoff_active,
+            app_label="Radarr",
+        )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
         ist["connected"] = False
@@ -511,6 +576,23 @@ async def run_radarr_cycle(
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")
             )
         tally.record_fetch_failure(_sanitize_exc(exc))
+        _finalize_cycle(ist, tally, instance_config)
+        return state
+
+    if missing is None and cutoff is None:
+        # R-07: both queues are inactive and neither fetch could refresh its
+        # count. That is real evidence the host is unreachable, but nothing
+        # was configured to search this cycle -- grade nothing_needed (no
+        # active queues), never Failed.
+        logger.warning(
+            "Radarr: both queues inactive and neither could be fetched -- "
+            "marked unreachable; not graded Failed"
+        )
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = (
+                datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            )
         _finalize_cycle(ist, tally, instance_config)
         return state
 
@@ -525,9 +607,12 @@ async def run_radarr_cycle(
     ist["connected"] = True
     ist["unreachable_since"] = None
 
-    # Cache raw item counts before filtering (WEBU-04)
-    ist["missing_count"] = len(missing)
-    ist["cutoff_count"] = len(cutoff)
+    # Cache raw item counts before filtering (WEBU-04). A queue that could
+    # not be fetched (inactive + failed) keeps its previous value (R-07).
+    if missing is not None:
+        ist["missing_count"] = len(missing)
+    if cutoff is not None:
+        ist["cutoff_count"] = len(cutoff)
     ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
@@ -581,28 +666,47 @@ async def run_radarr_cycle(
                 )
                 ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
 
-    # --- Missing queue: filter chain ---
-    missing = filter_monitored(missing)
-    ist["missing_monitored"] = len(missing)
-    if missing_tag_id is not None:
-        missing = filter_by_tag(missing, missing_tag_id, _radarr_tags)
-        logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
-    if settings.general.skip_unreleased:
-        missing = filter_unreleased_movies(missing)
-        skipped_unreleased = ist["missing_monitored"] - len(missing)
-        if skipped_unreleased > 0:
-            logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
-    ist["missing_eligible"] = len(missing)
+    # --- Missing queue: filter chain (guarded -- None means the fetch
+    # didn't run or failed, R-07; the previous eligible/monitored counts
+    # and searched-log stay untouched rather than being wiped to zero) ---
+    if missing is not None:
+        missing = filter_monitored(missing)
+        ist["missing_monitored"] = len(missing)
+        if missing_tag_id is not None:
+            missing = filter_by_tag(missing, missing_tag_id, _radarr_tags)
+            logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+        if settings.general.skip_unreleased:
+            missing = filter_unreleased_movies(missing)
+            skipped_unreleased = ist["missing_monitored"] - len(missing)
+            if skipped_unreleased > 0:
+                logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
+        ist["missing_eligible"] = len(missing)
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
-    # counts are known before rebalancing hard-max slots, R-01 amended) ---
-    cutoff = filter_monitored(cutoff)
-    if cutoff_tag_id is not None:
-        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
-        logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+    # counts are known before rebalancing hard-max slots, R-01 amended).
+    # Guarded against malformed nested records (e.g. non-iterable tags):
+    # a cutoff-side data fault must never block the missing queue's
+    # dispatch below -- this is the pre-existing per-app guarantee this
+    # reordering must not regress. Phase 80 owns richer per-item
+    # malformed-record counting; this is just the crash guard. ---
+    if cutoff is not None:
+        try:
+            cutoff = filter_monitored(cutoff)
+            if cutoff_tag_id is not None:
+                cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
+                logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+        except (AttributeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Radarr: Cutoff queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping cutoff this cycle",
+                etype=type(exc).__name__,
+            )
+            cutoff = []
 
-    tally.record_eligible("missing", len(missing))
-    tally.record_eligible("cutoff", len(cutoff))
+    missing_eligible_count = len(missing) if missing is not None else 0
+    cutoff_eligible_count = len(cutoff) if cutoff is not None else 0
+    tally.record_eligible("missing", missing_eligible_count)
+    tally.record_eligible("cutoff", cutoff_eligible_count)
 
     # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
     capped_missing_limit, capped_cutoff_limit = missing_limit, cutoff_limit
@@ -611,8 +715,8 @@ async def run_radarr_cycle(
         cutoff_limit=cutoff_limit,
         missing_configured=orig_missing,
         cutoff_configured=orig_cutoff,
-        missing_eligible=len(missing),
-        cutoff_eligible=len(cutoff),
+        missing_eligible=missing_eligible_count,
+        cutoff_eligible=cutoff_eligible_count,
         hard_max=hard_max,
     )
     if hard_max > 0 and (missing_limit, cutoff_limit) != (capped_missing_limit, capped_cutoff_limit):
@@ -623,57 +727,60 @@ async def run_radarr_cycle(
             c=cutoff_limit,
         )
 
-    # --- Missing queue: dispatch ---
-    batch, new_log, pass_done = prioritize_batch(
-        missing, ist.get("missing_searched", []), missing_limit,
-        key_fn=lambda m: str(m["id"]),
-    )
-    for movie in batch:
-        await _search_and_record(
-            command=lambda mid=movie["id"]: client.search_movies([mid]),
-            tally=tally,
-            db=db,
-            app_label="Radarr",
-            queue="missing",
-            item_name=movie.get("title", "unknown"),
-            instance_name=instance_name,
-            max_rows=settings.general.max_history_rows,
-            item_id=movie.get("id"),
+    # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
+    # and its searched-log is left exactly as it was, R-07) ---
+    if missing is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            missing, ist.get("missing_searched", []), missing_limit,
+            key_fn=lambda m: str(m["id"]),
         )
-    ist["missing_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        logger.info(
-            "Radarr: Missing pass {p} complete ({n} searched)",
-            p=ist["missing_pass"],
-            n=len(new_log),
-        )
+        for movie in batch:
+            await _search_and_record(
+                command=lambda mid=movie["id"]: client.search_movies([mid]),
+                tally=tally,
+                db=db,
+                app_label="Radarr",
+                queue="missing",
+                item_name=movie.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=movie.get("id"),
+            )
+        ist["missing_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+            logger.info(
+                "Radarr: Missing pass {p} complete ({n} searched)",
+                p=ist["missing_pass"],
+                n=len(new_log),
+            )
 
     # --- Cutoff queue: dispatch ---
-    batch, new_log, pass_done = prioritize_batch(
-        cutoff, ist.get("cutoff_searched", []), cutoff_limit,
-        key_fn=lambda m: str(m["id"]),
-    )
-    for movie in batch:
-        await _search_and_record(
-            command=lambda mid=movie["id"]: client.search_movies([mid]),
-            tally=tally,
-            db=db,
-            app_label="Radarr",
-            queue="cutoff",
-            item_name=movie.get("title", "unknown"),
-            instance_name=instance_name,
-            max_rows=settings.general.max_history_rows,
-            item_id=movie.get("id"),
+    if cutoff is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            cutoff, ist.get("cutoff_searched", []), cutoff_limit,
+            key_fn=lambda m: str(m["id"]),
         )
-    ist["cutoff_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        logger.info(
-            "Radarr: Cutoff pass {p} complete ({n} searched)",
-            p=ist["cutoff_pass"],
-            n=len(new_log),
-        )
+        for movie in batch:
+            await _search_and_record(
+                command=lambda mid=movie["id"]: client.search_movies([mid]),
+                tally=tally,
+                db=db,
+                app_label="Radarr",
+                queue="cutoff",
+                item_name=movie.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=movie.get("id"),
+            )
+        ist["cutoff_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+            logger.info(
+                "Radarr: Cutoff pass {p} complete ({n} searched)",
+                p=ist["cutoff_pass"],
+                n=len(new_log),
+            )
 
     # --- Grade the cycle and stamp timestamps (R-04/R-05/OUTCOME-01/02) ---
     _finalize_cycle(ist, tally, instance_config)
@@ -684,7 +791,7 @@ async def run_radarr_cycle(
         "Radarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {accepted} accepted, "
         "{failed} failed, {unsaved} history not saved -- grade {grade}",
         elapsed=elapsed,
-        fetched=ist["missing_count"] + ist["cutoff_count"],
+        fetched=(ist.get("missing_count") or 0) + (ist.get("cutoff_count") or 0),
         accepted=tally.accepted,
         failed=tally.failed,
         unsaved=tally.persistence_failed,
