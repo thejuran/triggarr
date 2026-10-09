@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import make_settings
 from triggarr.db import init_db
+from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig
 from triggarr.search.engine import (
     refresh_lidarr_counts,
@@ -440,7 +441,6 @@ async def test_refresh_radarr_counts_malformed_tag_data_returns_none():
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.get_library_count = AsyncMock(return_value=1)
     # Return a tag that resolves so filter_by_tag runs
-    from triggarr.models.arr import Tag
     client.get_tags = AsyncMock(return_value=[Tag(id=42, label="mytag")])
 
     state = _make_test_state()
@@ -455,6 +455,467 @@ async def test_refresh_radarr_counts_malformed_tag_data_returns_none():
     # NO-PARTIAL-STATE: missing_eligible must not be left in a partial state
     # (i.e., if we're disconnected, eligible counts should not be populated)
     assert ist.get("missing_eligible") is None or ist.get("connected") is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 79-03: never-widen refresh counts for unresolved tags (Radarr, Lidarr)
+# ---------------------------------------------------------------------------
+
+
+async def test_refresh_radarr_counts_unresolved_tag_keeps_last_good_counts():
+    """R5: an unresolved missing tag keeps last-good scoped counts; raw count still refreshes."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+        {"id": 2, "title": "Movie B", "monitored": True},
+        {"id": 3, "title": "Movie C", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="other")])
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    ist["scoped_count_tags"] = {"missing": "gone"}
+    instance_config = _instance_config(missing_tag="gone")
+    settings = make_settings()
+
+    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["missing_count"] == 3  # raw count is pre-filter, always refreshes
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+    assert ist["scoped_count_tags"] == {"missing": "gone"}
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_refresh_radarr_counts_tag_fetch_failure_keeps_last_good_counts():
+    """R5: a tag-fetch failure keeps last-good scoped counts; connected stays True."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    instance_config = _instance_config(missing_tag="4k")
+    settings = make_settings()
+
+    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["connected"] is True
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["tag_warnings"] == [{"tag": "4k", "field": "missing", "reason": "fetch_failed"}]
+
+
+async def test_refresh_radarr_counts_inactive_queue_unresolved_tag_never_widens():
+    """D-04/OQ1: an inactive queue's unresolved tag never widens, warns, or marks evaluated."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    instance_config = _instance_config(missing_count=0, missing_tag="gone")
+    settings = make_settings()
+
+    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["tag_warnings"] == []
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_refresh_radarr_counts_missing_unresolved_cutoff_resolves_refreshes_other_queue():
+    """TAGSCOPE-01: a missing-side unresolved tag never blocks the cutoff queue's own refresh."""
+    raw_cutoff = [
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [5]},
+        {"id": 3, "title": "Movie C", "monitored": True, "tags": []},
+    ]
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=raw_cutoff)
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    instance_config = _instance_config(missing_tag="gone", cutoff_tag="4k")
+    settings = make_settings()
+
+    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    filtered_missing, cutoff_result, cutoff_tag_id = result
+    assert filtered_missing == []
+    assert cutoff_tag_id == 5
+    assert cutoff_result == raw_cutoff  # cutoff's scope resolved -- not emptied
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+
+
+async def test_refresh_radarr_counts_unresolved_tag_never_touches_grade():
+    """D-01 refresh invariant: never writes last_cycle/last_run/last_successful_search/last_success."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["last_cycle"] = {"grade": "success"}
+    ist["last_run"] = "2026-01-01T00:00:00Z"
+    ist["last_successful_search"] = "2026-01-01T00:00:00Z"
+    ist["last_success"] = "2026-01-01T00:00:00Z"
+    instance_config = _instance_config(missing_tag="gone")
+    settings = make_settings()
+
+    await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert ist["last_cycle"] == {"grade": "success"}
+    assert ist["last_run"] == "2026-01-01T00:00:00Z"
+    assert ist["last_successful_search"] == "2026-01-01T00:00:00Z"
+    assert ist["last_success"] == "2026-01-01T00:00:00Z"
+
+
+async def test_refresh_radarr_counts_resolved_tag_stamps_scoped_counts():
+    """D-05 revision 1: a resolved missing tag stamps scoped_count_tags['missing']."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [7]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=7, label="4k")])
+
+    state = _make_test_state()
+    instance_config = _instance_config(missing_tag="4k")
+    settings = make_settings()
+
+    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert state["radarr"]["Default"]["scoped_count_tags"]["missing"] == "4k"
+
+
+async def test_refresh_radarr_counts_skipped_missing_survives_cutoff_data_fault():
+    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts."""
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    ist["scoped_count_tags"] = {"missing": "gone"}
+    instance_config = _instance_config(missing_tag="gone", cutoff_tag="4k")
+    settings = make_settings()
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[{"id": 2, "title": "Movie B", "monitored": True, "tags": 5}])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+
+    # Refresh 1: cutoff's malformed "tags" (non-iterable int) raises TypeError in filter_by_tag.
+    result1 = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result1 is None
+    assert ist["connected"] is False
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["scoped_count_tags"] == {"missing": "gone"}
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+    # Refresh 2: well-formed cutoff record; missing tag still unresolved.
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [5]},
+    ])
+
+    result2 = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result2 is not None
+    assert ist["connected"] is True
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["scoped_count_tags"]["missing"] == "gone"
+
+
+async def test_refresh_radarr_counts_resolved_missing_still_cleared_on_its_own_data_fault():
+    """D-05 revision 2 regression: a resolved missing queue's own data fault still clears it."""
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_eligible"] = 7
+    instance_config = _instance_config(cutoff_tag="gone")
+    settings = make_settings()
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=["garbage"])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is None
+    assert ist["connected"] is False
+    assert ist["missing_monitored"] is None
+    assert ist["missing_eligible"] is None
+
+
+async def test_refresh_radarr_counts_tag_resolution_fault_keeps_tagged_queue_counts():
+    """D-05 revision 2: a fault during tag resolution itself leaves the tagged queue's counts alone."""
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    ist["scoped_count_tags"] = {"missing": "gone"}
+    instance_config = _instance_config(missing_tag="gone")
+    settings = make_settings()
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    # resolve_tag_id accesses .label -- a plain string has none, raising AttributeError
+    # *inside* _resolve_tag_scope, before the `scope =` assignment completes.
+    client.get_tags = AsyncMock(return_value=["not-a-tag"])
+
+    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is None
+    assert ist["connected"] is False
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["scoped_count_tags"] == {"missing": "gone"}
+
+
+async def test_refresh_lidarr_counts_unresolved_tag_keeps_last_good_counts():
+    """R5: an unresolved missing tag keeps last-good scoped counts; raw count still refreshes."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Album A", "monitored": True},
+        {"id": 2, "title": "Album B", "monitored": True},
+        {"id": 3, "title": "Album C", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="other")])
+
+    state = _make_test_state()
+    ist = state["lidarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    ist["scoped_count_tags"] = {"missing": "gone"}
+    instance_config = _instance_config(missing_tag="gone")
+    settings = make_settings()
+
+    result = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["missing_count"] == 3
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+    assert ist["scoped_count_tags"] == {"missing": "gone"}
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_refresh_lidarr_counts_tag_fetch_failure_keeps_last_good_counts():
+    """R5: a tag-fetch failure keeps last-good scoped counts; connected stays True."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Album A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+    state = _make_test_state()
+    ist = state["lidarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    instance_config = _instance_config(missing_tag="4k")
+    settings = make_settings()
+
+    result = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["connected"] is True
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["tag_warnings"] == [{"tag": "4k", "field": "missing", "reason": "fetch_failed"}]
+
+
+async def test_refresh_lidarr_counts_inactive_queue_unresolved_tag_never_widens():
+    """D-04/OQ1: an inactive queue's unresolved tag never widens, warns, or marks evaluated."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Album A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    state = _make_test_state()
+    ist = state["lidarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    instance_config = _instance_config(missing_count=0, missing_tag="gone")
+    settings = make_settings()
+
+    result = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["tag_warnings"] == []
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_refresh_lidarr_counts_unresolved_tag_never_touches_grade():
+    """D-01 refresh invariant: never writes last_cycle/last_run/last_successful_search/last_success."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Album A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    state = _make_test_state()
+    ist = state["lidarr"]["Default"]
+    ist["last_cycle"] = {"grade": "success"}
+    ist["last_run"] = "2026-01-01T00:00:00Z"
+    ist["last_successful_search"] = "2026-01-01T00:00:00Z"
+    ist["last_success"] = "2026-01-01T00:00:00Z"
+    instance_config = _instance_config(missing_tag="gone")
+    settings = make_settings()
+
+    await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert ist["last_cycle"] == {"grade": "success"}
+    assert ist["last_run"] == "2026-01-01T00:00:00Z"
+    assert ist["last_successful_search"] == "2026-01-01T00:00:00Z"
+    assert ist["last_success"] == "2026-01-01T00:00:00Z"
+
+
+async def test_refresh_lidarr_counts_resolved_tag_stamps_scoped_counts():
+    """D-05 revision 1: a resolved missing tag stamps scoped_count_tags['missing']."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": [7]}},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=7, label="4k")])
+
+    state = _make_test_state()
+    instance_config = _instance_config(missing_tag="4k")
+    settings = make_settings()
+
+    result = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert state["lidarr"]["Default"]["scoped_count_tags"]["missing"] == "4k"
+
+
+async def test_refresh_lidarr_counts_skipped_missing_survives_cutoff_data_fault():
+    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts."""
+    state = _make_test_state()
+    ist = state["lidarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    ist["scoped_count_tags"] = {"missing": "gone"}
+    instance_config = _instance_config(missing_tag="gone", cutoff_tag="4k")
+    settings = make_settings()
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Album A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": 5}},
+    ])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+
+    # Refresh 1: cutoff's malformed "artist.tags" (non-iterable int) raises TypeError.
+    result1 = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result1 is None
+    assert ist["connected"] is False
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["scoped_count_tags"] == {"missing": "gone"}
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+    # Refresh 2: well-formed cutoff record; missing tag still unresolved.
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": [5]}},
+    ])
+
+    result2 = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result2 is not None
+    assert ist["connected"] is True
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["scoped_count_tags"]["missing"] == "gone"
+
+
+async def test_refresh_lidarr_counts_resolved_missing_still_cleared_on_its_own_data_fault():
+    """D-05 revision 2 regression: a resolved missing queue's own data fault still clears it."""
+    state = _make_test_state()
+    ist = state["lidarr"]["Default"]
+    ist["missing_eligible"] = 7
+    instance_config = _instance_config(cutoff_tag="gone")
+    settings = make_settings()
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=["garbage"])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    result = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is None
+    assert ist["connected"] is False
+    assert ist["missing_monitored"] is None
+    assert ist["missing_eligible"] is None
+
+
+async def test_refresh_lidarr_counts_tag_resolution_fault_keeps_tagged_queue_counts():
+    """D-05 revision 2: a fault during tag resolution itself leaves the tagged queue's counts alone."""
+    state = _make_test_state()
+    ist = state["lidarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    ist["scoped_count_tags"] = {"missing": "gone"}
+    instance_config = _instance_config(missing_tag="gone")
+    settings = make_settings()
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Album A", "monitored": True}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=["not-a-tag"])
+
+    result = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is None
+    assert ist["connected"] is False
+    assert ist["missing_monitored"] == 9
+    assert ist["missing_eligible"] == 7
+    assert ist["scoped_count_tags"] == {"missing": "gone"}
 
 
 # ---------------------------------------------------------------------------
