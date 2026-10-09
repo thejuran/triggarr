@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Completed 78-02-PLAN.md
-last_updated: "2026-10-09T02:28:46.907Z"
+stopped_at: Completed 78-04-PLAN.md
+last_updated: "2026-10-09T02:50:58.479Z"
 last_activity: 2026-10-09 -- Phase 78 execution started
 progress:
   total_phases: 18
   completed_phases: 1
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
   percent: 6
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 ## Current Position
 
 Phase: 78 (Honest Cycle Outcomes) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Executing Phase 78
 Last activity: 2026-10-09 -- Phase 78 execution started
 
@@ -117,6 +117,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 77 P05 | 11min | 2 tasks | 11 files |
 | Phase 78 P01 | 10min | 3 tasks | 4 files |
 | Phase 78 P02 | 38min | 4 tasks | 4 files |
+| Phase 78 P04 | 13min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,7 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 78]: 78-01: AppState.last_successful_search is never derived from the legacy last_success field — last_success stays frozen verbatim for the Last success (legacy) label and the documented NAS downgrade fallback (R-05)
 - [Phase 78]: 78-02: cutoff's hard-max eligible count is computed as a defensive preview (catches malformed-data faults, falls back to 0) ahead of rebalance_batch_sizes, while cutoff's authoritative filter+dispatch stays at its original later position — Preserves the pre-existing per-app guarantee that a cutoff-side data fault can never block the missing queue's dispatch, which Task 2's literal 'move both filter chains up' instruction would have broken
 - [Phase 78]: 78-02: insert_search_entry rolls back on any failure after its INSERT (catching bare Exception, not just aiosqlite.Error, since a driver-thread OSError leaves the same open transaction) — Prevents a partial write from staying pending on the shared connection -- a later successful insert can no longer commit a phantom row alongside it, and the pending-cap check only ever counts committed rows (R-08)
+- [Phase 78]: 78-04: Last successful search / Last success (legacy) row stays duplicated verbatim in both card bodies (connected and unreachable) rather than a second shared include, matching the plan's instruction and the file's existing per-body duplication convention for that row — cycle_grade.html's color dispatch collapses nothing_needed and any unexpected grade into one else branch since cycle_view() already restricts grade to exactly the four GRADE_LABELS keys
 
 ### Pending Todos
 
@@ -200,8 +202,8 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-09T02:28:46.899Z
-Stopped at: Completed 78-02-PLAN.md
+Last session: 2026-10-09T02:50:58.468Z
+Stopped at: Completed 78-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
