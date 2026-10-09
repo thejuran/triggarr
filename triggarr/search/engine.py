@@ -1127,10 +1127,18 @@ async def run_lidarr_cycle(
         logger.warning("Lidarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["lidarr"][instance_name]
+    tally = CycleTally()
+    missing_active = instance_config.search_missing_count > 0
+    cutoff_active = instance_config.search_cutoff_count > 0
 
     try:
-        missing = await client.get_wanted_missing()
-        cutoff = await client.get_wanted_cutoff()
+        missing, cutoff = await _fetch_wanted_queues(
+            fetch_missing=client.get_wanted_missing,
+            fetch_cutoff=client.get_wanted_cutoff,
+            missing_active=missing_active,
+            cutoff_active=cutoff_active,
+            app_label="Lidarr",
+        )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Lidarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
         ist["connected"] = False
@@ -1139,6 +1147,25 @@ async def run_lidarr_cycle(
             ist["unreachable_since"] = (
                 datetime.now(UTC).isoformat().replace("+00:00", "Z")
             )
+        tally.record_fetch_failure(_sanitize_exc(exc))
+        _finalize_cycle(ist, tally, instance_config)
+        return state
+
+    if missing is None and cutoff is None:
+        # R-07: both queues are inactive and neither fetch could refresh its
+        # count. That is real evidence the host is unreachable, but nothing
+        # was configured to search this cycle -- grade nothing_needed (no
+        # active queues), never Failed.
+        logger.warning(
+            "Lidarr: both queues inactive and neither could be fetched -- "
+            "marked unreachable; not graded Failed"
+        )
+        ist["connected"] = False
+        if not ist.get("unreachable_since"):
+            ist["unreachable_since"] = (
+                datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            )
+        _finalize_cycle(ist, tally, instance_config)
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -1152,9 +1179,12 @@ async def run_lidarr_cycle(
     ist["connected"] = True
     ist["unreachable_since"] = None
 
-    # Cache raw item counts before filtering
-    ist["missing_count"] = len(missing)
-    ist["cutoff_count"] = len(cutoff)
+    # Cache raw item counts before filtering. A queue that could not be
+    # fetched (inactive + failed) keeps its previous value (R-07).
+    if missing is not None:
+        ist["missing_count"] = len(missing)
+    if cutoff is not None:
+        ist["cutoff_count"] = len(cutoff)
     ist["total_items"] = total_items
 
     # Apply hard max cap
@@ -1208,135 +1238,133 @@ async def run_lidarr_cycle(
                 )
                 ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
 
-    searched_count = 0
-    skipped_count = 0
+    # --- Missing queue: filter chain (guarded -- None means the fetch
+    # didn't run or failed, R-07; the previous eligible/monitored counts
+    # and searched-log stay untouched rather than being wiped to zero) ---
+    if missing is not None:
+        missing = filter_monitored(missing)
+        ist["missing_monitored"] = len(missing)
+        if missing_tag_id is not None:
+            missing = filter_by_tag(missing, missing_tag_id, _lidarr_tags)
+            logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+        ist["missing_eligible"] = len(missing)
 
-    # --- Missing queue ---
-    missing = filter_monitored(missing)
-    ist["missing_monitored"] = len(missing)
-    if missing_tag_id is not None:
-        missing = filter_by_tag(missing, missing_tag_id, _lidarr_tags)
-        logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
-    ist["missing_eligible"] = len(missing)
-    batch, new_log, pass_done = prioritize_batch(
-        missing, ist.get("missing_searched", []), missing_limit,
-        key_fn=lambda a: str(a["id"]),
-    )
-    for album in batch:
-        title = album.get("title", "unknown")
+    # --- Cutoff queue: filter chain (moved up so both queues' eligible
+    # counts are known before rebalancing hard-max slots, R-01 amended).
+    # Guarded against malformed nested records (e.g. non-iterable tags):
+    # a cutoff-side data fault must never block the missing queue's
+    # dispatch below -- this is the pre-existing per-app guarantee this
+    # reordering must not regress. Phase 80 owns richer per-item
+    # malformed-record counting; this is just the crash guard. ---
+    if cutoff is not None:
         try:
-            await client.search_albums([album["id"]])
-            await insert_search_entry(
-                db, "Lidarr", "missing", title,
-                outcome="searched", detail="search triggered",
-                item_id=album["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Lidarr: Searched {title} (missing)", title=title)
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
+            cutoff = filter_monitored(cutoff)
+            if cutoff_tag_id is not None:
+                cutoff = filter_by_tag(cutoff, cutoff_tag_id, _lidarr_tags)
+                logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+        except (AttributeError, KeyError, TypeError) as exc:
             logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
+                "Lidarr: Cutoff queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping cutoff this cycle",
+                etype=type(exc).__name__,
             )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Lidarr: Failed to search {title}: {exc}",
-                title=title,
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Lidarr", "missing", title,
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=album.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
-    ist["missing_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        logger.info(
-            "Lidarr: Missing pass {p} complete ({n} searched)",
-            p=ist["missing_pass"],
-            n=len(new_log),
+            cutoff = []
+
+    missing_eligible_count = len(missing) if missing is not None else 0
+    cutoff_eligible_count = len(cutoff) if cutoff is not None else 0
+    tally.record_eligible("missing", missing_eligible_count)
+    tally.record_eligible("cutoff", cutoff_eligible_count)
+
+    # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
+    capped_missing_limit, capped_cutoff_limit = missing_limit, cutoff_limit
+    missing_limit, cutoff_limit = rebalance_batch_sizes(
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=orig_missing,
+        cutoff_configured=orig_cutoff,
+        missing_eligible=missing_eligible_count,
+        cutoff_eligible=cutoff_eligible_count,
+        hard_max=hard_max,
+    )
+    if hard_max > 0 and (missing_limit, cutoff_limit) != (capped_missing_limit, capped_cutoff_limit):
+        logger.debug(
+            "Lidarr: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
+            max=hard_max,
+            m=missing_limit,
+            c=cutoff_limit,
         )
 
-    # --- Cutoff queue ---
-    cutoff = filter_monitored(cutoff)
-    if cutoff_tag_id is not None:
-        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _lidarr_tags)
-        logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
-    batch, new_log, pass_done = prioritize_batch(
-        cutoff, ist.get("cutoff_searched", []), cutoff_limit,
-        key_fn=lambda a: str(a["id"]),
-    )
-    for album in batch:
-        title = album.get("title", "unknown")
-        try:
-            await client.search_albums([album["id"]])
-            await insert_search_entry(
-                db, "Lidarr", "cutoff", title,
-                outcome="searched", detail="search triggered",
-                item_id=album["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Lidarr: Searched {title} (cutoff)", title=title)
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Lidarr: Failed to search {title}: {exc}",
-                title=title,
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Lidarr", "cutoff", title,
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=album.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
-    ist["cutoff_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        logger.info(
-            "Lidarr: Cutoff pass {p} complete ({n} searched)",
-            p=ist["cutoff_pass"],
-            n=len(new_log),
+    # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
+    # and its searched-log is left exactly as it was, R-07) ---
+    if missing is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            missing, ist.get("missing_searched", []), missing_limit,
+            key_fn=lambda a: str(a["id"]),
         )
+        for album in batch:
+            await _search_and_record(
+                command=lambda aid=album["id"]: client.search_albums([aid]),
+                tally=tally,
+                db=db,
+                app_label="Lidarr",
+                queue="missing",
+                item_name=album.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=album.get("id"),
+            )
+        ist["missing_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+            logger.info(
+                "Lidarr: Missing pass {p} complete ({n} searched)",
+                p=ist["missing_pass"],
+                n=len(new_log),
+            )
+
+    # --- Cutoff queue: dispatch ---
+    if cutoff is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            cutoff, ist.get("cutoff_searched", []), cutoff_limit,
+            key_fn=lambda a: str(a["id"]),
+        )
+        for album in batch:
+            await _search_and_record(
+                command=lambda aid=album["id"]: client.search_albums([aid]),
+                tally=tally,
+                db=db,
+                app_label="Lidarr",
+                queue="cutoff",
+                item_name=album.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=album.get("id"),
+            )
+        ist["cutoff_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+            logger.info(
+                "Lidarr: Cutoff pass {p} complete ({n} searched)",
+                p=ist["cutoff_pass"],
+                n=len(new_log),
+            )
+
+    # --- Grade the cycle and stamp timestamps (R-04/R-05/OUTCOME-01/02) ---
+    _finalize_cycle(ist, tally, instance_config)
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
     logger.info(
-        "Lidarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
+        "Lidarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {accepted} accepted, "
+        "{failed} failed, {unsaved} history not saved -- grade {grade}",
         elapsed=elapsed,
-        fetched=ist["missing_count"] + ist["cutoff_count"],
-        searched=searched_count,
-        skipped=skipped_count,
+        fetched=(ist.get("missing_count") or 0) + (ist.get("cutoff_count") or 0),
+        accepted=tally.accepted,
+        failed=tally.failed,
+        unsaved=tally.persistence_failed,
+        grade=ist["last_cycle"]["grade"],
     )
 
-    # --- Update last_run and last_success ---
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    ist["last_run"] = now_iso
-    ist["last_success"] = now_iso
     return state
 
 

@@ -3226,6 +3226,8 @@ async def test_run_sonarr_cycle_empty_queues(tmp_path):
         assert result["sonarr"]["Default"]["missing_searched"] == []
         assert result["sonarr"]["Default"]["cutoff_searched"] == []
         assert result["sonarr"]["Default"]["connected"] is True
+        # 78-03 / OUTCOME-02: no eligible work and no fetch failure grades nothing_needed.
+        assert result["sonarr"]["Default"]["last_cycle"]["grade"] == "nothing_needed"
     finally:
         await db.close()
 
@@ -3253,6 +3255,8 @@ async def test_run_lidarr_cycle_empty_queues(tmp_path):
         assert result["lidarr"]["Default"]["missing_searched"] == []
         assert result["lidarr"]["Default"]["cutoff_searched"] == []
         assert result["lidarr"]["Default"]["connected"] is True
+        # 78-03 / OUTCOME-02: no eligible work and no fetch failure grades nothing_needed.
+        assert result["lidarr"]["Default"]["last_cycle"]["grade"] == "nothing_needed"
     finally:
         await db.close()
 
