@@ -251,7 +251,7 @@ Plans:
   4. The consecutive-failure counter increments only on Failed and resets on Success, Partial, or Nothing needed searching.
   5. A pre-upgrade `last_success` timestamp displays as "Last success (legacy)" until the instance's first new cycle completes, and an accepted command whose history write fails still counts as accepted, still updates "last successful search," and surfaces a separate persistence warning instead of being retried.
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 **UI hint**: yes
 Plans:
 **Wave 1**
@@ -260,7 +260,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 78-02-PLAN.md — engine helpers (_search_and_record split command/insert, _finalize_cycle) + Radarr honest grading, OUTCOME-06 persistence path (wave 2)
+- [x] 78-02-PLAN.md — engine helpers (_search_and_record split command/insert, _finalize_cycle) + Radarr honest grading, OUTCOME-06 persistence path (wave 2)
 - [ ] 78-04-PLAN.md — dashboard card: grade line/colors, Last checked staleness, legacy + Not run yet, unreachable grade, grouped detail panel kept open across refresh, persistence warning (wave 2)
 
 **Wave 3** *(blocked on 78-02)*
@@ -324,7 +324,7 @@ Plans:
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete    | 2026-10-08 |
-| 78. Honest Cycle Outcomes | 1/5 | In Progress|  |
+| 78. Honest Cycle Outcomes | 2/5 | In Progress|  |
 | 79. Tag-Scoped Searches Stay in Scope | 0/TBD | Not started | - |
 | 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
 | 81. Correct Sonarr Grab Attribution | 0/TBD | Not started | - |

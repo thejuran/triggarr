@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Phase 78 context gathered
-last_updated: "2026-10-09T01:48:41.969Z"
+stopped_at: Completed 78-02-PLAN.md
+last_updated: "2026-10-09T02:28:46.907Z"
 last_activity: 2026-10-09 -- Phase 78 execution started
 progress:
   total_phases: 18
   completed_phases: 1
   total_plans: 10
-  completed_plans: 6
+  completed_plans: 7
   percent: 6
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 ## Current Position
 
 Phase: 78 (Honest Cycle Outcomes) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Executing Phase 78
 Last activity: 2026-10-09 -- Phase 78 execution started
 
@@ -116,6 +116,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 77 P04 | 10min | 2 tasks | 2 files |
 | Phase 77 P05 | 11min | 2 tasks | 11 files |
 | Phase 78 P01 | 10min | 3 tasks | 4 files |
+| Phase 78 P02 | 38min | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,8 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 77]: 77-05: ArrClient.__init__ (and the three *arr subclasses) now require api_key: SecretStr with a value-free TypeError guard; .get_secret_value() unwraps exactly once, at the X-Api-Key header line; startup.py/scheduler.py/routes.py pass the SecretStr straight through; auth_api_key_set now uses bool(settings.auth.api_key) — Closes backlog 999.6(c)/(d); strict SecretStr contract chosen over str|SecretStr per RESEARCH.md's resolved Open Question 2, migrating all 64 test call sites in the same wave
 - [Phase 78]: 78-01: grade_cycle's amended-R-01 backstop (accepted=0, failed=0, eligible_active>0) grades Failed, not Partial — the engine did no work while work existed, which should trip the SAFETY-03 alert; supersedes RESEARCH Open Question 1's Partial recommendation
 - [Phase 78]: 78-01: AppState.last_successful_search is never derived from the legacy last_success field — last_success stays frozen verbatim for the Last success (legacy) label and the documented NAS downgrade fallback (R-05)
+- [Phase 78]: 78-02: cutoff's hard-max eligible count is computed as a defensive preview (catches malformed-data faults, falls back to 0) ahead of rebalance_batch_sizes, while cutoff's authoritative filter+dispatch stays at its original later position — Preserves the pre-existing per-app guarantee that a cutoff-side data fault can never block the missing queue's dispatch, which Task 2's literal 'move both filter chains up' instruction would have broken
+- [Phase 78]: 78-02: insert_search_entry rolls back on any failure after its INSERT (catching bare Exception, not just aiosqlite.Error, since a driver-thread OSError leaves the same open transaction) — Prevents a partial write from staying pending on the shared connection -- a later successful insert can no longer commit a phantom row alongside it, and the pending-cap check only ever counts committed rows (R-08)
 
 ### Pending Todos
 
@@ -197,9 +200,9 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-09T01:47:55.975Z
-Stopped at: Phase 78 context gathered
-Resume file: .planning/phases/78-honest-cycle-outcomes/78-CONTEXT.md
+Last session: 2026-10-09T02:28:46.899Z
+Stopped at: Completed 78-02-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
