@@ -1672,8 +1672,11 @@ async def refresh_sonarr_counts(
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
       (b) DATA failure: filter/dedup/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -> sets connected=False + unreachable_since,
-          clears eligible/searchable count fields, returns None (never propagates to caller).
+          on a malformed nested record -- clears the scoped count fields of queues
+          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+          keeps its last good counts and stamp (Phase 79 D-05), returns None.
+      (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
+          at their previous values, never widened, and its tuple slot is [].
 
     Args:
         client: Connected Sonarr API client.
@@ -1716,60 +1719,48 @@ async def refresh_sonarr_counts(
     ist["total_items"] = total_items
 
     # --- FILTER/DEDUP/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
+    scope: _TagScope | None = None
     try:
-        ist["tag_warnings"] = []
-        if instance_config.missing_tag or instance_config.cutoff_tag:
-            tag_fetch_ok = False
-            try:
-                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-                tag_fetch_ok = True
-            except (httpx.HTTPError, pydantic.ValidationError) as exc:
-                logger.warning(
-                    "Sonarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
-                    exc=_sanitize_exc(exc),
-                )
-                tags = []
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config,
+            fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+            ist=ist,
+            app_label="Sonarr",
+            tally=None,
+        )
 
-            if instance_config.missing_tag:
-                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-                if missing_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Sonarr: Tag '{tag}' not found -- counting all missing items",
-                        tag=instance_config.missing_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-            if instance_config.cutoff_tag:
-                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-                if cutoff_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Sonarr: Tag '{tag}' not found -- counting all cutoff items",
-                        tag=instance_config.cutoff_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-        # Missing filter/dedup chain (compute into locals first, then commit to ist)
-        filtered_missing = filter_sonarr_episodes(missing_episodes)
-        if missing_tag_id is not None:
-            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _sonarr_tags)
-        missing_seasons = deduplicate_to_seasons(filtered_missing)
-        missing_eligible_count = len(filtered_missing)
-        missing_searchable_count = len(missing_seasons)
+        # Missing filter/dedup chain (compute into locals; a tag-unresolved queue
+        # never widens past its last-good counts, TAGSCOPE-01/D-05).
+        missing_seasons: list[dict] = []
+        missing_eligible_count: int | None = None
+        missing_searchable_count: int | None = None
+        if not scope.missing_unresolved:
+            filtered_missing = filter_sonarr_episodes(missing_episodes)
+            if scope.missing_tag_id is not None:
+                filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)
+            missing_seasons = deduplicate_to_seasons(filtered_missing)
+            missing_eligible_count = len(filtered_missing)
+            missing_searchable_count = len(missing_seasons)
 
         # Cutoff filter/dedup chain on a local copy
-        filtered_cutoff = filter_sonarr_episodes(cutoff_episodes)
-        if cutoff_tag_id is not None:
-            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _sonarr_tags)
-        cutoff_seasons = deduplicate_to_seasons(filtered_cutoff)
-        cutoff_searchable_count = len(cutoff_seasons)
+        cutoff_seasons: list[dict] = []
+        cutoff_searchable_count: int | None = None
+        if not scope.cutoff_unresolved:
+            filtered_cutoff = filter_sonarr_episodes(cutoff_episodes)
+            if scope.cutoff_tag_id is not None:
+                filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _sonarr_tags)
+            cutoff_seasons = deduplicate_to_seasons(filtered_cutoff)
+            cutoff_searchable_count = len(cutoff_seasons)
 
-        # Commit eligible/searchable counts to ist only after successful filtering
-        # (no-partial-state guarantee: either all three are committed or none are)
-        ist["missing_eligible"] = missing_eligible_count
-        ist["missing_searchable"] = missing_searchable_count
-        ist["cutoff_searchable"] = cutoff_searchable_count
+        # Commit each queue's fields together, only after both chains succeed; a
+        # tag-unresolved queue's fields are never committed.
+        if not scope.missing_unresolved:
+            ist["missing_eligible"] = missing_eligible_count
+            ist["missing_searchable"] = missing_searchable_count
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        if not scope.cutoff_unresolved:
+            ist["cutoff_searchable"] = cutoff_searchable_count
+            _stamp_scoped_counts(ist, "cutoff", instance_config.cutoff_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
         # Malformed nested record (non-dict series, non-iterable tags, etc.)
@@ -1779,13 +1770,13 @@ async def refresh_sonarr_counts(
             etype=type(exc).__name__,
         )
         _mark_unreachable(ist)
-        # Clear eligible/searchable counts so no half-updated set is left behind
-        ist["missing_eligible"] = None
-        ist["missing_searchable"] = None
-        ist["cutoff_searchable"] = None
+        _clear_faulted_scoped_counts(ist, scope, instance_config,
+            missing_fields=("missing_eligible", "missing_searchable"),
+            cutoff_fields=("cutoff_searchable",),
+        )
         return None
 
-    return (missing_seasons, cutoff_episodes, cutoff_tag_id)
+    return (missing_seasons, cutoff_episodes if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
 
 
 async def refresh_lidarr_counts(
