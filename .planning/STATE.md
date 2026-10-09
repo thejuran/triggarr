@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: ready_to_plan
-stopped_at: Phase 78 complete (5/5) — ready to discuss Phase 79
-last_updated: 2026-10-09T12:31:40.790Z
-last_activity: 2026-10-09 -- Phase 78 execution started
+status: planning
+stopped_at: Phase 79 context gathered
+last_updated: "2026-10-09T13:18:26.677Z"
+last_activity: 2026-10-09
 progress:
   total_phases: 18
   completed_phases: 2
@@ -207,9 +207,9 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-09T03:33:30.072Z
-Stopped at: Completed 78-05-PLAN.md
-Resume file: None
+Last session: 2026-10-09T13:18:26.672Z
+Stopped at: Phase 79 context gathered
+Resume file: .planning/phases/79-tag-scoped-searches-stay-in-scope/79-CONTEXT.md
 
 ## Operator Next Steps
 
