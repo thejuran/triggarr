@@ -732,3 +732,22 @@ def test_reason_text_with_script_tag_is_escaped(client, test_app):
     assert response.status_code == 200
     assert "<script>alert(1)</script>" not in response.text
     assert "&lt;script&gt;" in response.text
+
+
+# ---------------------------------------------------------------------------
+# D-11 (78-04): detail panel open state survives the 5s htmx refresh
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_preserves_open_detail_panel_across_refresh(client):
+    """Dashboard script remembers and re-opens [data-cycle-detail] panels after each
+    htmx outerHTML card refresh, without hx-preserve (which would freeze stale
+    failure reasons). This pins the markup/script contract; the live browser
+    behavior is confirmed in the milestone-end NAS walkthrough (78-VALIDATION.md).
+    """
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "data-cycle-detail" in response.text
+    assert "addEventListener('toggle'" in response.text
+    assert "openCycleDetails" in response.text
+    assert 'nonce="' in response.text
