@@ -2206,8 +2206,8 @@ async def test_sonarr_cycle_no_tag_searches_all(tmp_path):
     await db.close()
 
 
-async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
-    """Sonarr cycle with tag not found in tag list searches all (fail-open)."""
+async def test_sonarr_tag_not_found_skips_queue(tmp_path):
+    """Sonarr cycle with tag not found in tag list skips that queue (TAGSCOPE-01)."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -2230,10 +2230,13 @@ async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
     )
     settings = _cycle_settings(missing_count=10, cutoff_count=10)
 
-    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    # Tag not found -> fail-open, all seasons searched
-    assert client.search_season.call_count == 2
+    # Tag not found -> missing queue skipped, zero searches
+    assert client.search_season.call_count == 0
+    ist = result["sonarr"]["Default"]
+    assert ist["tag_warnings"][0]["reason"] == "not_found"
+    assert ist["last_cycle"]["grade"] == "failed"
     await db.close()
 
 
@@ -2491,7 +2494,7 @@ async def test_tag_warning_state_stored_when_tag_not_found_sonarr(tmp_path):
 
     ist = state["sonarr"]["Default"]
     assert "tag_warnings" in ist
-    assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+    assert {"tag": "nonexistent", "field": "missing", "reason": "not_found"} in ist["tag_warnings"]
     await db.close()
 
 
@@ -5969,6 +5972,240 @@ async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
         assert out_ist["last_cycle"]["grade"] == "failed"
     finally:
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: Sonarr tag-scope skip-and-warn (TAGSCOPE-01..03, D-01..05)
+# ---------------------------------------------------------------------------
+
+
+async def test_sonarr_missing_tag_unresolved_cutoff_tag_resolves_cutoff_still_runs(tmp_path):
+    """TAGSCOPE-01: missing's tag is unresolved but cutoff's tag resolves -- cutoff still dispatches."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="4k")])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[10]),
+        _ep(series_id=300, season_number=1, series_title="Show C", episode_id=3, series_tags=[11]),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="gone", cutoff_tag="4k",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 1
+    client.search_season.assert_called_once_with(200, 1)
+    assert result["sonarr"]["Default"]["last_cycle"]["grade"] == "partial"
+    await db.close()
+
+
+async def test_sonarr_tag_fetch_failure_skips_tagged_queue(tmp_path):
+    """TAGSCOPE-01/02: a tag-list fetch failure skips the tagged queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 0
+    ist = result["sonarr"]["Default"]
+    assert ist["tag_warnings"][0]["reason"] == "fetch_failed"
+    assert ist["last_cycle"]["grade"] == "failed"
+    await db.close()
+
+
+async def test_sonarr_tag_unresolved_keeps_last_good_counts(tmp_path):
+    """R5/D-05: an unresolved-tag queue keeps its last-good counts and searched-log untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["missing_searched"] = ["10:1"]
+    ist["cutoff_searchable"] = 2
+    ist["scoped_count_tags"] = {"missing": "m", "cutoff": "c"}
+
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="m", cutoff_tag="c",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    out_ist = result["sonarr"]["Default"]
+    assert out_ist["missing_eligible"] == 7
+    assert out_ist["missing_searchable"] == 3
+    assert out_ist["missing_searched"] == ["10:1"]
+    assert out_ist["cutoff_searchable"] == 2
+    assert out_ist["scoped_count_tags"] == {"missing": "m", "cutoff": "c"}
+    assert out_ist["unresolved_tag_scopes"] == {"missing": "m", "cutoff": "c"}
+    await db.close()
+
+
+async def test_sonarr_resolved_scopes_stamp_both_queues(tmp_path):
+    """D-05 revision 1: resolved scopes stamp both queues' committed counts with their tag names."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="m"), Tag(id=11, label="c")])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[11]),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="m", cutoff_tag="c",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert result["sonarr"]["Default"]["scoped_count_tags"] == {"missing": "m", "cutoff": "c"}
+    await db.close()
+
+
+async def test_sonarr_inactive_queue_unresolved_tag_no_warning(tmp_path):
+    """D-04/OQ1: an inactive queue's unresolved tag never warns or affects the grade."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["cutoff_searchable"] = 5
+
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=0,
+        cutoff_tag="gone",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=0)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    out_ist = result["sonarr"]["Default"]
+    assert out_ist["tag_warnings"] == []
+    assert out_ist["cutoff_searchable"] == 5
+    assert out_ist["last_cycle"]["unevaluated"] == []
+    await db.close()
+
+
+async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {
+            "id": 2,
+            "seriesId": 200,
+            "seasonNumber": 1,
+            "monitored": True,
+            "airDateUtc": "2025-01-01T00:00:00Z",
+            "series": "garbage",
+        },
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["missing_searched"] = ["10:1"]
+    ist["cutoff_searchable"] = 2
+    ist["scoped_count_tags"] = {"missing": "gone", "cutoff": "c"}
+
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="gone",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 0
+    out_ist = result["sonarr"]["Default"]
+    assert out_ist["missing_eligible"] == 7
+    assert out_ist["missing_searchable"] == 3
+    assert out_ist["missing_searched"] == ["10:1"]
+    assert out_ist["cutoff_searchable"] == 2
+    assert out_ist["scoped_count_tags"] == {"missing": "gone", "cutoff": "c"}
+    assert out_ist["last_cycle"]["grade"] == "failed"
+    await db.close()
 
 
 # ---------------------------------------------------------------------------
