@@ -25,6 +25,7 @@ from triggarr.db import init_db
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig
 from triggarr.search.engine import (
+    _fetch_wanted_queues,
     _lidarr_tags,
     cap_batch_sizes,
     deduplicate_to_seasons,
@@ -3885,6 +3886,350 @@ async def test_radarr_zero_dispatch_with_work_never_nothing_needed(tmp_path):
 
         view = cycle_view(ist["last_cycle"], "Radarr")
         assert any("2 eligible items not searched this cycle" in reason["text"] for reason in view["reasons"])
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# _fetch_wanted_queues (R-07 inactive-queue fetch isolation)
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_wanted_queues_active_fetch_error_propagates():
+    """An active queue's fetch failure propagates out of the helper untouched."""
+    fetch_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    fetch_cutoff = AsyncMock(return_value=[])
+
+    with pytest.raises(httpx.ConnectError):
+        await _fetch_wanted_queues(
+            fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+            missing_active=True, cutoff_active=True, app_label="Radarr",
+        )
+
+
+async def test_fetch_wanted_queues_inactive_cutoff_fetch_fails():
+    """missing active and fetched; inactive cutoff fetch fails -> (missing_list, None)."""
+    fetch_missing = AsyncMock(return_value=[{"id": 1}])
+    fetch_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        missing, cutoff = await _fetch_wanted_queues(
+            fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+            missing_active=True, cutoff_active=False, app_label="Radarr",
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert missing == [{"id": 1}]
+    assert cutoff is None
+    assert fetch_missing.await_count == 1
+    assert fetch_cutoff.await_count == 1
+    assert "inactive" in sink.getvalue()
+
+
+async def test_fetch_wanted_queues_both_inactive_missing_fails_cutoff_succeeds():
+    """Both inactive: missing fetch fails, cutoff fetch succeeds -> (None, [x]); cutoff still awaited."""
+    fetch_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    fetch_cutoff = AsyncMock(return_value=[{"id": 2}])
+
+    missing, cutoff = await _fetch_wanted_queues(
+        fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+        missing_active=False, cutoff_active=False, app_label="Radarr",
+    )
+
+    assert missing is None
+    assert cutoff == [{"id": 2}]
+    assert fetch_cutoff.await_count == 1
+
+
+async def test_fetch_wanted_queues_active_fetched_before_inactive():
+    """With missing inactive and cutoff active, the active (cutoff) fetcher is awaited first."""
+    order: list[str] = []
+
+    async def fetch_missing():
+        order.append("missing")
+        return []
+
+    async def fetch_cutoff():
+        order.append("cutoff")
+        return []
+
+    await _fetch_wanted_queues(
+        fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+        missing_active=False, cutoff_active=True, app_label="Radarr",
+    )
+
+    assert order == ["cutoff", "missing"]
+
+
+# ---------------------------------------------------------------------------
+# run_radarr_cycle: inactive-queue fetch isolation (R-07) + regression sweep
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_inactive_cutoff_fetch_fails_active_has_work(tmp_path):
+    """R-07: an inactive cutoff queue's fetch failure doesn't block the active missing queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 2
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["fetch_error"] is None
+        assert ist["last_cycle"]["unevaluated"] == []
+        assert ist["connected"] is True
+        assert ist["unreachable_since"] is None
+        assert ist["last_successful_search"] is not None
+        assert ist["cutoff_count"] == 7
+        assert ist["cutoff_searched"] == ["99"]
+    finally:
+        await db.close()
+
+
+async def test_radarr_inactive_cutoff_fetch_fails_active_empty(tmp_path):
+    """R-07: inactive cutoff fetch failure with an empty active missing queue grades nothing_needed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("GET", "http://radarr:7878/api/v3/wanted/cutoff")
+        response = httpx.Response(503, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert ist["missing_count"] == 0
+        assert ist["cutoff_count"] == 7
+        assert ist["last_run"] is not None
+    finally:
+        await db.close()
+
+
+async def test_radarr_inactive_missing_fetch_fails_active_cutoff_has_work(tmp_path):
+    """R-07: an inactive missing queue's fetch failure doesn't block the active cutoff queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 3, "title": "Movie C", "monitored": True}]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=0, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=0, cutoff_count=2)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["connected"] is True
+        assert ist["missing_count"] == 5
+        assert ist["missing_searched"] == ["42"]
+    finally:
+        await db.close()
+
+
+async def test_radarr_both_inactive_both_fetches_fail(tmp_path):
+    """R-07: both queues inactive and both fetches fail -> unreachable but graded nothing_needed, not failed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+        ist["last_successful_search"] = "2025-12-31T00:00:00Z"
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 0
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["last_cycle"]["fetch_error"] is None
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["connected"] is False
+        assert ist["unreachable_since"] is not None
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] == "2025-12-31T00:00:00Z"
+        assert ist["missing_count"] == 5
+        assert ist["cutoff_count"] == 7
+    finally:
+        await db.close()
+
+
+async def test_radarr_both_inactive_one_fetch_fails(tmp_path):
+    """R-07: both queues inactive, only one fetch fails -> still connected True (the other succeeded)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert ist["missing_count"] == 1
+        assert ist["cutoff_count"] == 7
+        assert client.search_movies.call_count == 0
+    finally:
+        await db.close()
+
+
+async def test_radarr_active_fetch_failure_with_inactive_other_still_failed(tmp_path):
+    """R-07: an active queue's fetch failure still grades failed; the inactive endpoint is never probed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert client.get_wanted_cutoff.await_count == 0
+    finally:
+        await db.close()
+
+
+async def test_radarr_inactive_fetch_error_never_leaks_apikey(tmp_path):
+    """D-10: an inactive queue's fetch error carrying ?apikey= never reaches state or logs."""
+    import json
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("GET", "http://radarr:7878/api/v3/wanted/cutoff?apikey=SUPERSECRET123")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        assert "SUPERSECRET123" not in json.dumps(result["radarr"]["Default"])
+        assert "SUPERSECRET123" not in sink.getvalue()
     finally:
         await db.close()
 
