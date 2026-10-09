@@ -8,6 +8,7 @@ full-width Search Now with app-colored hover, and unreachable error message.
 from __future__ import annotations
 
 import asyncio
+import html
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -20,7 +21,7 @@ from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import log_buffer
 from triggarr.models.config import GeneralConfig
-from triggarr.web.routes import STATIC_DIR, router
+from triggarr.web.routes import STATIC_DIR, _scoped_count_unknown, router
 
 
 @pytest.fixture
@@ -832,3 +833,197 @@ def test_tag_skip_badge_absent_when_no_warnings(client, test_app):
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "queue skipped" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: unknown scoped counts (D-05, OQ1; revision 1)
+# ---------------------------------------------------------------------------
+
+
+def test_unresolved_tag_fresh_state_shows_unknown_not_raw(client, test_app):
+    """A fresh instance with an unresolved active tag shows unknown, never the raw count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"tag": "4k", "field": "missing", "reason": "not_found"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 500" not in text
+
+
+def test_unresolved_tag_fresh_state_inactive_queue_shows_unknown(client, test_app):
+    """An inactive (no-badge) queue with an unresolved tag still shows unknown (OQ1)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = []
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 500" not in text
+    assert "queue skipped" not in text
+
+
+def test_unresolved_tag_legacy_fail_open_state_shows_unknown(client, test_app):
+    """Legacy (pre-upgrade) fail-open state with no provenance stamp is never trusted."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 480
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"tag": "4k", "field": "missing"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 480" not in text
+    assert "of 500" not in text
+    assert "20 skipped" not in text
+
+
+def test_unresolved_tag_legacy_counts_with_new_marker_untrusted(client, test_app):
+    """A new unresolved marker with no scoped_count_tags stamp still shows unknown."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 480
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+
+
+def test_unresolved_tag_keeps_last_good_scoped_count(client, test_app):
+    """A scoped count stamped with the currently-unresolved tag is trusted and kept."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 7
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 7" in text
+    assert "of 500" not in text
+
+
+def test_unresolved_tag_count_from_different_tag_untrusted(client, test_app):
+    """A scoped count stamped with a different tag than the one now unresolved is untrusted."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 7
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "hd"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+
+
+def test_unresolved_tag_trusted_stamp_but_null_count_shows_unknown(client, test_app):
+    """A trusted stamp with a null scoped count still shows unknown, never the raw fallback."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = None
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+
+
+def test_unresolved_cutoff_tag_radarr_shows_unknown(client, test_app):
+    """An unresolved cutoff tag shows unknown in the Cutoff sub-card, never the raw count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["cutoff_count"] = 300
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"cutoff": "up"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 300" not in text
+
+
+def test_unresolved_cutoff_tag_sonarr_keeps_last_good(client, test_app):
+    """A trusted cutoff_searchable stamp is kept for an unresolved cutoff tag."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["cutoff_count"] = 300
+    test_app.state.triggarr_state["radarr"]["Default"]["cutoff_searchable"] = 2
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"cutoff": "up"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"cutoff": "up"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 2" in text
+
+
+def test_resolved_or_untagged_queue_denominator_unchanged(client, test_app):
+    """An untagged/resolved queue's denominator chain is unaffected by this phase."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 500" in text
+
+
+def test_scope_flags_tolerate_tampered_state(client, test_app):
+    """Malformed unresolved_tag_scopes/scoped_count_tags/tag_warnings never crash the card route."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = "garbage"
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = [1]
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        "x", {"field": 5, "tag": None}, {"field": "missing"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+
+
+def test_scoped_count_unknown_empty_state() -> None:
+    """An empty app_state resolves to no unknown scopes."""
+    assert _scoped_count_unknown({}) == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_trusted_stamp_kept() -> None:
+    """A stamp matching the unresolved tag with an int scoped value is trusted."""
+    result = _scoped_count_unknown({
+        "unresolved_tag_scopes": {"missing": "4k"},
+        "scoped_count_tags": {"missing": "4k"},
+        "missing_eligible": 7,
+    })
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_untrusted_mismatched_tag() -> None:
+    """A stamp for a different tag than the one unresolved is untrusted."""
+    result = _scoped_count_unknown({
+        "unresolved_tag_scopes": {"missing": "4k"},
+        "scoped_count_tags": {"missing": "hd"},
+        "missing_eligible": 7,
+    })
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_legacy_warning_without_marker() -> None:
+    """A legacy reason-less tag_warnings entry with no unresolved_tag_scopes marker is unknown."""
+    result = _scoped_count_unknown({
+        "tag_warnings": [{"tag": "4k", "field": "missing"}],
+        "missing_eligible": 480,
+    })
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_tampered_values_ignored() -> None:
+    """Malformed unresolved_tag_scopes/scoped_count_tags/tag_warnings values are ignored safely."""
+    result = _scoped_count_unknown({
+        "unresolved_tag_scopes": "garbage",
+        "scoped_count_tags": [1],
+        "tag_warnings": ["x", {"field": 5, "tag": None}, {"field": "missing"}],
+    })
+    assert result == {"missing": False, "cutoff": False}
