@@ -919,6 +919,179 @@ async def test_refresh_lidarr_counts_tag_resolution_fault_keeps_tagged_queue_cou
 
 
 # ---------------------------------------------------------------------------
+# Phase 79-03: never-widen refresh counts for unresolved tags (Sonarr)
+# ---------------------------------------------------------------------------
+
+
+async def test_refresh_sonarr_counts_unresolved_missing_tag_keeps_missing_counts_refreshes_cutoff():
+    """R5: a missing-side unresolved tag keeps missing counts; the cutoff queue still refreshes scoped."""
+    missing_ep = _make_sonarr_episode(series_id=1, season_number=1, episode_id=1)
+    cutoff_ep_tagged = _make_sonarr_episode(series_id=10, season_number=1, episode_id=100)
+    cutoff_ep_tagged["series"]["tags"] = [5]
+    cutoff_ep_untagged = _make_sonarr_episode(series_id=20, season_number=1, episode_id=200)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[missing_ep])
+    client.get_wanted_cutoff = AsyncMock(return_value=[cutoff_ep_tagged, cutoff_ep_untagged])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["cutoff_searchable"] = 2
+    ist["scoped_count_tags"] = {"missing": "gone"}
+    instance_config = _instance_config(missing_tag="gone", cutoff_tag="4k")
+    settings = make_settings()
+
+    result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["missing_eligible"] == 7
+    assert ist["missing_searchable"] == 3
+    assert ist["cutoff_searchable"] == 1  # only the tagged episode's season, refreshed
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+    assert ist["scoped_count_tags"]["cutoff"] == "4k"
+    assert ist["scoped_count_tags"]["missing"] == "gone"
+
+
+async def test_refresh_sonarr_counts_tag_fetch_failure_keeps_all_scoped_counts():
+    """R5: a tag-fetch failure keeps all scoped counts; connected stays True."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[_make_sonarr_episode(series_id=1, episode_id=1)])
+    client.get_wanted_cutoff = AsyncMock(return_value=[_make_sonarr_episode(series_id=2, episode_id=2)])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["cutoff_searchable"] = 2
+    instance_config = _instance_config(missing_tag="4k", cutoff_tag="hd")
+    settings = make_settings()
+
+    result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["connected"] is True
+    assert ist["missing_eligible"] == 7
+    assert ist["missing_searchable"] == 3
+    assert ist["cutoff_searchable"] == 2
+    assert ist["tag_warnings"] == [
+        {"tag": "4k", "field": "missing", "reason": "fetch_failed"},
+        {"tag": "hd", "field": "cutoff", "reason": "fetch_failed"},
+    ]
+
+
+async def test_refresh_sonarr_counts_inactive_cutoff_unresolved_never_widens():
+    """D-04/OQ1: an inactive cutoff queue's unresolved tag never widens, warns, or marks evaluated."""
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[])
+    client.get_wanted_cutoff = AsyncMock(return_value=[_make_sonarr_episode(series_id=1, episode_id=1)])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["cutoff_searchable"] = 2
+    instance_config = _instance_config(cutoff_count=0, cutoff_tag="gone")
+    settings = make_settings()
+
+    result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is not None
+    assert ist["cutoff_searchable"] == 2
+    assert ist["tag_warnings"] == []
+    assert ist["unresolved_tag_scopes"] == {"cutoff": "gone"}
+
+
+async def test_refresh_sonarr_counts_skipped_missing_survives_cutoff_data_fault():
+    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts."""
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["cutoff_searchable"] = 2
+    ist["scoped_count_tags"] = {"missing": "gone", "cutoff": "c"}
+    instance_config = _instance_config(missing_tag="gone")
+    settings = make_settings()
+
+    malformed_cutoff_ep = {
+        "id": 999,
+        "seriesId": 1,
+        "seasonNumber": 2,
+        "monitored": True,
+        "airDateUtc": (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
+        "series": "not-a-dict",  # triggers AttributeError in deduplicate_to_seasons
+    }
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[_make_sonarr_episode(series_id=5, episode_id=5)])
+    client.get_wanted_cutoff = AsyncMock(return_value=[malformed_cutoff_ep])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    # Refresh 1: cutoff's malformed "series" raises AttributeError in deduplicate_to_seasons.
+    result1 = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result1 is None
+    assert ist["connected"] is False
+    assert ist["missing_eligible"] == 7
+    assert ist["missing_searchable"] == 3
+    assert ist["scoped_count_tags"]["missing"] == "gone"
+    assert ist["cutoff_searchable"] is None  # cutoff's scope resolved -- cleared on its own fault
+
+    # Refresh 2: well-formed cutoff episode; missing tag still unresolved.
+    client.get_wanted_cutoff = AsyncMock(return_value=[_make_sonarr_episode(series_id=30, episode_id=300)])
+
+    result2 = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result2 is not None
+    assert ist["missing_eligible"] == 7
+    assert ist["missing_searchable"] == 3
+    assert ist["scoped_count_tags"]["missing"] == "gone"
+    assert ist["cutoff_searchable"] == 1
+
+
+async def test_refresh_sonarr_counts_skipped_cutoff_survives_missing_data_fault():
+    """D-05 revision 2: a missing-side data fault never erases a skipped cutoff queue's counts."""
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["cutoff_searchable"] = 2
+    ist["scoped_count_tags"] = {"missing": "m", "cutoff": "c"}
+    instance_config = _instance_config(cutoff_tag="gone")
+    settings = make_settings()
+
+    malformed_missing_ep = {
+        "id": 500,
+        "seriesId": 9,
+        "seasonNumber": 1,
+        "monitored": True,
+        "airDateUtc": (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
+        "series": "not-a-dict",
+    }
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[malformed_missing_ep])
+    client.get_wanted_cutoff = AsyncMock(return_value=[_make_sonarr_episode(series_id=7, episode_id=7)])
+    client.get_library_count = AsyncMock(return_value=10)
+    client.get_tags = AsyncMock(return_value=[])
+
+    result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+
+    assert result is None
+    assert ist["connected"] is False
+    assert ist["cutoff_searchable"] == 2
+    assert ist["scoped_count_tags"]["cutoff"] == "c"
+    assert ist["missing_eligible"] is None
+    assert ist["missing_searchable"] is None
+
+
+# ---------------------------------------------------------------------------
 # Per-app cycle regression tests: search-call-order
 # (Pins missing-first ordering for all three apps)
 # ---------------------------------------------------------------------------
