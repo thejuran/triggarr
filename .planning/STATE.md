@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Completed 79-01-PLAN.md
-last_updated: "2026-10-09T14:53:44.224Z"
+stopped_at: Completed 79-02-PLAN.md
+last_updated: "2026-10-09T15:04:59.132Z"
 last_activity: 2026-10-09 -- Phase 79 execution started
 progress:
   total_phases: 18
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 11
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 ## Current Position
 
 Phase: 79 (tag-scoped-searches-stay-in-scope) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Executing Phase 79
 Last activity: 2026-10-09 -- Phase 79 execution started
 
@@ -121,6 +121,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 78 P03 | 18min | 2 tasks | 2 files |
 | Phase 78 P05 | 25min | 3 tasks | 5 files |
 | Phase 79 P01 | 15min | 3 tasks | 2 files |
+| Phase 79 P02 | 5min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,9 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 78]: 78-05: tests/test_outcome_upgrade.py drives the real engine end-to-end (load_state -> run_*_cycle -> actual app-card route) rather than fabricating last_cycle dicts — Proves the engine's _finalize_cycle output actually renders correctly through the real route, which the Plan 04 fabricated-dict template tests cannot prove; all 6 tests passed on first run against Plans 01-04 as already built
 - [Phase 79]: 79-01: _resolve_tag_scope fires 'unresolved' on tag_id is None regardless of tag_fetch_ok, fixing a second pre-existing bug where a failed tag fetch produced no warning at all -- tag_fetch_ok now only selects which fixed reason string to use
 - [Phase 79]: 79-01: the unresolved-scope marker (ist['unresolved_tag_scopes']) is recorded for an unresolved queue regardless of whether it is active, per owner-resolved OQ1 -- only the warning badge and CycleTally.mark_unevaluated are gated on the queue being active (D-04)
+- [Phase 79]: 79-02: a tag_warnings entry with no reason key (pre-upgrade state.json) renders the 'not found' wording via an explicit {% else %} branch, never Jinja's implicit Undefined
+- [Phase 79]: 79-02: a legacy scoped count with no scoped_count_tags provenance stamp is never trusted even if a current unresolved_tag_scopes marker exists -- only a count stamped with the exact tag name that is now unresolved is kept, everything else shows the em dash
+- [Phase 79]: 79-02: the unresolved-tag skip gate for progress denominators applies regardless of whether the queue is currently flagged in tag_warnings (badge/grading stay gated on active per D-04), so an inactive unresolved queue's count also shows unknown (OQ1)
 
 ### Pending Todos
 
@@ -210,8 +214,8 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ## Session Continuity
 
-Last session: 2026-10-09T14:53:44.219Z
-Stopped at: Completed 79-01-PLAN.md
+Last session: 2026-10-09T15:04:45.712Z
+Stopped at: Completed 79-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

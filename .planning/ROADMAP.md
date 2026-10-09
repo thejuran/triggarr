@@ -289,7 +289,7 @@ Plans:
 **Wave 1**
 
 - [x] 79-01-PLAN.md — Shared `_resolve_tag_scope` helper; Radarr/Sonarr/Lidarr cycles skip unresolved-tag queues, grade them unevaluated, keep last good counts (wave 1)
-- [ ] 79-02-PLAN.md — Card badge names skipped queue + reason; README fail-open claim retired with docs regression test (wave 1)
+- [x] 79-02-PLAN.md — Card badge names skipped queue + reason; README fail-open claim retired with docs regression test (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -339,7 +339,7 @@ Plans:
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete    | 2026-10-08 |
 | 78. Honest Cycle Outcomes | 5/5 | Complete    | 2026-10-09 |
-| 79. Tag-Scoped Searches Stay in Scope | 1/4 | In Progress|  |
+| 79. Tag-Scoped Searches Stay in Scope | 2/4 | In Progress|  |
 | 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
 | 81. Correct Sonarr Grab Attribution | 0/TBD | Not started | - |
 
