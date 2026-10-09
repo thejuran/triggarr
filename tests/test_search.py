@@ -4923,3 +4923,534 @@ async def test_sonarr_active_fetch_failure_with_inactive_other_still_failed(tmp_
         assert client.get_wanted_cutoff.await_count == 0
     finally:
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# 78-03: Lidarr honest grading, hard-max reallocation, R-07 fetch isolation,
+# D-01 refresh boundary guard
+# ---------------------------------------------------------------------------
+
+
+async def test_lidarr_grade_success(tmp_path):
+    """Two monitored missing albums, cutoff empty, both accepted -> grade success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_successful_search"] == ist["last_run"] == ist["last_cycle"]["finished_at"]
+        assert ist["last_success"] is None
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_partial(tmp_path):
+    """One accepted album search, one failed -> grade partial."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://lidarr:8686/api/v1/command")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock(
+            side_effect=[None, httpx.HTTPStatusError("err", request=request, response=response)]
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["last_cycle"]["failed"] == 1
+        assert ist["last_cycle"]["failure_reasons"] == [{"reason": "HTTP 500", "count": 1}]
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_failed_all_commands(tmp_path):
+    """All album searches fail -> grade failed; legacy last_success untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["lidarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["connected"] is True
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_failed_fetch(tmp_path):
+    """Fetch failure -> grade failed, last_run stamped, last_successful_search untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["lidarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        state["lidarr"]["Default"]["last_successful_search"] = "2025-12-31T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] == "2025-12-31T00:00:00Z"
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_nothing_needed_empty(tmp_path):
+    """Both queues empty -> grade nothing_needed with eligible counts recorded as 0."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        state["lidarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["last_cycle"]["eligible"] == {"missing": 0, "cutoff": 0}
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_inactive_queue_ignored(tmp_path):
+    """An inactive (configured 0) queue is absent from eligible and doesn't block success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Album A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 2, "title": "Album B", "monitored": True}]
+        )
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert "cutoff" not in ist["last_cycle"]["eligible"]
+
+        # Both queues configured inactive (disabled instance) -> nothing_needed.
+        state2 = _make_test_state()
+        settings2 = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config2 = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+        result2 = await run_lidarr_cycle(client, state2, "Default", instance_config2, settings2, db)
+        ist2 = result2["lidarr"]["Default"]
+
+        assert ist2["last_cycle"]["grade"] == "nothing_needed"
+        assert client.search_albums.call_count == 1  # only the first scenario's missing item
+    finally:
+        await db.close()
+
+
+async def test_lidarr_persistence_failure_still_accepted(tmp_path):
+    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 3, "title": "Album C", "monitored": True}]
+        )
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 3
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["persistence_failed"] == 3
+        assert ist["last_successful_search"] is not None
+        assert client.search_albums.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_lidarr_hard_max_reallocates_to_queue_with_work(tmp_path):
+    """R-01 amended: hard_max=1 reallocates to the queue with eligible work, never nothing_needed."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": i, "title": f"Album {i}", "monitored": True} for i in range(2)]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["eligible"] == {"missing": 2, "cutoff": 0}
+    finally:
+        await db.close()
+
+
+async def test_lidarr_zero_dispatch_with_work_never_nothing_needed(tmp_path):
+    """Backstop: a forced zero-dispatch cycle with eligible work grades failed, never nothing_needed."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        with patch("triggarr.search.engine.rebalance_batch_sizes", return_value=(0, 0)):
+            result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 0
+        assert ist["last_cycle"]["grade"] == "failed"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_inactive_cutoff_fetch_fails_active_has_work(tmp_path):
+    """R-07: an inactive cutoff queue's fetch failure doesn't block the active missing queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 2
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["connected"] is True
+        assert ist["cutoff_count"] == 7
+        assert ist["cutoff_searched"] == ["99"]
+    finally:
+        await db.close()
+
+
+async def test_lidarr_inactive_cutoff_fetch_fails_active_empty(tmp_path):
+    """R-07: inactive cutoff fetch failure with an empty active missing queue grades nothing_needed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+    finally:
+        await db.close()
+
+
+async def test_lidarr_both_inactive_both_fetches_fail(tmp_path):
+    """R-07: both queues inactive and both fetches fail -> unreachable but graded nothing_needed, not failed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 0
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is False
+        assert ist["unreachable_since"] is not None
+    finally:
+        await db.close()
+
+
+async def test_lidarr_both_inactive_one_fetch_fails(tmp_path):
+    """R-07: both queues inactive, only one fetch fails -> still connected True (the other succeeded)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Album A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert client.search_albums.call_count == 0
+    finally:
+        await db.close()
+
+
+async def test_lidarr_active_fetch_failure_with_inactive_other_still_failed(tmp_path):
+    """R-07: an active queue's fetch failure still grades failed; the inactive endpoint is never probed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert client.get_wanted_cutoff.await_count == 0
+    finally:
+        await db.close()
+
+
+async def test_refresh_counts_never_touch_last_cycle(tmp_path):
+    """D-01/R2: refresh_*_counts never touch last_cycle, last_run, last_successful_search, or last_success.
+
+    Regression guard -- refresh_*_counts already never write these fields (D-01
+    predates this phase); this test pins that contract against this phase's new
+    last_cycle/last_successful_search fields and passes immediately.
+    """
+    from triggarr.search.engine import refresh_lidarr_counts, refresh_radarr_counts, refresh_sonarr_counts
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        frozen_last_cycle = {
+            "grade": "success", "accepted": 1, "failed": 0, "malformed_skipped": 0,
+            "persistence_failed": 0, "failure_reasons": [], "unevaluated": [],
+            "eligible": {"missing": 1}, "fetch_error": None, "finished_at": "2026-01-01T00:00:00Z",
+        }
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        for app_type, refresh_fn in (
+            ("radarr", refresh_radarr_counts),
+            ("sonarr", refresh_sonarr_counts),
+            ("lidarr", refresh_lidarr_counts),
+        ):
+            client = AsyncMock()
+            client.get_wanted_missing = AsyncMock(return_value=[])
+            client.get_wanted_cutoff = AsyncMock(return_value=[])
+            state = _make_test_state()
+            ist = state[app_type]["Default"]
+            ist["last_cycle"] = dict(frozen_last_cycle)
+            ist["last_run"] = "2026-01-01T00:00:00Z"
+            ist["last_successful_search"] = "2026-01-01T00:00:00Z"
+            ist["last_success"] = "2025-01-01T00:00:00Z"
+
+            await refresh_fn(client, state, "Default", instance_config, settings)
+
+            assert ist["last_cycle"] == frozen_last_cycle
+            assert ist["last_run"] == "2026-01-01T00:00:00Z"
+            assert ist["last_successful_search"] == "2026-01-01T00:00:00Z"
+            assert ist["last_success"] == "2025-01-01T00:00:00Z"
+    finally:
+        await db.close()
