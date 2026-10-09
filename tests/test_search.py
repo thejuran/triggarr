@@ -24,6 +24,7 @@ from tests.conftest import make_settings
 from triggarr.db import init_db
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig
+from triggarr.search.outcome import cycle_view
 from triggarr.search.engine import (
     _lidarr_tags,
     cap_batch_sizes,
@@ -32,6 +33,7 @@ from triggarr.search.engine import (
     filter_sonarr_episodes,
     filter_unreleased_movies,
     prioritize_batch,
+    rebalance_batch_sizes,
     resolve_tag_id,
     run_lidarr_cycle,
     run_radarr_cycle,
@@ -1118,6 +1120,101 @@ def test_cap_batch_sizes_very_small_max():
     assert cap_batch_sizes(5, 5, 1) == (0, 1)
     # 1+1=2 > 1 -> missing gets floor(1*1/2)=0, cutoff gets 1-0=1
     assert cap_batch_sizes(1, 1, 1) == (0, 1)
+
+
+# ---------------------------------------------------------------------------
+# rebalance_batch_sizes (R-01 amended -- Phase 78 Plan 02 Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_rebalance_batch_sizes_reallocates_to_starved_queue_with_work():
+    """The starved queue (eligible>0) receives the unused slot."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=1,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=5, cutoff_eligible=0,
+        hard_max=1,
+    ) == (1, 0)
+
+
+def test_rebalance_batch_sizes_unchanged_when_capped_queue_has_the_work():
+    """When the queue that already got the cap slot has the eligible work, nothing changes."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=1,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=0, cutoff_eligible=5,
+        hard_max=1,
+    ) == (0, 1)
+
+
+def test_rebalance_batch_sizes_unchanged_when_both_have_work():
+    """Both queues have eligible work -- the cap_batch_sizes split is left unchanged."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=1,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=5, cutoff_eligible=5,
+        hard_max=1,
+    ) == (0, 1)
+
+
+def test_rebalance_batch_sizes_leftover_tops_up_the_other_queue():
+    """Leftover from a short queue tops up the other queue's dispatch."""
+    assert rebalance_batch_sizes(
+        missing_limit=5, cutoff_limit=5,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=2, cutoff_eligible=30,
+        hard_max=10,
+    ) == (2, 8)
+
+
+def test_rebalance_batch_sizes_inactive_queue_never_gets_slots():
+    """An inactive queue (configured 0) never receives reallocated slots."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=5,
+        missing_configured=0, cutoff_configured=50,
+        missing_eligible=9, cutoff_eligible=2,
+        hard_max=5,
+    ) == (0, 2)
+
+
+def test_rebalance_batch_sizes_unlimited_mode_returns_capped_inputs_unchanged():
+    """hard_max<=0 (unlimited) returns the capped inputs unchanged."""
+    assert rebalance_batch_sizes(
+        missing_limit=3, cutoff_limit=4,
+        missing_configured=3, cutoff_configured=4,
+        missing_eligible=0, cutoff_eligible=9,
+        hard_max=0,
+    ) == (3, 4)
+
+
+def test_rebalance_batch_sizes_invariant_sweep():
+    """For every combination, the result never exceeds hard_max, configured, or eligible,
+    and never dispatches zero to a queue with both configured>0 and eligible>0
+    when the other active queue has no eligible work to use the budget instead.
+    """
+    for hard_max in range(1, 7):
+        for missing_configured in (0, 1, 3, 50):
+            for cutoff_configured in (0, 1, 3, 50):
+                capped_m, capped_c = cap_batch_sizes(missing_configured, cutoff_configured, hard_max)
+                for missing_eligible in (0, 1, 4):
+                    for cutoff_eligible in (0, 1, 4):
+                        m, c = rebalance_batch_sizes(
+                            missing_limit=capped_m, cutoff_limit=capped_c,
+                            missing_configured=missing_configured, cutoff_configured=cutoff_configured,
+                            missing_eligible=missing_eligible, cutoff_eligible=cutoff_eligible,
+                            hard_max=hard_max,
+                        )
+                        assert m + c <= hard_max
+                        assert m <= missing_configured
+                        assert c <= cutoff_configured
+                        assert m <= missing_eligible
+                        assert c <= cutoff_eligible
+                        work_exists = (
+                            (missing_configured > 0 and missing_eligible > 0)
+                            or (cutoff_configured > 0 and cutoff_eligible > 0)
+                        )
+                        if work_exists:
+                            assert m + c >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -3650,6 +3747,144 @@ async def test_radarr_last_cycle_never_contains_apikey(tmp_path):
         result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
         assert "SUPERSECRET123" not in json.dumps(result["radarr"]["Default"])
+    finally:
+        await db.close()
+
+
+async def test_radarr_hard_max_reallocates_to_queue_with_work(tmp_path):
+    """R-01 amended: hard_max=1 reallocates to the queue with eligible work, never nothing_needed."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": i, "title": f"Movie {i}", "monitored": True} for i in range(3)]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 1
+        client.search_movies.assert_called_once_with([0])
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["eligible"] == {"missing": 3, "cutoff": 0}
+        assert ist["last_cycle"]["grade"] != "nothing_needed"
+    finally:
+        await db.close()
+
+
+async def test_radarr_hard_max_cutoff_with_work_missing_empty(tmp_path):
+    """R-01 amended: missing empty, cutoff has work -- hard_max=1 dispatches exactly one cutoff search."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": i, "title": f"Cutoff {i}", "monitored": True} for i in range(2)]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 1
+        assert ist["last_cycle"]["grade"] == "success"
+    finally:
+        await db.close()
+
+
+async def test_radarr_eligible_counts_after_filters(tmp_path):
+    """last_cycle["eligible"] reflects eligible counts AFTER the full filter chain runs."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        future = (datetime.now(UTC) + timedelta(days=30)).isoformat().replace("+00:00", "Z")
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Eligible", "monitored": True},
+                {"id": 2, "title": "Unmonitored", "monitored": False},
+                {
+                    "id": 3, "title": "Unreleased", "monitored": True,
+                    "digitalRelease": future, "physicalRelease": future,
+                },
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[
+                {"id": 4, "title": "Cutoff Eligible", "monitored": True},
+                {"id": 5, "title": "Cutoff Unmonitored", "monitored": False},
+            ]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+        instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["eligible"] == {"missing": 1, "cutoff": 1}
+    finally:
+        await db.close()
+
+
+async def test_radarr_zero_dispatch_with_work_never_nothing_needed(tmp_path):
+    """Backstop: a forced zero-dispatch cycle with eligible work grades failed, never nothing_needed."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        with patch("triggarr.search.engine.rebalance_batch_sizes", return_value=(0, 0)):
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 0
+        assert ist["last_cycle"]["grade"] == "failed"
+
+        view = cycle_view(ist["last_cycle"], "Radarr")
+        assert any("2 eligible items not searched this cycle" in reason["text"] for reason in view["reasons"])
     finally:
         await db.close()
 
