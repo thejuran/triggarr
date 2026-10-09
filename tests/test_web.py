@@ -2263,91 +2263,64 @@ def test_csp_nonce_matches_html_script_tag(test_app):
 
 
 # ---------------------------------------------------------------------------
-# RES-02: last_success_stale computation in _build_app_context (Task 2)
+# 78-04 / D-06: staleness moved from last_success to last_checked; R-05: the
+# confirmed-search time is last_successful_search, which never falls back to
+# the legacy last_success value.
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# RES-02: Template render assertions for "Last OK" entry (Task 3)
-# ---------------------------------------------------------------------------
+def test_exact_time_filter_formats_iso_timestamp():
+    """_exact_time_filter turns an ISO Z timestamp into 'YYYY-MM-DD HH:MM:SS UTC'."""
+    from triggarr.web.routes import _exact_time_filter
+
+    assert _exact_time_filter("2026-04-13T14:32:10Z") == "2026-04-13 14:32:10 UTC"
 
 
-def test_app_card_connected_stale_last_success_renders_amber(client, test_app):
-    """Connected card with a stale last_success shows 'Last OK' with text-amber-400 class."""
-    from datetime import UTC, datetime, timedelta
+def test_exact_time_filter_empty_for_none_and_empty_string():
+    """_exact_time_filter returns '' for falsy input (None or '')."""
+    from triggarr.web.routes import _exact_time_filter
 
-    stale_ts = (datetime.now(UTC) - timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
-    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = stale_ts
-    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
-
-    response = client.get("/partials/app-card/radarr/Default")
-    assert response.status_code == 200
-    assert "Last OK" in response.text, "Connected card with stale last_success must show 'Last OK'"
-    assert "text-amber-400" in response.text, "Stale last_success must render with text-amber-400"
+    assert _exact_time_filter(None) == ""
+    assert _exact_time_filter("") == ""
 
 
-def test_app_card_no_last_success_renders_never_without_amber(client, test_app):
-    """Card with no last_success shows 'Never' and does NOT apply text-amber-400 to that entry."""
-    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = None
-    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
-    # Remove tag_warnings to ensure amber isn't coming from the tag badge
-    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = []
-
-    response = client.get("/partials/app-card/radarr/Default")
-    assert response.status_code == 200
-    assert "Last OK" in response.text, "Card must show 'Last OK' even when value is Never"
-    assert "Never" in response.text, "Card must show 'Never' when last_success is None"
-    # amber should NOT appear (no tag warnings, no stale timestamp)
-    assert "text-amber-400" not in response.text, "Never case must NOT apply text-amber-400"
-
-
-def test_app_card_unreachable_still_shows_last_ok(client, test_app):
-    """Unreachable card (connected==False) still shows 'Last OK' — Codex adversarial finding A.
-
-    The timestamp is most valuable when the instance is down: users need to see
-    when searches last worked.  This is a regression test — do NOT remove it.
-    """
-    from datetime import UTC, datetime, timedelta
-
-    stale_ts = (datetime.now(UTC) - timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
-    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = stale_ts
-    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
-
-    response = client.get("/partials/app-card/radarr/Default")
-    assert response.status_code == 200
-    assert "Last OK" in response.text, (
-        "Unreachable card MUST still show 'Last OK' — finding A regression guard"
-    )
-
-
-def test_build_app_context_last_success_none_is_stale(client, test_app):
-    """_build_app_context with last_success=None yields last_success_stale=True.
-
-    None means no successful search has ever run — treat as stale so the card
-    shows 'Never' in the default muted style (not amber; amber is for a real
-    stale timestamp).  The partial endpoint exercises _build_app_context.
-    """
-    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = None
-    # The partial route calls _build_app_context; template must receive stale=True
-    # We verify by checking that last_success_stale was True: the "Never" text
-    # rendered in the template indicates the stale branch was reached.
-    # Since we have not added the template yet, verify via _build_app_context directly.
+def test_build_app_context_last_checked_equals_last_run(client, test_app):
+    """ctx['last_checked'] mirrors the state's last_run value (D-04)."""
     from unittest.mock import MagicMock
 
     from fastapi import Request
 
     from triggarr.web.routes import _build_app_context
 
+    test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = "2026-04-13T14:32:10Z"
+
     mock_request = MagicMock(spec=Request)
     mock_request.app = test_app
     ctx = _build_app_context(mock_request, "radarr", "Default")
     assert ctx is not None
-    assert ctx["last_success"] is None
-    assert ctx["last_success_stale"] is True
+    assert ctx["last_checked"] == "2026-04-13T14:32:10Z"
 
 
-def test_build_app_context_old_last_success_is_stale(client, test_app):
-    """_build_app_context with last_success older than 2x search_interval yields stale=True."""
+def test_build_app_context_last_checked_stale_false_on_never(client, test_app):
+    """last_checked_stale is False when last_run is None -- never amber on Never (D-06)."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = None
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_checked"] is None
+    assert ctx["last_checked_stale"] is False
+
+
+def test_build_app_context_last_checked_stale_true_when_old(client, test_app):
+    """last_checked_stale is True when last_run is older than 2x the search interval (D-06)."""
     from datetime import UTC, datetime, timedelta
     from unittest.mock import MagicMock
 
@@ -2357,18 +2330,17 @@ def test_build_app_context_old_last_success_is_stale(client, test_app):
 
     # Default search_interval is 30 min; 2x = 60 min. Use 90 min ago = stale.
     old_ts = (datetime.now(UTC) - timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
-    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = old_ts
+    test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = old_ts
 
     mock_request = MagicMock(spec=Request)
     mock_request.app = test_app
     ctx = _build_app_context(mock_request, "radarr", "Default")
     assert ctx is not None
-    assert ctx["last_success"] == old_ts
-    assert ctx["last_success_stale"] is True
+    assert ctx["last_checked_stale"] is True
 
 
-def test_build_app_context_fresh_last_success_is_not_stale(client, test_app):
-    """_build_app_context with last_success within 2x search_interval yields stale=False."""
+def test_build_app_context_last_checked_stale_false_when_recent(client, test_app):
+    """last_checked_stale is False when last_run is within 2x the search interval (D-06)."""
     from datetime import UTC, datetime, timedelta
     from unittest.mock import MagicMock
 
@@ -2378,14 +2350,176 @@ def test_build_app_context_fresh_last_success_is_not_stale(client, test_app):
 
     # Default search_interval is 30 min; 2x = 60 min. Use 5 min ago = fresh.
     fresh_ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
-    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = fresh_ts
+    test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = fresh_ts
 
     mock_request = MagicMock(spec=Request)
     mock_request.app = test_app
     ctx = _build_app_context(mock_request, "radarr", "Default")
     assert ctx is not None
-    assert ctx["last_success"] == fresh_ts
-    assert ctx["last_success_stale"] is False
+    assert ctx["last_checked_stale"] is False
+
+
+def test_build_app_context_last_checked_stale_false_on_unparseable(client, test_app):
+    """A garbage last_run value never renders amber (D-06)."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = "not-a-timestamp"
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_checked_stale"] is False
+
+
+def test_build_app_context_no_last_cycle_is_none(client, test_app):
+    """ctx['last_cycle'] is None when the instance state has no last_cycle record."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    test_app.state.triggarr_state["radarr"]["Default"].pop("last_cycle", None)
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_cycle"] is None
+
+
+def test_build_app_context_last_cycle_is_cycle_view_output(client, test_app):
+    """ctx['last_cycle'] is the cycle_view() rendering of a persisted last_cycle record."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = {
+        "grade": "success",
+        "accepted": 5,
+        "failed": 0,
+        "malformed_skipped": 0,
+        "persistence_failed": 0,
+        "failure_reasons": [],
+        "unevaluated": [],
+        "eligible": {},
+        "fetch_error": None,
+        "finished_at": "2026-04-13T14:32:10Z",
+    }
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_cycle"] is not None
+    assert ctx["last_cycle"]["grade"] == "success"
+    assert ctx["last_cycle"]["grade_label"] == "Success"
+    assert ctx["last_cycle"]["accepted"] == 5
+
+
+def test_build_app_context_legacy_last_success_true_without_last_cycle(client, test_app):
+    """legacy_last_success is True iff last_cycle is None and last_success is set (D-14)."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    test_app.state.triggarr_state["radarr"]["Default"].pop("last_cycle", None)
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["legacy_last_success"] is True
+
+
+def test_build_app_context_legacy_last_success_false_with_last_cycle(client, test_app):
+    """R-05: once a last_cycle record exists, the legacy last_success value never fills the
+    confirmed slot -- legacy_last_success is False and last_successful_search is None.
+    """
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = {
+        "grade": "nothing_needed",
+        "accepted": 0,
+        "failed": 0,
+        "malformed_skipped": 0,
+        "persistence_failed": 0,
+        "failure_reasons": [],
+        "unevaluated": [],
+        "eligible": {},
+        "fetch_error": None,
+        "finished_at": "2026-04-13T14:32:10Z",
+    }
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+    test_app.state.triggarr_state["radarr"]["Default"]["last_successful_search"] = None
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["legacy_last_success"] is False
+    assert ctx["last_successful_search"] is None
+
+
+def test_build_app_context_last_successful_search_from_state(client, test_app):
+    """ctx['last_successful_search'] mirrors the state field verbatim (R-05)."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_successful_search"] = "2026-04-13T14:00:00Z"
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["last_successful_search"] == "2026-04-13T14:00:00Z"
+
+
+def test_build_app_context_app_label_capitalized(client, test_app):
+    """ctx['app_label'] is the capitalized app name (e.g. 'Radarr')."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert ctx["app_label"] == "Radarr"
+
+
+def test_build_app_context_no_longer_exposes_last_success_stale(client, test_app):
+    """D-06: Last successful search is never amber -- the key is removed from the context."""
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+
+    from triggarr.web.routes import _build_app_context
+
+    mock_request = MagicMock(spec=Request)
+    mock_request.app = test_app
+    ctx = _build_app_context(mock_request, "radarr", "Default")
+    assert ctx is not None
+    assert "last_success_stale" not in ctx
 
 
 # ---------------------------------------------------------------------------
