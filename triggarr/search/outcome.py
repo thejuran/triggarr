@@ -11,12 +11,17 @@ persisted record this module builds.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from triggarr.state import LastCycleRecord
+
+_HTTP_STATUS_RE = re.compile(r"^HTTP \d{3}$")
+_MAX_REASON_LENGTH = 120
+_UNEVALUATED_QUEUE_LABELS: dict[str, str] = {"missing": "Missing", "cutoff": "Cutoff unmet"}
 
 GRADE_SUCCESS = "success"
 GRADE_PARTIAL = "partial"
@@ -174,3 +179,125 @@ class CycleTally:
             "fetch_error": self.fetch_error,
             "finished_at": finished_at,
         }
+
+
+def _as_count(value: object) -> int:
+    """Coerce a tampered-record value to a non-negative int, defaulting to 0."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return 0
+
+
+def _truncate(text: str, limit: int = _MAX_REASON_LENGTH) -> str:
+    """Truncate reason text so a tampered/oversized record can't blow up the card."""
+    return text if len(text) <= limit else text[:limit]
+
+
+def cycle_view(record: object, app_label: str) -> dict | None:
+    """Turn a persisted LastCycleRecord (or a tampered/garbage value) into a render-ready dict.
+
+    Validates at the boundary, because state.json is read from disk: returns
+    None unless ``record`` is a dict whose "grade" is a key of GRADE_LABELS --
+    a malformed persisted record renders as "Not run yet", never crashes.
+
+    Reasons are grouped sanitized strings (D-09/D-10): fetch failure, then one
+    row per failure reason, then one row per unevaluated queue, then a
+    malformed-records row, then (only for a clean Failed-by-amended-R-01
+    cycle) a row explaining eligible work that was never dispatched. Inputs
+    are already-sanitized strings; Jinja autoescape handles HTML, and media
+    titles never appear here.
+    """
+    if not isinstance(record, dict):
+        return None
+    grade = record.get("grade")
+    if not isinstance(grade, str) or grade not in GRADE_LABELS:
+        return None
+
+    accepted = _as_count(record.get("accepted"))
+    failed = _as_count(record.get("failed"))
+    malformed_skipped = _as_count(record.get("malformed_skipped"))
+    persistence_failed = _as_count(record.get("persistence_failed"))
+
+    raw_finished_at = record.get("finished_at")
+    finished_at = raw_finished_at if isinstance(raw_finished_at, str) else None
+
+    reasons: list[dict[str, object]] = []
+
+    fetch_error = record.get("fetch_error")
+    fetch_failed = isinstance(fetch_error, str) and bool(fetch_error)
+    if fetch_failed:
+        reasons.append({"text": _truncate(f"Couldn't reach {app_label} ({fetch_error})"), "count": 1})
+
+    raw_failure_reasons = record.get("failure_reasons")
+    if isinstance(raw_failure_reasons, list):
+        for entry in raw_failure_reasons:
+            if not isinstance(entry, dict):
+                continue
+            reason = entry.get("reason")
+            if not isinstance(reason, str):
+                continue
+            count = _as_count(entry.get("count"))
+            if _HTTP_STATUS_RE.match(reason):
+                text = f"Command rejected by {app_label} ({reason})"
+            else:
+                text = f"Search command to {app_label} failed ({reason})"
+            reasons.append({"text": _truncate(text), "count": count})
+
+    raw_unevaluated = record.get("unevaluated")
+    unevaluated_rows = 0
+    if isinstance(raw_unevaluated, list):
+        for entry in raw_unevaluated:
+            if not isinstance(entry, dict):
+                continue
+            reason = entry.get("reason")
+            if not isinstance(reason, str):
+                continue
+            label = _UNEVALUATED_QUEUE_LABELS.get(entry.get("queue"))
+            if label is None:
+                continue
+            reasons.append({"text": _truncate(f"{label} queue not evaluated: {reason}"), "count": 1})
+            unevaluated_rows += 1
+
+    if malformed_skipped > 0:
+        if malformed_skipped == 1:
+            text = "1 malformed record skipped"
+        else:
+            text = f"{malformed_skipped} malformed records skipped"
+        reasons.append({"text": _truncate(text), "count": 1})
+
+    # Amended R-01 backstop: explain a clean Failed grade caused by eligible
+    # work that never got dispatched, so the card is never blank.
+    if (
+        grade == GRADE_FAILED
+        and accepted == 0
+        and failed == 0
+        and not fetch_failed
+        and unevaluated_rows == 0
+        and malformed_skipped == 0
+    ):
+        raw_eligible = record.get("eligible")
+        eligible_map = raw_eligible if isinstance(raw_eligible, dict) else {}
+        eligible_total = sum(_as_count(value) for value in eligible_map.values())
+        if eligible_total > 0:
+            text = (
+                "1 eligible item not searched this cycle"
+                if eligible_total == 1
+                else f"{eligible_total} eligible items not searched this cycle"
+            )
+            reasons.append({"text": _truncate(text), "count": 1})
+
+    has_detail = (grade in (GRADE_PARTIAL, GRADE_FAILED) or unevaluated_rows > 0) and len(reasons) > 0
+
+    return {
+        "grade": grade,
+        "grade_label": GRADE_LABELS[grade],
+        "accepted": accepted,
+        "failed": failed,
+        "persistence_failed": persistence_failed,
+        "malformed_skipped": malformed_skipped,
+        "finished_at": finished_at,
+        "fetch_failed": fetch_failed,
+        "reasons": reasons,
+        "reason_count": len(reasons),
+        "has_detail": has_detail,
+    }
