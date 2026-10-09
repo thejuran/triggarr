@@ -461,6 +461,17 @@ def _finalize_cycle(ist: AppState, tally: CycleTally, instance_config: InstanceC
         ist["last_successful_search"] = now_iso
 
 
+def _mark_unreachable(ist: AppState) -> None:
+    """Mark an instance disconnected, stamping ``unreachable_since`` only if not already set.
+
+    Shared by the cycle abort / R-07 paths and the count-refresh fetch / data-fault
+    paths so the "first seen unreachable" timestamp is preserved identically everywhere.
+    """
+    ist["connected"] = False
+    if not ist.get("unreachable_since"):
+        ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
 async def _fetch_wanted_queues(
     *,
     fetch_missing: Callable[[], Awaitable[list]],
@@ -569,12 +580,8 @@ async def run_radarr_cycle(
         )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
         tally.record_fetch_failure(_sanitize_exc(exc))
         _finalize_cycle(ist, tally, instance_config)
         return state
@@ -588,11 +595,7 @@ async def run_radarr_cycle(
             "Radarr: both queues inactive and neither could be fetched -- "
             "marked unreachable; not graded Failed"
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
+        _mark_unreachable(ist)
         _finalize_cycle(ist, tally, instance_config)
         return state
 
@@ -857,12 +860,8 @@ async def run_sonarr_cycle(
         )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
         tally.record_fetch_failure(_sanitize_exc(exc))
         _finalize_cycle(ist, tally, instance_config)
         return state
@@ -876,11 +875,7 @@ async def run_sonarr_cycle(
             "Sonarr: both queues inactive and neither could be fetched -- "
             "marked unreachable; not graded Failed"
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
+        _mark_unreachable(ist)
         _finalize_cycle(ist, tally, instance_config)
         return state
 
@@ -1152,12 +1147,8 @@ async def run_lidarr_cycle(
         )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Lidarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
         tally.record_fetch_failure(_sanitize_exc(exc))
         _finalize_cycle(ist, tally, instance_config)
         return state
@@ -1171,11 +1162,7 @@ async def run_lidarr_cycle(
             "Lidarr: both queues inactive and neither could be fetched -- "
             "marked unreachable; not graded Failed"
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
+        _mark_unreachable(ist)
         _finalize_cycle(ist, tally, instance_config)
         return state
 
@@ -1434,10 +1421,8 @@ async def refresh_radarr_counts(
         cutoff = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return None
 
     # Library count is cosmetic -- never abort on failure.
@@ -1513,9 +1498,7 @@ async def refresh_radarr_counts(
             "Radarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        _mark_unreachable(ist)
         # Clear eligible counts so no half-updated set is left behind
         ist["missing_monitored"] = None
         ist["missing_eligible"] = None
@@ -1570,10 +1553,8 @@ async def refresh_sonarr_counts(
         cutoff_episodes = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return None
 
     # Library count is cosmetic -- never abort on failure.
@@ -1652,9 +1633,7 @@ async def refresh_sonarr_counts(
             "Sonarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        _mark_unreachable(ist)
         # Clear eligible/searchable counts so no half-updated set is left behind
         ist["missing_eligible"] = None
         ist["missing_searchable"] = None
@@ -1709,10 +1688,8 @@ async def refresh_lidarr_counts(
         cutoff = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Lidarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return None
 
     # Library count is cosmetic -- never abort on failure.
@@ -1785,9 +1762,7 @@ async def refresh_lidarr_counts(
             "Lidarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        _mark_unreachable(ist)
         # Clear eligible counts so no half-updated set is left behind
         ist["missing_monitored"] = None
         ist["missing_eligible"] = None
