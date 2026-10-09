@@ -3657,6 +3657,66 @@ async def test_radarr_persistence_failure_still_accepted(tmp_path):
         await db.close()
 
 
+async def test_radarr_partial_history_write_rolled_back_never_resent(tmp_path):
+    """R-08/R8: a real prune failure mid-cycle rolls back cleanly; every accepted command stays
+    accepted and is never resent."""
+    from triggarr.db import insert_search_entry
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    db2 = None
+    try:
+        for i in range(2):
+            await insert_search_entry(db, "Radarr", "missing", f"Resolved {i}", outcome="failed")
+        await db.execute(
+            "CREATE TRIGGER fail_prune BEFORE DELETE ON search_history "
+            "BEGIN SELECT RAISE(ABORT, 'injected prune failure'); END"
+        )
+        await db.commit()
+
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=2, search_cutoff_count=0,
+            general=GeneralConfig(max_history_rows=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 2
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["persistence_failed"] == 2
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_successful_search"] is not None
+        assert db.in_transaction is False
+
+        await db.execute("DROP TRIGGER fail_prune")
+        await db.commit()
+
+        db2 = await aiosqlite.connect(db_path)
+        async with db2.execute("SELECT COUNT(*) FROM search_history WHERE outcome = 'searched'") as cursor:
+            pending_count = (await cursor.fetchone())[0]
+        assert pending_count == 0
+    finally:
+        if db2 is not None:
+            await db2.close()
+        await db.close()
+
+
 async def test_radarr_pending_cap_counts_as_persistence_failure(tmp_path):
     """R-02: PendingCapExceeded on the success-path insert is a persistence failure, not a failed search."""
     from unittest.mock import patch

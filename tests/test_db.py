@@ -15,6 +15,7 @@ import pytest
 from loguru import logger
 
 from triggarr.db import (
+    PendingCapExceeded,
     _migrate_v1,
     get_dashboard_stats,
     get_recent_searches,
@@ -598,6 +599,184 @@ async def test_pending_cap_is_scoped_per_instance(tmp_path):
             "WHERE outcome = 'searched' AND app = 'Sonarr' AND instance_id = 'Default'"
         ) as cursor:
             assert (await cursor.fetchone())[0] == 1
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# R-08 (Phase 78 Plan 02 Task 4): insert_search_entry rolls back on failure
+# ---------------------------------------------------------------------------
+
+_FAIL_PRUNE_TRIGGER_SQL = (
+    "CREATE TRIGGER fail_prune BEFORE DELETE ON search_history "
+    "BEGIN SELECT RAISE(ABORT, 'injected prune failure'); END"
+)
+
+
+class _CommitFailingConnection:
+    """Test-local proxy: wraps a real aiosqlite connection so ``commit()`` raises
+    without committing (R-08 fault injection for insert_search_entry).
+
+    ``execute`` delegates to the real connection unchanged (returning the
+    real awaitable/async-context-manager); ``rollback`` delegates unless
+    ``fail_rollback`` is set; everything else forwards via ``__getattr__``.
+    """
+
+    def __init__(self, real: aiosqlite.Connection, *, fail_rollback: bool = False) -> None:
+        self._real = real
+        self._fail_rollback = fail_rollback
+
+    def execute(self, *args, **kwargs):
+        return self._real.execute(*args, **kwargs)
+
+    async def commit(self) -> None:
+        raise aiosqlite.OperationalError("injected commit failure")
+
+    async def rollback(self) -> None:
+        if self._fail_rollback:
+            raise aiosqlite.OperationalError("injected rollback failure")
+        await self._real.rollback()
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+async def test_insert_rolls_back_when_prune_fails(tmp_path):
+    """R-08: a prune-DELETE failure after a successful INSERT rolls back the whole transaction."""
+    db, db_path = await _init_test_db(tmp_path)
+    try:
+        for i in range(2):
+            await insert_search_entry(db, "Radarr", "missing", f"Resolved {i}", outcome="failed")
+        await db.execute(_FAIL_PRUNE_TRIGGER_SQL)
+        await db.commit()
+
+        with pytest.raises(aiosqlite.Error):
+            await insert_search_entry(db, "Radarr", "missing", "Phantom", outcome="searched", max_rows=1)
+
+        assert db.in_transaction is False
+        async with db.execute(
+            "SELECT COUNT(*) FROM search_history WHERE item_name = 'Phantom'"
+        ) as cursor:
+            row = await cursor.fetchone()
+        assert row[0] == 0
+    finally:
+        await db.close()
+
+
+async def test_insert_after_failed_prune_commits_no_phantom(tmp_path):
+    """R-08: after a rolled-back prune failure, a later successful insert commits no phantom row."""
+    db, db_path = await _init_test_db(tmp_path)
+    db2 = None
+    try:
+        for i in range(2):
+            await insert_search_entry(db, "Radarr", "missing", f"Resolved {i}", outcome="failed")
+        await db.execute(_FAIL_PRUNE_TRIGGER_SQL)
+        await db.commit()
+
+        with pytest.raises(aiosqlite.Error):
+            await insert_search_entry(db, "Radarr", "missing", "Phantom", outcome="searched", max_rows=1)
+
+        await db.execute("DROP TRIGGER fail_prune")
+        await db.commit()
+
+        await insert_search_entry(db, "Radarr", "missing", "Real", outcome="searched", max_rows=1)
+
+        # Open a second, independent connection so only committed data is visible.
+        db2 = await aiosqlite.connect(db_path)
+        async with db2.execute("SELECT COUNT(*) FROM search_history WHERE item_name = 'Real'") as cursor:
+            real_count = (await cursor.fetchone())[0]
+        async with db2.execute("SELECT COUNT(*) FROM search_history WHERE item_name = 'Phantom'") as cursor:
+            phantom_count = (await cursor.fetchone())[0]
+        assert real_count == 1
+        assert phantom_count == 0
+    finally:
+        if db2 is not None:
+            await db2.close()
+        await db.close()
+
+
+async def test_insert_rolls_back_when_commit_fails(tmp_path):
+    """R-08: a commit failure after a successful INSERT rolls back; a later insert still succeeds."""
+    db, db_path = await _init_test_db(tmp_path)
+    try:
+        proxy = _CommitFailingConnection(db)
+        with pytest.raises(aiosqlite.OperationalError, match="injected commit failure"):
+            await insert_search_entry(proxy, "Radarr", "missing", "Phantom", outcome="searched")
+
+        assert db.in_transaction is False
+        async with db.execute("SELECT COUNT(*) FROM search_history WHERE item_name = 'Phantom'") as cursor:
+            row = await cursor.fetchone()
+        assert row[0] == 0
+
+        await insert_search_entry(db, "Radarr", "missing", "Real", outcome="searched")
+        async with db.execute("SELECT COUNT(*) FROM search_history") as cursor:
+            total = (await cursor.fetchone())[0]
+        assert total == 1
+    finally:
+        await db.close()
+
+
+async def test_pending_cap_ignores_rolled_back_rows(tmp_path):
+    """R-08: a rolled-back pending insert must not count toward the pending-cap check."""
+    db, db_path = await _init_test_db(tmp_path)
+    try:
+        max_rows = 1  # cap = 2 * 1 = 2
+        await insert_search_entry(db, "Radarr", "missing", "Seed Pending", outcome="searched", max_rows=max_rows)
+        for i in range(2):
+            await insert_search_entry(db, "Radarr", "missing", f"Resolved {i}", outcome="failed", max_rows=max_rows)
+
+        await db.execute(_FAIL_PRUNE_TRIGGER_SQL)
+        await db.commit()
+
+        with pytest.raises(aiosqlite.Error):
+            await insert_search_entry(
+                db, "Radarr", "missing", "FailedPendingPrune", outcome="searched", max_rows=max_rows,
+            )
+
+        await db.execute("DROP TRIGGER fail_prune")
+        await db.commit()
+
+        # Must NOT raise PendingCapExceeded -- the rolled-back row must not count toward the cap.
+        await insert_search_entry(db, "Radarr", "missing", "Second Pending", outcome="searched", max_rows=max_rows)
+
+        async with db.execute("SELECT COUNT(*) FROM search_history WHERE outcome = 'searched'") as cursor:
+            pending_count = (await cursor.fetchone())[0]
+        assert pending_count == 2
+    finally:
+        await db.close()
+
+
+async def test_insert_rollback_failure_logged_original_error_raised(tmp_path):
+    """R-08: if rollback itself fails, an ERROR is logged and the ORIGINAL error still propagates."""
+    db, db_path = await _init_test_db(tmp_path)
+    try:
+        proxy = _CommitFailingConnection(db, fail_rollback=True)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="ERROR")
+        try:
+            with pytest.raises(aiosqlite.OperationalError, match="injected commit failure"):
+                await insert_search_entry(proxy, "Radarr", "missing", "Phantom", outcome="searched")
+        finally:
+            logger.remove(handler_id)
+
+        assert "rollback failed" in sink.getvalue()
+    finally:
+        await db.close()
+
+
+async def test_pending_cap_rejection_still_no_write(tmp_path):
+    """Regression: the pending-cap rejection path still raises PendingCapExceeded with no open transaction."""
+    db, db_path = await _init_test_db(tmp_path)
+    try:
+        max_rows = 1  # cap = 2 * 1 = 2
+        for i in range(2):
+            await insert_search_entry(db, "Radarr", "missing", f"Pending {i}", outcome="searched", max_rows=max_rows)
+
+        with pytest.raises(PendingCapExceeded):
+            await insert_search_entry(db, "Radarr", "missing", "Rejected", outcome="searched", max_rows=max_rows)
+
+        assert db.in_transaction is False
     finally:
         await db.close()
 
