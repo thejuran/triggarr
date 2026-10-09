@@ -721,9 +721,11 @@ async def test_pending_cap_ignores_rolled_back_rows(tmp_path):
     db, db_path = await _init_test_db(tmp_path)
     try:
         max_rows = 1  # cap = 2 * 1 = 2
-        await insert_search_entry(db, "Radarr", "missing", "Seed Pending", outcome="searched", max_rows=max_rows)
+        # Seed at the default (large) max_rows so the inline resolved-row trim doesn't
+        # prune these seed rows before the trigger is even installed.
+        await insert_search_entry(db, "Radarr", "missing", "Seed Pending", outcome="searched")
         for i in range(2):
-            await insert_search_entry(db, "Radarr", "missing", f"Resolved {i}", outcome="failed", max_rows=max_rows)
+            await insert_search_entry(db, "Radarr", "missing", f"Resolved {i}", outcome="failed")
 
         await db.execute(_FAIL_PRUNE_TRIGGER_SQL)
         await db.commit()
@@ -732,6 +734,7 @@ async def test_pending_cap_ignores_rolled_back_rows(tmp_path):
             await insert_search_entry(
                 db, "Radarr", "missing", "FailedPendingPrune", outcome="searched", max_rows=max_rows,
             )
+        assert db.in_transaction is False
 
         await db.execute("DROP TRIGGER fail_prune")
         await db.commit()
