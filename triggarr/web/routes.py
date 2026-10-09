@@ -55,6 +55,7 @@ from triggarr.search.engine import (
     refresh_radarr_counts,
     refresh_sonarr_counts,
 )
+from triggarr.search.outcome import cycle_view
 from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
@@ -146,6 +147,23 @@ def _relative_time(dt: datetime | None, *, short_threshold: bool = False) -> str
 
 
 templates.env.filters["relative_time"] = _relative_time_filter
+
+
+def _exact_time_filter(iso_timestamp: str | None) -> str:
+    """Jinja2 filter: ISO timestamp string -> exact 'YYYY-MM-DD HH:MM:SS UTC' hover tooltip."""
+    if not iso_timestamp:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        dt = dt.astimezone(UTC)
+    except (ValueError, TypeError):
+        return iso_timestamp[:19].replace("T", " ")
+    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+templates.env.filters["exact_time"] = _exact_time_filter
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
@@ -290,18 +308,22 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
     if job and job.next_run_time:
         next_run = job.next_run_time.isoformat()
 
-    # RES-02: compute last_success_stale at render time (D-03)
-    # stale = (last_success is None) OR (now - last_success > 2 x search_interval_minutes)
+    # 78-04 / D-06: staleness moved from last_success to last_checked; R-05: the
+    # confirmed-search time is last_successful_search, which never falls back to
+    # the legacy last_success value.
     last_success = app_state.get("last_success")
-    last_success_stale = True  # default: no timestamp means stale
-    if last_success is not None:
+    last_checked = app_state.get("last_run")
+    last_checked_stale = False  # D-06: never amber on "Never" or an unparseable timestamp
+    if last_checked is not None:
         try:
-            ls_dt = datetime.fromisoformat(last_success.replace("Z", "+00:00"))
+            lc_dt = datetime.fromisoformat(last_checked.replace("Z", "+00:00"))
             instance_cfg = enabled[instance_name]
             threshold = timedelta(minutes=instance_cfg.search_interval * 2)
-            last_success_stale = (datetime.now(UTC) - ls_dt) > threshold
+            last_checked_stale = (datetime.now(UTC) - lc_dt) > threshold
         except (ValueError, TypeError):
-            last_success_stale = True
+            last_checked_stale = False
+
+    last_cycle = app_state.get("last_cycle")
 
     return {
         "name": app_name,
@@ -309,7 +331,12 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
         "card_id": _sanitize_card_id(f"{app_name}-{instance_name}"),
         "last_run": app_state.get("last_run"),
         "last_success": last_success,
-        "last_success_stale": last_success_stale,
+        "last_checked": last_checked,
+        "last_checked_stale": last_checked_stale,
+        "last_cycle": cycle_view(last_cycle, app_name.capitalize()),
+        "legacy_last_success": last_cycle is None and last_success is not None,
+        "last_successful_search": app_state.get("last_successful_search"),
+        "app_label": app_name.capitalize(),
         "next_run": next_run,
         "missing_cursor": len(app_state.get("missing_searched", [])),
         "cutoff_cursor": len(app_state.get("cutoff_searched", [])),
