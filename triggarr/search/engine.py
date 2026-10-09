@@ -472,6 +472,43 @@ def _mark_unreachable(ist: AppState) -> None:
         ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _rebalance_and_log(
+    *,
+    app_label: str,
+    missing_limit: int,
+    cutoff_limit: int,
+    missing_configured: int,
+    cutoff_configured: int,
+    missing_eligible: int,
+    cutoff_eligible: int,
+    hard_max: int,
+) -> tuple[int, int]:
+    """Reallocate unused hard-max budget to a starved queue with work (R-01 amended).
+
+    Shared by the three cycle functions: calls ``rebalance_batch_sizes`` on the
+    already-capped limits and logs at debug level when the hard max moved budget
+    between queues. Returns the (possibly rebalanced) (missing_limit, cutoff_limit).
+    """
+    new_missing, new_cutoff = rebalance_batch_sizes(
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=missing_configured,
+        cutoff_configured=cutoff_configured,
+        missing_eligible=missing_eligible,
+        cutoff_eligible=cutoff_eligible,
+        hard_max=hard_max,
+    )
+    if hard_max > 0 and (new_missing, new_cutoff) != (missing_limit, cutoff_limit):
+        logger.debug(
+            "{app}: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
+            app=app_label,
+            max=hard_max,
+            m=new_missing,
+            c=new_cutoff,
+        )
+    return new_missing, new_cutoff
+
+
 async def _fetch_wanted_queues(
     *,
     fetch_missing: Callable[[], Awaitable[list]],
@@ -717,8 +754,8 @@ async def run_radarr_cycle(
     tally.record_eligible("cutoff", cutoff_eligible_count)
 
     # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
-    capped_missing_limit, capped_cutoff_limit = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = rebalance_batch_sizes(
+    missing_limit, cutoff_limit = _rebalance_and_log(
+        app_label="Radarr",
         missing_limit=missing_limit,
         cutoff_limit=cutoff_limit,
         missing_configured=orig_missing,
@@ -727,13 +764,6 @@ async def run_radarr_cycle(
         cutoff_eligible=cutoff_eligible_count,
         hard_max=hard_max,
     )
-    if hard_max > 0 and (missing_limit, cutoff_limit) != (capped_missing_limit, capped_cutoff_limit):
-        logger.debug(
-            "Radarr: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
 
     # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
     # and its searched-log is left exactly as it was, R-07) ---
@@ -997,8 +1027,8 @@ async def run_sonarr_cycle(
     tally.record_eligible("cutoff", len(cutoff_seasons))
 
     # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
-    capped_missing_limit, capped_cutoff_limit = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = rebalance_batch_sizes(
+    missing_limit, cutoff_limit = _rebalance_and_log(
+        app_label="Sonarr",
         missing_limit=missing_limit,
         cutoff_limit=cutoff_limit,
         missing_configured=orig_missing,
@@ -1007,13 +1037,6 @@ async def run_sonarr_cycle(
         cutoff_eligible=len(cutoff_seasons),
         hard_max=hard_max,
     )
-    if hard_max > 0 and (missing_limit, cutoff_limit) != (capped_missing_limit, capped_cutoff_limit):
-        logger.debug(
-            "Sonarr: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
 
     # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
     # and its searched-log is left exactly as it was, R-07) ---
@@ -1279,8 +1302,8 @@ async def run_lidarr_cycle(
     tally.record_eligible("cutoff", cutoff_eligible_count)
 
     # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
-    capped_missing_limit, capped_cutoff_limit = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = rebalance_batch_sizes(
+    missing_limit, cutoff_limit = _rebalance_and_log(
+        app_label="Lidarr",
         missing_limit=missing_limit,
         cutoff_limit=cutoff_limit,
         missing_configured=orig_missing,
@@ -1289,13 +1312,6 @@ async def run_lidarr_cycle(
         cutoff_eligible=cutoff_eligible_count,
         hard_max=hard_max,
     )
-    if hard_max > 0 and (missing_limit, cutoff_limit) != (capped_missing_limit, capped_cutoff_limit):
-        logger.debug(
-            "Lidarr: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
 
     # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
     # and its searched-log is left exactly as it was, R-07) ---
