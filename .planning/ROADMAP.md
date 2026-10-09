@@ -283,7 +283,21 @@ Plans:
   3. A skipped queue counts as unevaluated for grading; paired with an empty other queue, the cycle grades Failed, never "Nothing needed searching."
   4. README/docs no longer describe the old search-everything fallback.
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+**Wave 1**
+
+- [x] 79-01-PLAN.md — Shared `_resolve_tag_scope` helper; Radarr/Sonarr/Lidarr cycles skip unresolved-tag queues, grade them unevaluated, keep last good counts (wave 1)
+- [ ] 79-02-PLAN.md — Card badge names skipped queue + reason; README fail-open claim retired with docs regression test (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 79-03-PLAN.md — Refresh counts never widen (active or inactive queue); end-to-end engine-to-card proof (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 79-04-PLAN.md — Fold copied R-07 both-inactive and hard-max cap blocks into shared helpers, behavior-preserving (wave 3)
 
 ### Phase 80: Cycle Robustness & Sonarr Season Dedup
 
@@ -325,7 +339,7 @@ Plans:
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete    | 2026-10-08 |
 | 78. Honest Cycle Outcomes | 5/5 | Complete    | 2026-10-09 |
-| 79. Tag-Scoped Searches Stay in Scope | 0/TBD | Not started | - |
+| 79. Tag-Scoped Searches Stay in Scope | 1/4 | In Progress|  |
 | 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
 | 81. Correct Sonarr Grab Attribution | 0/TBD | Not started | - |
 
@@ -365,6 +379,7 @@ Plans:
 
 - [x] Promoted to v2.12 Phase 77
  (completed 2026-10-08)
+
 ### Phase 999.4: Run bcrypt off the event loop (BACKLOG)
 
 **Source:** `/deep-review --all` 2026-06-26 (framework-fastapi, async-blocking).
