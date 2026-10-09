@@ -82,7 +82,9 @@ class AppState(TypedDict, total=False):
     cutoff_count: int | None  # Total cutoff-unmet items (before filtering)
     cutoff_searchable: int | None  # Searchable units for cutoff (Sonarr: seasons; None for Radarr)
     total_items: int | None  # Total library items (Radarr: movies, Sonarr: episodes)
-    tag_warnings: list[dict]  # Tag resolution warnings: [{"tag": name, "field": "missing"|"cutoff"}]
+    # [{"tag": name, "field": "missing"|"cutoff", "reason": "not_found"|"fetch_failed"}] --
+    # active tag-scoped queues skipped this cycle
+    tag_warnings: list[dict]
 
 
 class TriggarrState(TypedDict, total=False):

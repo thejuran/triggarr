@@ -47,15 +47,30 @@
     <!-- Grade line + expand control (D-03): first row of the card body -->
     {% include "partials/cycle_grade.html" %}
 
-    <!-- Tag warning badge -->
+    <!-- Tag-skip badge (Phase 79 D-01): names the skipped queue and reason; grade line stays above (Phase 78 D-03 / OQ2) -->
     {% if app.tag_warnings %}
     <div class="bg-amber-500/15 text-amber-400 text-xs px-3 py-1.5 rounded mb-3 flex items-center gap-2">
       <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="0.5"/></svg>
       <span>
         {% if app.tag_warnings | length == 1 %}
-          {{ app.tag_warnings[0].field | capitalize }} tag '{{ app.tag_warnings[0].tag }}' not found
+          {% set w = app.tag_warnings[0] %}
+          {{ w.field | capitalize }} queue skipped &mdash;
+          {% if w.reason == 'fetch_failed' %}
+            couldn't load tags from {{ app.app_label }}
+          {% else %}
+            tag '{{ w.tag }}' not found
+          {% endif %}
         {% else %}
-          Tags not found: {% for w in app.tag_warnings %}'{{ w.tag }}' ({{ w.field }}){% if not loop.last %}, {% endif %}{% endfor %}
+          Queues skipped:
+          {% for w in app.tag_warnings %}
+            {{ w.field | capitalize }} &mdash;
+            {% if w.reason == 'fetch_failed' %}
+              couldn't load tags from {{ app.app_label }}
+            {% else %}
+              tag '{{ w.tag }}' not found
+            {% endif %}
+            {% if not loop.last %}; {% endif %}
+          {% endfor %}
         {% endif %}
       </span>
     </div>
