@@ -15,6 +15,15 @@ jobs:
   preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Skip untrusted or unsuccessful triggers so failed/cancelled CI does not
+    # produce failed Release runs; release-policy.cjs still re-verifies independently.
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     permissions:
       contents: read
       actions: read
