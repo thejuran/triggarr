@@ -57,5 +57,8 @@ Review both tools against the same immutable commit. Preserve their original out
 | Round | Commit | Greptile | Vibe-check |
 | --- | --- | --- | --- |
 | 1 | `dd8f4b53f59baa3183fbcfcc4aef1b02991b3439` | Apex completed, three findings; native check succeeded despite unresolved P1s | Owner supplied report; scored zero findings, supervising assistant raised release concerns |
+| 2 | `5a3cb44f93e14641ec967a2079418c8855bb30a4` | Apex completed, zero new comments; all original threads resolved by greptile-apps[bot], including the unfixed old-tag bypass | One Medium finding (required-job list consistency across release policy, ci-ready needs, and aggregate set); a sparse-checkout concern it raised was subsequently disproved |
+
+Bot-resolved threads are not evidence a finding was fixed — the old-tag bypass (round 1) remains open despite its thread being marked resolved.
 
 The native `Greptile Review` success status is review-completion evidence only. It is not a finding-resolution gate. Keep the pilot draft until a separate tested gate and the remaining cutover protections are in place.
