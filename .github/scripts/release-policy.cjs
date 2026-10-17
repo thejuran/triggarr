@@ -25,7 +25,7 @@ async function preflight({github, context, core}) {
   const tag = context.eventName === 'push' && context.ref.startsWith('refs/tags/v');
   const source = context.payload.workflow_run;
   if (!tag && !(context.eventName === 'workflow_run' && source?.event === 'push' &&
-      source?.head_branch === 'main' && source?.head_repository?.full_name === `${owner}/${repo}`)) {
+      source?.head_branch === 'main' && source?.conclusion === 'success' && source?.head_repository?.full_name === `${owner}/${repo}`)) {
     throw new Error('Untrusted release trigger');
   }
   const sha = tag ? context.sha : source.head_sha;

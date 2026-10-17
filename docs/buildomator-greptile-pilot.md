@@ -18,7 +18,7 @@ TREX is optional and must be separately confirmed available for this account. It
 - Docker build plus audit of Python packages actually installed in that image.
 - Gitleaks secret scanning and pip-audit of locked production dependencies. Scanner failures block; any reported dependency vulnerability blocks, not only high/critical findings. Investigate findings rather than adding blanket ignores.
 - `CI ready` requires every mandatory job to return success. Missing, failed, cancelled, or skipped jobs cannot pass it.
-- Release preflight requires successful push CI on the exact release commit, including every mandatory job. PR CI alone cannot authorize publication. Tags must point to main history. An old main run cannot republish an obsolete main image; historical version tags do not overwrite the main image tag.
+- Release preflight requires successful push CI on the exact release commit, including every mandatory job. PR CI alone cannot authorize publication. For commits containing this workflow, tags must point to main history and version-tag releases do not update the main image tag. Rejected triggers cannot enter the publishing queue; queued releases recheck eligibility before building. This does not prevent main advancing during a running build.
 
 The release rebuild is not an attestation of byte-for-byte image identity: dependencies in the existing Dockerfile are not locked. Promoting the tested image digest, or making release builds reproducible, remains a follow-up before claiming release artifact parity. Python package auditing is not an OS image vulnerability scan.
 
@@ -42,6 +42,20 @@ Buildomator's ship-time review hook is advisory. Do not use its completion messa
 
 ## Rollback
 
-This pilot does not change hosted rules or remove the orchestrator. Before activating rules, export the current ruleset JSON and record its ID. If a new check malfunctions, repair the integration or return to the prior review process; do not silently bypass it. Revert the pilot through a reviewed PR if needed. A release of an older commit lacking the new mandatory CI jobs will deliberately fail preflight.
+This pilot does not change hosted rules or remove the orchestrator. Before activating rules, export the current ruleset JSON and record its ID. If a new check malfunctions, repair the integration or return to the prior review process; do not silently bypass it. Revert the pilot through a reviewed PR if needed. A tag pointing to a pre-pilot commit still executes the old workflow, which contains no preflight. It can publish unchecked and overwrite image tags. External tag/publication protection must be established and tested before cutover; editing this workflow or this guide does not close that bypass.
 
 References: https://www.greptile.com/docs/code-review/greptile-json-reference and https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
+
+## Release sequencing during the pilot
+
+Wait for successful push CI on the exact main commit before creating its version tag. Pushing a tag together with main can fail preflight while CI is still running; retry that release workflow only after CI succeeds. A cancelled main CI run must first be rerun successfully. This is deliberate fail-closed behavior, not automatic waiting. Do not test old-tag publication against production: use an isolated repository/registry to validate the external protection.
+
+## Review checkpoints
+
+Review both tools against the same immutable commit. Preserve their original outputs before fixes; compare the results after the pilot. Vibe-check is run by the owner.
+
+| Round | Commit | Greptile | Vibe-check |
+| --- | --- | --- | --- |
+| 1 | `dd8f4b53f59baa3183fbcfcc4aef1b02991b3439` | Apex completed, three findings; native check succeeded despite unresolved P1s | Owner supplied report; scored zero findings, supervising assistant raised release concerns |
+
+The native `Greptile Review` success status is review-completion evidence only. It is not a finding-resolution gate. Keep the pilot draft until a separate tested gate and the remaining cutover protections are in place.
