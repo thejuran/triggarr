@@ -26,10 +26,6 @@ test('real ci.yml and real REQUIRED_JOBS are consistent', () => {
   assert.deepEqual(checkJobListConsistency({workflowText: ciText, requiredJobs: REQUIRED_JOBS}), []);
 });
 
-test('test file requires REQUIRED_JOBS from release-policy.cjs, not a copied literal', () => {
-  assert.ok(Array.isArray(REQUIRED_JOBS) && REQUIRED_JOBS.length > 0);
-});
-
 test('renamed job id breaks consistency', () => {
   let mutated = mutate(ciText, '  lint:\n', '  ruff:\n');
   mutated = mutate(mutated, '    needs: [test, lint]', '    needs: [test, ruff]');
@@ -129,9 +125,8 @@ test('parseJobs returns the real ci.yml job graph', () => {
   assert.deepEqual(jobs.find(j => j.id === 'docker').needs, ['test', 'lint']);
 });
 
-// Note: the release.yml if: equality below is written RED now — preflight
-// has no `if:` until a later task adds one mirroring the release job's.
-// It turns GREEN once that `if:` lands, with both copies byte-identical.
+// preflight must filter triggers exactly like release, so a failed or
+// cancelled CI run skips both jobs instead of failing preflight.
 test('release.yml preflight and release if: are equal and non-null', () => {
   const preflightIf = extractJobIf(releaseText, 'preflight');
   const releaseIf = extractJobIf(releaseText, 'release');
@@ -141,8 +136,6 @@ test('release.yml preflight and release if: are equal and non-null', () => {
 });
 
 test('removing the conclusion check from preflight only breaks the if: equality', () => {
-  const before = extractJobIf(releaseText, 'preflight');
-  if (!before) return; // preflight has no if: yet; nothing to mutate
   const target = "       github.event.workflow_run.conclusion == 'success' &&\n";
   const mutated = mutate(releaseText, target, '');
   const preflightIf = extractJobIf(mutated, 'preflight');
