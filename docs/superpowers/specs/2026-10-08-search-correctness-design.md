@@ -139,6 +139,7 @@ Consequences:
 - The missing queue claims a season **on attempt**: once the missing queue attempts it, the upgrade queue does not attempt it in the same cycle, even if the missing-queue command failed.
 - The upgrade queue skips claimed seasons without consuming batch slots, so its batch fills with other eligible seasons.
 - Exclusion preserves the season's existing position in the upgrade rotation (searched-log). It is neither marked as searched nor removed from prior history.
+- **Pass definition (DEDUP-03, amended 2026-10-18 after the PR #28 review).** A claimed season counts as covered for the upgrade queue's pass, whatever the outcome of the missing-queue command (accepted, failed, or no response). An upgrade pass completes when the upgrade queue's batch is non-empty and every eligible upgrade season that is not claimed this cycle is in its searched-log. Claimed seasons are never inserted into the upgrade searched-log, and an empty batch never completes a pass. This amends v2.11 QUEUE-09 ("every currently-eligible item has been searched") for claimed seasons only; without it, a season claimed every cycle would block the upgrade pass for as long as the overlap lasts.
 
 **Acceptance**
 - One test per malformed-record case: the cycle completes, state persists, and the grade is correct.
@@ -146,6 +147,7 @@ Consequences:
 - A season in both queues gets exactly one engine dispatch, including when that command fails.
 - The upgrade batch is still filled to its limit from other seasons.
 - The excluded season's upgrade searched-log entry is unchanged.
+- The upgrade pass completes once every unclaimed upgrade season has been searched, for a successful, failed or unanswered missing-queue command and across partial batches; an entirely claimed upgrade batch dispatches nothing and completes no pass.
 
 ### Phase 81 — Correct Sonarr grab attribution (#2)
 
