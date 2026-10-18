@@ -166,6 +166,7 @@ Consequences:
   - In history views they display as **"Legacy — tracking discontinued"**. Their stored outcomes are not rewritten.
 - **Ownership retention.** Ownership records are independent of `search_history` rows. Pruning or deleting history never cascades to ownership records (no cascading foreign key or cleanup), so "each grab credited at most once, ever" holds after pruning. Ownership rows are small, one per credited grab, and this milestone does not prune them.
 - **Stats note.** A persistent note beside Sonarr effectiveness stats reads: *"Attribution corrected on <date>. Earlier results may include misattributed or double-counted grabs."* Totals that include pre-cutover data are labelled *"Lifetime — includes historical estimates."*
+  - *Refined 2026-10-18 (Phase 81 context D-01..D-08):* the note and labels appear only when pre-fix Sonarr data exists, determined and persisted per stable instance ID at migration so later pruning cannot hide it; fresh installs show neither. The note is permanent (no dismiss) and is not shown in Radarr/Lidarr-only views. Forever counters use "Lifetime — includes historical estimates"; history-derived metrics (Sonarr and overall grab rate, avg time-to-grab) use "Includes historical estimates" only while pre-fix rows contribute to that metric. Frozen legacy pending rows are excluded from grab rates.
 - Existing history rows and counters are never modified or reset.
 
 **Acceptance (regression tests)**
