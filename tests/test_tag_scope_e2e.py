@@ -648,3 +648,54 @@ async def test_e2e_legacy_unstamped_count_hidden_after_inactive_fetch_failure(tm
     text = html.unescape(response.text)
     assert "of 480" not in text
     assert "0 of —" in text
+
+
+async def test_e2e_tag_change_after_failed_resolution_hides_old_tag_count(tmp_path, card_app, card_client):
+    """vibe-check codex-001: change the tag after 'old' failed to resolve; the old count stays hidden.
+
+    Cycle 1 resolves 'old' and stamps a scoped count. Cycle 2 cannot resolve
+    'old', leaving unresolved_tag_scopes['missing']='old'. The tag is then
+    saved as 'new' and the card renders before any further cycle.
+    """
+    settings = make_settings()
+    state = _default_state()
+    state["radarr"] = {"Default": _default_instance_state()}
+
+    old_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="old",
+    )
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="old")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie 1", "monitored": True, "tags": [5]},
+        {"id": 2, "title": "Movie 2", "monitored": True, "tags": [5]},
+        {"id": 3, "title": "Movie 3", "monitored": True, "tags": [5]},
+        {"id": 4, "title": "Movie 4", "monitored": True, "tags": []},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=4)
+    client.search_movies = AsyncMock()
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        state = await run_radarr_cycle(client, state, "Default", old_config, settings, db)
+        client.get_tags = AsyncMock(return_value=[])
+        state = await run_radarr_cycle(client, state, "Default", old_config, settings, db)
+    finally:
+        await db.close()
+
+    assert state["radarr"]["Default"]["unresolved_tag_scopes"] == {"missing": "old"}
+    card_app.state.triggarr_state = state
+    card_app.state.settings = _card_settings_for(old_config)
+    assert "of 3" in html.unescape(card_client.get("/partials/app-card/radarr/Default").text)
+
+    card_app.state.settings = _card_settings_for(old_config.model_copy(update={"missing_tag": "new"}))
+    response = card_client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "of 3" not in text
+    assert "of —" in text

@@ -1107,3 +1107,36 @@ def test_resolved_tag_card_cleared_scoped_count_never_shows_whole_library(client
     text = html.unescape(response.text)
     assert "0 of 500" not in text
     assert "0 of —" in text
+
+
+def test_scoped_count_unknown_tag_change_with_stale_unresolved_marker_untrusted() -> None:
+    """vibe-check codex-001: a stale unresolved marker for the old tag never vouches for the new tag.
+
+    'old' failed to resolve, so the marker and the matching stamp both say
+    'old'. The config is then saved with missing_tag='new' (save_settings only
+    invalidates the tag cache), so the old count must stay hidden.
+    """
+    result = _scoped_count_unknown(
+        {
+            "unresolved_tag_scopes": {"missing": "old"},
+            "scoped_count_tags": {"missing": "old"},
+            "missing_eligible": 3,
+        },
+        configured_tags={"missing": "new", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_unresolved_marker_matching_current_tag_still_trusted() -> None:
+    """With config passed, a last-good count stamped with the current, now-unresolved tag is still kept."""
+    result = _scoped_count_unknown(
+        {
+            "unresolved_tag_scopes": {"missing": "4k"},
+            "scoped_count_tags": {"missing": "4k"},
+            "missing_eligible": 7,
+        },
+        configured_tags={"missing": "4k", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": False, "cutoff": False}
