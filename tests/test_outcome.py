@@ -231,6 +231,73 @@ def test_cycle_tally_mark_unevaluated_invalid_queue_raises() -> None:
     raise AssertionError("expected ValueError for an invalid queue name")
 
 
+def test_cycle_tally_record_malformed_per_queue() -> None:
+    tally = CycleTally()
+    tally.record_malformed("missing")
+    record = tally.to_record(active_queues=["missing", "cutoff"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {"missing": 1}
+    assert record["malformed_skipped"] == 1
+
+    tally = CycleTally()
+    tally.record_malformed("missing", 2)
+    tally.record_malformed("cutoff", 3)
+    record = tally.to_record(active_queues=["missing", "cutoff"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {"missing": 2, "cutoff": 3}
+    assert record["malformed_skipped"] == 5
+
+
+def test_cycle_tally_record_malformed_zero_count_omitted_from_keys() -> None:
+    """Queues with a zero malformed count never appear as keys in malformed_by_queue."""
+    tally = CycleTally()
+    tally.record_malformed("missing", 0)
+    tally.record_malformed("cutoff", 1)
+    record = tally.to_record(active_queues=["missing", "cutoff"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {"cutoff": 1}
+
+
+def test_cycle_tally_record_malformed_rejects_unknown_queue() -> None:
+    tally = CycleTally()
+    try:
+        tally.record_malformed("upgrade")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for an invalid queue name")
+
+    try:
+        tally.record_malformed("")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for an empty queue name")
+
+
+def test_cycle_tally_malformed_inactive_queue_ignored() -> None:
+    """Malformed counts recorded against an inactive queue never reach the record or the grade."""
+    tally = CycleTally()
+    tally.record_malformed("cutoff", 2)
+    tally.record_accepted()
+    record = tally.to_record(active_queues=["missing"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {}
+    assert record["malformed_skipped"] == 0
+    assert record["grade"] == GRADE_SUCCESS
+
+
+def test_cycle_tally_malformed_grades_partial_and_failed() -> None:
+    """D-04/D-09: malformed records degrade the grade but never count as failed commands."""
+    tally = CycleTally()
+    tally.record_accepted()
+    tally.record_malformed("missing")
+    record = tally.to_record(active_queues=["missing"], finished_at="2026-10-08T12:00:00Z")
+    assert record["grade"] == GRADE_PARTIAL
+    assert record["failed"] == 0
+
+    tally = CycleTally()
+    tally.record_malformed("missing")
+    record = tally.to_record(active_queues=["missing"], finished_at="2026-10-08T12:00:00Z")
+    assert record["grade"] == GRADE_FAILED
+    assert record["failed"] == 0
+
+
 def test_cycle_tally_record_eligible_restricted_to_active_queues() -> None:
     tally = CycleTally()
     tally.record_eligible("missing", 3)
@@ -294,6 +361,7 @@ def test_cycle_tally_to_record_exact_keys_and_json_serializable() -> None:
         "accepted",
         "failed",
         "malformed_skipped",
+        "malformed_by_queue",
         "persistence_failed",
         "failure_reasons",
         "unevaluated",
@@ -386,6 +454,101 @@ def test_cycle_view_malformed_skipped_singular() -> None:
     view = cycle_view(record, "Radarr")
     assert view is not None
     assert {"text": "1 malformed record skipped", "count": 1} in view["reasons"]
+
+
+def test_cycle_view_malformed_by_queue_missing_singular() -> None:
+    """D-07: a per-queue malformed row replaces the generic row when malformed_by_queue is present."""
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 1,
+        "malformed_by_queue": {"missing": 1},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert {"text": "1 missing-queue record skipped — malformed data", "count": 1} in view["reasons"]
+    assert not any(r["text"] == "1 malformed record skipped" for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_cutoff_plural() -> None:
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 2,
+        "malformed_by_queue": {"cutoff": 2},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert {"text": "2 upgrade-queue records skipped — malformed data", "count": 1} in view["reasons"]
+    assert not any(r["text"] == "2 malformed records skipped" for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_both_queues_ordered() -> None:
+    """Both queues get a row, ordered missing-then-upgrade (QUEUES order), regardless of dict order."""
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 3,
+        "malformed_by_queue": {"cutoff": 2, "missing": 1},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    malformed_rows = [r for r in view["reasons"] if "malformed data" in r["text"]]
+    assert malformed_rows == [
+        {"text": "1 missing-queue record skipped — malformed data", "count": 1},
+        {"text": "2 upgrade-queue records skipped — malformed data", "count": 1},
+    ]
+
+
+def test_cycle_view_malformed_by_queue_tampered_falls_back() -> None:
+    """A tampered malformed_by_queue never crashes and falls back to the legacy generic row."""
+    tampered_values = [
+        ["missing"],
+        "missing",
+        {"bogus": 3},
+        {"missing": -1},
+        {"missing": "x"},
+        {"missing": True},
+    ]
+    for raw in tampered_values:
+        record = {
+            "grade": "partial",
+            "accepted": 1,
+            "failed": 0,
+            "malformed_skipped": 1,
+            "malformed_by_queue": raw,
+        }
+        view = cycle_view(record, "Radarr")
+        assert view is not None, f"crashed on tampered malformed_by_queue={raw!r}"
+        assert {"text": "1 malformed record skipped", "count": 1} in view["reasons"], (
+            f"expected legacy fallback row for tampered malformed_by_queue={raw!r}"
+        )
+        assert not any("malformed data" in r["text"] for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_tampered_no_row_when_skipped_zero() -> None:
+    """A tampered malformed_by_queue with malformed_skipped == 0 renders no malformed row at all."""
+    record = {"grade": "success", "accepted": 1, "failed": 0, "malformed_skipped": 0, "malformed_by_queue": "garbage"}
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert not any("malformed" in r["text"] for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_failed_count_unchanged() -> None:
+    """D-09: the view's failed count is unaffected by per-queue malformed rows."""
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 1,
+        "malformed_by_queue": {"missing": 1},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert view["failed"] == 0
 
 
 def test_cycle_view_fetch_error_row() -> None:

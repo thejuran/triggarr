@@ -528,6 +528,21 @@ def test_grade_line_failed_renders_red_with_detail(client, test_app):
     assert "data-cycle-detail" in response.text
 
 
+def test_card_malformed_by_queue_row_renders(client, test_app):
+    """D-07/D-08: the card shows the per-queue malformed row with no title or item-ID text."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=1,
+        malformed_by_queue={"missing": 1},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "1 missing-queue record skipped — malformed data" in response.text
+    assert "1 malformed record skipped" not in response.text
+
+
 def test_grade_line_nothing_needed_no_counts_no_detail(client, test_app):
     """Nothing needed searching shows no counts and no detail panel (D-08/D-12)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
