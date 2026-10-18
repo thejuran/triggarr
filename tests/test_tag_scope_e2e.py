@@ -487,3 +487,164 @@ async def test_e2e_refresh_route_shows_same_badge_and_keeps_counts(card_app, car
     text = html.unescape(response.text)
     assert "Missing queue skipped" in text
     assert card_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] == 7
+
+
+# ---------------------------------------------------------------------------
+# PR #26 review checkpoint: a saved scoped count is shown only under the tag
+# it was computed for (Greptile 4305219336, vibe-check arch-001)
+# ---------------------------------------------------------------------------
+
+
+def _card_settings_for(instance_config: InstanceConfig) -> Settings:
+    """Card-route settings whose Radarr Default instance matches the engine's config."""
+    settings = make_settings()
+    settings.radarr["Default"] = instance_config
+    return settings
+
+
+async def test_e2e_tag_change_then_inactive_fetch_failure_hides_old_tag_count(tmp_path, card_app, card_client):
+    """A count computed under the old tag is never shown as the new tag's progress.
+
+    Cutoff-only instance (missing inactive). The missing tag changes from 'old'
+    to 'new'; the next cycle's inactive missing fetch fails while 'new'
+    resolves, so no fresh count or stamp is written for the missing queue.
+    """
+    settings = make_settings()
+    state = _default_state()
+    state["radarr"] = {"Default": _default_instance_state()}
+
+    old_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=0, search_cutoff_count=5,
+        missing_tag="old",
+    )
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="old"), Tag(id=6, label="new")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie 1", "monitored": True, "tags": [5]},
+        {"id": 2, "title": "Movie 2", "monitored": True, "tags": [5]},
+        {"id": 3, "title": "Movie 3", "monitored": True, "tags": [5]},
+        {"id": 4, "title": "Movie 4", "monitored": True, "tags": []},
+        {"id": 5, "title": "Movie 5", "monitored": True, "tags": []},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=5)
+    client.search_movies = AsyncMock()
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        state = await run_radarr_cycle(client, state, "Default", old_config, settings, db)
+        card_app.state.settings = _card_settings_for(old_config)
+        card_app.state.triggarr_state = state
+        first = html.unescape(card_client.get("/partials/app-card/radarr/Default").text)
+        assert "0 of 3" in first
+
+        new_config = old_config.model_copy(update={"missing_tag": "new"})
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("inactive fetch failed"))
+        state = await run_radarr_cycle(client, state, "Default", new_config, settings, db)
+    finally:
+        await db.close()
+
+    card_app.state.settings = _card_settings_for(new_config)
+    card_app.state.triggarr_state = state
+    response = card_client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 3" not in text
+    assert "0 of —" in text
+
+
+async def test_e2e_legacy_state_then_aborted_cycle_never_shows_fail_open_count(tmp_path, card_app, card_client):
+    """vibe-check arch-001 as reported: legacy fail-open state, then a cycle that aborts on fetch.
+
+    The abort clears the legacy reason-less tag warning; no unresolved marker
+    exists yet. The card must not show the legacy (possibly fail-open) count.
+    """
+    settings = make_settings()
+    state = _default_state()
+    legacy = _default_instance_state()
+    legacy.update(
+        connected=True,
+        missing_count=500,
+        missing_eligible=480,
+        missing_monitored=500,
+        tag_warnings=[{"tag": "4k", "field": "missing"}],
+    )
+    state["radarr"] = {"Default": legacy}
+
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="4k",
+    )
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("unreachable"))
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        state = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    finally:
+        await db.close()
+
+    card_app.state.settings = _card_settings_for(instance_config)
+    card_app.state.triggarr_state = state
+    response = card_client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "of 480" not in text
+    assert "of 500" not in text
+
+
+async def test_e2e_legacy_unstamped_count_hidden_after_inactive_fetch_failure(tmp_path, card_app, card_client):
+    """arch-001 variant: a legacy unstamped count stays hidden while the instance is reachable.
+
+    Legacy state whose reason-less warning was already cleared (any earlier
+    connection abort does this). The missing queue is inactive and its fetch
+    fails, so the cycle succeeds via the cutoff queue, the tag resolves, and
+    no fresh missing count or stamp is written.
+    """
+    settings = make_settings()
+    state = _default_state()
+    legacy = _default_instance_state()
+    legacy.update(
+        connected=True,
+        missing_count=500,
+        missing_eligible=480,
+        missing_monitored=500,
+        tag_warnings=[],
+    )
+    state["radarr"] = {"Default": legacy}
+
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=0, search_cutoff_count=5,
+        missing_tag="4k",
+    )
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+    client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("inactive fetch failed"))
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=500)
+    client.search_movies = AsyncMock()
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        state = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    finally:
+        await db.close()
+
+    assert state["radarr"]["Default"]["connected"] is True
+    card_app.state.settings = _card_settings_for(instance_config)
+    card_app.state.triggarr_state = state
+    response = card_client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "of 480" not in text
+    assert "0 of —" in text

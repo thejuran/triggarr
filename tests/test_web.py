@@ -2650,6 +2650,57 @@ def test_save_settings_form_removal_invalidates_tag_cache(multi_client, multi_in
     )
 
 
+def test_search_now_refetches_when_cached_list_lacks_configured_tag(multi_instance_app):
+    """vibe-check bugs-001: a manual search refetches a fresh cached list that lacks a configured tag."""
+    import time
+
+    from triggarr.clients.base import Tag
+
+    radarr_client = multi_instance_app.state.radarr_clients["Default"]
+    radarr_client.get_tags = AsyncMock(return_value=[Tag(id=1, label="wanted"), Tag(id=2, label="upgrade")])
+    radarr_client.get_wanted_missing = AsyncMock(return_value=[])
+    radarr_client.get_wanted_cutoff = AsyncMock(return_value=[])
+    radarr_client.get_library_count = AsyncMock(return_value=0)
+    radarr_client.search_movies = AsyncMock()
+
+    # Cached before 'upgrade' was created in Radarr.
+    multi_instance_app.state.tag_cache[("radarr", "Default")] = ([Tag(id=1, label="wanted")], time.monotonic())
+
+    with (
+        patch("triggarr.web.routes.save_state"),
+        TestClient(multi_instance_app) as tc,
+    ):
+        response = tc.post("/api/search-now/radarr/Default")
+
+    assert response.status_code == 200
+    radarr_client.get_tags.assert_awaited_once()
+    assert multi_instance_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] == []
+    cached_tags, _ = multi_instance_app.state.tag_cache[("radarr", "Default")]
+    assert sorted(t.label for t in cached_tags) == ["upgrade", "wanted"]
+
+
+def test_refresh_counts_refetches_when_cached_list_lacks_configured_tag(multi_instance_app):
+    """vibe-check bugs-001: a count refresh refetches a fresh cached list that lacks a configured tag."""
+    import time
+
+    from triggarr.clients.base import Tag
+
+    radarr_client = multi_instance_app.state.radarr_clients["Default"]
+    radarr_client.get_tags = AsyncMock(return_value=[Tag(id=1, label="wanted"), Tag(id=2, label="upgrade")])
+    radarr_client.get_wanted_missing = AsyncMock(return_value=[])
+    radarr_client.get_wanted_cutoff = AsyncMock(return_value=[])
+    radarr_client.get_library_count = AsyncMock(return_value=0)
+
+    multi_instance_app.state.tag_cache[("radarr", "Default")] = ([Tag(id=1, label="wanted")], time.monotonic())
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post("/api/refresh-counts/radarr/Default")
+
+    assert response.status_code == 200
+    radarr_client.get_tags.assert_awaited_once()
+    assert multi_instance_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] == []
+
+
 def test_search_now_reuses_warm_tag_cache(multi_instance_app):
     """RES-03: a manual search reuses a warm cache entry instead of calling get_tags.
 

@@ -1655,6 +1655,70 @@ async def test_tag_cache_ttl_expired_triggers_fresh_fetch(tmp_path):
     assert fetched_at > stale_at
 
 
+async def test_tag_cache_fresh_entry_missing_configured_tag_refetches(tmp_path):
+    """vibe-check bugs-001: a fresh cached list that lacks the configured tag is refetched.
+
+    The tag was created in Radarr after the list was cached. The queue must
+    not be skipped (or graded) on the stale list; the fresh list replaces the
+    cache entry.
+    """
+    tag_calls = {"count": 0}
+
+    def tag_handler(request: httpx.Request) -> httpx.Response:
+        tag_calls["count"] += 1
+        return httpx.Response(200, json=[{"id": 5, "label": "triggarr"}])
+
+    app, job = _build_tag_cache_app(tmp_path, tag_handler=tag_handler)
+    cached_at = time.monotonic()
+    app.state.tag_cache[("radarr", "Default")] = ([Tag(id=99, label="other")], cached_at)
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    assert tag_calls["count"] == 1
+    ist = app.state.triggarr_state["radarr"]["Default"]
+    assert ist["tag_warnings"] == []
+    assert ist["unresolved_tag_scopes"] == {}
+    cached_tags, fetched_at = app.state.tag_cache[("radarr", "Default")]
+    assert [t.label for t in cached_tags] == ["triggarr"]
+    assert fetched_at >= cached_at
+
+
+async def test_tag_cache_refetch_still_missing_skips_queue_once(tmp_path):
+    """bugs-001 companion: a tag that is really missing is confirmed by one fresh fetch, then skipped."""
+    tag_calls = {"count": 0}
+
+    def tag_handler(request: httpx.Request) -> httpx.Response:
+        tag_calls["count"] += 1
+        return httpx.Response(200, json=[{"id": 99, "label": "other"}])
+
+    app, job = _build_tag_cache_app(tmp_path, tag_handler=tag_handler)
+    app.state.tag_cache[("radarr", "Default")] = ([Tag(id=99, label="other")], time.monotonic())
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    assert tag_calls["count"] == 1
+    ist = app.state.triggarr_state["radarr"]["Default"]
+    assert ist["tag_warnings"] == [{"tag": "triggarr", "field": "missing", "reason": "not_found"}]
+
+
 # ---------------------------------------------------------------------------
 # CHARD-02/03 (Plan 69-03): _run_one_cycle — manual search failure-counter tests
 #
