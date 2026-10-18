@@ -1,0 +1,129 @@
+{
+  "_meta": {
+    "source": "synthesized from the Sonarr v3 OpenAPI HistoryResource/EpisodeResource schema on the v5-develop branch; sanitized",
+    "sonarr_major": "v5",
+    "live_evidence": false,
+    "scenario": "One season-1 pack grab (6 episodes) plus a repeat grab of episode 3, to exercise distinct-episode counting."
+  },
+  "records": [
+    {
+      "id": 9101,
+      "episodeId": 601,
+      "seriesId": 202,
+      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "date": "2026-02-01T09:00:00Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-PACK202",
+      "data": {},
+      "episode": {
+        "id": 601,
+        "seriesId": 202,
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "title": "Example Episode 1"
+      }
+    },
+    {
+      "id": 9102,
+      "episodeId": 602,
+      "seriesId": 202,
+      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "date": "2026-02-01T09:00:01Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-PACK202",
+      "data": {},
+      "episode": {
+        "id": 602,
+        "seriesId": 202,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "title": "Example Episode 2"
+      }
+    },
+    {
+      "id": 9103,
+      "episodeId": 603,
+      "seriesId": 202,
+      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "date": "2026-02-01T09:00:02Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-PACK202",
+      "data": {},
+      "episode": {
+        "id": 603,
+        "seriesId": 202,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "title": "Example Episode 3"
+      }
+    },
+    {
+      "id": 9104,
+      "episodeId": 604,
+      "seriesId": 202,
+      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "date": "2026-02-01T09:00:03Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-PACK202",
+      "data": {},
+      "episode": {
+        "id": 604,
+        "seriesId": 202,
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "title": "Example Episode 4"
+      }
+    },
+    {
+      "id": 9105,
+      "episodeId": 605,
+      "seriesId": 202,
+      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "date": "2026-02-01T09:00:04Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-PACK202",
+      "data": {},
+      "episode": {
+        "id": 605,
+        "seriesId": 202,
+        "seasonNumber": 1,
+        "episodeNumber": 5,
+        "title": "Example Episode 5"
+      }
+    },
+    {
+      "id": 9106,
+      "episodeId": 606,
+      "seriesId": 202,
+      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
+      "date": "2026-02-01T09:00:05Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-PACK202",
+      "data": {},
+      "episode": {
+        "id": 606,
+        "seriesId": 202,
+        "seasonNumber": 1,
+        "episodeNumber": 6,
+        "title": "Example Episode 6"
+      }
+    },
+    {
+      "id": 9107,
+      "episodeId": 603,
+      "seriesId": 202,
+      "sourceTitle": "Example.Show.S01E03.1080p.WEB-DL-GRP2",
+      "date": "2026-02-02T09:00:00Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-PACK202B",
+      "data": {},
+      "episode": {
+        "id": 603,
+        "seriesId": 202,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "title": "Example Episode 3"
+      }
+    }
+  ]
+}

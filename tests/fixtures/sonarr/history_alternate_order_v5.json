@@ -1,0 +1,86 @@
+{
+  "_meta": {
+    "source": "synthesized from the Sonarr v3 OpenAPI HistoryResource/EpisodeResource schema on the v5-develop branch; sanitized",
+    "sonarr_major": "v5",
+    "live_evidence": false,
+    "scenario": "Anime-style alternate ordering: three records whose canonical season is 1 but whose scene numbering reports season 2, plus one canonical season-2 record."
+  },
+  "records": [
+    {
+      "id": 9301,
+      "episodeId": 801,
+      "seriesId": 404,
+      "sourceTitle": "Example.Anime.S02E01.1080p.WEB-DL-GRP",
+      "date": "2026-04-01T07:00:00Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-ALT404A",
+      "data": {},
+      "episode": {
+        "id": 801,
+        "seriesId": 404,
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "sceneSeasonNumber": 2,
+        "sceneEpisodeNumber": 1,
+        "title": "Example Anime Episode 1"
+      }
+    },
+    {
+      "id": 9302,
+      "episodeId": 802,
+      "seriesId": 404,
+      "sourceTitle": "Example.Anime.S02E02.1080p.WEB-DL-GRP",
+      "date": "2026-04-01T07:00:01Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-ALT404A",
+      "data": {},
+      "episode": {
+        "id": 802,
+        "seriesId": 404,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "sceneSeasonNumber": 2,
+        "sceneEpisodeNumber": 2,
+        "title": "Example Anime Episode 2"
+      }
+    },
+    {
+      "id": 9303,
+      "episodeId": 803,
+      "seriesId": 404,
+      "sourceTitle": "Example.Anime.S02E03.1080p.WEB-DL-GRP",
+      "date": "2026-04-01T07:00:02Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-ALT404A",
+      "data": {},
+      "episode": {
+        "id": 803,
+        "seriesId": 404,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "sceneSeasonNumber": 2,
+        "sceneEpisodeNumber": 3,
+        "title": "Example Anime Episode 3"
+      }
+    },
+    {
+      "id": 9304,
+      "episodeId": 804,
+      "seriesId": 404,
+      "sourceTitle": "Example.Anime.S03E01.1080p.WEB-DL-GRP",
+      "date": "2026-04-05T07:00:00Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-ALT404B",
+      "data": {},
+      "episode": {
+        "id": 804,
+        "seriesId": 404,
+        "seasonNumber": 2,
+        "episodeNumber": 1,
+        "sceneSeasonNumber": 3,
+        "sceneEpisodeNumber": 1,
+        "title": "Example Anime Episode 4"
+      }
+    }
+  ]
+}

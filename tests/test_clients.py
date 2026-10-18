@@ -15,6 +15,7 @@ import pytest
 from loguru import logger
 from pydantic import SecretStr
 
+from tests.sonarr_fixtures import load_sonarr_fixture
 from triggarr.clients.base import ArrClient
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
@@ -689,6 +690,10 @@ async def test_radarr_get_grab_history_returns_grab_events() -> None:
         assert result[1].sourceTitle == "Movie.2024.720p"
         # Extra fields should be ignored
         assert not hasattr(result[0], "movieId")
+        # Radarr has no episode concept -- identity fields stay None
+        assert result[0].episodeId is None
+        assert result[0].seriesId is None
+        assert result[0].episode is None
     finally:
         await client.close()
 
@@ -852,12 +857,13 @@ async def test_get_tags_empty_response() -> None:
 
 
 async def test_sonarr_get_grab_history_passes_correct_params() -> None:
-    """SonarrClient.get_grab_history uses /history/series with seriesId and eventType=grabbed."""
+    """SonarrClient.get_grab_history uses /history/series with seriesId, eventType=grabbed, includeEpisode=true."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert "/api/v3/history/series" in str(request.url.path)
         assert request.url.params["seriesId"] == "10"
         assert request.url.params["eventType"] == "grabbed"
+        assert request.url.params["includeEpisode"] == "true"
         return httpx.Response(200, json=[])
 
     transport = httpx.MockTransport(handler)
@@ -865,6 +871,200 @@ async def test_sonarr_get_grab_history_passes_correct_params() -> None:
     client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
     try:
         await client.get_grab_history(series_id=10)
+    finally:
+        await client.close()
+
+
+async def test_sonarr_grab_history_episode_identity_parsed() -> None:
+    """Sonarr grab events carry Sonarr's own episode/season identity (ATTR-01, SONARRV5-03)."""
+    records = load_sonarr_fixture("history_standard_v4")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=records)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(series_id=101)
+        assert len(result) == 2
+        for event, record in zip(result, records, strict=True):
+            assert event.episodeId == record["episodeId"]
+            assert event.seriesId == record["seriesId"]
+            assert event.episode is not None
+            assert event.episode.id == record["episode"]["id"]
+            assert event.episode.seriesId == record["episode"]["seriesId"]
+            assert event.episode.seasonNumber == record["episode"]["seasonNumber"]
+            assert event.episode.episodeNumber == record["episode"]["episodeNumber"]
+    finally:
+        await client.close()
+
+
+async def test_sonarr_grab_history_episode_missing_is_none() -> None:
+    """A history record without an 'episode' key parses with GrabEvent.episode None, no exception."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = [
+            {
+                "id": 9401,
+                "episodeId": 999,
+                "seriesId": 500,
+                "sourceTitle": "Example.Show.S01E01.1080p",
+                "date": "2026-05-01T00:00:00Z",
+                "eventType": "grabbed",
+            },
+        ]
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(series_id=500)
+        assert len(result) == 1
+        assert result[0].episode is None
+    finally:
+        await client.close()
+
+
+async def test_sonarr_grab_history_episode_malformed_is_none() -> None:
+    """A malformed 'episode' value degrades to None (or a None field) without raising; others unaffected."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = [
+            {
+                "id": 9402,
+                "episodeId": 1001,
+                "seriesId": 501,
+                "sourceTitle": "Example.Show.S01E01.1080p",
+                "date": "2026-05-01T00:00:00Z",
+                "eventType": "grabbed",
+                "episode": "oops",
+            },
+            {
+                "id": 9403,
+                "episodeId": 1002,
+                "seriesId": 501,
+                "sourceTitle": "Example.Show.S01E02.1080p",
+                "date": "2026-05-01T00:01:00Z",
+                "eventType": "grabbed",
+                "episode": {"seasonNumber": "x"},
+            },
+            {
+                "id": 9404,
+                "episodeId": 1003,
+                "seriesId": 501,
+                "sourceTitle": "Example.Show.S01E03.1080p",
+                "date": "2026-05-01T00:02:00Z",
+                "eventType": "grabbed",
+                "episode": {"id": 1003, "seriesId": 501, "seasonNumber": 1, "episodeNumber": 3},
+            },
+        ]
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(series_id=501)
+        assert len(result) == 3
+        assert result[0].episode is None
+        assert result[1].episode is not None
+        assert result[1].episode.seasonNumber is None
+        assert result[2].episode is not None
+        assert result[2].episode.seasonNumber == 1
+    finally:
+        await client.close()
+
+
+async def test_sonarr_grab_history_identity_malformed_is_none() -> None:
+    """Malformed top-level/episode identity values degrade to None without raising; others unaffected."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = [
+            {
+                "id": 9405,
+                "episodeId": "abc",
+                "seriesId": 502,
+                "sourceTitle": "Example.Show.S01E01.1080p",
+                "date": "2026-05-01T00:00:00Z",
+                "eventType": "grabbed",
+            },
+            {
+                "id": 9406,
+                "episodeId": True,
+                "seriesId": 502,
+                "sourceTitle": "Example.Show.S01E02.1080p",
+                "date": "2026-05-01T00:01:00Z",
+                "eventType": "grabbed",
+            },
+            {
+                "id": 9407,
+                "episodeId": 1006,
+                "seriesId": "12",
+                "sourceTitle": "Example.Show.S01E03.1080p",
+                "date": "2026-05-01T00:02:00Z",
+                "eventType": "grabbed",
+            },
+            {
+                "id": 9408,
+                "episodeId": 1007,
+                "seriesId": 502,
+                "sourceTitle": "Example.Show.S01E04.1080p",
+                "date": "2026-05-01T00:03:00Z",
+                "eventType": "grabbed",
+                "episode": {"id": 1.5, "seriesId": False},
+            },
+            {
+                "id": 9409,
+                "episodeId": 1008,
+                "seriesId": 502,
+                "sourceTitle": "Example.Show.S01E05.1080p",
+                "date": "2026-05-01T00:04:00Z",
+                "eventType": "grabbed",
+                "episode": {"id": 1008, "seriesId": 502, "seasonNumber": 1, "episodeNumber": 5},
+            },
+        ]
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(series_id=502)
+        assert len(result) == 5
+        assert result[0].episodeId is None
+        assert result[1].episodeId is None
+        assert result[2].seriesId is None
+        assert result[3].episode is not None
+        assert result[3].episode.id is None
+        assert result[3].episode.seriesId is None
+        assert result[4].episodeId == 1008
+        assert result[4].episode is not None
+        assert result[4].episode.seasonNumber == 1
+    finally:
+        await client.close()
+
+
+async def test_sonarr_grab_history_scene_numbers_ignored() -> None:
+    """Scene numbering is never modelled -- canonical seasonNumber wins (ATTR-01, D-12)."""
+    records = load_sonarr_fixture("history_alternate_order_v5")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=records)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_grab_history(series_id=404)
+        assert len(result) == 4
+        for event in result[:3]:
+            assert event.episode is not None
+            assert event.episode.seasonNumber == 1
+            assert not hasattr(event.episode, "sceneSeasonNumber")
+        assert result[3].episode is not None
+        assert result[3].episode.seasonNumber == 2
     finally:
         await client.close()
 
@@ -1014,6 +1214,10 @@ async def test_lidarr_get_grab_history_returns_grab_events() -> None:
         assert result[0].id == 300
         assert result[0].sourceTitle == "Artist.Album.FLAC"
         assert result[1].id == 301
+        # Lidarr has no episode concept -- identity fields stay None
+        assert result[0].episodeId is None
+        assert result[0].seriesId is None
+        assert result[0].episode is None
     finally:
         await client.close()
 
