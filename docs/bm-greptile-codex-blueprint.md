@@ -40,7 +40,9 @@ Sources:
 8. Once all required review evidence and CI pass, the owner approves protected acceptance. Merge normally without bypass.
 9. Verify main CI and publication. If deployment is in scope, independently verify the running application uses the expected image digest/revision. Publication alone is not deployment verification.
 
-## Proposed flow after the current milestone
+## Target flow after pilot validation
+
+This diagram is the target workflow, not the current one. It applies only after the pilot (see Triggarr rollout below) validates it and the owner explicitly agrees to retire routine vibe-check. Until then, every checkpoint keeps the current Greptile + manual vibe-check process.
 
 ```mermaid
 flowchart TD

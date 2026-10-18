@@ -1,6 +1,6 @@
 # .planning/ format for the Roadmaps page
 
-The Roadmaps page (http://localhost:8088 on the MacBook, `maguffynas:8096` for the GitHub-only copy) builds every card and detail view from three files in a repo's `.planning/` folder. This guide says what it reads and how to write those files so the page stays accurate.
+The Roadmaps page builds every card and detail view from three files in a repo's `.planning/` folder. This guide says what it reads and how to write those files so the page stays accurate.
 
 Anything not described here is ignored, so extra sections and notes are fine.
 
