@@ -324,14 +324,16 @@ def test_prioritize_batch_exclude_keys_topup_skips_excluded():
     assert pass_completed is True
 
 
-def test_prioritize_batch_exclude_keys_no_pass_complete_when_excluded_unsearched():
-    """An excluded key that was never searched blocks pass-completion -- it is
-    never added to new_log while excluded."""
+def test_prioritize_batch_exclude_keys_pass_completes_when_rest_covered():
+    """An excluded (claimed) key counts as covered for pass-completion, but is
+    never inserted into new_log -- the pass completes once every non-excluded
+    eligible key is in the log (DEDUP-03)."""
     items = _letter_items("a", "b")
     batch, new_log, pass_completed = prioritize_batch(items, [], 2, _id_key, exclude_keys=frozenset({"a"}))
     assert [it["id"] for it in batch] == ["b"]
+    assert new_log == ["b"]
     assert "a" not in new_log
-    assert pass_completed is False
+    assert pass_completed is True
 
 
 def test_prioritize_batch_exclude_keys_all_excluded():
@@ -342,6 +344,47 @@ def test_prioritize_batch_exclude_keys_all_excluded():
     )
     assert batch == []
     assert new_log == ["a", "b"]
+    assert pass_completed is False
+
+
+def test_prioritize_batch_exclude_keys_partial_batch_accumulates_coverage():
+    """A batch smaller than the non-excluded set accumulates coverage across
+    calls: no pass until every non-excluded key is in the log, and the excluded
+    key is never inserted along the way (DEDUP-03)."""
+    items = _letter_items("a", "b", "c")
+    claimed = frozenset({"a"})
+    batch1, log1, done1 = prioritize_batch(items, [], 1, _id_key, exclude_keys=claimed)
+    assert [it["id"] for it in batch1] == ["b"]
+    assert log1 == ["b"]
+    assert done1 is False
+    batch2, log2, done2 = prioritize_batch(items, log1, 1, _id_key, exclude_keys=claimed)
+    assert [it["id"] for it in batch2] == ["c"]
+    assert log2 == ["b", "c"]
+    assert done2 is True
+
+
+def test_prioritize_batch_exclude_keys_preserves_prior_coverage_of_excluded():
+    """An excluded key already in the log keeps its entry and position (prior
+    coverage is preserved, not reset or moved) and still counts as covered."""
+    items = _letter_items("a", "b", "c")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a"], 5, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert [it["id"] for it in batch] == ["b", "c"]
+    assert new_log == ["a", "b", "c"]
+    assert pass_completed is True
+
+
+def test_prioritize_batch_exclude_keys_empty_batch_never_completes_pass():
+    """The no-empty-batch rule (MED-1) still holds with exclusion: a zero-size
+    batch never completes a pass, even when every non-excluded key is already
+    covered."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["b"], 0, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert batch == []
+    assert new_log == ["b"]
     assert pass_completed is False
 
 
@@ -1434,6 +1477,105 @@ async def test_run_sonarr_cycle_dedup_inactive_missing_no_claim(tmp_path):
 # ---------------------------------------------------------------------------
 # Sonarr malformed-record guards (ROBUST-01a/04, Phase 80 Plan 05 Task 1)
 # ---------------------------------------------------------------------------
+
+
+def _claim_outcome(kind: str):
+    """search_season side effect: the claimed season (10, 1) gets `kind`, all others succeed."""
+    request = httpx.Request("POST", "http://sonarr:8989/api/v3/command")
+
+    async def _search(series_id, season_number):
+        if (series_id, season_number) != (10, 1) or kind == "success":
+            return None
+        if kind == "failed":
+            raise httpx.HTTPStatusError("err", request=request, response=httpx.Response(500, request=request))
+        # "ambiguous": the command may have reached Sonarr, but no response came back.
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    return _search
+
+
+@pytest.mark.parametrize("kind", ["success", "failed", "ambiguous"])
+async def test_run_sonarr_cycle_dedup_claimed_season_counts_toward_upgrade_pass(tmp_path, kind):
+    """A season the missing queue claims every cycle counts as covered for the
+    upgrade pass, whatever its dispatch outcome (accepted, failed, or no
+    response): the upgrade pass completes once every other upgrade season has
+    been searched, and the claimed season is never inserted into upgrade
+    history (DEDUP-03). Partial upgrade batches accumulate coverage across
+    cycles first."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Both", episode_id=100),
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Both", episode_id=200),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=201),
+            _make_sonarr_episode(series_id=40, season_number=1, series_title="Show D", episode_id=202),
+        ])
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_season = AsyncMock(side_effect=_claim_outcome(kind))
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        # Cycle 1: partial upgrade batch -- (30, 1) searched, (40, 1) still owed.
+        state = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = state["sonarr"]["Default"]
+        assert ist["cutoff_searched"] == ["30:1"]
+        assert not ist.get("cutoff_pass")
+
+        # Cycle 2: (10, 1) claimed again; (40, 1) completes the upgrade pass.
+        state = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = state["sonarr"]["Default"]
+        assert ist["cutoff_pass"] == 1
+        assert ist["cutoff_searched"] == []
+
+        calls = [c.args for c in client.search_season.call_args_list]
+        assert calls.count((10, 1)) == 2  # once per cycle, missing queue only
+        assert calls.count((30, 1)) == 1
+        assert calls.count((40, 1)) == 1
+        expected_failed = 0 if kind == "success" else 1
+        assert ist["last_cycle"]["failed"] == expected_failed
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_all_upgrade_claimed_no_pass(tmp_path):
+    """When every upgrade season is claimed, the upgrade batch is empty: nothing
+    is dispatched by the upgrade queue, no upgrade pass completes (no-empty-batch
+    rule), and the upgrade history is left exactly as it was."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        seasons = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=101),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=seasons)
+        client.get_wanted_cutoff = AsyncMock(return_value=[dict(s, id=s["id"] + 100) for s in seasons])
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        state["sonarr"]["Default"]["cutoff_searched"] = ["30:1"]
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        calls = [c.args for c in client.search_season.call_args_list]
+        assert sorted(calls) == [(10, 1), (30, 1)]  # missing queue only, once each
+        assert not ist.get("cutoff_pass")
+        assert ist["cutoff_searched"] == ["30:1"]
+    finally:
+        await db.close()
 
 
 async def test_run_sonarr_cycle_null_series_missing_skipped(tmp_path):
@@ -3785,6 +3927,82 @@ async def test_run_lidarr_cycle_null_artist_untagged_not_malformed(tmp_path):
         client.search_albums.assert_called_once_with([1])
         assert ist["last_cycle"]["malformed_by_queue"] == {}
         assert ist["last_cycle"]["grade"] == "success"
+    finally:
+        await db.close()
+
+
+@pytest.mark.parametrize("missing_tag", ["", "music-tag"])
+async def test_run_lidarr_cycle_non_dict_missing_record_skipped_per_item(tmp_path, missing_tag):
+    """A missing-queue record that is not an object at all (null, a string) is
+    skipped and counted per item, tagged or untagged -- the good album is still
+    searched instead of the whole queue being dropped (ROBUST-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album", "monitored": True, "artist": {"tags": [5]}},
+            None,
+            "junk",
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag=missing_tag,
+        )
+        result = await run_lidarr_cycle(
+            client, _make_test_state(), "Default", instance_config, _cycle_settings(5, 5), db
+        )
+        rec = result["lidarr"]["Default"]["last_cycle"]
+
+        client.search_albums.assert_called_once_with([1])
+        assert rec["malformed_by_queue"] == {"missing": 2}
+        assert rec["unevaluated"] == []
+        assert rec["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+@pytest.mark.parametrize("cutoff_tag", ["", "music-tag"])
+async def test_run_lidarr_cycle_non_dict_cutoff_record_skipped_per_item(tmp_path, cutoff_tag):
+    """Same guard on the cutoff queue: a null record is skipped and counted per
+    item, and the other cutoff albums are still searched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album A", "monitored": True, "artist": {"tags": [5]}},
+            None,
+            {"id": 3, "title": "Good Album B", "monitored": True, "artist": {"tags": [5]}},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            cutoff_tag=cutoff_tag,
+        )
+        result = await run_lidarr_cycle(
+            client, _make_test_state(), "Default", instance_config, _cycle_settings(5, 5), db
+        )
+        rec = result["lidarr"]["Default"]["last_cycle"]
+
+        searched = sorted(i for c in client.search_albums.call_args_list for i in c.args[0])
+        assert searched == [1, 3]
+        assert rec["malformed_by_queue"] == {"cutoff": 1}
+        assert rec["unevaluated"] == []
+        assert rec["grade"] == "partial"
     finally:
         await db.close()
 
