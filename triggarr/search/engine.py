@@ -81,12 +81,27 @@ def _is_json_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _is_naive_date(value: object) -> bool:
+    """True for a date string the date filters parse but cannot compare: no UTC offset.
+
+    Uses the filters' own parse, so absent (None) and unparseable values stay
+    False and keep their existing handling there.
+    """
+    if not isinstance(value, str):
+        return False
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).tzinfo is None
+    except ValueError:
+        return False
+
+
 def _malformed_reason(
     item: object,
     *,
     key_fields: tuple[str, ...],
     nested_key: str | None,
     tags_at: tuple[str, ...] | None,
+    date_fields: tuple[str, ...] = (),
 ) -> str | None:
     """Why one wanted record cannot be processed safely, or None if it can (ROBUST-01).
 
@@ -99,9 +114,12 @@ def _malformed_reason(
     ``nested_key`` is present with a non-dict value (``.get(key, {})`` does not
     substitute an explicit null, RESEARCH.md Pitfall 1) -> ``nested_key``; or,
     on a tag-scoped queue, when the tags value at ``tags_at`` is present but
-    not a list -> ``"tags"``. An absent nested object or tags value is NOT
-    malformed -- the display-title fallback and the tag extractors' ``[]``
-    default already handle it. The reason names the log line only.
+    not a list -> ``"tags"``; or when a ``date_fields`` value parses to a date
+    with no UTC offset -> ``"date"`` (the date filters compare with an aware
+    "now", and the timezone is never guessed). An absent nested object, tags
+    value or date is NOT malformed -- the display-title fallback, the tag
+    extractors' ``[]`` default and the date filters already handle it. The
+    reason names the log line only.
     """
     if not isinstance(item, dict) or not all(_is_json_int(item.get(field)) for field in key_fields):
         return "record"
@@ -113,6 +131,8 @@ def _malformed_reason(
             node = node.get(key, {}) if isinstance(node, dict) else None
         if isinstance(node, dict) and tags_at[-1] in node and not isinstance(node[tags_at[-1]], list):
             return "tags"
+    if any(_is_naive_date(item.get(field)) for field in date_fields):
+        return "date"
     return None
 
 
@@ -125,6 +145,7 @@ def _screen_queue(
     key_fields: tuple[str, ...],
     nested_key: str | None = None,
     tags_at: tuple[str, ...] | None = None,
+    date_fields: tuple[str, ...] = (),
 ) -> list[dict]:
     """Skip and count malformed records in one wanted queue, per item (ROBUST-01/04).
 
@@ -133,12 +154,15 @@ def _screen_queue(
     never faults the rest of its queue. Skipped records are logged once per
     reason and counted against ``queue`` via ``tally.record_malformed``; valid records are
     returned in their original order. Pass ``tags_at`` only when the queue is
-    tag-scoped -- an untagged queue never reads tags.
+    tag-scoped -- an untagged queue never reads tags -- and ``date_fields`` only
+    for dates a later filter on this queue actually reads.
     """
     valid: list[dict] = []
     skipped_by_reason: dict[str, list] = {}
     for item in items:
-        reason = _malformed_reason(item, key_fields=key_fields, nested_key=nested_key, tags_at=tags_at)
+        reason = _malformed_reason(
+            item, key_fields=key_fields, nested_key=nested_key, tags_at=tags_at, date_fields=date_fields
+        )
         if reason is None:
             valid.append(item)
         else:
@@ -1029,6 +1053,7 @@ async def run_radarr_cycle(
             missing = _screen_queue(
                 missing, app_label="Radarr", queue="missing", tally=tally, key_fields=("id",),
                 tags_at=("tags",) if scope.missing_tag_id is not None else None,
+                date_fields=("digitalRelease", "physicalRelease") if settings.general.skip_unreleased else (),
             )
             missing = filter_monitored(missing)
             missing_monitored = len(missing)
@@ -1291,7 +1316,7 @@ async def run_sonarr_cycle(
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/searchable
     # counts and searched-log stay untouched rather than being wiped to zero).
     # Malformed records (bad nested "series", missing or non-integer seriesId/seasonNumber,
-    # non-list tags on a tag-scoped queue) are skipped and counted per item via
+    # a timezone-less airDateUtc, non-list tags on a tag-scoped queue) are skipped and counted per item via
     # _screen_queue before the rest of the chain runs (ROBUST-01); the
     # try/except below is the backstop for any other unexpected fault,
     # mirroring the cutoff chain's existing guard. ---
@@ -1302,6 +1327,7 @@ async def run_sonarr_cycle(
                 missing_episodes, app_label="Sonarr", queue="missing", tally=tally,
                 key_fields=("seriesId", "seasonNumber"), nested_key="series",
                 tags_at=("series", "tags") if scope.missing_tag_id is not None else None,
+                date_fields=("airDateUtc",),
             )
             missing_episodes = filter_sonarr_episodes(missing_episodes)
             if scope.missing_tag_id is not None:
@@ -1340,6 +1366,7 @@ async def run_sonarr_cycle(
                 cutoff_episodes, app_label="Sonarr", queue="cutoff", tally=tally,
                 key_fields=("seriesId", "seasonNumber"), nested_key="series",
                 tags_at=("series", "tags") if scope.cutoff_tag_id is not None else None,
+                date_fields=("airDateUtc",),
             )
             cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
             if scope.cutoff_tag_id is not None:
