@@ -30,28 +30,41 @@ class SonarrClient(ArrClient):
         """Detect whether the Sonarr instance is running v3 or v4.
 
         Calls ``/api/v3/system/status`` and inspects the ``version``
-        field.  This is purely informational -- no behaviour changes
-        based on the result.
+        field.  This is purely informational -- no behaviour branches
+        on the result; the ``/api/v3`` endpoints stay in use regardless.
 
         Returns:
-            ``"v4"`` if the major version is 4+, otherwise ``"v3"``.
+            ``"v3"`` or ``"v4"`` when the major version is confirmed,
+            otherwise ``"unknown"`` (non-string reply, unrecognized
+            major such as a future v5, or a request failure). Phase 81
+            adds accurate v5 reporting.
         """
         try:
             response = await self._client.get("/api/v3/system/status")
             response.raise_for_status()
             data = response.json()
             version = data["version"]
+            if not isinstance(version, str):
+                logger.warning(
+                    "Sonarr: API version reply was not a string -- reporting unknown, continuing with /api/v3 endpoints"
+                )
+                return "unknown"
+            if version.startswith("3"):
+                return "v3"
             if version.startswith("4"):
                 return "v4"
-            return "v3"
-        except (httpx.HTTPError, pydantic.ValidationError, KeyError) as exc:
             logger.warning(
-                "Sonarr: API version detection failed -- assuming v3: {exc}",
+                "Sonarr: unrecognized API version reply -- reporting unknown, continuing with /api/v3 endpoints"
+            )
+            return "unknown"
+        except (httpx.HTTPError, pydantic.ValidationError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Sonarr: API version detection failed -- reporting unknown, continuing with /api/v3 endpoints: {exc}",
                 exc=_sanitize_exc(exc),
             )
-            return "v3"
+            return "unknown"
 
-    async def get_wanted_missing(self) -> list[dict[str, Any]]:
+    async def get_wanted_missing(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all wanted/missing episodes from Sonarr.
 
         Includes series data (``includeSeries=true``) for human-readable
@@ -60,9 +73,10 @@ class SonarrClient(ArrClient):
         return await self.get_paginated(
             "/api/v3/wanted/missing",
             extra_params={"includeSeries": "true"},
+            allow_non_object_records=allow_non_object_records,
         )
 
-    async def get_wanted_cutoff(self) -> list[dict[str, Any]]:
+    async def get_wanted_cutoff(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all episodes that don't meet their quality cutoff.
 
         Includes series data (``includeSeries=true``) for human-readable
@@ -71,6 +85,7 @@ class SonarrClient(ArrClient):
         return await self.get_paginated(
             "/api/v3/wanted/cutoff",
             extra_params={"includeSeries": "true"},
+            allow_non_object_records=allow_non_object_records,
         )
 
     async def get_library_count(self) -> int:

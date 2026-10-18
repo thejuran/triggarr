@@ -40,7 +40,7 @@ from triggarr.search.engine import (
     run_sonarr_cycle,
 )
 from triggarr.search.outcome import cycle_view
-from triggarr.state import _default_state
+from triggarr.state import _default_state, load_state, save_state
 
 # ---------------------------------------------------------------------------
 # filter_monitored
@@ -278,6 +278,117 @@ def test_prioritize_batch_key_fn_radarr_int_to_str():
 
 
 # ---------------------------------------------------------------------------
+# prioritize_batch exclude_keys (DEDUP-01/02, D-05) -- Sonarr cross-queue dedup
+# ---------------------------------------------------------------------------
+
+
+def _letter_items(*letters: str) -> list[dict]:
+    """Build fake item dicts keyed by letter id (for exclude_keys dedup tests)."""
+    return [{"id": letter} for letter in letters]
+
+
+def test_prioritize_batch_exclude_keys_fills_from_others():
+    """An excluded key is never a batch candidate; the batch fills to size from
+    the other eligible items instead (DEDUP-01)."""
+    items = _letter_items("a", "b", "c", "d")
+    batch, new_log, pass_completed = prioritize_batch(items, [], 2, _id_key, exclude_keys=frozenset({"a"}))
+    assert [it["id"] for it in batch] == ["b", "c"]
+    assert new_log == ["b", "c"]
+    assert pass_completed is False
+
+
+def test_prioritize_batch_exclude_keys_preserves_log_position():
+    """An excluded key already in the log keeps its original relative position --
+    it is neither marked searched (moved to tail) nor removed (DEDUP-02)."""
+    items = _letter_items("a", "b", "c")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a", "b"], 1, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert [it["id"] for it in batch] == ["c"]
+    assert new_log == ["a", "b", "c"]
+    # "a" was already in the log before exclusion kicked in, so the pass is
+    # still complete -- exclusion never shrinks eligible_ids (step 6 unchanged).
+    assert pass_completed is True
+
+
+def test_prioritize_batch_exclude_keys_topup_skips_excluded():
+    """Top-up never pulls an excluded already-searched item; the excluded key
+    stays in new_log at its existing position (DEDUP-02)."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a", "b"], 2, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert [it["id"] for it in batch] == ["b"]
+    assert new_log == ["a", "b"]
+    # pass_completed True only because every eligible id ("a" and "b") is in new_log
+    assert pass_completed is True
+
+
+def test_prioritize_batch_exclude_keys_pass_completes_when_rest_covered():
+    """An excluded (claimed) key counts as covered for pass-completion, but is
+    never inserted into new_log -- the pass completes once every non-excluded
+    eligible key is in the log (DEDUP-03)."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(items, [], 2, _id_key, exclude_keys=frozenset({"a"}))
+    assert [it["id"] for it in batch] == ["b"]
+    assert new_log == ["b"]
+    assert "a" not in new_log
+    assert pass_completed is True
+
+
+def test_prioritize_batch_exclude_keys_all_excluded():
+    """Every eligible key excluded -> empty batch, pruned log unchanged, no pass completion."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a", "b"], 2, _id_key, exclude_keys=frozenset({"a", "b"})
+    )
+    assert batch == []
+    assert new_log == ["a", "b"]
+    assert pass_completed is False
+
+
+def test_prioritize_batch_exclude_keys_partial_batch_accumulates_coverage():
+    """A batch smaller than the non-excluded set accumulates coverage across
+    calls: no pass until every non-excluded key is in the log, and the excluded
+    key is never inserted along the way (DEDUP-03)."""
+    items = _letter_items("a", "b", "c")
+    claimed = frozenset({"a"})
+    batch1, log1, done1 = prioritize_batch(items, [], 1, _id_key, exclude_keys=claimed)
+    assert [it["id"] for it in batch1] == ["b"]
+    assert log1 == ["b"]
+    assert done1 is False
+    batch2, log2, done2 = prioritize_batch(items, log1, 1, _id_key, exclude_keys=claimed)
+    assert [it["id"] for it in batch2] == ["c"]
+    assert log2 == ["b", "c"]
+    assert done2 is True
+
+
+def test_prioritize_batch_exclude_keys_preserves_prior_coverage_of_excluded():
+    """An excluded key already in the log keeps its entry and position (prior
+    coverage is preserved, not reset or moved) and still counts as covered."""
+    items = _letter_items("a", "b", "c")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a"], 5, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert [it["id"] for it in batch] == ["b", "c"]
+    assert new_log == ["a", "b", "c"]
+    assert pass_completed is True
+
+
+def test_prioritize_batch_exclude_keys_empty_batch_never_completes_pass():
+    """The no-empty-batch rule (MED-1) still holds with exclusion: a zero-size
+    batch never completes a pass, even when every non-excluded key is already
+    covered."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["b"], 0, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert batch == []
+    assert new_log == ["b"]
+    assert pass_completed is False
+
+
+# ---------------------------------------------------------------------------
 # deduplicate_to_seasons
 # ---------------------------------------------------------------------------
 
@@ -323,6 +434,17 @@ def test_deduplicate_to_seasons_missing_series_data():
     result = deduplicate_to_seasons(episodes)
     assert result[0]["display_name"] == "Series 42 - Season 1"
     assert result[0]["episode_count"] == 1
+
+
+def test_deduplicate_to_seasons_series_title():
+    """D-14: each season entry also carries a bare series_title for the dedup-skip log line."""
+    episodes = [
+        {"seriesId": 5, "seasonNumber": 3, "series": {"title": "Breaking Bad"}},
+        {"seriesId": 42, "seasonNumber": 1},  # no nested series -> fallback title
+    ]
+    result = deduplicate_to_seasons(episodes)
+    assert result[0]["series_title"] == "Breaking Bad"
+    assert result[1]["series_title"] == "Series 42"
 
 
 # ---------------------------------------------------------------------------
@@ -1019,25 +1141,28 @@ async def test_run_sonarr_cycle_cutoff_composite_key_with_specials(tmp_path):
 
 
 async def test_run_sonarr_cycle_both_queues_exact_composite_keys(tmp_path):
-    """MED-2 (full): Both missing AND cutoff queues produce exact '123:0','123:1','123:2' keys.
+    """MED-2 (full): Both missing AND cutoff queues produce exact composite keys.
 
-    Drives run_sonarr_cycle with same-series seasons including Specials for BOTH queues
-    simultaneously; asserts exact composite key strings appear in the respective searched-logs.
+    Drives run_sonarr_cycle with Specials-inclusive seasons for BOTH queues
+    simultaneously; asserts exact composite key strings appear in the respective
+    searched-logs. Missing and cutoff use different series so this test exercises
+    composite-key correctness, not cross-queue dedup (see the dedicated
+    ``test_run_sonarr_cycle_dedup_*`` tests for DEDUP-01/02's same-season case).
     """
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    # seriesId=123 seasons 0,1,2 for missing; same shape for cutoff
+    # seriesId=123 seasons 0,1,2 for missing; seriesId=456 seasons 0,1,2 for cutoff
     missing_episodes = [
         _make_sonarr_episode(series_id=123, season_number=0, series_title="Show X", episode_id=100),
         _make_sonarr_episode(series_id=123, season_number=1, series_title="Show X", episode_id=101),
         _make_sonarr_episode(series_id=123, season_number=2, series_title="Show X", episode_id=102),
     ]
     cutoff_episodes = [
-        _make_sonarr_episode(series_id=123, season_number=0, series_title="Show X", episode_id=200),
-        _make_sonarr_episode(series_id=123, season_number=1, series_title="Show X", episode_id=201),
-        _make_sonarr_episode(series_id=123, season_number=2, series_title="Show X", episode_id=202),
+        _make_sonarr_episode(series_id=456, season_number=0, series_title="Show Y", episode_id=200),
+        _make_sonarr_episode(series_id=456, season_number=1, series_title="Show Y", episode_id=201),
+        _make_sonarr_episode(series_id=456, season_number=2, series_title="Show Y", episode_id=202),
     ]
 
     client = AsyncMock()
@@ -1058,7 +1183,7 @@ async def test_run_sonarr_cycle_both_queues_exact_composite_keys(tmp_path):
     assert len(cutoff_log1) == 2
     # All keys must be in the expected set
     assert set(missing_log1) <= {"123:0", "123:1", "123:2"}
-    assert set(cutoff_log1) <= {"123:0", "123:1", "123:2"}
+    assert set(cutoff_log1) <= {"456:0", "456:1", "456:2"}
 
     # Cycle 2: remaining seasons complete both passes
     client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
@@ -1072,10 +1197,691 @@ async def test_run_sonarr_cycle_both_queues_exact_composite_keys(tmp_path):
     assert result["sonarr"]["Default"]["cutoff_searched"] == []
     assert result["sonarr"]["Default"]["cutoff_pass"] == 1
 
-    # Specials key "123:0" is proven as a distinct, non-colliding key for both queues
+    # Specials key "123:0"/"456:0" is proven as a distinct, non-colliding key
     assert "123:0" != "123:1"
     assert "123:0" != "123:2"
+    assert "123:0" != "456:0"
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Sonarr cross-queue season dedup (DEDUP-01/02, D-05/D-14/D-15)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_sonarr_cycle_dedup_dual_eligible_season_dispatched_once(tmp_path):
+    """A season eligible for both queues is dispatched exactly once this cycle;
+    the upgrade batch fills from the other eligible seasons (DEDUP-01/02)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=200),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=201),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=202),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=2)
+
+        await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+        assert client.search_season.call_count == 3
+        client.search_season.assert_any_call(10, 1)
+        client.search_season.assert_any_call(20, 1)
+        client.search_season.assert_any_call(30, 1)
+        # (10, 1) dispatched exactly once, not twice
+        calls = [c.args for c in client.search_season.call_args_list]
+        assert calls.count((10, 1)) == 1
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_missing_failure_still_claims(tmp_path):
+    """The missing queue's claim holds even when its own command fails -- the
+    upgrade queue must not retry it (D-05); the failure counts once, with no
+    extra failure or penalty from the skip (D-15)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://sonarr:8989/api/v3/command")
+        response = httpx.Response(500, request=request)
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=200),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=201),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=202),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        # Missing's (10, 1) attempt fails; cutoff's (20, 1) and (30, 1) succeed.
+        client.search_season = AsyncMock(
+            side_effect=[httpx.HTTPStatusError("err", request=request, response=response), None, None]
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 3
+        calls = [c.args for c in client.search_season.call_args_list]
+        assert calls.count((10, 1)) == 1  # not retried by the upgrade queue
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 1
+        assert ist["last_cycle"]["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_upgrade_batch_still_fills(tmp_path):
+    """The upgrade batch fills all the way to its configured limit from the
+    other eligible seasons, even though one candidate was excluded (DEDUP-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=200),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=201),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=202),
+            _make_sonarr_episode(series_id=40, season_number=1, series_title="Show D", episode_id=203),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=3)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=3)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        # Upgrade batch still fills to its configured limit (3) from the 3
+        # remaining eligible seasons, despite (10, 1) being excluded.
+        calls = [c.args for c in client.search_season.call_args_list]
+        assert client.search_season.call_count == 4  # 1 missing + 3 cutoff
+        assert calls[0] == (10, 1)
+        assert sorted(calls[1:]) == [(20, 1), (30, 1), (40, 1)]
+        # Those three cover every unclaimed upgrade season, so the claimed (10, 1)
+        # counts as covered and the upgrade pass completes, resetting its log (DEDUP-03).
+        assert ist["cutoff_pass"] == 1
+        assert ist["cutoff_searched"] == []
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_preserves_upgrade_searched_log_position(tmp_path):
+    """A dedup-skipped season's upgrade searched-log entry is unchanged: it keeps
+    its exact relative position and is neither marked searched nor removed
+    (DEDUP-02). The pass does not complete while an unsearched season remains."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=200),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=201),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=202),
+            _make_sonarr_episode(series_id=40, season_number=1, series_title="Show D", episode_id=203),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        state["sonarr"]["Default"]["cutoff_searched"] = ["10:1", "20:1"]
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        # "10:1" keeps its exact position ahead of "20:1" -- not moved to the
+        # tail, not removed -- and "30:1" is appended from this cycle's dispatch.
+        assert ist["cutoff_searched"] == ["10:1", "20:1", "30:1"]
+        # "40:1" is still unsearched, so the pass must not complete/reset.
+        assert ist.get("cutoff_pass", 0) == 0
+        client.search_season.assert_any_call(30, 1)
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_no_grade_effect(tmp_path):
+    """The dedup skip has no grade effect -- it is expected behavior, not
+    incomplete evaluation (D-15)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=200),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=201),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["failed"] == 0
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_logs_skip_info(tmp_path):
+    """One INFO line per dedup-skipped season, worded per D-14; no line for a
+    season that was never claimed by the missing queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=200),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=201),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=2)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="INFO")
+        try:
+            await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        output = sink.getvalue()
+        skip_line = "Upgrade queue skipped Show A S1 — already attempted by missing queue this cycle"
+        assert output.count(skip_line) == 1
+        assert "Upgrade queue skipped Show B" not in output  # never claimed -> never skipped
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_inactive_missing_no_claim(tmp_path):
+    """An inactive missing queue (count 0) makes no claim; the cutoff dispatch
+    is identical to today's un-deduped behavior."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=200),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=201),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=0, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=0, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        # No claim from the inactive missing queue -- cutoff dispatches both
+        # eligible seasons, including (10, 1), exactly as it would today.
+        # Both complete the pass, so the log resets to empty (normal rotation).
+        client.search_season.assert_any_call(10, 1)
+        client.search_season.assert_any_call(20, 1)
+        assert client.search_season.call_count == 2
+        assert ist["cutoff_searched"] == []
+        assert ist["cutoff_pass"] == 1
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Sonarr malformed-record guards (ROBUST-01a/04, Phase 80 Plan 05 Task 1)
+# ---------------------------------------------------------------------------
+
+
+def _claim_outcome(kind: str):
+    """search_season side effect: the claimed season (10, 1) gets `kind`, all others succeed."""
+    request = httpx.Request("POST", "http://sonarr:8989/api/v3/command")
+
+    async def _search(series_id, season_number):
+        if (series_id, season_number) != (10, 1) or kind == "success":
+            return None
+        if kind == "failed":
+            raise httpx.HTTPStatusError("err", request=request, response=httpx.Response(500, request=request))
+        # "ambiguous": the command may have reached Sonarr, but no response came back.
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    return _search
+
+
+@pytest.mark.parametrize("kind", ["success", "failed", "ambiguous"])
+async def test_run_sonarr_cycle_dedup_claimed_season_counts_toward_upgrade_pass(tmp_path, kind):
+    """A season the missing queue claims every cycle counts as covered for the
+    upgrade pass, whatever its dispatch outcome (accepted, failed, or no
+    response): the upgrade pass completes once every other upgrade season has
+    been searched, and the claimed season is never inserted into upgrade
+    history (DEDUP-03). Partial upgrade batches accumulate coverage across
+    cycles first."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Both", episode_id=100),
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Both", episode_id=200),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=201),
+            _make_sonarr_episode(series_id=40, season_number=1, series_title="Show D", episode_id=202),
+        ])
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_season = AsyncMock(side_effect=_claim_outcome(kind))
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        # Cycle 1: partial upgrade batch -- (30, 1) searched, (40, 1) still owed.
+        state = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = state["sonarr"]["Default"]
+        assert ist["cutoff_searched"] == ["30:1"]
+        assert not ist.get("cutoff_pass")
+
+        # Cycle 2: (10, 1) claimed again; (40, 1) completes the upgrade pass.
+        state = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = state["sonarr"]["Default"]
+        assert ist["cutoff_pass"] == 1
+        assert ist["cutoff_searched"] == []
+
+        calls = [c.args for c in client.search_season.call_args_list]
+        assert calls.count((10, 1)) == 2  # once per cycle, missing queue only
+        assert calls.count((30, 1)) == 1
+        assert calls.count((40, 1)) == 1
+        expected_failed = 0 if kind == "success" else 1
+        assert ist["last_cycle"]["failed"] == expected_failed
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_dedup_all_upgrade_claimed_no_pass(tmp_path):
+    """When every upgrade season is claimed, the upgrade batch is empty: nothing
+    is dispatched by the upgrade queue, no upgrade pass completes (no-empty-batch
+    rule), and the upgrade history is left exactly as it was."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        seasons = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=101),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=seasons)
+        client.get_wanted_cutoff = AsyncMock(return_value=[dict(s, id=s["id"] + 100) for s in seasons])
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        state["sonarr"]["Default"]["cutoff_searched"] = ["30:1"]
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        calls = [c.args for c in client.search_season.call_args_list]
+        assert sorted(calls) == [(10, 1), (30, 1)]  # missing queue only, once each
+        assert not ist.get("cutoff_pass")
+        assert ist["cutoff_searched"] == ["30:1"]
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_null_series_missing_skipped(tmp_path):
+    """A null nested "series" in the Sonarr missing queue is skipped per
+    item; the cycle completes, the good season is still dispatched, and
+    state persists across a save_state/load_state round trip (ROBUST-01a)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            {
+                "id": 101,
+                "seriesId": 20,
+                "seasonNumber": 1,
+                "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z",
+                "series": None,
+            },
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 2
+        client.search_season.assert_any_call(10, 1)
+        client.search_season.assert_any_call(30, 1)
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+        assert ist["last_cycle"]["malformed_skipped"] == 1
+        assert ist["last_cycle"]["unevaluated"] == []
+
+        # State persists across a real save/load round trip.
+        state_path = tmp_path / "state.json"
+        save_state(result, state_path)
+        reloaded = load_state(state_path)
+        assert reloaded["sonarr"]["Default"]["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_null_series_all_malformed_failed(tmp_path):
+    """Every missing and cutoff record has a null "series" -- grade failed,
+    nothing dispatched, both queues' malformed counts recorded (ROBUST-01a/04)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            {
+                "id": 1, "seriesId": 10, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+            {
+                "id": 2, "seriesId": 20, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        cutoff_episodes = [
+            {
+                "id": 3, "seriesId": 30, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 0
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 2, "cutoff": 1}
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_null_series_cutoff_per_item(tmp_path):
+    """One malformed record in the Sonarr cutoff queue no longer discards the
+    whole queue -- the other good seasons are still dispatched (ROBUST-01a)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
+            {
+                "id": 301, "seriesId": 35, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+            _make_sonarr_episode(series_id=40, season_number=1, series_title="Show D", episode_id=400),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=0, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=0, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 2
+        client.search_season.assert_any_call(30, 1)
+        client.search_season.assert_any_call(40, 1)
+        assert ist["last_cycle"]["malformed_by_queue"] == {"cutoff": 1}
+        assert ist["last_cycle"]["unevaluated"] == []
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_malformed_non_dict_record(tmp_path):
+    """A non-dict record (None or a bare string) in the missing list is
+    counted as malformed and skipped, not crashed on (ROBUST-01a)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            None,
+            "garbage",
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=3, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=3, cutoff_count=0)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 1
+        client.search_season.assert_any_call(10, 1)
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 2}
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["last_cycle"]["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_malformed_inactive_queue_not_graded(tmp_path):
+    """A malformed record in an inactive queue (cutoff count 0) alongside a
+    good missing season grades success -- the inactive queue's malformed
+    count never reaches the persisted record, but the skip is still logged
+    (ROBUST-01a/04, spec 3.1 via Plan 80-01's active-queue filtering)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            {
+                "id": 1, "seriesId": 30, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 1
+        client.search_season.assert_any_call(10, 1)
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["malformed_by_queue"] == {}
+        assert ist["last_cycle"]["malformed_skipped"] == 0
+        # The skip is still logged even though the queue is inactive.
+        assert "upgrade-queue" in sink.getvalue()
+        assert "malformed series data" in sink.getvalue()
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_missing_fault_backstop_marks_unevaluated(tmp_path, monkeypatch):
+    """An unexpected TypeError in deduplicate_to_seasons on the missing queue is
+    caught by the coarse backstop, which marks only the missing queue
+    unevaluated, and cutoff still dispatches. Phase 80: the unhashable list
+    seriesId that used to fault dedup is now a per-item malformed skip
+    (_screen_queue), so the fault is forced in dedup for the missing queue only."""
+    import triggarr.search.engine as engine
+
+    real_dedup = engine.deduplicate_to_seasons
+
+    def _dedup_faults_on_missing(episodes):
+        if any(ep.get("seriesId") == 1 for ep in episodes):
+            raise TypeError("unexpected shape")
+        return real_dedup(episodes)
+
+    monkeypatch.setattr(engine, "deduplicate_to_seasons", _dedup_faults_on_missing)
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=1, season_number=1, series_title="Show A", episode_id=1),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 1
+        client.search_season.assert_any_call(30, 1)
+        assert ist["last_cycle"]["unevaluated"] == [
+            {"queue": "missing", "reason": "malformed data (TypeError)"}
+        ]
+        assert ist["last_cycle"]["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_malformed_logs_warning(tmp_path):
+    """The malformed-skip WARNING names the queue, the count, and the
+    malformed field -- and never an exception message or API key (D-08)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            {
+                "id": 20, "seriesId": 20, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        log_output = sink.getvalue()
+        assert "missing-queue" in log_output
+        assert "Skipped 1" in log_output
+        assert "malformed series data" in log_output
+        assert "apikey" not in log_output.lower()
+    finally:
+        await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -1486,6 +2292,18 @@ def test_filter_unreleased_one_null_one_past_passes():
 def test_filter_unreleased_unparseable_date_treated_as_null():
     """Movie with unparseable date string treated as null."""
     movies = [_movie("BadDate", digital="not-a-date", physical="also-bad")]
+    assert filter_unreleased_movies(movies) == movies
+
+
+def test_filter_unreleased_valid_past_date_decides_in_either_field():
+    """Either past release date decides, whichever field holds it: a
+    timezone-less other date is never compared once a valid past date shows the
+    movie released."""
+    naive = "2020-01-01T00:00:00"
+    movies = [
+        _movie("Digital decides", digital=_past_iso(), physical=naive),
+        _movie("Physical decides", digital=naive, physical=_past_iso()),
+    ]
     assert filter_unreleased_movies(movies) == movies
 
 
@@ -2377,6 +3195,94 @@ async def test_radarr_tag_fetch_success_empty_list_no_tag_not_found(tmp_path):
     await db.close()
 
 
+async def test_tag_scope_malformed_tag_json_value_error_sonarr(tmp_path):
+    """_resolve_tag_scope's tag fetch catches a bare ValueError (malformed
+    tag JSON, e.g. get_json_list's non-list response raise) exactly like an
+    HTTP failure -- the cycle completes instead of crashing (ROBUST-01f)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(
+            side_effect=ValueError("Expected JSON array from /api/v1/tag, got dict")
+        )
+        client.get_wanted_missing = AsyncMock(
+            return_value=[_make_sonarr_episode(series_id=10, season_number=1)]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://sonarr:8989", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="triggarr",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        log_output = sink.getvalue()
+        assert "Failed to fetch tags" in log_output
+        assert "ValueError" in log_output
+        assert "Expected JSON array" not in log_output
+        assert "Missing queue skipped -- couldn't load tags" in log_output
+        assert client.search_season.call_count == 0
+        assert result["sonarr"]["Default"]["tag_warnings"][0]["reason"] == "fetch_failed"
+    finally:
+        await db.close()
+
+
+async def test_tag_scope_malformed_tag_json_decode_error_radarr(tmp_path):
+    """_resolve_tag_scope's tag fetch catches json.JSONDecodeError (a
+    ValueError subclass) the same way -- the cycle completes (ROBUST-01f)."""
+    import json
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(side_effect=json.JSONDecodeError("Expecting value", "", 0))
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="triggarr",
+        )
+        settings = _cycle_settings()
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        log_output = sink.getvalue()
+        assert "Failed to fetch tags" in log_output
+        assert "JSONDecodeError" in log_output
+        assert "Expecting value" not in log_output
+        assert client.search_movies.call_count == 0
+        assert result["radarr"]["Default"]["tag_warnings"][0]["reason"] == "fetch_failed"
+    finally:
+        await db.close()
+
+
 # ---------------------------------------------------------------------------
 # BUG-09: cleanup_orphaned_instances immutability
 # ---------------------------------------------------------------------------
@@ -2930,6 +3836,241 @@ async def test_tag_warnings_cleared_on_lidarr_connectivity_failure(tmp_path):
         ist = result["lidarr"]["Default"]
         assert ist["tag_warnings"] == []
         assert ist["connected"] is False
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Lidarr tag-scoped malformed-artist guards (ROBUST-01b, Phase 80 Plan 05 Task 2)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_lidarr_cycle_null_artist_tagged_missing_skipped(tmp_path):
+    """A null nested "artist" in a tag-scoped Lidarr missing queue is
+    skipped per item; the good album is still searched (ROBUST-01b). The
+    queue MUST have a tag configured -- an untagged queue never reads
+    "artist" at all (Pitfall 4)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album", "monitored": True, "artist": {"tags": [5]}},
+            {"id": 2, "title": "Bad Album", "monitored": True, "artist": None},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="music-tag",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        client.search_albums.assert_called_once_with([1])
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+        assert ist["last_cycle"]["failed"] == 0
+    finally:
+        await db.close()
+
+
+async def test_run_lidarr_cycle_null_artist_tagged_cutoff_per_item(tmp_path):
+    """A null nested "artist" in a tag-scoped Lidarr cutoff queue is skipped
+    per item; the other cutoff albums are still searched (ROBUST-01b)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album A", "monitored": True, "artist": {"tags": [5]}},
+            {"id": 2, "title": "Bad Album", "monitored": True, "artist": None},
+            {"id": 3, "title": "Good Album B", "monitored": True, "artist": {"tags": [5]}},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            cutoff_tag="music-tag",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 2
+        client.search_albums.assert_any_call([1])
+        client.search_albums.assert_any_call([3])
+        assert ist["last_cycle"]["malformed_by_queue"] == {"cutoff": 1}
+        assert ist["last_cycle"]["unevaluated"] == []
+    finally:
+        await db.close()
+
+
+async def test_run_lidarr_cycle_null_artist_untagged_not_malformed(tmp_path):
+    """An untagged Lidarr queue never reads "artist" -- a null-artist album
+    is still searched and never counted as malformed (documents the
+    scoping decision, D-01/Pitfall 4)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album", "monitored": True, "artist": None},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+        instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        client.search_albums.assert_called_once_with([1])
+        assert ist["last_cycle"]["malformed_by_queue"] == {}
+        assert ist["last_cycle"]["grade"] == "success"
+    finally:
+        await db.close()
+
+
+@pytest.mark.parametrize("missing_tag", ["", "music-tag"])
+async def test_run_lidarr_cycle_non_dict_missing_record_skipped_per_item(tmp_path, missing_tag):
+    """A missing-queue record that is not an object at all (null, a string) is
+    skipped and counted per item, tagged or untagged -- the good album is still
+    searched instead of the whole queue being dropped (ROBUST-01)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album", "monitored": True, "artist": {"tags": [5]}},
+            None,
+            "junk",
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag=missing_tag,
+        )
+        result = await run_lidarr_cycle(
+            client, _make_test_state(), "Default", instance_config, _cycle_settings(5, 5), db
+        )
+        rec = result["lidarr"]["Default"]["last_cycle"]
+
+        client.search_albums.assert_called_once_with([1])
+        assert rec["malformed_by_queue"] == {"missing": 2}
+        assert rec["unevaluated"] == []
+        assert rec["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+@pytest.mark.parametrize("cutoff_tag", ["", "music-tag"])
+async def test_run_lidarr_cycle_non_dict_cutoff_record_skipped_per_item(tmp_path, cutoff_tag):
+    """Same guard on the cutoff queue: a null record is skipped and counted per
+    item, and the other cutoff albums are still searched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album A", "monitored": True, "artist": {"tags": [5]}},
+            None,
+            {"id": 3, "title": "Good Album B", "monitored": True, "artist": {"tags": [5]}},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            cutoff_tag=cutoff_tag,
+        )
+        result = await run_lidarr_cycle(
+            client, _make_test_state(), "Default", instance_config, _cycle_settings(5, 5), db
+        )
+        rec = result["lidarr"]["Default"]["last_cycle"]
+
+        searched = sorted(i for c in client.search_albums.call_args_list for i in c.args[0])
+        assert searched == [1, 3]
+        assert rec["malformed_by_queue"] == {"cutoff": 1}
+        assert rec["unevaluated"] == []
+        assert rec["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+async def test_run_lidarr_cycle_artist_missing_fault_backstop(tmp_path, monkeypatch):
+    """Lidarr missing-side backstop: an unexpected TypeError in the tag filter is
+    caught by the coarse except around the whole chain; cutoff still dispatches.
+    Phase 80: a non-list "tags" value is now a per-item malformed skip
+    (_screen_queue), so the fault is forced in the tag filter instead."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album", "monitored": True, "artist": {"tags": [5]}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 2, "title": "Good Album", "monitored": True},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="music-tag",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        client.search_albums.assert_called_once_with([2])
+        assert ist["last_cycle"]["unevaluated"] == [
+            {"queue": "missing", "reason": "malformed data (TypeError)"}
+        ]
     finally:
         await db.close()
 
@@ -3636,7 +4777,7 @@ async def test_radarr_grade_hard_max_starved_is_success(tmp_path):
 
 
 async def test_radarr_persistence_failure_still_accepted(tmp_path):
-    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    """R8/OUTCOME-06/ROBUST-02 (Phase 80): a success-path history-insert failure keeps the command accepted."""
     from unittest.mock import patch
 
     db_path = tmp_path / "test.db"
@@ -4652,7 +5793,7 @@ async def test_sonarr_grade_inactive_queue_ignored(tmp_path):
 
 
 async def test_sonarr_persistence_failure_still_accepted(tmp_path):
-    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    """R8/OUTCOME-06/ROBUST-02 (Phase 80): a success-path history-insert failure keeps the command accepted."""
     from unittest.mock import patch
 
     db_path = tmp_path / "test.db"
@@ -4688,6 +5829,48 @@ async def test_sonarr_persistence_failure_still_accepted(tmp_path):
         assert ist["last_cycle"]["persistence_failed"] == 3
         assert ist["last_successful_search"] is not None
         assert client.search_season.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_sonarr_failed_path_insert_error_does_not_abort(tmp_path):
+    """R-04/ROBUST-02 (Phase 80): a failure-path history insert that raises
+    never aborts the cycle, for Sonarr (three-app parity with Radarr's test)."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://sonarr:8989/api/v3/command")
+        response = httpx.Response(500, request=request)
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=200),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert client.search_season.call_count == 2
     finally:
         await db.close()
 
@@ -5153,7 +6336,7 @@ async def test_lidarr_grade_inactive_queue_ignored(tmp_path):
 
 
 async def test_lidarr_persistence_failure_still_accepted(tmp_path):
-    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    """R8/OUTCOME-06/ROBUST-02 (Phase 80): a success-path history-insert failure keeps the command accepted."""
     from unittest.mock import patch
 
     db_path = tmp_path / "test.db"
@@ -5189,6 +6372,46 @@ async def test_lidarr_persistence_failure_still_accepted(tmp_path):
         assert ist["last_cycle"]["persistence_failed"] == 3
         assert ist["last_successful_search"] is not None
         assert client.search_albums.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_lidarr_failed_path_insert_error_does_not_abort(tmp_path):
+    """R-04/ROBUST-02 (Phase 80): a failure-path history insert that raises
+    never aborts the cycle, for Lidarr (three-app parity with Radarr's test)."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://lidarr:8686/api/v1/command")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Album A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 2, "title": "Album B", "monitored": True}]
+        )
+        client.search_albums = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert client.search_albums.call_count == 2
     finally:
         await db.close()
 
@@ -5885,8 +7108,16 @@ async def test_radarr_both_tags_fetch_failure_skips_both_queues(tmp_path):
     await db.close()
 
 
-async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
-    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path, monkeypatch):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps.
+    Phase 80: a non-list tags value is now a per-item skip, so the cutoff fault is
+    forced in the tag filter (only the cutoff queue resolves a tag here)."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -5897,7 +7128,7 @@ async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
         {"id": 1, "title": "Movie A", "monitored": True},
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[
-        {"id": 2, "title": "Movie B", "monitored": True, "tags": 5},
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [5]},
     ])
     client.search_movies = AsyncMock()
 
@@ -5928,8 +7159,16 @@ async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     await db.close()
 
 
-async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
-    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path, monkeypatch):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps.
+    Phase 80: a non-list tags value is now a per-item skip, so the cutoff fault is
+    forced in the tag filter (only the cutoff queue resolves a tag here)."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -5941,7 +7180,7 @@ async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
             {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": []}},
         ])
         client.get_wanted_cutoff = AsyncMock(return_value=[
-            {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": 5}},
+            {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": [5]}},
         ])
         client.get_library_count = AsyncMock(return_value=10)
         client.search_albums = AsyncMock()
@@ -6157,8 +7396,17 @@ async def test_sonarr_inactive_queue_unresolved_tag_no_warning(tmp_path):
     await db.close()
 
 
-async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
-    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path, monkeypatch):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps.
+    Phase 80: the unhashable list seriesId that used to fault season dedup is now
+    a per-item malformed skip, so the fault is forced in dedup (only the cutoff
+    queue reaches dedup here; the missing queue's tag is unresolved)."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "deduplicate_to_seasons", _boom)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -6169,14 +7417,7 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
         _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1),
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[
-        {
-            "id": 2,
-            "seriesId": 200,
-            "seasonNumber": 1,
-            "monitored": True,
-            "airDateUtc": "2025-01-01T00:00:00Z",
-            "series": "garbage",
-        },
+        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2),
     ])
     client.search_season = AsyncMock()
 
@@ -6195,7 +7436,10 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     )
     settings = _cycle_settings(missing_count=10, cutoff_count=10)
 
-    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    try:
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    finally:
+        await db.close()
 
     assert client.search_season.call_count == 0
     out_ist = result["sonarr"]["Default"]
@@ -6204,8 +7448,8 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     assert out_ist["missing_searched"] == ["10:1"]
     assert out_ist["cutoff_searchable"] == 2
     assert out_ist["scoped_count_tags"] == {"missing": "gone", "cutoff": "c"}
+    assert {e["queue"] for e in out_ist["last_cycle"]["unevaluated"]} == {"missing", "cutoff"}
     assert out_ist["last_cycle"]["grade"] == "failed"
-    await db.close()
 
 
 # ---------------------------------------------------------------------------

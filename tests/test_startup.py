@@ -328,7 +328,7 @@ async def test_detect_api_version_parses_v4() -> None:
 
 
 async def test_detect_api_version_handles_error() -> None:
-    """SonarrClient.detect_api_version falls back to 'v3' on error."""
+    """SonarrClient.detect_api_version falls back to 'unknown' on error."""
 
     async def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, text="Internal Server Error")
@@ -345,7 +345,7 @@ async def test_detect_api_version_handles_error() -> None:
         finally:
             logger.remove(handler_id)
 
-    assert result == "v3"
+    assert result == "unknown"
     assert "version detection failed" in sink.getvalue()
 
 
@@ -369,7 +369,7 @@ async def test_detect_api_version_error_redacts_apikey_in_url() -> None:
         finally:
             logger.remove(handler_id)
 
-    assert result == "v3"
+    assert result == "unknown"
     captured = sink.getvalue()
     assert "SUPERSECRET123" not in captured
     assert "HTTP 500" in captured
@@ -395,7 +395,7 @@ async def test_detect_api_version_timeout_logs_sanitized() -> None:
         finally:
             logger.remove(handler_id)
 
-    assert result == "v3"
+    assert result == "unknown"
     captured = sink.getvalue()
     assert "request timeout" in captured
     assert "SUPERSECRET123" not in captured
@@ -485,6 +485,31 @@ async def test_sonarr_version_detection_failure() -> None:
     assert "Detected API v3" in log_output
 
 
+async def test_sonarr_version_detection_unknown_logs_unknown() -> None:
+    """Startup logs an honest 'unknown' line (not 'Detected API unknown') when the version is uncertain (D-17)."""
+    settings = _make_settings(sonarr_enabled=True, radarr_enabled=False)
+
+    with patch("triggarr.startup.SonarrClient") as MockSonarrCls:
+        mock_client = AsyncMock()
+        mock_client.validate_connection = AsyncMock(return_value=True)
+        mock_client.detect_api_version = AsyncMock(return_value="unknown")
+        mock_client.close = AsyncMock()
+        MockSonarrCls.return_value = mock_client
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="INFO")
+        try:
+            results = await validate_connections(settings)
+        finally:
+            logger.remove(handler_id)
+
+    assert results["sonarr/Default"] is True
+    log_output = sink.getvalue()
+    assert "API version unknown" in log_output
+    assert "/api/v3" in log_output
+    assert "Detected API unknown" not in log_output
+
+
 # ---------------------------------------------------------------------------
 # BUG-01: validate_connections overwrites results -- should key by instance
 # ---------------------------------------------------------------------------
@@ -556,7 +581,7 @@ async def test_validate_connections_multi_sonarr_returns_both() -> None:
 
 
 async def test_detect_api_version_future_major() -> None:
-    """detect_api_version returns 'v3' for future major version 5.x (API-03)."""
+    """detect_api_version returns 'unknown' for future major version 5.x (API-03, D-17)."""
 
     async def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"version": "5.0.0.100"})
@@ -567,11 +592,11 @@ async def test_detect_api_version_future_major() -> None:
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
-    assert result == "v3"
+    assert result == "unknown"
 
 
 async def test_detect_api_version_empty_version() -> None:
-    """detect_api_version returns 'v3' for empty version string (API-03)."""
+    """detect_api_version returns 'unknown' for empty version string (API-03, D-17)."""
 
     async def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"version": ""})
@@ -582,11 +607,11 @@ async def test_detect_api_version_empty_version() -> None:
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
-    assert result == "v3"
+    assert result == "unknown"
 
 
 async def test_detect_api_version_missing_version_key() -> None:
-    """detect_api_version returns 'v3' when version key is missing (API-03)."""
+    """detect_api_version returns 'unknown' when version key is missing (API-03, D-17)."""
 
     async def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"appName": "Sonarr"})
@@ -597,7 +622,7 @@ async def test_detect_api_version_missing_version_key() -> None:
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
-    assert result == "v3"
+    assert result == "unknown"
 
 
 async def test_detect_api_version_beta_format() -> None:
@@ -616,7 +641,7 @@ async def test_detect_api_version_beta_format() -> None:
 
 
 async def test_detect_api_version_connect_error_fallback() -> None:
-    """detect_api_version returns 'v3' on ConnectError (API-03)."""
+    """detect_api_version returns 'unknown' on ConnectError (API-03, D-17)."""
 
     async def _handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused")
@@ -627,4 +652,94 @@ async def test_detect_api_version_connect_error_fallback() -> None:
         sonarr._client = client
         result = await sonarr.detect_api_version()
 
-    assert result == "v3"
+    assert result == "unknown"
+
+
+async def test_detect_api_version_non_string_version_int() -> None:
+    """detect_api_version returns 'unknown' when version is an int, never raises (D-01, D-17)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": 4000})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
+        sonarr._client = client
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await sonarr.detect_api_version()
+        finally:
+            logger.remove(handler_id)
+
+    assert result == "unknown"
+    assert "not a string" in sink.getvalue()
+
+
+async def test_detect_api_version_non_string_version_null() -> None:
+    """detect_api_version returns 'unknown' when version is null, never raises (D-01, D-17)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": None})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
+        sonarr._client = client
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await sonarr.detect_api_version()
+        finally:
+            logger.remove(handler_id)
+
+    assert result == "unknown"
+    assert "not a string" in sink.getvalue()
+
+
+async def test_detect_api_version_non_string_version_list() -> None:
+    """detect_api_version returns 'unknown' when version is a list, never raises (D-01, D-17)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": ["4"]})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
+        sonarr._client = client
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await sonarr.detect_api_version()
+        finally:
+            logger.remove(handler_id)
+
+    assert result == "unknown"
+    assert "not a string" in sink.getvalue()
+
+
+async def test_detect_api_version_unrecognized_major_reports_unknown() -> None:
+    """detect_api_version reports 'unknown' for an unrecognized major and names the reply as such (D-17)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": "5.0.0.2569"})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
+        sonarr._client = client
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await sonarr.detect_api_version()
+        finally:
+            logger.remove(handler_id)
+
+    assert result == "unknown"
+    captured = sink.getvalue()
+    assert "unrecognized" in captured
+    assert "/api/v3" in captured

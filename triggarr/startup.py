@@ -161,7 +161,10 @@ async def validate_connections(settings: Settings) -> dict[str, bool]:
                 # Sonarr-specific: detect API version for logging
                 if results[key] and app_type == "sonarr" and hasattr(client, "detect_api_version"):
                     api_version = await client.detect_api_version()
-                    logger.info("Sonarr: Detected API {version}", version=api_version)
+                    if api_version == "unknown":
+                        logger.info("Sonarr: API version unknown -- using /api/v3 endpoints")
+                    else:
+                        logger.info("Sonarr: Detected API {version}", version=api_version)
             finally:
                 await client.close()
 

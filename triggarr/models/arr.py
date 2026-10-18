@@ -23,6 +23,18 @@ class PaginatedResponse(BaseModel):
     records: list[dict[str, Any]]
 
 
+class RawPaginatedResponse(PaginatedResponse):
+    """Pagination envelope whose records are left unvalidated.
+
+    The envelope fields are still validated; ``records`` may hold any JSON
+    value, including null or a string. Used only for wanted-list fetches whose
+    caller skips and counts non-object records per item (ROBUST-01), so one bad
+    record no longer rejects the whole page.
+    """
+
+    records: list[Any]
+
+
 class GrabEvent(BaseModel):
     """A single grab event from *arr history API.
 

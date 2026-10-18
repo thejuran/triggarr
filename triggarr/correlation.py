@@ -1,8 +1,10 @@
 """Pure correlation functions for matching *arr grabs to triggarr searches.
 
-All functions are pure (no I/O, no DB access). They accept search records
-and grab events as inputs and return correlation results. Phase 20 handles
-integration -- reading from DB and writing outcome updates.
+All functions are pure (no I/O, no DB access) apart from a diagnostic log
+line emitted when a single grab is skipped for a malformed date. They
+accept search records and grab events as inputs and return correlation
+results. Phase 20 handles integration -- reading from DB and writing
+outcome updates.
 """
 
 from __future__ import annotations
@@ -10,6 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from loguru import logger
+
+from triggarr.clients.base import _sanitize_exc
 from triggarr.models.arr import GrabEvent
 
 
@@ -75,10 +80,19 @@ def correlate_grabs(
     if not searches:
         return []
 
-    # Parse grab dates once up front.
-    parsed_grabs: list[tuple[GrabEvent, datetime]] = [
-        (grab, _parse_iso(grab.date)) for grab in grabs
-    ]
+    # Parse grab dates once up front. A malformed or naive date is skipped
+    # individually so one bad grab never drops the rest of the group.
+    parsed_grabs: list[tuple[GrabEvent, datetime]] = []
+    for grab in grabs:
+        try:
+            parsed_grabs.append((grab, _parse_iso(grab.date)))
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                "Tracking: skipped grab event {grab_id} -- malformed date ({reason})",
+                grab_id=grab.id,
+                reason=_sanitize_exc(exc),
+            )
+            continue
 
     # Process searches most-recent-first so the newest search "claims" grabs
     # before older searches can.  This implements the user decision that the
@@ -112,6 +126,15 @@ def correlate_grabs(
 
 
 def _parse_iso(date_str: str) -> datetime:
-    """Parse an ISO 8601 date string to a timezone-aware datetime."""
+    """Parse an ISO 8601 date string to a timezone-aware datetime.
+
+    Raises:
+        ValueError: If the string is not a valid ISO 8601 date, or parses
+            to a naive (timezone-less) datetime.
+    """
     # *arr APIs return "Z" suffix; fromisoformat needs "+00:00"
-    return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        msg = "grab date must be timezone-aware, got naive datetime"
+        raise ValueError(msg)
+    return parsed

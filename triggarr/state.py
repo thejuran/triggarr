@@ -47,6 +47,9 @@ class LastCycleRecord(TypedDict, total=False):
     accepted: int  # count of *arr search commands accepted this cycle
     failed: int  # count of *arr search commands that raised an error this cycle
     malformed_skipped: int  # count of malformed *arr records skipped (fed by Phase 80)
+    # per active queue ("missing"/"cutoff"), count of malformed *arr records skipped this
+    # cycle (Phase 80); absent on legacy records that predate the per-queue breakdown
+    malformed_by_queue: dict[str, int]
     # accepted commands whose history row was not saved (D-15; includes PendingCapExceeded per R-02)
     persistence_failed: int
     failure_reasons: list[dict]  # [{"reason": sanitized str, "count": int}]

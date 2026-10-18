@@ -345,6 +345,43 @@ async def test_tracking_failure_nonfatal(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# ROBUST-01: Malformed grab date during tracking does not abort the job
+# ---------------------------------------------------------------------------
+
+
+async def test_run_tracking_check_malformed_grab_date_does_not_abort(tmp_path):
+    """A malformed grab date for one item does not abort tracking for other items.
+
+    Item A's only grab has a malformed date -- correlate_grabs must skip it
+    individually instead of raising, so item A expires as the existing
+    'unresolved' outcome at window end. Item B's valid grab in the same
+    tracking run still resolves normally to 'grabbed'.
+    """
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=120)  # window (60min) already expired
+
+    row_a = await _insert_entry(db, app="Radarr", item_id=501, timestamp=searched_at)
+    row_b = await _insert_entry(db, app="Radarr", item_id=502, timestamp=searched_at)
+
+    def _grab_history(item_id: int) -> list[GrabEvent]:
+        if item_id == 501:
+            return [GrabEvent(id=1, date="not-a-date", eventType="grabbed", sourceTitle="Bad.Release")]
+        return [_grab(2, searched_at + timedelta(minutes=10), source="Good.Release")]
+
+    radarr = AsyncMock()
+    radarr.get_grab_history.side_effect = _grab_history
+
+    counts = await run_tracking_check(db, radarr, "Radarr", "Default", tracking_window_minutes=60)
+
+    assert await _get_outcome(db, row_a) == "unresolved"
+    assert await _get_outcome(db, row_b) == "grabbed"
+    assert counts["unresolved"] == 1
+    assert counts["grabbed"] == 1
+    assert counts["errors"] == 0
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
 # Test 9: No trackable entries
 # ---------------------------------------------------------------------------
 
