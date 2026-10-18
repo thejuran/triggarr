@@ -1092,3 +1092,65 @@ def test_ensure_config_mentions_no_backup_when_absent(tmp_path: Path) -> None:
     assert exc_info.value.code == 1
     text = sink.getvalue()
     assert "No automatic backup" in text
+
+
+# ---------------------------------------------------------------------------
+# Stable instance id (ATTR-03)
+# ---------------------------------------------------------------------------
+
+
+def test_instance_id_default_empty() -> None:
+    """An InstanceConfig built without an id has the empty "needs backfill" value."""
+    assert InstanceConfig().id == ""
+    assert InstanceConfig(id="a1b2").id == "a1b2"
+
+
+@pytest.mark.parametrize("bad", ["bad id!", "x" * 65, "a/b", "ü"])
+def test_instance_id_rejects_invalid(bad: str) -> None:
+    """id accepts only "" or 1-64 chars of [A-Za-z0-9_-]."""
+    with pytest.raises(ValidationError):
+        InstanceConfig(id=bad)
+
+
+def test_instance_id_accepts_max_length_and_strips() -> None:
+    """A 64-char id is valid and surrounding whitespace is stripped."""
+    assert InstanceConfig(id="a" * 64).id == "a" * 64
+    assert InstanceConfig(id="  abc-1_2  ").id == "abc-1_2"
+
+
+def test_new_instance_id_is_32_hex() -> None:
+    """new_instance_id returns 32 lowercase hex chars and never repeats."""
+    import re
+
+    from triggarr.config import new_instance_id
+
+    first = new_instance_id()
+    second = new_instance_id()
+    assert re.fullmatch(r"[0-9a-f]{32}", first)
+    assert re.fullmatch(r"[0-9a-f]{32}", second)
+    assert first != second
+
+
+def test_instance_id_survives_rename(tmp_path: Path) -> None:
+    """Renaming an instance's table key keeps its id (D-08)."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(
+        '[general]\nlog_level = "info"\n\n'
+        '[sonarr.Primary]\nurl = "http://sonarr:8989"\napi_key = "k"\nid = "abc123"\n'
+    )
+    settings = load_settings(config_file)
+    assert settings.sonarr["Primary"].id == "abc123"
+
+
+def test_settings_to_dict_carries_instance_id() -> None:
+    """_settings_to_dict is importable from config and routes and carries id."""
+    from triggarr.config import _settings_to_dict
+    from triggarr.web.routes import _settings_to_dict as routes_settings_to_dict
+
+    assert routes_settings_to_dict is _settings_to_dict
+    settings = Settings(
+        radarr={"Default": InstanceConfig(url="http://radarr:7878", api_key=SecretStr("k"), id="abc")},
+    )
+    result = _settings_to_dict(settings)
+    assert result["radarr"]["Default"]["id"] == "abc"
+    assert result["radarr"]["Default"]["api_key"] == "k"
