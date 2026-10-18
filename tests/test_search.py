@@ -3031,6 +3031,94 @@ async def test_radarr_tag_fetch_success_empty_list_no_tag_not_found(tmp_path):
     await db.close()
 
 
+async def test_tag_scope_malformed_tag_json_value_error_sonarr(tmp_path):
+    """_resolve_tag_scope's tag fetch catches a bare ValueError (malformed
+    tag JSON, e.g. get_json_list's non-list response raise) exactly like an
+    HTTP failure -- the cycle completes instead of crashing (ROBUST-01f)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(
+            side_effect=ValueError("Expected JSON array from /api/v1/tag, got dict")
+        )
+        client.get_wanted_missing = AsyncMock(
+            return_value=[_make_sonarr_episode(series_id=10, season_number=1)]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://sonarr:8989", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="triggarr",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        log_output = sink.getvalue()
+        assert "Failed to fetch tags" in log_output
+        assert "ValueError" in log_output
+        assert "Expected JSON array" not in log_output
+        assert "Missing queue skipped -- couldn't load tags" in log_output
+        assert client.search_season.call_count == 0
+        assert result["sonarr"]["Default"]["tag_warnings"][0]["reason"] == "fetch_failed"
+    finally:
+        await db.close()
+
+
+async def test_tag_scope_malformed_tag_json_decode_error_radarr(tmp_path):
+    """_resolve_tag_scope's tag fetch catches json.JSONDecodeError (a
+    ValueError subclass) the same way -- the cycle completes (ROBUST-01f)."""
+    import json
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(side_effect=json.JSONDecodeError("Expecting value", "", 0))
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="triggarr",
+        )
+        settings = _cycle_settings()
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        log_output = sink.getvalue()
+        assert "Failed to fetch tags" in log_output
+        assert "JSONDecodeError" in log_output
+        assert "Expecting value" not in log_output
+        assert client.search_movies.call_count == 0
+        assert result["radarr"]["Default"]["tag_warnings"][0]["reason"] == "fetch_failed"
+    finally:
+        await db.close()
+
+
 # ---------------------------------------------------------------------------
 # BUG-09: cleanup_orphaned_instances immutability
 # ---------------------------------------------------------------------------
@@ -3584,6 +3672,158 @@ async def test_tag_warnings_cleared_on_lidarr_connectivity_failure(tmp_path):
         ist = result["lidarr"]["Default"]
         assert ist["tag_warnings"] == []
         assert ist["connected"] is False
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Lidarr tag-scoped malformed-artist guards (ROBUST-01b, Phase 80 Plan 05 Task 2)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_lidarr_cycle_null_artist_tagged_missing_skipped(tmp_path):
+    """A null nested "artist" in a tag-scoped Lidarr missing queue is
+    skipped per item; the good album is still searched (ROBUST-01b). The
+    queue MUST have a tag configured -- an untagged queue never reads
+    "artist" at all (Pitfall 4)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album", "monitored": True, "artist": {"tags": [5]}},
+            {"id": 2, "title": "Bad Album", "monitored": True, "artist": None},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="music-tag",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        client.search_albums.assert_called_once_with([1])
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+        assert ist["last_cycle"]["failed"] == 0
+    finally:
+        await db.close()
+
+
+async def test_run_lidarr_cycle_null_artist_tagged_cutoff_per_item(tmp_path):
+    """A null nested "artist" in a tag-scoped Lidarr cutoff queue is skipped
+    per item; the other cutoff albums are still searched (ROBUST-01b)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 1, "title": "Good Album A", "monitored": True, "artist": {"tags": [5]}},
+            {"id": 2, "title": "Bad Album", "monitored": True, "artist": None},
+            {"id": 3, "title": "Good Album B", "monitored": True, "artist": {"tags": [5]}},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            cutoff_tag="music-tag",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 2
+        client.search_albums.assert_any_call([1])
+        client.search_albums.assert_any_call([3])
+        assert ist["last_cycle"]["malformed_by_queue"] == {"cutoff": 1}
+        assert ist["last_cycle"]["unevaluated"] == []
+    finally:
+        await db.close()
+
+
+async def test_run_lidarr_cycle_null_artist_untagged_not_malformed(tmp_path):
+    """An untagged Lidarr queue never reads "artist" -- a null-artist album
+    is still searched and never counted as malformed (documents the
+    scoping decision, D-01/Pitfall 4)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album", "monitored": True, "artist": None},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+        instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        client.search_albums.assert_called_once_with([1])
+        assert ist["last_cycle"]["malformed_by_queue"] == {}
+        assert ist["last_cycle"]["grade"] == "success"
+    finally:
+        await db.close()
+
+
+async def test_run_lidarr_cycle_artist_missing_fault_backstop(tmp_path):
+    """Lidarr missing-side backstop: a non-iterable "tags" value inside a
+    tag-scoped artist object raises TypeError in the tag filter, caught by
+    the coarse except around the whole chain; cutoff still dispatches."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Bad Album", "monitored": True, "artist": {"tags": None}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 2, "title": "Good Album", "monitored": True},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="music-tag",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        client.search_albums.assert_called_once_with([2])
+        assert ist["last_cycle"]["unevaluated"] == [
+            {"queue": "missing", "reason": "malformed data (TypeError)"}
+        ]
     finally:
         await db.close()
 
