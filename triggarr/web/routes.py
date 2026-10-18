@@ -56,7 +56,12 @@ from triggarr.search.engine import (
     refresh_sonarr_counts,
 )
 from triggarr.search.outcome import cycle_view
-from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
+from triggarr.search.scheduler import (
+    _TAG_CACHE_TTL_SECONDS,
+    _cached_tags_cover_config,
+    _run_one_cycle,
+    make_search_job,
+)
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
 from triggarr.version import get_display_version
@@ -1047,7 +1052,9 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
             entry = cache.get(cache_key)
             if entry is not None:
                 cached_tags, fetched_at = entry
-                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS and _cached_tags_cover_config(
+                    cached_tags, instance_config
+                ):
                     return cached_tags
             fresh_tags = await client.get_tags()
             cache[cache_key] = (fresh_tags, time.monotonic())
@@ -1146,7 +1153,9 @@ async def refresh_counts(request: Request, app_name: str, instance_name: str) ->
             entry = cache.get(cache_key)
             if entry is not None:
                 cached_tags, fetched_at = entry
-                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS and _cached_tags_cover_config(
+                    cached_tags, instance_config
+                ):
                     return cached_tags
             fresh_tags = await client.get_tags()
             cache[cache_key] = (fresh_tags, time.monotonic())

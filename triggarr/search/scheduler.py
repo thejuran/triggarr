@@ -44,7 +44,13 @@ from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db, migrate_from_state
 from triggarr.models.config import APP_TYPES, InstanceConfig, Settings
-from triggarr.search.engine import _sanitize_exc, run_lidarr_cycle, run_radarr_cycle, run_sonarr_cycle
+from triggarr.search.engine import (
+    _sanitize_exc,
+    resolve_tag_id,
+    run_lidarr_cycle,
+    run_radarr_cycle,
+    run_sonarr_cycle,
+)
 from triggarr.search.outcome import GRADE_FAILED
 from triggarr.state import (
     TriggarrState,
@@ -104,6 +110,22 @@ _SHUTDOWN_DRAIN_TIMEOUT: float = _read_shutdown_drain_timeout()
 # module-constant pattern; unlike the drain timeout this is NOT operator-
 # configurable (no env-override) — the TTL is an internal performance knob.
 _TAG_CACHE_TTL_SECONDS: float = 3600.0
+
+
+def _cached_tags_cover_config(cached_tags: list[Tag], instance_config: InstanceConfig) -> bool:
+    """Return True when every tag the instance is configured with is in the cached list.
+
+    A tag created in the *arr after the list was cached is invisible until the
+    TTL expires; config saves invalidate the cache, but *arr-side changes do
+    not. Treating a list that lacks a configured tag as stale makes the
+    resolver fetch once before a queue is skipped as "tag not found". A tag
+    that really is missing costs one tag-list fetch per cycle until fixed.
+    """
+    return all(
+        resolve_tag_id(tag_name, cached_tags) is not None
+        for tag_name in (instance_config.missing_tag, instance_config.cutoff_tag)
+        if tag_name
+    )
 
 
 def make_search_job(
@@ -169,7 +191,9 @@ def make_search_job(
                 entry = cache.get(cache_key)
                 if entry is not None:
                     cached_tags, fetched_at = entry
-                    if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                    if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS and _cached_tags_cover_config(
+                        cached_tags, instance_config
+                    ):
                         return cached_tags
                 fresh_tags = await client.get_tags()
                 cache[cache_key] = (fresh_tags, time.monotonic())

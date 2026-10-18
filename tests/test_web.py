@@ -2713,15 +2713,16 @@ def test_search_now_reuses_warm_tag_cache(multi_instance_app):
     from triggarr.clients.base import Tag
 
     radarr_client = multi_instance_app.state.radarr_clients["Default"]
-    radarr_client.get_tags = AsyncMock(return_value=[Tag(id=1, label="wanted")])
+    radarr_client.get_tags = AsyncMock(return_value=[Tag(id=1, label="wanted"), Tag(id=2, label="upgrade")])
     radarr_client.get_wanted_missing = AsyncMock(return_value=[])
     radarr_client.get_wanted_cutoff = AsyncMock(return_value=[])
     radarr_client.get_library_count = AsyncMock(return_value=0)
     radarr_client.search_movies = AsyncMock()
 
-    # Warm cache entry for (radarr, Default).
+    # Warm cache entry for (radarr, Default) covering both configured tags
+    # (a cached list lacking a configured tag is refetched -- PR #26 bugs-001).
     multi_instance_app.state.tag_cache[("radarr", "Default")] = (
-        [Tag(id=1, label="wanted")],
+        [Tag(id=1, label="wanted"), Tag(id=2, label="upgrade")],
         time.monotonic(),
     )
 
