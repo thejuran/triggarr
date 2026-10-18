@@ -44,6 +44,22 @@ review does not replace running tests or product acceptance. After fixes, requir
 fresh checks and review of the current commit. Do not weaken CI, suppress findings,
 or push directly to main to make a task appear complete.
 
+## Planning file format
+
+Before creating or updating `.planning/STATE.md`, `.planning/ROADMAP.md`, or
+`.planning/REQUIREMENTS.md`, BM and other agents must read and follow
+[the Roadmaps planning format](docs/PLANNING-FORMAT.md), including its checklist
+after planning updates. `STATE.md` records current project status; `ROADMAP.md`
+records the plan. Keep their milestone and phase status consistent, update
+`last_updated` whenever editing `STATE.md`, and do not mark an in-review phase
+finished. Use the prescribed sections for agreed future milestones so the
+Roadmaps page can display them.
+
+Preserve unrelated in-flight planning edits. This format requirement does not
+authorize changing milestone scope, completion status, or the active review and
+acceptance workflow. If the Roadmaps page cannot be checked, report that
+limitation rather than claiming its display was verified.
+
 ## Deferred review-workflow proposal — after v2.12
 
 At v2.12 closeout or before starting the next milestone, read
