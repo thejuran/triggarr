@@ -8,6 +8,8 @@ behind that validation never runs on real data).
 
 from __future__ import annotations
 
+import json
+
 import aiosqlite
 import httpx
 import pydantic
@@ -171,44 +173,101 @@ async def test_cycle_skips_non_object_record_from_real_client(tmp_path, app, que
     assert len(fake.posts) == 1
 
 
-async def test_radarr_cycle_survives_malformed_tags_on_tag_scoped_missing_queue(tmp_path):
-    """A Radarr movie whose `tags` is null on a tag-scoped missing queue must not
-    raise out of the cycle (it used to: TypeError in the tag filter, the only
-    Radarr chain without the malformed-data backstop). The missing queue is
-    skipped and marked unevaluated, like every sibling chain, and the cutoff
-    queue still searches its movie."""
+class _TaggedRadarr(_FakeArr):
+    """Fake Radarr that also serves one tag, so a queue can be tag-scoped."""
 
-    class _TaggedRadarr(_FakeArr):
-        def handler(self, request: httpx.Request) -> httpx.Response:
-            if request.method == "GET" and request.url.path == "/api/v3/tag":
-                return httpx.Response(200, json=[{"id": 5, "label": "movies"}])
-            return super().handler(request)
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v3/tag":
+            return httpx.Response(200, json=[{"id": 5, "label": "movies"}])
+        return super().handler(request)
 
+
+def _searched_movie_ids(fake: _FakeArr) -> list[int]:
+    return sorted(i for post in fake.posts for i in json.loads(post["body"]).get("movieIds", []))
+
+
+def _seeded_radarr_state(monitored: int, eligible: int) -> dict:
+    state = _state("radarr")
+    state["radarr"]["Default"]["missing_monitored"] = monitored
+    state["radarr"]["Default"]["missing_eligible"] = eligible
+    return state
+
+
+_TAG_SCOPED_RADARR = InstanceConfig(
+    url="http://arr.test", api_key="test-key", enabled=True,
+    search_missing_count=5, search_cutoff_count=5, missing_tag="movies",
+)
+
+
+async def test_radarr_cycle_skips_malformed_tags_per_item_on_tag_scoped_missing_queue(tmp_path):
+    """On a tag-scoped Radarr missing queue, a movie whose `tags` is not a list
+    (null here) is skipped and counted on its own: the valid tagged movies in the
+    same page are still searched, the queue is not marked unevaluated, and the
+    malformed movie is counted in malformed_by_queue rather than as monitored."""
     fake = _TaggedRadarr({
         "missing": [
             {"id": 1, "title": "Good", "monitored": True, "tags": [5]},
             {"id": 2, "title": "Bad Tags", "monitored": True, "tags": None},
+            {"id": 3, "title": "Good Too", "monitored": True, "tags": [5]},
+            {"id": 4, "title": "Untagged", "monitored": True, "tags": []},
         ],
-        "cutoff": [{"id": 3, "title": "Upgrade Me", "monitored": True, "tags": [5]}],
+        "cutoff": [{"id": 30, "title": "Upgrade Me", "monitored": True, "tags": [5]}],
     })
     client = _client("radarr", fake)
     db = await aiosqlite.connect(tmp_path / "t.db")
     await init_db(db, tmp_path / "t.db")
     try:
-        config = InstanceConfig(
-            url="http://arr.test", api_key="test-key", enabled=True,
-            search_missing_count=5, search_cutoff_count=5, missing_tag="movies",
+        result = await run_radarr_cycle(
+            client, _seeded_radarr_state(1, 1), "Default", _TAG_SCOPED_RADARR, make_settings(), db
         )
-        result = await run_radarr_cycle(client, _state("radarr"), "Default", config, make_settings(), db)
     finally:
         await db.close()
         await client.close()
 
-    rec = result["radarr"]["Default"]["last_cycle"]
-    assert rec["unevaluated"] == [{"queue": "missing", "reason": "malformed data (TypeError)"}]
-    assert rec["accepted"] == 1
+    ist = result["radarr"]["Default"]
+    rec = ist["last_cycle"]
+    assert _searched_movie_ids(fake) == [1, 3, 30]
+    assert rec["unevaluated"] == []
+    assert rec["malformed_by_queue"] == {"missing": 1}
     assert rec["grade"] == "partial"
-    assert len(fake.posts) == 1
+    assert ist["missing_monitored"] == 3  # Good, Good Too, Untagged -- not the malformed movie
+    assert ist["missing_eligible"] == 2
+
+
+async def test_radarr_missing_chain_fault_keeps_previous_counts(tmp_path, monkeypatch):
+    """If the Radarr missing chain still faults part-way (an unexpected shape),
+    the backstop must leave the previous monitored/eligible counts untouched, not
+    a fresh monitored count next to a stale eligible count (which the card would
+    show as a false 'N skipped')."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
+    fake = _TaggedRadarr({
+        "missing": [
+            {"id": 1, "title": "Good", "monitored": True, "tags": [5]},
+            {"id": 3, "title": "Good Too", "monitored": True, "tags": [5]},
+            {"id": 4, "title": "Untagged", "monitored": True, "tags": []},
+        ],
+    })
+    client = _client("radarr", fake)
+    db = await aiosqlite.connect(tmp_path / "t.db")
+    await init_db(db, tmp_path / "t.db")
+    try:
+        result = await run_radarr_cycle(
+            client, _seeded_radarr_state(1, 1), "Default", _TAG_SCOPED_RADARR, make_settings(), db
+        )
+    finally:
+        await db.close()
+        await client.close()
+
+    ist = result["radarr"]["Default"]
+    assert ist["last_cycle"]["unevaluated"] == [{"queue": "missing", "reason": "malformed data (TypeError)"}]
+    assert ist["missing_monitored"] == 1
+    assert ist["missing_eligible"] == 1
+    assert fake.posts == []
 
 
 async def test_refresh_counts_unchanged_for_non_object_record(tmp_path):
