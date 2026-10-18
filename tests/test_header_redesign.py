@@ -275,6 +275,19 @@ def test_connection_pill_loaded_via_htmx_in_header(client):
     assert 'hx-trigger="load, every 30s"' in response.text
 
 
+def test_connection_pill_partial_does_not_retrigger_on_swap(client):
+    """The partial replaces itself (outerHTML), so a ``load`` trigger would refire on every swap.
+
+    Only the empty header placeholder fires on load; the swapped-in pill must
+    poll on its 30 s interval alone, or each dashboard tab requests it in a
+    tight loop (~30 req/s observed on the deployed build).
+    """
+    response = client.get("/partials/connection-pill")
+    assert response.status_code == 200
+    triggers = re.findall(r'hx-trigger="([^"]*)"', response.text)
+    assert triggers == ["every 30s"]
+
+
 # --- Static asset existence ---
 
 
