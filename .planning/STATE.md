@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: "Phase 80 executed — PR #28 open, in review (not merged or deployed)"
-stopped_at: "Phase 80 executed; PR #28 in review with pass-1 review fixes committed locally, awaiting push"
-last_updated: "2026-10-18T16:40:00Z"
-last_activity: 2026-10-18 -- PR #28 review fixes committed (not yet pushed)
+stopped_at: "Phase 80 executed; PR #28 in review — pass-2 fix for the real client path committed, next checkpoint not yet pushed"
+last_updated: "2026-10-18T17:10:00Z"
+last_activity: 2026-10-18 -- client-path fix for non-object records committed after pass-2 review (not yet pushed)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 3
   total_plans: 19
   completed_plans: 19
-  percent: 80
+  percent: 60
 ---
 
 # Project State
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 
 Phase: 80 (cycle-robustness-sonarr-season-dedup) — EXECUTED, IN REVIEW (PR #28 open)
 Plan: 5 of 5 complete (all summaries written; verification passed with owner-approved card UAT)
-Status: Phase 80 executed — PR #28 open, in review (not merged or deployed). Greptile and owner vibe-check pass 1 reviewed 11c3fe6; the two reproduced vibe-check findings and Greptile's status comment are fixed in local commits awaiting the next review checkpoint. Phase 81 not started.
-Last activity: 2026-10-18 -- PR #28 review fixes committed (not yet pushed)
+Status: Phase 80 executed — PR #28 open, in review (not merged or deployed). Pass-1 review (11c3fe6): the Sonarr upgrade-pass finding is fixed (DEDUP-03, d7225ac). The Lidarr non-object-record fix in 5bdd49c was engine-only and did not work on real responses (the client rejected the whole page first); pass-2 review of c65f32a (vibe-check architecture and Greptile 4307845782) caught this, and c6947fe fixes it on the real client path for Radarr, Sonarr and Lidarr, with tests through the real clients. Acceptance pending. Phase 81 not started.
+Last activity: 2026-10-18 -- client-path fix for non-object records committed after pass-2 review (not yet pushed)
 
 ### v2.12 milestone shape
 
@@ -216,12 +216,12 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-10-18T16:40:00Z
-Stopped at: Phase 80 executed; PR #28 in review, pass-1 review fixes committed locally and awaiting the next push
+Last session: 2026-10-18T17:10:00Z
+Stopped at: Phase 80 executed; PR #28 in review — pass-2 fix committed, next review checkpoint not yet pushed
 Resume file: None
 
 ## Operator Next Steps
 
-- Finish PR #28 (Phase 80): push the batched commits (owner docs commit plus review fixes) as the next review checkpoint, then Greptile and owner vibe-check on that exact head, dispositions recorded for it, owner `review-acceptance` approval, merge. Merging deploys production through WUD (`:main`).
+- Finish PR #28 (Phase 80): push the next review checkpoint, then Greptile and owner vibe-check on that exact head, dispositions recorded for it, CI green, then the owner's explicit exact-commit `review-acceptance` approval, merge. Merging publishes `:main`; confirm the running production image's revision before calling it deployed.
 - Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (Plan 80-05 left `refresh_*_counts` unchanged on purpose). Decide whether to align it.
 - Then Phase 81 (`/bm:discuss-phase 81`, then `/bm:plan-phase 81`).
