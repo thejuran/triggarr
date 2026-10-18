@@ -329,7 +329,18 @@ Plans:
   3. Tag autocomplete returns its documented empty-`<datalist>` fallback instead of a 500 when the upstream response is malformed.
   4. Within one Sonarr cycle, each (series, season) receives at most one engine dispatch across the missing and upgrade queues — claimed on attempt even if that command fails — while the upgrade batch still fills to its limit from other eligible seasons and the excluded season's position in the upgrade searched-log is unchanged.
 
-**Plans**: TBD
+**Plans:** 5 plans
+Plans:
+**Wave 1**
+
+- [ ] 80-01-PLAN.md — per-queue malformed tally (record_malformed(queue)), additive malformed_by_queue record field, D-07 card rows with legacy fallback (wave 1)
+- [ ] 80-02-PLAN.md — correlation: skip malformed/naive grab dates per grab; tracking job no longer aborts (wave 1)
+- [ ] 80-03-PLAN.md — detect_api_version reports "unknown" when uncertain (visible change from v3 fallback); tag_autocomplete empty fallback on ValueError (wave 1)
+- [ ] 80-04-PLAN.md — Sonarr cross-queue season dedup: prioritize_batch exclude_keys + claim set + D-14 log (wave 1)
+
+**Wave 2** *(blocked on 80-01 and 80-04)*
+
+- [ ] 80-05-PLAN.md — engine per-item malformed guards (Sonarr series, Lidarr tag-scoped artist), missing-side backstops, _resolve_tag_scope ValueError, ROBUST-02 three-app regression parity (wave 2)
 
 ### Phase 81: Correct Sonarr Grab Attribution
 
