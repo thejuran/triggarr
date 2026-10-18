@@ -7,6 +7,7 @@ key preservation, PRG redirect), htmx partials, and search-now validation.
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -1362,6 +1363,34 @@ def test_tag_autocomplete_returns_options(multi_instance_app):
     assert response.status_code == 200
     assert '<option value="wanted">' in response.text
     assert '<option value="upgrade">' in response.text
+
+
+def test_tag_autocomplete_value_error_returns_empty(multi_instance_app):
+    """GET /api/tags/radarr/Default returns 200 with an empty body on a malformed-JSON ValueError (D-03)."""
+    mock_client = multi_instance_app.state.radarr_clients["Default"]
+    mock_client.get_tags = AsyncMock(side_effect=ValueError("Expected JSON array from /api/v3/tag, got dict"))
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.get("/api/tags/radarr/Default")
+    assert response.status_code == 200
+    assert response.text == ""
+    assert "Traceback" not in response.text
+    assert "ValueError" not in response.text
+    assert "Expecting value" not in response.text
+
+
+def test_tag_autocomplete_json_decode_error_returns_empty(multi_instance_app):
+    """GET /api/tags/radarr/Default returns 200 with an empty body on a JSONDecodeError (D-03)."""
+    mock_client = multi_instance_app.state.radarr_clients["Default"]
+    mock_client.get_tags = AsyncMock(side_effect=json.JSONDecodeError("Expecting value", "<html>", 0))
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.get("/api/tags/radarr/Default")
+    assert response.status_code == 200
+    assert response.text == ""
+    assert "Traceback" not in response.text
+    assert "ValueError" not in response.text
+    assert "Expecting value" not in response.text
 
 
 def test_tag_autocomplete_no_client(multi_instance_app):

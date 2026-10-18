@@ -877,7 +877,8 @@ async def tag_autocomplete(request: Request, app_name: str, instance_name: str) 
     """Return HTML option elements for tag autocomplete from an *arr instance.
 
     Used by datalist inputs in the settings form via htmx hx-get on focus.
-    Returns empty HTML if the app/instance is invalid or client unavailable.
+    Returns empty HTML if the app/instance is invalid or client unavailable,
+    or if the upstream response is malformed (non-list body or bad JSON).
     """
     if app_name not in APP_TYPES:
         return HTMLResponse("")
@@ -893,7 +894,9 @@ async def tag_autocomplete(request: Request, app_name: str, instance_name: str) 
         tags = await client.get_tags()
         options = "".join(f'<option value="{html.escape(tag.label)}">' for tag in tags)
         return HTMLResponse(options)
-    except (httpx.HTTPError, pydantic.ValidationError):
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError):
+        # ValueError covers get_json_list's non-list / malformed-JSON raise (D-03);
+        # json.JSONDecodeError is a ValueError subclass, so it is covered too.
         return HTMLResponse("")
 
 
