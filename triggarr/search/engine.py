@@ -81,18 +81,30 @@ def _is_json_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _parse_filter_date(value: object) -> datetime | None:
+    """Parse a date the way the date filters do; None when absent or unparseable."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _is_naive_date(value: object) -> bool:
     """True for a date string the date filters parse but cannot compare: no UTC offset.
 
     Uses the filters' own parse, so absent (None) and unparseable values stay
     False and keep their existing handling there.
     """
-    if not isinstance(value, str):
-        return False
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).tzinfo is None
-    except ValueError:
-        return False
+    parsed = _parse_filter_date(value)
+    return parsed is not None and parsed.tzinfo is None
+
+
+def _is_valid_past_date(value: object) -> bool:
+    """True for a date with a UTC offset that is already in the past."""
+    parsed = _parse_filter_date(value)
+    return parsed is not None and parsed.tzinfo is not None and parsed <= datetime.now(UTC)
 
 
 def _malformed_reason(
@@ -116,7 +128,10 @@ def _malformed_reason(
     on a tag-scoped queue, when the tags value at ``tags_at`` is present but
     not a list -> ``"tags"``; or when a ``date_fields`` value parses to a date
     with no UTC offset -> ``"date"`` (the date filters compare with an aware
-    "now", and the timezone is never guessed). An absent nested object, tags
+    "now", and the timezone is never guessed). ``date_fields`` are
+    alternatives -- the date filter keeps a record when ANY of them is in the
+    past -- so a valid past date in one field decides and a timezone-less date
+    in another is then never read, hence not malformed. An absent nested object, tags
     value or date is NOT malformed -- the display-title fallback, the tag
     extractors' ``[]`` default and the date filters already handle it. The
     reason names the log line only.
@@ -131,7 +146,9 @@ def _malformed_reason(
             node = node.get(key, {}) if isinstance(node, dict) else None
         if isinstance(node, dict) and tags_at[-1] in node and not isinstance(node[tags_at[-1]], list):
             return "tags"
-    if any(_is_naive_date(item.get(field)) for field in date_fields):
+    if any(_is_naive_date(item.get(field)) for field in date_fields) and not any(
+        _is_valid_past_date(item.get(field)) for field in date_fields
+    ):
         return "date"
     return None
 
@@ -474,8 +491,11 @@ def filter_unreleased_movies(movies: list[dict]) -> list[dict]:
             result.append(movie)
             continue
 
-        # Either date in the past -> released
-        if (digital is not None and digital <= now) or (physical is not None and physical <= now):
+        # Either date in the past -> released. Dates with a UTC offset are
+        # compared first, so a valid past date decides whichever field holds
+        # it and a timezone-less other date is never compared (it would raise).
+        dates = sorted((d for d in (digital, physical) if d is not None), key=lambda d: d.tzinfo is None)
+        if any(d <= now for d in dates):
             result.append(movie)
             continue
 
