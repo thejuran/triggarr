@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: "Phase 80 merged — production deployment unverified"
-stopped_at: "PR #28 merged; verify production revision; Phase 81 not started"
-last_updated: "2026-10-18T19:12:41Z"
-last_activity: 2026-10-18 -- PR #28 merged as dee25df; production deployment unverified
+status: "Phase 81 planned — ready to execute (Phase 80 scheduled-cycle check pending separately)"
+stopped_at: "Phase 81 planned (9 plans, 6 waves); next /bm:execute-phase 81"
+last_updated: "2026-10-18T21:15:05Z"
+last_activity: "2026-10-18 -- Phase 81 planning complete: 81-01..81-09 after 3 revisions (owner review + plan-checker passed; D-14 deferred to release time)"
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 19
+  total_plans: 28
   completed_plans: 19
   percent: 80
 ---
@@ -21,16 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Verify Phase 80 production deployment; Phase 81 planning next
+**Current focus:** Phase 81 execution (`/bm:execute-phase 81`); separately, confirm Phase 80's next scheduled production cycles
 
-> **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`). The version string still reads v2.11.0 until the v2.12 release bump.
+> **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. The version string still reads v2.11.0 until the v2.12 release bump.
 
 ## Current Position
 
-Phase: 80 (cycle-robustness-sonarr-season-dedup) — MERGED; production deployment unverified
-Plan: 5 of 5 complete (all summaries written; verification passed with owner-approved card UAT)
-Status: Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI and image publication reported successful; production deployment is unverified. Phase 81 not started.
-Last activity: 2026-10-18 -- PR #28 merged as dee25df; production deployment unverified
+Phase: 81 (correct-sonarr-grab-attribution) — PLANNED; ready to execute
+Plan: 0 of 9 complete (81-01..81-09 in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
+Status: Phase 81 planned 2026-10-18 (9 plans, 0 executed); implementation and the isolated v4/v5 live matrix not started. Live sandbox work waits for the owner authorization checkpoint in 81-06.
+
+Phase 80 operational check (separate): Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI (run 39157110156) and Release (run 39157384992) passed; deployed to production 2026-10-18 (container running `dee25df5cedd28f8016f556129f20a0d5537b635`, image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`, started 19:11:47Z; health OK; startup Radarr and Sonarr cycles graded Success). The previous image is tagged `ghcr.io/thejuran/triggarr:rollback-d41b484` on the NAS and config/state were backed up to `~/triggarr-backup-pre-pr28-20261018T191121Z` before the restart. Not yet operationally verified: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
+Last activity: 2026-10-18 -- Phase 81 planning complete (9 plans, 6 waves; plan-checker passed after revision 3); Phase 81 remains incomplete (0/9 executed)
 
 ### v2.12 milestone shape
 
@@ -42,7 +44,7 @@ Five phases derived 1:1 from the approved design spec `docs/superpowers/specs/20
 | 78 — Honest Cycle Outcomes | Grade each instance's last cycle Success/Partial/Failed/Nothing-needed per §3.1; split "last successful search" from "last checked"; drive the SAFETY-03 counter off the grade; dashboard card shows grade+counts+relative time | OUTCOME-01..06 | — (independent of 77; defines the model 79/80 build on) |
 | 79 — Tag-Scoped Searches Stay in Scope | An unresolved tag skips its queue (zero searches) instead of falling back to searching everything; persistent card warning; skipped queue counts as unevaluated for grading | TAGSCOPE-01..04 | Phase 78 (grading model) |
 | 80 — Cycle Robustness & Sonarr Season Dedup | A malformed *arr record is skipped, not fatal; history-insert failures never abort a batch or flip an accepted command to failed; each Sonarr season gets ≤1 engine dispatch per cycle across missing+upgrade queues | ROBUST-01..04, DEDUP-01..02 | Phase 78 (grading model) |
-| 81 — Correct Sonarr Grab Attribution | Grabs credit the matching series+season exactly once ever, keyed by (app, stable instance ID, grab ID); atomic ownership surviving restarts/pruning; pre-cutover rows frozen as "Legacy — tracking discontinued"; stats cutover note | ATTR-01..06 | — (independent of 79/80 per spec §5; carries the only DB migration + config addition) |
+| 81 — Correct Sonarr Grab Attribution | Grabs credit the matching series+season exactly once ever, keyed by (app, stable instance ID, grab ID); atomic ownership surviving restarts/pruning; pre-cutover rows frozen as "Legacy — tracking discontinued"; stats cutover note | ATTR-01..06, SONARRV5-01..03 | — (independent of 79/80 per spec §5; carries the only DB migration + config addition) |
 
 ### Key v2.12 Phasing Rationale
 
@@ -155,7 +157,8 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 
 ### Pending Todos
 
-None.
+- Deferred (D-14): whether v2.12 may ship while SONARRV5-02 is open is decided at release time by the owner. Not satisfied by Phase 81; shipping with it open needs an explicit owner scope exception.
+- Deferred follow-up: bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). Not Phase 81 scope.
 
 ### Roadmap Evolution
 
@@ -207,12 +210,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-18T19:12:41Z
-Stopped at: PR #28 merged; production deployment unverified; Phase 81 not started
-Resume file: None
+Last session: 2026-10-18T21:15:05Z
+Stopped at: Phase 81 planning complete (9 plans); next /bm:execute-phase 81 on a dedicated Phase 81 branch
+Resume file: .planning/phases/81-correct-sonarr-grab-attribution/81-01-PLAN.md
 
 ## Operator Next Steps
 
-- Verify the production image revision against merge commit `dee25df5cedd28f8016f556129f20a0d5537b635` and the published artifact before recording Phase 80 as deployed. PR #28 is already merged; do not repeat approval or merge.
+- Confirm Phase 80 in operation: after the next scheduled cycles (every 180 min, next about 22:12Z) check the production logs and dashboard cards for the expected grades and per-queue malformed rows. The deployment itself is verified (running `dee25df`, digest `sha256:4bb6e50b…`); do not repeat approval, merge or deploy.
 - Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (per-item screening remains deferred; the shared release-date fix also benefits refresh). Decide whether to align it.
-- Then Phase 81 (`/bm:discuss-phase 81`, then `/bm:plan-phase 81`).
+- Phase 81: planned (81-01..81-09); next `/bm:execute-phase 81`. Plans 81-06..81-08 pause for owner authorization and review of live sandbox work.
+- Phase 81 checkout handoff: `.planning/` is excluded locally (`.git/info/exclude`). Already-tracked planning files (STATE.md, ROADMAP.md and others) are carried by Git; new or untracked ones (REQUIREMENTS.md and the Phase 81 phase directory) are not. If Phase 81 work moves to a new worktree/checkout, copy the ignored files explicitly — at minimum `.planning/REQUIREMENTS.md` (ATTR-06 refined locally) and `.planning/phases/81-correct-sonarr-grab-attribution/` (81-CONTEXT.md, 81-DISCUSSION-LOG.md). Branch from `cycle-robustness` HEAD so the three docs commits (2ff03a9, 480c291, 98e01b6) are preserved, and carry the uncommitted ROADMAP.md/STATE.md edits rather than discarding them.
