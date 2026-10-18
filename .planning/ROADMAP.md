@@ -220,7 +220,7 @@ Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-
 | 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | None. Live UAT passed 2026-10-18 on the sandbox (same `c914cbc` image). | Complete — merged and deployed; UAT complete (live) |
 | 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | None open. 78-1 passed live. 78-2: green/red/gray grades and the post-first-cycle label passed live; amber Partial and the legacy-label states verified only by local fixture (owner-accepted). | Complete — merged and deployed; UAT partial (live + fixture) |
 | 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | None open. 79-1 and 79-2 passed live on the sandbox (badge auto-clear also confirmed the PR #26 tag-cache refetch); 79-3 upstream tag-fetch failure has automated-test coverage only. | Complete — merged and deployed; UAT partial (79-3 automated only) |
-| 80 — Cycle Robustness & Sonarr Season Dedup | No completed plans recorded. | Malformed-record handling, batch resilience, cross-queue season dedup, tests. | Not started — planning required |
+| 80 — Cycle Robustness & Sonarr Season Dedup | 4/5 | In Progress|  |
 | 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Sandbox setup/connectivity reported in the external runbook; no completed implementation plans recorded. | Attribution ownership/migration, cutover note, version reporting, regression tests, live v4/v5 compatibility matrix. | Not started — planning required |
 
 **Counts:** 3/5 phases complete, merged and deployed; 14/14 currently defined plans have summaries (Phases 80/81 still need plans, so 14/14 is not a milestone completion percentage). REQUIREMENTS.md marks 13/28 requirements complete. Public v2.12.0 release remains pending Phases 80–81, their verification, and the release version bump.
@@ -329,14 +329,14 @@ Plans:
   3. Tag autocomplete returns its documented empty-`<datalist>` fallback instead of a 500 when the upstream response is malformed.
   4. Within one Sonarr cycle, each (series, season) receives at most one engine dispatch across the missing and upgrade queues — claimed on attempt even if that command fails — while the upgrade batch still fills to its limit from other eligible seasons and the excluded season's position in the upgrade searched-log is unchanged.
 
-**Plans:** 5 plans
+**Plans:** 4/5 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 80-01-PLAN.md — per-queue malformed tally (record_malformed(queue)), additive malformed_by_queue record field, D-07 card rows with legacy fallback (wave 1)
-- [ ] 80-02-PLAN.md — correlation: skip malformed/naive grab dates per grab; tracking job no longer aborts (wave 1)
-- [ ] 80-03-PLAN.md — detect_api_version reports "unknown" when uncertain (visible change from v3 fallback); tag_autocomplete empty fallback on ValueError (wave 1)
-- [ ] 80-04-PLAN.md — Sonarr cross-queue season dedup: prioritize_batch exclude_keys + claim set + D-14 log (wave 1)
+- [x] 80-01-PLAN.md — per-queue malformed tally (record_malformed(queue)), additive malformed_by_queue record field, D-07 card rows with legacy fallback (wave 1)
+- [x] 80-02-PLAN.md — correlation: skip malformed/naive grab dates per grab; tracking job no longer aborts (wave 1)
+- [x] 80-03-PLAN.md — detect_api_version reports "unknown" when uncertain (visible change from v3 fallback); tag_autocomplete empty fallback on ValueError (wave 1)
+- [x] 80-04-PLAN.md — Sonarr cross-queue season dedup: prioritize_batch exclude_keys + claim set + D-14 log (wave 1)
 
 **Wave 2** *(blocked on 80-01 and 80-04)*
 
