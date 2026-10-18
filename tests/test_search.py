@@ -1797,23 +1797,28 @@ async def test_run_sonarr_cycle_malformed_inactive_queue_not_graded(tmp_path):
         await db.close()
 
 
-async def test_run_sonarr_cycle_missing_fault_backstop_marks_unevaluated(tmp_path):
-    """An unhashable seriesId (a list) faults deduplicate_to_seasons with a
-    TypeError the per-item guard doesn't catch -- the coarse backstop marks
-    only the missing queue unevaluated, and cutoff still dispatches."""
+async def test_run_sonarr_cycle_missing_fault_backstop_marks_unevaluated(tmp_path, monkeypatch):
+    """An unexpected TypeError in deduplicate_to_seasons on the missing queue is
+    caught by the coarse backstop, which marks only the missing queue
+    unevaluated, and cutoff still dispatches. Phase 80: the unhashable list
+    seriesId that used to fault dedup is now a per-item malformed skip
+    (_screen_queue), so the fault is forced in dedup for the missing queue only."""
+    import triggarr.search.engine as engine
+
+    real_dedup = engine.deduplicate_to_seasons
+
+    def _dedup_faults_on_missing(episodes):
+        if any(ep.get("seriesId") == 1 for ep in episodes):
+            raise TypeError("unexpected shape")
+        return real_dedup(episodes)
+
+    monkeypatch.setattr(engine, "deduplicate_to_seasons", _dedup_faults_on_missing)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
     try:
         missing_episodes = [
-            {
-                "id": 1,
-                "seriesId": [1],
-                "seasonNumber": 1,
-                "monitored": True,
-                "airDateUtc": "2020-01-01T00:00:00Z",
-                "series": {"title": "Bad"},
-            },
+            _make_sonarr_episode(series_id=1, season_number=1, series_title="Show A", episode_id=1),
         ]
         cutoff_episodes = [
             _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
@@ -7379,8 +7384,17 @@ async def test_sonarr_inactive_queue_unresolved_tag_no_warning(tmp_path):
     await db.close()
 
 
-async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
-    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path, monkeypatch):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps.
+    Phase 80: the unhashable list seriesId that used to fault season dedup is now
+    a per-item malformed skip, so the fault is forced in dedup (only the cutoff
+    queue reaches dedup here; the missing queue's tag is unresolved)."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "deduplicate_to_seasons", _boom)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -7391,18 +7405,7 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
         _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1),
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[
-        {
-            # Phase 80: a non-dict "series" value is now a per-item
-            # malformed-record skip (_screen_queue), not a data fault --
-            # use an unhashable seriesId instead so this test still
-            # exercises the coarse backstop (a genuinely unexpected shape).
-            "id": 2,
-            "seriesId": [200],
-            "seasonNumber": 1,
-            "monitored": True,
-            "airDateUtc": "2025-01-01T00:00:00Z",
-            "series": {"title": "Bad"},
-        },
+        _make_tagged_sonarr_episode(series_id=200, season_number=1, series_title="Show B", episode_id=2),
     ])
     client.search_season = AsyncMock()
 
@@ -7421,7 +7424,10 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     )
     settings = _cycle_settings(missing_count=10, cutoff_count=10)
 
-    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    try:
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    finally:
+        await db.close()
 
     assert client.search_season.call_count == 0
     out_ist = result["sonarr"]["Default"]
@@ -7430,8 +7436,8 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     assert out_ist["missing_searched"] == ["10:1"]
     assert out_ist["cutoff_searchable"] == 2
     assert out_ist["scoped_count_tags"] == {"missing": "gone", "cutoff": "c"}
+    assert {e["queue"] for e in out_ist["last_cycle"]["unevaluated"]} == {"missing", "cutoff"}
     assert out_ist["last_cycle"]["grade"] == "failed"
-    await db.close()
 
 
 # ---------------------------------------------------------------------------

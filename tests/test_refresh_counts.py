@@ -1401,7 +1401,8 @@ def _faulting_cutoff_case(app: str, monkeypatch):
     per-item skip (_screen_queue), so no data shape reaches their coarse backstop.
     For those two apps the fault is forced in the tag filter (only the cutoff
     queue is tag-scoped here), which still exercises the backstop's grading and
-    searched-log preservation. Sonarr keeps a genuinely unexpected data shape.
+    searched-log preservation. Sonarr's untagged cutoff queue faults in season
+    dedup instead, where its old unhashable-seriesId shape used to fault.
     """
     import triggarr.search.engine as engine
     from triggarr.models.arr import Tag
@@ -1424,14 +1425,22 @@ def _faulting_cutoff_case(app: str, monkeypatch):
         client.get_wanted_missing = AsyncMock(
             return_value=[_make_sonarr_episode(series_id=5, season_number=1, episode_id=50)]
         )
-        bad_ep = _make_sonarr_episode(series_id=30, season_number=2, episode_id=999)
-        # Phase 80: a non-dict "series" value is now a per-item malformed-record
-        # skip (_screen_queue), not an unexpected fault -- use an unhashable
-        # seriesId instead so this test still exercises the coarse backstop for
-        # a genuinely unexpected shape.
-        bad_ep["seriesId"] = [30]
-        client.get_wanted_cutoff = AsyncMock(return_value=[bad_ep])
+        # Phase 80: a non-integer seriesId (the list that used to fault
+        # season dedup here) is now a per-item malformed skip (_screen_queue),
+        # so the fault is forced in season dedup for the cutoff queue only --
+        # the same step the old data faulted in; missing still dedups normally.
+        real_dedup = engine.deduplicate_to_seasons
+
+        def _dedup_faults_on_cutoff(episodes):
+            if any(ep.get("seriesId") == 30 for ep in episodes):
+                raise TypeError("unexpected shape")
+            return real_dedup(episodes)
+
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[_make_sonarr_episode(series_id=30, season_number=2, episode_id=999)]
+        )
         client.search_season = AsyncMock(return_value=None)
+        monkeypatch.setattr(engine, "deduplicate_to_seasons", _dedup_faults_on_cutoff)
         return run_sonarr_cycle, client, {}
     client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "A", "monitored": True}])
     client.get_wanted_cutoff = AsyncMock(

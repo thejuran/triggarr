@@ -76,6 +76,11 @@ def _lidarr_tags(item: dict) -> list[int]:
     return item.get("artist", {}).get("tags", [])
 
 
+def _is_json_int(value: object) -> bool:
+    """True for a JSON integer; bool is an int subclass in Python but not a JSON integer."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _malformed_reason(
     item: object,
     *,
@@ -86,7 +91,11 @@ def _malformed_reason(
     """Why one wanted record cannot be processed safely, or None if it can (ROBUST-01).
 
     A record is malformed when it is not a dict or a field dispatch/dedup is
-    keyed on is missing or null (``key_fields``) -> ``"record"``; when
+    keyed on (``key_fields``) is not a JSON integer -> ``"record"``. The search
+    commands take ``int`` IDs (``search_movies``/``search_albums`` ``list[int]``,
+    ``search_season(int, int)``), so missing, null, bool, float (even ``2.0``),
+    string and list values are skipped, never coerced; any int is kept,
+    including Sonarr season 0 (specials, D-09). When
     ``nested_key`` is present with a non-dict value (``.get(key, {})`` does not
     substitute an explicit null, RESEARCH.md Pitfall 1) -> ``nested_key``; or,
     on a tag-scoped queue, when the tags value at ``tags_at`` is present but
@@ -94,7 +103,7 @@ def _malformed_reason(
     malformed -- the display-title fallback and the tag extractors' ``[]``
     default already handle it. The reason names the log line only.
     """
-    if not isinstance(item, dict) or any(item.get(field) is None for field in key_fields):
+    if not isinstance(item, dict) or not all(_is_json_int(item.get(field)) for field in key_fields):
         return "record"
     if nested_key is not None and nested_key in item and not isinstance(item[nested_key], dict):
         return nested_key
@@ -1281,7 +1290,7 @@ async def run_sonarr_cycle(
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/searchable
     # counts and searched-log stay untouched rather than being wiped to zero).
-    # Malformed records (bad nested "series", missing seriesId/seasonNumber,
+    # Malformed records (bad nested "series", missing or non-integer seriesId/seasonNumber,
     # non-list tags on a tag-scoped queue) are skipped and counted per item via
     # _screen_queue before the rest of the chain runs (ROBUST-01); the
     # try/except below is the backstop for any other unexpected fault,
