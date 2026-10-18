@@ -99,10 +99,10 @@ class GrabEvent(BaseModel):
 
     @field_validator("episode", mode="before")
     @classmethod
-    def _validate_episode(cls, value: Any) -> dict[str, Any] | None:
-        if not isinstance(value, dict):
-            return None
-        return value
+    def _validate_episode(cls, value: Any) -> dict[str, Any] | EpisodeSummary | None:
+        if isinstance(value, dict | EpisodeSummary):
+            return value
+        return None
 
 
 class Tag(BaseModel):
