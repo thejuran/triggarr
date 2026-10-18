@@ -4,12 +4,12 @@ milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: planning
 stopped_at: Phase 80 context gathered
-last_updated: "2026-10-18T03:22:08.555Z"
-last_activity: 2026-10-18
+last_updated: "2026-10-18T03:59:18.335Z"
+last_activity: 2026-10-18 -- Phase 80 planning complete
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 14
+  total_plans: 19
   completed_plans: 14
   percent: 60
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 Phase: 80
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-18
+Last activity: 2026-10-18 -- Phase 80 planning complete
 
 ### v2.12 milestone shape
 
