@@ -6427,3 +6427,85 @@ def test_stamp_scoped_counts_replaces_non_dict_value():
     _stamp_scoped_counts(ist, "missing", "4k")
 
     assert ist["scoped_count_tags"] == {"missing": "4k"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 79-04: shared _finish_both_inactive_unreachable / _cap_and_log helpers
+# ---------------------------------------------------------------------------
+
+
+def test_finish_both_inactive_unreachable_marks_unreachable_and_grades_nothing_needed():
+    from triggarr.search.engine import _finish_both_inactive_unreachable
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["sonarr"]["Default"]
+    tally = CycleTally()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=0, search_cutoff_count=0,
+    )
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Sonarr",
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert ist["connected"] is False
+    assert ist["unreachable_since"] is not None
+    assert ist["last_cycle"]["grade"] == "nothing_needed"
+    log_output = sink.getvalue()
+    assert (
+        "Sonarr: both queues inactive and neither could be fetched -- "
+        "marked unreachable; not graded Failed"
+    ) in log_output
+
+
+def test_finish_both_inactive_unreachable_preserves_existing_unreachable_since():
+    from triggarr.search.engine import _finish_both_inactive_unreachable
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    ist["unreachable_since"] = "2025-01-01T00:00:00Z"
+    tally = CycleTally()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=0, search_cutoff_count=0,
+    )
+
+    _finish_both_inactive_unreachable(
+        ist=ist, tally=tally, instance_config=instance_config, app_label="Radarr",
+    )
+
+    assert ist["unreachable_since"] == "2025-01-01T00:00:00Z"
+
+
+def test_cap_and_log_returns_cap_batch_sizes_result():
+    from triggarr.search.engine import _cap_and_log
+
+    assert _cap_and_log(
+        app_label="Radarr", missing_configured=5, cutoff_configured=5, hard_max=4,
+    ) == cap_batch_sizes(5, 5, 4)
+    assert _cap_and_log(
+        app_label="Radarr", missing_configured=5, cutoff_configured=5, hard_max=0,
+    ) == (5, 5)
+
+
+def test_cap_and_log_logs_only_when_capped():
+    from triggarr.search.engine import _cap_and_log
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="DEBUG")
+    try:
+        _cap_and_log(app_label="Lidarr", missing_configured=5, cutoff_configured=5, hard_max=4)
+        _cap_and_log(app_label="Lidarr", missing_configured=1, cutoff_configured=1, hard_max=10)
+        _cap_and_log(app_label="Lidarr", missing_configured=5, cutoff_configured=5, hard_max=0)
+    finally:
+        logger.remove(handler_id)
+
+    output = sink.getvalue()
+    assert "Lidarr: Hard max 4 applied -- missing=2, cutoff=2" in output
+    assert output.count("Hard max") == 1
