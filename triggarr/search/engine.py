@@ -166,6 +166,8 @@ def prioritize_batch(
     searched_log: list[str],
     batch_size: int,
     key_fn: Callable[[dict], str],
+    *,
+    exclude_keys: frozenset[str] = frozenset(),
 ) -> tuple[list, list[str], bool]:
     """Assemble a batch: never-searched first (fetch order), then top up
     already-searched oldest-first.
@@ -173,7 +175,8 @@ def prioritize_batch(
     Implements the never-searched-first dispatch algorithm (QUEUE-04/05/08/09/10):
     1. Build the set of eligible IDs from the current fetch.
     2. Prune the searched-log to currently-eligible IDs (QUEUE-10).
-    3. Partition eligible items into unsearched and already-searched.
+    3. Partition eligible items into unsearched and already-searched. Exclusion
+       (see ``exclude_keys``) is applied only at this step.
     4. Fill batch with unsearched[:batch_size]; if short, top up from the pruned
        log front (oldest-searched-first) until full or exhausted (QUEUE-05).
     5. Mark every batched item on attempt — append keys to the log; a re-searched
@@ -195,6 +198,9 @@ def prioritize_batch(
         key_fn: Callable that extracts a stable string ID from an item dict.
             Radarr/Lidarr: ``lambda m: str(m["id"])``.
             Sonarr: ``lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}'``.
+        exclude_keys: Keys to keep out of this batch's candidacy (Sonarr
+            cross-queue dedup, D-05). Excluded keys stay in the pruned log at
+            their current position and are never marked on attempt.
 
     Returns:
         Tuple of (batch, new_searched_log, pass_completed).
@@ -211,8 +217,8 @@ def prioritize_batch(
     logset = set(log)
 
     # 3. Partition into unsearched (fetch order) and already-searched
-    unsearched = [it for it in eligible_items if key_fn(it) not in logset]
-    searched = [it for it in eligible_items if key_fn(it) in logset]
+    unsearched = [it for it in eligible_items if key_fn(it) not in logset and key_fn(it) not in exclude_keys]
+    searched = [it for it in eligible_items if key_fn(it) in logset and key_fn(it) not in exclude_keys]
 
     # 4. Batch: unsearched first, top up oldest-searched-first (log front = oldest)
     # Clamp to max(0, batch_size) so a negative batch_size always yields [] even

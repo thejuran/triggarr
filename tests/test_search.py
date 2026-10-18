@@ -306,7 +306,9 @@ def test_prioritize_batch_exclude_keys_preserves_log_position():
     )
     assert [it["id"] for it in batch] == ["c"]
     assert new_log == ["a", "b", "c"]
-    assert pass_completed is False
+    # "a" was already in the log before exclusion kicked in, so the pass is
+    # still complete -- exclusion never shrinks eligible_ids (step 6 unchanged).
+    assert pass_completed is True
 
 
 def test_prioritize_batch_exclude_keys_topup_skips_excluded():
