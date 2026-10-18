@@ -456,6 +456,101 @@ def test_cycle_view_malformed_skipped_singular() -> None:
     assert {"text": "1 malformed record skipped", "count": 1} in view["reasons"]
 
 
+def test_cycle_view_malformed_by_queue_missing_singular() -> None:
+    """D-07: a per-queue malformed row replaces the generic row when malformed_by_queue is present."""
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 1,
+        "malformed_by_queue": {"missing": 1},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert {"text": "1 missing-queue record skipped — malformed data", "count": 1} in view["reasons"]
+    assert not any(r["text"] == "1 malformed record skipped" for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_cutoff_plural() -> None:
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 2,
+        "malformed_by_queue": {"cutoff": 2},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert {"text": "2 upgrade-queue records skipped — malformed data", "count": 1} in view["reasons"]
+    assert not any(r["text"] == "2 malformed records skipped" for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_both_queues_ordered() -> None:
+    """Both queues get a row, ordered missing-then-upgrade (QUEUES order), regardless of dict order."""
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 3,
+        "malformed_by_queue": {"cutoff": 2, "missing": 1},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    malformed_rows = [r for r in view["reasons"] if "malformed data" in r["text"]]
+    assert malformed_rows == [
+        {"text": "1 missing-queue record skipped — malformed data", "count": 1},
+        {"text": "2 upgrade-queue records skipped — malformed data", "count": 1},
+    ]
+
+
+def test_cycle_view_malformed_by_queue_tampered_falls_back() -> None:
+    """A tampered malformed_by_queue never crashes and falls back to the legacy generic row."""
+    tampered_values = [
+        ["missing"],
+        "missing",
+        {"bogus": 3},
+        {"missing": -1},
+        {"missing": "x"},
+        {"missing": True},
+    ]
+    for raw in tampered_values:
+        record = {
+            "grade": "partial",
+            "accepted": 1,
+            "failed": 0,
+            "malformed_skipped": 1,
+            "malformed_by_queue": raw,
+        }
+        view = cycle_view(record, "Radarr")
+        assert view is not None, f"crashed on tampered malformed_by_queue={raw!r}"
+        assert {"text": "1 malformed record skipped", "count": 1} in view["reasons"], (
+            f"expected legacy fallback row for tampered malformed_by_queue={raw!r}"
+        )
+        assert not any("malformed data" in r["text"] for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_tampered_no_row_when_skipped_zero() -> None:
+    """A tampered malformed_by_queue with malformed_skipped == 0 renders no malformed row at all."""
+    record = {"grade": "success", "accepted": 1, "failed": 0, "malformed_skipped": 0, "malformed_by_queue": "garbage"}
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert not any("malformed" in r["text"] for r in view["reasons"])
+
+
+def test_cycle_view_malformed_by_queue_failed_count_unchanged() -> None:
+    """D-09: the view's failed count is unaffected by per-queue malformed rows."""
+    record = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 0,
+        "malformed_skipped": 1,
+        "malformed_by_queue": {"missing": 1},
+    }
+    view = cycle_view(record, "Radarr")
+    assert view is not None
+    assert view["failed"] == 0
+
+
 def test_cycle_view_fetch_error_row() -> None:
     record = {"grade": "failed", "accepted": 0, "failed": 0, "fetch_error": "HTTP 503"}
     view = cycle_view(record, "Lidarr")
