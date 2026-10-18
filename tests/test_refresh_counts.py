@@ -1413,7 +1413,11 @@ def _faulting_cutoff_case(app: str):
             return_value=[_make_sonarr_episode(series_id=5, season_number=1, episode_id=50)]
         )
         bad_ep = _make_sonarr_episode(series_id=30, season_number=2, episode_id=999)
-        bad_ep["series"] = "not-a-dict"
+        # Phase 80: a non-dict "series" value is now a per-item malformed-record
+        # skip (_split_malformed), not an unexpected fault -- use an unhashable
+        # seriesId instead so this test still exercises the coarse backstop for
+        # a genuinely unexpected shape.
+        bad_ep["seriesId"] = [30]
         client.get_wanted_cutoff = AsyncMock(return_value=[bad_ep])
         client.search_season = AsyncMock(return_value=None)
         return run_sonarr_cycle, client, {}

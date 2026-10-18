@@ -6824,12 +6824,16 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[
         {
+            # Phase 80: a non-dict "series" value is now a per-item
+            # malformed-record skip (_split_malformed), not a data fault --
+            # use an unhashable seriesId instead so this test still
+            # exercises the coarse backstop (a genuinely unexpected shape).
             "id": 2,
-            "seriesId": 200,
+            "seriesId": [200],
             "seasonNumber": 1,
             "monitored": True,
             "airDateUtc": "2025-01-01T00:00:00Z",
-            "series": "garbage",
+            "series": {"title": "Bad"},
         },
     ])
     client.search_season = AsyncMock()

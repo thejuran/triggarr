@@ -75,6 +75,61 @@ def _lidarr_tags(item: dict) -> list[int]:
     return item.get("artist", {}).get("tags", [])
 
 
+def _split_malformed(items: list, nested_key: str) -> tuple[list[dict], list]:
+    """Split records into well-formed and malformed, per item (ROBUST-01/04).
+
+    A record is malformed when it is not a dict, or when ``nested_key`` is
+    present with a non-dict value -- an explicit ``None`` included.
+    ``.get(nested_key, {})`` only substitutes the default on a *missing*
+    key, never on an explicit null value, so this checks the value's type
+    directly instead of relying on a ``.get`` default (RESEARCH.md Pitfall
+    1). A record where ``nested_key`` is absent entirely is NOT malformed --
+    the existing display-title fallback already handles that case.
+
+    Args:
+        items: Candidate records from an *arr API response (untrusted;
+            arbitrary types may appear).
+        nested_key: The nested-object key to validate (``"series"`` for
+            Sonarr, ``"artist"`` for Lidarr).
+
+    Returns:
+        Tuple of (valid, skipped) -- ``valid`` holds every well-formed dict
+        in original order; ``skipped`` holds everything else, including
+        non-dict records.
+    """
+    valid: list[dict] = []
+    skipped: list = []
+    for item in items:
+        if not isinstance(item, dict):
+            skipped.append(item)
+            continue
+        if nested_key in item and not isinstance(item[nested_key], dict):
+            skipped.append(item)
+            continue
+        valid.append(item)
+    return valid, skipped
+
+
+def _log_malformed_skip(app_label: str, queue: str, nested_key: str, skipped: list) -> None:
+    """Log one warning for a batch of malformed records skipped from one queue (D-08).
+
+    Carries only the skip count and up to 10 record IDs (dict items' ``id``
+    field, when present) -- never exception text, and no title text beyond
+    what's already unavoidable elsewhere; the card never sees this, only
+    the sanitized System Logs (D-07/D-08).
+    """
+    queue_label = "missing-queue" if queue == "missing" else "upgrade-queue"
+    ids = [item.get("id") for item in skipped if isinstance(item, dict)][:10]
+    logger.warning(
+        "{app}: Skipped {n} {queue_label} record(s) with malformed {key} data (ids={ids})",
+        app=app_label,
+        n=len(skipped),
+        queue_label=queue_label,
+        key=nested_key,
+        ids=ids,
+    )
+
+
 def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tuple[int, int]:
     """Cap total batch sizes to a hard maximum, splitting proportionally.
 
@@ -1159,32 +1214,55 @@ async def run_sonarr_cycle(
 
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/searchable
-    # counts and searched-log stay untouched rather than being wiped to zero) ---
+    # counts and searched-log stay untouched rather than being wiped to zero).
+    # A malformed nested "series" value is skipped per item via
+    # _split_malformed before the rest of the chain runs (ROBUST-01); the
+    # try/except below is the backstop for any other unexpected fault,
+    # mirroring the cutoff chain's existing guard. ---
     missing_seasons: list[dict] = []
     if missing_episodes is not None:
-        missing_episodes = filter_sonarr_episodes(missing_episodes)
-        if scope.missing_tag_id is not None:
-            missing_episodes = filter_by_tag(missing_episodes, scope.missing_tag_id, _sonarr_tags)
-            logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
-        missing_seasons = deduplicate_to_seasons(missing_episodes)
-        ist["missing_eligible"] = len(missing_episodes)
-        ist["missing_searchable"] = len(missing_seasons)
-        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        try:
+            missing_episodes, skipped = _split_malformed(missing_episodes, "series")
+            if skipped:
+                _log_malformed_skip("Sonarr", "missing", "series", skipped)
+                tally.record_malformed("missing", len(skipped))
+            missing_episodes = filter_sonarr_episodes(missing_episodes)
+            if scope.missing_tag_id is not None:
+                missing_episodes = filter_by_tag(missing_episodes, scope.missing_tag_id, _sonarr_tags)
+                logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
+            missing_seasons = deduplicate_to_seasons(missing_episodes)
+            ist["missing_eligible"] = len(missing_episodes)
+            ist["missing_searchable"] = len(missing_seasons)
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        except (AttributeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Sonarr: Missing queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping missing this cycle",
+                etype=type(exc).__name__,
+            )
+            missing_seasons = []
+            missing_episodes = None
+            if missing_active:
+                tally.mark_unevaluated("missing", f"malformed data ({type(exc).__name__})")
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
-    # Guarded against malformed nested records (e.g. a non-dict "series"):
-    # a cutoff-side data fault must never block the missing queue's
-    # dispatch below -- this is the pre-existing per-app guarantee this
-    # reordering must not regress. Phase 80 owns richer per-item
-    # malformed-record counting; this is just the crash guard. On a fault
-    # the queue is left unprocessed (None): never dispatched, its
-    # searched-log and searchable count untouched, and -- when active --
-    # marked unevaluated so the cycle can never grade Nothing needed
-    # searching (spec 3.1). ---
+    # A malformed nested "series" value is skipped per item via
+    # _split_malformed before the rest of the chain runs (ROBUST-01); the
+    # except below is the backstop for any other unexpected fault -- a
+    # cutoff-side data fault must never block the missing queue's dispatch
+    # above, which is the pre-existing per-app guarantee this reordering
+    # must not regress. On a fault the queue is left unprocessed (None):
+    # never dispatched, its searched-log and searchable count untouched,
+    # and -- when active -- marked unevaluated so the cycle can never
+    # grade Nothing needed searching (spec 3.1). ---
     cutoff_seasons: list[dict] = []
     if cutoff_episodes is not None:
         try:
+            cutoff_episodes, skipped = _split_malformed(cutoff_episodes, "series")
+            if skipped:
+                _log_malformed_skip("Sonarr", "cutoff", "series", skipped)
+                tally.record_malformed("cutoff", len(skipped))
             cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
             if scope.cutoff_tag_id is not None:
                 cutoff_episodes = filter_by_tag(cutoff_episodes, scope.cutoff_tag_id, _sonarr_tags)
