@@ -171,6 +171,46 @@ async def test_cycle_skips_non_object_record_from_real_client(tmp_path, app, que
     assert len(fake.posts) == 1
 
 
+async def test_radarr_cycle_survives_malformed_tags_on_tag_scoped_missing_queue(tmp_path):
+    """A Radarr movie whose `tags` is null on a tag-scoped missing queue must not
+    raise out of the cycle (it used to: TypeError in the tag filter, the only
+    Radarr chain without the malformed-data backstop). The missing queue is
+    skipped and marked unevaluated, like every sibling chain, and the cutoff
+    queue still searches its movie."""
+
+    class _TaggedRadarr(_FakeArr):
+        def handler(self, request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/api/v3/tag":
+                return httpx.Response(200, json=[{"id": 5, "label": "movies"}])
+            return super().handler(request)
+
+    fake = _TaggedRadarr({
+        "missing": [
+            {"id": 1, "title": "Good", "monitored": True, "tags": [5]},
+            {"id": 2, "title": "Bad Tags", "monitored": True, "tags": None},
+        ],
+        "cutoff": [{"id": 3, "title": "Upgrade Me", "monitored": True, "tags": [5]}],
+    })
+    client = _client("radarr", fake)
+    db = await aiosqlite.connect(tmp_path / "t.db")
+    await init_db(db, tmp_path / "t.db")
+    try:
+        config = InstanceConfig(
+            url="http://arr.test", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5, missing_tag="movies",
+        )
+        result = await run_radarr_cycle(client, _state("radarr"), "Default", config, make_settings(), db)
+    finally:
+        await db.close()
+        await client.close()
+
+    rec = result["radarr"]["Default"]["last_cycle"]
+    assert rec["unevaluated"] == [{"queue": "missing", "reason": "malformed data (TypeError)"}]
+    assert rec["accepted"] == 1
+    assert rec["grade"] == "partial"
+    assert len(fake.posts) == 1
+
+
 async def test_refresh_counts_unchanged_for_non_object_record(tmp_path):
     """Out of scope for PR #28 and recorded as a follow-up: Refresh counts keeps
     its strict fetch, so a null record still marks the instance unreachable
