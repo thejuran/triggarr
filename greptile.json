@@ -1,0 +1,17 @@
+{
+  "strictness": 2,
+  "commentTypes": [
+    "logic",
+    "syntax"
+  ],
+  "autoReview": [
+    "open",
+    "push",
+    "rebase"
+  ],
+  "triggerOnDrafts": true,
+  "statusCheck": true,
+  "instructions": "Review correctness and security across the full change. Focus on API keys leaking through logs, HTML or responses; authentication and authorization; unsafe config writes; scheduler concurrency; Radarr/Sonarr error handling; and regressions in search selection. Require evidence for claimed fixes. Flag weakened tests, ignored findings, removed checks, release bypasses, and changes to CI or this review configuration. Distinguish verified defects from uncertainty. Do not treat a review completion message as proof that tests ran or that product acceptance passed.",
+  "ignorePatterns": "uv.lock\ntriggarr/static/css/output.css",
+  "effort": "apex"
+}
