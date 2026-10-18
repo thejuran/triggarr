@@ -365,9 +365,9 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 81-01-PLAN.md — permanent instance ID: InstanceConfig.id, startup backfill with atomic write, save_settings/add_instance preservation fix (wave 1)
-- [ ] 81-02-PLAN.md — Sonarr v5 version reporting, grab episode identity (includeEpisode), season-aware correlation + sanitized fixtures (wave 1)
-- [ ] 81-03-PLAN.md — migration v10, frozen legacy pending rows, atomic grab ownership, cutover recorded exactly once (wave 1)
+- [x] 81-01-PLAN.md — permanent instance ID: InstanceConfig.id, startup backfill with atomic write, save_settings/add_instance preservation fix (wave 1)
+- [x] 81-02-PLAN.md — Sonarr v5 version reporting, grab episode identity (includeEpisode), season-aware correlation + sanitized fixtures (wave 1)
+- [x] 81-03-PLAN.md — migration v10, frozen legacy pending rows, atomic grab ownership, cutover recorded exactly once (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -411,7 +411,7 @@ Plans:
 | 78. Honest Cycle Outcomes | 5/5 | Complete (UAT partial: fixture for amber/legacy) | 2026-10-09 (merged/deployed 2026-10-18) |
 | 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
 | 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Merged and deployed — PR #28; scheduled-cycle check pending | 2026-10-18 |
-| 81. Correct Sonarr Grab Attribution + v5 Compatibility | 0/9 | Planned — ready to execute | - |
+| 81. Correct Sonarr Grab Attribution + v5 Compatibility | 3/9 | In progress — Wave 1 done, paused before Wave 2 | - |
 
 ## Next milestone after v2.12: CI & Review Workflow
 
