@@ -985,24 +985,36 @@ async def run_radarr_cycle(
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
     # counts and searched-log stay untouched rather than being wiped to zero).
     # A record that is not an object at all is skipped and counted per item
-    # first (ROBUST-01) -- filter_monitored would otherwise raise on it. ---
+    # first (ROBUST-01) -- filter_monitored would otherwise raise on it; the
+    # try/except below is the backstop for any other malformed data (e.g. a
+    # non-iterable tags value), mirroring the cutoff chain's guard. ---
     if missing is not None:
-        missing, skipped = _split_malformed(missing, None)
-        if skipped:
-            _log_malformed_skip("Radarr", "missing", "record", skipped)
-            tally.record_malformed("missing", len(skipped))
-        missing = filter_monitored(missing)
-        ist["missing_monitored"] = len(missing)
-        if scope.missing_tag_id is not None:
-            missing = filter_by_tag(missing, scope.missing_tag_id, _radarr_tags)
-            logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
-        if settings.general.skip_unreleased:
-            missing = filter_unreleased_movies(missing)
-            skipped_unreleased = ist["missing_monitored"] - len(missing)
-            if skipped_unreleased > 0:
-                logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
-        ist["missing_eligible"] = len(missing)
-        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        try:
+            missing, skipped = _split_malformed(missing, None)
+            if skipped:
+                _log_malformed_skip("Radarr", "missing", "record", skipped)
+                tally.record_malformed("missing", len(skipped))
+            missing = filter_monitored(missing)
+            ist["missing_monitored"] = len(missing)
+            if scope.missing_tag_id is not None:
+                missing = filter_by_tag(missing, scope.missing_tag_id, _radarr_tags)
+                logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+            if settings.general.skip_unreleased:
+                missing = filter_unreleased_movies(missing)
+                skipped_unreleased = ist["missing_monitored"] - len(missing)
+                if skipped_unreleased > 0:
+                    logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
+            ist["missing_eligible"] = len(missing)
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        except (AttributeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Radarr: Missing queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping missing this cycle",
+                etype=type(exc).__name__,
+            )
+            missing = None
+            if missing_active:
+                tally.mark_unevaluated("missing", f"malformed data ({type(exc).__name__})")
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
