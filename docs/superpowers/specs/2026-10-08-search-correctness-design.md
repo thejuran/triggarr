@@ -24,11 +24,11 @@ This milestone fixes those four, plus three backlog items on the same theme:
 **In scope:** findings #1–#4 and backlog items 999.3, 999.5, 999.6, plus a bounded Sonarr v5 compatibility task in Phase 81 (added 2026-10-12).
 
 **Out of scope** (2026-10-17 backlog triage supersedes the earlier blanket deferral to a next hardening milestone):
-- 999.4/999.9 remain unscheduled fixes; 999.10/999.13 are narrowed to evidence-backed security and lifecycle work; 999.8/999.11 are maintenance rules; 999.7/999.12 are retired under current scope. See `.planning/ROADMAP.md` Backlog.
+- Retained fixes are organized in ROADMAP.md under the future Reliability and Authentication Safety & Responsiveness milestones (2026-10-18). Maintenance rules and closed decisions live in `.planning/backlog/`; none expands v2.12.
 - new features
 - Lidarr/Radarr attribution changes (the season bug is Sonarr-specific)
 - recomputing historical stats
-- changing the HTTP client's automatic single retry of POST requests. A timeout after the server already accepted a command can still produce a duplicate command. This remains an unscheduled concrete reliability follow-up; no new hardening milestone is presumed.
+- changing the HTTP client's automatic single retry of POST requests. A timeout after the server already accepted a command can still produce a duplicate command. This is assigned to the future Reliability milestone; implementation remains outside v2.12.
 
 ## 3. Locked definitions
 

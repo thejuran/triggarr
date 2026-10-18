@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: "Phase 80 executed — PR #28 open, in review (not merged or deployed)"
-stopped_at: "Phase 80 executed; PR #28 in review — pass-2 fix for the real client path committed, next checkpoint not yet pushed"
-last_updated: "2026-10-18T17:10:00Z"
-last_activity: 2026-10-18 -- client-path fix for non-object records committed after pass-2 review (not yet pushed)
+status: "Phase 80 merged — production deployment unverified"
+stopped_at: "PR #28 merged; verify production revision; Phase 81 not started"
+last_updated: "2026-10-18T19:12:41Z"
+last_activity: 2026-10-18 -- PR #28 merged as dee25df; production deployment unverified
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 19
   completed_plans: 19
-  percent: 60
+  percent: 80
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** PR #28 (Phase 80) review and merge; Phase 81 next
+**Current focus:** Verify Phase 80 production deployment; Phase 81 planning next
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`). The version string still reads v2.11.0 until the v2.12 release bump.
 
 ## Current Position
 
-Phase: 80 (cycle-robustness-sonarr-season-dedup) — EXECUTED, IN REVIEW (PR #28 open)
+Phase: 80 (cycle-robustness-sonarr-season-dedup) — MERGED; production deployment unverified
 Plan: 5 of 5 complete (all summaries written; verification passed with owner-approved card UAT)
-Status: Phase 80 executed — PR #28 open, in review (not merged or deployed). Pass-1 review (11c3fe6): the Sonarr upgrade-pass finding is fixed (DEDUP-03, d7225ac). The Lidarr non-object-record fix in 5bdd49c was engine-only and did not work on real responses (the client rejected the whole page first); pass-2 review of c65f32a (vibe-check architecture and Greptile 4307845782) caught this, and c6947fe fixes it on the real client path for Radarr, Sonarr and Lidarr, with tests through the real clients. Acceptance pending. Phase 81 not started.
-Last activity: 2026-10-18 -- client-path fix for non-object records committed after pass-2 review (not yet pushed)
+Status: Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI and image publication reported successful; production deployment is unverified. Phase 81 not started.
+Last activity: 2026-10-18 -- PR #28 merged as dee25df; production deployment unverified
 
 ### v2.12 milestone shape
 
@@ -50,7 +50,7 @@ Five phases derived 1:1 from the approved design spec `docs/superpowers/specs/20
 - **OUTCOME-06 stays in 78, not 80:** OUTCOME-06 (an accepted command whose history write fails still counts as accepted and updates "last successful search") is a grading rule — it defines what "accepted" means for §3.1 — so it rides with the rest of the grading model in Phase 78. Phase 80's ROBUST-02 covers the mechanical guarantee (the insert-failure code path doesn't abort the batch); the two requirements describe the same scenario from two different layers (policy vs. mechanism) and are deliberately kept in separate phases.
 - **80 bundles robustness + dedup because they share code:** Both touch the same Sonarr cycle loop (malformed-record guards and season-claim bookkeeping sit in the same call sites), and 80's malformed-record counts feed into 78's grading model — splitting them would fracture one code path across two phases.
 - **81 is last and fully independent:** Per spec §5, it carries the only DB migration (ownership table + cutover marker) and the only config-schema addition (stable per-instance ID), and doesn't depend on 79 or 80's behavior.
-- **Backlog promotions:** 999.3 (reset-token log-viewer exposure) and 999.6 (secret-redaction gaps across log paths) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. The 2026-10-17 triage below supersedes blanket deferral: keep concrete fixes, narrow security/lifecycle work, convert 999.8/999.11 to maintenance rules, and retire speculative projects (spec §2).
+- **Backlog promotions:** 999.3 (reset-token log-viewer exposure) and 999.6 (secret-redaction gaps across log paths) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. The 2026-10-18 future milestones below organize retained fixes; maintenance rules and closed decisions live in .planning/backlog/ (spec §2).
 
 ### v2.11 milestone shape
 
@@ -179,24 +179,15 @@ v2.12 roadmap created 2026-10-08 from the approved search-correctness design spe
 
 None.
 
-### Deferred Items
+### Future Milestones
 
-**Backlog triage approved 2026-10-17.** ROADMAP.md's Backlog is the detailed decision record. No broad next hardening milestone is presumed; the current v2.12 execution position and acceptance checks are unchanged.
+Organized 2026-10-18 following SeedSyncarr's structure. Finish v2.12 first; its current execution position and verification requirements are unchanged. ROADMAP.md defines three future milestones; release versions and phase numbers will be assigned during planning.
 
-| Disposition | Items | Scope |
-|-------------|-------|-------|
-| Keep, unscheduled | 999.4, 999.9, POST-retry semantics | Event-loop responsiveness, state consistency/recovery, duplicate-command prevention. |
-| Narrow, unscheduled | 999.10 | Evidence-backed auth boundary review; fix demonstrated issues without adding speculative controls. |
-| Narrow, unscheduled | 999.13 | Startup/shutdown resource cleanup; blanket I/O optimization retired unless measured. |
-| Maintenance rules only | 999.8, 999.11 | Preserve atomic-write/security guarantees; provide migration/recovery with actual incompatible validation changes. No generic refactor projects. |
-| Retired | 999.7, 999.12 | Client registry abstraction and changelog rewrite; reopen only on concrete need/defect. |
-| Retired | PERF-01..03, SCALE-01..02, AUDIT-01, OBS-01 | Speculative tuning, scale, audit, and dashboard work. |
-| Retired | Pixel-exact UI-01..03; unused color token | Keep ordinary auth/setup/settings usability checks; no pixel matching obligation. |
-| Promoted / historical | 999.1/2 | Shipped in v2.10, Phases 72–74. |
-| Promoted / historical | 999.3/6 | Phase 77 implementation complete; its deployed UAT is still pending. |
-| Promoted, implemented | 999.5 | Implemented in Phase 80; PR #28 open, in review (not merged). |
-| Shipped / historical | DEBT-07/08/03/06 | Previously delivered config controls; no longer deferred work. |
-| Unchanged small follow-ups | v2.9 URL-validation dedup, Retry-Connection button behavior, bug-report options; TODO.md maintenance | Revalidate before work; not promoted by this triage. |
+1. **CI & Review Workflow:** shipped-artifact CI checks, paired BM/Codex review, risk-based vibe-check recommendations, and reusable planning conventions; see the linked blueprint and CI plan in ROADMAP.md.
+2. **Reliability:** state/config recovery (999.9), narrowed startup/shutdown cleanup (999.13), and ambiguous POST delivery/retry semantics.
+3. **Authentication Safety & Responsiveness:** bcrypt offloading (999.4), evidence-backed auth-boundary review (999.10), and compatibility checks for changed paths.
+
+Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal are in [maintenance](backlog/MAINTENANCE.md). Do not activate that workflow or alter current acceptance requirements now. [Earlier backlog and closed decisions](backlog/archive/2026-10-18/README.md) are archived rather than carried forward as pending tasks.
 
 ### Quick Tasks Completed
 
@@ -216,12 +207,12 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-10-18T17:10:00Z
-Stopped at: Phase 80 executed; PR #28 in review — pass-2 fix committed, next review checkpoint not yet pushed
+Last session: 2026-10-18T19:12:41Z
+Stopped at: PR #28 merged; production deployment unverified; Phase 81 not started
 Resume file: None
 
 ## Operator Next Steps
 
-- Finish PR #28 (Phase 80): push the next review checkpoint, then Greptile and owner vibe-check on that exact head, dispositions recorded for it, CI green, then the owner's explicit exact-commit `review-acceptance` approval, merge. Merging publishes `:main`; confirm the running production image's revision before calling it deployed.
-- Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (Plan 80-05 left `refresh_*_counts` unchanged on purpose). Decide whether to align it.
+- Verify the production image revision against merge commit `dee25df5cedd28f8016f556129f20a0d5537b635` and the published artifact before recording Phase 80 as deployed. PR #28 is already merged; do not repeat approval or merge.
+- Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (per-item screening remains deferred; the shared release-date fix also benefits refresh). Decide whether to align it.
 - Then Phase 81 (`/bm:discuss-phase 81`, then `/bm:plan-phase 81`).

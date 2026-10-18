@@ -208,26 +208,28 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 - [x] **Phase 77: Secret & Reset-Token Log Hygiene** - Reset token never reaches the in-app log viewer; *arr HTTP errors always logged with secrets redacted (completed 2026-10-08)
 - [x] **Phase 78: Honest Cycle Outcomes** - Each instance's last cycle grades Success/Partial/Failed/Nothing-needed, shown honestly on the dashboard (completed 2026-10-09)
 - [x] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag skips its queue instead of searching everything (completed 2026-10-18)
-- [ ] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle (executed 2026-10-18; PR #28 open, in review — not merged)
+- [x] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle (merged 2026-10-18 via PR #28; deployment unverified)
 - [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note
 
 ### Milestone status — reviewed 2026-10-18
 
-Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, REQUIREMENTS.md, merged PRs and the deployed build. Phases 77–79 merged via PR #26 (merge commit `c914cbc`, 2026-10-18), published as `ghcr.io/thejuran/triggarr:main` and deployed to production (running `c914cbc` verified). The connection-pill polling loop found by the walkthrough (pre-existing since Phase 60) was fixed in PR #27 (`d41b484`). The version badge still reads v2.11.0; the bump belongs to the v2.12 release process, and `c914cbc` identifies the tested build until then.
+Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, REQUIREMENTS.md, merged PRs and the deployed build. Phases 77–79 merged via PR #26 (merge commit `c914cbc`, 2026-10-18), published as `ghcr.io/thejuran/triggarr:main` and deployed to production (running `c914cbc` verified). The connection-pill polling loop found by the walkthrough (pre-existing since Phase 60) was fixed in PR #27 (`d41b484`). The version badge still reads v2.11.0; the bump belongs to the v2.12 release process, use revision/digest evidence rather than the version badge to identify a running build.
+
+PR #28 merged on 2026-10-18 at `dee25df5cedd28f8016f556129f20a0d5537b635` (GitHub merge status verified). Final reviewed head: `ef01a3e757a060132640aed72b9cff5e21ad11b3`; reported verification: 1,735 tests, clean ruff, Greptile 5/5 and vibe-check pass 6 with Codex clear. Main CI and release run `39157384992` reportedly passed, publishing image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`. Publication is not deployment: the last operator report still had production on `d41b484`; no newer running-revision evidence has been verified here.
 
 | Phase | Implemented / completed | Remaining | Status |
 |-------|-------------------------|-----------|--------|
 | 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | None. Live UAT passed 2026-10-18 on the sandbox (same `c914cbc` image). | Complete — merged and deployed; UAT complete (live) |
 | 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | None open. 78-1 passed live. 78-2: green/red/gray grades and the post-first-cycle label passed live; amber Partial and the legacy-label states verified only by local fixture (owner-accepted). | Complete — merged and deployed; UAT partial (live + fixture) |
 | 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | None open. 79-1 and 79-2 passed live on the sandbox (badge auto-clear also confirmed the PR #26 tag-cache refetch); 79-3 upstream tag-fetch failure has automated-test coverage only. | Complete — merged and deployed; UAT partial (79-3 automated only) |
-| 80 — Cycle Robustness & Sonarr Season Dedup | All 5 plans; per-item malformed-record skips with per-queue card rows, per-grab date hardening, honest "unknown" Sonarr version, tag-autocomplete fallback, cross-queue Sonarr season dedup. Automated verification recorded (4/4 truths). | None blocking. Card UAT passed 2026-10-18 on a local build with a fake Sonarr (Partial + Failed); legacy single-count record covered by tests only. Pass-1 review: Sonarr upgrade-pass finding fixed (DEDUP-03); the first Lidarr non-object-record fix (5bdd49c) was engine-only and ineffective on real responses — corrected on the real client path for all three apps in c6947fe after the pass-2 review; Greptile status comment reconciled. Follow-up outside the PR: Refresh-counts malformed-record behavior. | Executed — PR #28 open, in review (Greptile + owner vibe-check); not merged or deployed |
+| 80 — Cycle Robustness & Sonarr Season Dedup | All 5 plans; per-item malformed-record skips with per-queue card rows, per-grab date hardening, honest "unknown" Sonarr version, tag-autocomplete fallback, cross-queue Sonarr season dedup. Automated verification recorded (4/4 truths). | None blocking. Card UAT passed 2026-10-18 on a local build with a fake Sonarr (Partial + Failed); legacy single-count record covered by tests only. Pass-1 review: Sonarr upgrade-pass finding fixed (DEDUP-03); the first Lidarr non-object-record fix (5bdd49c) was engine-only and ineffective on real responses — corrected on the real client path for all three apps in c6947fe after the pass-2 review; Greptile status comment reconciled. Follow-up outside the PR: Refresh-counts malformed-record behavior. | Merged — PR #28 (`dee25df`); production deployment unverified |
 | 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Sandbox setup/connectivity reported in the external runbook; no completed implementation plans recorded. | Attribution ownership/migration, cutover note, version reporting, regression tests, live v4/v5 compatibility matrix. | Not started — planning required |
 
-**Counts:** 3/5 phases complete — 77–79 merged and deployed; 80 executed and in review on PR #28 (not merged or deployed). 19/19 currently defined plans have summaries (Phase 81 still needs plans, so 19/19 is not a milestone completion percentage). REQUIREMENTS.md marks 19/28 requirements complete. Public v2.12.0 release remains pending Phase 80's merge, Phase 81, their verification, and the release version bump.
+**Counts:** 4/5 phases complete by the merged/verified criterion — 77–79 merged and deployed; 80 merged via PR #28, with production deployment unverified. 19/19 currently defined plans have summaries (Phase 81 still needs plans, so 19/19 is not a milestone completion percentage). REQUIREMENTS.md marks 19/28 requirements complete. Public v2.12.0 release remains pending Phase 81, remaining deployment/verification checks, and the release version bump.
 
 **Walkthrough evidence (2026-10-18):** `.planning/walkthroughs/20261018-023529-pending-live-human-checks/` (local, git-ignored). No searches ran during it, so it is not evidence of Sonarr v5 search compatibility; SONARRV5-01..03 remain open.
 
-**Next work:** finish PR #28 (push the review-fix checkpoint, re-review that head, record dispositions, owner acceptance, merge); plan/execute Phase 81 and its compatibility task (including the live v4/v5 search matrix); bump the version in the v2.12 release. Follow-up outside PR #28: decide whether "Refresh counts" should skip one malformed record per item like scheduled cycles do.
+**Next work:** verify the production revision for merged PR #28 (`dee25df`); plan/execute Phase 81 and its compatibility task (including the live v4/v5 search matrix); bump the version in the v2.12 release. Follow-up outside PR #28: decide whether "Refresh counts" should skip one malformed record per item like scheduled cycles do.
 
 ### Phase 77: Secret & Reset-Token Log Hygiene
 
@@ -386,7 +388,7 @@ Plans:
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete | 2026-10-08 (merged/deployed 2026-10-18) |
 | 78. Honest Cycle Outcomes | 5/5 | Complete (UAT partial: fixture for amber/legacy) | 2026-10-09 (merged/deployed 2026-10-18) |
 | 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
-| 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Executed — PR #28 in review (not merged) | 2026-10-18 |
+| 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Merged — PR #28; deployment unverified | 2026-10-18 |
 | 81. Correct Sonarr Grab Attribution + v5 Compatibility | 0/TBD | Not started; sandbox connectivity reported | - |
 
 ## Next milestone after v2.12: CI & Review Workflow
@@ -402,62 +404,32 @@ Plans:
 
 **Sequence:** immediately follows v2.12 closeout, before Reliability. Read both linked plans during milestone planning; assign release version and phase numbers then. This entry does not activate workflow changes during v2.12.
 
-## Backlog
+## Following milestone: Reliability
 
-**Triage approved 2026-10-17.** Finish v2.12 first. Retained items below are unscheduled follow-ups, not a commitment to another broad hardening milestone. Retired means **won't do under current scope**; do not repeatedly carry it forward or create plans without the stated reopening evidence. Original 999.x findings came from the 2026-06-26 deep review; recheck current code before implementation.
+**Goal:** Keep scheduled searching and saved state correct through failed writes, ambiguous network responses, partial startup and shutdown.
 
-### 999.4 — Keep: password hashing off the event loop
+- [ ] **State/config consistency (999.9):** write validated replacement settings before removing an instance from live state. Failed writes must preserve settings, jobs and clients. Recover safely from non-object state JSON (`[]`, `42`, `null`).
+- [ ] **Resource lifecycle (999.13, narrowed):** close resources opened during failed startup; a client-close failure must not prevent other clients or the database from closing. Correct cursor lifetime issues locally if confirmed. No blanket I/O/offloading rewrite.
+- [ ] **Search-command delivery (POST-retry semantics):** prevent blind retries from duplicating an already-accepted search after a response timeout. Distinguish confirmed acceptance from unknown delivery and retain safe read retries; no generic retry framework.
 
-Move synchronous bcrypt work in async authentication/setup/reset paths off the shared event loop, preserving authentication and rate-limit behavior. Verify unrelated requests and scheduled work can progress during hashing. No auth redesign or new settings.
+**Done when:** targeted write-failure, malformed-state, partial-startup, shutdown and response-loss regressions pass with the existing suite; an isolated built-image smoke test demonstrates restart/recovery behavior. Record residual delivery limitations explicitly rather than claiming exactly-once behavior without evidence.
 
-### 999.9 — Keep: state and config consistency
+**Sequence:** follows CI & Review Workflow. Check current implementation before planning each carried-forward fix. Release version and phase numbers are assigned during milestone planning; no implementation is started by this organization.
 
-- Make instance removal write validated replacement settings before swapping live state; a failed write must preserve settings, scheduler jobs and clients.
-- Guard non-object state JSON (`[]`, `42`, `null`) so loading follows the documented recovery path instead of raising on dictionary access.
-- Require focused failure-path regression tests.
+## Later milestone: Authentication Safety & Responsiveness
 
-### 999.10 — Narrow: evidence-backed auth boundary review
+**Goal:** Keep authentication responsive and close demonstrated boundary defects without redesigning the authentication system.
 
-Review cookie-authenticated mutations with missing Origin/Referer, auth-exempt path matching, trusted-proxy/rate-limit behavior, and cookie/CSP behavior in supported deployments. Reproduce each alleged defect and record its actual prerequisites before choosing a fix; older proposed remedies are not approved requirements. Keep API-key/Basic clients and supported reverse-proxy setups working. Do not automatically add auth modes, cookie settings, a CSP rewrite, or treat an HX-Request header alone as proof of CSRF protection.
+- [ ] **Password hashing (999.4):** move synchronous bcrypt work off the shared event loop across async login/setup/password/reset and Basic-auth paths, preserving authentication and rate limiting. Verify other requests and scheduled work can progress during hashing.
+- [ ] **Auth-boundary review (999.10, narrowed):** validate missing-Origin/Referer mutation handling, auth-exempt path matching, trusted-proxy/rate-limit behavior, and cookie/CSP behavior in supported deployments. Reproduce issues and establish prerequisites before choosing fixes; older proposals are not requirements.
+- [ ] **Compatibility verification:** verify browser login/setup/reset/logout and existing API-key/Basic clients, plus supported reverse-proxy deployments, for the boundaries changed. No new auth modes or speculative security settings; HX-Request alone is not proof of CSRF protection.
 
-### 999.13 — Narrow: startup/shutdown resource cleanup
+**Done when:** demonstrated defects have focused regression tests, authentication remains compatible, bcrypt work no longer stalls unrelated async work, and relevant deployed browser checks pass. If review finds an active credential exposure or exploitable bypass, fix it promptly rather than waiting for this milestone.
 
-Keep concrete failure-path work: ensure database/client resources opened during partial startup are closed, and failure closing one client does not prevent closing remaining resources or the DB. Verify with injected initialization/close failures. Fix cursor lifetime defects locally if confirmed. Drop the blanket async-I/O/offloading rewrite; reopen performance work only for measured stalls. This does not retire 999.4's known CPU-blocking auth work.
+**Sequence:** follows Reliability; release version and phase numbers assigned during planning.
 
-### POST-retry semantics — Keep: ambiguous command acceptance
+## Planning boundaries and maintenance
 
-An automatic POST retry after a response timeout can duplicate a command already accepted upstream. Establish explicit retry behavior for search commands, distinguish confirmed acceptance from unknown delivery, and test response-loss scenarios. Keep safe read retries; do not broaden into a generic retry framework. This remains outside v2.12's one-engine-dispatch guarantee.
+Keep the existing single-process architecture, SQLite and the current product scope. Finish v2.12 and its outstanding verification before starting these milestones. Routine maintenance and change-time safeguards live in [maintenance](backlog/MAINTENANCE.md), including the separately approved-after-v2.12 workflow discussion.
 
-### Maintenance rules — no standalone implementation phase
-
-- **999.8 — atomic writes:** Retire consolidation of all writers/public APIs as a project. Preserve atomic replacement, appropriate secret-file permissions, cleanup and durability. Fix only demonstrated defects with focused tests. The current TOML writer uses `mkstemp`; omitting a later `chmod` does not by itself demonstrate world-readable output.
-- **999.11 — URL validation compatibility:** When a future validation change rejects a previously supported configuration, ship a migration/recovery path and regression test with that change. Do not prebuild a generic migration system or weaken existing validation. No standalone task until such a change is proposed.
-
-### Retired — won't do under current scope
-
-| Item | Decision / reason | Reopen only when |
-|------|-------------------|------------------|
-| 999.7 — client registry and module reorganization | Retired as standalone architecture work; three supported apps do not justify a new abstraction project. | A new integration or demonstrated dispatch inconsistency requires it. |
-| 999.12 — changelog renderer rewrite | Retired; all three text insertion points are escaped, the security boundary is documented, and 19 changelog tests passed during the 2026-10-17 review. Preserve those protections. | A reproducible escaping defect or new untrusted content path appears. |
-| PERF-01/02 — per-endpoint timeout/page-size overrides | Retired; global settings already cover normal operation. | An observed endpoint-specific problem cannot be solved with existing settings. |
-| PERF-03 — state streaming/compression | Retired; no measured state-size or memory problem. | Profiling demonstrates a material bottleneck. |
-| SCALE-01 — more than five instances per app | Retired; no current deployment requirement. | An actual deployment needs more than five instances of one app. |
-| SCALE-02 — archival/PostgreSQL | Retired; SQLite and bounded history fit a single-process utility. | A concrete retention or scale requirement exceeds SQLite/current retention. |
-| AUDIT-01 — config audit log | Retired; limited value in the current single-user model. | A real operational accountability requirement emerges. |
-| OBS-01 — scheduler dashboard | Retired; existing cards and cycle outcomes cover core operational feedback. | A recurring diagnostic need cannot be answered by existing status/history/logs. |
-| UI-01/02/03 — pixel-exact verification | Retired as pixel-exact requirements; retain ordinary login, setup and security-settings usability checks. | A functional usability or accessibility regression is observed. |
-| Unused `--color-triggarr-primaryDark` token | Retired as tracked work; optional cleanup while editing that stylesheet. | It causes an actual styling defect. |
-
-### Promoted / historical — removed from active backlog
-
-| Original item | Owning milestone/phase | Status |
-|---------------|------------------------|--------|
-| 999.1 — password recovery | v2.10, Phases 72–73; [archive](milestones/v2.10-ROADMAP.md) | Shipped; no duplicate backlog task. |
-| 999.2 — count-only refresh | v2.10, Phase 74; [archive](milestones/v2.10-ROADMAP.md) | Shipped; no duplicate backlog task. |
-| 999.3 — reset-token viewer exposure | v2.12, [Phase 77](#phase-77-secret--reset-token-log-hygiene) | Implementation complete; milestone NAS UAT remains pending. |
-| 999.6 — log secret-redaction gaps | v2.12, [Phase 77](#phase-77-secret--reset-token-log-hygiene) | Implementation complete; no duplicate backlog task. |
-| 999.5 — malformed upstream records | v2.12, [Phase 80](#phase-80-cycle-robustness--sonarr-season-dedup) | Implemented in Phase 80 (PR #28 open, in review; not merged). |
-
-### Other small follow-ups
-
-Existing screenshot/CI maintenance in `TODO.md` is unchanged by this triage. The older v2.9 follow-up (URL-validation duplication, Retry-Connection button behavior, bug-report version options) remains unscheduled and must be revalidated before work; it is not part of a new hardening program.
+[Earlier backlog and closed decisions](backlog/archive/2026-10-18/README.md) are preserved outside this active work list.
