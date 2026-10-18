@@ -45,7 +45,7 @@ function fixture({tag=false}={}) {
 }
 for(const tag of [false,true])test(`preflight authorizes ${tag?'tag':'main CI'} trigger using exact commit evidence`,async()=>{
   const f=fixture({tag});await preflight(f);
-  assert.deepEqual(f.output,[['sha',sha]]);
+  assert.deepEqual(f.output,[['sha',sha],['run_id','12']]);
   assert.deepEqual(f.calls,[
     ['branch',{owner:'owner',repo:'repo',branch:'main'}],
     ['compare',{owner:'owner',repo:'repo',basehead:`main...${sha}`}],

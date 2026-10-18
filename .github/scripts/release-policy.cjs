@@ -41,6 +41,7 @@ async function preflight({github, context, core}) {
   }) : [];
   const verified = validateEvidence({sha, mainSha: main.commit.sha, ancestry: comparison.status, runs, jobs, tag});
   core.setOutput('sha', verified);
+  core.setOutput('run_id', String(latest.id));
   core.info(`Release authorized by exact-commit CI: ${verified}, run ${latest.id}`);
 }
 module.exports = {REQUIRED_JOBS, validateEvidence, preflight};

@@ -76,12 +76,19 @@ jobs:
           script: |
             const {preflight} = require('./.github/scripts/release-policy.cjs');
             await preflight({github, context, core});
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Download exact successful CI image
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          ref: ${{ steps.recheck.outputs.sha }}
-          persist-credentials: false
-
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+          name: audited-image
+          path: image
+          run-id: ${{ steps.recheck.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify and load audited image
+        working-directory: image
+        run: |
+          sha256sum -c image.tar.sha256
+          docker load -i image.tar
+          test "$(docker image inspect triggarr:ci-test --format '{{.Id}}')" = "$(cat image-id.txt)"
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -123,21 +130,24 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=ref,event=tag
 
-      - name: Build and push
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build Python package
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - name: Publish audited image without rebuilding
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          pip install --no-cache-dir build
-          python -m build
+          while IFS= read -r target; do
+            [ -n "$target" ] || continue
+            docker tag triggarr:ci-test "$target"
+            docker push "$target"
+          done <<< "$IMAGE_TAGS"
+
+      - name: Download exact successful CI Python distributions
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-dist
+          path: dist
+          run-id: ${{ steps.recheck.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

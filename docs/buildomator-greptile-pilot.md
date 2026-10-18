@@ -62,3 +62,28 @@ Review both tools against the same immutable commit. Preserve their original out
 Bot-resolved threads are not evidence a finding was fixed — the old-tag bypass (round 1) remains open despite its thread being marked resolved.
 
 The native `Greptile Review` success status is review-completion evidence only. It is not a finding-resolution gate. Keep the pilot draft until a separate tested gate and the remaining cutover protections are in place.
+
+## Safeguard rollout (checkpoint after 4f9d9da)
+
+- GitHub now requires full-SHA action pins at repository level. The read-only negative probe run 39081443569 was rejected during job setup because `actions/checkout@v6` was unpinned. All 11 historical release-workflow versions on main reference unpinned actions. This external policy blocks those known historical publishing paths even when an old tag supplies the workflow. Keep this policy enabled. It is not a general defense against an administrator deliberately replacing workflows or disabling policies.
+- CI uploads the audited Docker image and built Python distributions. Releases download artifacts from the exact successful CI run selected by preflight, verify the image archive checksum and image ID, and publish without rebuilding. CI downloads its own image artifact, removes the local image, reloads it, and verifies image ID and installed requirements. Expired/missing artifacts block publication; rerun CI for the exact commit to regenerate them. Artifacts are retained for 30 days.
+- `review-acceptance` is a protected GitHub environment, not a production deployment. The owner must approve it; administrator bypass is disabled. Self-approval is permitted because this is a solo-maintainer project. Do not let an agent approve this environment on the owner's behalf.
+- The acceptance workflow executes a pinned policy commit, never code from the PR checkout. It verifies the event's head still matches the PR, requires the latest Greptile check for that head from app ID 867647, and requires disposition evidence for every Greptile inline finding, including resolved/outdated findings.
+- `REVIEW_BLOCKERS` and `REVIEW_DISPOSITIONS` are repository variables, outside the PR. Missing/malformed registers fail closed. A nonempty blocker list blocks acceptance. Each finding disposition needs the current full head SHA, a decision of `fixed` or `false_positive`, and verification evidence; there is no automatic accepted-risk disposition. Resolved threads do not update these records.
+- GitHub cannot determine whether prose evidence is truthful or a fix is correct. A competent reviewer/agent must investigate and demonstrate the fix, then the owner approves the prepared result. Any safeguard/test weakening needs independent inspection before this approval. An administrator with settings credentials remains capable of disabling controls; these controls protect the routine workflow, not against a hostile repository owner.
+
+### Routine BM workflow
+
+1. BM plans and verifies on a feature branch, pushes a checkpoint, and records its full SHA. Keep internal quick-task notes local unless separately requested.
+2. Confirm CI and Greptile run on that checkpoint. For application-code pilot work, the owner runs vibe-check independently on the same SHA, in parallel with Greptile. No vibe-check is required for the remaining infrastructure setup.
+3. Investigate findings, add regression evidence, and batch fixes into a new checkpoint. Never use bot thread resolution as proof of remediation. After the final tests and reviews, a reviewer prepares the repository-variable dispositions with concrete evidence for the current SHA. Plan and product/UAT acceptance remain explicit tasks; check passes cannot establish them.
+4. Present the exact SHA, evidence, and any remaining blockers to the owner. The owner uses GitHub Actions → Review acceptance → Review deployments to approve the `review-acceptance` job. This is an explicit approval, not a coding task. Approve only after CI, the current Greptile review, and any applicable vibe-check/UAT are complete. The job independently checks the records and fails if incomplete. Rerun this workflow after repairing records if necessary.
+5. Merge only once GitHub's required checks and required environment are satisfied. A new push requires new checks, dispositions, and environment approval. If another review adds findings after approval, rerun acceptance before merging.
+
+### Register shape
+
+`REVIEW_BLOCKERS`: `{"schema":1,"open":["descriptive-blocker-id"]}`. Use an empty `open` array only after verification; keep the evidence in pilot-notes.md or a durable linked report.
+
+`REVIEW_DISPOSITIONS`: `{"schema":1,"items":{"COMMENT_ID":{"head":"FULL_COMMIT_SHA","decision":"fixed","evidence":"Specific regression test/result or external-control evidence"}}}`. Keep previous entries when adding new ones. PR authors cannot amend these variables through a code diff. The approval step exists because an evidence string alone is not proof.
+
+The deployment approval and required-check rules must be read back and tested before calling rollout complete. A successful artifact round trip does not claim that a production release has been executed.

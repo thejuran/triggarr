@@ -49,6 +49,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Save built Python distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: python-dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
   lint:
     timeout-minutes: 20
     runs-on: ubuntu-latest
@@ -93,6 +101,37 @@ jobs:
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       - name: Check image dependency vulnerabilities
         run: uvx --from pip-audit==2.10.1 pip-audit --strict --no-deps --disable-pip -r image-requirements.txt
+
+      - name: Save the audited image
+        run: |
+          docker image inspect triggarr:ci-test --format '{{.Id}}' > image-id.txt
+          docker save triggarr:ci-test -o image.tar
+          sha256sum image.tar > image.tar.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: audited-image
+          path: |
+            image.tar
+            image.tar.sha256
+            image-id.txt
+            image-requirements.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Download the published CI artifact for round-trip verification
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: audited-image
+          path: restored-image
+      - name: Verify release image round trip
+        working-directory: restored-image
+        run: |
+          sha256sum -c image.tar.sha256
+          docker image rm triggarr:ci-test
+          docker load -i image.tar
+          test "$(docker image inspect triggarr:ci-test --format '{{.Id}}')" = "$(cat image-id.txt)"
+          docker run --rm --entrypoint python triggarr:ci-test -m pip freeze --all --exclude triggarr > restored-requirements.txt
+          diff -u image-requirements.txt restored-requirements.txt
 
   secrets:
     runs-on: ubuntu-latest
