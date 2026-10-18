@@ -19,7 +19,7 @@ As checked October 18, the installed BM is 4.9.1 and the latest official release
 - BM's /bm:review --phase N --codex reviews plans. It is not a post-implementation Codex code-review switch.
 - BM's ship warning for verification older than HEAD is advisory, not an enforced gate.
 - Greptile reviews the pushed PR through its GitHub app.
-- Initially, the owner starts a separate Codex PR review and supplies its report to BM. No polling service, custom scheduler, or automatic cross-agent fix loop is required.
+- The rollout must wire BM to run an independent Codex pass whenever BM code review runs, using supported integration/configuration and repository instructions. Verify the installed capabilities rather than assuming a native switch exists. If invocation is unavailable, BM must explicitly request the pass and leave review incomplete until its report arrives. No polling service, custom scheduler, or automatic cross-agent fix loop is required.
 - GitHub checks and owner approval enforce acceptance. Existing small policy checks may remain; they must not grow into a second planning/execution system.
 
 Sources:
@@ -31,14 +31,94 @@ Sources:
 ## Target sequence
 
 1. BM loads the current milestone/phase and repository instructions, checks the plan, implements, and runs relevant verification.
-2. BM runs its own code review at standard depth. Confirm invocation and save its report; enabling the setting alone is not proof that every quick-task or execution path runs review automatically.
+2. BM records the risk-based review recommendation below, then runs its own code review at the agreed depth (standard by default). Confirm invocation and save its report; enabling the setting alone is not proof that every quick-task or execution path runs review automatically.
 3. BM resolves confirmed findings and reruns affected tests. Preserve evidence for false positives and any explicitly accepted nonblocking debt.
 4. BM pushes a checkpoint and records its full head SHA and PR base SHA. Mark the PR ready before requesting final owner acceptance. Draft reviews can run earlier, but draft-to-ready may trigger another acceptance run.
-5. Greptile reviews the PR. The owner starts Codex against the same head and PR diff. Include tests and necessary surrounding code, not only the fix commit. Freeze the head while both reviews run.
+5. Greptile reviews the PR. BM invokes or explicitly requests the paired Codex pass against the same head and PR diff, using the integration described below. Include tests and necessary surrounding code, not only the fix commit. Freeze the head while both reviews run.
 6. Collect both reports. Reproduce plausible defects before changing code. Classify findings as confirmed defect, false positive, or nonblocking improvement/debt; reviewer confidence scores do not decide acceptance.
 7. If fixes are needed, BM makes one coherent revision, reruns affected checks, and pushes a new checkpoint. Review and acceptance evidence must be refreshed for the new head. Preserve the original findings for comparison.
 8. Once all required review evidence and CI pass, the owner approves protected acceptance. Merge normally without bypass.
 9. Verify main CI and publication. If deployment is in scope, independently verify the running application uses the expected image digest/revision. Publication alone is not deployment verification.
+
+## Proposed flow after the current milestone
+
+```mermaid
+flowchart TD
+    A["BM plans and implements"] --> B["Tests and verification"]
+    B --> C["BM assesses checkpoint risk"]
+    C --> E{"High risk?"}
+    E -->|Yes| F["Recommend vibe-check<br/>Record the owner's decision"]
+    E -->|No| G["No extra vibe-check required"]
+    F --> D["BM code review<br/>Recommended depth: quick / standard / deep"]
+    G --> D
+    D --> H["Fix confirmed findings<br/>Rerun affected tests"]
+    H --> I["Push checkpoint<br/>Record and freeze exact commit"]
+
+    I --> J["Independent Codex adversarial pass<br/>Paired with every BM code review"]
+    I --> K["Greptile review"]
+    I --> L["GitHub CI"]
+    I --> V{"Owner selected vibe-check?"}
+    V -->|Yes| M["Vibe-check on the same commit"]
+    V -->|No| N["Collect required results<br/>Record finding dispositions"]
+    M --> N
+    J --> N
+    K --> N
+    L --> N
+
+    N --> O{"Changes needed?"}
+    O -->|Yes| A
+    O -->|No| P["Confirm all required evidence<br/>matches final commit"]
+    P --> Q["Your explicit approval for that exact commit<br/>Claude CLI or GitHub"]
+    Q --> R["GitHub acceptance gate passes"]
+    R --> S["Merge"]
+    S --> T["Verify main CI and publication<br/>Verify deployment when in scope"]
+```
+
+Codex is required; high risk triggers a vibe-check recommendation, and vibe-check runs when the owner selects it. The collection step waits for all required results, including vibe-check when selected. If BM cannot invoke Codex directly, it explicitly requests the exact-commit review and leaves it pending until the report arrives. Missing, failed, skipped, or stale reviews cannot count as completed. BM/Codex evidence initially remains owner-checked unless the existing acceptance gate is extended as described below.
+
+## Risk-based review recommendation at each checkpoint
+
+Deferred until after v2.12, alongside this blueprint's rollout. BM should make a short, evidence-backed recommendation within its normal checkpoint report. This is a documented decision step, not a new orchestrator, service, hook, risk-scoring engine, or automatic gate selector. Reuse BM's planning risks, threat model, verification results, and the actual diff.
+
+Before review, and again when revisions materially change risk, BM records:
+
+- **Scope:** repository/PR, full head and base SHAs, affected behavior, and whether the proposed review covers the whole PR or a follow-up diff. If implementation changes after the recommendation, refresh its SHA and assessment.
+- **Risk and rationale:** low, moderate, or high, with concrete failure scenarios and likely consequences. Consider security boundaries, secrets, persistent state/migrations, upgrade compatibility, concurrency/retries, external side effects, release/CI policy, reversibility, test gaps, and uncertainty. Lines changed and file count are not risk scores; a one-line authorization or retry change can be high risk.
+- **Recommended review:** BM quick/standard/deep, specific specialist focus where useful, and full-PR versus targeted follow-up scope. State what the recommendation adds beyond existing tests and what it cannot establish.
+- **Required evidence:** targeted regressions, container/browser checks, migration/recovery checks, or human UAT appropriate to the behavior. Name unresolved questions rather than declaring uncertain behavior safe.
+- **Decision:** record the proposed depth and any owner override with its rationale in the existing PR/checkpoint report. A recommendation alone does not authorize changing configured checks or reducing mandatory coverage. If no lower-depth choice is agreed, retain standard; escalate unresolved high-risk questions before acceptance.
+
+Suggested starting guide, to be evaluated during the pilot:
+
+| Risk | Examples | BM recommendation |
+|---|---|---|
+| Low | Isolated ordinary prose or a narrowly bounded change with strong regression evidence and no sensitive behavior | Quick may be sufficient; explain why. Agent instructions, CI policy, and release documentation are not automatically low risk. |
+| Moderate | Ordinary application logic, UI behavior, or integrations with bounded effects | Standard, with focused regression evidence. |
+| High | Authentication, data loss/migrations, retry side effects, complex state transitions, or changes to safeguards/publication | Deep plus relevant security/domain focus and explicit failure-path evidence; explicitly recommend an additional vibe-check. |
+
+Keep Greptile and the independent Codex pass required by the adopted pilot baseline; this recommendation does not silently remove either, alter Greptile's tier, waive findings, or replace owner acceptance. Whenever BM assesses risk as high, it must explicitly recommend an additional vibe-check, explain the relevant risk and proposed scope, and record the owner’s decision. This recommendation does not automatically launch vibe-check or make it mandatory for every PR. Current milestone requirements remain unchanged.
+
+For a follow-up, reviewing the delta and rechecking prior findings is reasonable only when earlier coverage is recorded and the revision does not undermine its assumptions. Broad interactions or uncertainty favor a full-PR review. A targeted pass is not evidence that the entire PR was freshly reviewed.
+
+BM 4.9.1 selects code-review depth from a flag/configuration, not a risk classifier; its large-scope rule can reduce deep to standard above 50 files. At adoption, inspect the installed version's actual behavior. Report any effective-depth reduction and split large high-risk reviews into explicit scopes or obtain additional review rather than labeling a downgraded run deep. Do not patch or fork BM to implement this recommendation step.
+
+Example checkpoint note:
+
+> Risk: high — queue deduplication changes retry and persistent progress semantics. Recommend BM deep, Codex full PR, unchanged Greptile review, and an additional vibe-check for the state/retry risks; record the owner’s decision on vibe-check. Reproduce overlapping queues across multiple cycles, accepted/rejected/ambiguous dispatches, and restart behavior. Head/base: <full SHAs>. Owner acceptance remains required; no review gate is waived.
+
+Evaluate whether these recommendations reduce unnecessary review cost without losing confirmed-defect coverage. Track actual depth, reviewer coverage, consequential findings, missed defects, and owner effort; refine the guidance after representative PRs rather than adding more automation.
+
+## Required implementation in the next CI milestone
+
+The next milestone implementing the companion CI plan must also update the actual controls BM reads: `CLAUDE.md`, supported BM configuration/integrations, and any repository-local skill or workflow instructions needed. Updating this blueprint alone is not completion. Inspect the installed BM version to identify those controls; do not invent a configuration key or fork BM.
+
+- Every BM implementation code-review run must have an independent Codex adversarial pass, including phase execution, quick tasks, explicit review commands, and review after fixes. Run it after BM’s own pass against the resulting checkpoint; keep Greptile on the same pushed head. Record the SHA for each report and refresh evidence after changes.
+- Prefer supported invocation from BM. If the installed integration cannot invoke Codex, BM must request the exact-SHA review explicitly, track it as pending, and not claim review complete. Document this limitation and demonstrate the handoff before calling the rollout complete. An enriched BM reviewer or Codex plan review does not satisfy the independent code pass.
+- At each checkpoint BM must assess risk and recommend review depth. A high-risk assessment must also suggest vibe-check with concrete rationale and scope; record the owner’s choice without silently substituting it for Codex or Greptile.
+- Verify the behavior through the BM entry paths actually used, including quick tasks and a revised checkpoint. Demonstrate a paired Codex report, a high-risk vibe-check recommendation, and incomplete status for missing, failed, skipped, or stale Codex evidence. Record actual versus requested review depth and the instruction/configuration files responsible.
+- Distinguish BM instruction compliance from GitHub enforcement. Preserve current safeguards; any extension of the existing acceptance gate follows the acceptance design below. Do not introduce another orchestrator.
+
+These are deferred implementation and acceptance requirements for the next CI milestone, not changes to the current milestone’s workflow. Carry them into its plans and verification criteria and into each repository’s adoption checklist.
 
 ## Codex adversarial review contract
 
@@ -87,7 +167,7 @@ After the current milestone:
 2. Update through BM's supported plugin update procedure; use /bm:version in the active Claude session to verify what is actually loaded.
 3. Enable workflow.code_review and set workflow.code_review_depth to standard through supported configuration. Preserve other settings. Exercise the specific BM paths used in practice, including quick tasks, to confirm review really runs.
 4. Use BM's code-review catalog guidance when relevant. Use security guidance for authentication, secrets, permissions, and exposed endpoints; use accessibility guidance for UI changes. Do not enable every specialist indiscriminately.
-5. Document the explicit Codex PR-review checkpoint in the repository's workflow guide. Keep Greptile Apex during the comparison so the reviewer tier is not another changing variable.
+5. Implement and verify the required BM/Codex pairing and high-risk vibe-check recommendation through the actual repository instructions and supported BM controls described above. Keep Greptile Apex during the comparison so the reviewer tier is not another changing variable.
 6. Preserve existing exact-commit CI/release checks, expected-app check requirements, protected review-acceptance environment, no routine bypass, external action-pinning protection, and publication of the audited image without rebuilding.
 7. Review the existing acceptance register's handling of multiple concurrent PRs. Its repository-wide storage must not let one PR's update erase another's evidence or incorrectly satisfy a different PR's gate. Until verified, serialize final acceptance updates.
 8. Pilot on 3–5 representative PRs: a small fix, state/error-path logic, and a UI or security-sensitive change where available. Include at least one larger change before concluding that the replacement covers the important cases.
@@ -103,7 +183,7 @@ Inspect each repository before copying configuration. Record its language/framew
 Reuse the process and report contract. Adapt the required jobs, security checks, and deployment evidence to that repository. Do not copy Triggarr-specific Python/Docker jobs, artifact names, tag policies, environment IDs, reviewer app IDs, or trusted policy commits blindly.
 
 Minimum adoption checklist:
-- BM installed/configured and an actual BM review demonstrated.
+- BM installed/configured; actual repository instructions and supported controls updated and tested for paired BM/Codex review and high-risk vibe-check recommendations.
 - Greptile authorized only for intended repositories, with push/draft behavior tested.
 - Codex can inspect the repository and produces a report tied to the actual PR head/base.
 - CI checks meaningful behavior and cannot silently pass with missing/skipped required jobs.

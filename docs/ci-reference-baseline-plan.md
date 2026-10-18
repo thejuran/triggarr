@@ -24,6 +24,14 @@ Live main-branch workflows and repository rules were inspected, rather than infe
 
 Sources: [Triggarr CI](https://github.com/thejuran/triggarr/blob/main/.github/workflows/ci.yml), [release](https://github.com/thejuran/triggarr/blob/main/.github/workflows/release.yml), [Seedsyncarr CI](https://github.com/thejuran/seedsyncarr/blob/main/.github/workflows/ci.yml), [Makefile](https://github.com/thejuran/seedsyncarr/blob/main/Makefile). These URLs move; recheck before implementing.
 
+## Required companion work in the next CI milestone
+
+Include the review blueprint’s [required implementation](bm-greptile-codex-blueprint.md#required-implementation-in-the-next-ci-milestone) in this milestone’s plans and verification criteria. Update `CLAUDE.md` and whichever supported BM configuration, integration, or repository-local instructions actually control review behavior; a documentation-only blueprint update does not complete this deliverable.
+
+Every BM code review must be paired with an independent Codex adversarial pass. BM must also assess checkpoint risk and explicitly recommend vibe-check whenever risk is high, recording the owner’s choice. Verify phase, quick-task, explicit-review, and revision paths used in practice, with exact-commit reports and incomplete status for missing or stale Codex evidence. If supported automatic invocation is unavailable, demonstrate and disclose the explicit pending-review handoff. Preserve Greptile and owner acceptance; do not build another orchestrator or claim GitHub enforcement where only instructions enforce the requirement.
+
+This work is deferred with the rest of the plan. Do not activate it during v2.12.
+
 ## First bounded implementation: test what we ship
 
 1. **Actual container startup smoke test.** Start the same image CI will publish through its normal entrypoint. Verify health, setup/login behavior, static assets, writable isolated configuration, and persistence after restart. Use mocks/test services, never production credentials or data. Existing pip inspection overrides the entrypoint and cannot prove startup works.
@@ -75,6 +83,7 @@ Keep publication and deployment evidence separate. Registry tags prove availabil
 - Version mismatches and missing/failed mandatory checks fail before publication.
 - The published image is the tested/audited artifact.
 - Review and owner-acceptance evidence is current, understandable, and does not require repeated avoidable approvals.
+- Actual BM instructions/configuration demonstrate Codex paired with every BM code review, and high-risk checkpoint assessments explicitly recommend vibe-check; missing/stale Codex evidence cannot be described as completed review.
 - Update PRs and scans have clear ownership and manageable noise.
 - Negative tests demonstrate claimed enforcement; final release/publication verification is recorded.
 - No custom orchestrator or unnecessary repository-wide workflow migration is introduced.
