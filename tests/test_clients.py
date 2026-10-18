@@ -771,8 +771,11 @@ async def test_sonarr_get_grab_history_returns_grab_events() -> None:
         assert result[0].sourceTitle == "Show.S01E01.1080p"
         assert result[1].id == 201
         assert result[1].sourceTitle == "Show.S01E02.1080p"
-        # Extra fields should be ignored
-        assert not hasattr(result[0], "seriesId")
+        # seriesId/episodeId are modeled fields (Phase 81), populated when present
+        assert result[0].seriesId == 10
+        assert result[0].episodeId == 55
+        assert result[1].seriesId == 10
+        assert result[1].episodeId == 56
     finally:
         await client.close()
 

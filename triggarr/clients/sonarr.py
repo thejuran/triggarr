@@ -114,13 +114,16 @@ class SonarrClient(ArrClient):
 
         Uses the per-series history endpoint ``/api/v3/history/series``
         filtered to grabbed events (``eventType=grabbed``) for the
-        given series ID.  Returns parsed GrabEvent models.
+        given series ID, with ``includeEpisode=true`` so each grab
+        carries Sonarr's own episode/season identity. Returns parsed
+        GrabEvent models.
         """
         records = await self.get_json_list(
             "/api/v3/history/series",
             params={
                 "seriesId": series_id,
                 "eventType": "grabbed",
+                "includeEpisode": "true",
             },
         )
         return [GrabEvent.model_validate(r) for r in records]
