@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: executing
-stopped_at: Completed 79-04-PLAN.md
-last_updated: "2026-10-18T00:46:53.249Z"
+status: ready_to_plan
+stopped_at: Phase 79 complete (4/4) — ready to discuss Phase 80
+last_updated: 2026-10-18T01:01:11.454Z
 last_activity: 2026-10-18 -- Phase 79 execution started
 progress:
   total_phases: 5
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 79 — tag-scoped-searches-stay-in-scope
+**Current focus:** Phase 80 — cycle robustness & sonarr season dedup
 
 > **Release tags held locally, unpushed:** `v2.11.0` (prior milestone) and `v2.10.0` are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
 
 ## Current Position
 
-Phase: 79 (tag-scoped-searches-stay-in-scope) — EXECUTING
-Plan: 4 of 4
-Status: Executing Phase 79
-Last activity: 2026-10-18 -- Phase 79 execution started
+Phase: 80
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-18
 
 ### v2.12 milestone shape
 
@@ -103,7 +103,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 **Overall:**
 
-- Total plans completed: 179 across 15 shipped milestones (through v2.9)
+- Total plans completed: 183 across 15 shipped milestones (through v2.9)
 - Milestones shipped: 15 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8, v2.9)
 - Tests passing: 1097 (post Phase 77 Plan 01)
 - Phases completed: 71 (through v2.9)

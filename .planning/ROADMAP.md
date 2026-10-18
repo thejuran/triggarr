@@ -207,7 +207,7 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 
 - [x] **Phase 77: Secret & Reset-Token Log Hygiene** - Reset token never reaches the in-app log viewer; *arr HTTP errors always logged with secrets redacted (completed 2026-10-08)
 - [x] **Phase 78: Honest Cycle Outcomes** - Each instance's last cycle grades Success/Partial/Failed/Nothing-needed, shown honestly on the dashboard (completed 2026-10-09)
-- [ ] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag skips its queue instead of searching everything
+- [x] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag skips its queue instead of searching everything (completed 2026-10-18)
 - [ ] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle
 - [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note
 
@@ -219,13 +219,13 @@ Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-
 |-------|-------------------------|-----------|--------|
 | 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | 1 deployed log-viewer walkthrough check in 77-HUMAN-UAT.md. | Implementation complete; human verification pending |
 | 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | 2 dashboard/interaction checks in 78-HUMAN-UAT.md. | Implementation complete; human verification pending |
-| 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded. | Phase verification/walkthrough not yet recorded. | Implementation complete; verification pending |
+| 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | 3 live badge/polling/fetch-failure checks in 79-HUMAN-UAT.md, deferred to the milestone-end walkthrough (owner-approved 2026-10-18). | Implementation complete; human verification pending |
 | 80 — Cycle Robustness & Sonarr Season Dedup | No completed plans recorded. | Malformed-record handling, batch resilience, cross-queue season dedup, tests. | Not started — planning required |
 | 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Sandbox setup/connectivity reported in the external runbook; no completed implementation plans recorded. | Attribution ownership/migration, cutover note, version reporting, regression tests, live v4/v5 compatibility matrix. | Not started — planning required |
 
 **Counts:** 3/5 phases have completed implementation; 14/14 currently defined plans have summaries (Phases 80/81 still need plans, so 14/14 is not a milestone completion percentage). REQUIREMENTS.md marks 13/28 requirements complete. Public v2.12.0 release remains pending implementation, verification, and the milestone-end NAS walkthrough.
 
-**Next work:** verify Phase 79; plan/execute Phase 80; plan/execute Phase 81 and its compatibility task; complete the deferred NAS walkthrough checks before release.
+**Next work:** plan/execute Phase 80; plan/execute Phase 81 and its compatibility task; complete the deferred NAS walkthrough checks before release.
 
 ### Phase 77: Secret & Reset-Token Log Hygiene
 
