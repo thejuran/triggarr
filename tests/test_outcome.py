@@ -231,6 +231,73 @@ def test_cycle_tally_mark_unevaluated_invalid_queue_raises() -> None:
     raise AssertionError("expected ValueError for an invalid queue name")
 
 
+def test_cycle_tally_record_malformed_per_queue() -> None:
+    tally = CycleTally()
+    tally.record_malformed("missing")
+    record = tally.to_record(active_queues=["missing", "cutoff"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {"missing": 1}
+    assert record["malformed_skipped"] == 1
+
+    tally = CycleTally()
+    tally.record_malformed("missing", 2)
+    tally.record_malformed("cutoff", 3)
+    record = tally.to_record(active_queues=["missing", "cutoff"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {"missing": 2, "cutoff": 3}
+    assert record["malformed_skipped"] == 5
+
+
+def test_cycle_tally_record_malformed_zero_count_omitted_from_keys() -> None:
+    """Queues with a zero malformed count never appear as keys in malformed_by_queue."""
+    tally = CycleTally()
+    tally.record_malformed("missing", 0)
+    tally.record_malformed("cutoff", 1)
+    record = tally.to_record(active_queues=["missing", "cutoff"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {"cutoff": 1}
+
+
+def test_cycle_tally_record_malformed_rejects_unknown_queue() -> None:
+    tally = CycleTally()
+    try:
+        tally.record_malformed("upgrade")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for an invalid queue name")
+
+    try:
+        tally.record_malformed("")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for an empty queue name")
+
+
+def test_cycle_tally_malformed_inactive_queue_ignored() -> None:
+    """Malformed counts recorded against an inactive queue never reach the record or the grade."""
+    tally = CycleTally()
+    tally.record_malformed("cutoff", 2)
+    tally.record_accepted()
+    record = tally.to_record(active_queues=["missing"], finished_at="2026-10-08T12:00:00Z")
+    assert record["malformed_by_queue"] == {}
+    assert record["malformed_skipped"] == 0
+    assert record["grade"] == GRADE_SUCCESS
+
+
+def test_cycle_tally_malformed_grades_partial_and_failed() -> None:
+    """D-04/D-09: malformed records degrade the grade but never count as failed commands."""
+    tally = CycleTally()
+    tally.record_accepted()
+    tally.record_malformed("missing")
+    record = tally.to_record(active_queues=["missing"], finished_at="2026-10-08T12:00:00Z")
+    assert record["grade"] == GRADE_PARTIAL
+    assert record["failed"] == 0
+
+    tally = CycleTally()
+    tally.record_malformed("missing")
+    record = tally.to_record(active_queues=["missing"], finished_at="2026-10-08T12:00:00Z")
+    assert record["grade"] == GRADE_FAILED
+    assert record["failed"] == 0
+
+
 def test_cycle_tally_record_eligible_restricted_to_active_queues() -> None:
     tally = CycleTally()
     tally.record_eligible("missing", 3)
@@ -294,6 +361,7 @@ def test_cycle_tally_to_record_exact_keys_and_json_serializable() -> None:
         "accepted",
         "failed",
         "malformed_skipped",
+        "malformed_by_queue",
         "persistence_failed",
         "failure_reasons",
         "unevaluated",
