@@ -28,7 +28,7 @@ class LidarrClient(ArrClient):
         super().__init__(base_url, api_key, timeout, page_size)
         self._app_name = "Lidarr"
 
-    async def get_wanted_missing(self) -> list[dict[str, Any]]:
+    async def get_wanted_missing(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all wanted/missing albums from Lidarr.
 
         Includes artist data (``includeArtist=true``) for tag filtering
@@ -37,9 +37,10 @@ class LidarrClient(ArrClient):
         return await self.get_paginated(
             "/api/v1/wanted/missing",
             extra_params={"includeArtist": "true"},
+            allow_non_object_records=allow_non_object_records,
         )
 
-    async def get_wanted_cutoff(self) -> list[dict[str, Any]]:
+    async def get_wanted_cutoff(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all albums that don't meet their quality cutoff.
 
         Includes artist data (``includeArtist=true``) for tag filtering
@@ -48,6 +49,7 @@ class LidarrClient(ArrClient):
         return await self.get_paginated(
             "/api/v1/wanted/cutoff",
             extra_params={"includeArtist": "true"},
+            allow_non_object_records=allow_non_object_records,
         )
 
     async def get_library_count(self) -> int:

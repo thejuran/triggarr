@@ -9,6 +9,7 @@ history is persisted to SQLite via the ``triggarr.db`` module.
 from __future__ import annotations
 
 import contextlib
+import functools
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -910,8 +911,10 @@ async def run_radarr_cycle(
 
     try:
         missing, cutoff = await _fetch_wanted_queues(
-            fetch_missing=client.get_wanted_missing,
-            fetch_cutoff=client.get_wanted_cutoff,
+            # Non-object records come back as sent and are skipped per item
+            # below (ROBUST-01); the default strict fetch would reject the page.
+            fetch_missing=functools.partial(client.get_wanted_missing, allow_non_object_records=True),
+            fetch_cutoff=functools.partial(client.get_wanted_cutoff, allow_non_object_records=True),
             missing_active=missing_active,
             cutoff_active=cutoff_active,
             app_label="Radarr",
@@ -980,8 +983,14 @@ async def run_radarr_cycle(
 
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
-    # counts and searched-log stay untouched rather than being wiped to zero) ---
+    # counts and searched-log stay untouched rather than being wiped to zero).
+    # A record that is not an object at all is skipped and counted per item
+    # first (ROBUST-01) -- filter_monitored would otherwise raise on it. ---
     if missing is not None:
+        missing, skipped = _split_malformed(missing, None)
+        if skipped:
+            _log_malformed_skip("Radarr", "missing", "record", skipped)
+            tally.record_malformed("missing", len(skipped))
         missing = filter_monitored(missing)
         ist["missing_monitored"] = len(missing)
         if scope.missing_tag_id is not None:
@@ -1007,6 +1016,10 @@ async def run_radarr_cycle(
     # the cycle can never grade Nothing needed searching (spec 3.1). ---
     if cutoff is not None:
         try:
+            cutoff, skipped = _split_malformed(cutoff, None)
+            if skipped:
+                _log_malformed_skip("Radarr", "cutoff", "record", skipped)
+                tally.record_malformed("cutoff", len(skipped))
             cutoff = filter_monitored(cutoff)
             if scope.cutoff_tag_id is not None:
                 cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _radarr_tags)
@@ -1155,8 +1168,10 @@ async def run_sonarr_cycle(
 
     try:
         missing_episodes, cutoff_episodes = await _fetch_wanted_queues(
-            fetch_missing=client.get_wanted_missing,
-            fetch_cutoff=client.get_wanted_cutoff,
+            # Non-object records come back as sent and are skipped per item
+            # below (ROBUST-01); the default strict fetch would reject the page.
+            fetch_missing=functools.partial(client.get_wanted_missing, allow_non_object_records=True),
+            fetch_cutoff=functools.partial(client.get_wanted_cutoff, allow_non_object_records=True),
             missing_active=missing_active,
             cutoff_active=cutoff_active,
             app_label="Sonarr",
@@ -1458,8 +1473,10 @@ async def run_lidarr_cycle(
 
     try:
         missing, cutoff = await _fetch_wanted_queues(
-            fetch_missing=client.get_wanted_missing,
-            fetch_cutoff=client.get_wanted_cutoff,
+            # Non-object records come back as sent and are skipped per item
+            # below (ROBUST-01); the default strict fetch would reject the page.
+            fetch_missing=functools.partial(client.get_wanted_missing, allow_non_object_records=True),
+            fetch_cutoff=functools.partial(client.get_wanted_cutoff, allow_non_object_records=True),
             missing_active=missing_active,
             cutoff_active=cutoff_active,
             app_label="Lidarr",

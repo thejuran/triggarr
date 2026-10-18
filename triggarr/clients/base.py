@@ -11,7 +11,7 @@ import pydantic
 from loguru import logger
 from pydantic import SecretStr
 
-from triggarr.models.arr import GrabEvent, PaginatedResponse, SystemStatus, Tag
+from triggarr.models.arr import GrabEvent, PaginatedResponse, RawPaginatedResponse, SystemStatus, Tag
 
 
 def _sanitize_exc(exc: Exception) -> str:
@@ -172,14 +172,23 @@ class ArrClient(ABC):
         path: str,
         page_size: int | None = None,
         extra_params: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+        *,
+        allow_non_object_records: bool = False,
+    ) -> list[Any]:
         """Fetch all pages from a paginated *arr endpoint.
 
         Pages are 1-indexed.  Pagination terminates when the response
         contains zero records or when all records have been retrieved.
         Uses ``self._page_size`` as default when *page_size* is not provided.
+
+        By default every record must be an object, and one that is not
+        rejects the page (pydantic.ValidationError). With
+        ``allow_non_object_records=True`` the records are returned as sent,
+        so a caller that skips and counts bad records per item (the search
+        cycles, ROBUST-01) still gets the rest of the page.
         """
-        all_records: list[dict[str, Any]] = []
+        page_model = RawPaginatedResponse if allow_non_object_records else PaginatedResponse
+        all_records: list[Any] = []
         page = 1
         extra = extra_params or {}
         effective_page_size = page_size if page_size is not None else self._page_size
@@ -193,7 +202,7 @@ class ArrClient(ABC):
                 **extra,
             }
             response = await self.get(path, params=params)
-            data = PaginatedResponse.model_validate(response.json())
+            data = page_model.model_validate(response.json())
 
             # Lock totalRecords from first page to prevent infinite loops
             if total_records is None:

@@ -64,7 +64,7 @@ class SonarrClient(ArrClient):
             )
             return "unknown"
 
-    async def get_wanted_missing(self) -> list[dict[str, Any]]:
+    async def get_wanted_missing(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all wanted/missing episodes from Sonarr.
 
         Includes series data (``includeSeries=true``) for human-readable
@@ -73,9 +73,10 @@ class SonarrClient(ArrClient):
         return await self.get_paginated(
             "/api/v3/wanted/missing",
             extra_params={"includeSeries": "true"},
+            allow_non_object_records=allow_non_object_records,
         )
 
-    async def get_wanted_cutoff(self) -> list[dict[str, Any]]:
+    async def get_wanted_cutoff(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all episodes that don't meet their quality cutoff.
 
         Includes series data (``includeSeries=true``) for human-readable
@@ -84,6 +85,7 @@ class SonarrClient(ArrClient):
         return await self.get_paginated(
             "/api/v3/wanted/cutoff",
             extra_params={"includeSeries": "true"},
+            allow_non_object_records=allow_non_object_records,
         )
 
     async def get_library_count(self) -> int:

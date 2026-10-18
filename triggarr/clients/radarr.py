@@ -22,13 +22,17 @@ class RadarrClient(ArrClient):
         super().__init__(base_url, api_key, timeout, page_size)
         self._app_name = "Radarr"
 
-    async def get_wanted_missing(self) -> list[dict[str, Any]]:
+    async def get_wanted_missing(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all wanted/missing movies from Radarr."""
-        return await self.get_paginated("/api/v3/wanted/missing")
+        return await self.get_paginated(
+            "/api/v3/wanted/missing", allow_non_object_records=allow_non_object_records
+        )
 
-    async def get_wanted_cutoff(self) -> list[dict[str, Any]]:
+    async def get_wanted_cutoff(self, *, allow_non_object_records: bool = False) -> list[Any]:
         """Fetch all movies that don't meet their quality cutoff."""
-        return await self.get_paginated("/api/v3/wanted/cutoff")
+        return await self.get_paginated(
+            "/api/v3/wanted/cutoff", allow_non_object_records=allow_non_object_records
+        )
 
     async def get_library_count(self) -> int:
         """Return the total number of movies in the Radarr library.
