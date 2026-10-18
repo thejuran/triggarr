@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 _HTTP_STATUS_RE = re.compile(r"^HTTP \d{3}$")
 _MAX_REASON_LENGTH = 120
 _UNEVALUATED_QUEUE_LABELS: dict[str, str] = {"missing": "Missing", "cutoff": "Cutoff unmet"}
+# D-07 card wording for per-queue malformed rows -- distinct wording from
+# _UNEVALUATED_QUEUE_LABELS above, do not reuse that dict for this text.
+_MALFORMED_QUEUE_LABELS: dict[str, str] = {"missing": "missing-queue", "cutoff": "upgrade-queue"}
 
 GRADE_SUCCESS = "success"
 GRADE_PARTIAL = "partial"
@@ -221,11 +224,19 @@ def cycle_view(record: object, app_label: str) -> dict | None:
     a malformed persisted record renders as "Not run yet", never crashes.
 
     Reasons are grouped sanitized strings (D-09/D-10): fetch failure, then one
-    row per failure reason, then one row per unevaluated queue, then a
-    malformed-records row, then (only for a clean Failed-by-amended-R-01
+    row per failure reason, then one row per unevaluated queue, then
+    malformed-record row(s), then (only for a clean Failed-by-amended-R-01
     cycle) a row explaining eligible work that was never dispatched. Inputs
     are already-sanitized strings; Jinja autoescape handles HTML, and media
     titles never appear here.
+
+    Malformed rows (D-07/D-10): when ``malformed_by_queue`` is a dict, one row
+    is rendered per active queue with a positive count, worded "1 {queue}
+    record skipped -- malformed data" / "{n} {queue} records skipped --
+    malformed data", in fixed ``QUEUES`` order. A legacy record that carries
+    only the aggregate ``malformed_skipped`` integer (no ``malformed_by_queue``
+    key, or a tampered/unusable value) falls back to the original generic
+    "N malformed record(s) skipped" row, so pre-Phase-80 state still renders.
     """
     if not isinstance(record, dict):
         return None
@@ -280,7 +291,22 @@ def cycle_view(record: object, app_label: str) -> dict | None:
             reasons.append({"text": _truncate(f"{label} queue not evaluated: {reason}"), "count": 1})
             unevaluated_rows += 1
 
-    if malformed_skipped > 0:
+    raw_malformed_by_queue = record.get("malformed_by_queue")
+    malformed_rows_appended = 0
+    if isinstance(raw_malformed_by_queue, dict):
+        for queue in QUEUES:
+            n = _as_count(raw_malformed_by_queue.get(queue))
+            if n <= 0:
+                continue
+            label = _MALFORMED_QUEUE_LABELS[queue]
+            if n == 1:
+                text = f"1 {label} record skipped — malformed data"
+            else:
+                text = f"{n} {label} records skipped — malformed data"
+            reasons.append({"text": _truncate(text), "count": 1})
+            malformed_rows_appended += 1
+
+    if malformed_rows_appended == 0 and malformed_skipped > 0:
         if malformed_skipped == 1:
             text = "1 malformed record skipped"
         else:
