@@ -59,6 +59,8 @@ v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as
 - **Cycle robustness + Sonarr season dedup** (999.5) — malformed *arr records skipped not fatal; accepted commands stay accepted if the history write fails; each Sonarr season gets ≤1 engine dispatch per cycle, claimed on attempt, upgrade rotation preserved.
 - **Correct Sonarr grab attribution** — series+season matching; grabs keyed by (app, stable instance ID, grab ID); atomic search↔grab ownership surviving restarts and history pruning; distinct-episode counting; pre-cutover pending rows frozen as "Legacy — tracking discontinued" and excluded from the pending cap; stats cutover note.
 
+**Progress (2026-10-18):** Phases 77–79 merged and deployed (PR #26). Phase 80 complete on branch `cycle-robustness` (ROBUST-01..04, DEDUP-01/02 verified; 1441 tests passing; card UAT passed locally), not yet merged. Phase 81 remaining.
+
 **Key context:** Source of truth is the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4). Findings #1–#4 came from an external correctness review; 999.3/999.5/999.6 from the 2026-06-26 deep review. Phase numbering continues from v2.11 (Phases 77–81). One DB migration (Phase 81) plus a config addition (stable per-instance ID). Remaining deep-review backlog (999.4, 999.7–999.13) and HTTP POST-retry semantics deferred to the next hardening milestone. Public release target v2.12.0.
 
 <details>
@@ -347,4 +349,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-09 after Phase 78 (Honest Cycle Outcomes) complete*
+*Last updated: 2026-10-18 after Phase 80 (Cycle Robustness & Sonarr Season Dedup) complete*
