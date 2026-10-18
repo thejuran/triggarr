@@ -4530,7 +4530,7 @@ async def test_radarr_grade_hard_max_starved_is_success(tmp_path):
 
 
 async def test_radarr_persistence_failure_still_accepted(tmp_path):
-    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    """R8/OUTCOME-06/ROBUST-02 (Phase 80): a success-path history-insert failure keeps the command accepted."""
     from unittest.mock import patch
 
     db_path = tmp_path / "test.db"
@@ -5546,7 +5546,7 @@ async def test_sonarr_grade_inactive_queue_ignored(tmp_path):
 
 
 async def test_sonarr_persistence_failure_still_accepted(tmp_path):
-    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    """R8/OUTCOME-06/ROBUST-02 (Phase 80): a success-path history-insert failure keeps the command accepted."""
     from unittest.mock import patch
 
     db_path = tmp_path / "test.db"
@@ -5582,6 +5582,48 @@ async def test_sonarr_persistence_failure_still_accepted(tmp_path):
         assert ist["last_cycle"]["persistence_failed"] == 3
         assert ist["last_successful_search"] is not None
         assert client.search_season.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_sonarr_failed_path_insert_error_does_not_abort(tmp_path):
+    """R-04/ROBUST-02 (Phase 80): a failure-path history insert that raises
+    never aborts the cycle, for Sonarr (three-app parity with Radarr's test)."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://sonarr:8989/api/v3/command")
+        response = httpx.Response(500, request=request)
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=200),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert client.search_season.call_count == 2
     finally:
         await db.close()
 
@@ -6047,7 +6089,7 @@ async def test_lidarr_grade_inactive_queue_ignored(tmp_path):
 
 
 async def test_lidarr_persistence_failure_still_accepted(tmp_path):
-    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    """R8/OUTCOME-06/ROBUST-02 (Phase 80): a success-path history-insert failure keeps the command accepted."""
     from unittest.mock import patch
 
     db_path = tmp_path / "test.db"
@@ -6083,6 +6125,46 @@ async def test_lidarr_persistence_failure_still_accepted(tmp_path):
         assert ist["last_cycle"]["persistence_failed"] == 3
         assert ist["last_successful_search"] is not None
         assert client.search_albums.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_lidarr_failed_path_insert_error_does_not_abort(tmp_path):
+    """R-04/ROBUST-02 (Phase 80): a failure-path history insert that raises
+    never aborts the cycle, for Lidarr (three-app parity with Radarr's test)."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://lidarr:8686/api/v1/command")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Album A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 2, "title": "Album B", "monitored": True}]
+        )
+        client.search_albums = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert client.search_albums.call_count == 2
     finally:
         await db.close()
 
