@@ -5,8 +5,9 @@ scheduler and the dashboard to grade a cycle Success / Partial / Failed /
 Nothing needed searching, replacing the previous unconditional last_run /
 last_success stamp. Phase 79 reports an unresolved tag by calling
 ``CycleTally.mark_unevaluated``; Phase 80 reports malformed *arr records by
-calling ``CycleTally.record_malformed``. Neither phase needs to reshape the
-persisted record this module builds.
+calling ``CycleTally.record_malformed(queue, count)`` -- the persisted
+record gains one additive field, ``malformed_by_queue``, breaking the
+existing ``malformed_skipped`` aggregate down per active queue.
 """
 
 from __future__ import annotations
@@ -99,6 +100,7 @@ class CycleTally:
     failure_reasons: dict[str, int] = field(default_factory=dict)
     unevaluated: list[dict[str, str]] = field(default_factory=list)
     eligible: dict[str, int] = field(default_factory=dict)
+    malformed_by_queue: dict[str, int] = field(default_factory=dict)
     fetch_error: str | None = None
 
     def record_accepted(self) -> None:
@@ -117,8 +119,17 @@ class CycleTally:
         """
         self.persistence_failed += 1
 
-    def record_malformed(self, count: int = 1) -> None:
-        """Phase 80 hook: tally *arr records skipped for being malformed."""
+    def record_malformed(self, queue: str, count: int = 1) -> None:
+        """Phase 80 hook: tally *arr records skipped for being malformed, per queue.
+
+        ``queue`` must be one of ``QUEUES``, validated identically to
+        ``mark_unevaluated``. Counts recorded against a queue that turns out
+        to be inactive are dropped at ``to_record`` (spec 3.1: inactive
+        queues are ignored for grading).
+        """
+        if queue not in QUEUES:
+            raise ValueError(f"queue must be one of {QUEUES}, got {queue!r}")
+        self.malformed_by_queue[queue] = self.malformed_by_queue.get(queue, 0) + count
         self.malformed_skipped += count
 
     def mark_unevaluated(self, queue: str, reason: str) -> None:
@@ -146,17 +157,25 @@ class CycleTally:
 
         ``unevaluated`` and ``eligible`` are both restricted to ``active_queues``;
         a queue that is both eligible-recorded and marked unevaluated is excluded
-        from ``eligible`` (unevaluated wins).
+        from ``eligible`` (unevaluated wins). ``malformed_by_queue`` is also
+        restricted to ``active_queues``; the aggregate ``malformed_skipped``
+        passed to ``grade_cycle`` and persisted is derived from that filtered
+        per-queue breakdown, not the raw lifetime total (spec 3.1: inactive
+        queues are ignored for grading).
         """
         active = list(active_queues)
         filtered_unevaluated = [entry for entry in self.unevaluated if entry["queue"] in active]
         unevaluated_queues = {entry["queue"] for entry in filtered_unevaluated}
         eligible = {queue: self.eligible.get(queue, 0) for queue in active if queue not in unevaluated_queues}
+        malformed_by_queue = {
+            queue: self.malformed_by_queue[queue] for queue in active if self.malformed_by_queue.get(queue, 0) > 0
+        }
+        malformed_skipped = sum(malformed_by_queue.values())
 
         grade = grade_cycle(
             accepted=self.accepted,
             failed=self.failed,
-            malformed_skipped=self.malformed_skipped,
+            malformed_skipped=malformed_skipped,
             unevaluated_active=len(filtered_unevaluated),
             fetch_failed=self.fetch_error is not None,
             eligible_active=sum(eligible.values()),
@@ -171,7 +190,8 @@ class CycleTally:
             "grade": grade,
             "accepted": self.accepted,
             "failed": self.failed,
-            "malformed_skipped": self.malformed_skipped,
+            "malformed_skipped": malformed_skipped,
+            "malformed_by_queue": malformed_by_queue,
             "persistence_failed": self.persistence_failed,
             "failure_reasons": failure_reasons,
             "unevaluated": filtered_unevaluated,
