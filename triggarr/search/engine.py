@@ -76,60 +76,68 @@ def _lidarr_tags(item: dict) -> list[int]:
     return item.get("artist", {}).get("tags", [])
 
 
-def _split_malformed(items: list, nested_key: str | None) -> tuple[list[dict], list]:
-    """Split records into well-formed and malformed, per item (ROBUST-01/04).
+def _malformed_reason(
+    item: object,
+    *,
+    key_fields: tuple[str, ...],
+    nested_key: str | None,
+    tags_at: tuple[str, ...] | None,
+) -> str | None:
+    """Why one wanted record cannot be processed safely, or None if it can (ROBUST-01).
 
-    A record is malformed when it is not a dict, or when ``nested_key`` is
-    present with a non-dict value -- an explicit ``None`` included. With
-    ``nested_key=None`` only the record itself is checked (a non-dict record
-    is malformed; nested values are not inspected).
-    ``.get(nested_key, {})`` only substitutes the default on a *missing*
-    key, never on an explicit null value, so this checks the value's type
-    directly instead of relying on a ``.get`` default (RESEARCH.md Pitfall
-    1). A record where ``nested_key`` is absent entirely is NOT malformed --
-    the existing display-title fallback already handles that case.
+    A record is malformed when it is not a dict or a field dispatch/dedup is
+    keyed on is missing or null (``key_fields``) -> ``"record"``; when
+    ``nested_key`` is present with a non-dict value (``.get(key, {})`` does not
+    substitute an explicit null, RESEARCH.md Pitfall 1) -> ``nested_key``; or,
+    on a tag-scoped queue, when the tags value at ``tags_at`` is present but
+    not a list -> ``"tags"``. An absent nested object or tags value is NOT
+    malformed -- the display-title fallback and the tag extractors' ``[]``
+    default already handle it. The reason names the log line only.
+    """
+    if not isinstance(item, dict) or any(item.get(field) is None for field in key_fields):
+        return "record"
+    if nested_key is not None and nested_key in item and not isinstance(item[nested_key], dict):
+        return nested_key
+    if tags_at is not None:
+        node: object = item
+        for key in tags_at[:-1]:
+            node = node.get(key, {}) if isinstance(node, dict) else None
+        if isinstance(node, dict) and tags_at[-1] in node and not isinstance(node[tags_at[-1]], list):
+            return "tags"
+    return None
 
-    Args:
-        items: Candidate records from an *arr API response (untrusted;
-            arbitrary types may appear).
-        nested_key: The nested-object key to validate (``"series"`` for
-            Sonarr, ``"artist"`` for Lidarr), or ``None`` to check only that
-            each record is an object.
 
-    Returns:
-        Tuple of (valid, skipped) -- ``valid`` holds every well-formed dict
-        in original order; ``skipped`` holds everything else, including
-        non-dict records.
+def _screen_queue(
+    items: list,
+    *,
+    app_label: str,
+    queue: str,
+    tally: CycleTally,
+    key_fields: tuple[str, ...],
+    nested_key: str | None = None,
+    tags_at: tuple[str, ...] | None = None,
+) -> list[dict]:
+    """Skip and count malformed records in one wanted queue, per item (ROBUST-01/04).
+
+    The single per-record check shared by all six cycle queues (Radarr, Sonarr,
+    Lidarr x missing/cutoff), run once before any filtering so one bad record
+    never faults the rest of its queue. Skipped records are logged once per
+    reason and counted against ``queue`` via ``tally.record_malformed``; valid records are
+    returned in their original order. Pass ``tags_at`` only when the queue is
+    tag-scoped -- an untagged queue never reads tags.
     """
     valid: list[dict] = []
-    skipped: list = []
+    skipped_by_reason: dict[str, list] = {}
     for item in items:
-        if not isinstance(item, dict):
-            skipped.append(item)
-            continue
-        if nested_key is not None and nested_key in item and not isinstance(item[nested_key], dict):
-            skipped.append(item)
-            continue
-        valid.append(item)
-    return valid, skipped
-
-
-def _split_non_list(items: list[dict], key: str) -> tuple[list[dict], list[dict]]:
-    """Split records whose ``key`` is present but not a list (e.g. ``"tags": null``).
-
-    Used per item before a tag filter so one record with a malformed tags value
-    is skipped and counted on its own instead of faulting the whole queue
-    (ROBUST-01). A record where ``key`` is absent is kept -- the tag extractors
-    already default a missing key to ``[]``.
-    """
-    valid: list[dict] = []
-    skipped: list[dict] = []
-    for item in items:
-        if key in item and not isinstance(item[key], list):
-            skipped.append(item)
-        else:
+        reason = _malformed_reason(item, key_fields=key_fields, nested_key=nested_key, tags_at=tags_at)
+        if reason is None:
             valid.append(item)
-    return valid, skipped
+        else:
+            skipped_by_reason.setdefault(reason, []).append(item)
+    for reason, skipped in skipped_by_reason.items():
+        _log_malformed_skip(app_label, queue, reason, skipped)
+        tally.record_malformed(queue, len(skipped))
+    return valid
 
 
 def _log_malformed_skip(app_label: str, queue: str, nested_key: str, skipped: list) -> None:
@@ -1002,23 +1010,17 @@ async def run_radarr_cycle(
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
     # counts and searched-log stay untouched rather than being wiped to zero).
-    # A record that is not an object at all, or (on a tag-scoped queue) a movie
-    # whose tags value is not a list, is skipped and counted per item first
-    # (ROBUST-01), so the rest of the queue is still searched; the try/except
-    # below is the backstop for any other malformed data, mirroring the cutoff
-    # chain's guard. Counts are written to ist only once the whole chain has
-    # succeeded, so a fault leaves the previous monitored/eligible pair intact. ---
+    # Malformed records are skipped and counted per item first (_screen_queue,
+    # ROBUST-01), so the rest of the queue is still searched; the try/except
+    # below is the backstop for any other unexpected shape, mirroring the
+    # cutoff chain's guard. Counts are written to ist only once the whole chain
+    # has succeeded, so a fault leaves the previous monitored/eligible pair intact. ---
     if missing is not None:
         try:
-            missing, skipped = _split_malformed(missing, None)
-            if skipped:
-                _log_malformed_skip("Radarr", "missing", "record", skipped)
-                tally.record_malformed("missing", len(skipped))
-            if scope.missing_tag_id is not None:
-                missing, skipped = _split_non_list(missing, "tags")
-                if skipped:
-                    _log_malformed_skip("Radarr", "missing", "tags", skipped)
-                    tally.record_malformed("missing", len(skipped))
+            missing = _screen_queue(
+                missing, app_label="Radarr", queue="missing", tally=tally, key_fields=("id",),
+                tags_at=("tags",) if scope.missing_tag_id is not None else None,
+            )
             missing = filter_monitored(missing)
             missing_monitored = len(missing)
             if scope.missing_tag_id is not None:
@@ -1054,10 +1056,10 @@ async def run_radarr_cycle(
     # the cycle can never grade Nothing needed searching (spec 3.1). ---
     if cutoff is not None:
         try:
-            cutoff, skipped = _split_malformed(cutoff, None)
-            if skipped:
-                _log_malformed_skip("Radarr", "cutoff", "record", skipped)
-                tally.record_malformed("cutoff", len(skipped))
+            cutoff = _screen_queue(
+                cutoff, app_label="Radarr", queue="cutoff", tally=tally, key_fields=("id",),
+                tags_at=("tags",) if scope.cutoff_tag_id is not None else None,
+            )
             cutoff = filter_monitored(cutoff)
             if scope.cutoff_tag_id is not None:
                 cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _radarr_tags)
@@ -1279,17 +1281,19 @@ async def run_sonarr_cycle(
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/searchable
     # counts and searched-log stay untouched rather than being wiped to zero).
-    # A malformed nested "series" value is skipped per item via
-    # _split_malformed before the rest of the chain runs (ROBUST-01); the
+    # Malformed records (bad nested "series", missing seriesId/seasonNumber,
+    # non-list tags on a tag-scoped queue) are skipped and counted per item via
+    # _screen_queue before the rest of the chain runs (ROBUST-01); the
     # try/except below is the backstop for any other unexpected fault,
     # mirroring the cutoff chain's existing guard. ---
     missing_seasons: list[dict] = []
     if missing_episodes is not None:
         try:
-            missing_episodes, skipped = _split_malformed(missing_episodes, "series")
-            if skipped:
-                _log_malformed_skip("Sonarr", "missing", "series", skipped)
-                tally.record_malformed("missing", len(skipped))
+            missing_episodes = _screen_queue(
+                missing_episodes, app_label="Sonarr", queue="missing", tally=tally,
+                key_fields=("seriesId", "seasonNumber"), nested_key="series",
+                tags_at=("series", "tags") if scope.missing_tag_id is not None else None,
+            )
             missing_episodes = filter_sonarr_episodes(missing_episodes)
             if scope.missing_tag_id is not None:
                 missing_episodes = filter_by_tag(missing_episodes, scope.missing_tag_id, _sonarr_tags)
@@ -1311,9 +1315,9 @@ async def run_sonarr_cycle(
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
-    # A malformed nested "series" value is skipped per item via
-    # _split_malformed before the rest of the chain runs (ROBUST-01); the
-    # except below is the backstop for any other unexpected fault -- a
+    # Malformed records are skipped and counted per item via _screen_queue
+    # before the rest of the chain runs (ROBUST-01); the except below is the
+    # backstop for any other unexpected fault -- a
     # cutoff-side data fault must never block the missing queue's dispatch
     # above, which is the pre-existing per-app guarantee this reordering
     # must not regress. On a fault the queue is left unprocessed (None):
@@ -1323,10 +1327,11 @@ async def run_sonarr_cycle(
     cutoff_seasons: list[dict] = []
     if cutoff_episodes is not None:
         try:
-            cutoff_episodes, skipped = _split_malformed(cutoff_episodes, "series")
-            if skipped:
-                _log_malformed_skip("Sonarr", "cutoff", "series", skipped)
-                tally.record_malformed("cutoff", len(skipped))
+            cutoff_episodes = _screen_queue(
+                cutoff_episodes, app_label="Sonarr", queue="cutoff", tally=tally,
+                key_fields=("seriesId", "seasonNumber"), nested_key="series",
+                tags_at=("series", "tags") if scope.cutoff_tag_id is not None else None,
+            )
             cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
             if scope.cutoff_tag_id is not None:
                 cutoff_episodes = filter_by_tag(cutoff_episodes, scope.cutoff_tag_id, _sonarr_tags)
@@ -1584,29 +1589,26 @@ async def run_lidarr_cycle(
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
     # counts and searched-log stay untouched rather than being wiped to zero).
-    # A malformed nested "artist" value is skipped per item via
-    # _split_malformed when this queue has a tag configured -- that's the
-    # only path that ever reads "artist" (Pitfall 4) -- before the rest of
-    # the chain runs (ROBUST-01); the try/except below is the backstop for
-    # any other unexpected fault, mirroring the cutoff chain's existing
-    # guard. A record that is not an object at all is skipped per item first,
-    # on every queue, tagged or not -- filter_monitored would otherwise raise
-    # on it and drop the whole queue (ROBUST-01). ---
+    # Malformed records are skipped and counted per item first (_screen_queue,
+    # ROBUST-01); the nested "artist" object and its tags are only checked when
+    # this queue has a tag configured -- that's the only path that ever reads
+    # "artist" (Pitfall 4). The try/except below is the backstop for any other
+    # unexpected fault, mirroring the cutoff chain's existing guard. Counts are
+    # written to ist only once the whole chain has succeeded, so a fault leaves
+    # the previous monitored/eligible pair intact. ---
     if missing is not None:
         try:
-            missing, skipped = _split_malformed(missing, None)
-            if skipped:
-                _log_malformed_skip("Lidarr", "missing", "record", skipped)
-                tally.record_malformed("missing", len(skipped))
+            tagged = scope.missing_tag_id is not None
+            missing = _screen_queue(
+                missing, app_label="Lidarr", queue="missing", tally=tally, key_fields=("id",),
+                nested_key="artist" if tagged else None, tags_at=("artist", "tags") if tagged else None,
+            )
             missing = filter_monitored(missing)
-            ist["missing_monitored"] = len(missing)
-            if scope.missing_tag_id is not None:
-                missing, skipped = _split_malformed(missing, "artist")
-                if skipped:
-                    _log_malformed_skip("Lidarr", "missing", "artist", skipped)
-                    tally.record_malformed("missing", len(skipped))
+            missing_monitored = len(missing)
+            if tagged:
                 missing = filter_by_tag(missing, scope.missing_tag_id, _lidarr_tags)
                 logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+            ist["missing_monitored"] = missing_monitored
             ist["missing_eligible"] = len(missing)
             _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
         except (AttributeError, KeyError, TypeError) as exc:
@@ -1621,28 +1623,24 @@ async def run_lidarr_cycle(
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
-    # A malformed nested "artist" value is skipped per item via
-    # _split_malformed when this queue has a tag configured (Pitfall 4);
-    # the except below is the backstop for any other unexpected fault -- a
+    # Malformed records are skipped and counted per item via _screen_queue
+    # (the nested "artist" object and its tags only when this queue has a tag
+    # configured, Pitfall 4); the except below is the backstop for any other unexpected fault -- a
     # cutoff-side data fault must never block the missing queue's dispatch
     # above, which is the pre-existing per-app guarantee this reordering
     # must not regress. On a fault the queue is left unprocessed (None):
     # never dispatched, its searched-log untouched, and -- when active --
     # marked unevaluated so the cycle can never grade Nothing needed
-    # searching (spec 3.1). A record that is not an object at all is skipped
-    # per item first, tagged or not, as on the missing side. ---
+    # searching (spec 3.1). ---
     if cutoff is not None:
         try:
-            cutoff, skipped = _split_malformed(cutoff, None)
-            if skipped:
-                _log_malformed_skip("Lidarr", "cutoff", "record", skipped)
-                tally.record_malformed("cutoff", len(skipped))
+            tagged = scope.cutoff_tag_id is not None
+            cutoff = _screen_queue(
+                cutoff, app_label="Lidarr", queue="cutoff", tally=tally, key_fields=("id",),
+                nested_key="artist" if tagged else None, tags_at=("artist", "tags") if tagged else None,
+            )
             cutoff = filter_monitored(cutoff)
-            if scope.cutoff_tag_id is not None:
-                cutoff, skipped = _split_malformed(cutoff, "artist")
-                if skipped:
-                    _log_malformed_skip("Lidarr", "cutoff", "artist", skipped)
-                    tally.record_malformed("cutoff", len(skipped))
+            if tagged:
                 cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _lidarr_tags)
                 logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
         except (AttributeError, KeyError, TypeError) as exc:

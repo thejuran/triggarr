@@ -4012,10 +4012,17 @@ async def test_run_lidarr_cycle_non_dict_cutoff_record_skipped_per_item(tmp_path
         await db.close()
 
 
-async def test_run_lidarr_cycle_artist_missing_fault_backstop(tmp_path):
-    """Lidarr missing-side backstop: a non-iterable "tags" value inside a
-    tag-scoped artist object raises TypeError in the tag filter, caught by
-    the coarse except around the whole chain; cutoff still dispatches."""
+async def test_run_lidarr_cycle_artist_missing_fault_backstop(tmp_path, monkeypatch):
+    """Lidarr missing-side backstop: an unexpected TypeError in the tag filter is
+    caught by the coarse except around the whole chain; cutoff still dispatches.
+    Phase 80: a non-list "tags" value is now a per-item malformed skip
+    (_screen_queue), so the fault is forced in the tag filter instead."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -4023,7 +4030,7 @@ async def test_run_lidarr_cycle_artist_missing_fault_backstop(tmp_path):
         client = AsyncMock()
         client.get_tags = AsyncMock(return_value=[Tag(id=5, label="music-tag")])
         client.get_wanted_missing = AsyncMock(return_value=[
-            {"id": 1, "title": "Bad Album", "monitored": True, "artist": {"tags": None}},
+            {"id": 1, "title": "Album", "monitored": True, "artist": {"tags": [5]}},
         ])
         client.get_wanted_cutoff = AsyncMock(return_value=[
             {"id": 2, "title": "Good Album", "monitored": True},
@@ -7084,8 +7091,16 @@ async def test_radarr_both_tags_fetch_failure_skips_both_queues(tmp_path):
     await db.close()
 
 
-async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
-    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path, monkeypatch):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps.
+    Phase 80: a non-list tags value is now a per-item skip, so the cutoff fault is
+    forced in the tag filter (only the cutoff queue resolves a tag here)."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -7096,7 +7111,7 @@ async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
         {"id": 1, "title": "Movie A", "monitored": True},
     ])
     client.get_wanted_cutoff = AsyncMock(return_value=[
-        {"id": 2, "title": "Movie B", "monitored": True, "tags": 5},
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [5]},
     ])
     client.search_movies = AsyncMock()
 
@@ -7127,8 +7142,16 @@ async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     await db.close()
 
 
-async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
-    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path, monkeypatch):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps.
+    Phase 80: a non-list tags value is now a per-item skip, so the cutoff fault is
+    forced in the tag filter (only the cutoff queue resolves a tag here)."""
+    import triggarr.search.engine as engine
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -7140,7 +7163,7 @@ async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
             {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": []}},
         ])
         client.get_wanted_cutoff = AsyncMock(return_value=[
-            {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": 5}},
+            {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": [5]}},
         ])
         client.get_library_count = AsyncMock(return_value=10)
         client.search_albums = AsyncMock()
@@ -7370,7 +7393,7 @@ async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
     client.get_wanted_cutoff = AsyncMock(return_value=[
         {
             # Phase 80: a non-dict "series" value is now a per-item
-            # malformed-record skip (_split_malformed), not a data fault --
+            # malformed-record skip (_screen_queue), not a data fault --
             # use an unhashable seriesId instead so this test still
             # exercises the coarse backstop (a genuinely unexpected shape).
             "id": 2,

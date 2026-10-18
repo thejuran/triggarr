@@ -1394,9 +1394,20 @@ async def test_run_lidarr_cycle_cutoff_fault_does_not_block_missing_search(tmp_p
 # ---------------------------------------------------------------------------
 
 
-def _faulting_cutoff_case(app: str):
-    """Return (run_fn, client, instance_config kwargs) whose cutoff filter chain faults."""
+def _faulting_cutoff_case(app: str, monkeypatch):
+    """Return (run_fn, client, instance_config kwargs) whose cutoff filter chain faults.
+
+    Phase 80: every malformed record shape Radarr and Lidarr can deliver is now a
+    per-item skip (_screen_queue), so no data shape reaches their coarse backstop.
+    For those two apps the fault is forced in the tag filter (only the cutoff
+    queue is tag-scoped here), which still exercises the backstop's grading and
+    searched-log preservation. Sonarr keeps a genuinely unexpected data shape.
+    """
+    import triggarr.search.engine as engine
     from triggarr.models.arr import Tag
+
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
 
     client = AsyncMock()
     client.get_library_count = AsyncMock(return_value=10)
@@ -1404,9 +1415,10 @@ def _faulting_cutoff_case(app: str):
     if app == "radarr":
         client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "M", "monitored": True}])
         client.get_wanted_cutoff = AsyncMock(
-            return_value=[{"id": 10, "title": "C", "monitored": True, "tags": None}]
+            return_value=[{"id": 10, "title": "C", "monitored": True, "tags": [1]}]
         )
         client.search_movies = AsyncMock(return_value=None)
+        monkeypatch.setattr(engine, "filter_by_tag", _boom)
         return run_radarr_cycle, client, {"cutoff_tag": "cutoff-tag"}
     if app == "sonarr":
         client.get_wanted_missing = AsyncMock(
@@ -1414,7 +1426,7 @@ def _faulting_cutoff_case(app: str):
         )
         bad_ep = _make_sonarr_episode(series_id=30, season_number=2, episode_id=999)
         # Phase 80: a non-dict "series" value is now a per-item malformed-record
-        # skip (_split_malformed), not an unexpected fault -- use an unhashable
+        # skip (_screen_queue), not an unexpected fault -- use an unhashable
         # seriesId instead so this test still exercises the coarse backstop for
         # a genuinely unexpected shape.
         bad_ep["seriesId"] = [30]
@@ -1422,26 +1434,23 @@ def _faulting_cutoff_case(app: str):
         client.search_season = AsyncMock(return_value=None)
         return run_sonarr_cycle, client, {}
     client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "A", "monitored": True}])
-    # Phase 80: a non-dict "artist" value is now a per-item malformed-record
-    # skip (_split_malformed) when a tag is configured, not an unexpected
-    # fault -- use a non-iterable "tags" value inside a well-formed artist
-    # dict instead, so this test still exercises the coarse backstop.
     client.get_wanted_cutoff = AsyncMock(
-        return_value=[{"id": 10, "title": "C", "monitored": True, "artist": {"tags": 5}}]
+        return_value=[{"id": 10, "title": "C", "monitored": True, "artist": {"tags": [1]}}]
     )
     client.search_albums = AsyncMock(return_value=None)
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
     return run_lidarr_cycle, client, {"cutoff_tag": "cutoff-tag"}
 
 
 @pytest.mark.parametrize("app", ["radarr", "sonarr", "lidarr"])
-async def test_cutoff_fault_cutoff_only_grades_failed_and_preserves_log(tmp_path, app):
+async def test_cutoff_fault_cutoff_only_grades_failed_and_preserves_log(tmp_path, app, monkeypatch):
     """A cutoff-only instance whose cutoff filter chain faults grades Failed (unevaluated),
     never nothing_needed, and keeps its cutoff searched-log and pass count."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    run_fn, client, cfg_kwargs = _faulting_cutoff_case(app)
+    run_fn, client, cfg_kwargs = _faulting_cutoff_case(app, monkeypatch)
     state = _make_test_state()
     ist = state[app]["Default"]
     ist["cutoff_searched"] = ["10", "30:2"]
@@ -1467,14 +1476,14 @@ async def test_cutoff_fault_cutoff_only_grades_failed_and_preserves_log(tmp_path
 
 
 @pytest.mark.parametrize("app", ["radarr", "sonarr", "lidarr"])
-async def test_cutoff_fault_with_missing_work_grades_partial(tmp_path, app):
+async def test_cutoff_fault_with_missing_work_grades_partial(tmp_path, app, monkeypatch):
     """When the missing queue is searched but the active cutoff queue faults, the cycle is
     Partial (not Success), and the cutoff searched-log is untouched."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    run_fn, client, cfg_kwargs = _faulting_cutoff_case(app)
+    run_fn, client, cfg_kwargs = _faulting_cutoff_case(app, monkeypatch)
     state = _make_test_state()
     ist = state[app]["Default"]
     ist["cutoff_searched"] = ["10"]
@@ -1494,13 +1503,13 @@ async def test_cutoff_fault_with_missing_work_grades_partial(tmp_path, app):
 
 
 @pytest.mark.parametrize("app", ["radarr", "sonarr", "lidarr"])
-async def test_cutoff_fault_on_inactive_cutoff_queue_not_marked_unevaluated(tmp_path, app):
+async def test_cutoff_fault_on_inactive_cutoff_queue_not_marked_unevaluated(tmp_path, app, monkeypatch):
     """An inactive cutoff queue (count 0) that faults is ignored for grading."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
 
-    run_fn, client, cfg_kwargs = _faulting_cutoff_case(app)
+    run_fn, client, cfg_kwargs = _faulting_cutoff_case(app, monkeypatch)
     state = _make_test_state()
     ist = state[app]["Default"]
     settings = make_settings(search_missing_count=5, search_cutoff_count=0)
