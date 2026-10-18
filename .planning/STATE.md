@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: executing
-stopped_at: Completed 79-03-PLAN.md
-last_updated: "2026-10-09T15:33:55.361Z"
-last_activity: 2026-10-09 -- Phase 79 execution started
+stopped_at: Completed 79-04-PLAN.md
+last_updated: "2026-10-18T00:46:53.249Z"
+last_activity: 2026-10-18 -- Phase 79 execution started
 progress:
-  total_phases: 18
-  completed_phases: 2
+  total_phases: 5
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
-  percent: 11
+  completed_plans: 14
+  percent: 60
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 Phase: 79 (tag-scoped-searches-stay-in-scope) — EXECUTING
 Plan: 4 of 4
 Status: Executing Phase 79
-Last activity: 2026-10-09 -- Phase 79 execution started
+Last activity: 2026-10-18 -- Phase 79 execution started
 
 ### v2.12 milestone shape
 
@@ -123,6 +123,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 | Phase 79 P01 | 15min | 3 tasks | 2 files |
 | Phase 79 P02 | 5min | 3 tasks | 6 files |
 | Phase 79 P03 | 26min | 3 tasks | 3 files |
+| Phase 79 P04 | 13min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,7 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 - [Phase 79]: 79-02: the unresolved-tag skip gate for progress denominators applies regardless of whether the queue is currently flagged in tag_warnings (badge/grading stay gated on active per D-04), so an inactive unresolved queue's count also shows unknown (OQ1)
 - [Phase 79]: 79-03: _clear_faulted_scoped_counts is a pure per-queue gate, never reading or writing ist['scoped_count_tags']/ist['unresolved_tag_scopes'] -- the card already treats a None count as unknown regardless of the stamp — Keeps the fault-clearing logic simple and additive to Plan 02's card-side trust decision rather than a parallel reimplementation
 - [Phase 79]: 79-03: all six engine entry points (3 cycles + 3 refreshes) now share one tag-resolution path via _resolve_tag_scope and one provenance-stamping path via _stamp_scoped_counts — No inline tag-resolution code remains anywhere in engine.py; refresh functions pass tally=None so refresh never touches the grade
+- [Phase 79]: 79-04: _finish_both_inactive_unreachable and _cap_and_log fold the R-07 both-inactive early return and the hard-max cap-and-log block (each previously copied three times across run_radarr_cycle/run_sonarr_cycle/run_lidarr_cycle) into shared helpers mirroring _rebalance_and_log's style -- behavior-preserving, full suite green at 1369 tests
 
 ### Pending Todos
 
@@ -214,8 +216,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-10-09T15:33:55.357Z
-Stopped at: Completed 79-03-PLAN.md
+Last session: 2026-10-18T00:46:53.245Z
+Stopped at: Completed 79-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
