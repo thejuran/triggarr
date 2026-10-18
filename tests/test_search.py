@@ -2295,6 +2295,18 @@ def test_filter_unreleased_unparseable_date_treated_as_null():
     assert filter_unreleased_movies(movies) == movies
 
 
+def test_filter_unreleased_valid_past_date_decides_in_either_field():
+    """Either past release date decides, whichever field holds it: a
+    timezone-less other date is never compared once a valid past date shows the
+    movie released."""
+    naive = "2020-01-01T00:00:00"
+    movies = [
+        _movie("Digital decides", digital=_past_iso(), physical=naive),
+        _movie("Physical decides", digital=naive, physical=_past_iso()),
+    ]
+    assert filter_unreleased_movies(movies) == movies
+
+
 def test_filter_unreleased_empty_list():
     """Empty list returns empty list."""
     assert filter_unreleased_movies([]) == []

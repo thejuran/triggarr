@@ -373,18 +373,38 @@ async def test_naive_date_skipped_per_item(tmp_path, app, queue, field, scenario
     assert rec["grade"] == grade
 
 
-async def test_radarr_naive_date_malformed_even_when_other_date_is_released(tmp_path):
-    """The unreleased filter parses both release dates, so a timezone-less one
-    is malformed even when the other date already shows the movie released."""
-    bad = _record("radarr", 2)
-    bad["digitalRelease"] = "2020-01-01T00:00:00Z"
-    bad["physicalRelease"] = _NAIVE
-    fake = _FakeArr({"missing": _page([_record("radarr", 1), bad]), "cutoff": _page([])})
+@pytest.mark.parametrize(
+    ("digital", "physical", "searched", "malformed"),
+    [
+        ("2020-01-01T00:00:00Z", _NAIVE, [1, 2], {}),
+        (_NAIVE, "2020-01-01T00:00:00+02:00", [1, 2], {}),
+        (_NAIVE, "2999-01-01T00:00:00Z", [1], {"missing": 1}),
+        ("2999-01-01T00:00:00Z", _NAIVE, [1], {"missing": 1}),
+        (_NAIVE, None, [1], {"missing": 1}),
+    ],
+    ids=[
+        "past-digital-decides", "past-physical-decides", "future-physical-cannot-decide",
+        "future-digital-cannot-decide", "no-other-date",
+    ],
+)
+async def test_radarr_one_valid_past_release_date_decides(tmp_path, digital, physical, searched, malformed):
+    """skip_unreleased treats a movie as released when EITHER release date is in
+    the past (v2.2, filter_unreleased_movies). A valid past date therefore
+    decides eligibility without the other date, whichever field holds it, and a
+    timezone-less other date is not read. Only when no valid date shows the
+    movie released does the timezone-less date decide -- then it is malformed."""
+    movie = _record("radarr", 2)
+    movie["digitalRelease"] = digital
+    movie["physicalRelease"] = physical
+    fake = _FakeArr({"missing": _page([_record("radarr", 1), movie]), "cutoff": _page([])})
 
     ist = await _run(tmp_path, "radarr", fake, tagged_queue=None)
+    rec = ist["last_cycle"]
 
-    assert fake.searched() == [1]
-    assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+    assert fake.searched() == searched
+    assert rec["malformed_by_queue"] == malformed
+    assert rec["unevaluated"] == []
+    assert rec["grade"] == ("success" if not malformed else "partial")
 
 
 @pytest.mark.parametrize("queue", QUEUES)
