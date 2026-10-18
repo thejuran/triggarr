@@ -185,6 +185,7 @@ Inspect each repository before copying configuration. Record its language/framew
 Reuse the process and report contract. Adapt the required jobs, security checks, and deployment evidence to that repository. Do not copy Triggarr-specific Python/Docker jobs, artifact names, tag policies, environment IDs, reviewer app IDs, or trusted policy commits blindly.
 
 Minimum adoption checklist:
+- Adopt [the Roadmaps planning format](PLANNING-FORMAT.md) as part of the post-orchestrator repository refresh. Copy the reviewed format into each repository and reference it from that repository's `CLAUDE.md` so BM follows it. Adapt examples to the repository's actual milestone; keep `STATE.md` and `ROADMAP.md` consistent, refresh timestamps when state changes, and leave in-review phases incomplete. Preserve in-flight planning work, use the prescribed upcoming-milestone sections, and verify the Roadmaps page displays them without a planning-disagreement warning (or record why UI verification was unavailable).
 - BM installed/configured; actual repository instructions and supported controls updated and tested for paired BM/Codex review and high-risk vibe-check recommendations.
 - Greptile authorized only for intended repositories, with push/draft behavior tested.
 - Codex can inspect the repository and produces a report tied to the actual PR head/base.

@@ -48,6 +48,16 @@ Acceptance: demonstrate a broken entrypoint or missing asset fails the smoke tes
 - **Workflow lint:** run actionlint when workflows change. Keep required-job consistency and release-policy tests. Define skip behavior so a required aggregate gate cannot pass when mandatory validation was omitted.
 - **Package smoke checks:** if Python distributions remain release deliverables, validate metadata and install the built wheel in a clean environment; verify required packaged templates/assets and the supported startup interface. Borrow the principle, not Seedsyncarr-specific commands.
 
+## Coverage evidence for review — next milestone
+
+Generate branch coverage during the existing CI pytest run and retain a readable `coverage.xml` artifact. JUnit test results report pass/fail outcomes, not exercised lines or branches. Bind the coverage artifact to the actual tested full commit SHA and CI run; distinguish a synthetic PR merge commit from the PR head rather than treating their coverage as interchangeable.
+
+When vibe-check is selected, prepare the coverage report for its exact review commit in the isolated review worktree before the review snapshot starts. Verify provenance, source paths, and relevance to the changed files. Use matching CI evidence where available; otherwise generate coverage in a separate preparation step before review. Do not modify a running review worktree or ask the consume-only test-sufficiency agent to run tests. Missing, stale, or unusable coverage must be reported as a limitation, not a clean test-sufficiency verdict.
+
+Keep this lightweight: no arbitrary coverage-percentage merge gate, new orchestrator, or mandatory vibe-check. Coverage helps identify untested paths; it does not establish meaningful assertions, realistic client-path testing, or correctness. Preserve test failure exit status when collecting/uploading artifacts.
+
+Acceptance for the next milestone: demonstrate branch data in `coverage.xml`, exact-commit provenance, and successful discovery by vibe-check's test-sufficiency lane when selected. Demonstrate that wrong-commit or missing reports are not accepted as valid evidence. Record test-runtime overhead and keep generated coverage files out of source commits. This is a deferred recommendation only; it does not change the current workflow or require restarting the current review.
+
 ## Acceptance usability and permissions
 
 Preserve protected owner acceptance. Improve when it is requested: mark PRs ready before final approval, and make machine-checkable prerequisites visible before asking. Address stale evidence/register snapshots without removing SHA binding. Confirm repository-wide registers handle concurrent PRs safely; until proven, serialize final acceptance updates.
