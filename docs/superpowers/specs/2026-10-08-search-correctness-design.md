@@ -21,14 +21,14 @@ This milestone fixes those four, plus three backlog items on the same theme:
 
 ## 2. Scope
 
-**In scope:** findings #1–#4 and backlog items 999.3, 999.5, 999.6.
+**In scope:** findings #1–#4 and backlog items 999.3, 999.5, 999.6, plus a bounded Sonarr v5 compatibility task in Phase 81 (added 2026-10-12).
 
-**Out of scope** (deferred to the next hardening milestone):
-- backlog items 999.4 and 999.7–999.13
+**Out of scope** (2026-10-17 backlog triage supersedes the earlier blanket deferral to a next hardening milestone):
+- 999.4/999.9 remain unscheduled fixes; 999.10/999.13 are narrowed to evidence-backed security and lifecycle work; 999.8/999.11 are maintenance rules; 999.7/999.12 are retired under current scope. See `.planning/ROADMAP.md` Backlog.
 - new features
 - Lidarr/Radarr attribution changes (the season bug is Sonarr-specific)
 - recomputing historical stats
-- changing the HTTP client's automatic single retry of POST requests. A timeout after the server already accepted a command can still produce a duplicate command. This is recorded as a follow-up for the next hardening milestone.
+- changing the HTTP client's automatic single retry of POST requests. A timeout after the server already accepted a command can still produce a duplicate command. This remains an unscheduled concrete reliability follow-up; no new hardening milestone is presumed.
 
 ## 3. Locked definitions
 
@@ -177,16 +177,39 @@ Consequences:
 - **Pre-cutover pending searches:** excluded from corrected attribution, and their rows and counters are preserved.
 - **Migration:** existing rows survive and the cutover is recorded exactly once.
 
+
+### Phase 81 bounded task — Verify Sonarr v5 compatibility (added 2026-10-12)
+
+This task verifies the existing integration against the Sonarr v5 beta; it is not an API rewrite or a new feature track.
+
+**Behavior and scope**
+- Correct application-version reporting: a valid v5 version must report v5 rather than falling through to v3. Keep application version separate from API route version. Cover v3/v4/v5 and malformed/non-string versions, reusing Phase 80's version-handling guard.
+- Retain the current `/api/v3` endpoints and `X-Api-Key` authentication unless a reproducible compatibility failure requires a targeted change. Do not switch every endpoint to `/api/v5` based on the application version.
+- Verify connection/status, tag lookup, paginated missing and cutoff lists (including `includeSeries`), library counts, `SeasonSearch` acceptance, and grab-history tracking against an isolated Sonarr v5 beta instance. Retain v4 regression coverage and run the same smoke flow against v4.
+- Include alternate series orders, season packs, and multi-season releases in Phase 81 attribution fixtures. Use Sonarr-returned series/season/episode identities, never release-title parsing. Confirm distinct-episode counts and no cross-season attribution or repeat credit across tracking checks.
+- Fix only demonstrated incompatibilities in these existing flows. Sonarr's new UI, OIDC, metadata management, and custom Wanted-filter features do not add Triggarr features to this milestone.
+
+**Acceptance and evidence**
+- Version tests prove v5 is reported correctly without implicitly changing API routes; malformed versions follow the sanitized fallback.
+- Save sanitized representative v4/v5 response fixtures and regression tests for any compatibility fixes, including alternate-order and pack attribution cases.
+- Record exact tested Sonarr versions/builds, test date, endpoint outcomes, and attribution results in the phase verification report. Use a disposable/test library with controlled download settings; do not upgrade the production NAS to perform this task.
+- A live v5 smoke test is required before claiming v5 support. If a suitable beta instance or a required test scenario is unavailable, explicitly record it as unverified and keep the compatibility task open; passing mocks alone does not establish live compatibility.
+
+**Research baseline (2026-10-12; recheck against the tested beta build)**
+- Sonarr's v5 development tree still contains v3 missing, history, and command controllers. This supports testing the existing routes first, but is not a live compatibility guarantee: [v3 API source](https://github.com/Sonarr/Sonarr/tree/v5-develop/src/Sonarr.Api.V3).
+- The local `SonarrClient.detect_api_version` currently returns v3 for versions not starting with `4`; the client already uses API-key authentication.
+
 ## 5. Ordering rationale
 
 - 77 is first because it is isolated, small, and the highest-stakes fix.
 - 78 defines the outcome model, and 79 depends on it.
 - 80 touches the cycle loop (dedup and robustness share code), and it reports malformed counts into 78's model.
-- 81 is last because it carries the only DB migration and a config-schema addition (the stable instance ID), and is independent of 79/80.
+- Phase 81 attribution is independent of 79/80 and carries the only DB migration and config-schema addition (the stable instance ID). Its final v4/v5 compatibility task runs after Phase 80 so it verifies the completed robustness and dedup behavior.
 
 ## 6. Verification
 
 - **Every phase:** `uv run pytest tests/ -x -q` and `uv run ruff check triggarr/ tests/` must pass.
+- **Sonarr compatibility:** complete the Phase 81 v4/v5 smoke matrix and record exact builds and any unverified scenarios before claiming v5 support.
 - **Milestone end:** an NAS walkthrough of:
   - the card grades (Success, Partial, Failed, Nothing needed, legacy label)
   - the tag-unresolved warning

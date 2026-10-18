@@ -50,7 +50,7 @@ Five phases derived 1:1 from the approved design spec `docs/superpowers/specs/20
 - **OUTCOME-06 stays in 78, not 80:** OUTCOME-06 (an accepted command whose history write fails still counts as accepted and updates "last successful search") is a grading rule — it defines what "accepted" means for §3.1 — so it rides with the rest of the grading model in Phase 78. Phase 80's ROBUST-02 covers the mechanical guarantee (the insert-failure code path doesn't abort the batch); the two requirements describe the same scenario from two different layers (policy vs. mechanism) and are deliberately kept in separate phases.
 - **80 bundles robustness + dedup because they share code:** Both touch the same Sonarr cycle loop (malformed-record guards and season-claim bookkeeping sit in the same call sites), and 80's malformed-record counts feed into 78's grading model — splitting them would fracture one code path across two phases.
 - **81 is last and fully independent:** Per spec §5, it carries the only DB migration (ownership table + cutover marker) and the only config-schema addition (stable per-instance ID), and doesn't depend on 79 or 80's behavior.
-- **Backlog promotions:** 999.3 (reset-token log-viewer exposure) and 999.6 (secret-redaction gaps across log paths) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. 999.4, 999.7-999.13, and POST-retry semantics stay deferred (spec §2).
+- **Backlog promotions:** 999.3 (reset-token log-viewer exposure) and 999.6 (secret-redaction gaps across log paths) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. The 2026-10-17 triage below supersedes blanket deferral: keep concrete fixes, narrow security/lifecycle work, convert 999.8/999.11 to maintenance rules, and retire speculative projects (spec §2).
 
 ### v2.11 milestone shape
 
@@ -167,6 +167,8 @@ v2.11 roadmap created 2026-06-04 from the search-queue-priority design spec. 11 
 
 v2.12 roadmap created 2026-10-08 from the approved search-correctness design spec. 25 v1 requirements across 5 phases (77-81, continuing from v2.11's Phase 76 — not reset to 1). 100% coverage, no orphans, no double-mapping. Phases derived 1:1 from spec §4's five numbered subsections; 79 and 80 depend on 78 (grading model); 77 and 81 are independent of each other and of 79/80. Backlog phases 999.3 and 999.6 (log-hygiene findings) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention.
 
+2026-10-12 plan amendment: added SONARRV5-01..03 as one bounded Phase 81 compatibility task; v2.12 now has 28 requirements across the same five phases. Correct v5 version reporting, verify existing v3/API-key flows against isolated v4/v5 instances, and extend attribution fixtures for alternate orders and packs. Final compatibility verification follows Phase 80; no live v5 support claim until tested. Current execution position and completed-phase status are unchanged.
+
 ### Cross-cutting thread
 
 77 and 81 are isolated fixes; 78 is the shared substrate for 79 and 80 (the grading model both consume). Every phase carries the same constraints from the project (spec §7): SecretStr discipline (`.get_secret_value()` only at HTTP client init), loguru-only logging through the redacting sink, atomic write-then-rename for config/state, and the established `httpx.HTTPError` + `pydantic.ValidationError` error-handling pattern, widened only where the spec says so (Phase 80's malformed-record guards). Phase 81's stable per-instance ID (backfilled via the atomic config write) is the only new config-schema addition this milestone, and its ownership-table migration is the only new DB migration.
@@ -177,27 +179,22 @@ None.
 
 ### Deferred Items
 
-Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave this table at v2.10 close — DEBT-07/08/03 were already shipped (DOCS-01 corrects the record) and DEBT-06 ships in Phase 75.
+**Backlog triage approved 2026-10-17.** ROADMAP.md's Backlog is the detailed decision record. No broad next hardening milestone is presumed; the current v2.12 execution position and acceptance checks are unchanged.
 
-| Category | Item | Source Milestone | Status |
-|----------|------|------------------|--------|
-| backlog | 999.4: Run bcrypt off the event loop | v2.9 deep-review | deferred — out of v2.12 scope per spec §2 |
-| backlog | 999.7-999.13: client-dispatch registry, atomic-write helper consolidation, remove_instance rollback guard, auth/CSRF/cookie hardening, SSRF-validator startup brick, changelog XSS surface, lifecycle/blocking-I/O correctness | v2.9 deep-review | deferred — out of v2.12 scope per spec §2 |
-| follow-up | HTTP client's automatic single POST retry can duplicate an accepted command after a timeout | v2.12 design spec §2 | deferred to next hardening milestone (explicitly out of scope) |
-| shipped (record corrected) | DEBT-07/08/03 (request timeout / page size / search-history cap) | v2.9 (mis-recorded as parked) | shipped — config fields config.py:128-130 + settings inputs; DOCS-01 corrected the record in Phase 75 |
-| shipped in v2.10 | DEBT-06: Surface graceful-shutdown drain timeout in settings UI | v2.9 (spec D-5) | shipped — Phase 75 (CFG-03/CFG-04); general.shutdown_drain_timeout config field + settings input + env-override precedence |
-| requirement | UI-01: Login page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| requirement | UI-02: Setup page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| requirement | UI-03: Settings security pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| tech-debt | `--color-triggarr-primaryDark` duplicate token (unused in templates) | v2.7 | cosmetic cleanup (unrelated to v2.12 phases) |
-| v2 requirement | PERF-01: Per-endpoint request timeout overrides | v2.8 audit | deferred |
-| v2 requirement | PERF-02: Per-endpoint pagination page-size overrides | v2.8 audit | deferred |
-| v2 requirement | PERF-03: State JSON streaming/compression | v2.8 audit | deferred |
-| v2 requirement | SCALE-01: Lift 5-instance-per-app-type hard limit | v2.8 audit | deferred |
-| v2 requirement | SCALE-02: Search history archival / PostgreSQL path | v2.8 audit | deferred |
-| v2 requirement | AUDIT-01: Config change audit log | v2.8 audit | deferred |
-| v2 requirement | OBS-01: Scheduler job dashboard | v2.8 audit | deferred |
-| v2.9-audit follow-up | validate_arr_url dedup; Retry-Connection hx-disabled-elt; bug-report.yml v2.9 dropdown option | v2.9 | deferred |
+| Disposition | Items | Scope |
+|-------------|-------|-------|
+| Keep, unscheduled | 999.4, 999.9, POST-retry semantics | Event-loop responsiveness, state consistency/recovery, duplicate-command prevention. |
+| Narrow, unscheduled | 999.10 | Evidence-backed auth boundary review; fix demonstrated issues without adding speculative controls. |
+| Narrow, unscheduled | 999.13 | Startup/shutdown resource cleanup; blanket I/O optimization retired unless measured. |
+| Maintenance rules only | 999.8, 999.11 | Preserve atomic-write/security guarantees; provide migration/recovery with actual incompatible validation changes. No generic refactor projects. |
+| Retired | 999.7, 999.12 | Client registry abstraction and changelog rewrite; reopen only on concrete need/defect. |
+| Retired | PERF-01..03, SCALE-01..02, AUDIT-01, OBS-01 | Speculative tuning, scale, audit, and dashboard work. |
+| Retired | Pixel-exact UI-01..03; unused color token | Keep ordinary auth/setup/settings usability checks; no pixel matching obligation. |
+| Promoted / historical | 999.1/2 | Shipped in v2.10, Phases 72–74. |
+| Promoted / historical | 999.3/6 | Phase 77 implementation complete; its deployed UAT is still pending. |
+| Promoted, still pending | 999.5 | Owned by Phase 80; not retired. |
+| Shipped / historical | DEBT-07/08/03/06 | Previously delivered config controls; no longer deferred work. |
+| Unchanged small follow-ups | v2.9 URL-validation dedup, Retry-Connection button behavior, bug-report options; TODO.md maintenance | Revalidate before work; not promoted by this triage. |
 
 ### Quick Tasks Completed
 
