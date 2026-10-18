@@ -14,9 +14,12 @@ import aiosqlite
 import pytest
 from loguru import logger
 
+from tests.migration_faults import STANDARD_MAPPING, original_projection, seed_v9_db, snapshot
 from triggarr.db import (
     PendingCapExceeded,
+    _apply_atomic_migration,
     _migrate_v1,
+    _migrate_v10,
     get_dashboard_stats,
     get_recent_searches,
     get_schema_version,
@@ -1473,3 +1476,177 @@ async def test_get_schema_version_on_empty_db(tmp_path: Path) -> None:
         assert version == 0
     finally:
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Migration v10: grab ownership, attribution cutover, stable-ID association
+# ---------------------------------------------------------------------------
+
+
+async def test_migration_v10_creates_attribution_tables(tmp_path):
+    """v10 creates grab_ownership/attribution_cutover/sonarr_instance_pre_fix and their indexes."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    for table in ("grab_ownership", "attribution_cutover", "sonarr_instance_pre_fix"):
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ) as cursor:
+            assert await cursor.fetchone() is not None, f"missing table {table}"
+
+    for index in (
+        "idx_grab_ownership_series",
+        "idx_search_history_instance_stable_id",
+        "idx_lifetime_stats_app_stable_id",
+    ):
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=?", (index,)
+        ) as cursor:
+            assert await cursor.fetchone() is not None, f"missing index {index}"
+
+    async with db.execute("PRAGMA table_info(search_history)") as cursor:
+        sh_cols = {row[1] for row in await cursor.fetchall()}
+    assert "instance_stable_id" in sh_cols
+
+    async with db.execute("PRAGMA table_info(lifetime_stats)") as cursor:
+        ls_cols = {row[1] for row in await cursor.fetchall()}
+    assert "instance_stable_id" in ls_cols
+
+    async with db.execute("PRAGMA table_info(attribution_cutover)") as cursor:
+        cutover_cols = {row[1] for row in await cursor.fetchall()}
+    assert {"any_pre_fix_sonarr_data", "pre_fix_sonarr_lifetime"} <= cutover_cols
+
+    async with db.execute("PRAGMA table_info(sonarr_instance_pre_fix)") as cursor:
+        pre_fix_cols = {row[1] for row in await cursor.fetchall()}
+    assert {"has_pre_fix_data", "lifetime_includes_pre_fix"} <= pre_fix_cols
+
+    assert await get_schema_version(db) == 10
+
+    async with db.execute("SELECT COUNT(*) FROM attribution_cutover") as cursor:
+        count = (await cursor.fetchone())[0]
+    assert count == 0
+    await db.close()
+
+
+async def test_migration_v10_preserves_existing_rows(tmp_path, monkeypatch):
+    """With no mapping, v10 associates nothing and changes zero existing column values."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    before = await original_projection(db)
+
+    await init_db(db, db_path)
+
+    after = await original_projection(db)
+    assert after == before
+
+    async with db.execute("SELECT instance_stable_id FROM search_history") as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+
+    async with db.execute("SELECT instance_stable_id FROM lifetime_stats") as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] == "" for row in rows)
+    await db.close()
+
+
+async def test_migration_v10_associates_stable_ids(tmp_path, monkeypatch):
+    """Mapped (app, name) rows get the stable ID in both tables; unmapped rows stay empty/NULL."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    before = await original_projection(db)
+
+    await init_db(db, db_path, instance_stable_ids=STANDARD_MAPPING)
+
+    after = await original_projection(db)
+    assert after == before
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Old'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] == "sid-a" for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Gone'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM lifetime_stats WHERE app = 'Sonarr' AND instance_id = 'Old'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "sid-a"
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM lifetime_stats WHERE app = 'Sonarr' AND instance_id = 'Gone'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == ""
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Radarr' AND instance_id = 'Default'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] == "sid-r" for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM lifetime_stats WHERE app = 'Radarr' AND instance_id = 'Default'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "sid-r"
+
+    assert await get_schema_version(db) == 10
+    await db.close()
+
+
+async def test_migration_v10_mapping_ignores_other_apps_and_empty_ids(tmp_path, monkeypatch):
+    """A mapping entry for a different app and one with an empty stable ID are both ignored."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+
+    mapping = {("Radarr", "Old"): "sid-x", ("Sonarr", "Gone"): ""}
+    await init_db(db, db_path, instance_stable_ids=mapping)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Old'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Gone'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+    await db.close()
+
+
+async def test_migration_v10_rerun_is_noop(tmp_path, monkeypatch):
+    """Re-running _apply_atomic_migration for v10 on an already-migrated DB changes nothing."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    await init_db(db, db_path, instance_stable_ids=STANDARD_MAPPING)
+
+    before = await snapshot(db)
+
+    await _apply_atomic_migration(
+        db, 10, _migrate_v10, instance_stable_ids=STANDARD_MAPPING, earliest_backup=None
+    )
+
+    after = await snapshot(db)
+    assert after == before
+    assert await get_schema_version(db) == 10
+    await db.close()
+
+
+async def test_migration_v10_no_foreign_key(tmp_path):
+    """grab_ownership declares no FOREIGN KEY, so pruning search_history can never cascade into it."""
+    db, db_path = await _init_test_db(tmp_path)
+    async with db.execute("PRAGMA foreign_key_list(grab_ownership)") as cursor:
+        rows = await cursor.fetchall()
+    assert rows == []
+    await db.close()
