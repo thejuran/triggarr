@@ -16,11 +16,14 @@ from loguru import logger
 
 from tests.migration_faults import STANDARD_MAPPING, original_projection, seed_v9_db, snapshot
 from triggarr.db import (
+    OwnedGrab,
+    OwnedGrabRecord,
     PendingCapExceeded,
     _apply_atomic_migration,
     _migrate_v1,
     _migrate_v10,
     get_dashboard_stats,
+    get_owned_grabs,
     get_recent_searches,
     get_schema_version,
     get_search_history,
@@ -1847,4 +1850,379 @@ async def test_no_legacy_pending_without_cutover_row(tmp_path):
 
     recent = await get_recent_searches(db, limit=50)
     assert all(e["is_legacy"] is False for e in recent)
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Grab ownership: atomic with outcome/stats, keyed by (app, stable ID, grab ID)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_outcome_and_stats_ownership_commits_together(tmp_path):
+    """Ownership rows commit in the same transaction as the outcome/stat update."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+
+    owned_grabs = [OwnedGrab(501, 9001, 10, 1), OwnedGrab(502, 9002, 10, 1)]
+    await update_outcome_and_stats(
+        db,
+        1,
+        "grabbed",
+        "grabbed: 2/2 episodes",
+        app="Sonarr",
+        queue_type="missing",
+        instance_stable_id="sid-a",
+        stat_increments={"episodes_found": 2},
+        owned_grabs=owned_grabs,
+    )
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "grabbed"
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 2
+
+    async with db.execute(
+        "SELECT grab_id, history_id, series_id, season_number, episode_id FROM grab_ownership "
+        "WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a' ORDER BY grab_id"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert [tuple(r) for r in rows] == [(501, 1, 10, 1, 9001), (502, 1, 10, 1, 9002)]
+    await db.close()
+
+
+async def test_update_outcome_and_stats_ownership_rollback_on_failure(tmp_path):
+    """An already-owned grab_id rolls back the outcome/stat update too -- all or nothing."""
+    import sqlite3
+
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db,
+        1,
+        "grabbed",
+        "grabbed: 1/1 episodes",
+        app="Sonarr",
+        queue_type="missing",
+        instance_stable_id="sid-a",
+        stat_increments={"episodes_found": 1},
+        owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+
+    async with db.execute(
+        "SELECT outcome, detail, resolved_at FROM search_history WHERE id = 1"
+    ) as cursor:
+        before_history = tuple(await cursor.fetchone())
+    async with db.execute(
+        "SELECT * FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        before_stats = tuple(await cursor.fetchone())
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=11, outcome="searched")
+    with pytest.raises(sqlite3.IntegrityError):
+        await update_outcome_and_stats(
+            db,
+            2,
+            "grabbed",
+            "grabbed: 1/1 episodes",
+            app="Sonarr",
+            queue_type="missing",
+            instance_stable_id="sid-a",
+            stat_increments={"episodes_found": 1},
+            owned_grabs=[OwnedGrab(501, 9002, 11, 1)],  # grab_id 501 already owned by sid-a
+        )
+
+    async with db.execute(
+        "SELECT outcome, detail, resolved_at FROM search_history WHERE id = 1"
+    ) as cursor:
+        after_history = tuple(await cursor.fetchone())
+    async with db.execute(
+        "SELECT * FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        after_stats = tuple(await cursor.fetchone())
+    assert after_history == before_history
+    assert after_stats == before_stats
+
+    async with db.execute(
+        "SELECT outcome FROM search_history WHERE id = 2"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "searched"  # the failed update never landed
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM grab_ownership WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        count = (await cursor.fetchone())[0]
+    assert count == 1  # only the original grab_id 501 row, nothing from the failed call
+    await db.close()
+
+
+async def test_update_outcome_and_stats_ownership_requires_stable_id(tmp_path):
+    """Non-empty owned_grabs with no stable ID raises ValueError before any write."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+
+    for bad_stable_id in (None, ""):
+        with pytest.raises(ValueError, match="instance_stable_id"):
+            await update_outcome_and_stats(
+                db,
+                1,
+                "grabbed",
+                "grabbed: 1/1 episodes",
+                app="Sonarr",
+                queue_type="missing",
+                instance_stable_id=bad_stable_id,
+                owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+            )
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "searched"  # unchanged -- the ValueError fired before any write
+    await db.close()
+
+
+async def test_update_outcome_and_stats_without_ownership_unchanged(tmp_path):
+    """Calling update_outcome_and_stats with no new kwargs behaves exactly as before (Radarr/Lidarr)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Radarr", queue_type="missing", stat_increments={"movies_found": 1},
+    )
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "grabbed"
+
+    async with db.execute(
+        "SELECT movies_found FROM lifetime_stats WHERE app = 'Radarr' AND instance_id = 'Default'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["movies_found"] == 1
+
+    async with db.execute("SELECT COUNT(*) FROM grab_ownership") as cursor:
+        count = (await cursor.fetchone())[0]
+    assert count == 0
+    await db.close()
+
+
+async def test_ownership_cross_instance_same_grab_id(tmp_path):
+    """The same grab_id for two different stable instance IDs is stored independently."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=20, outcome="searched")
+
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+    await update_outcome_and_stats(
+        db, 2, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-b", owned_grabs=[OwnedGrab(501, 9002, 20, 1)],
+    )
+
+    async with db.execute("SELECT instance_stable_id, history_id FROM grab_ownership WHERE grab_id = 501 ORDER BY instance_stable_id") as cursor:
+        rows = await cursor.fetchall()
+    assert [tuple(r) for r in rows] == [("sid-a", 1), ("sid-b", 2)]
+    await db.close()
+
+
+async def test_ownership_survives_pruning(tmp_path):
+    """grab_ownership has no reference to search_history, so pruning the owner row leaves it intact."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched", max_rows=1)
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+
+    # Insert enough resolved rows to prune the owner row out of search_history (max_rows=1).
+    for i in range(3):
+        await insert_search_entry(
+            db, "Sonarr", "missing", f"Filler {i}", item_id=20 + i, outcome="grabbed", max_rows=1,
+        )
+
+    async with db.execute("SELECT COUNT(*) FROM search_history WHERE id = 1") as cursor:
+        assert (await cursor.fetchone())[0] == 0  # owner row was pruned
+
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-a", series_id=10)
+    assert owned == [OwnedGrabRecord(501, 1, 9001)]
+    await db.close()
+
+
+async def test_ownership_survives_restart(tmp_path):
+    """Ownership rows persist across a connection close and reopen."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+    await db.close()
+
+    db2 = await aiosqlite.connect(db_path)
+    await init_db(db2, db_path)
+    owned = await get_owned_grabs(db2, app="Sonarr", instance_stable_id="sid-a", series_id=10)
+    assert owned == [OwnedGrabRecord(501, 1, 9001)]
+    await db2.close()
+
+
+async def test_lifetime_increment_follows_stable_id_after_rename(tmp_path):
+    """A rename keeps adding to the same stable-ID row; its stored name stays the old one."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO lifetime_stats (app, instance_id, instance_stable_id, episodes_found, last_reset_at) "
+        "VALUES ('Sonarr', 'Old', 'sid-a', 7, ?)",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.commit()
+    async with db.execute("SELECT COUNT(*) FROM lifetime_stats") as cursor:
+        count_before = (await cursor.fetchone())[0]
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="New",
+        instance_stable_id="sid-a", stat_increments={"episodes_found": 2},
+    )
+
+    async with db.execute(
+        "SELECT instance_id, episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["instance_id"] == "Old"
+    assert row["episodes_found"] == 9
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM lifetime_stats WHERE instance_id = 'New'"
+    ) as cursor:
+        assert (await cursor.fetchone())[0] == 0
+
+    async with db.execute("SELECT COUNT(*) FROM lifetime_stats") as cursor:
+        assert (await cursor.fetchone())[0] == count_before
+    await db.close()
+
+
+async def test_lifetime_increment_name_reuse_gets_own_row(tmp_path):
+    """A different server reusing an old name gets its own row; the original stable-ID row is untouched."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO lifetime_stats (app, instance_id, instance_stable_id, episodes_found, last_reset_at) "
+        "VALUES ('Sonarr', 'Old', 'sid-a', 7, ?)",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.commit()
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="Old",
+        instance_stable_id="sid-c", stat_increments={"episodes_found": 3},
+    )
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-c'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 3
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 7
+    await db.close()
+
+
+async def test_lifetime_increment_never_touches_unassociated_rows(tmp_path):
+    """An unassociated ('') row is never incremented again, whatever stable ID is used."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_id = 'Gone', episodes_found = 4 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'"
+    )
+    await db.commit()
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="Gone",
+        instance_stable_id="sid-z", stat_increments={"episodes_found": 1},
+    )
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_id = 'Gone' AND instance_stable_id = ''"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 4
+    await db.close()
+
+
+async def test_lifetime_increment_without_stable_id_legacy_path(tmp_path):
+    """With no stable ID, increments the legacy (app, name, '') row, creating it if missing."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, instance_id="Legacy", outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="Legacy",
+        stat_increments={"episodes_found": 5},
+    )
+
+    async with db.execute(
+        "SELECT episodes_found, instance_stable_id FROM lifetime_stats "
+        "WHERE app = 'Sonarr' AND instance_id = 'Legacy'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 5
+    assert row["instance_stable_id"] == ""
+    await db.close()
+
+
+async def test_lifetime_increment_rolls_back_with_ownership_failure(tmp_path):
+    """The stable-ID lifetime row is unchanged when the ownership insert fails."""
+    import sqlite3
+
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", stat_increments={"episodes_found": 1},
+        owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        before = (await cursor.fetchone())[0]
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=11, outcome="searched")
+    with pytest.raises(sqlite3.IntegrityError):
+        await update_outcome_and_stats(
+            db, 2, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+            instance_stable_id="sid-a", stat_increments={"episodes_found": 10},
+            owned_grabs=[OwnedGrab(501, 9002, 11, 1)],
+        )
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        after = (await cursor.fetchone())[0]
+    assert after == before
+    await db.close()
+
+
+async def test_get_owned_grabs_scoped(tmp_path):
+    """get_owned_grabs returns only the given (app, stable ID, series) rows."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=20, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_stable_id="sid-a",
+        owned_grabs=[OwnedGrab(501, 9001, 10, 1), OwnedGrab(502, 9002, 10, 1)],
+    )
+    await update_outcome_and_stats(
+        db, 2, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_stable_id="sid-a",
+        owned_grabs=[OwnedGrab(601, 9101, 20, 1)],
+    )
+
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-a", series_id=10)
+    assert set(owned) == {OwnedGrabRecord(501, 1, 9001), OwnedGrabRecord(502, 1, 9002)}
     await db.close()
