@@ -27,17 +27,18 @@ class SonarrClient(ArrClient):
         self._app_name = "Sonarr"
 
     async def detect_api_version(self) -> str:
-        """Detect whether the Sonarr instance is running v3 or v4.
+        """Detect the Sonarr application major version (v3, v4 or v5).
 
         Calls ``/api/v3/system/status`` and inspects the ``version``
-        field.  This is purely informational -- no behaviour branches
-        on the result; the ``/api/v3`` endpoints stay in use regardless.
+        field. This reports the application major only -- it never
+        selects API routes; every call stays on ``/api/v3`` regardless
+        of the detected major (Sonarr v5 still serves the ``/api/v3``
+        controller tree).
 
         Returns:
-            ``"v3"`` or ``"v4"`` when the major version is confirmed,
-            otherwise ``"unknown"`` (non-string reply, unrecognized
-            major such as a future v5, or a request failure). Phase 81
-            adds accurate v5 reporting.
+            ``"v3"``, ``"v4"`` or ``"v5"`` when the major version is
+            confirmed, otherwise ``"unknown"`` (non-string reply,
+            unrecognized major, or a request failure).
         """
         try:
             response = await self._client.get("/api/v3/system/status")
@@ -53,6 +54,8 @@ class SonarrClient(ArrClient):
                 return "v3"
             if version.startswith("4"):
                 return "v4"
+            if version.startswith("5"):
+                return "v5"
             logger.warning(
                 "Sonarr: unrecognized API version reply -- reporting unknown, continuing with /api/v3 endpoints"
             )
