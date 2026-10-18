@@ -1650,3 +1650,200 @@ async def test_migration_v10_no_foreign_key(tmp_path):
         rows = await cursor.fetchall()
     assert rows == []
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Stable-ID selection, pending cap, and frozen legacy pending rows
+# ---------------------------------------------------------------------------
+
+
+async def _insert_cutover(db, legacy_max_history_id: int) -> None:
+    """Insert a minimal attribution_cutover row directly, as the tests are told to."""
+    await db.execute(
+        "INSERT INTO attribution_cutover "
+        "(id, cutover_at, legacy_max_history_id, any_pre_fix_sonarr_data, pre_fix_sonarr_lifetime) "
+        "VALUES (1, ?, ?, 1, 0)",
+        ("2026-01-01T00:00:00Z", legacy_max_history_id),
+    )
+    await db.commit()
+
+
+async def test_insert_search_entry_records_stable_id(tmp_path):
+    """insert_search_entry stores the stable ID; omitting it or passing '' stores NULL."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", instance_id="Main", instance_stable_id="sid-a")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", instance_id="Main")
+    await insert_search_entry(db, "Sonarr", "missing", "Show C", instance_id="Main", instance_stable_id="")
+
+    async with db.execute("SELECT item_name, instance_stable_id FROM search_history ORDER BY id") as cursor:
+        rows = await cursor.fetchall()
+    by_name = {row[0]: row[1] for row in rows}
+    assert by_name["Show A"] == "sid-a"
+    assert by_name["Show B"] is None
+    assert by_name["Show C"] is None
+    await db.close()
+
+
+async def test_trackable_by_stable_id_follows_rename(tmp_path):
+    """get_trackable_entries(instance_stable_id=...) follows identity, not the display name."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Old Show", item_id=1, instance_id="Old", instance_stable_id="sid-a",
+    )
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", item_id=2, instance_id="Old")
+
+    by_stable = await get_trackable_entries(db, instance_stable_id="sid-a")
+    assert {e["item_id"] for e in by_stable} == {1}
+
+    by_other_stable = await get_trackable_entries(db, instance_stable_id="sid-c")
+    assert by_other_stable == []
+
+    by_name = await get_trackable_entries(db, instance_id="Old")
+    assert {e["item_id"] for e in by_name} == {2}
+    await db.close()
+
+
+async def test_trackable_stable_id_and_name_are_exclusive(tmp_path):
+    """Passing both instance_id and instance_stable_id to get_trackable_entries raises ValueError."""
+    db, db_path = await _init_test_db(tmp_path)
+    with pytest.raises(ValueError, match="instance_id"):
+        await get_trackable_entries(db, instance_id="Old", instance_stable_id="sid-a")
+    await db.close()
+
+
+async def test_pending_cap_counts_by_stable_id(tmp_path):
+    """The pending cap scoped by stable ID follows identity: renames count, name reuse doesn't."""
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 2  # cap = 2 * PENDING_CAP_MULTIPLIER = 4
+    for i in range(4):
+        await insert_search_entry(
+            db,
+            "Sonarr",
+            "missing",
+            f"Old Show {i}",
+            instance_id="Old",
+            instance_stable_id="sid-a",
+            max_rows=max_rows,
+        )
+
+    # A different server that reuses the name "Old" has its own stable ID and is not capped.
+    await insert_search_entry(
+        db, "Sonarr", "missing", "New Server Show", instance_id="Old", instance_stable_id="sid-c", max_rows=max_rows,
+    )
+
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(
+            db,
+            "Sonarr",
+            "missing",
+            "One Too Many",
+            instance_id="New Name",  # renamed instance, same stable ID still capped
+            instance_stable_id="sid-a",
+            max_rows=max_rows,
+        )
+    await db.close()
+
+
+async def test_legacy_pending_excluded_from_trackable(tmp_path):
+    """Pre-cutover pending Sonarr rows are excluded from tracking; everything else is unaffected."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Searched", item_id=1, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Partial", item_id=2, outcome="partial")
+    legacy_max_id = 2
+    await insert_search_entry(db, "Sonarr", "missing", "Post-cutover Searched", item_id=3, outcome="searched")
+    await insert_search_entry(db, "Radarr", "missing", "Legacy Radarr Searched", item_id=4, outcome="searched")
+
+    await _insert_cutover(db, legacy_max_id)
+
+    entries = await get_trackable_entries(db)
+    item_ids = {e["item_id"] for e in entries}
+    assert item_ids == {3, 4}
+    await db.close()
+
+
+async def test_legacy_pending_excluded_from_cap(tmp_path):
+    """Legacy Sonarr pending rows don't count toward the pending cap; post-cutover rows still do."""
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 1  # cap = PENDING_CAP_MULTIPLIER * 1 = 2
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy A", instance_id="Default", max_rows=max_rows)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy B", instance_id="Default", max_rows=max_rows)
+    async with db.execute("SELECT MAX(id) FROM search_history") as cursor:
+        legacy_max_id = (await cursor.fetchone())[0]
+    await _insert_cutover(db, legacy_max_id)
+
+    # Legacy rows already fill the cap, but a new post-cutover insert still succeeds.
+    await insert_search_entry(db, "Sonarr", "missing", "Post A", instance_id="Default", max_rows=max_rows)
+    await insert_search_entry(db, "Sonarr", "missing", "Post B", instance_id="Default", max_rows=max_rows)
+
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(db, "Sonarr", "missing", "Post C", instance_id="Default", max_rows=max_rows)
+    await db.close()
+
+
+async def test_legacy_pending_rows_untouched(tmp_path):
+    """Legacy rows keep their outcome, detail and resolved_at, and lifetime_stats stay unchanged."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Searched", item_id=1, outcome="searched")
+    await _insert_cutover(db, 1)
+
+    async with db.execute("SELECT * FROM lifetime_stats ORDER BY app, instance_id") as cursor:
+        before_stats = [tuple(row) for row in await cursor.fetchall()]
+
+    await get_trackable_entries(db)
+    await insert_search_entry(db, "Sonarr", "missing", "Post Searched", item_id=2, outcome="searched")
+
+    async with db.execute(
+        "SELECT outcome, detail, resolved_at FROM search_history WHERE item_name = 'Legacy Searched'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "searched"
+    assert row["detail"] in (None, "")
+    assert row["resolved_at"] is None
+
+    async with db.execute("SELECT * FROM lifetime_stats ORDER BY app, instance_id") as cursor:
+        after_stats = [tuple(row) for row in await cursor.fetchall()]
+    assert after_stats == before_stats
+    await db.close()
+
+
+async def test_legacy_pending_flag_in_listings(tmp_path):
+    """get_search_history and get_recent_searches flag pre-cutover pending Sonarr rows as legacy."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Searched", item_id=1, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Resolved", item_id=2, outcome="grabbed")
+    legacy_max_id = 2
+    await insert_search_entry(db, "Sonarr", "missing", "Post Searched", item_id=3, outcome="searched")
+    await insert_search_entry(db, "Radarr", "missing", "Legacy Radarr Searched", item_id=4, outcome="searched")
+
+    await _insert_cutover(db, legacy_max_id)
+
+    history = await get_search_history(db, per_page=50)
+    flags = {e["name"]: e["is_legacy"] for e in history["entries"]}
+    assert flags["Legacy Searched"] is True
+    assert flags["Legacy Resolved"] is False
+    assert flags["Post Searched"] is False
+    assert flags["Legacy Radarr Searched"] is False
+
+    recent = await get_recent_searches(db, limit=50)
+    recent_flags = {e["name"]: e["is_legacy"] for e in recent}
+    assert recent_flags["Legacy Searched"] is True
+    assert recent_flags["Legacy Resolved"] is False
+    assert recent_flags["Post Searched"] is False
+    assert recent_flags["Legacy Radarr Searched"] is False
+    await db.close()
+
+
+async def test_no_legacy_pending_without_cutover_row(tmp_path):
+    """With no attribution_cutover row, nothing is legacy and tracking/cap behave as before."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", item_id=1, outcome="searched")
+
+    entries = await get_trackable_entries(db)
+    assert {e["item_id"] for e in entries} == {1}
+
+    history = await get_search_history(db, per_page=50)
+    assert all(e["is_legacy"] is False for e in history["entries"])
+
+    recent = await get_recent_searches(db, limit=50)
+    assert all(e["is_legacy"] is False for e in recent)
+    await db.close()
