@@ -166,6 +166,8 @@ def prioritize_batch(
     searched_log: list[str],
     batch_size: int,
     key_fn: Callable[[dict], str],
+    *,
+    exclude_keys: frozenset[str] = frozenset(),
 ) -> tuple[list, list[str], bool]:
     """Assemble a batch: never-searched first (fetch order), then top up
     already-searched oldest-first.
@@ -173,7 +175,8 @@ def prioritize_batch(
     Implements the never-searched-first dispatch algorithm (QUEUE-04/05/08/09/10):
     1. Build the set of eligible IDs from the current fetch.
     2. Prune the searched-log to currently-eligible IDs (QUEUE-10).
-    3. Partition eligible items into unsearched and already-searched.
+    3. Partition eligible items into unsearched and already-searched. Exclusion
+       (see ``exclude_keys``) is applied only at this step.
     4. Fill batch with unsearched[:batch_size]; if short, top up from the pruned
        log front (oldest-searched-first) until full or exhausted (QUEUE-05).
     5. Mark every batched item on attempt — append keys to the log; a re-searched
@@ -195,6 +198,9 @@ def prioritize_batch(
         key_fn: Callable that extracts a stable string ID from an item dict.
             Radarr/Lidarr: ``lambda m: str(m["id"])``.
             Sonarr: ``lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}'``.
+        exclude_keys: Keys to keep out of this batch's candidacy (Sonarr
+            cross-queue dedup, D-05). Excluded keys stay in the pruned log at
+            their current position and are never marked on attempt.
 
     Returns:
         Tuple of (batch, new_searched_log, pass_completed).
@@ -211,8 +217,8 @@ def prioritize_batch(
     logset = set(log)
 
     # 3. Partition into unsearched (fetch order) and already-searched
-    unsearched = [it for it in eligible_items if key_fn(it) not in logset]
-    searched = [it for it in eligible_items if key_fn(it) in logset]
+    unsearched = [it for it in eligible_items if key_fn(it) not in logset and key_fn(it) not in exclude_keys]
+    searched = [it for it in eligible_items if key_fn(it) in logset and key_fn(it) not in exclude_keys]
 
     # 4. Batch: unsearched first, top up oldest-searched-first (log front = oldest)
     # Clamp to max(0, batch_size) so a negative batch_size always yields [] even
@@ -241,7 +247,8 @@ def deduplicate_to_seasons(episodes: list[dict]) -> list[dict]:
     """Deduplicate Sonarr episode records to unique (seriesId, seasonNumber) pairs.
 
     Order is preserved (first occurrence wins). Returns dicts with
-    ``seriesId``, ``seasonNumber``, ``display_name``, and ``episode_count`` keys.
+    ``seriesId``, ``seasonNumber``, ``display_name``, ``series_title``, and
+    ``episode_count`` keys.
 
     Args:
         episodes: List of episode dicts from Sonarr API.
@@ -263,6 +270,7 @@ def deduplicate_to_seasons(episodes: list[dict]) -> list[dict]:
                 "seriesId": series_id,
                 "seasonNumber": season_number,
                 "display_name": f"{title} - Season {season_number}",
+                "series_title": title,
                 "episode_count": 1,
             }
             seen[key] = entry
@@ -1210,13 +1218,25 @@ async def run_sonarr_cycle(
         hard_max=hard_max,
     )
 
+    def _season_key(s: dict) -> str:
+        return f'{s["seriesId"]}:{s["seasonNumber"]}'
+
     # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
     # and its searched-log is left exactly as it was, R-07) ---
+    # `claimed` holds the missing batch's keys, taken on attempt (D-05): it is
+    # passed into the cutoff prioritize_batch call below as exclude_keys so a
+    # season eligible for both queues gets at most one engine dispatch per
+    # cycle. It is a local, cycle-scoped variable -- never persisted to `ist`.
+    claimed: frozenset[str] = frozenset()
     if missing_episodes is not None:
         batch, new_log, pass_done = prioritize_batch(
             missing_seasons, ist.get("missing_searched", []), missing_limit,
-            key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+            key_fn=_season_key,
         )
+        # Claim happens unconditionally on attempt, independent of
+        # _search_and_record's return value below (D-05: "even if its
+        # command fails").
+        claimed = frozenset(_season_key(s) for s in batch)
         for season in batch:
             await _search_and_record(
                 command=lambda sid=season["seriesId"], sn=season["seasonNumber"]: client.search_season(sid, sn),
@@ -1242,9 +1262,24 @@ async def run_sonarr_cycle(
 
     # --- Cutoff queue: dispatch ---
     if cutoff_episodes is not None:
+        # `cutoff_seasons` is passed in FULL and unfiltered -- exclusion
+        # happens inside prioritize_batch at the batch-candidacy step only
+        # (exclude_keys). Pre-filtering this list before the call would drop
+        # a claimed season out of eligible_ids and silently prune it from
+        # cutoff_searched, breaking DEDUP-02's "neither marked as searched
+        # nor removed" (RESEARCH Pitfall 3).
+        if cutoff_limit > 0:
+            for season in cutoff_seasons:
+                if _season_key(season) in claimed:
+                    logger.info(
+                        "Sonarr: Upgrade queue skipped {series} S{season} —"
+                        " already attempted by missing queue this cycle",
+                        series=season.get("series_title", f"Series {season['seriesId']}"),
+                        season=season["seasonNumber"],
+                    )
         batch, new_log, pass_done = prioritize_batch(
             cutoff_seasons, ist.get("cutoff_searched", []), cutoff_limit,
-            key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+            key_fn=_season_key, exclude_keys=claimed,
         )
         for season in batch:
             await _search_and_record(
