@@ -1027,3 +1027,68 @@ def test_scoped_count_unknown_tampered_values_ignored() -> None:
         "tag_warnings": ["x", {"field": 5, "tag": None}, {"field": "missing"}],
     })
     assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_resolved_stamp_from_previous_tag_untrusted() -> None:
+    """Greptile 4305219336: a resolved queue's count stamped under a previous tag is unknown."""
+    result = _scoped_count_unknown(
+        {"scoped_count_tags": {"missing": "old"}, "missing_eligible": 3},
+        configured_tags={"missing": "new", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_resolved_stamp_matching_current_tag_trusted() -> None:
+    """A resolved queue's count stamped with the currently configured tag is shown."""
+    result = _scoped_count_unknown(
+        {"scoped_count_tags": {"missing": "new", "cutoff": "up"}, "missing_eligible": 3, "cutoff_searchable": 2},
+        configured_tags={"missing": "new", "cutoff": "up"},
+        stamped_fields=("missing", "cutoff"),
+    )
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_resolved_legacy_unstamped_tagged_untrusted() -> None:
+    """vibe-check arch-001: a legacy unstamped count for a tagged queue is unknown."""
+    result = _scoped_count_unknown(
+        {"missing_eligible": 480},
+        configured_tags={"missing": "4k", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_untagged_queue_unaffected_by_config_check() -> None:
+    """An untagged queue's denominator is never hidden by the config check, stamped or not."""
+    result = _scoped_count_unknown(
+        {"missing_eligible": 480},
+        configured_tags={"missing": None, "cutoff": None},
+        stamped_fields=("missing", "cutoff"),
+    )
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_unstamped_field_not_checked() -> None:
+    """Radarr/Lidarr cutoff is never stamped, so a tagged cutoff is not hidden by the config check."""
+    result = _scoped_count_unknown(
+        {"scoped_count_tags": {"missing": "4k"}, "missing_eligible": 3},
+        configured_tags={"missing": "4k", "cutoff": "up"},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_resolved_tag_card_hides_count_from_previous_tag(client, test_app):
+    """Card route: a missing_tag change hides the old tag's count until it is recomputed."""
+    cfg = test_app.state.settings.radarr["Default"]
+    test_app.state.settings.radarr["Default"] = cfg.model_copy(update={"missing_tag": "new"})
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 3
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "old"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "0 of 3" not in text

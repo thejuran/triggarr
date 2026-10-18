@@ -275,7 +275,22 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-def _scoped_count_unknown(app_state: dict) -> dict[str, bool]:
+# Queues whose card denominator is a stamped scoped count -- mirrors the
+# engine's _stamp_scoped_counts call sites. Radarr/Lidarr cutoff denominators
+# are the raw cutoff_count, which is never stamped.
+_STAMPED_SCOPED_FIELDS: dict[str, tuple[str, ...]] = {
+    "radarr": ("missing",),
+    "sonarr": ("missing", "cutoff"),
+    "lidarr": ("missing",),
+}
+
+
+def _scoped_count_unknown(
+    app_state: dict,
+    *,
+    configured_tags: dict[str, str | None] | None = None,
+    stamped_fields: tuple[str, ...] = ("missing", "cutoff"),
+) -> dict[str, bool]:
     """Decide whether missing/cutoff progress counts must show as unknown (Phase 79 D-05/OQ1).
 
     A tag-scoped queue whose tag is unresolved must never show the unscoped
@@ -283,6 +298,12 @@ def _scoped_count_unknown(app_state: dict) -> dict[str, bool]:
     stamp and may have been computed fail-open, so they are not trusted; a kept
     count is trusted only when it was computed under the same tag that is now
     unresolved.
+
+    When ``configured_tags`` is given (the card route passes the instance's
+    current config), a resolved queue in ``stamped_fields`` with a configured
+    tag shows its saved scoped count only if it is stamped with that tag. A
+    count computed under a previous tag, or a legacy unstamped count, stays
+    unknown until a cycle or refresh recomputes it under the current tag.
 
     Everything read here comes from persisted state.json (possibly legacy or
     tampered) and is validated before use -- never trusted by shape.
@@ -319,7 +340,8 @@ def _scoped_count_unknown(app_state: dict) -> dict[str, bool]:
     result: dict[str, bool] = {}
     for field in ("missing", "cutoff"):
         if field not in unresolved:
-            result[field] = False
+            configured = configured_tags.get(field) if configured_tags else None
+            result[field] = bool(configured) and field in stamped_fields and stamps.get(field) != configured
             continue
         trusted = stamps.get(field) == unresolved[field] and isinstance(scoped_values[field], int)
         result[field] = not trusted
@@ -375,7 +397,12 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
             last_checked_stale = False
 
     last_cycle = app_state.get("last_cycle")
-    scope_unknown = _scoped_count_unknown(app_state)
+    instance_cfg = enabled[instance_name]
+    scope_unknown = _scoped_count_unknown(
+        app_state,
+        configured_tags={"missing": instance_cfg.missing_tag or None, "cutoff": instance_cfg.cutoff_tag or None},
+        stamped_fields=_STAMPED_SCOPED_FIELDS.get(app_name, ()),
+    )
 
     return {
         "name": app_name,
