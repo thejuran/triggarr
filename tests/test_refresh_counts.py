@@ -1422,8 +1422,12 @@ def _faulting_cutoff_case(app: str):
         client.search_season = AsyncMock(return_value=None)
         return run_sonarr_cycle, client, {}
     client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "A", "monitored": True}])
+    # Phase 80: a non-dict "artist" value is now a per-item malformed-record
+    # skip (_split_malformed) when a tag is configured, not an unexpected
+    # fault -- use a non-iterable "tags" value inside a well-formed artist
+    # dict instead, so this test still exercises the coarse backstop.
     client.get_wanted_cutoff = AsyncMock(
-        return_value=[{"id": 10, "title": "C", "monitored": True, "artist": 5}]
+        return_value=[{"id": 10, "title": "C", "monitored": True, "artist": {"tags": 5}}]
     )
     client.search_albums = AsyncMock(return_value=None)
     return run_lidarr_cycle, client, {"cutoff_tag": "cutoff-tag"}

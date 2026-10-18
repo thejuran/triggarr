@@ -712,8 +712,10 @@ async def _resolve_tag_scope(
 
     When neither queue has a tag configured, returns immediately without
     calling ``fetch_tags``. Otherwise awaits ``fetch_tags()`` inside the
-    existing ``(httpx.HTTPError, pydantic.ValidationError)`` catch tuple --
-    unwidened, per spec Sec7 (D-03/T-79-03). A fetch failure unresolves
+    ``(httpx.HTTPError, pydantic.ValidationError, ValueError)`` catch tuple
+    -- widened by ``ValueError`` only, for ``get_json_list``'s malformed-
+    response raise (Phase 80, same bug class as ``tag_autocomplete``); still
+    never a bare ``except Exception``, per spec Sec7 (D-03/T-79-03). A fetch failure unresolves
     every configured queue with the fixed reason "couldn't load tags"; a
     successful fetch that simply lacks the configured tag name unresolves
     it with ``f"tag '{name}' not found"`` (D-02/D-03). Both reasons are
@@ -746,7 +748,7 @@ async def _resolve_tag_scope(
     try:
         tags = await fetch_tags()
         tag_fetch_ok = True
-    except (httpx.HTTPError, pydantic.ValidationError) as exc:
+    except (httpx.HTTPError, pydantic.ValidationError, ValueError) as exc:
         logger.warning(
             "{app}: Failed to fetch tags -- tag-scoped queues skipped this cycle: {exc}",
             app=app_label,
@@ -1517,30 +1519,55 @@ async def run_lidarr_cycle(
 
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
-    # counts and searched-log stay untouched rather than being wiped to zero) ---
+    # counts and searched-log stay untouched rather than being wiped to zero).
+    # A malformed nested "artist" value is skipped per item via
+    # _split_malformed when this queue has a tag configured -- that's the
+    # only path that ever reads "artist" (Pitfall 4) -- before the rest of
+    # the chain runs (ROBUST-01); the try/except below is the backstop for
+    # any other unexpected fault, mirroring the cutoff chain's existing
+    # guard. ---
     if missing is not None:
-        missing = filter_monitored(missing)
-        ist["missing_monitored"] = len(missing)
-        if scope.missing_tag_id is not None:
-            missing = filter_by_tag(missing, scope.missing_tag_id, _lidarr_tags)
-            logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
-        ist["missing_eligible"] = len(missing)
-        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        try:
+            missing = filter_monitored(missing)
+            ist["missing_monitored"] = len(missing)
+            if scope.missing_tag_id is not None:
+                missing, skipped = _split_malformed(missing, "artist")
+                if skipped:
+                    _log_malformed_skip("Lidarr", "missing", "artist", skipped)
+                    tally.record_malformed("missing", len(skipped))
+                missing = filter_by_tag(missing, scope.missing_tag_id, _lidarr_tags)
+                logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+            ist["missing_eligible"] = len(missing)
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        except (AttributeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Lidarr: Missing queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping missing this cycle",
+                etype=type(exc).__name__,
+            )
+            missing = None
+            if missing_active:
+                tally.mark_unevaluated("missing", f"malformed data ({type(exc).__name__})")
 
     # --- Cutoff queue: filter chain (moved up so both queues' eligible
     # counts are known before rebalancing hard-max slots, R-01 amended).
-    # Guarded against malformed nested records (e.g. non-iterable tags):
-    # a cutoff-side data fault must never block the missing queue's
-    # dispatch below -- this is the pre-existing per-app guarantee this
-    # reordering must not regress. Phase 80 owns richer per-item
-    # malformed-record counting; this is just the crash guard. On a fault
-    # the queue is left unprocessed (None): never dispatched, its
-    # searched-log untouched, and -- when active -- marked unevaluated so
-    # the cycle can never grade Nothing needed searching (spec 3.1). ---
+    # A malformed nested "artist" value is skipped per item via
+    # _split_malformed when this queue has a tag configured (Pitfall 4);
+    # the except below is the backstop for any other unexpected fault -- a
+    # cutoff-side data fault must never block the missing queue's dispatch
+    # above, which is the pre-existing per-app guarantee this reordering
+    # must not regress. On a fault the queue is left unprocessed (None):
+    # never dispatched, its searched-log untouched, and -- when active --
+    # marked unevaluated so the cycle can never grade Nothing needed
+    # searching (spec 3.1). ---
     if cutoff is not None:
         try:
             cutoff = filter_monitored(cutoff)
             if scope.cutoff_tag_id is not None:
+                cutoff, skipped = _split_malformed(cutoff, "artist")
+                if skipped:
+                    _log_malformed_skip("Lidarr", "cutoff", "artist", skipped)
+                    tally.record_malformed("cutoff", len(skipped))
                 cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _lidarr_tags)
                 logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
         except (AttributeError, KeyError, TypeError) as exc:
