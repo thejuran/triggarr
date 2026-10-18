@@ -211,21 +211,23 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 - [ ] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle
 - [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note
 
-### Milestone status — reviewed 2026-10-17
+### Milestone status — reviewed 2026-10-18
 
-Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, and REQUIREMENTS.md. It describes recorded implementation progress, not a fresh test run or live NAS inspection.
+Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, REQUIREMENTS.md, merged PRs and the deployed build. Phases 77–79 merged via PR #26 (merge commit `c914cbc`, 2026-10-18), published as `ghcr.io/thejuran/triggarr:main` and deployed to production (running `c914cbc` verified). The connection-pill polling loop found by the walkthrough (pre-existing since Phase 60) was fixed in PR #27 (`d41b484`). The version badge still reads v2.11.0; the bump belongs to the v2.12 release process, and `c914cbc` identifies the tested build until then.
 
 | Phase | Implemented / completed | Remaining | Status |
 |-------|-------------------------|-----------|--------|
-| 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | 1 deployed log-viewer walkthrough check in 77-HUMAN-UAT.md. | Implementation complete; human verification pending |
-| 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | 2 dashboard/interaction checks in 78-HUMAN-UAT.md. | Implementation complete; human verification pending |
-| 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | 3 live badge/polling/fetch-failure checks in 79-HUMAN-UAT.md, deferred to the milestone-end walkthrough (owner-approved 2026-10-18). | Implementation complete; human verification pending |
+| 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | None. Live UAT passed 2026-10-18 on the sandbox (same `c914cbc` image). | Complete — merged and deployed; UAT complete (live) |
+| 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | None open. 78-1 passed live. 78-2: green/red/gray grades and the post-first-cycle label passed live; amber Partial and the legacy-label states verified only by local fixture (owner-accepted). | Complete — merged and deployed; UAT partial (live + fixture) |
+| 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | None open. 79-1 and 79-2 passed live on the sandbox (badge auto-clear also confirmed the PR #26 tag-cache refetch); 79-3 upstream tag-fetch failure has automated-test coverage only. | Complete — merged and deployed; UAT partial (79-3 automated only) |
 | 80 — Cycle Robustness & Sonarr Season Dedup | No completed plans recorded. | Malformed-record handling, batch resilience, cross-queue season dedup, tests. | Not started — planning required |
 | 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Sandbox setup/connectivity reported in the external runbook; no completed implementation plans recorded. | Attribution ownership/migration, cutover note, version reporting, regression tests, live v4/v5 compatibility matrix. | Not started — planning required |
 
-**Counts:** 3/5 phases have completed implementation; 14/14 currently defined plans have summaries (Phases 80/81 still need plans, so 14/14 is not a milestone completion percentage). REQUIREMENTS.md marks 13/28 requirements complete. Public v2.12.0 release remains pending implementation, verification, and the milestone-end NAS walkthrough.
+**Counts:** 3/5 phases complete, merged and deployed; 14/14 currently defined plans have summaries (Phases 80/81 still need plans, so 14/14 is not a milestone completion percentage). REQUIREMENTS.md marks 13/28 requirements complete. Public v2.12.0 release remains pending Phases 80–81, their verification, and the release version bump.
 
-**Next work:** plan/execute Phase 80; plan/execute Phase 81 and its compatibility task; complete the deferred NAS walkthrough checks before release.
+**Walkthrough evidence (2026-10-18):** `.planning/walkthroughs/20261018-023529-pending-live-human-checks/` (local, git-ignored). No searches ran during it, so it is not evidence of Sonarr v5 search compatibility; SONARRV5-01..03 remain open.
+
+**Next work:** plan/execute Phase 80; plan/execute Phase 81 and its compatibility task (including the live v4/v5 search matrix); bump the version in the v2.12 release.
 
 ### Phase 77: Secret & Reset-Token Log Hygiene
 
@@ -370,9 +372,9 @@ Plans:
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
-| 77. Secret & Reset-Token Log Hygiene | 5/5 | Implemented; NAS UAT pending | 2026-10-08 (implementation) |
-| 78. Honest Cycle Outcomes | 5/5 | Implemented; NAS UAT pending | 2026-10-09 (implementation) |
-| 79. Tag-Scoped Searches Stay in Scope | 3/4 | In Progress|  |
+| 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete | 2026-10-08 (merged/deployed 2026-10-18) |
+| 78. Honest Cycle Outcomes | 5/5 | Complete (UAT partial: fixture for amber/legacy) | 2026-10-09 (merged/deployed 2026-10-18) |
+| 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
 | 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
 | 81. Correct Sonarr Grab Attribution + v5 Compatibility | 0/TBD | Not started; sandbox connectivity reported | - |
 

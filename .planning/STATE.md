@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
 **Current focus:** Phase 80 — cycle robustness & sonarr season dedup
 
-> **Release tags held locally, unpushed:** `v2.11.0` (prior milestone) and `v2.10.0` are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
+> **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`). The version string still reads v2.11.0 until the v2.12 release bump.
 
 ## Current Position
 
@@ -216,8 +216,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-10-18T00:46:53.245Z
-Stopped at: Completed 79-04-PLAN.md
+Last session: 2026-10-18
+Stopped at: Phase 79 complete; PR #26 and PR #27 merged; Phase 80 not started
 Resume file: None
 
 ## Operator Next Steps
