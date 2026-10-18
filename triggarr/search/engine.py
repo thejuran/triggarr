@@ -849,16 +849,10 @@ async def run_radarr_cycle(
         return state
 
     if missing is None and cutoff is None:
-        # R-07: both queues are inactive and neither fetch could refresh its
-        # count. That is real evidence the host is unreachable, but nothing
-        # was configured to search this cycle -- grade nothing_needed (no
-        # active queues), never Failed.
-        logger.warning(
-            "Radarr: both queues inactive and neither could be fetched -- "
-            "marked unreachable; not graded Failed"
+        # R-07: both queues inactive and neither could be fetched.
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Radarr"
         )
-        _mark_unreachable(ist)
-        _finalize_cycle(ist, tally, instance_config)
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -881,18 +875,11 @@ async def run_radarr_cycle(
     ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
-    missing_limit = instance_config.search_missing_count
-    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
-    orig_missing, orig_cutoff = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
-    if hard_max > 0 and (missing_limit != orig_missing or cutoff_limit != orig_cutoff):
-        logger.debug(
-            "Radarr: Hard max {max} applied -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
+    orig_missing, orig_cutoff = instance_config.search_missing_count, instance_config.search_cutoff_count
+    missing_limit, cutoff_limit = _cap_and_log(
+        app_label="Radarr", missing_configured=orig_missing, cutoff_configured=orig_cutoff, hard_max=hard_max
+    )
 
     # --- Tag resolution (only when at least one tag is configured) ---
     # RES-03: resolve via the cache-aware resolver when supplied
@@ -1107,16 +1094,10 @@ async def run_sonarr_cycle(
         return state
 
     if missing_episodes is None and cutoff_episodes is None:
-        # R-07: both queues are inactive and neither fetch could refresh its
-        # count. That is real evidence the host is unreachable, but nothing
-        # was configured to search this cycle -- grade nothing_needed (no
-        # active queues), never Failed.
-        logger.warning(
-            "Sonarr: both queues inactive and neither could be fetched -- "
-            "marked unreachable; not graded Failed"
+        # R-07: both queues inactive and neither could be fetched.
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Sonarr"
         )
-        _mark_unreachable(ist)
-        _finalize_cycle(ist, tally, instance_config)
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -1139,18 +1120,11 @@ async def run_sonarr_cycle(
     ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
-    missing_limit = instance_config.search_missing_count
-    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
-    orig_missing, orig_cutoff = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
-    if hard_max > 0 and (missing_limit != orig_missing or cutoff_limit != orig_cutoff):
-        logger.debug(
-            "Sonarr: Hard max {max} applied -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
+    orig_missing, orig_cutoff = instance_config.search_missing_count, instance_config.search_cutoff_count
+    missing_limit, cutoff_limit = _cap_and_log(
+        app_label="Sonarr", missing_configured=orig_missing, cutoff_configured=orig_cutoff, hard_max=hard_max
+    )
 
     # --- Tag resolution (only when at least one tag is configured) ---
     # RES-03: resolve via the cache-aware resolver when supplied
@@ -1373,16 +1347,10 @@ async def run_lidarr_cycle(
         return state
 
     if missing is None and cutoff is None:
-        # R-07: both queues are inactive and neither fetch could refresh its
-        # count. That is real evidence the host is unreachable, but nothing
-        # was configured to search this cycle -- grade nothing_needed (no
-        # active queues), never Failed.
-        logger.warning(
-            "Lidarr: both queues inactive and neither could be fetched -- "
-            "marked unreachable; not graded Failed"
+        # R-07: both queues inactive and neither could be fetched.
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Lidarr"
         )
-        _mark_unreachable(ist)
-        _finalize_cycle(ist, tally, instance_config)
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -1405,18 +1373,11 @@ async def run_lidarr_cycle(
     ist["total_items"] = total_items
 
     # Apply hard max cap
-    missing_limit = instance_config.search_missing_count
-    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
-    orig_missing, orig_cutoff = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
-    if hard_max > 0 and (missing_limit != orig_missing or cutoff_limit != orig_cutoff):
-        logger.debug(
-            "Lidarr: Hard max {max} applied -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
+    orig_missing, orig_cutoff = instance_config.search_missing_count, instance_config.search_cutoff_count
+    missing_limit, cutoff_limit = _cap_and_log(
+        app_label="Lidarr", missing_configured=orig_missing, cutoff_configured=orig_cutoff, hard_max=hard_max
+    )
 
     # --- Tag resolution (only when at least one tag is configured) ---
     # RES-03: resolve via the cache-aware resolver when supplied
