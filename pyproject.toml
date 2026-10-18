@@ -22,6 +22,7 @@ dependencies = [
     "python-multipart>=0.0.31",
     "bcrypt",
     "itsdangerous",
+    "tomlkit>=0.15.2",
 ]
 
 [project.optional-dependencies]
