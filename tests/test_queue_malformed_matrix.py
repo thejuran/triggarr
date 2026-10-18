@@ -222,6 +222,102 @@ async def test_null_nested_object_skipped_per_item(tmp_path, app, queue):
 
 
 # ---------------------------------------------------------------------------
+# Dispatch-key type: an ID the client contract cannot take is a malformed record
+# ---------------------------------------------------------------------------
+
+# The search commands take JSON integers: RadarrClient.search_movies(list[int]),
+# LidarrClient.search_albums(list[int]), SonarrClient.search_season(int, int).
+# Booleans, fractional or integral floats, numeric strings, other strings,
+# nulls and lists are not integers there, and must not be coerced into one.
+_BAD_IDS = {
+    "true": True,
+    "false": False,
+    "fraction": 2.5,
+    "integral-float": 2.0,
+    "numeric-string": "2",
+    "string": "abc",
+    "null": None,
+    "list": [2],
+}
+# (app, field) pairs dispatch is keyed on.
+_ID_FIELDS = [("radarr", "id"), ("lidarr", "id"), ("sonarr", "seriesId"), ("sonarr", "seasonNumber")]
+
+
+def _dispatched(fake: _FakeArr) -> list:
+    """Every search target POSTed, unsorted and uncoerced (Sonarr as (seriesId, seasonNumber))."""
+    out: list = []
+    for body in fake.posts:
+        if "movieIds" in body:
+            out += body["movieIds"]
+        elif "albumIds" in body:
+            out += body["albumIds"]
+        elif "seriesId" in body:
+            out.append((body["seriesId"], body["seasonNumber"]))
+    return out
+
+
+def _expected_targets(app: str, ids) -> list:
+    return [(i, 1) for i in ids] if app == "sonarr" else list(ids)
+
+
+@pytest.mark.parametrize("tagged", [False, True], ids=["untagged", "tag-scoped"])
+@pytest.mark.parametrize("bad", list(_BAD_IDS))
+@pytest.mark.parametrize("queue", QUEUES)
+@pytest.mark.parametrize(("app", "field"), _ID_FIELDS, ids=[f"{a}-{f}" for a, f in _ID_FIELDS])
+async def test_wrongly_typed_dispatch_id_skipped_per_item(tmp_path, app, field, queue, bad, tagged):
+    """A record whose dispatch key is not an integer is skipped and counted once
+    on its own queue: it is never sent to the *arr (so it can never become a
+    failed command), never faults the rest of its queue, and the valid records
+    in both queues are still searched."""
+    bad_record = _record(app, 2)
+    bad_record[field] = _BAD_IDS[bad]
+    records = [_record(app, 1), bad_record, _record(app, 3)]
+    fake = _FakeArr({queue: _page(records), _OTHER[queue]: _page(_other_queue_record(app))})
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=queue if tagged else None)
+    rec = ist["last_cycle"]
+
+    dispatched = _dispatched(fake)
+    expected = _expected_targets(app, [1, 3, 90])
+    assert len(dispatched) == len(expected)
+    assert all(t in dispatched for t in expected), dispatched
+    assert rec["malformed_by_queue"] == {queue: 1}
+    assert rec["unevaluated"] == []
+    assert rec["eligible"][queue] == 2
+    assert rec["failed"] == 0
+    assert rec["accepted"] == 3
+    assert rec["grade"] == "partial"
+    if queue == "missing" and app != "sonarr":
+        assert ist["missing_monitored"] == 2
+        assert ist["missing_eligible"] == 2
+
+
+@pytest.mark.parametrize("queue", QUEUES)
+@pytest.mark.parametrize("app", APPS)
+async def test_supported_integer_ids_still_searched(tmp_path, app, queue):
+    """Guardrail: integer IDs the clients accept are never screened out -- large
+    IDs on every app, and Sonarr season 0 (specials are an ordinary key, D-09)."""
+    big = 2**31 + 7
+    if app == "sonarr":
+        specials = _record(app, 2)
+        specials["seasonNumber"] = 0
+        large = _record(app, big)
+        records = [_record(app, 1), specials, large]
+        expected = [(1, 1), (2, 0), (big, 1), (90, 1)]
+    else:
+        records = [_record(app, 1), _record(app, big)]
+        expected = [1, big, 90]
+    fake = _FakeArr({queue: _page(records), _OTHER[queue]: _page(_other_queue_record(app))})
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=None)
+    rec = ist["last_cycle"]
+
+    assert sorted(_dispatched(fake)) == sorted(expected)
+    assert rec["malformed_by_queue"] == {}
+    assert rec["grade"] == "success"
+
+
+# ---------------------------------------------------------------------------
 # Truthful saved counts: a skipped malformed record is not a monitored record
 # ---------------------------------------------------------------------------
 
