@@ -24,10 +24,10 @@ last_updated: "2026-10-18T16:40:00Z"
 last_activity: 2026-10-18 -- PR #28 review fixes committed
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 3
   total_plans: 19
   completed_plans: 19
-  percent: 80
+  percent: 60
 ---
 ```
 
@@ -104,6 +104,7 @@ Status: Phase 80 executed — PR #28 open, in review
 
 - [x] **Phase 77: Secret & Reset-Token Log Hygiene** - Reset token never reaches the viewer
 - [x] **Phase 78: Honest Cycle Outcomes** - Each cycle grades Success/Partial/Failed
+- [x] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag never widens a search
 - [ ] **Phase 80: Cycle Robustness** - A malformed record can't wedge a cycle
 - [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit exactly once
 ```
