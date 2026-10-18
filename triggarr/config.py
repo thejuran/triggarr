@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import secrets
 import shutil
 import sys
 import tempfile
@@ -15,7 +16,7 @@ import tomli_w
 from loguru import logger
 from pydantic import ValidationError
 
-from triggarr.models.config import Settings
+from triggarr.models.config import APP_TYPES, Settings
 
 # Default commented config template written on first run.
 # Instance configuration is managed through the web UI -- radarr/sonarr
@@ -51,6 +52,38 @@ log_level = "info"
 
 # Keys that appear directly under [radarr] or [sonarr] in v2.2 flat format
 _V22_FLAT_KEYS = {"url", "api_key", "enabled"}
+
+
+def new_instance_id() -> str:
+    """Return a fresh permanent instance ID (32 lowercase hex chars from a CSPRNG)."""
+    return secrets.token_hex(16)
+
+
+def _settings_to_dict(settings: Settings) -> dict:
+    """Convert Settings to a plain dict suitable for TOML serialization.
+
+    Lives in config.py so both the web routes and config helpers share it. This
+    is still the sole extraction point for SecretStr -> plain string for TOML
+    serialization outside of HTTP client init (see CLAUDE.md SecretStr convention).
+    """
+    result: dict = {"general": settings.general.model_dump()}
+    for app_name in APP_TYPES:
+        instances = getattr(settings, app_name)
+        result[app_name] = {}
+        for inst_name, cfg in instances.items():
+            d = cfg.model_dump()
+            d["api_key"] = cfg.api_key.get_secret_value()  # TOML serialization extraction
+            result[app_name][inst_name] = d
+    # Auth section: extract SecretStr values for TOML serialization
+    auth = settings.auth
+    result["auth"] = {
+        "method": auth.method,
+        "username": auth.username,
+        "password_hash": auth.password_hash.get_secret_value(),
+        "api_key": auth.api_key.get_secret_value(),
+        "session_secret": auth.session_secret.get_secret_value(),
+    }
+    return result
 
 
 def _is_v22_format(data: dict) -> bool:

@@ -43,7 +43,7 @@ from triggarr.clients.base import Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.config import _atomic_toml_write, load_settings
+from triggarr.config import _atomic_toml_write, _settings_to_dict, load_settings
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
@@ -246,32 +246,6 @@ def _safe_next_url(next_param: str | None) -> str:
     if not next_param.startswith("/"):
         return "/"
     return next_param
-
-
-def _settings_to_dict(settings: SettingsModel) -> dict:
-    """Convert Settings to a plain dict suitable for TOML serialization.
-
-    This is the sole extraction point for SecretStr -> plain string outside of
-    HTTP client init (see CLAUDE.md SecretStr convention).
-    """
-    result: dict = {"general": settings.general.model_dump()}
-    for app_name in APP_TYPES:
-        instances = getattr(settings, app_name)
-        result[app_name] = {}
-        for inst_name, cfg in instances.items():
-            d = cfg.model_dump()
-            d["api_key"] = cfg.api_key.get_secret_value()  # TOML serialization extraction
-            result[app_name][inst_name] = d
-    # Auth section: extract SecretStr values for TOML serialization
-    auth = settings.auth
-    result["auth"] = {
-        "method": auth.method,
-        "username": auth.username,
-        "password_hash": auth.password_hash.get_secret_value(),
-        "api_key": auth.api_key.get_secret_value(),
-        "session_secret": auth.session_secret.get_secret_value(),
-    }
-    return result
 
 
 @router.get("/health")
