@@ -114,6 +114,24 @@ def _split_malformed(items: list, nested_key: str | None) -> tuple[list[dict], l
     return valid, skipped
 
 
+def _split_non_list(items: list[dict], key: str) -> tuple[list[dict], list[dict]]:
+    """Split records whose ``key`` is present but not a list (e.g. ``"tags": null``).
+
+    Used per item before a tag filter so one record with a malformed tags value
+    is skipped and counted on its own instead of faulting the whole queue
+    (ROBUST-01). A record where ``key`` is absent is kept -- the tag extractors
+    already default a missing key to ``[]``.
+    """
+    valid: list[dict] = []
+    skipped: list[dict] = []
+    for item in items:
+        if key in item and not isinstance(item[key], list):
+            skipped.append(item)
+        else:
+            valid.append(item)
+    return valid, skipped
+
+
 def _log_malformed_skip(app_label: str, queue: str, nested_key: str, skipped: list) -> None:
     """Log one warning for a batch of malformed records skipped from one queue (D-08).
 
@@ -984,26 +1002,34 @@ async def run_radarr_cycle(
     # --- Missing queue: filter chain (guarded -- None means the fetch
     # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
     # counts and searched-log stay untouched rather than being wiped to zero).
-    # A record that is not an object at all is skipped and counted per item
-    # first (ROBUST-01) -- filter_monitored would otherwise raise on it; the
-    # try/except below is the backstop for any other malformed data (e.g. a
-    # non-iterable tags value), mirroring the cutoff chain's guard. ---
+    # A record that is not an object at all, or (on a tag-scoped queue) a movie
+    # whose tags value is not a list, is skipped and counted per item first
+    # (ROBUST-01), so the rest of the queue is still searched; the try/except
+    # below is the backstop for any other malformed data, mirroring the cutoff
+    # chain's guard. Counts are written to ist only once the whole chain has
+    # succeeded, so a fault leaves the previous monitored/eligible pair intact. ---
     if missing is not None:
         try:
             missing, skipped = _split_malformed(missing, None)
             if skipped:
                 _log_malformed_skip("Radarr", "missing", "record", skipped)
                 tally.record_malformed("missing", len(skipped))
+            if scope.missing_tag_id is not None:
+                missing, skipped = _split_non_list(missing, "tags")
+                if skipped:
+                    _log_malformed_skip("Radarr", "missing", "tags", skipped)
+                    tally.record_malformed("missing", len(skipped))
             missing = filter_monitored(missing)
-            ist["missing_monitored"] = len(missing)
+            missing_monitored = len(missing)
             if scope.missing_tag_id is not None:
                 missing = filter_by_tag(missing, scope.missing_tag_id, _radarr_tags)
                 logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
             if settings.general.skip_unreleased:
                 missing = filter_unreleased_movies(missing)
-                skipped_unreleased = ist["missing_monitored"] - len(missing)
+                skipped_unreleased = missing_monitored - len(missing)
                 if skipped_unreleased > 0:
                     logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
+            ist["missing_monitored"] = missing_monitored
             ist["missing_eligible"] = len(missing)
             _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
         except (AttributeError, KeyError, TypeError) as exc:
