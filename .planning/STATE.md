@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: planning
+status: executing
 stopped_at: Phase 80 context gathered
-last_updated: "2026-10-18T03:59:18.335Z"
-last_activity: 2026-10-18 -- Phase 80 planning complete
+last_updated: "2026-10-18T14:42:22.879Z"
+last_activity: 2026-10-18 -- Phase 80 execution started
 progress:
   total_phases: 5
   completed_phases: 3
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 80 — cycle robustness & sonarr season dedup
+**Current focus:** Phase 80 — cycle-robustness-sonarr-season-dedup
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`). The version string still reads v2.11.0 until the v2.12 release bump.
 
 ## Current Position
 
-Phase: 80
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-10-18 -- Phase 80 planning complete
+Phase: 80 (cycle-robustness-sonarr-season-dedup) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 80
+Last activity: 2026-10-18 -- Phase 80 execution started
 
 ### v2.12 milestone shape
 
