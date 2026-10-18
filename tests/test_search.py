@@ -278,6 +278,72 @@ def test_prioritize_batch_key_fn_radarr_int_to_str():
 
 
 # ---------------------------------------------------------------------------
+# prioritize_batch exclude_keys (DEDUP-01/02, D-05) -- Sonarr cross-queue dedup
+# ---------------------------------------------------------------------------
+
+
+def _letter_items(*letters: str) -> list[dict]:
+    """Build fake item dicts keyed by letter id (for exclude_keys dedup tests)."""
+    return [{"id": letter} for letter in letters]
+
+
+def test_prioritize_batch_exclude_keys_fills_from_others():
+    """An excluded key is never a batch candidate; the batch fills to size from
+    the other eligible items instead (DEDUP-01)."""
+    items = _letter_items("a", "b", "c", "d")
+    batch, new_log, pass_completed = prioritize_batch(items, [], 2, _id_key, exclude_keys=frozenset({"a"}))
+    assert [it["id"] for it in batch] == ["b", "c"]
+    assert new_log == ["b", "c"]
+    assert pass_completed is False
+
+
+def test_prioritize_batch_exclude_keys_preserves_log_position():
+    """An excluded key already in the log keeps its original relative position --
+    it is neither marked searched (moved to tail) nor removed (DEDUP-02)."""
+    items = _letter_items("a", "b", "c")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a", "b"], 1, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert [it["id"] for it in batch] == ["c"]
+    assert new_log == ["a", "b", "c"]
+    assert pass_completed is False
+
+
+def test_prioritize_batch_exclude_keys_topup_skips_excluded():
+    """Top-up never pulls an excluded already-searched item; the excluded key
+    stays in new_log at its existing position (DEDUP-02)."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a", "b"], 2, _id_key, exclude_keys=frozenset({"a"})
+    )
+    assert [it["id"] for it in batch] == ["b"]
+    assert new_log == ["a", "b"]
+    # pass_completed True only because every eligible id ("a" and "b") is in new_log
+    assert pass_completed is True
+
+
+def test_prioritize_batch_exclude_keys_no_pass_complete_when_excluded_unsearched():
+    """An excluded key that was never searched blocks pass-completion -- it is
+    never added to new_log while excluded."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(items, [], 2, _id_key, exclude_keys=frozenset({"a"}))
+    assert [it["id"] for it in batch] == ["b"]
+    assert "a" not in new_log
+    assert pass_completed is False
+
+
+def test_prioritize_batch_exclude_keys_all_excluded():
+    """Every eligible key excluded -> empty batch, pruned log unchanged, no pass completion."""
+    items = _letter_items("a", "b")
+    batch, new_log, pass_completed = prioritize_batch(
+        items, ["a", "b"], 2, _id_key, exclude_keys=frozenset({"a", "b"})
+    )
+    assert batch == []
+    assert new_log == ["a", "b"]
+    assert pass_completed is False
+
+
+# ---------------------------------------------------------------------------
 # deduplicate_to_seasons
 # ---------------------------------------------------------------------------
 
