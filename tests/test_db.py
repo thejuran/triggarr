@@ -2024,7 +2024,10 @@ async def test_ownership_cross_instance_same_grab_id(tmp_path):
         instance_stable_id="sid-b", owned_grabs=[OwnedGrab(501, 9002, 20, 1)],
     )
 
-    async with db.execute("SELECT instance_stable_id, history_id FROM grab_ownership WHERE grab_id = 501 ORDER BY instance_stable_id") as cursor:
+    async with db.execute(
+        "SELECT instance_stable_id, history_id FROM grab_ownership "
+        "WHERE grab_id = 501 ORDER BY instance_stable_id"
+    ) as cursor:
         rows = await cursor.fetchall()
     assert [tuple(r) for r in rows] == [("sid-a", 1), ("sid-b", 2)]
     await db.close()
@@ -2151,7 +2154,8 @@ async def test_lifetime_increment_never_touches_unassociated_rows(tmp_path):
     )
 
     async with db.execute(
-        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_id = 'Gone' AND instance_stable_id = ''"
+        "SELECT episodes_found FROM lifetime_stats "
+        "WHERE app = 'Sonarr' AND instance_id = 'Gone' AND instance_stable_id = ''"
     ) as cursor:
         row = await cursor.fetchone()
     assert row["episodes_found"] == 4

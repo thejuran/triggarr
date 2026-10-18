@@ -13,7 +13,8 @@ import math
 import re
 import shutil
 import sqlite3
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1062,6 +1063,25 @@ _ALLOWED_STAT_COLUMNS = frozenset({
 })
 
 
+@dataclass(frozen=True)
+class OwnedGrab:
+    """A grab event to credit atomically with an outcome/stat update (ATTR-02, ATTR-04)."""
+
+    grab_id: int
+    episode_id: int | None
+    series_id: int | None
+    season_number: int | None
+
+
+@dataclass(frozen=True)
+class OwnedGrabRecord:
+    """A previously credited grab, as returned by get_owned_grabs."""
+
+    grab_id: int
+    history_id: int
+    episode_id: int | None
+
+
 async def update_outcome_and_stats(
     db: aiosqlite.Connection,
     history_id: int,
@@ -1071,29 +1091,49 @@ async def update_outcome_and_stats(
     app: str,
     queue_type: str,
     instance_id: str = "Default",
+    instance_stable_id: str | None = None,
     stat_increments: dict[str, int] | None = None,
+    owned_grabs: Sequence[OwnedGrab] = (),
 ) -> None:
-    """Atomically update a search entry's outcome and increment lifetime stats.
+    """Atomically update a search entry's outcome, lifetime stats and grab ownership.
 
-    Performs both updates in a single transaction so that a crash between the
-    outcome write and the stats write cannot leave the database inconsistent.
+    Performs all three writes in a single transaction so that a crash or an
+    already-owned grab_id cannot leave the database inconsistent: either
+    everything here lands, or none of it does.
 
     Args:
         db: Open aiosqlite connection.
         history_id: Primary key of the search_history row to update.
         outcome: New outcome value (e.g. "grabbed", "partial", "unresolved").
         detail: Human-readable detail string.
-        app: Application name for lifetime_stats lookup.
+        app: Application name for lifetime_stats/ownership lookup.
         queue_type: Queue type (unused in SQL, kept for caller convenience/logging).
-        instance_id: Instance name for lifetime_stats composite key lookup.
+        instance_id: Instance display name. Used for the lifetime_stats
+            lookup only when *instance_stable_id* is not given (legacy
+            callers); stored as the row's name when a new stable-ID row is
+            created.
+        instance_stable_id: Stable per-instance ID. When given, lifetime
+            increments and ownership are keyed by this identity instead of
+            the display name: a rename keeps adding to the same row (whose
+            stored name stays as it was), and a different server that
+            reuses an old name gets its own row (enforced by the
+            idx_lifetime_stats_app_stable_id partial unique index). Without
+            one, increments fall back to the legacy ``(app, instance_id,
+            '')`` row, created if missing.
         stat_increments: Optional mapping of column name to increment value,
             e.g. ``{"movies_found": 1}``.  Only columns in lifetime_stats are
             allowed; a ``ValueError`` is raised for unknown column names.
+        owned_grabs: Grab events to credit in the same transaction. Each
+            becomes one ``grab_ownership`` row keyed by (app,
+            instance_stable_id, grab_id); a grab_id already owned by this
+            instance raises ``sqlite3.IntegrityError`` and rolls back the
+            whole call, crediting closed rather than double-counting.
 
     Raises:
         ValueError: If *stat_increments* contains a column name not in
             ``{movies_found, movies_updated, episodes_found, episodes_updated,
-            albums_found, albums_updated}``.
+            albums_found, albums_updated}``, or if *owned_grabs* is
+            non-empty and *instance_stable_id* is falsy.
     """
     if stat_increments:
         unknown = set(stat_increments.keys()) - _ALLOWED_STAT_COLUMNS
@@ -1101,36 +1141,104 @@ async def update_outcome_and_stats(
             msg = f"Unknown stat column(s): {', '.join(sorted(unknown))}"
             raise ValueError(msg)
 
-    # 1. Update outcome and resolved_at timestamp
+    if owned_grabs and not instance_stable_id:
+        msg = "update_outcome_and_stats: owned_grabs requires a non-empty instance_stable_id"
+        raise ValueError(msg)
+
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    await db.execute(
-        "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? WHERE id = ?",
-        (outcome, detail, now, history_id),
-    )
-
-    # 2. Increment lifetime stats (if any) using composite key (app, instance_id)
-    if stat_increments:
-        # Ensure the stats row exists for this app+instance combo
+    try:
+        # 1. Update outcome and resolved_at timestamp
         await db.execute(
-            "INSERT OR IGNORE INTO lifetime_stats (app, instance_id, last_reset_at) VALUES (?, ?, ?)",
-            (app, instance_id, now),
-        )
-        set_parts = [f"{col} = {col} + ?" for col in stat_increments]
-        values = [*stat_increments.values(), app, instance_id]
-        await db.execute(
-            f"UPDATE lifetime_stats SET {', '.join(set_parts)} WHERE app = ? AND instance_id = ?",  # noqa: S608
-            values,
+            "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? WHERE id = ?",
+            (outcome, detail, now, history_id),
         )
 
-    # 3. Single commit for the whole transaction
-    await db.commit()
+        # 2. Increment lifetime stats (if any), keyed by stable ID when given (S1).
+        if stat_increments:
+            if instance_stable_id:
+                await db.execute(
+                    "INSERT OR IGNORE INTO lifetime_stats "
+                    "(app, instance_id, instance_stable_id, last_reset_at) VALUES (?, ?, ?, ?)",
+                    (app, instance_id, instance_stable_id, now),
+                )
+                set_parts = [f"{col} = {col} + ?" for col in stat_increments]
+                values = [*stat_increments.values(), app, instance_stable_id]
+                await db.execute(
+                    f"UPDATE lifetime_stats SET {', '.join(set_parts)} "  # noqa: S608
+                    "WHERE app = ? AND instance_stable_id = ?",
+                    values,
+                )
+            else:
+                # Legacy path: the (app, name, '') row, created if missing.
+                await db.execute(
+                    "INSERT OR IGNORE INTO lifetime_stats "
+                    "(app, instance_id, instance_stable_id, last_reset_at) VALUES (?, ?, '', ?)",
+                    (app, instance_id, now),
+                )
+                set_parts = [f"{col} = {col} + ?" for col in stat_increments]
+                values = [*stat_increments.values(), app, instance_id]
+                await db.execute(
+                    f"UPDATE lifetime_stats SET {', '.join(set_parts)} "  # noqa: S608
+                    "WHERE app = ? AND instance_id = ? AND instance_stable_id = ''",
+                    values,
+                )
+
+        # 3. Ownership (ATTR-02, ATTR-04). Plain INSERT, not OR IGNORE, so a
+        # grab_id already owned by this instance fails the whole call
+        # closed rather than silently double-counting. No FOREIGN KEY to
+        # search_history, so ownership survives pruning and restarts.
+        for grab in owned_grabs:
+            await db.execute(
+                "INSERT INTO grab_ownership "
+                "(app, instance_stable_id, grab_id, history_id, series_id, season_number, "
+                "episode_id, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    app, instance_stable_id, grab.grab_id, history_id,
+                    grab.series_id, grab.season_number, grab.episode_id, now,
+                ),
+            )
+
+        # 4. Single commit for the whole transaction -- outcome, stats and
+        # ownership all land together or none of them do.
+        await db.commit()
+    except Exception as exc:
+        try:
+            await db.rollback()
+        except Exception as rollback_exc:
+            logger.error(
+                "update_outcome_and_stats rollback failed for history_id={hid}: {rollback_exc} "
+                "(original: {exc_type})",
+                hid=history_id,
+                rollback_exc=rollback_exc,
+                exc_type=type(exc).__name__,
+            )
+        raise
     logger.debug(
-        "Updated history_id={hid} outcome={out} instance={inst} stats={stats}",
+        "Updated history_id={hid} outcome={out} instance={inst} stats={stats} owned={owned}",
         hid=history_id,
         out=outcome,
         inst=instance_id,
         stats=stat_increments or {},
+        owned=len(owned_grabs),
     )
+
+
+async def get_owned_grabs(
+    db: aiosqlite.Connection, *, app: str, instance_stable_id: str, series_id: int,
+) -> list[OwnedGrabRecord]:
+    """Return previously credited grabs for one (app, stable instance ID, series).
+
+    Ownership rows have no foreign key to search_history and are never
+    pruned, so this reflects every grab ever credited for the series,
+    regardless of whether the owning search_history row still exists.
+    """
+    async with db.execute(
+        "SELECT grab_id, history_id, episode_id FROM grab_ownership "
+        "WHERE app = ? AND instance_stable_id = ? AND series_id = ?",
+        (app, instance_stable_id, series_id),
+    ) as cursor:
+        rows = await cursor.fetchall()
+    return [OwnedGrabRecord(row["grab_id"], row["history_id"], row["episode_id"]) for row in rows]
 
 
 async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -> int:
