@@ -32,7 +32,7 @@ from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import init_db
-from triggarr.models.config import InstanceConfig
+from triggarr.models.config import GeneralConfig, InstanceConfig
 from triggarr.state import _default_instance_state, _default_state
 
 APPS = ["radarr", "sonarr", "lidarr"]
@@ -120,7 +120,9 @@ class _FakeArr:
         return sorted(ids)
 
 
-async def _run(tmp_path, app: str, fake: _FakeArr, *, tagged_queue: str | None, prior: dict | None = None):
+async def _run(
+    tmp_path, app: str, fake: _FakeArr, *, tagged_queue: str | None, prior: dict | None = None, settings=None
+):
     client = _CLIENTS[app]("http://arr.test", SecretStr("test-key"))
     client._client = httpx.AsyncClient(base_url="http://arr.test", transport=httpx.MockTransport(fake.handler))
     state = _default_state()
@@ -135,7 +137,7 @@ async def _run(tmp_path, app: str, fake: _FakeArr, *, tagged_queue: str | None, 
     db = await aiosqlite.connect(tmp_path / "t.db")
     await init_db(db, tmp_path / "t.db")
     try:
-        result = await _CYCLES[app](client, state, "Default", config, make_settings(), db)
+        result = await _CYCLES[app](client, state, "Default", config, settings or make_settings(), db)
     finally:
         await db.close()
         await client.close()
@@ -313,6 +315,151 @@ async def test_supported_integer_ids_still_searched(tmp_path, app, queue):
     rec = ist["last_cycle"]
 
     assert sorted(_dispatched(fake)) == sorted(expected)
+    assert rec["malformed_by_queue"] == {}
+    assert rec["grade"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# Timezone-less dates: malformed only where the queue's filter reads the date
+# ---------------------------------------------------------------------------
+
+# The filters that read dates compare them with an aware "now":
+# filter_sonarr_episodes reads airDateUtc on both Sonarr queues, and
+# filter_unreleased_movies reads digitalRelease and physicalRelease on the
+# Radarr missing queue when skip_unreleased is on (the default). A parseable
+# date without a UTC offset cannot be compared, and its timezone is not guessed.
+_NAIVE = "2020-01-01T00:00:00"
+_DATE_PATHS = [
+    ("sonarr", "missing", "airDateUtc"),
+    ("sonarr", "cutoff", "airDateUtc"),
+    ("radarr", "missing", "digitalRelease"),
+    ("radarr", "missing", "physicalRelease"),
+]
+# (records in the queue under test, records in the other queue, expected
+# searched, eligible in the queue under test, grade per spec 3.1)
+_NAIVE_SCENARIOS = {
+    "mixed": ([1, "naive", 3], [90], [1, 3, 90], 2, "partial"),
+    "only-malformed-other-queue-searched": (["naive"], [90], [90], 0, "partial"),
+    "only-malformed-nothing-searched": (["naive"], [], [], 0, "failed"),
+}
+
+
+def _naive_record(app: str, field: str) -> dict:
+    record = _record(app, 2)
+    record[field] = _NAIVE
+    return record
+
+
+@pytest.mark.parametrize("scenario", list(_NAIVE_SCENARIOS))
+@pytest.mark.parametrize(("app", "queue", "field"), _DATE_PATHS, ids=[f"{a}-{q}-{f}" for a, q, f in _DATE_PATHS])
+async def test_naive_date_skipped_per_item(tmp_path, app, queue, field, scenario):
+    """A record whose date lacks a UTC offset is skipped and counted once on its
+    own queue; it never faults the queue, valid records are still searched, and
+    the grade follows spec 3.1 (Partial with any accepted search, else Failed)."""
+    queue_ids, other_ids, searched, eligible, grade = _NAIVE_SCENARIOS[scenario]
+    records = [_naive_record(app, field) if rid == "naive" else _record(app, rid) for rid in queue_ids]
+    other = [_record(app, rid, tags=()) for rid in other_ids]
+    fake = _FakeArr({queue: _page(records), _OTHER[queue]: _page(other)})
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=None)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == searched
+    assert rec["malformed_by_queue"] == {queue: 1}
+    assert rec["unevaluated"] == []
+    assert rec["eligible"][queue] == eligible
+    assert rec["failed"] == 0
+    assert rec["accepted"] == len(searched)
+    assert rec["grade"] == grade
+
+
+async def test_radarr_naive_date_malformed_even_when_other_date_is_released(tmp_path):
+    """The unreleased filter parses both release dates, so a timezone-less one
+    is malformed even when the other date already shows the movie released."""
+    bad = _record("radarr", 2)
+    bad["digitalRelease"] = "2020-01-01T00:00:00Z"
+    bad["physicalRelease"] = _NAIVE
+    fake = _FakeArr({"missing": _page([_record("radarr", 1), bad]), "cutoff": _page([])})
+
+    ist = await _run(tmp_path, "radarr", fake, tagged_queue=None)
+
+    assert fake.searched() == [1]
+    assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+
+
+@pytest.mark.parametrize("queue", QUEUES)
+async def test_sonarr_existing_air_date_handling_unchanged(tmp_path, queue):
+    """Guardrail: absent air dates (TBA) and future dates are still skipped
+    without counting as malformed, unparseable text keeps its silent skip, and
+    aware timestamps (Z or an explicit offset) are still searched."""
+    variants = {
+        1: "2020-01-01T00:00:00Z",
+        2: "2020-01-01T00:00:00+05:00",
+        3: None,
+        4: "absent",
+        5: "2999-01-01T00:00:00Z",
+        6: "not a date",
+    }
+    records = []
+    for rid, value in variants.items():
+        record = _record("sonarr", rid)
+        if value == "absent":
+            del record["airDateUtc"]
+        else:
+            record["airDateUtc"] = value
+        records.append(record)
+    fake = _FakeArr({queue: _page(records), _OTHER[queue]: _page(_other_queue_record("sonarr"))})
+
+    ist = await _run(tmp_path, "sonarr", fake, tagged_queue=None)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == [1, 2, 90]
+    assert rec["malformed_by_queue"] == {}
+    assert rec["grade"] == "success"
+
+
+async def test_radarr_existing_release_date_handling_unchanged(tmp_path):
+    """Guardrail: no release dates still passes through, aware past dates are
+    released, and aware future dates are still skipped as unreleased, not as
+    malformed."""
+    both_absent = _record("radarr", 1)
+    digital_past = _record("radarr", 2)
+    digital_past["digitalRelease"] = "2020-01-01T00:00:00Z"
+    physical_past = _record("radarr", 3)
+    physical_past["physicalRelease"] = "2020-01-01T00:00:00+02:00"
+    both_future = _record("radarr", 4)
+    both_future["digitalRelease"] = "2999-01-01T00:00:00Z"
+    both_future["physicalRelease"] = "2999-01-01T00:00:00Z"
+    fake = _FakeArr({"missing": _page([both_absent, digital_past, physical_past, both_future]), "cutoff": _page([])})
+
+    ist = await _run(tmp_path, "radarr", fake, tagged_queue=None)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == [1, 2, 3]
+    assert rec["malformed_by_queue"] == {}
+    assert rec["grade"] == "success"
+
+
+@pytest.mark.parametrize(
+    ("app", "queue", "field", "skip_unreleased"),
+    [
+        ("radarr", "cutoff", "digitalRelease", True),
+        ("radarr", "missing", "digitalRelease", False),
+        ("lidarr", "missing", "releaseDate", True),
+        ("lidarr", "cutoff", "releaseDate", True),
+    ],
+)
+async def test_naive_date_ignored_where_no_filter_reads_it(tmp_path, app, queue, field, skip_unreleased):
+    """Guardrail: dates are validated only where a filter reads them -- not on
+    Radarr cutoff, not on Radarr missing with skip_unreleased off, and never on
+    Lidarr."""
+    fake = _FakeArr({queue: _page([_record(app, 1), _naive_record(app, field)]), _OTHER[queue]: _page([])})
+    settings = make_settings(general=GeneralConfig(skip_unreleased=skip_unreleased))
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=None, settings=settings)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == [1, 2]
     assert rec["malformed_by_queue"] == {}
     assert rec["grade"] == "success"
 
