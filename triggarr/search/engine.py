@@ -714,11 +714,12 @@ async def _resolve_tag_scope(
     calling ``fetch_tags``. Otherwise awaits ``fetch_tags()`` inside the
     ``(httpx.HTTPError, pydantic.ValidationError, ValueError)`` catch tuple
     -- widened by ``ValueError`` only, for ``get_json_list``'s malformed-
-    response raise (Phase 80, same bug class as ``tag_autocomplete``); still
-    never a bare ``except Exception``, per spec Sec7 (D-03/T-79-03). A fetch failure unresolves
-    every configured queue with the fixed reason "couldn't load tags"; a
-    successful fetch that simply lacks the configured tag name unresolves
-    it with ``f"tag '{name}' not found"`` (D-02/D-03). Both reasons are
+    response raise (Phase 80, same bug class as ``tag_autocomplete``); the
+    tuple is never widened to a bare catch-all, per spec Sec7 (D-03/T-79-03).
+    A fetch failure unresolves every configured queue with the fixed reason
+    "couldn't load tags"; a successful fetch that simply lacks the
+    configured tag name unresolves it with ``f"tag '{name}' not found"``
+    (D-02/D-03). Both reasons are
     derived from ``tag_fetch_ok``, never from the caught exception's text
     (D-02, CLAUDE.md absolute rule) -- only the log line carries
     ``_sanitize_exc(exc)``.
