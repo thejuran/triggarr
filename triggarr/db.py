@@ -660,6 +660,20 @@ async def init_db(
 # ---------------------------------------------------------------------------
 
 
+# A pre-cutover pending Sonarr row is identified at query time by comparing
+# its id to the cutover's recorded legacy_max_history_id, never by writing a
+# flag onto the row. ids are AUTOINCREMENT and never reused, so this holds
+# forever once a row is frozen -- unlike an ISO timestamp comparison, it
+# isn't sensitive to same-second ordering. Defaults to 0 (nothing is legacy)
+# when no cutover has been recorded yet.
+_LEGACY_MAX_ID_SQL = "COALESCE((SELECT legacy_max_history_id FROM attribution_cutover WHERE id = 1), 0)"
+_LEGACY_PENDING_SQL = (
+    "(app = 'Sonarr' AND COALESCE(outcome, 'searched') IN ('searched', 'partial') AND id <= "
+    + _LEGACY_MAX_ID_SQL
+    + ")"
+)
+
+
 async def insert_search_entry(
     db: aiosqlite.Connection,
     app: str,
@@ -672,6 +686,7 @@ async def insert_search_entry(
     season_number: int | None = None,
     missing_count: int | None = None,
     instance_id: str = "Default",
+    instance_stable_id: str | None = None,
     max_rows: int = 1000,
 ) -> None:
     """Insert a search log entry, enforcing bounded growth on both row classes.
@@ -713,19 +728,36 @@ async def insert_search_entry(
         season_number: Season number (Sonarr only).
         missing_count: Number of missing episodes at search time (Sonarr only).
         instance_id: Instance name for multi-instance scoping.
+        instance_stable_id: Stable per-instance ID (survives renames). When
+            given, both the pending-cap count and the stored row are scoped
+            by this identity instead of (or alongside) the display name --
+            a renamed Sonarr instance keeps counting against the same cap,
+            and a different server that reuses an old name gets its own.
+            Falsy values (``None`` or ``""``) store ``NULL``.
         max_rows: Maximum resolved rows to keep. The pending cap is
             derived as ``PENDING_CAP_MULTIPLIER * max_rows``.
     """
     # SAFETY-01b: bound pending rows so a stalled tracker cannot grow
     # the table unboundedly. Resolved inserts bypass this guard -- they
-    # are bounded by the resolved-row trim further below.
+    # are bounded by the resolved-row trim further below. Pre-cutover
+    # legacy Sonarr pending rows are excluded from the count: they are
+    # frozen and can never be resolved, so they must not count against a
+    # cap meant to catch a *currently* stalled tracker.
     if outcome == "searched":
         cap = PENDING_CAP_MULTIPLIER * max_rows
-        async with db.execute(
-            "SELECT COUNT(*) FROM search_history "
-            "WHERE outcome = 'searched' AND app = ? AND instance_id = ?",
-            (app, instance_id),
-        ) as cursor:
+        if instance_stable_id:
+            cap_query = (
+                "SELECT COUNT(*) FROM search_history "
+                "WHERE outcome = 'searched' AND app = ? AND instance_stable_id = ? AND NOT " + _LEGACY_PENDING_SQL
+            )
+            cap_params: tuple[str, str] = (app, instance_stable_id)
+        else:
+            cap_query = (
+                "SELECT COUNT(*) FROM search_history "
+                "WHERE outcome = 'searched' AND app = ? AND instance_id = ? AND NOT " + _LEGACY_PENDING_SQL
+            )
+            cap_params = (app, instance_id)
+        async with db.execute(cap_query, cap_params) as cursor:
             row = await cursor.fetchone()
         pending_count = row[0] if row is not None else 0
         if pending_count >= cap:
@@ -752,11 +784,11 @@ async def insert_search_entry(
         await db.execute(
             "INSERT INTO search_history "
             "(timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, "
-            "missing_count, instance_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "missing_count, instance_id, instance_stable_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 timestamp, app, queue_type, item_name, outcome, detail,
-                item_id, season_number, missing_count, instance_id,
+                item_id, season_number, missing_count, instance_id, instance_stable_id or None,
             ),
         )
         # Tracking-aware pruning (DEBT-03): only prune resolved rows, preserve pending (outcome='searched')
@@ -810,18 +842,20 @@ async def get_recent_searches(
         instance_id: If set, filter to entries from this instance only.
 
     Returns:
-        List of dicts with keys: name, timestamp, app, queue_type, outcome, detail, instance_id.
-        Ordered newest-first (by id DESC).
+        List of dicts with keys: name, timestamp, app, queue_type, outcome,
+        detail, instance_id, is_legacy (pre-cutover frozen Sonarr pending
+        row). Ordered newest-first (by id DESC).
     """
+    is_legacy_col = f"CASE WHEN {_LEGACY_PENDING_SQL} THEN 1 ELSE 0 END AS is_legacy"
     if instance_id is not None:
         query = (
-            "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+            f"SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id, {is_legacy_col} "
             "FROM search_history WHERE instance_id = ? ORDER BY id DESC LIMIT ?"
         )
         params: tuple[str | int, ...] = (instance_id, limit)
     else:
         query = (
-            "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+            f"SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id, {is_legacy_col} "
             "FROM search_history ORDER BY id DESC LIMIT ?"
         )
         params = (limit,)
@@ -836,6 +870,7 @@ async def get_recent_searches(
             "outcome": row["outcome"] or "searched",
             "detail": row["detail"] or "",
             "instance_id": row["instance_id"] or "Default",
+            "is_legacy": bool(row["is_legacy"]),
         }
         for row in rows
     ]
@@ -916,7 +951,8 @@ async def get_search_history(
     # Paginated results
     offset = (page - 1) * per_page
     async with db.execute(
-        f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+        f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail, instance_id, "
+        f"CASE WHEN {_LEGACY_PENDING_SQL} THEN 1 ELSE 0 END AS is_legacy "
         f"FROM search_history{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
         [*params, per_page, offset],
     ) as cursor:
@@ -932,6 +968,7 @@ async def get_search_history(
             "outcome": row["outcome"] or "searched",
             "detail": row["detail"] or "",
             "instance_id": row["instance_id"] or "Default",
+            "is_legacy": bool(row["is_legacy"]),
         }
         for row in rows
     ]
@@ -946,32 +983,54 @@ async def get_search_history(
 
 
 async def get_trackable_entries(
-    db: aiosqlite.Connection, *, instance_id: str | None = None,
+    db: aiosqlite.Connection, *, instance_id: str | None = None, instance_stable_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return search history entries eligible for tracking resolution.
 
     Finds rows with outcome ``'searched'`` or ``'partial'`` that have a
     non-null ``item_id`` (entries without an item_id cannot be correlated
-    with grab events).
+    with grab events). Pre-cutover frozen Sonarr pending rows (see
+    ``_LEGACY_PENDING_SQL``) are always excluded -- they are "Legacy --
+    tracking discontinued" and must never be picked up again.
+
+    Sonarr callers should select by ``instance_stable_id`` so a rename or a
+    different server reusing an old name can never misroute a pending
+    search; Radarr/Lidarr callers (out of scope for this phase) keep
+    selecting by display name.
 
     Args:
         db: Open aiosqlite connection.
-        instance_id: If set, filter to entries from this instance only.
+        instance_id: If set, filter to entries from this instance's
+            display name only.
+        instance_stable_id: If set, filter to entries from this stable
+            instance ID only (preferred for Sonarr).
+
+    Raises:
+        ValueError: if both instance_id and instance_stable_id are given --
+            exactly one selection mode may be used at a time.
 
     Returns:
         List of dicts ordered by ``id ASC`` (oldest first) with keys:
         id, app, queue_type, item_id, season_number, missing_count, timestamp,
-        outcome, instance_id.
+        outcome, instance_id, instance_stable_id.
     """
+    if instance_id is not None and instance_stable_id is not None:
+        msg = "get_trackable_entries: pass instance_id or instance_stable_id, not both"
+        raise ValueError(msg)
+
     base = (
         "SELECT id, app, queue_type, item_id, season_number, missing_count, "
-        "timestamp, outcome, instance_id "
+        "timestamp, outcome, instance_id, instance_stable_id "
         "FROM search_history "
-        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL"
+        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
+        "AND NOT " + _LEGACY_PENDING_SQL
     )
-    if instance_id is not None:
+    if instance_stable_id is not None:
+        query = f"{base} AND instance_stable_id = ? ORDER BY id ASC"
+        params: tuple[str | int, ...] = (instance_stable_id,)
+    elif instance_id is not None:
         query = f"{base} AND instance_id = ? ORDER BY id ASC"
-        params: tuple[str | int, ...] = (instance_id,)
+        params = (instance_id,)
     else:
         query = f"{base} ORDER BY id ASC"
         params = ()
@@ -988,6 +1047,7 @@ async def get_trackable_entries(
             "timestamp": row["timestamp"],
             "outcome": row["outcome"],
             "instance_id": row["instance_id"] or "Default",
+            "instance_stable_id": row["instance_stable_id"],
         }
         for row in rows
     ]

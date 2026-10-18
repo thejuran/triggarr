@@ -1690,7 +1690,7 @@ async def test_trackable_by_stable_id_follows_rename(tmp_path):
     await insert_search_entry(
         db, "Sonarr", "missing", "Old Show", item_id=1, instance_id="Old", instance_stable_id="sid-a",
     )
-    await insert_search_entry(db, "Radarr", "missing", "Movie A", item_id=2, instance_id="Old")
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", item_id=2, instance_id="Original")
 
     by_stable = await get_trackable_entries(db, instance_stable_id="sid-a")
     assert {e["item_id"] for e in by_stable} == {1}
@@ -1698,7 +1698,8 @@ async def test_trackable_by_stable_id_follows_rename(tmp_path):
     by_other_stable = await get_trackable_entries(db, instance_stable_id="sid-c")
     assert by_other_stable == []
 
-    by_name = await get_trackable_entries(db, instance_id="Old")
+    # Radarr/Lidarr callers (out of scope for stable-ID scoping) still select by name.
+    by_name = await get_trackable_entries(db, instance_id="Original")
     assert {e["item_id"] for e in by_name} == {2}
     await db.close()
 
