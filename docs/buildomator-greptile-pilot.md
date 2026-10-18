@@ -1,6 +1,6 @@
 # Buildomator + Greptile pilot
 
-Status: prepared, not activated. Keep the existing orchestrator review process until the activation checklist is complete. Repository configuration alone does not install Greptile or enforce merging rules.
+Status: hosted protections are active; the implementation PR still awaits final review, owner acceptance, and merge. Do not claim the migration complete until the remaining activation items below pass.
 
 ## Connect Greptile
 
@@ -12,27 +12,28 @@ Status: prepared, not activated. Keep the existing orchestrator review process u
 
 TREX is optional and must be separately confirmed available for this account. It is not a dependency of this pilot and is not represented as an active runtime test gate.
 
-## What the proposed checks cover
+## What the checks cover
 
 - Locked Python dependencies, compilation, package build, the complete pytest suite, and Ruff.
 - Docker build plus audit of Python packages actually installed in that image.
 - Gitleaks secret scanning and pip-audit of locked production dependencies. Scanner failures block; any reported dependency vulnerability blocks, not only high/critical findings. Investigate findings rather than adding blanket ignores.
 - `CI ready` requires every mandatory job to return success. Missing, failed, cancelled, or skipped jobs cannot pass it.
-- Release preflight requires successful push CI on the exact release commit, including every mandatory job. PR CI alone cannot authorize publication. For commits containing this workflow, tags must point to main history and version-tag releases do not update the main image tag. Rejected triggers cannot enter the publishing queue; queued releases recheck eligibility before building. This does not prevent main advancing during a running build.
+- Release preflight requires successful push CI on the exact release commit, including every mandatory job. PR CI alone cannot authorize publication. For commits containing this workflow, tags must point to main history and version-tag releases do not update the main image tag. Rejected triggers cannot enter the publishing queue; queued releases recheck eligibility before publication. This does not prevent main advancing during a running publication.
 
-The release rebuild is not an attestation of byte-for-byte image identity: dependencies in the existing Dockerfile are not locked. Promoting the tested image digest, or making release builds reproducible, remains a follow-up before claiming release artifact parity. Python package auditing is not an OS image vulnerability scan.
+Releases promote the image archive and distributions uploaded by the exact successful CI run, without rebuilding. Image checksums and image IDs are checked before publication. Python package auditing is not an OS image vulnerability scan.
 
 ## Activation checklist — before retiring the orchestrator
 
-- [ ] Pilot PR CI succeeds on GitHub, including Docker and both vulnerability audits.
-- [ ] Greptile is connected, indexed, and reviews the current PR commit.
-- [ ] On a disposable PR, demonstrate that a known unresolved defect blocks the Greptile check, fixing it passes, and pushing another commit requires a new review. Also verify unavailable/failed reviews block. If its native check only signals completion, it cannot be the finding-resolution gate: add and test a separate fail-closed gate using the supported API before cutover.
-- [ ] Update the existing default-branch ruleset: require PRs, strict/up-to-date `CI ready` from GitHub Actions, and the verified Greptile check from its actual app. Preserve deletion/force-push protections and no bypass actors. Require conversation resolution. Do not require a second human approval for a solo developer who cannot approve their own PR.
-- [ ] Prove enforcement with negative cases: failed tests, skipped mandatory job, missing/stale Greptile review, unresolved findings, direct push, and unverified release tag. A green badge alone is insufficient.
-- [ ] Define and test protection for changes to workflows, policy scripts, Greptile configuration, and tests themselves. Rules naming a check do not stop a PR from rewriting that check to always succeed. Independent review of safeguard changes is still necessary.
-- [ ] Preserve the existing plan review, static security analysis, post-fix verification, and product/UAT acceptance steps. Greptile is not a substitute for executing these. Establish their equivalent evidence before cutover; they are not fully implemented by this pilot.
-- [ ] Merge the pilot only after review. Main merges retain the existing automatic image publication behavior. Verify a main CI run and release preflight, then a version-tag release when a release is actually intended.
-- [ ] Only after all of the above: stop using the orchestrator for ordinary changes and document the final active check names and ruleset configuration here.
+- [x] Greptile is connected and indexed. Its native `Greptile Review` check (app ID 867647) signals completion, not remediation. Automatic review started on push 7fb8fca after dashboard settings were corrected.
+- [x] Default-branch ruleset 14805779 requires PRs, strict/current `CI ready`, `Greptile Review`, `CodeQL`, and `Review acceptance` from their expected apps. Conversation resolution and the protected `review-acceptance` environment are required; deletion/force-push protections and no bypass actors are retained.
+- [x] Repository-wide full-SHA action enforcement rejects the unpinned action used by historical release workflows. Read-only negative probe 39081443569 failed at job setup as expected. No production tag or image was published for this test.
+- [x] Acceptance policy negative tests reject missing/stale/failed/spoofed reviews, auto-resolved findings without evidence, stale approvals/dispositions, unsupported waivers, and accepted open blockers. Release-policy tests reject failed/skipped/neutral/cancelled or missing mandatory CI jobs.
+- [x] GitHub reports this PR BLOCKED with the owner-acceptance job waiting. Owner approval is a required deployment, so removing or faking the job's check does not remove the deployment requirement.
+- [ ] Latest implementation CI (including artifact round trip) and Greptile review pass; findings have verified dispositions.
+- [ ] Owner approves the concrete final result in the protected environment; acceptance job passes on the current checkpoint.
+- [ ] Merge the pilot after acceptance, then verify main CI and release promotion. Test a version-tag release only when a release is actually intended.
+
+BM plan checking, post-fix verification, and explicit product/UAT acceptance remain required workflow steps. CodeQL is required static analysis. For application-code pilot checkpoints, the owner runs vibe-check in parallel on the same SHA. Any safeguard or test weakening requires independent inspection before owner acceptance. GitHub enforces approval and evidence presence; it cannot establish technical correctness or user acceptance on its own.
 
 ## Routine workflow after activation
 
@@ -42,7 +43,7 @@ Buildomator's ship-time review hook is advisory. Do not use its completion messa
 
 ## Rollback
 
-This pilot does not change hosted rules or remove the orchestrator. Before activating rules, export the current ruleset JSON and record its ID. If a new check malfunctions, repair the integration or return to the prior review process; do not silently bypass it. Revert the pilot through a reviewed PR if needed. A tag pointing to a pre-pilot commit still executes the old workflow, which contains no preflight. It can publish unchecked and overwrite image tags. External tag/publication protection must be established and tested before cutover; editing this workflow or this guide does not close that bypass.
+Hosted rules are now changed. The original ruleset and action-policy settings are saved outside the branch in the pilot evidence folder. Revert code through a reviewed PR if needed. Do not disable SHA pinning as a casual rollback: it would re-enable the unsafe historical release workflows. Missing/expired release artifacts fail closed; regenerate them by rerunning CI for the exact main commit. The custom orchestrator has not been deleted or modified.
 
 References: https://www.greptile.com/docs/code-review/greptile-json-reference and https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets
 
@@ -61,7 +62,7 @@ Review both tools against the same immutable commit. Preserve their original out
 
 Bot-resolved threads are not evidence a finding was fixed — the old-tag bypass (round 1) remains open despite its thread being marked resolved.
 
-The native `Greptile Review` success status is review-completion evidence only. It is not a finding-resolution gate. Keep the pilot draft until a separate tested gate and the remaining cutover protections are in place.
+The native `Greptile Review` success status is review-completion evidence only. The separate protected acceptance step and repository-variable evidence registers are the additional merge gate. Keep the pilot draft until final validation and owner acceptance.
 
 ## Safeguard rollout (checkpoint after 4f9d9da)
 
