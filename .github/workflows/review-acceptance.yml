@@ -1,0 +1,44 @@
+name: Review acceptance
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+concurrency:
+  group: acceptance-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  acceptance:
+    name: Review acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: review-acceptance
+    steps:
+      # The protected environment requires owner approval. Never execute PR code.
+      # Gate code is pinned to the reviewed policy commit. Updating this pin
+      # is a safeguard change requiring independent inspection before approval.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: 40fe2671301245e45af1b4af9f6014b3548db6bc
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          DISPOSITIONS: ${{ vars.REVIEW_DISPOSITIONS }}
+          BLOCKERS: ${{ vars.REVIEW_BLOCKERS }}
+        with:
+          script: |
+            const {assess} = require('./.github/scripts/review-acceptance.cjs');
+            const {owner,repo} = context.repo;
+            const eventPR = context.payload.pull_request;
+            const {data: pr} = await github.rest.pulls.get({owner,repo,pull_number:eventPR.number});
+            if (pr.base.ref !== 'main' || pr.state !== 'open') throw Error('Not an open PR to main');
+            const head = eventPR.head.sha;
+            const checks = await github.paginate(github.rest.checks.listForRef,{owner,repo,ref:head,filter:'all',per_page:100});
+            const comments = await github.paginate(github.rest.pulls.listReviewComments,{owner,repo,pull_number:pr.number,per_page:100});
+            const count = assess({head,currentHead:pr.head.sha,checks,comments,
+              dispositions:JSON.parse(process.env.DISPOSITIONS),blockers:JSON.parse(process.env.BLOCKERS)});
+            await core.summary.addHeading('Review acceptance').addRaw(`Owner approved ${head}. ${count} Greptile findings have current verification evidence. CI remains separately required.`).write();

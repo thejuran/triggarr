@@ -34,3 +34,12 @@ The deep review checks:
 
 > Before pushing, I recommend running /deep-review to check for security, correctness,
 > and resilience issues. Shall I proceed?
+
+## Buildomator + Greptile pilot
+
+See [the activation checklist](docs/buildomator-greptile-pilot.md). This is a staged
+migration; keep the existing review process until the checklist is complete.
+Use feature branches and PRs. Buildomator's review hook is advisory, and a Greptile
+review does not replace running tests or product acceptance. After fixes, require
+fresh checks and review of the current commit. Do not weaken CI, suppress findings,
+or push directly to main to make a task appear complete.
