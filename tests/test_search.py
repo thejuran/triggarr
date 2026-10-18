@@ -40,7 +40,7 @@ from triggarr.search.engine import (
     run_sonarr_cycle,
 )
 from triggarr.search.outcome import cycle_view
-from triggarr.state import _default_state
+from triggarr.state import _default_state, load_state, save_state
 
 # ---------------------------------------------------------------------------
 # filter_monitored
@@ -1427,6 +1427,307 @@ async def test_run_sonarr_cycle_dedup_inactive_missing_no_claim(tmp_path):
         assert client.search_season.call_count == 2
         assert ist["cutoff_searched"] == []
         assert ist["cutoff_pass"] == 1
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Sonarr malformed-record guards (ROBUST-01a/04, Phase 80 Plan 05 Task 1)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_sonarr_cycle_null_series_missing_skipped(tmp_path):
+    """A null nested "series" in the Sonarr missing queue is skipped per
+    item; the cycle completes, the good season is still dispatched, and
+    state persists across a save_state/load_state round trip (ROBUST-01a)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            {
+                "id": 101,
+                "seriesId": 20,
+                "seasonNumber": 1,
+                "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z",
+                "series": None,
+            },
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 2
+        client.search_season.assert_any_call(10, 1)
+        client.search_season.assert_any_call(30, 1)
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+        assert ist["last_cycle"]["malformed_skipped"] == 1
+        assert ist["last_cycle"]["unevaluated"] == []
+
+        # State persists across a real save/load round trip.
+        state_path = tmp_path / "state.json"
+        save_state(result, state_path)
+        reloaded = load_state(state_path)
+        assert reloaded["sonarr"]["Default"]["last_cycle"]["malformed_by_queue"] == {"missing": 1}
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_null_series_all_malformed_failed(tmp_path):
+    """Every missing and cutoff record has a null "series" -- grade failed,
+    nothing dispatched, both queues' malformed counts recorded (ROBUST-01a/04)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            {
+                "id": 1, "seriesId": 10, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+            {
+                "id": 2, "seriesId": 20, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        cutoff_episodes = [
+            {
+                "id": 3, "seriesId": 30, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 0
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 2, "cutoff": 1}
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_null_series_cutoff_per_item(tmp_path):
+    """One malformed record in the Sonarr cutoff queue no longer discards the
+    whole queue -- the other good seasons are still dispatched (ROBUST-01a)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
+            {
+                "id": 301, "seriesId": 35, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+            _make_sonarr_episode(series_id=40, season_number=1, series_title="Show D", episode_id=400),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=0, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=0, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 2
+        client.search_season.assert_any_call(30, 1)
+        client.search_season.assert_any_call(40, 1)
+        assert ist["last_cycle"]["malformed_by_queue"] == {"cutoff": 1}
+        assert ist["last_cycle"]["unevaluated"] == []
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_malformed_non_dict_record(tmp_path):
+    """A non-dict record (None or a bare string) in the missing list is
+    counted as malformed and skipped, not crashed on (ROBUST-01a)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            None,
+            "garbage",
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=3, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=3, cutoff_count=0)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 1
+        client.search_season.assert_any_call(10, 1)
+        assert ist["last_cycle"]["malformed_by_queue"] == {"missing": 2}
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["last_cycle"]["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_malformed_inactive_queue_not_graded(tmp_path):
+    """A malformed record in an inactive queue (cutoff count 0) alongside a
+    good missing season grades success -- the inactive queue's malformed
+    count never reaches the persisted record, but the skip is still logged
+    (ROBUST-01a/04, spec 3.1 via Plan 80-01's active-queue filtering)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        ]
+        cutoff_episodes = [
+            {
+                "id": 1, "seriesId": 30, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 1
+        client.search_season.assert_any_call(10, 1)
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["malformed_by_queue"] == {}
+        assert ist["last_cycle"]["malformed_skipped"] == 0
+        # The skip is still logged even though the queue is inactive.
+        assert "upgrade-queue" in sink.getvalue()
+        assert "malformed series data" in sink.getvalue()
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_missing_fault_backstop_marks_unevaluated(tmp_path):
+    """An unhashable seriesId (a list) faults deduplicate_to_seasons with a
+    TypeError the per-item guard doesn't catch -- the coarse backstop marks
+    only the missing queue unevaluated, and cutoff still dispatches."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            {
+                "id": 1,
+                "seriesId": [1],
+                "seasonNumber": 1,
+                "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z",
+                "series": {"title": "Bad"},
+            },
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 1
+        client.search_season.assert_any_call(30, 1)
+        assert ist["last_cycle"]["unevaluated"] == [
+            {"queue": "missing", "reason": "malformed data (TypeError)"}
+        ]
+        assert ist["last_cycle"]["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+async def test_run_sonarr_cycle_malformed_logs_warning(tmp_path):
+    """The malformed-skip WARNING names the queue, the count, and the
+    malformed field -- and never an exception message or API key (D-08)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        missing_episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            {
+                "id": 20, "seriesId": 20, "seasonNumber": 1, "monitored": True,
+                "airDateUtc": "2020-01-01T00:00:00Z", "series": None,
+            },
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=missing_episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        log_output = sink.getvalue()
+        assert "missing-queue" in log_output
+        assert "Skipped 1" in log_output
+        assert "malformed series data" in log_output
+        assert "apikey" not in log_output.lower()
     finally:
         await db.close()
 
