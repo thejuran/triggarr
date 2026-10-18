@@ -222,4 +222,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 77 with `/bm:plan-phase 77`
+- Plan Phase 80 (`/bm:discuss-phase 80`, then `/bm:plan-phase 80`)
