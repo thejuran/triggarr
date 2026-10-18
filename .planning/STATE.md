@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: executing
-stopped_at: Phase 80 context gathered
-last_updated: "2026-10-18T14:42:22.879Z"
-last_activity: 2026-10-18 -- Phase 80 execution started
+status: "Phase 80 executed — PR #28 open, in review (not merged or deployed)"
+stopped_at: "Phase 80 executed; PR #28 in review with pass-1 review fixes committed locally, awaiting push"
+last_updated: "2026-10-18T16:40:00Z"
+last_activity: 2026-10-18 -- PR #28 review fixes committed (not yet pushed)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 19
-  completed_plans: 14
-  percent: 60
+  completed_plans: 19
+  percent: 80
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 80 — cycle-robustness-sonarr-season-dedup
+**Current focus:** PR #28 (Phase 80) review and merge; Phase 81 next
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`). The version string still reads v2.11.0 until the v2.12 release bump.
 
 ## Current Position
 
-Phase: 80 (cycle-robustness-sonarr-season-dedup) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 80
-Last activity: 2026-10-18 -- Phase 80 execution started
+Phase: 80 (cycle-robustness-sonarr-season-dedup) — EXECUTED, IN REVIEW (PR #28 open)
+Plan: 5 of 5 complete (all summaries written; verification passed with owner-approved card UAT)
+Status: Phase 80 executed — PR #28 open, in review (not merged or deployed). Greptile and owner vibe-check pass 1 reviewed 11c3fe6; the two reproduced vibe-check findings and Greptile's status comment are fixed in local commits awaiting the next review checkpoint. Phase 81 not started.
+Last activity: 2026-10-18 -- PR #28 review fixes committed (not yet pushed)
 
 ### v2.12 milestone shape
 
@@ -194,7 +194,7 @@ None.
 | Retired | Pixel-exact UI-01..03; unused color token | Keep ordinary auth/setup/settings usability checks; no pixel matching obligation. |
 | Promoted / historical | 999.1/2 | Shipped in v2.10, Phases 72–74. |
 | Promoted / historical | 999.3/6 | Phase 77 implementation complete; its deployed UAT is still pending. |
-| Promoted, still pending | 999.5 | Owned by Phase 80; not retired. |
+| Promoted, implemented | 999.5 | Implemented in Phase 80; PR #28 open, in review (not merged). |
 | Shipped / historical | DEBT-07/08/03/06 | Previously delivered config controls; no longer deferred work. |
 | Unchanged small follow-ups | v2.9 URL-validation dedup, Retry-Connection button behavior, bug-report options; TODO.md maintenance | Revalidate before work; not promoted by this triage. |
 
@@ -216,10 +216,12 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-10-18T03:22:08.549Z
-Stopped at: Phase 80 context gathered
-Resume file: .planning/phases/80-cycle-robustness-sonarr-season-dedup/80-CONTEXT.md
+Last session: 2026-10-18T16:40:00Z
+Stopped at: Phase 80 executed; PR #28 in review, pass-1 review fixes committed locally and awaiting the next push
+Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 80 (`/bm:discuss-phase 80`, then `/bm:plan-phase 80`)
+- Finish PR #28 (Phase 80): push the batched commits (owner docs commit plus review fixes) as the next review checkpoint, then Greptile and owner vibe-check on that exact head, dispositions recorded for it, owner `review-acceptance` approval, merge. Merging deploys production through WUD (`:main`).
+- Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (Plan 80-05 left `refresh_*_counts` unchanged on purpose). Decide whether to align it.
+- Then Phase 81 (`/bm:discuss-phase 81`, then `/bm:plan-phase 81`).
