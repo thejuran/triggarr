@@ -473,6 +473,49 @@ def _mark_unreachable(ist: AppState) -> None:
         ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _finish_both_inactive_unreachable(
+    *, ist: AppState, tally: CycleTally, instance_config: InstanceConfig, app_label: str
+) -> None:
+    """Finish a cycle whose queues are both inactive and both unfetchable (R-07).
+
+    Both queues are inactive and neither fetch could refresh its count. That
+    is real evidence the host is unreachable, but nothing was configured to
+    search this cycle -- grade nothing_needed (no active queues), never Failed.
+
+    Shared by the three cycle functions: marks the instance unreachable and
+    finalizes the cycle. Callers still own the ``return state`` after calling
+    this -- it leaves the caller's control flow untouched.
+    """
+    logger.warning(
+        "{app}: both queues inactive and neither could be fetched -- "
+        "marked unreachable; not graded Failed",
+        app=app_label,
+    )
+    _mark_unreachable(ist)
+    _finalize_cycle(ist, tally, instance_config)
+
+
+def _cap_and_log(
+    *, app_label: str, missing_configured: int, cutoff_configured: int, hard_max: int
+) -> tuple[int, int]:
+    """Apply the hard-max cap to a cycle's configured limits and log when it changed one (SRCH-12).
+
+    Shared by the three cycle functions: calls ``cap_batch_sizes`` on the
+    configured limits and logs at debug level only when the hard max actually
+    changed a limit. Returns the (possibly capped) (missing_limit, cutoff_limit).
+    """
+    missing_limit, cutoff_limit = cap_batch_sizes(missing_configured, cutoff_configured, hard_max)
+    if hard_max > 0 and (missing_limit != missing_configured or cutoff_limit != cutoff_configured):
+        logger.debug(
+            "{app}: Hard max {max} applied -- missing={m}, cutoff={c}",
+            app=app_label,
+            max=hard_max,
+            m=missing_limit,
+            c=cutoff_limit,
+        )
+    return missing_limit, cutoff_limit
+
+
 def _rebalance_and_log(
     *,
     app_label: str,

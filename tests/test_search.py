@@ -6441,7 +6441,7 @@ def test_finish_both_inactive_unreachable_marks_unreachable_and_grades_nothing_n
     ist = _make_test_state()["sonarr"]["Default"]
     tally = CycleTally()
     instance_config = InstanceConfig(
-        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        url="http://sonarr:8989", api_key="test-key", enabled=False,
         search_missing_count=0, search_cutoff_count=0,
     )
 
@@ -6472,7 +6472,7 @@ def test_finish_both_inactive_unreachable_preserves_existing_unreachable_since()
     ist["unreachable_since"] = "2025-01-01T00:00:00Z"
     tally = CycleTally()
     instance_config = InstanceConfig(
-        url="http://radarr:7878", api_key="test-key", enabled=True,
+        url="http://radarr:7878", api_key="test-key", enabled=False,
         search_missing_count=0, search_cutoff_count=0,
     )
 
