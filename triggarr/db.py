@@ -1185,8 +1185,9 @@ async def update_outcome_and_stats(
 
         # 3. Ownership (ATTR-02, ATTR-04). Plain INSERT, not OR IGNORE, so a
         # grab_id already owned by this instance fails the whole call
-        # closed rather than silently double-counting. No FOREIGN KEY to
-        # search_history, so ownership survives pruning and restarts.
+        # closed rather than silently double-counting. No referential
+        # constraint back to search_history, so ownership survives pruning
+        # and restarts.
         for grab in owned_grabs:
             await db.execute(
                 "INSERT INTO grab_ownership "
@@ -1228,9 +1229,9 @@ async def get_owned_grabs(
 ) -> list[OwnedGrabRecord]:
     """Return previously credited grabs for one (app, stable instance ID, series).
 
-    Ownership rows have no foreign key to search_history and are never
-    pruned, so this reflects every grab ever credited for the series,
-    regardless of whether the owning search_history row still exists.
+    Ownership rows carry no referential constraint back to search_history
+    and are never pruned, so this reflects every grab ever credited for the
+    series, regardless of whether the owning search_history row still exists.
     """
     async with db.execute(
         "SELECT grab_id, history_id, episode_id FROM grab_ownership "
