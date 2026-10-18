@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import NoReturn
 
 import tomli_w
+import tomlkit
 from loguru import logger
 from pydantic import ValidationError
 
@@ -194,6 +195,172 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
     finally:
         if dir_fd is not None:
             os.close(dir_fd)
+
+
+def _atomic_text_write(path: Path, text: str) -> None:
+    """Write pre-rendered text to a file atomically using tempfile + fsync + rename.
+
+    Mirrors _atomic_toml_write's write-then-rename shape, with one deliberate
+    difference copied from triggarr/web/routes.py::_write_reset_token_file:
+    the mkstemp fd's permission is set to 0600 BEFORE writing, so the file
+    is already 0600 when os.replace makes it live -- there is no post-replace
+    chmod window. Used by the instance-id backfill, whose tomlkit-rendered
+    text must reach disk byte-for-byte (tomli_w would re-serialize and drop
+    comments).
+
+    Failure before or at os.replace (temp write, fsync, fchmod, replace
+    itself): logs an error naming the path and the exception type, removes
+    the temp file, and re-raises -- the destination file is untouched.
+    Failure only on the post-replace directory fsync: the new contents are
+    already committed, so this logs a warning and returns normally.
+
+    Args:
+        path: Destination file path.
+        text: Text content to write (encoded as UTF-8).
+    """
+    dir_fd = None
+    renamed = False
+    fd_owned = False
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        os.fchmod(fd, 0o600)
+        fd_owned = True
+        with os.fdopen(fd, "wb") as f:
+            f.write(text.encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        renamed = True
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        os.fsync(dir_fd)
+    except OSError as exc:
+        if renamed:
+            logger.warning(
+                "Config written but the directory sync failed: {path} - {exc}",
+                path=path,
+                exc=exc,
+            )
+            return
+        logger.error(
+            "Config write failed: {path} - {exc_type}",
+            path=path,
+            exc_type=type(exc).__name__,
+        )
+        if not fd_owned:
+            # os.fdopen never took ownership -- close the raw fd to avoid a leak.
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        except OSError as cleanup_exc:
+            logger.error(
+                "Failed to clean up temp file {tmp} during config write: {exc}",
+                tmp=tmp_path,
+                exc=cleanup_exc,
+            )
+        raise
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
+
+
+def backfill_instance_ids(config_path: Path, settings: Settings) -> Settings:
+    """Backfill missing or duplicate instance ids, preserving every TOML comment.
+
+    Walks APP_TYPES and each app's instances in dict (TOML) order. An
+    instance is a backfill target when its id is "" (missing or empty) or
+    duplicates an earlier instance's id within the same app (a hand-edited
+    collision; duplicates across different apps are not a collision -- the
+    composite ownership key includes the app). If there are no targets,
+    returns settings unchanged without reading the file for writing.
+
+    Otherwise the file is re-parsed with tomlkit (comment-preserving) and
+    each target's id is set in place. The result is validated BEFORE
+    writing: re-parsed with tomllib, re-validated with Settings(**parsed),
+    and checked that the only difference from the original parse is the
+    planned id values -- tomlkit must never silently touch anything else.
+    Only after all three checks pass does the write happen, via
+    _atomic_text_write.
+
+    Failure rules:
+    - A failure before or at _atomic_text_write's os.replace leaves the
+      original file intact (the temp file is removed by _atomic_text_write).
+      Running on ids that were never saved would mint different ids next
+      time, and ensure_config runs before the database is opened, so nothing
+      references the unsaved ids -- this function logs the failure and exits
+      the process; the next startup re-mints from the unchanged file.
+    - A failure only on the post-replace directory fsync means the new ids
+      are already committed to disk and match the returned Settings, so this
+      function logs a warning and returns normally. The next startup finds
+      every id already valid and unique, so there are no targets: no
+      re-mint, no rewrite.
+
+    Args:
+        config_path: Path to the TOML configuration file.
+        settings: Already-loaded, validated Settings for this file.
+
+    Returns:
+        Settings with every instance id present and unique per app --
+        identical in content to the input when no backfill was needed.
+    """
+    targets: list[tuple[str, str, str]] = []
+    for app in APP_TYPES:
+        seen_ids: dict[str, str] = {}
+        for name, cfg in getattr(settings, app).items():
+            if not cfg.id:
+                targets.append((app, name, new_instance_id()))
+                continue
+            if cfg.id in seen_ids:
+                logger.warning(
+                    "{app} instance '{name}' shares instance '{other}'s id -- assigning a new id",
+                    app=app,
+                    name=name,
+                    other=seen_ids[cfg.id],
+                )
+                targets.append((app, name, new_instance_id()))
+                continue
+            seen_ids[cfg.id] = name
+
+    if not targets:
+        return settings
+
+    # read_bytes + manual decode (not read_text/open-in-text-mode) so CRLF line
+    # endings in the operator's file are not translated to LF before parsing.
+    original_text = config_path.read_bytes().decode("utf-8")
+    doc = tomlkit.parse(original_text)
+    for app, name, new_id in targets:
+        doc[app][name]["id"] = new_id
+    new_text = tomlkit.dumps(doc)
+
+    parsed = tomllib.loads(new_text)
+    try:
+        validated = Settings(**parsed)
+    except ValidationError as exc:
+        _log_invalid_config_and_exit(config_path, exc)
+
+    expected = tomllib.loads(original_text)
+    for app, name, new_id in targets:
+        expected[app][name]["id"] = new_id
+    if parsed != expected:
+        logger.error(
+            "Instance id backfill would change more than id values -- aborting without writing: {path}",
+            path=config_path,
+        )
+        sys.exit(1)
+
+    try:
+        _atomic_text_write(config_path, new_text)
+    except OSError:
+        sys.exit(1)
+
+    logger.info(
+        "Backfilled {count} instance id(s) in {path}",
+        count=len(targets),
+        path=config_path,
+    )
+    return validated
 
 
 def detect_and_migrate_v22(config_path: Path) -> bool:
@@ -431,7 +598,8 @@ def ensure_config(config_path: Path) -> Settings:
         logger.info("v2.2 config backed up to {path}", path=backup_path)
 
     try:
-        return load_settings(config_path)
+        settings = load_settings(config_path)
+        return backfill_instance_ids(config_path, settings)
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
         _log_corrupt_config_and_exit(config_path, exc)
     except ValidationError as exc:
