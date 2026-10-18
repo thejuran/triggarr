@@ -1315,13 +1315,18 @@ async def test_run_sonarr_cycle_dedup_upgrade_batch_still_fills(tmp_path):
         instance_config = _cycle_instance_config(missing_count=1, cutoff_count=3)
 
         result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
-        cutoff_log = result["sonarr"]["Default"]["cutoff_searched"]
+        ist = result["sonarr"]["Default"]
 
         # Upgrade batch still fills to its configured limit (3) from the 3
         # remaining eligible seasons, despite (10, 1) being excluded.
-        assert len(cutoff_log) == 3
-        assert set(cutoff_log) == {"20:1", "30:1", "40:1"}
+        calls = [c.args for c in client.search_season.call_args_list]
         assert client.search_season.call_count == 4  # 1 missing + 3 cutoff
+        assert calls[0] == (10, 1)
+        assert sorted(calls[1:]) == [(20, 1), (30, 1), (40, 1)]
+        # Those three cover every unclaimed upgrade season, so the claimed (10, 1)
+        # counts as covered and the upgrade pass completes, resetting its log (DEDUP-03).
+        assert ist["cutoff_pass"] == 1
+        assert ist["cutoff_searched"] == []
     finally:
         await db.close()
 

@@ -236,11 +236,13 @@ def prioritize_batch(
        log front (oldest-searched-first) until full or exhausted (QUEUE-05).
     5. Mark every batched item on attempt — append keys to the log; a re-searched
        item moves to the tail (most-recent) (QUEUE-08).
-    6. Pass-complete check (MED-1): pass_completed = bool(batch) AND every eligible
-       ID is in the new log.  The bool(batch) guard is MANDATORY — it prevents a
-       zero-search pass reset when batch_size<=0 and the pruned log already covers
-       a tiny eligible set (matches the old ``if new_cursor == 0 and batch`` wrap
-       guard).
+    6. Pass-complete check (MED-1, DEDUP-03): pass_completed = bool(batch) AND every
+       eligible ID not in ``exclude_keys`` is in the new log.  An excluded key was
+       attempted this cycle by another queue, so it counts as covered — but it is
+       never inserted into the log.  The bool(batch) guard is MANDATORY — it
+       prevents a zero-search pass reset when batch_size<=0 and the pruned log
+       already covers a tiny eligible set (matches the old
+       ``if new_cursor == 0 and batch`` wrap guard).
 
     Args:
         eligible_items: Full list of eligible items for this queue (fetch order,
@@ -255,13 +257,15 @@ def prioritize_batch(
             Sonarr: ``lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}'``.
         exclude_keys: Keys to keep out of this batch's candidacy (Sonarr
             cross-queue dedup, D-05). Excluded keys stay in the pruned log at
-            their current position and are never marked on attempt.
+            their current position and are never marked on attempt; they count
+            as covered for the pass-complete check (DEDUP-03).
 
     Returns:
         Tuple of (batch, new_searched_log, pass_completed).
         ``new_searched_log`` has all departed items pruned and all batched items
         appended (marking on attempt).  ``pass_completed`` is True only when this
-        call produced a non-empty batch AND every eligible ID is now in the log.
+        call produced a non-empty batch AND every eligible ID not in
+        ``exclude_keys`` is now in the log.
     """
     if not eligible_items:
         return [], [], False
@@ -291,8 +295,9 @@ def prioritize_batch(
     batched_keys = {key_fn(it) for it in batch}
     new_log = [i for i in log if i not in batched_keys] + [key_fn(it) for it in batch]
 
-    # 6. Pass-complete: bool(batch) is MANDATORY (MED-1)
-    pass_completed = bool(batch) and eligible_ids.issubset(set(new_log))
+    # 6. Pass-complete: bool(batch) is MANDATORY (MED-1); excluded keys count as
+    # covered without being inserted into the log (DEDUP-03)
+    pass_completed = bool(batch) and (eligible_ids - exclude_keys).issubset(set(new_log))
 
     return batch, new_log, pass_completed
 
