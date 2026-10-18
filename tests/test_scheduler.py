@@ -24,13 +24,19 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 from loguru import logger
+from pydantic import SecretStr
 
 from tests.conftest import make_settings
 from triggarr.clients.radarr import RadarrClient
 from triggarr.db import init_db, insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
-from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
+from triggarr.search.scheduler import (
+    _TAG_CACHE_TTL_SECONDS,
+    _evaluate_cycle_outcome,
+    _run_one_cycle,
+    make_search_job,
+)
 from triggarr.state import _default_instance_state, _default_state, save_state
 from triggarr.web.routes import STATIC_DIR, router
 
@@ -162,26 +168,36 @@ async def test_event_job_error_listener_logs_unexpected_exception():
 # ---------------------------------------------------------------------------
 
 
-def _build_outage_app(tmp_path, *, max_consecutive_failures=5, transport_handler):
+def _build_outage_app(
+    tmp_path,
+    *,
+    max_consecutive_failures=5,
+    transport_handler,
+    search_missing_count=5,
+    search_cutoff_count=5,
+):
     """Build a FastAPI app wired with a real RadarrClient on a MockTransport.
 
     The returned (app, job) tuple lets the test drive `make_search_job` end
     to end: the real `run_radarr_cycle` runs, its internal HTTP calls hit the
     MockTransport (which returns whatever the handler decides), and the
-    scheduler's post-cycle counter logic observes the engine's
-    `connected = True / False` outcome.
+    scheduler's post-cycle counter logic observes the engine's graded
+    outcome (78-05 / OUTCOME-04).
 
     Note: settings are mutated AFTER make_settings() to apply the per-test
-    max_consecutive_failures (GeneralConfig is a plain BaseModel — direct
-    attribute mutation is allowed).
+    max_consecutive_failures and (R-07) per-queue search counts
+    (GeneralConfig/InstanceConfig are plain BaseModels — direct attribute
+    mutation is allowed).
     """
     settings = make_settings()
     settings.general.max_consecutive_failures = max_consecutive_failures
+    settings.radarr["Default"].search_missing_count = search_missing_count
+    settings.radarr["Default"].search_cutoff_count = search_cutoff_count
 
     # Real RadarrClient with its httpx.AsyncClient swapped for one driven
     # by the MockTransport. base_url must match the original so any path
     # the engine constructs (e.g. /api/v3/wanted/missing) resolves correctly.
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(transport_handler),
         base_url="http://radarr-test:7878",
@@ -449,7 +465,7 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
         },
     )
 
-    default_client = RadarrClient(base_url="http://radarr-default:7878", api_key="key-default")
+    default_client = RadarrClient(base_url="http://radarr-default:7878", api_key=SecretStr("key-default"))
     default_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(default_handler),
         base_url="http://radarr-default:7878",
@@ -457,7 +473,7 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
     )
     default_client._app_name = "Radarr"
 
-    fourk_client = RadarrClient(base_url="http://radarr-4k:7878", api_key="key-4k")
+    fourk_client = RadarrClient(base_url="http://radarr-4k:7878", api_key=SecretStr("key-4k"))
     fourk_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(fourk_handler),
         base_url="http://radarr-4k:7878",
@@ -502,6 +518,399 @@ async def test_failure_counter_per_instance_scoped(tmp_path):
 
     assert app.state.search_failures.get("radarr_Default_search", 0) == 1
     assert app.state.search_failures.get("radarr_4K_search", 0) == 0
+
+
+# ---------------------------------------------------------------------------
+# 78-05 (OUTCOME-04): counter follows the cycle grade, not `connected`
+#
+# These tests patch `run_radarr_cycle` with a fake cycle function that writes
+# a full LastCycleRecord directly, so the counter logic can be driven by a
+# specific grade sequence without needing a real *arr backend for every case.
+# The real-engine tests further below still exercise the actual fetch/dispatch
+# path (R-07, command rejection).
+# ---------------------------------------------------------------------------
+
+
+def _fake_cycle(grade: str, *, connected: bool = True, fetch_error: str | None = None):
+    """Build a fake cycle function with the run_radarr_cycle signature.
+
+    Writes a full ``LastCycleRecord`` to ``state["radarr"][instance_name]["last_cycle"]``
+    with the given grade (and every other required key), so the scheduler's
+    grade-driven counter can be exercised directly without the real engine.
+    """
+
+    async def _cycle(client, state, instance_name, instance_config, settings, db, *, get_tags_fn=None):
+        ist = state["radarr"][instance_name]
+        ist["connected"] = connected
+        ist["last_cycle"] = {
+            "grade": grade,
+            "accepted": 0,
+            "failed": 0,
+            "malformed_skipped": 0,
+            "persistence_failed": 0,
+            "failure_reasons": [],
+            "unevaluated": [],
+            "eligible": {},
+            "fetch_error": fetch_error,
+            "finished_at": "2026-01-01T00:00:00Z",
+        }
+        return state
+
+    return _cycle
+
+
+def _build_fake_cycle_app(tmp_path, *, max_consecutive_failures=5):
+    """Build a FastAPI app for driving the scheduler's counter via a patched cycle fn.
+
+    Unlike `_build_outage_app`, the client is a bare MagicMock: the patched
+    `run_radarr_cycle` (via `_fake_cycle`) never touches it.
+    """
+    settings = make_settings()
+    settings.general.max_consecutive_failures = max_consecutive_failures
+
+    state = _default_state(settings)
+    state["radarr"]["Default"] = _default_instance_state()
+    state["radarr"]["Default"]["connected"] = True
+
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": MagicMock()}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = state
+    app.state.settings = settings
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.tag_cache = {}
+    app.state.db = AsyncMock()
+    app.state.state_path = tmp_path / "state.json"
+
+    job = make_search_job(app, "radarr", "Default", tmp_path / "state.json")
+    return app, job
+
+
+def _build_fake_cycle_manual_app(tmp_path, *, max_consecutive_failures=5):
+    """Build (app, client, instance_config) for driving `_run_one_cycle` with a patched cycle fn.
+
+    Mirrors `_build_fake_cycle_app` but returns the pieces `_run_one_cycle`
+    takes directly (the Search Now shape), not a `job()` closure.
+    """
+    settings = make_settings()
+    settings.general.max_consecutive_failures = max_consecutive_failures
+
+    state = _default_state(settings)
+    state["radarr"]["Default"] = _default_instance_state()
+    state["radarr"]["Default"]["connected"] = True
+
+    app = FastAPI()
+    app.state.radarr_clients = {"Default": MagicMock()}
+    app.state.sonarr_clients = {}
+    app.state.lidarr_clients = {}
+    app.state.search_lock = asyncio.Lock()
+    app.state.search_lock_holder = None
+    app.state.triggarr_state = state
+    app.state.settings = settings
+    app.state.search_failures = {}
+    app.state.persistence_degraded = False
+    app.state.tag_cache = {}
+    app.state.db = AsyncMock()
+    app.state.state_path = tmp_path / "state.json"
+
+    instance_config = settings.get_enabled_instances("radarr")["Default"]
+    return app, MagicMock(), instance_config
+
+
+_NO_TRACKING_RESULT = {"grabbed": 0, "partial": 0, "partial_expired": 0, "unresolved": 0, "errors": 0}
+
+
+async def test_failure_counter_increments_on_grade_failed(tmp_path):
+    """OUTCOME-04: three Failed-graded cycles increment the counter to 3."""
+    app, job = _build_fake_cycle_app(tmp_path)
+    with (
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+        patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")),
+    ):
+        await job()
+        await job()
+        await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 3
+
+
+async def test_failure_counter_counts_grade_failed_with_connected_true(tmp_path):
+    """OUTCOME-04: a Failed grade increments the counter even though `connected` stays True.
+
+    Proves the counter no longer reads `connected` -- a reachable *arr that
+    rejects every command (grade Failed, connected True) must still count.
+    """
+    app, job = _build_fake_cycle_app(tmp_path)
+    with (
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+        patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed", connected=True)),
+    ):
+        await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 1
+    assert app.state.triggarr_state["radarr"]["Default"]["connected"] is True
+
+
+async def test_failure_counter_resets_on_grade_partial_after_failed(tmp_path):
+    """OUTCOME-04: Failed, Failed, Partial -> counter resets to 0 on Partial."""
+    app, job = _build_fake_cycle_app(tmp_path)
+    with (
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")):
+            await job()
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")):
+            await job()
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("partial")):
+            await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 0
+
+
+async def test_failure_counter_resets_on_grade_nothing_needed_after_failed(tmp_path):
+    """OUTCOME-04: Failed, then Nothing needed searching -> counter resets to 0."""
+    app, job = _build_fake_cycle_app(tmp_path)
+    with (
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")):
+            await job()
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("nothing_needed")):
+            await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 0
+
+
+async def test_failure_counter_resets_on_grade_success_after_failed(tmp_path):
+    """OUTCOME-04: Failed, then Success -> counter resets to 0."""
+    app, job = _build_fake_cycle_app(tmp_path)
+    with (
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")):
+            await job()
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("success")):
+            await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 0
+
+
+async def test_failure_counter_resets_when_last_cycle_missing():
+    """OUTCOME-04: a state with no last_cycle (pre-first-cycle) resets to 0 and does not raise."""
+    app = FastAPI()
+    app.state.triggarr_state = {"radarr": {"Default": {}}}
+    app.state.search_failures = {"radarr_Default_search": 3}
+
+    result = _evaluate_cycle_outcome(app, "radarr", "Default", "radarr_Default_search")
+
+    assert result is True
+    assert app.state.search_failures["radarr_Default_search"] == 0
+
+
+async def test_search_now_failure_counter_follows_grade_sequence(tmp_path):
+    """OUTCOME-04 / D-02: Search Now path -- Failed, Failed, Partial -> 1, 2, 0."""
+    app, real_client, instance_config = _build_fake_cycle_manual_app(tmp_path)
+
+    async def _get_tags_cached() -> list:
+        return []
+
+    with (
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")):
+            async with app.state.search_lock:
+                await _run_one_cycle(
+                    app, "radarr", "Default", real_client, instance_config,
+                    tmp_path / "state.json", _get_tags_cached,
+                )
+        assert app.state.search_failures["radarr_Default_search"] == 1
+
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")):
+            async with app.state.search_lock:
+                await _run_one_cycle(
+                    app, "radarr", "Default", real_client, instance_config,
+                    tmp_path / "state.json", _get_tags_cached,
+                )
+        assert app.state.search_failures["radarr_Default_search"] == 2
+
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("partial")):
+            async with app.state.search_lock:
+                await _run_one_cycle(
+                    app, "radarr", "Default", real_client, instance_config,
+                    tmp_path / "state.json", _get_tags_cached,
+                )
+        assert app.state.search_failures["radarr_Default_search"] == 0
+
+
+async def test_search_now_failure_counter_resets_on_grade_nothing_needed(tmp_path):
+    """OUTCOME-04 / D-02: Search Now path -- Failed, then Nothing needed searching -> 0."""
+    app, real_client, instance_config = _build_fake_cycle_manual_app(tmp_path)
+
+    async def _get_tags_cached() -> list:
+        return []
+
+    with patch("triggarr.search.scheduler.save_state", new=MagicMock()):
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("failed")):
+            async with app.state.search_lock:
+                await _run_one_cycle(
+                    app, "radarr", "Default", real_client, instance_config,
+                    tmp_path / "state.json", _get_tags_cached,
+                )
+        assert app.state.search_failures["radarr_Default_search"] == 1
+
+        with patch("triggarr.search.scheduler.run_radarr_cycle", new=_fake_cycle("nothing_needed")):
+            async with app.state.search_lock:
+                await _run_one_cycle(
+                    app, "radarr", "Default", real_client, instance_config,
+                    tmp_path / "state.json", _get_tags_cached,
+                )
+        assert app.state.search_failures["radarr_Default_search"] == 0
+
+
+async def test_failure_counter_increments_on_real_arr_command_rejection(tmp_path):
+    """OUTCOME-04: a reachable *arr that rejects every command still grades Failed.
+
+    200 wanted/missing with one monitored movie, but POST /api/v3/command
+    returns 500 for every attempt -- the engine's real per-item failure path
+    (not a patched cycle fn) must still grade Failed and increment the counter.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/tag":
+            return httpx.Response(200, json=[])
+        if request.method == "POST" and request.url.path == "/api/v3/command":
+            return httpx.Response(500, json={"error": "Internal Server Error"})
+        if request.url.path == "/api/v3/wanted/missing":
+            return httpx.Response(
+                200,
+                json={
+                    "page": 1, "pageSize": 50, "sortKey": "id", "totalRecords": 1,
+                    "records": [{"id": 1, "title": "M", "monitored": True}],
+                },
+            )
+        return httpx.Response(
+            200, json={"page": 1, "pageSize": 50, "sortKey": "id", "totalRecords": 0, "records": []}
+        )
+
+    app, job = _build_outage_app(tmp_path, transport_handler=handler)
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch("triggarr.search.engine.insert_search_entry", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 1
+    assert app.state.triggarr_state["radarr"]["Default"]["last_cycle"]["grade"] == "failed"
+    assert app.state.triggarr_state["radarr"]["Default"]["connected"] is True
+
+
+async def test_failure_counter_ignores_inactive_queue_fetch_failure(tmp_path):
+    """R-07: an inactive queue's fetch failure never increments the counter.
+
+    search_cutoff_count=0 makes the cutoff queue inactive. Its 503 fetch
+    failure must never abort the cycle, grade Failed, or flip `connected` --
+    only an active queue's fetch failure does that (spec Sec 3.1 / R-07).
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/tag":
+            return httpx.Response(200, json=[])
+        if request.method == "POST" and request.url.path == "/api/v3/command":
+            return httpx.Response(201, json={"id": 1})
+        if request.url.path == "/api/v3/wanted/missing":
+            return httpx.Response(
+                200,
+                json={
+                    "page": 1, "pageSize": 50, "sortKey": "id", "totalRecords": 1,
+                    "records": [{"id": 1, "title": "M", "monitored": True}],
+                },
+            )
+        if request.url.path == "/api/v3/wanted/cutoff":
+            return httpx.Response(503, json={"error": "Service unavailable"})
+        return httpx.Response(
+            200, json={"page": 1, "pageSize": 50, "sortKey": "id", "totalRecords": 0, "records": []}
+        )
+
+    app, job = _build_outage_app(
+        tmp_path, transport_handler=handler, search_missing_count=1, search_cutoff_count=0,
+    )
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch("triggarr.search.engine.insert_search_entry", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+        await job()
+        await job()
+
+    assert app.state.search_failures["radarr_Default_search"] == 0
+    assert app.state.triggarr_state["radarr"]["Default"]["last_cycle"]["grade"] == "success"
+    assert app.state.triggarr_state["radarr"]["Default"]["connected"] is True
+
+
+async def test_failure_counter_log_reason_names_instance_unreachable_on_fetch_failure(tmp_path):
+    """OUTCOME-04: a real fetch-failure's grade-driven reason still says 'instance unreachable'.
+
+    Log-line continuity: the engine's fetch-failure record grades Failed, and
+    the scheduler's failure reason for a fetch_error-carrying record is the
+    same "instance unreachable" text operators already search logs for.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "Service unavailable"})
+
+    app, job = _build_outage_app(tmp_path, transport_handler=handler)
+
+    sink = io.StringIO()
+    sink_id = logger.add(sink, format="{level} | {message}", level="WARNING")
+    try:
+        with (
+            patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+            patch(
+                "triggarr.search.scheduler.run_tracking_check",
+                new=AsyncMock(return_value=_NO_TRACKING_RESULT),
+            ),
+            patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+        ):
+            await job()
+    finally:
+        logger.remove(sink_id)
+
+    output = sink.getvalue()
+    assert "instance unreachable" in output, f"Expected 'instance unreachable' in log output: {output!r}"
+    assert app.state.triggarr_state["radarr"]["Default"]["last_cycle"]["grade"] == "failed"
 
 
 async def test_persistence_failure_logs_error_and_marks_degraded(tmp_path):
@@ -1120,7 +1529,7 @@ def _build_tag_cache_app(tmp_path, *, tag_handler):
             },
         )
 
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="http://radarr-test:7878",
@@ -1246,6 +1655,70 @@ async def test_tag_cache_ttl_expired_triggers_fresh_fetch(tmp_path):
     assert fetched_at > stale_at
 
 
+async def test_tag_cache_fresh_entry_missing_configured_tag_refetches(tmp_path):
+    """vibe-check bugs-001: a fresh cached list that lacks the configured tag is refetched.
+
+    The tag was created in Radarr after the list was cached. The queue must
+    not be skipped (or graded) on the stale list; the fresh list replaces the
+    cache entry.
+    """
+    tag_calls = {"count": 0}
+
+    def tag_handler(request: httpx.Request) -> httpx.Response:
+        tag_calls["count"] += 1
+        return httpx.Response(200, json=[{"id": 5, "label": "triggarr"}])
+
+    app, job = _build_tag_cache_app(tmp_path, tag_handler=tag_handler)
+    cached_at = time.monotonic()
+    app.state.tag_cache[("radarr", "Default")] = ([Tag(id=99, label="other")], cached_at)
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    assert tag_calls["count"] == 1
+    ist = app.state.triggarr_state["radarr"]["Default"]
+    assert ist["tag_warnings"] == []
+    assert ist["unresolved_tag_scopes"] == {}
+    cached_tags, fetched_at = app.state.tag_cache[("radarr", "Default")]
+    assert [t.label for t in cached_tags] == ["triggarr"]
+    assert fetched_at >= cached_at
+
+
+async def test_tag_cache_refetch_still_missing_skips_queue_once(tmp_path):
+    """bugs-001 companion: a tag that is really missing is confirmed by one fresh fetch, then skipped."""
+    tag_calls = {"count": 0}
+
+    def tag_handler(request: httpx.Request) -> httpx.Response:
+        tag_calls["count"] += 1
+        return httpx.Response(200, json=[{"id": 99, "label": "other"}])
+
+    app, job = _build_tag_cache_app(tmp_path, tag_handler=tag_handler)
+    app.state.tag_cache[("radarr", "Default")] = ([Tag(id=99, label="other")], time.monotonic())
+
+    with (
+        patch("triggarr.clients.base.asyncio.sleep", new=AsyncMock()),
+        patch(
+            "triggarr.search.scheduler.run_tracking_check",
+            new=AsyncMock(return_value={"grabbed": 0, "partial": 0, "partial_expired": 0,
+                                        "unresolved": 0, "errors": 0}),
+        ),
+        patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+    ):
+        await job()
+
+    assert tag_calls["count"] == 1
+    ist = app.state.triggarr_state["radarr"]["Default"]
+    assert ist["tag_warnings"] == [{"tag": "triggarr", "field": "missing", "reason": "not_found"}]
+
+
 # ---------------------------------------------------------------------------
 # CHARD-02/03 (Plan 69-03): _run_one_cycle — manual search failure-counter tests
 #
@@ -1266,7 +1739,7 @@ def _build_manual_app(tmp_path, *, transport_handler, max_consecutive_failures=5
     settings = make_settings()
     settings.general.max_consecutive_failures = max_consecutive_failures
 
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(transport_handler),
         base_url="http://radarr-test:7878",
@@ -1403,7 +1876,7 @@ async def test_search_now_failure_returns_card_200(tmp_path):
 
     settings = make_settings()
 
-    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key="test-key")
+    real_client = RadarrClient(base_url="http://radarr-test:7878", api_key=SecretStr("test-key"))
     real_client._client = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="http://radarr-test:7878",

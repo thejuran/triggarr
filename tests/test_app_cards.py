@@ -8,6 +8,7 @@ full-width Search Now with app-colored hover, and unreachable error message.
 from __future__ import annotations
 
 import asyncio
+import html
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -20,7 +21,7 @@ from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import log_buffer
 from triggarr.models.config import GeneralConfig
-from triggarr.web.routes import STATIC_DIR, router
+from triggarr.web.routes import STATIC_DIR, _scoped_count_unknown, router
 
 
 @pytest.fixture
@@ -159,18 +160,19 @@ def test_waiting_pill_unified_shape(client, test_app):
 
 
 def test_schedule_row_present(client, test_app):
-    """Schedule row shows Last Run and Next Run with font-mono (CARD-02).
+    """Schedule row shows Last checked and Next Run with font-mono (CARD-02, 78-04/D-04).
 
-    The schedule row uses mb-1 (not mb-4) since the Last OK row below it provides
-    the visual separation; the Last OK row itself carries mb-4.
+    The schedule row uses mb-1 (not mb-4) since the Last successful search row
+    below it provides the visual separation; that row itself carries mb-4. The
+    exact clock time now lives in the hover-tooltip title (D-05), not inline.
     """
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = "2026-04-13T14:32:10Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "Last run" in response.text
+    assert "Last checked" in response.text
     assert "font-mono text-triggarr-muted mb-1 flex justify-between" in response.text
-    assert "14:32:10" in response.text
+    assert "14:32:10" in response.text, "Exact time must appear in the title tooltip"
 
 
 def test_schedule_row_unreachable_no_schedule(client, test_app):
@@ -179,7 +181,7 @@ def test_schedule_row_unreachable_no_schedule(client, test_app):
     test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
-    assert "Last run" not in response.text
+    assert "Last checked" not in response.text
     assert "API connection failed." in response.text
 
 
@@ -445,9 +447,696 @@ def test_tag_warning_uses_svg_icon(client, test_app):
     """Tag warning badge uses SVG icon instead of HTML entity (D-25)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
-        {"field": "missing", "tag": "hdr"},
+        {"field": "missing", "tag": "hdr", "reason": "not_found"},
     ]
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     assert "<svg" in response.text
     assert "&#9888;" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# 78-04: Honest cycle outcomes on the dashboard card (D-03..D-15, R-05)
+# ---------------------------------------------------------------------------
+
+
+def _last_cycle_record(**overrides) -> dict:
+    """Build a raw persisted LastCycleRecord dict for template tests (78-04 Task 2)."""
+    from datetime import UTC, datetime, timedelta
+
+    record = {
+        "grade": "success",
+        "accepted": 0,
+        "failed": 0,
+        "malformed_skipped": 0,
+        "persistence_failed": 0,
+        "failure_reasons": [],
+        "unevaluated": [],
+        "eligible": {},
+        "fetch_error": None,
+        "finished_at": (datetime.now(UTC) - timedelta(minutes=8)).isoformat().replace("+00:00", "Z"),
+    }
+    record.update(overrides)
+    return record
+
+
+def test_grade_line_success_renders_green_no_detail(client, test_app):
+    """Success grade renders counts in green with no detail panel (D-03/D-07)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success", accepted=5, failed=0,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Success · 5 accepted, 0 failed ·" in response.text
+    assert "text-triggarr-green" in response.text
+    assert "data-cycle-detail" not in response.text
+
+
+def test_grade_line_partial_renders_amber_with_detail(client, test_app):
+    """Partial grade renders amber with a grouped, countable detail panel (D-03/D-07/D-09)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=4,
+        failed=1,
+        failure_reasons=[{"reason": "HTTP 500", "count": 3}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Partial · 4 accepted, 1 failed" in response.text
+    assert "text-amber-400" in response.text
+    assert "data-cycle-detail" in response.text
+    assert "Show 1 failure reason" in response.text
+    assert "Command rejected by Radarr (HTTP 500)" in response.text
+    assert "&times;3" in response.text
+
+
+def test_grade_line_failed_renders_red_with_detail(client, test_app):
+    """Failed grade renders red with a detail panel (D-03/D-07)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed",
+        accepted=0,
+        failed=2,
+        failure_reasons=[{"reason": "HTTP 500", "count": 2}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Failed · 0 accepted, 2 failed" in response.text
+    assert "text-triggarr-danger" in response.text
+    assert "data-cycle-detail" in response.text
+
+
+def test_grade_line_nothing_needed_no_counts_no_detail(client, test_app):
+    """Nothing needed searching shows no counts and no detail panel (D-08/D-12)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="nothing_needed", accepted=0, failed=0,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Nothing needed searching ·" in response.text
+    assert "accepted" not in response.text
+    assert "data-cycle-detail" not in response.text
+
+
+def test_grade_line_precedes_tag_warning_and_last_checked(client, test_app):
+    """D-03/Pitfall 6: the grade line is the first row, before the tag badge and Last checked."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "hdr", "reason": "not_found"},
+    ]
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success", accepted=5, failed=0,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    grade_index = response.text.index("Success ·")
+    tag_index = response.text.index("queue skipped")
+    last_checked_index = response.text.index("Last checked")
+    assert grade_index < tag_index
+    assert grade_index < last_checked_index
+
+
+def test_relabeled_rows_and_exact_time_title(client, test_app):
+    """Rows read 'Last checked:'/'Last successful search:'; old labels gone; Next stays absolute.
+
+    (D-04/D-05)
+    """
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = "2026-04-13T14:32:10Z"
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last checked:" in response.text
+    assert "Last successful search:" in response.text
+    assert "Last run" not in response.text
+    assert "Last OK" not in response.text
+    assert 'title="2026-04-13 14:32:10 UTC"' in response.text
+
+
+def test_last_checked_stale_renders_amber_last_successful_search_never_amber(client, test_app):
+    """A stale Last checked is amber; a stale Last successful search is never amber (D-06)."""
+    from datetime import UTC, datetime, timedelta
+
+    old_ts = (datetime.now(UTC) - timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
+    recent_ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_run"] = old_ts
+    test_app.state.triggarr_state["radarr"]["Default"]["last_successful_search"] = old_ts
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success", accepted=1, failed=0, finished_at=recent_ts,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "text-amber-400" in response.text, "Stale Last checked must render amber"
+    # Isolate the Last successful search row -- its value span must never carry amber.
+    success_row = response.text.split("Last successful search:")[1].split("</div>")[0]
+    assert "text-amber-400" not in success_row
+
+
+def test_not_run_yet_and_last_successful_search_never(client, test_app):
+    """No last_cycle and no last_success renders 'Not run yet' and Never (D-14)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"].pop("last_cycle", None)
+    test_app.state.triggarr_state["radarr"]["Default"].pop("last_success", None)
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Not run yet" in response.text
+    assert "Last successful search:" in response.text
+    assert "Never" in response.text
+
+
+def test_legacy_last_success_label_disappears_after_first_cycle(client, test_app):
+    """A pre-upgrade last_success shows '(legacy)' until the first new cycle completes (D-14)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"].pop("last_cycle", None)
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last success (legacy):" in response.text
+    assert "Last successful search:" not in response.text
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="nothing_needed", accepted=0, failed=0,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last success (legacy)" not in response.text
+
+
+def test_r05_connected_body_never_shows_legacy_value_once_last_cycle_exists(client, test_app):
+    """R-05 (connected body): the legacy last_success value never fills the confirmed slot."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="nothing_needed", accepted=0, failed=0,
+    )
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+    test_app.state.triggarr_state["radarr"]["Default"]["last_successful_search"] = None
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last successful search:" in response.text
+    success_row = response.text.split("Last successful search:")[1].split("</div>")[0]
+    assert "Never" in success_row
+    assert "Last success (legacy)" not in response.text
+    assert "2026-01-01 00:00:00 UTC" not in response.text
+
+
+def test_r05_connected_body_confirmed_time_not_legacy_value(client, test_app):
+    """R-05 (connected body): a confirmed last_successful_search renders its own exact time."""
+    from datetime import UTC, datetime, timedelta
+
+    recent_ts = (datetime.now(UTC) - timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success", accepted=1, failed=0,
+    )
+    test_app.state.triggarr_state["radarr"]["Default"]["last_successful_search"] = recent_ts
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    from triggarr.web.routes import _exact_time_filter
+
+    assert _exact_time_filter(recent_ts) in response.text
+    assert "2026-01-01 00:00:00 UTC" not in response.text
+
+
+def test_r05_unreachable_body_never_shows_legacy_value(client, test_app):
+    """R-05 (unreachable body): Last successful search never falls back to the legacy value."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
+    test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed", accepted=0, failed=0, fetch_error="HTTP error: ConnectError",
+    )
+    test_app.state.triggarr_state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+    test_app.state.triggarr_state["radarr"]["Default"]["last_successful_search"] = None
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Last successful search:" in response.text
+    success_row = response.text.split("Last successful search:")[1].split("</div>")[0]
+    assert "Never" in success_row
+    assert "2026-01-01 00:00:00 UTC" not in response.text
+
+
+def test_unreachable_card_shows_grade_line_and_last_successful_search(client, test_app):
+    """D-13: unreachable card keeps its error body and shows the Failed grade line."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = False
+    test_app.state.triggarr_state["radarr"]["Default"]["unreachable_since"] = "2026-04-13T12:00:00Z"
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed", accepted=0, failed=0, fetch_error="HTTP error: ConnectError",
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "API connection failed." in response.text
+    assert "Failed · couldn't reach Radarr ·" in response.text
+    assert "Last successful search:" in response.text
+    assert "Last OK" not in response.text
+
+
+def test_persistence_warning_renders_and_clears(client, test_app):
+    """D-15: persistence_failed renders the amber warning with correct pluralization."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success", accepted=2, failed=0, persistence_failed=2,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "History not saved for 2 searches — stats may undercount" in response.text
+    assert "text-triggarr-green" in response.text, "Persistence warning must not change grade color"
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success", accepted=1, failed=0, persistence_failed=1,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "History not saved for 1 search —" in response.text
+
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success", accepted=1, failed=0, persistence_failed=0,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "History not saved for" not in response.text
+
+
+def test_reason_text_with_script_tag_is_escaped(client, test_app):
+    """D-10: reason text is autoescaped, never rendered as raw HTML."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        failed=1,
+        failure_reasons=[{"reason": "<script>alert(1)</script>", "count": 1}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "<script>alert(1)</script>" not in response.text
+    assert "&lt;script&gt;" in response.text
+
+
+# ---------------------------------------------------------------------------
+# D-11 (78-04): detail panel open state survives the 5s htmx refresh
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_preserves_open_detail_panel_across_refresh(client):
+    """Dashboard script remembers and re-opens [data-cycle-detail] panels after each
+    htmx outerHTML card refresh, without hx-preserve (which would freeze stale
+    failure reasons). This pins the markup/script contract; the live browser
+    behavior is confirmed in the milestone-end NAS walkthrough (78-VALIDATION.md).
+    """
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "data-cycle-detail" in response.text
+    assert "addEventListener('toggle'" in response.text
+    assert "openCycleDetails" in response.text
+    assert 'nonce="' in response.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: tag-skip badge (D-01, D-03, OQ2)
+# ---------------------------------------------------------------------------
+
+
+def test_tag_skip_badge_single_not_found(client, test_app):
+    """A single not-found tag names the queue and the not-found reason (D-01/D-03)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "4k", "reason": "not_found"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Missing queue skipped" in response.text
+    assert "tag '4k' not found" in response.text
+    assert "Tags not found" not in response.text
+
+
+def test_tag_skip_badge_single_fetch_failed(client, test_app):
+    """A single fetch-failure names the queue and the fetch-failure reason (D-01/D-03)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "cutoff", "tag": "upgrade", "reason": "fetch_failed"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Cutoff queue skipped" in response.text
+    assert "couldn't load tags from Radarr" in response.text
+    assert "tag 'upgrade' not found" not in response.text
+
+
+def test_tag_skip_badge_two_queues_names_both(client, test_app):
+    """Two skipped queues are both named, each with its own reason, in one badge (D-01)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "4k", "reason": "not_found"},
+        {"field": "cutoff", "tag": "upgrade", "reason": "fetch_failed"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Missing" in response.text
+    assert "tag '4k' not found" in response.text
+    assert "Cutoff" in response.text
+    assert "couldn't load tags from Radarr" in response.text
+    assert response.text.count("bg-amber-500/15") == 1
+
+
+def test_tag_skip_badge_legacy_entry_without_reason(client, test_app):
+    """A pre-upgrade entry without a reason key defaults to the not-found wording (Pitfall 4)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "hdr"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "Missing queue skipped" in response.text
+    assert "tag 'hdr' not found" in response.text
+    assert "Undefined" not in response.text
+
+
+def test_tag_skip_badge_escapes_tag_name(client, test_app):
+    """The user-configured tag name is HTML-escaped in the badge (T-79-05)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"field": "missing", "tag": "<b>x</b>", "reason": "not_found"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "&lt;b&gt;x&lt;/b&gt;" in response.text
+    assert "<b>x</b>" not in response.text
+
+
+def test_tag_skip_badge_absent_when_no_warnings(client, test_app):
+    """No tag_warnings -> no badge rendered at all."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = []
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    assert "queue skipped" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: unknown scoped counts (D-05, OQ1; revision 1)
+# ---------------------------------------------------------------------------
+
+
+def test_unresolved_tag_fresh_state_shows_unknown_not_raw(client, test_app):
+    """A fresh instance with an unresolved active tag shows unknown, never the raw count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"tag": "4k", "field": "missing", "reason": "not_found"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 500" not in text
+
+
+def test_unresolved_tag_fresh_state_inactive_queue_shows_unknown(client, test_app):
+    """An inactive (no-badge) queue with an unresolved tag still shows unknown (OQ1)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = []
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 500" not in text
+    assert "queue skipped" not in text
+
+
+def test_unresolved_tag_legacy_fail_open_state_shows_unknown(client, test_app):
+    """Legacy (pre-upgrade) fail-open state with no provenance stamp is never trusted."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 480
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_monitored"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        {"tag": "4k", "field": "missing"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 480" not in text
+    assert "of 500" not in text
+    assert "20 skipped" not in text
+
+
+def test_unresolved_tag_legacy_counts_with_new_marker_untrusted(client, test_app):
+    """A new unresolved marker with no scoped_count_tags stamp still shows unknown."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 480
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+
+
+def test_unresolved_tag_keeps_last_good_scoped_count(client, test_app):
+    """A scoped count stamped with the currently-unresolved tag is trusted and kept."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 7
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 7" in text
+    assert "of 500" not in text
+
+
+def test_unresolved_tag_count_from_different_tag_untrusted(client, test_app):
+    """A scoped count stamped with a different tag than the one now unresolved is untrusted."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 7
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "hd"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+
+
+def test_unresolved_tag_trusted_stamp_but_null_count_shows_unknown(client, test_app):
+    """A trusted stamp with a null scoped count still shows unknown, never the raw fallback."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = None
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "4k"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+
+
+def test_unresolved_cutoff_tag_radarr_shows_unknown(client, test_app):
+    """An unresolved cutoff tag shows unknown in the Cutoff sub-card, never the raw count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["cutoff_count"] = 300
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"cutoff": "up"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "of 300" not in text
+
+
+def test_unresolved_cutoff_tag_sonarr_keeps_last_good(client, test_app):
+    """A trusted cutoff_searchable stamp is kept for an unresolved cutoff tag."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["cutoff_count"] = 300
+    test_app.state.triggarr_state["radarr"]["Default"]["cutoff_searchable"] = 2
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"cutoff": "up"}
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = {"cutoff": "up"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 2" in text
+
+
+def test_resolved_or_untagged_queue_denominator_unchanged(client, test_app):
+    """An untagged/resolved queue's denominator chain is unaffected by this phase."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 500" in text
+
+
+def test_scope_flags_tolerate_tampered_state(client, test_app):
+    """Malformed unresolved_tag_scopes/scoped_count_tags/tag_warnings never crash the card route."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["unresolved_tag_scopes"] = "garbage"
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = [1]
+    test_app.state.triggarr_state["radarr"]["Default"]["tag_warnings"] = [
+        "x", {"field": 5, "tag": None}, {"field": "missing"},
+    ]
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+
+
+def test_scoped_count_unknown_empty_state() -> None:
+    """An empty app_state resolves to no unknown scopes."""
+    assert _scoped_count_unknown({}) == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_trusted_stamp_kept() -> None:
+    """A stamp matching the unresolved tag with an int scoped value is trusted."""
+    result = _scoped_count_unknown({
+        "unresolved_tag_scopes": {"missing": "4k"},
+        "scoped_count_tags": {"missing": "4k"},
+        "missing_eligible": 7,
+    })
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_untrusted_mismatched_tag() -> None:
+    """A stamp for a different tag than the one unresolved is untrusted."""
+    result = _scoped_count_unknown({
+        "unresolved_tag_scopes": {"missing": "4k"},
+        "scoped_count_tags": {"missing": "hd"},
+        "missing_eligible": 7,
+    })
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_legacy_warning_without_marker() -> None:
+    """A legacy reason-less tag_warnings entry with no unresolved_tag_scopes marker is unknown."""
+    result = _scoped_count_unknown({
+        "tag_warnings": [{"tag": "4k", "field": "missing"}],
+        "missing_eligible": 480,
+    })
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_tampered_values_ignored() -> None:
+    """Malformed unresolved_tag_scopes/scoped_count_tags/tag_warnings values are ignored safely."""
+    result = _scoped_count_unknown({
+        "unresolved_tag_scopes": "garbage",
+        "scoped_count_tags": [1],
+        "tag_warnings": ["x", {"field": 5, "tag": None}, {"field": "missing"}],
+    })
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_resolved_stamp_from_previous_tag_untrusted() -> None:
+    """Greptile 4305219336: a resolved queue's count stamped under a previous tag is unknown."""
+    result = _scoped_count_unknown(
+        {"scoped_count_tags": {"missing": "old"}, "missing_eligible": 3},
+        configured_tags={"missing": "new", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_resolved_stamp_matching_current_tag_trusted() -> None:
+    """A resolved queue's count stamped with the currently configured tag is shown."""
+    result = _scoped_count_unknown(
+        {"scoped_count_tags": {"missing": "new", "cutoff": "up"}, "missing_eligible": 3, "cutoff_searchable": 2},
+        configured_tags={"missing": "new", "cutoff": "up"},
+        stamped_fields=("missing", "cutoff"),
+    )
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_resolved_legacy_unstamped_tagged_untrusted() -> None:
+    """vibe-check arch-001: a legacy unstamped count for a tagged queue is unknown."""
+    result = _scoped_count_unknown(
+        {"missing_eligible": 480},
+        configured_tags={"missing": "4k", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_untagged_queue_unaffected_by_config_check() -> None:
+    """An untagged queue's denominator is never hidden by the config check, stamped or not."""
+    result = _scoped_count_unknown(
+        {"missing_eligible": 480},
+        configured_tags={"missing": None, "cutoff": None},
+        stamped_fields=("missing", "cutoff"),
+    )
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_scoped_count_unknown_unstamped_field_not_checked() -> None:
+    """Radarr/Lidarr cutoff is never stamped, so a tagged cutoff is not hidden by the config check."""
+    result = _scoped_count_unknown(
+        {"scoped_count_tags": {"missing": "4k"}, "missing_eligible": 3},
+        configured_tags={"missing": "4k", "cutoff": "up"},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": False, "cutoff": False}
+
+
+def test_resolved_tag_card_hides_count_from_previous_tag(client, test_app):
+    """Card route: a missing_tag change hides the old tag's count until it is recomputed."""
+    cfg = test_app.state.settings.radarr["Default"]
+    test_app.state.settings.radarr["Default"] = cfg.model_copy(update={"missing_tag": "new"})
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = 3
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "old"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of —" in text
+    assert "0 of 3" not in text
+
+
+def test_resolved_tag_card_cleared_scoped_count_never_shows_whole_library(client, test_app):
+    """A refresh data fault clears a resolved tagged queue's scoped count; the card shows '—', not the raw count."""
+    cfg = test_app.state.settings.radarr["Default"]
+    test_app.state.settings.radarr["Default"] = cfg.model_copy(update={"missing_tag": "4k"})
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = None
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 500" not in text
+    assert "0 of —" in text
+
+
+def test_scoped_count_unknown_tag_change_with_stale_unresolved_marker_untrusted() -> None:
+    """vibe-check codex-001: a stale unresolved marker for the old tag never vouches for the new tag.
+
+    'old' failed to resolve, so the marker and the matching stamp both say
+    'old'. The config is then saved with missing_tag='new' (save_settings only
+    invalidates the tag cache), so the old count must stay hidden.
+    """
+    result = _scoped_count_unknown(
+        {
+            "unresolved_tag_scopes": {"missing": "old"},
+            "scoped_count_tags": {"missing": "old"},
+            "missing_eligible": 3,
+        },
+        configured_tags={"missing": "new", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": True, "cutoff": False}
+
+
+def test_scoped_count_unknown_unresolved_marker_matching_current_tag_still_trusted() -> None:
+    """With config passed, a last-good count stamped with the current, now-unresolved tag is still kept."""
+    result = _scoped_count_unknown(
+        {
+            "unresolved_tag_scopes": {"missing": "4k"},
+            "scoped_count_tags": {"missing": "4k"},
+            "missing_eligible": 7,
+        },
+        configured_tags={"missing": "4k", "cutoff": None},
+        stamped_fields=("missing",),
+    )
+    assert result == {"missing": False, "cutoff": False}

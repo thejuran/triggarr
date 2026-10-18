@@ -29,43 +29,64 @@
     <i class="ph ph-warning-circle text-[40px] text-triggarr-danger/40 mb-3 block"></i>
     <span class="text-sm text-triggarr-muted block mb-1">API connection failed.</span>
     <span class="text-[10px] text-triggarr-muted/60 block">Check API key or network setup.</span>
-    <!-- Last OK on unreachable card (Codex finding A): users most need this when instance is down -->
-    <div class="text-[10px] font-mono text-triggarr-muted mt-2">Last OK:
-      {% if app.last_success %}
-        <span class="{% if app.last_success_stale %}text-amber-400{% else %}text-triggarr-text{% endif %}">{{ app.last_success[11:19] }}</span>
-      {% else %}
-        <span class="text-triggarr-muted">Never</span>
-      {% endif %}
+    <!-- Grade line + last-success row on unreachable card (D-13): users most need this when instance is down -->
+    <div class="mt-2 w-full">
+      {% include "partials/cycle_grade.html" %}
+      <div class="text-[10px] font-mono text-triggarr-muted">
+        {% if app.legacy_last_success %}
+          Last success (legacy): {% if app.last_success %}<span title="{{ app.last_success | exact_time }}" class="text-triggarr-text">{{ app.last_success | relative_time }}</span>{% else %}<span class="text-triggarr-muted">Never</span>{% endif %}
+        {% else %}
+          Last successful search: {% if app.last_successful_search %}<span title="{{ app.last_successful_search | exact_time }}" class="text-triggarr-text">{{ app.last_successful_search | relative_time }}</span>{% else %}<span class="text-triggarr-muted">Never</span>{% endif %}
+        {% endif %}
+      </div>
     </div>
   </div>
   {% else %}
   <!-- Connected/Waiting body -->
   <div class="p-4 flex-1">
-    <!-- Tag warning badge -->
+    <!-- Grade line + expand control (D-03): first row of the card body -->
+    {% include "partials/cycle_grade.html" %}
+
+    <!-- Tag-skip badge (Phase 79 D-01): names the skipped queue and reason; grade line stays above (Phase 78 D-03 / OQ2) -->
     {% if app.tag_warnings %}
     <div class="bg-amber-500/15 text-amber-400 text-xs px-3 py-1.5 rounded mb-3 flex items-center gap-2">
       <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="0.5"/></svg>
       <span>
         {% if app.tag_warnings | length == 1 %}
-          {{ app.tag_warnings[0].field | capitalize }} tag '{{ app.tag_warnings[0].tag }}' not found
+          {% set w = app.tag_warnings[0] %}
+          {{ w.field | capitalize }} queue skipped &mdash;
+          {% if w.reason == 'fetch_failed' %}
+            couldn't load tags from {{ app.app_label }}
+          {% else %}
+            tag '{{ w.tag }}' not found
+          {% endif %}
         {% else %}
-          Tags not found: {% for w in app.tag_warnings %}'{{ w.tag }}' ({{ w.field }}){% if not loop.last %}, {% endif %}{% endfor %}
+          Queues skipped:
+          {% for w in app.tag_warnings %}
+            {{ w.field | capitalize }} &mdash;
+            {% if w.reason == 'fetch_failed' %}
+              couldn't load tags from {{ app.app_label }}
+            {% else %}
+              tag '{{ w.tag }}' not found
+            {% endif %}
+            {% if not loop.last %}; {% endif %}
+          {% endfor %}
         {% endif %}
       </span>
     </div>
     {% endif %}
 
-    <!-- Schedule row: Last run / Last OK / Next -->
+    <!-- Schedule row: Last checked / Next (D-04) -->
     <div class="text-[11px] font-mono text-triggarr-muted mb-1 flex justify-between">
-      <span>Last run: <span class="text-triggarr-text">{% if app.last_run %}{{ app.last_run[11:19] }}{% else %}Never{% endif %}</span></span>
+      <span>Last checked: <span title="{{ app.last_checked | exact_time }}" class="{% if app.last_checked_stale %}text-amber-400{% else %}text-triggarr-text{% endif %}">{% if app.last_checked %}{{ app.last_checked | relative_time }}{% else %}Never{% endif %}</span></span>
       <span>Next: <span class="text-triggarr-text">{% if app.next_run %}{{ app.next_run[11:16] }}{% else %}&mdash;{% endif %}</span></span>
     </div>
-    <!-- Last OK row (D-04): amber when stale and a real timestamp exists; never amber on Never -->
-    <div class="text-[11px] font-mono text-triggarr-muted mb-4">Last OK:
-      {% if app.last_success %}
-        <span class="{% if app.last_success_stale %}text-amber-400{% else %}text-triggarr-text{% endif %}">{{ app.last_success[11:19] }}</span>
+    <!-- Confirmed-search row (D-04/D-06/R-05): legacy branch vs. last_successful_search; never amber -->
+    <div class="text-[11px] font-mono text-triggarr-muted mb-4">
+      {% if app.legacy_last_success %}
+        Last success (legacy): {% if app.last_success %}<span title="{{ app.last_success | exact_time }}" class="text-triggarr-text">{{ app.last_success | relative_time }}</span>{% else %}<span class="text-triggarr-muted">Never</span>{% endif %}
       {% else %}
-        <span class="text-triggarr-muted">Never</span>
+        Last successful search: {% if app.last_successful_search %}<span title="{{ app.last_successful_search | exact_time }}" class="text-triggarr-text">{{ app.last_successful_search | relative_time }}</span>{% else %}<span class="text-triggarr-muted">Never</span>{% endif %}
       {% endif %}
     </div>
 
@@ -78,12 +99,13 @@
         </span>
         {% if app.missing_count is not none %}
         <p class="text-[10px] text-triggarr-muted mt-0.5 flex items-center gap-1.5">
-          <span>{{ app.missing_cursor }} of {{ app.missing_searchable if app.missing_searchable is not none else (app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?')) }}</span>
+          {# Phase 79 D-05: unresolved tag scope -> unknown, never the raw whole-library fallback #}
+          <span>{{ app.missing_cursor }} of {% if app.missing_scope_unknown %}&mdash;{% else %}{{ app.missing_searchable if app.missing_searchable is not none else (app.missing_eligible if app.missing_eligible is not none else (app.missing_count if app.missing_count is not none else '?')) }}{% endif %}</span>
           {%- if app.missing_pass is defined and app.missing_pass > 0 %}
           <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.missing_pass }}</span>
           {%- endif %}
         </p>
-        {%- if app.skip_unreleased and app.name == 'radarr' and app.missing_eligible is not none and app.missing_monitored is not none and app.missing_eligible < app.missing_monitored %}
+        {%- if app.skip_unreleased and app.name == 'radarr' and not app.missing_scope_unknown and app.missing_eligible is not none and app.missing_monitored is not none and app.missing_eligible < app.missing_monitored %}
         <p class="text-[10px] text-amber-400 mt-0.5">{{ app.missing_monitored - app.missing_eligible }} skipped</p>
         {%- endif %}
         {% endif %}
@@ -95,7 +117,8 @@
         </span>
         {% if app.cutoff_count is not none %}
         <p class="text-[10px] text-triggarr-muted mt-0.5 flex items-center gap-1.5">
-          <span>{{ app.cutoff_cursor }} of {{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}</span>
+          {# Phase 79 D-05: unresolved tag scope -> unknown, never the raw whole-library fallback #}
+          <span>{{ app.cutoff_cursor }} of {% if app.cutoff_scope_unknown %}&mdash;{% else %}{{ app.cutoff_searchable if app.cutoff_searchable is not none else (app.cutoff_count if app.cutoff_count is not none else '?') }}{% endif %}</span>
           {%- if app.cutoff_pass is defined and app.cutoff_pass > 0 %}
           <span class="text-[10px] bg-triggarr-border/60 text-triggarr-muted px-1.5 py-0 rounded">pass {{ app.cutoff_pass }}</span>
           {%- endif %}

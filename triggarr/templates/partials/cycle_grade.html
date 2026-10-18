@@ -1,0 +1,27 @@
+{% if app.last_cycle is none %}
+<div class="text-[12px] mb-2 text-triggarr-muted">Not run yet</div>
+{% else %}
+<div class="text-[12px] mb-2 flex items-center gap-1.5 {% if app.last_cycle.grade == 'success' %}text-triggarr-green{% elif app.last_cycle.grade == 'partial' %}text-amber-400{% elif app.last_cycle.grade == 'failed' %}text-triggarr-danger{% else %}text-triggarr-muted{% endif %}">
+  <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+  {% if app.last_cycle.fetch_failed %}
+  Failed · couldn't reach {{ app.app_label }} · <span title="{{ app.last_cycle.finished_at | exact_time }}">{{ app.last_cycle.finished_at | relative_time }}</span>
+  {% elif app.last_cycle.grade == 'nothing_needed' %}
+  Nothing needed searching · <span title="{{ app.last_cycle.finished_at | exact_time }}">{{ app.last_cycle.finished_at | relative_time }}</span>
+  {% else %}
+  {{ app.last_cycle.grade_label }} · {{ app.last_cycle.accepted }} accepted, {{ app.last_cycle.failed }} failed · <span title="{{ app.last_cycle.finished_at | exact_time }}">{{ app.last_cycle.finished_at | relative_time }}</span>
+  {% endif %}
+</div>
+{% if app.last_cycle.persistence_failed > 0 %}
+<div class="text-[11px] text-amber-400 mb-2">&#9888; History not saved for {{ app.last_cycle.persistence_failed }} search{% if app.last_cycle.persistence_failed != 1 %}es{% endif %} — stats may undercount</div>
+{% endif %}
+{% if app.last_cycle.has_detail %}
+<details data-cycle-detail class="mb-2 text-[11px] text-triggarr-muted">
+  <summary class="cursor-pointer select-none">Show {{ app.last_cycle.reason_count }} failure reason{% if app.last_cycle.reason_count != 1 %}s{% endif %}</summary>
+  <ul class="mt-1 ml-4 list-disc">
+    {% for r in app.last_cycle.reasons %}
+    <li>{{ r.text }}{% if r.count > 1 %} &times;{{ r.count }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+{% endif %}

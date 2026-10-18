@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from loguru import logger
 
 from triggarr.state import (
     AppState,
@@ -435,6 +437,47 @@ def test_state_wrong_nested_type_recovers(tmp_path: Path) -> None:
     assert state["search_log"] == []
 
 
+def test_state_corrupt_warning_names_reason_without_contents(tmp_path: Path) -> None:
+    """Corrupt state file warning names the exception type and reason, never the contents (D-09)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text('{"radarr": "SENTINEL-CONTENT-7f3a", oops')
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+    assert "JSONDecodeError" in captured
+    assert "line 1" in captured
+    assert "SENTINEL-CONTENT-7f3a" not in captured
+
+
+def test_state_unreadable_warning_names_reason(tmp_path: Path) -> None:
+    """A state file that raises PermissionError on open names the exception type (D-09)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {}, "sonarr": {}, "search_log": []}))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with patch("builtins.open", side_effect=PermissionError(13, "Permission denied")):
+            state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+    assert "PermissionError" in captured
+
+
 # ---------------------------------------------------------------------------
 # RES-02: last_success field tests
 # ---------------------------------------------------------------------------
@@ -609,3 +652,114 @@ def test_strip_on_load_save_round_trip(tmp_path: Path) -> None:
     # Non-cursor fields MUST survive
     assert saved_instance["missing_pass"] == 2
     assert saved_instance["missing_searched"] == ["1"]
+
+
+# --- Phase 78: LastCycleRecord + last_successful_search (OUTCOME-03/R-05) ---
+
+
+def test_default_instance_state_has_last_cycle_and_last_successful_search_none() -> None:
+    """_default_instance_state() seeds last_cycle=None and last_successful_search=None."""
+    from triggarr.state import _default_instance_state
+
+    state = _default_instance_state()
+    assert state["last_cycle"] is None
+    assert state["last_successful_search"] is None
+
+
+def test_back_compat_load_pre_upgrade_state_sets_last_cycle_none_preserves_legacy(tmp_path: Path) -> None:
+    """A pre-upgrade state.json with last_success and no last_cycle loads with last_cycle=None,
+
+    last_success preserved verbatim, and last_successful_search=None -- the legacy value
+    is never copied into the new confirmed-search field (OUTCOME-03 / D-14 / R-05).
+    """
+    state_file = tmp_path / "state.json"
+    pre_upgrade = {
+        "radarr": {
+            "Default": {
+                "last_run": "2026-01-01T00:00:00Z",
+                "last_success": "2026-01-01T00:00:00Z",
+            }
+        }
+    }
+    state_file.write_text(json.dumps(pre_upgrade))
+
+    loaded = load_state(state_file)
+    instance = loaded["radarr"]["Default"]
+
+    assert instance["last_cycle"] is None
+    assert instance["last_success"] == "2026-01-01T00:00:00Z"
+    assert instance["last_successful_search"] is None
+
+
+def test_load_state_normalizes_non_dict_last_cycle_string(tmp_path: Path) -> None:
+    """A state.json whose last_cycle is a string is normalized to None on load."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {"Default": {"last_cycle": "garbage"}}}))
+
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"]["last_cycle"] is None
+
+
+def test_load_state_normalizes_non_dict_last_cycle_list(tmp_path: Path) -> None:
+    """A state.json whose last_cycle is a list is normalized to None on load."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {"Default": {"last_cycle": ["bad"]}}}))
+
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"]["last_cycle"] is None
+
+
+def test_load_state_normalizes_non_string_last_successful_search_int(tmp_path: Path) -> None:
+    """A state.json whose last_successful_search is a non-string (int) is normalized to None."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {"Default": {"last_successful_search": 5}}}))
+
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"]["last_successful_search"] is None
+
+
+def test_load_state_normalizes_non_string_last_successful_search_list(tmp_path: Path) -> None:
+    """A state.json whose last_successful_search is a non-string (list) is normalized to None."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {"Default": {"last_successful_search": ["x"]}}}))
+
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"]["last_successful_search"] is None
+
+
+def test_last_cycle_and_last_successful_search_round_trip(tmp_path: Path) -> None:
+    """A full LastCycleRecord dict and a last_successful_search string survive save->load unchanged."""
+    state_file = tmp_path / "state.json"
+    last_cycle = {
+        "grade": "partial",
+        "accepted": 3,
+        "failed": 1,
+        "malformed_skipped": 0,
+        "persistence_failed": 0,
+        "failure_reasons": [{"reason": "HTTP 500", "count": 1}],
+        "unevaluated": [],
+        "eligible": {"missing": 4, "cutoff": 0},
+        "fetch_error": None,
+        "finished_at": "2026-10-08T12:00:00Z",
+    }
+    state = TriggarrState(
+        radarr={
+            "Default": AppState(
+                last_cycle=last_cycle,
+                last_successful_search="2026-10-08T12:00:00Z",
+            ),
+        },
+        sonarr={},
+        lidarr={},
+        search_log=[],
+    )
+
+    save_state(state, state_file)
+    loaded = load_state(state_file)
+
+    assert loaded["radarr"]["Default"]["last_cycle"] == last_cycle
+    assert loaded["radarr"]["Default"]["last_successful_search"] == "2026-10-08T12:00:00Z"

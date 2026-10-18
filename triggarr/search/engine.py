@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -18,30 +19,15 @@ import httpx
 import pydantic
 from loguru import logger
 
+from triggarr.clients.base import _sanitize_exc
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
 from triggarr.db import PendingCapExceeded, insert_search_entry
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig, Settings
-from triggarr.state import TriggarrState
-
-
-def _sanitize_exc(exc: Exception) -> str:
-    """Return a safe, type-based summary of an exception for storage.
-
-    Avoids storing raw str(exc) which may contain internal paths, URLs,
-    or API keys that bypass the loguru redacting sink.
-    """
-    if isinstance(exc, httpx.HTTPStatusError):
-        return f"HTTP {exc.response.status_code}"
-    if isinstance(exc, httpx.TimeoutException):
-        return "request timeout"
-    if isinstance(exc, httpx.HTTPError):
-        return f"HTTP error: {type(exc).__name__}"
-    if isinstance(exc, pydantic.ValidationError):
-        return f"validation error ({exc.error_count()} issues)"
-    return type(exc).__name__
+from triggarr.search.outcome import CycleTally, active_queues
+from triggarr.state import AppState, TriggarrState
 
 
 def resolve_tag_id(tag_name: str, tags: list[Tag]) -> int | None:
@@ -114,6 +100,51 @@ def cap_batch_sizes(missing_count: int, cutoff_count: int, hard_max: int) -> tup
     effective_missing = max(0, (missing_count * hard_max) // total_requested)
     effective_cutoff = hard_max - effective_missing
     return (effective_missing, effective_cutoff)
+
+
+def rebalance_batch_sizes(
+    *,
+    missing_limit: int,
+    cutoff_limit: int,
+    missing_configured: int,
+    cutoff_configured: int,
+    missing_eligible: int,
+    cutoff_eligible: int,
+    hard_max: int,
+) -> tuple[int, int]:
+    """Reallocate unused hard-max budget to a starved queue with eligible work (amended R-01).
+
+    ``cap_batch_sizes`` can give an active queue with eligible work zero
+    slots while the other queue has no eligible work this cycle (e.g.
+    ``missing_count=50, cutoff_count=50, hard_max=1`` -> ``(0, 1)``). If the
+    cutoff queue then has nothing eligible, the cycle would dispatch zero
+    commands despite real missing-queue work existing -- the exact
+    counterexample from RESEARCH.md Pitfall 4. This reallocates any slot a
+    queue cannot use (because it lacks eligible items) to the other queue,
+    up to that queue's own configured count and eligible count, without
+    ever exceeding ``hard_max`` in total.
+
+    ``missing_limit``/``cutoff_limit`` are the already-capped values from
+    ``cap_batch_sizes`` (pre-hard-max totals, i.e. ``missing_configured``/
+    ``cutoff_configured``, are passed separately since the cap already
+    consumed them). When ``hard_max <= 0`` (unlimited), the capped inputs
+    are returned unchanged -- there is no budget to reallocate.
+    """
+    if hard_max <= 0:
+        return (missing_limit, cutoff_limit)
+
+    m = min(missing_limit, missing_eligible)
+    c = min(cutoff_limit, cutoff_eligible)
+    leftover = hard_max - m - c
+
+    top_up_missing = max(0, min(leftover, min(missing_configured, missing_eligible) - m))
+    m += top_up_missing
+    leftover -= top_up_missing
+
+    top_up_cutoff = max(0, min(leftover, min(cutoff_configured, cutoff_eligible) - c))
+    c += top_up_cutoff
+
+    return (m, c)
 
 
 def filter_monitored(items: list[dict]) -> list[dict]:
@@ -322,6 +353,447 @@ def filter_unreleased_movies(movies: list[dict]) -> list[dict]:
     return result
 
 
+async def _search_and_record(
+    *,
+    command: Callable[[], Awaitable[object]],
+    tally: CycleTally,
+    db: aiosqlite.Connection,
+    app_label: str,
+    queue: str,
+    item_name: str,
+    instance_name: str,
+    max_rows: int,
+    item_id: int | None = None,
+    season_number: int | None = None,
+    missing_count: int | None = None,
+) -> bool:
+    """Run one *arr search command and record its outcome (R-04).
+
+    Splits the *arr command call from the search-history insert into two
+    independent error boundaries so a history-insert failure can never be
+    mistaken for a failed search command and can never abort the cycle
+    (OUTCOME-06). ``command`` is invoked at most once -- neither stage
+    ever retries it.
+
+    Returns True when the *arr command was accepted (regardless of whether
+    its history insert succeeded), False when the command itself failed.
+    """
+    try:
+        await command()
+    except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
+        reason = _sanitize_exc(exc)
+        logger.warning(
+            "{app}: Failed to search {name}: {exc}",
+            app=app_label,
+            name=item_name,
+            exc=reason,
+        )
+        tally.record_failed(reason)
+        try:
+            await insert_search_entry(
+                db, app_label, queue, item_name,
+                outcome="failed", detail=reason,
+                item_id=item_id,
+                season_number=season_number,
+                missing_count=missing_count,
+                instance_id=instance_name,
+                max_rows=max_rows,
+            )
+        except (aiosqlite.Error, OSError) as insert_exc:
+            logger.warning(
+                "{app}: Could not record failed search for {name}: {exc}",
+                app=app_label,
+                name=item_name,
+                exc=_sanitize_exc(insert_exc),
+            )
+        return False
+
+    # Command accepted -- the *arr committed to the search regardless of what
+    # happens next (OUTCOME-06). tally.accepted is unconditional from here.
+    tally.record_accepted()
+    try:
+        await insert_search_entry(
+            db, app_label, queue, item_name,
+            outcome="searched", detail="search triggered",
+            item_id=item_id,
+            season_number=season_number,
+            missing_count=missing_count,
+            instance_id=instance_name,
+            max_rows=max_rows,
+        )
+        logger.info("{app}: Searched {name} ({queue})", app=app_label, name=item_name, queue=queue)
+    except PendingCapExceeded as cap_exc:
+        logger.warning(
+            "Skipping search history insert -- pending-row cap reached "
+            "for {app}/{instance} {item!r}",
+            app=cap_exc.app,
+            instance=cap_exc.instance_id,
+            item=cap_exc.item_name,
+        )
+        tally.record_persistence_failure()
+    except (aiosqlite.Error, OSError) as insert_exc:
+        logger.warning(
+            "{app}: Search accepted but history not saved for {name}: {exc}",
+            app=app_label,
+            name=item_name,
+            exc=_sanitize_exc(insert_exc),
+        )
+        tally.record_persistence_failure()
+    return True
+
+
+def _finalize_cycle(ist: AppState, tally: CycleTally, instance_config: InstanceConfig) -> None:
+    """Grade the cycle and stamp its timestamps (R-04/R-05/OUTCOME-01/02).
+
+    Writes ``ist["last_cycle"]`` (graded via ``CycleTally.to_record`` per
+    spec Sec 3.1), ``ist["last_run"]`` unconditionally ("last checked"), and
+    ``ist["last_successful_search"]`` only when at least one command was
+    accepted this cycle. Never writes the legacy ``ist["last_success"]``
+    field (R-05) -- it stays frozen at its pre-upgrade value for the
+    "Last success (legacy)" label and the documented downgrade fallback.
+    """
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    ist["last_cycle"] = tally.to_record(
+        active_queues=active_queues(instance_config.search_missing_count, instance_config.search_cutoff_count),
+        finished_at=now_iso,
+    )
+    ist["last_run"] = now_iso
+    if tally.accepted >= 1:
+        ist["last_successful_search"] = now_iso
+
+
+def _mark_unreachable(ist: AppState) -> None:
+    """Mark an instance disconnected, stamping ``unreachable_since`` only if not already set.
+
+    Shared by the cycle abort / R-07 paths and the count-refresh fetch / data-fault
+    paths so the "first seen unreachable" timestamp is preserved identically everywhere.
+    """
+    ist["connected"] = False
+    if not ist.get("unreachable_since"):
+        ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _finish_both_inactive_unreachable(
+    *, ist: AppState, tally: CycleTally, instance_config: InstanceConfig, app_label: str
+) -> None:
+    """Finish a cycle whose queues are both inactive and both unfetchable (R-07).
+
+    Both queues are inactive and neither fetch could refresh its count. That
+    is real evidence the host is unreachable, but nothing was configured to
+    search this cycle -- grade nothing_needed (no active queues), never Failed.
+
+    Shared by the three cycle functions: marks the instance unreachable and
+    finalizes the cycle. Callers still own the ``return state`` after calling
+    this -- it leaves the caller's control flow untouched.
+    """
+    logger.warning(
+        "{app}: both queues inactive and neither could be fetched -- "
+        "marked unreachable; not graded Failed",
+        app=app_label,
+    )
+    _mark_unreachable(ist)
+    _finalize_cycle(ist, tally, instance_config)
+
+
+def _cap_and_log(
+    *, app_label: str, missing_configured: int, cutoff_configured: int, hard_max: int
+) -> tuple[int, int]:
+    """Apply the hard-max cap to a cycle's configured limits and log when it changed one (SRCH-12).
+
+    Shared by the three cycle functions: calls ``cap_batch_sizes`` on the
+    configured limits and logs at debug level only when the hard max actually
+    changed a limit. Returns the (possibly capped) (missing_limit, cutoff_limit).
+    """
+    missing_limit, cutoff_limit = cap_batch_sizes(missing_configured, cutoff_configured, hard_max)
+    if hard_max > 0 and (missing_limit != missing_configured or cutoff_limit != cutoff_configured):
+        logger.debug(
+            "{app}: Hard max {max} applied -- missing={m}, cutoff={c}",
+            app=app_label,
+            max=hard_max,
+            m=missing_limit,
+            c=cutoff_limit,
+        )
+    return missing_limit, cutoff_limit
+
+
+def _rebalance_and_log(
+    *,
+    app_label: str,
+    missing_limit: int,
+    cutoff_limit: int,
+    missing_configured: int,
+    cutoff_configured: int,
+    missing_eligible: int,
+    cutoff_eligible: int,
+    hard_max: int,
+) -> tuple[int, int]:
+    """Reallocate unused hard-max budget to a starved queue with work (R-01 amended).
+
+    Shared by the three cycle functions: calls ``rebalance_batch_sizes`` on the
+    already-capped limits and logs at debug level when the hard max moved budget
+    between queues. Returns the (possibly rebalanced) (missing_limit, cutoff_limit).
+    """
+    new_missing, new_cutoff = rebalance_batch_sizes(
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=missing_configured,
+        cutoff_configured=cutoff_configured,
+        missing_eligible=missing_eligible,
+        cutoff_eligible=cutoff_eligible,
+        hard_max=hard_max,
+    )
+    if hard_max > 0 and (new_missing, new_cutoff) != (missing_limit, cutoff_limit):
+        logger.debug(
+            "{app}: Hard max {max} rebalanced to queues with work -- missing={m}, cutoff={c}",
+            app=app_label,
+            max=hard_max,
+            m=new_missing,
+            c=new_cutoff,
+        )
+    return new_missing, new_cutoff
+
+
+async def _fetch_wanted_queues(
+    *,
+    fetch_missing: Callable[[], Awaitable[list]],
+    fetch_cutoff: Callable[[], Awaitable[list]],
+    missing_active: bool,
+    cutoff_active: bool,
+    app_label: str,
+) -> tuple[list | None, list | None]:
+    """Fetch both wanted queues, isolating an inactive queue's fetch failure (R-07).
+
+    Spec Sec 3.1: inactive queues (configured search count 0) are ignored
+    for grading. Active queues are fetched first, with no try -- an
+    exception there propagates to the caller's existing abort block,
+    because an active queue that cannot be fetched is unevaluated, which
+    is Failed. Fetching active queues first also means a dead host aborts
+    before any inactive endpoint is probed.
+
+    Inactive queues are fetched afterward, each in its own error boundary:
+    a failure there is logged (sanitized) and that queue's result stays
+    None -- its dashboard count stays stale rather than zeroed. This
+    helper never grades a cycle and never touches the instance's
+    reachability state.
+
+    Returns (missing, cutoff); a queue is None only when it was neither
+    active nor fetched successfully.
+    """
+    missing: list | None = None
+    cutoff: list | None = None
+
+    if missing_active:
+        missing = await fetch_missing()
+    if cutoff_active:
+        cutoff = await fetch_cutoff()
+
+    if not missing_active:
+        try:
+            missing = await fetch_missing()
+        except (httpx.HTTPError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "{app}: Missing queue is inactive (search count 0) -- could not refresh "
+                "its count, keeping previous value: {exc}",
+                app=app_label,
+                exc=_sanitize_exc(exc),
+            )
+    if not cutoff_active:
+        try:
+            cutoff = await fetch_cutoff()
+        except (httpx.HTTPError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "{app}: Cutoff queue is inactive (search count 0) -- could not refresh "
+                "its count, keeping previous value: {exc}",
+                app=app_label,
+                exc=_sanitize_exc(exc),
+            )
+
+    return missing, cutoff
+
+
+@dataclass(frozen=True)
+class _TagScope:
+    """Per-queue tag-resolution result for one cycle (TAGSCOPE-01..03, D-01..05, OQ1).
+
+    ``missing_unresolved``/``cutoff_unresolved`` is True whenever that
+    queue's configured tag could not be resolved -- the tag no longer
+    exists in the *arr's tag list, or the tag-list fetch itself failed --
+    set for an active OR inactive queue (OQ1): callers must force that
+    queue's working variable to ``None`` either way so its counts and
+    searched-log are never widened to the unscoped set. The warning
+    (``ist["tag_warnings"]``) and the grading call
+    (``CycleTally.mark_unevaluated``) only fire for an active queue (D-04)
+    -- that gating happens inside ``_resolve_tag_scope``, not here.
+    """
+
+    missing_tag_id: int | None
+    cutoff_tag_id: int | None
+    missing_unresolved: bool
+    cutoff_unresolved: bool
+
+
+async def _resolve_tag_scope(
+    *,
+    instance_config: InstanceConfig,
+    fetch_tags: Callable[[], Awaitable[list[Tag]]],
+    ist: AppState,
+    app_label: str,
+    tally: CycleTally | None,
+) -> _TagScope:
+    """Resolve each configured queue's tag, deciding resolved vs skipped.
+
+    Shared by all three ``run_*_cycle`` functions. Always resets
+    ``ist["tag_warnings"]`` and ``ist["unresolved_tag_scopes"]`` first --
+    this is TAGSCOPE-02's auto-clear: a tag that resolves on a later cycle
+    leaves no stale warning or marker behind.
+
+    When neither queue has a tag configured, returns immediately without
+    calling ``fetch_tags``. Otherwise awaits ``fetch_tags()`` inside the
+    existing ``(httpx.HTTPError, pydantic.ValidationError)`` catch tuple --
+    unwidened, per spec Sec7 (D-03/T-79-03). A fetch failure unresolves
+    every configured queue with the fixed reason "couldn't load tags"; a
+    successful fetch that simply lacks the configured tag name unresolves
+    it with ``f"tag '{name}' not found"`` (D-02/D-03). Both reasons are
+    derived from ``tag_fetch_ok``, never from the caught exception's text
+    (D-02, CLAUDE.md absolute rule) -- only the log line carries
+    ``_sanitize_exc(exc)``.
+
+    For every unresolved queue -- active OR inactive -- records
+    ``ist["unresolved_tag_scopes"][field] = name`` (OQ1/D-05 revision 1):
+    this is how a caller (and, downstream, the dashboard card) knows a
+    queue's scope is unresolved even when it's inactive and shows no
+    warning badge. The warning entry and the ``tally.mark_unevaluated``
+    grading call are gated on the queue being active (D-04) -- an inactive
+    queue's unresolved tag never produces a visible warning or grade
+    effect, but its working variable is still forced to ``None`` by the
+    caller so its counts freeze (TAGSCOPE-01).
+    """
+    ist["tag_warnings"] = []
+    ist["unresolved_tag_scopes"] = {}
+
+    if not instance_config.missing_tag and not instance_config.cutoff_tag:
+        return _TagScope(
+            missing_tag_id=None,
+            cutoff_tag_id=None,
+            missing_unresolved=False,
+            cutoff_unresolved=False,
+        )
+
+    tag_fetch_ok = False
+    try:
+        tags = await fetch_tags()
+        tag_fetch_ok = True
+    except (httpx.HTTPError, pydantic.ValidationError) as exc:
+        logger.warning(
+            "{app}: Failed to fetch tags -- tag-scoped queues skipped this cycle: {exc}",
+            app=app_label,
+            exc=_sanitize_exc(exc),
+        )
+        tags = []
+
+    missing_tag_id: int | None = None
+    cutoff_tag_id: int | None = None
+    missing_unresolved = False
+    cutoff_unresolved = False
+
+    for field, tag_name, queue_label in (
+        ("missing", instance_config.missing_tag, "Missing"),
+        ("cutoff", instance_config.cutoff_tag, "Cutoff"),
+    ):
+        if not tag_name:
+            continue
+        tag_id = resolve_tag_id(tag_name, tags)
+        if tag_id is None:
+            reason = f"tag '{tag_name}' not found" if tag_fetch_ok else "couldn't load tags"
+            ist["unresolved_tag_scopes"][field] = tag_name
+            active = getattr(instance_config, f"search_{field}_count") > 0
+            if active:
+                logger.warning(
+                    "{app}: {queue} queue skipped -- {reason}",
+                    app=app_label,
+                    queue=queue_label,
+                    reason=reason,
+                )
+                ist["tag_warnings"].append({
+                    "tag": tag_name,
+                    "field": field,
+                    "reason": "not_found" if tag_fetch_ok else "fetch_failed",
+                })
+                if tally is not None:
+                    tally.mark_unevaluated(field, reason)
+            else:
+                logger.debug(
+                    "{app}: {queue} queue tag unresolved but inactive -- counts frozen, no warning",
+                    app=app_label,
+                    queue=queue_label,
+                )
+            if field == "missing":
+                missing_unresolved = True
+            else:
+                cutoff_unresolved = True
+        elif field == "missing":
+            missing_tag_id = tag_id
+        else:
+            cutoff_tag_id = tag_id
+
+    return _TagScope(
+        missing_tag_id=missing_tag_id,
+        cutoff_tag_id=cutoff_tag_id,
+        missing_unresolved=missing_unresolved,
+        cutoff_unresolved=cutoff_unresolved,
+    )
+
+
+def _stamp_scoped_counts(ist: AppState, field: str, tag_name: str | None) -> None:
+    """Record the tag a committed scoped count was computed under (D-05 revision 1).
+
+    Called at every scoped-count commit, never for a skipped queue -- the
+    card trusts a kept count only if it was computed under the tag that is
+    now configured. Replaces a missing or non-dict ``scoped_count_tags``
+    value with a fresh dict first, preserving the other field's stamp.
+    """
+    existing = ist.get("scoped_count_tags")
+    if not isinstance(existing, dict):
+        existing = {}
+    existing[field] = tag_name
+    ist["scoped_count_tags"] = existing
+
+
+def _clear_faulted_scoped_counts(
+    ist: AppState,
+    scope: _TagScope | None,
+    instance_config: InstanceConfig,
+    *,
+    missing_fields: tuple[str, ...],
+    cutoff_fields: tuple[str, ...],
+) -> None:
+    """Clear a refresh data fault's scoped counts without erasing a skipped queue's last-good counts (D-05).
+
+    A malformed record in one queue must never widen OR erase the OTHER
+    queue's counts when that queue's tag is unresolved -- or when its scope
+    was never determined because the fault happened before/during tag
+    resolution (``scope is None``). Only a queue whose tag scope RESOLVED
+    this refresh has its listed fields cleared to None. Never reads or
+    writes ``ist["scoped_count_tags"]`` or ``ist["unresolved_tag_scopes"]``
+    -- the card (``routes._scoped_count_unknown``) shows a cleared scoped
+    count as unknown for a tag-scoped queue, never the raw whole-library
+    count. An untagged queue's cleared count falls back to the raw count,
+    which is that queue's real scope.
+    """
+    missing_preserved = (scope is not None and scope.missing_unresolved) or (
+        scope is None and bool(instance_config.missing_tag)
+    )
+    cutoff_preserved = (scope is not None and scope.cutoff_unresolved) or (
+        scope is None and bool(instance_config.cutoff_tag)
+    )
+    if not missing_preserved:
+        for field in missing_fields:
+            ist[field] = None
+    if not cutoff_preserved:
+        for field in cutoff_fields:
+            ist[field] = None
+
+
 async def run_radarr_cycle(
     client: RadarrClient,
     state: TriggarrState,
@@ -358,18 +830,31 @@ async def run_radarr_cycle(
         logger.warning("Radarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["radarr"][instance_name]
+    tally = CycleTally()
+    missing_active = instance_config.search_missing_count > 0
+    cutoff_active = instance_config.search_cutoff_count > 0
 
     try:
-        missing = await client.get_wanted_missing()
-        cutoff = await client.get_wanted_cutoff()
+        missing, cutoff = await _fetch_wanted_queues(
+            fetch_missing=client.get_wanted_missing,
+            fetch_cutoff=client.get_wanted_cutoff,
+            missing_active=missing_active,
+            cutoff_active=cutoff_active,
+            app_label="Radarr",
+        )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
+        tally.record_fetch_failure(_sanitize_exc(exc))
+        _finalize_cycle(ist, tally, instance_config)
+        return state
+
+    if missing is None and cutoff is None:
+        # R-07: both queues inactive and neither could be fetched.
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Radarr"
+        )
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -383,194 +868,173 @@ async def run_radarr_cycle(
     ist["connected"] = True
     ist["unreachable_since"] = None
 
-    # Cache raw item counts before filtering (WEBU-04)
-    ist["missing_count"] = len(missing)
-    ist["cutoff_count"] = len(cutoff)
+    # Cache raw item counts before filtering (WEBU-04). A queue that could
+    # not be fetched (inactive + failed) keeps its previous value (R-07).
+    if missing is not None:
+        ist["missing_count"] = len(missing)
+    if cutoff is not None:
+        ist["cutoff_count"] = len(cutoff)
     ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
-    missing_limit = instance_config.search_missing_count
-    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
-    orig_missing, orig_cutoff = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
-    if hard_max > 0 and (missing_limit != orig_missing or cutoff_limit != orig_cutoff):
-        logger.debug(
-            "Radarr: Hard max {max} applied -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
+    orig_missing, orig_cutoff = instance_config.search_missing_count, instance_config.search_cutoff_count
+    missing_limit, cutoff_limit = _cap_and_log(
+        app_label="Radarr", missing_configured=orig_missing, cutoff_configured=orig_cutoff, hard_max=hard_max
+    )
 
     # --- Tag resolution (only when at least one tag is configured) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
-    ist["tag_warnings"] = []
-    if instance_config.missing_tag or instance_config.cutoff_tag:
-        tag_fetch_ok = False
-        try:
-            # RES-03: resolve via the cache-aware resolver when supplied
-            # (scheduler/search_now), else fall back to the direct client call
-            # (backward-compatible None default — keeps existing tests passing).
-            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-            tag_fetch_ok = True
-        except (httpx.HTTPError, pydantic.ValidationError) as exc:
-            logger.warning(
-                "Radarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=_sanitize_exc(exc),
-            )
-            tags = []
-
-        if instance_config.missing_tag:
-            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Radarr: Tag '{tag}' not found -- searching all missing items",
-                    tag=instance_config.missing_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-        if instance_config.cutoff_tag:
-            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Radarr: Tag '{tag}' not found -- searching all cutoff items",
-                    tag=instance_config.cutoff_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-    searched_count = 0
-    skipped_count = 0
-
-    # --- Missing queue ---
-    missing = filter_monitored(missing)
-    ist["missing_monitored"] = len(missing)
-    if missing_tag_id is not None:
-        missing = filter_by_tag(missing, missing_tag_id, _radarr_tags)
-        logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
-    if settings.general.skip_unreleased:
-        missing = filter_unreleased_movies(missing)
-        skipped_unreleased = ist["missing_monitored"] - len(missing)
-        if skipped_unreleased > 0:
-            logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
-    ist["missing_eligible"] = len(missing)
-    batch, new_log, pass_done = prioritize_batch(
-        missing, ist.get("missing_searched", []), missing_limit,
-        key_fn=lambda m: str(m["id"]),
+    # RES-03: resolve via the cache-aware resolver when supplied
+    # (scheduler/search_now), else fall back to the direct client call
+    # (backward-compatible None default — keeps existing tests passing).
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config,
+        fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+        ist=ist,
+        app_label="Radarr",
+        tally=tally,
     )
-    for movie in batch:
-        try:
-            await client.search_movies([movie["id"]])
-            await insert_search_entry(
-                db, "Radarr", "missing", movie["title"],
-                outcome="searched", detail="search triggered",
-                item_id=movie["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Radarr: Searched {title} (missing)", title=movie["title"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Radarr: Failed to search {title}: {exc}",
-                title=movie.get("title", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Radarr", "missing", movie.get("title", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=movie.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
-    ist["missing_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        logger.info(
-            "Radarr: Missing pass {p} complete ({n} searched)",
-            p=ist["missing_pass"],
-            n=len(new_log),
-        )
+    # TAGSCOPE-01 / D-05 / OQ1 -- a tag-scoped queue whose tag can't be
+    # resolved is never widened. None reuses the Phase 78 contract: no
+    # dispatch, eligible/monitored counts and searched-log untouched.
+    # Applies to inactive queues too; warning and grading were already
+    # gated on active inside _resolve_tag_scope.
+    if scope.missing_unresolved:
+        missing = None
+    if scope.cutoff_unresolved:
+        cutoff = None
 
-    # --- Cutoff queue ---
-    cutoff = filter_monitored(cutoff)
-    if cutoff_tag_id is not None:
-        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _radarr_tags)
-        logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
-    batch, new_log, pass_done = prioritize_batch(
-        cutoff, ist.get("cutoff_searched", []), cutoff_limit,
-        key_fn=lambda m: str(m["id"]),
-    )
-    for movie in batch:
+    # --- Missing queue: filter chain (guarded -- None means the fetch
+    # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
+    # counts and searched-log stay untouched rather than being wiped to zero) ---
+    if missing is not None:
+        missing = filter_monitored(missing)
+        ist["missing_monitored"] = len(missing)
+        if scope.missing_tag_id is not None:
+            missing = filter_by_tag(missing, scope.missing_tag_id, _radarr_tags)
+            logger.debug("Radarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+        if settings.general.skip_unreleased:
+            missing = filter_unreleased_movies(missing)
+            skipped_unreleased = ist["missing_monitored"] - len(missing)
+            if skipped_unreleased > 0:
+                logger.info("Radarr: {n} unreleased movies skipped", n=skipped_unreleased)
+        ist["missing_eligible"] = len(missing)
+        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+
+    # --- Cutoff queue: filter chain (moved up so both queues' eligible
+    # counts are known before rebalancing hard-max slots, R-01 amended).
+    # Guarded against malformed nested records (e.g. non-iterable tags):
+    # a cutoff-side data fault must never block the missing queue's
+    # dispatch below -- this is the pre-existing per-app guarantee this
+    # reordering must not regress. Phase 80 owns richer per-item
+    # malformed-record counting; this is just the crash guard. On a fault
+    # the queue is left unprocessed (None): never dispatched, its
+    # searched-log untouched, and -- when active -- marked unevaluated so
+    # the cycle can never grade Nothing needed searching (spec 3.1). ---
+    if cutoff is not None:
         try:
-            await client.search_movies([movie["id"]])
-            await insert_search_entry(
-                db, "Radarr", "cutoff", movie["title"],
-                outcome="searched", detail="search triggered",
-                item_id=movie["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Radarr: Searched {title} (cutoff)", title=movie["title"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
+            cutoff = filter_monitored(cutoff)
+            if scope.cutoff_tag_id is not None:
+                cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _radarr_tags)
+                logger.debug("Radarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+        except (AttributeError, KeyError, TypeError) as exc:
             logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
+                "Radarr: Cutoff queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping cutoff this cycle",
+                etype=type(exc).__name__,
             )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Radarr: Failed to search {title}: {exc}",
-                title=movie.get("title", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Radarr", "cutoff", movie.get("title", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=movie.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
-    ist["cutoff_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        logger.info(
-            "Radarr: Cutoff pass {p} complete ({n} searched)",
-            p=ist["cutoff_pass"],
-            n=len(new_log),
+            cutoff = None
+            if cutoff_active:
+                tally.mark_unevaluated("cutoff", f"malformed data ({type(exc).__name__})")
+
+    missing_eligible_count = len(missing) if missing is not None else 0
+    cutoff_eligible_count = len(cutoff) if cutoff is not None else 0
+    tally.record_eligible("missing", missing_eligible_count)
+    tally.record_eligible("cutoff", cutoff_eligible_count)
+
+    # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
+    missing_limit, cutoff_limit = _rebalance_and_log(
+        app_label="Radarr",
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=orig_missing,
+        cutoff_configured=orig_cutoff,
+        missing_eligible=missing_eligible_count,
+        cutoff_eligible=cutoff_eligible_count,
+        hard_max=hard_max,
+    )
+
+    # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
+    # and its searched-log is left exactly as it was, R-07) ---
+    if missing is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            missing, ist.get("missing_searched", []), missing_limit,
+            key_fn=lambda m: str(m["id"]),
         )
+        for movie in batch:
+            await _search_and_record(
+                command=lambda mid=movie["id"]: client.search_movies([mid]),
+                tally=tally,
+                db=db,
+                app_label="Radarr",
+                queue="missing",
+                item_name=movie.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=movie.get("id"),
+            )
+        ist["missing_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+            logger.info(
+                "Radarr: Missing pass {p} complete ({n} searched)",
+                p=ist["missing_pass"],
+                n=len(new_log),
+            )
+
+    # --- Cutoff queue: dispatch ---
+    if cutoff is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            cutoff, ist.get("cutoff_searched", []), cutoff_limit,
+            key_fn=lambda m: str(m["id"]),
+        )
+        for movie in batch:
+            await _search_and_record(
+                command=lambda mid=movie["id"]: client.search_movies([mid]),
+                tally=tally,
+                db=db,
+                app_label="Radarr",
+                queue="cutoff",
+                item_name=movie.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=movie.get("id"),
+            )
+        ist["cutoff_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+            logger.info(
+                "Radarr: Cutoff pass {p} complete ({n} searched)",
+                p=ist["cutoff_pass"],
+                n=len(new_log),
+            )
+
+    # --- Grade the cycle and stamp timestamps (R-04/R-05/OUTCOME-01/02) ---
+    _finalize_cycle(ist, tally, instance_config)
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
     logger.info(
-        "Radarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
+        "Radarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {accepted} accepted, "
+        "{failed} failed, {unsaved} history not saved -- grade {grade}",
         elapsed=elapsed,
-        fetched=ist["missing_count"] + ist["cutoff_count"],
-        searched=searched_count,
-        skipped=skipped_count,
+        fetched=(ist.get("missing_count") or 0) + (ist.get("cutoff_count") or 0),
+        accepted=tally.accepted,
+        failed=tally.failed,
+        unsaved=tally.persistence_failed,
+        grade=ist["last_cycle"]["grade"],
     )
 
-    # --- Update last_run and last_success ---
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    ist["last_run"] = now_iso
-    ist["last_success"] = now_iso
     return state
 
 
@@ -611,18 +1075,31 @@ async def run_sonarr_cycle(
         logger.warning("Sonarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["sonarr"][instance_name]
+    tally = CycleTally()
+    missing_active = instance_config.search_missing_count > 0
+    cutoff_active = instance_config.search_cutoff_count > 0
 
     try:
-        missing_episodes = await client.get_wanted_missing()
-        cutoff_episodes = await client.get_wanted_cutoff()
+        missing_episodes, cutoff_episodes = await _fetch_wanted_queues(
+            fetch_missing=client.get_wanted_missing,
+            fetch_cutoff=client.get_wanted_cutoff,
+            missing_active=missing_active,
+            cutoff_active=cutoff_active,
+            app_label="Sonarr",
+        )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
+        tally.record_fetch_failure(_sanitize_exc(exc))
+        _finalize_cycle(ist, tally, instance_config)
+        return state
+
+    if missing_episodes is None and cutoff_episodes is None:
+        # R-07: both queues inactive and neither could be fetched.
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Sonarr"
+        )
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -636,200 +1113,178 @@ async def run_sonarr_cycle(
     ist["connected"] = True
     ist["unreachable_since"] = None
 
-    # Cache raw item counts before filtering (WEBU-04)
-    ist["missing_count"] = len(missing_episodes)
-    ist["cutoff_count"] = len(cutoff_episodes)
+    # Cache raw item counts before filtering (WEBU-04). A queue that could
+    # not be fetched (inactive + failed) keeps its previous value (R-07).
+    if missing_episodes is not None:
+        ist["missing_count"] = len(missing_episodes)
+    if cutoff_episodes is not None:
+        ist["cutoff_count"] = len(cutoff_episodes)
     ist["total_items"] = total_items
 
     # Apply hard max cap (SRCH-12)
-    missing_limit = instance_config.search_missing_count
-    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
-    orig_missing, orig_cutoff = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
-    if hard_max > 0 and (missing_limit != orig_missing or cutoff_limit != orig_cutoff):
-        logger.debug(
-            "Sonarr: Hard max {max} applied -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
+    orig_missing, orig_cutoff = instance_config.search_missing_count, instance_config.search_cutoff_count
+    missing_limit, cutoff_limit = _cap_and_log(
+        app_label="Sonarr", missing_configured=orig_missing, cutoff_configured=orig_cutoff, hard_max=hard_max
+    )
 
     # --- Tag resolution (only when at least one tag is configured) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
-    ist["tag_warnings"] = []
-    if instance_config.missing_tag or instance_config.cutoff_tag:
-        tag_fetch_ok = False
-        try:
-            # RES-03: resolve via the cache-aware resolver when supplied
-            # (scheduler/search_now), else fall back to the direct client call
-            # (backward-compatible None default — keeps existing tests passing).
-            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-            tag_fetch_ok = True
-        except (httpx.HTTPError, pydantic.ValidationError) as exc:
-            logger.warning(
-                "Sonarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=_sanitize_exc(exc),
-            )
-            tags = []
-
-        if instance_config.missing_tag:
-            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Sonarr: Tag '{tag}' not found -- searching all missing items",
-                    tag=instance_config.missing_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-        if instance_config.cutoff_tag:
-            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Sonarr: Tag '{tag}' not found -- searching all cutoff items",
-                    tag=instance_config.cutoff_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-    searched_count = 0
-    skipped_count = 0
-
-    # --- Missing queue ---
-    missing_episodes = filter_sonarr_episodes(missing_episodes)
-    if missing_tag_id is not None:
-        missing_episodes = filter_by_tag(missing_episodes, missing_tag_id, _sonarr_tags)
-        logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
-    missing_seasons = deduplicate_to_seasons(missing_episodes)
-    ist["missing_eligible"] = len(missing_episodes)
-    ist["missing_searchable"] = len(missing_seasons)
-    batch, new_log, pass_done = prioritize_batch(
-        missing_seasons, ist.get("missing_searched", []), missing_limit,
-        key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+    # RES-03: resolve via the cache-aware resolver when supplied
+    # (scheduler/search_now), else fall back to the direct client call
+    # (backward-compatible None default — keeps existing tests passing).
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config,
+        fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+        ist=ist,
+        app_label="Sonarr",
+        tally=tally,
     )
-    for season in batch:
+    # TAGSCOPE-01 / D-05 / OQ1 -- a tag-scoped queue whose tag can't be
+    # resolved is never widened. None reuses the Phase 78 contract: no
+    # dispatch, eligible/searchable counts and searched-log untouched.
+    # Applies to inactive queues too; warning and grading were already
+    # gated on active inside _resolve_tag_scope.
+    if scope.missing_unresolved:
+        missing_episodes = None
+    if scope.cutoff_unresolved:
+        cutoff_episodes = None
+
+    # --- Missing queue: filter chain (guarded -- None means the fetch
+    # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/searchable
+    # counts and searched-log stay untouched rather than being wiped to zero) ---
+    missing_seasons: list[dict] = []
+    if missing_episodes is not None:
+        missing_episodes = filter_sonarr_episodes(missing_episodes)
+        if scope.missing_tag_id is not None:
+            missing_episodes = filter_by_tag(missing_episodes, scope.missing_tag_id, _sonarr_tags)
+            logger.debug("Sonarr: Tag filter applied -- {n} missing episodes match tag", n=len(missing_episodes))
+        missing_seasons = deduplicate_to_seasons(missing_episodes)
+        ist["missing_eligible"] = len(missing_episodes)
+        ist["missing_searchable"] = len(missing_seasons)
+        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+
+    # --- Cutoff queue: filter chain (moved up so both queues' eligible
+    # counts are known before rebalancing hard-max slots, R-01 amended).
+    # Guarded against malformed nested records (e.g. a non-dict "series"):
+    # a cutoff-side data fault must never block the missing queue's
+    # dispatch below -- this is the pre-existing per-app guarantee this
+    # reordering must not regress. Phase 80 owns richer per-item
+    # malformed-record counting; this is just the crash guard. On a fault
+    # the queue is left unprocessed (None): never dispatched, its
+    # searched-log and searchable count untouched, and -- when active --
+    # marked unevaluated so the cycle can never grade Nothing needed
+    # searching (spec 3.1). ---
+    cutoff_seasons: list[dict] = []
+    if cutoff_episodes is not None:
         try:
-            await client.search_season(season["seriesId"], season["seasonNumber"])
-            await insert_search_entry(
-                db, "Sonarr", "missing", season["display_name"],
-                outcome="searched", detail="search triggered",
-                item_id=season["seriesId"],
-                season_number=season["seasonNumber"],
-                missing_count=season["episode_count"],
-                instance_id=instance_name,
+            cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
+            if scope.cutoff_tag_id is not None:
+                cutoff_episodes = filter_by_tag(cutoff_episodes, scope.cutoff_tag_id, _sonarr_tags)
+                logger.debug("Sonarr: Tag filter applied -- {n} cutoff episodes match tag", n=len(cutoff_episodes))
+            cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
+            ist["cutoff_searchable"] = len(cutoff_seasons)
+            _stamp_scoped_counts(ist, "cutoff", instance_config.cutoff_tag or None)
+        except (AttributeError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Sonarr: Cutoff queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping cutoff this cycle",
+                etype=type(exc).__name__,
+            )
+            cutoff_seasons = []
+            cutoff_episodes = None
+            if cutoff_active:
+                tally.mark_unevaluated("cutoff", f"malformed data ({type(exc).__name__})")
+
+    tally.record_eligible("missing", len(missing_seasons))
+    tally.record_eligible("cutoff", len(cutoff_seasons))
+
+    # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
+    missing_limit, cutoff_limit = _rebalance_and_log(
+        app_label="Sonarr",
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=orig_missing,
+        cutoff_configured=orig_cutoff,
+        missing_eligible=len(missing_seasons),
+        cutoff_eligible=len(cutoff_seasons),
+        hard_max=hard_max,
+    )
+
+    # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
+    # and its searched-log is left exactly as it was, R-07) ---
+    if missing_episodes is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            missing_seasons, ist.get("missing_searched", []), missing_limit,
+            key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+        )
+        for season in batch:
+            await _search_and_record(
+                command=lambda sid=season["seriesId"], sn=season["seasonNumber"]: client.search_season(sid, sn),
+                tally=tally,
+                db=db,
+                app_label="Sonarr",
+                queue="missing",
+                item_name=season.get("display_name", "unknown"),
+                instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Sonarr: Searched {name} (missing)", name=season["display_name"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Sonarr: Failed to search {name}: {exc}",
-                name=season.get("display_name", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Sonarr", "missing", season.get("display_name", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
             )
-            skipped_count += 1
-    ist["missing_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        logger.info(
-            "Sonarr: Missing pass {p} complete ({n} searched)",
-            p=ist["missing_pass"],
-            n=len(new_log),
-        )
+        ist["missing_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+            logger.info(
+                "Sonarr: Missing pass {p} complete ({n} searched)",
+                p=ist["missing_pass"],
+                n=len(new_log),
+            )
 
-    # --- Cutoff queue ---
-    cutoff_episodes = filter_sonarr_episodes(cutoff_episodes)
-    if cutoff_tag_id is not None:
-        cutoff_episodes = filter_by_tag(cutoff_episodes, cutoff_tag_id, _sonarr_tags)
-        logger.debug("Sonarr: Tag filter applied -- {n} cutoff episodes match tag", n=len(cutoff_episodes))
-    cutoff_seasons = deduplicate_to_seasons(cutoff_episodes)
-    ist["cutoff_searchable"] = len(cutoff_seasons)
-    batch, new_log, pass_done = prioritize_batch(
-        cutoff_seasons, ist.get("cutoff_searched", []), cutoff_limit,
-        key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
-    )
-    for season in batch:
-        try:
-            await client.search_season(season["seriesId"], season["seasonNumber"])
-            await insert_search_entry(
-                db, "Sonarr", "cutoff", season["display_name"],
-                outcome="searched", detail="search triggered",
-                item_id=season["seriesId"],
-                season_number=season["seasonNumber"],
-                missing_count=season["episode_count"],
-                instance_id=instance_name,
+    # --- Cutoff queue: dispatch ---
+    if cutoff_episodes is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            cutoff_seasons, ist.get("cutoff_searched", []), cutoff_limit,
+            key_fn=lambda s: f'{s["seriesId"]}:{s["seasonNumber"]}',
+        )
+        for season in batch:
+            await _search_and_record(
+                command=lambda sid=season["seriesId"], sn=season["seasonNumber"]: client.search_season(sid, sn),
+                tally=tally,
+                db=db,
+                app_label="Sonarr",
+                queue="cutoff",
+                item_name=season.get("display_name", "unknown"),
+                instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Sonarr: Searched {name} (cutoff)", name=season["display_name"])
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Sonarr: Failed to search {name}: {exc}",
-                name=season.get("display_name", "unknown"),
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Sonarr", "cutoff", season.get("display_name", "unknown"),
-                outcome="failed", detail=_sanitize_exc(exc),
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
             )
-            skipped_count += 1
-    ist["cutoff_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        logger.info(
-            "Sonarr: Cutoff pass {p} complete ({n} searched)",
-            p=ist["cutoff_pass"],
-            n=len(new_log),
-        )
+        ist["cutoff_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+            logger.info(
+                "Sonarr: Cutoff pass {p} complete ({n} searched)",
+                p=ist["cutoff_pass"],
+                n=len(new_log),
+            )
+
+    # --- Grade the cycle and stamp timestamps (R-04/R-05/OUTCOME-01/02) ---
+    _finalize_cycle(ist, tally, instance_config)
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
     logger.info(
-        "Sonarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
+        "Sonarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {accepted} accepted, "
+        "{failed} failed, {unsaved} history not saved -- grade {grade}",
         elapsed=elapsed,
-        fetched=ist["missing_count"] + ist["cutoff_count"],
-        searched=searched_count,
-        skipped=skipped_count,
+        fetched=(ist.get("missing_count") or 0) + (ist.get("cutoff_count") or 0),
+        accepted=tally.accepted,
+        failed=tally.failed,
+        unsaved=tally.persistence_failed,
+        grade=ist["last_cycle"]["grade"],
     )
 
-    # --- Update last_run and last_success ---
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    ist["last_run"] = now_iso
-    ist["last_success"] = now_iso
     return state
 
 
@@ -873,18 +1328,31 @@ async def run_lidarr_cycle(
         logger.warning("Lidarr: instance {name} not in state -- skipping", name=instance_name)
         return state
     ist = state["lidarr"][instance_name]
+    tally = CycleTally()
+    missing_active = instance_config.search_missing_count > 0
+    cutoff_active = instance_config.search_cutoff_count > 0
 
     try:
-        missing = await client.get_wanted_missing()
-        cutoff = await client.get_wanted_cutoff()
+        missing, cutoff = await _fetch_wanted_queues(
+            fetch_missing=client.get_wanted_missing,
+            fetch_cutoff=client.get_wanted_cutoff,
+            missing_active=missing_active,
+            cutoff_active=cutoff_active,
+            app_label="Lidarr",
+        )
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Lidarr: Cycle aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = (
-                datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            )
+        tally.record_fetch_failure(_sanitize_exc(exc))
+        _finalize_cycle(ist, tally, instance_config)
+        return state
+
+    if missing is None and cutoff is None:
+        # R-07: both queues inactive and neither could be fetched.
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Lidarr"
+        )
         return state
 
     # Library count is cosmetic (dashboard denominator) -- never abort
@@ -898,191 +1366,168 @@ async def run_lidarr_cycle(
     ist["connected"] = True
     ist["unreachable_since"] = None
 
-    # Cache raw item counts before filtering
-    ist["missing_count"] = len(missing)
-    ist["cutoff_count"] = len(cutoff)
+    # Cache raw item counts before filtering. A queue that could not be
+    # fetched (inactive + failed) keeps its previous value (R-07).
+    if missing is not None:
+        ist["missing_count"] = len(missing)
+    if cutoff is not None:
+        ist["cutoff_count"] = len(cutoff)
     ist["total_items"] = total_items
 
     # Apply hard max cap
-    missing_limit = instance_config.search_missing_count
-    cutoff_limit = instance_config.search_cutoff_count
     hard_max = settings.general.hard_max_per_cycle
-    orig_missing, orig_cutoff = missing_limit, cutoff_limit
-    missing_limit, cutoff_limit = cap_batch_sizes(missing_limit, cutoff_limit, hard_max)
-    if hard_max > 0 and (missing_limit != orig_missing or cutoff_limit != orig_cutoff):
-        logger.debug(
-            "Lidarr: Hard max {max} applied -- missing={m}, cutoff={c}",
-            max=hard_max,
-            m=missing_limit,
-            c=cutoff_limit,
-        )
+    orig_missing, orig_cutoff = instance_config.search_missing_count, instance_config.search_cutoff_count
+    missing_limit, cutoff_limit = _cap_and_log(
+        app_label="Lidarr", missing_configured=orig_missing, cutoff_configured=orig_cutoff, hard_max=hard_max
+    )
 
     # --- Tag resolution (only when at least one tag is configured) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
-    ist["tag_warnings"] = []
-    if instance_config.missing_tag or instance_config.cutoff_tag:
-        tag_fetch_ok = False
-        try:
-            # RES-03: resolve via the cache-aware resolver when supplied
-            # (scheduler/search_now), else fall back to the direct client call
-            # (backward-compatible None default — keeps existing tests passing).
-            tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-            tag_fetch_ok = True
-        except (httpx.HTTPError, pydantic.ValidationError) as exc:
-            logger.warning(
-                "Lidarr: Failed to fetch tags -- skipping tag filtering: {exc}",
-                exc=_sanitize_exc(exc),
-            )
-            tags = []
-
-        if instance_config.missing_tag:
-            missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-            if missing_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Lidarr: Tag '{tag}' not found -- searching all missing items",
-                    tag=instance_config.missing_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-        if instance_config.cutoff_tag:
-            cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-            if cutoff_tag_id is None and tag_fetch_ok:
-                logger.warning(
-                    "Lidarr: Tag '{tag}' not found -- searching all cutoff items",
-                    tag=instance_config.cutoff_tag,
-                )
-                ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-    searched_count = 0
-    skipped_count = 0
-
-    # --- Missing queue ---
-    missing = filter_monitored(missing)
-    ist["missing_monitored"] = len(missing)
-    if missing_tag_id is not None:
-        missing = filter_by_tag(missing, missing_tag_id, _lidarr_tags)
-        logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
-    ist["missing_eligible"] = len(missing)
-    batch, new_log, pass_done = prioritize_batch(
-        missing, ist.get("missing_searched", []), missing_limit,
-        key_fn=lambda a: str(a["id"]),
+    # RES-03: resolve via the cache-aware resolver when supplied
+    # (scheduler/search_now), else fall back to the direct client call
+    # (backward-compatible None default — keeps existing tests passing).
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config,
+        fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+        ist=ist,
+        app_label="Lidarr",
+        tally=tally,
     )
-    for album in batch:
-        title = album.get("title", "unknown")
-        try:
-            await client.search_albums([album["id"]])
-            await insert_search_entry(
-                db, "Lidarr", "missing", title,
-                outcome="searched", detail="search triggered",
-                item_id=album["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Lidarr: Searched {title} (missing)", title=title)
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
-            logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
-            )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Lidarr: Failed to search {title}: {exc}",
-                title=title,
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Lidarr", "missing", title,
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=album.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
-    ist["missing_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["missing_pass"] = ist.get("missing_pass", 0) + 1
-        logger.info(
-            "Lidarr: Missing pass {p} complete ({n} searched)",
-            p=ist["missing_pass"],
-            n=len(new_log),
-        )
+    # TAGSCOPE-01 / D-05 / OQ1 -- a tag-scoped queue whose tag can't be
+    # resolved is never widened. None reuses the Phase 78 contract: no
+    # dispatch, eligible/monitored counts and searched-log untouched.
+    # Applies to inactive queues too; warning and grading were already
+    # gated on active inside _resolve_tag_scope.
+    if scope.missing_unresolved:
+        missing = None
+    if scope.cutoff_unresolved:
+        cutoff = None
 
-    # --- Cutoff queue ---
-    cutoff = filter_monitored(cutoff)
-    if cutoff_tag_id is not None:
-        cutoff = filter_by_tag(cutoff, cutoff_tag_id, _lidarr_tags)
-        logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
-    batch, new_log, pass_done = prioritize_batch(
-        cutoff, ist.get("cutoff_searched", []), cutoff_limit,
-        key_fn=lambda a: str(a["id"]),
-    )
-    for album in batch:
-        title = album.get("title", "unknown")
+    # --- Missing queue: filter chain (guarded -- None means the fetch
+    # didn't run or failed, R-07/TAGSCOPE-01; the previous eligible/monitored
+    # counts and searched-log stay untouched rather than being wiped to zero) ---
+    if missing is not None:
+        missing = filter_monitored(missing)
+        ist["missing_monitored"] = len(missing)
+        if scope.missing_tag_id is not None:
+            missing = filter_by_tag(missing, scope.missing_tag_id, _lidarr_tags)
+            logger.debug("Lidarr: Tag filter applied -- {n} missing items match tag", n=len(missing))
+        ist["missing_eligible"] = len(missing)
+        _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+
+    # --- Cutoff queue: filter chain (moved up so both queues' eligible
+    # counts are known before rebalancing hard-max slots, R-01 amended).
+    # Guarded against malformed nested records (e.g. non-iterable tags):
+    # a cutoff-side data fault must never block the missing queue's
+    # dispatch below -- this is the pre-existing per-app guarantee this
+    # reordering must not regress. Phase 80 owns richer per-item
+    # malformed-record counting; this is just the crash guard. On a fault
+    # the queue is left unprocessed (None): never dispatched, its
+    # searched-log untouched, and -- when active -- marked unevaluated so
+    # the cycle can never grade Nothing needed searching (spec 3.1). ---
+    if cutoff is not None:
         try:
-            await client.search_albums([album["id"]])
-            await insert_search_entry(
-                db, "Lidarr", "cutoff", title,
-                outcome="searched", detail="search triggered",
-                item_id=album["id"],
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            logger.info("Lidarr: Searched {title} (cutoff)", title=title)
-            searched_count += 1
-        except PendingCapExceeded as cap_exc:
+            cutoff = filter_monitored(cutoff)
+            if scope.cutoff_tag_id is not None:
+                cutoff = filter_by_tag(cutoff, scope.cutoff_tag_id, _lidarr_tags)
+                logger.debug("Lidarr: Tag filter applied -- {n} cutoff items match tag", n=len(cutoff))
+        except (AttributeError, KeyError, TypeError) as exc:
             logger.warning(
-                "Skipping search history insert -- pending-row cap reached "
-                "for {app}/{instance} {item!r}",
-                app=cap_exc.app,
-                instance=cap_exc.instance_id,
-                item=cap_exc.item_name,
+                "Lidarr: Cutoff queue filter chain faulted on malformed data ({etype}) -- "
+                "skipping cutoff this cycle",
+                etype=type(exc).__name__,
             )
-            skipped_count += 1
-            continue
-        except (httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error, OSError) as exc:
-            logger.warning(
-                "Lidarr: Failed to search {title}: {exc}",
-                title=title,
-                exc=_sanitize_exc(exc),
-            )
-            await insert_search_entry(
-                db, "Lidarr", "cutoff", title,
-                outcome="failed", detail=_sanitize_exc(exc),
-                item_id=album.get("id"),
-                instance_id=instance_name,
-                max_rows=settings.general.max_history_rows,
-            )
-            skipped_count += 1
-    ist["cutoff_searched"] = [] if pass_done else new_log
-    if pass_done:
-        ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
-        logger.info(
-            "Lidarr: Cutoff pass {p} complete ({n} searched)",
-            p=ist["cutoff_pass"],
-            n=len(new_log),
+            cutoff = None
+            if cutoff_active:
+                tally.mark_unevaluated("cutoff", f"malformed data ({type(exc).__name__})")
+
+    missing_eligible_count = len(missing) if missing is not None else 0
+    cutoff_eligible_count = len(cutoff) if cutoff is not None else 0
+    tally.record_eligible("missing", missing_eligible_count)
+    tally.record_eligible("cutoff", cutoff_eligible_count)
+
+    # --- Reallocate unused hard-max budget to a starved queue with work (R-01 amended) ---
+    missing_limit, cutoff_limit = _rebalance_and_log(
+        app_label="Lidarr",
+        missing_limit=missing_limit,
+        cutoff_limit=cutoff_limit,
+        missing_configured=orig_missing,
+        cutoff_configured=orig_cutoff,
+        missing_eligible=missing_eligible_count,
+        cutoff_eligible=cutoff_eligible_count,
+        hard_max=hard_max,
+    )
+
+    # --- Missing queue: dispatch (guarded -- a None queue is never dispatched,
+    # and its searched-log is left exactly as it was, R-07) ---
+    if missing is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            missing, ist.get("missing_searched", []), missing_limit,
+            key_fn=lambda a: str(a["id"]),
         )
+        for album in batch:
+            await _search_and_record(
+                command=lambda aid=album["id"]: client.search_albums([aid]),
+                tally=tally,
+                db=db,
+                app_label="Lidarr",
+                queue="missing",
+                item_name=album.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=album.get("id"),
+            )
+        ist["missing_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["missing_pass"] = ist.get("missing_pass", 0) + 1
+            logger.info(
+                "Lidarr: Missing pass {p} complete ({n} searched)",
+                p=ist["missing_pass"],
+                n=len(new_log),
+            )
+
+    # --- Cutoff queue: dispatch ---
+    if cutoff is not None:
+        batch, new_log, pass_done = prioritize_batch(
+            cutoff, ist.get("cutoff_searched", []), cutoff_limit,
+            key_fn=lambda a: str(a["id"]),
+        )
+        for album in batch:
+            await _search_and_record(
+                command=lambda aid=album["id"]: client.search_albums([aid]),
+                tally=tally,
+                db=db,
+                app_label="Lidarr",
+                queue="cutoff",
+                item_name=album.get("title", "unknown"),
+                instance_name=instance_name,
+                max_rows=settings.general.max_history_rows,
+                item_id=album.get("id"),
+            )
+        ist["cutoff_searched"] = [] if pass_done else new_log
+        if pass_done:
+            ist["cutoff_pass"] = ist.get("cutoff_pass", 0) + 1
+            logger.info(
+                "Lidarr: Cutoff pass {p} complete ({n} searched)",
+                p=ist["cutoff_pass"],
+                n=len(new_log),
+            )
+
+    # --- Grade the cycle and stamp timestamps (R-04/R-05/OUTCOME-01/02) ---
+    _finalize_cycle(ist, tally, instance_config)
 
     # --- Diagnostic summary ---
     elapsed = time.monotonic() - cycle_start
     logger.info(
-        "Lidarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {searched} searched, {skipped} skipped",
+        "Lidarr: Cycle completed in {elapsed:.1f}s -- {fetched} fetched, {accepted} accepted, "
+        "{failed} failed, {unsaved} history not saved -- grade {grade}",
         elapsed=elapsed,
-        fetched=ist["missing_count"] + ist["cutoff_count"],
-        searched=searched_count,
-        skipped=skipped_count,
+        fetched=(ist.get("missing_count") or 0) + (ist.get("cutoff_count") or 0),
+        accepted=tally.accepted,
+        failed=tally.failed,
+        unsaved=tally.persistence_failed,
+        grade=ist["last_cycle"]["grade"],
     )
 
-    # --- Update last_run and last_success ---
-    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    ist["last_run"] = now_iso
-    ist["last_success"] = now_iso
     return state
 
 
@@ -1110,8 +1555,11 @@ async def refresh_radarr_counts(
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
       (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -> sets connected=False + unreachable_since,
-          clears eligible count fields, returns None (never propagates to caller).
+          on a malformed nested record -- clears the scoped count fields of queues
+          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+          keeps its last good counts and stamp (Phase 79 D-05), returns None.
+      (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
+          at their previous values, never widened, and its tuple slot is [].
 
     Args:
         client: Connected Radarr API client.
@@ -1136,10 +1584,8 @@ async def refresh_radarr_counts(
         cutoff = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return None
 
     # Library count is cosmetic -- never abort on failure.
@@ -1156,57 +1602,44 @@ async def refresh_radarr_counts(
     ist["total_items"] = total_items
 
     # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
+    scope: _TagScope | None = None
     try:
-        ist["tag_warnings"] = []
-        if instance_config.missing_tag or instance_config.cutoff_tag:
-            tag_fetch_ok = False
-            try:
-                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-                tag_fetch_ok = True
-            except (httpx.HTTPError, pydantic.ValidationError) as exc:
-                logger.warning(
-                    "Radarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
-                    exc=_sanitize_exc(exc),
-                )
-                tags = []
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config,
+            fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+            ist=ist,
+            app_label="Radarr",
+            tally=None,
+        )
 
-            if instance_config.missing_tag:
-                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-                if missing_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Radarr: Tag '{tag}' not found -- counting all missing items",
-                        tag=instance_config.missing_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-            if instance_config.cutoff_tag:
-                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-                if cutoff_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Radarr: Tag '{tag}' not found -- counting all cutoff items",
-                        tag=instance_config.cutoff_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-        # Missing filter chain (compute into locals first, then commit to ist)
-        filtered_missing = filter_monitored(missing)
-        missing_monitored_count = len(filtered_missing)
-        if missing_tag_id is not None:
-            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _radarr_tags)
-        if settings.general.skip_unreleased:
-            filtered_missing = filter_unreleased_movies(filtered_missing)
-        missing_eligible_count = len(filtered_missing)
+        # Missing filter chain (compute into locals first, then commit after the
+        # cutoff chain -- no-partial-state guarantee). A tag-unresolved queue
+        # never widens past its last-good counts (TAGSCOPE-01/D-05).
+        filtered_missing: list[dict] = []
+        missing_monitored_count: int | None = None
+        missing_eligible_count: int | None = None
+        if not scope.missing_unresolved:
+            filtered_missing = filter_monitored(missing)
+            missing_monitored_count = len(filtered_missing)
+            if scope.missing_tag_id is not None:
+                filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _radarr_tags)
+            if settings.general.skip_unreleased:
+                filtered_missing = filter_unreleased_movies(filtered_missing)
+            missing_eligible_count = len(filtered_missing)
 
         # Cutoff filter chain on a local copy (Radarr has no cutoff_searchable ist write)
-        filtered_cutoff = filter_monitored(cutoff)
-        if cutoff_tag_id is not None:
-            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _radarr_tags)
+        filtered_cutoff: list[dict] = []
+        if not scope.cutoff_unresolved:
+            filtered_cutoff = filter_monitored(cutoff)
+            if scope.cutoff_tag_id is not None:
+                filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _radarr_tags)
 
-        # Commit eligible counts to ist only after successful filtering (no-partial-state guarantee)
-        ist["missing_monitored"] = missing_monitored_count
-        ist["missing_eligible"] = missing_eligible_count
+        # Commit eligible counts to ist only after successful filtering (no-partial-state
+        # guarantee); a tag-unresolved missing queue's fields are never committed.
+        if not scope.missing_unresolved:
+            ist["missing_monitored"] = missing_monitored_count
+            ist["missing_eligible"] = missing_eligible_count
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
         # Malformed nested record (non-dict series/artist, non-iterable tags, etc.)
@@ -1215,15 +1648,14 @@ async def refresh_radarr_counts(
             "Radarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        # Clear eligible counts so no half-updated set is left behind
-        ist["missing_monitored"] = None
-        ist["missing_eligible"] = None
+        _mark_unreachable(ist)
+        _clear_faulted_scoped_counts(ist, scope, instance_config,
+            missing_fields=("missing_monitored", "missing_eligible"),
+            cutoff_fields=(),
+        )
         return None
 
-    return (filtered_missing, cutoff, cutoff_tag_id)
+    return (filtered_missing, cutoff if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
 
 
 async def refresh_sonarr_counts(
@@ -1246,8 +1678,11 @@ async def refresh_sonarr_counts(
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
       (b) DATA failure: filter/dedup/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -> sets connected=False + unreachable_since,
-          clears eligible/searchable count fields, returns None (never propagates to caller).
+          on a malformed nested record -- clears the scoped count fields of queues
+          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+          keeps its last good counts and stamp (Phase 79 D-05), returns None.
+      (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
+          at their previous values, never widened, and its tuple slot is [].
 
     Args:
         client: Connected Sonarr API client.
@@ -1272,10 +1707,8 @@ async def refresh_sonarr_counts(
         cutoff_episodes = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return None
 
     # Library count is cosmetic -- never abort on failure.
@@ -1292,60 +1725,48 @@ async def refresh_sonarr_counts(
     ist["total_items"] = total_items
 
     # --- FILTER/DEDUP/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
+    scope: _TagScope | None = None
     try:
-        ist["tag_warnings"] = []
-        if instance_config.missing_tag or instance_config.cutoff_tag:
-            tag_fetch_ok = False
-            try:
-                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-                tag_fetch_ok = True
-            except (httpx.HTTPError, pydantic.ValidationError) as exc:
-                logger.warning(
-                    "Sonarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
-                    exc=_sanitize_exc(exc),
-                )
-                tags = []
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config,
+            fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+            ist=ist,
+            app_label="Sonarr",
+            tally=None,
+        )
 
-            if instance_config.missing_tag:
-                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-                if missing_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Sonarr: Tag '{tag}' not found -- counting all missing items",
-                        tag=instance_config.missing_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-            if instance_config.cutoff_tag:
-                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-                if cutoff_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Sonarr: Tag '{tag}' not found -- counting all cutoff items",
-                        tag=instance_config.cutoff_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-        # Missing filter/dedup chain (compute into locals first, then commit to ist)
-        filtered_missing = filter_sonarr_episodes(missing_episodes)
-        if missing_tag_id is not None:
-            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _sonarr_tags)
-        missing_seasons = deduplicate_to_seasons(filtered_missing)
-        missing_eligible_count = len(filtered_missing)
-        missing_searchable_count = len(missing_seasons)
+        # Missing filter/dedup chain (compute into locals; a tag-unresolved queue
+        # never widens past its last-good counts, TAGSCOPE-01/D-05).
+        missing_seasons: list[dict] = []
+        missing_eligible_count: int | None = None
+        missing_searchable_count: int | None = None
+        if not scope.missing_unresolved:
+            filtered_missing = filter_sonarr_episodes(missing_episodes)
+            if scope.missing_tag_id is not None:
+                filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)
+            missing_seasons = deduplicate_to_seasons(filtered_missing)
+            missing_eligible_count = len(filtered_missing)
+            missing_searchable_count = len(missing_seasons)
 
         # Cutoff filter/dedup chain on a local copy
-        filtered_cutoff = filter_sonarr_episodes(cutoff_episodes)
-        if cutoff_tag_id is not None:
-            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _sonarr_tags)
-        cutoff_seasons = deduplicate_to_seasons(filtered_cutoff)
-        cutoff_searchable_count = len(cutoff_seasons)
+        cutoff_seasons: list[dict] = []
+        cutoff_searchable_count: int | None = None
+        if not scope.cutoff_unresolved:
+            filtered_cutoff = filter_sonarr_episodes(cutoff_episodes)
+            if scope.cutoff_tag_id is not None:
+                filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _sonarr_tags)
+            cutoff_seasons = deduplicate_to_seasons(filtered_cutoff)
+            cutoff_searchable_count = len(cutoff_seasons)
 
-        # Commit eligible/searchable counts to ist only after successful filtering
-        # (no-partial-state guarantee: either all three are committed or none are)
-        ist["missing_eligible"] = missing_eligible_count
-        ist["missing_searchable"] = missing_searchable_count
-        ist["cutoff_searchable"] = cutoff_searchable_count
+        # Commit each queue's fields together, only after both chains succeed; a
+        # tag-unresolved queue's fields are never committed.
+        if not scope.missing_unresolved:
+            ist["missing_eligible"] = missing_eligible_count
+            ist["missing_searchable"] = missing_searchable_count
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
+        if not scope.cutoff_unresolved:
+            ist["cutoff_searchable"] = cutoff_searchable_count
+            _stamp_scoped_counts(ist, "cutoff", instance_config.cutoff_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
         # Malformed nested record (non-dict series, non-iterable tags, etc.)
@@ -1354,16 +1775,14 @@ async def refresh_sonarr_counts(
             "Sonarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        # Clear eligible/searchable counts so no half-updated set is left behind
-        ist["missing_eligible"] = None
-        ist["missing_searchable"] = None
-        ist["cutoff_searchable"] = None
+        _mark_unreachable(ist)
+        _clear_faulted_scoped_counts(ist, scope, instance_config,
+            missing_fields=("missing_eligible", "missing_searchable"),
+            cutoff_fields=("cutoff_searchable",),
+        )
         return None
 
-    return (missing_seasons, cutoff_episodes, cutoff_tag_id)
+    return (missing_seasons, cutoff_episodes if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
 
 
 async def refresh_lidarr_counts(
@@ -1385,8 +1804,11 @@ async def refresh_lidarr_counts(
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
       (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -> sets connected=False + unreachable_since,
-          clears eligible count fields, returns None (never propagates to caller).
+          on a malformed nested record -- clears the scoped count fields of queues
+          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+          keeps its last good counts and stamp (Phase 79 D-05), returns None.
+      (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
+          at their previous values, never widened, and its tuple slot is [].
 
     Args:
         client: Connected Lidarr API client.
@@ -1411,10 +1833,8 @@ async def refresh_lidarr_counts(
         cutoff = await client.get_wanted_cutoff()
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Lidarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
-        ist["connected"] = False
+        _mark_unreachable(ist)
         ist["tag_warnings"] = []
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         return None
 
     # Library count is cosmetic -- never abort on failure.
@@ -1431,55 +1851,42 @@ async def refresh_lidarr_counts(
     ist["total_items"] = total_items
 
     # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
-    missing_tag_id: int | None = None
-    cutoff_tag_id: int | None = None
+    scope: _TagScope | None = None
     try:
-        ist["tag_warnings"] = []
-        if instance_config.missing_tag or instance_config.cutoff_tag:
-            tag_fetch_ok = False
-            try:
-                tags = await get_tags_fn() if get_tags_fn is not None else await client.get_tags()
-                tag_fetch_ok = True
-            except (httpx.HTTPError, pydantic.ValidationError) as exc:
-                logger.warning(
-                    "Lidarr: Failed to fetch tags for count refresh -- skipping tag filtering: {exc}",
-                    exc=_sanitize_exc(exc),
-                )
-                tags = []
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config,
+            fetch_tags=get_tags_fn if get_tags_fn is not None else client.get_tags,
+            ist=ist,
+            app_label="Lidarr",
+            tally=None,
+        )
 
-            if instance_config.missing_tag:
-                missing_tag_id = resolve_tag_id(instance_config.missing_tag, tags)
-                if missing_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Lidarr: Tag '{tag}' not found -- counting all missing items",
-                        tag=instance_config.missing_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.missing_tag, "field": "missing"})
-
-            if instance_config.cutoff_tag:
-                cutoff_tag_id = resolve_tag_id(instance_config.cutoff_tag, tags)
-                if cutoff_tag_id is None and tag_fetch_ok:
-                    logger.warning(
-                        "Lidarr: Tag '{tag}' not found -- counting all cutoff items",
-                        tag=instance_config.cutoff_tag,
-                    )
-                    ist["tag_warnings"].append({"tag": instance_config.cutoff_tag, "field": "cutoff"})
-
-        # Missing filter chain (compute into locals first, then commit to ist)
-        filtered_missing = filter_monitored(missing)
-        missing_monitored_count = len(filtered_missing)
-        if missing_tag_id is not None:
-            filtered_missing = filter_by_tag(filtered_missing, missing_tag_id, _lidarr_tags)
-        missing_eligible_count = len(filtered_missing)
+        # Missing filter chain (compute into locals first, then commit after the
+        # cutoff chain -- no-partial-state guarantee). A tag-unresolved queue
+        # never widens past its last-good counts (TAGSCOPE-01/D-05).
+        filtered_missing: list[dict] = []
+        missing_monitored_count: int | None = None
+        missing_eligible_count: int | None = None
+        if not scope.missing_unresolved:
+            filtered_missing = filter_monitored(missing)
+            missing_monitored_count = len(filtered_missing)
+            if scope.missing_tag_id is not None:
+                filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _lidarr_tags)
+            missing_eligible_count = len(filtered_missing)
 
         # Cutoff filter chain on a local copy (Lidarr has no cutoff_searchable ist write)
-        filtered_cutoff = filter_monitored(cutoff)
-        if cutoff_tag_id is not None:
-            filtered_cutoff = filter_by_tag(filtered_cutoff, cutoff_tag_id, _lidarr_tags)
+        filtered_cutoff: list[dict] = []
+        if not scope.cutoff_unresolved:
+            filtered_cutoff = filter_monitored(cutoff)
+            if scope.cutoff_tag_id is not None:
+                filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _lidarr_tags)
 
-        # Commit eligible counts to ist only after successful filtering (no-partial-state guarantee)
-        ist["missing_monitored"] = missing_monitored_count
-        ist["missing_eligible"] = missing_eligible_count
+        # Commit eligible counts to ist only after successful filtering (no-partial-state
+        # guarantee); a tag-unresolved missing queue's fields are never committed.
+        if not scope.missing_unresolved:
+            ist["missing_monitored"] = missing_monitored_count
+            ist["missing_eligible"] = missing_eligible_count
+            _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
         # Malformed nested record -> upstream-DATA failure: same disconnected outcome as fetch failure.
@@ -1487,12 +1894,11 @@ async def refresh_lidarr_counts(
             "Lidarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
         )
-        ist["connected"] = False
-        if not ist.get("unreachable_since"):
-            ist["unreachable_since"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        # Clear eligible counts so no half-updated set is left behind
-        ist["missing_monitored"] = None
-        ist["missing_eligible"] = None
+        _mark_unreachable(ist)
+        _clear_faulted_scoped_counts(ist, scope, instance_config,
+            missing_fields=("missing_monitored", "missing_eligible"),
+            cutoff_fields=(),
+        )
         return None
 
-    return (filtered_missing, cutoff, cutoff_tag_id)
+    return (filtered_missing, cutoff if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)

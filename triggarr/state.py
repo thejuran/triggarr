@@ -40,6 +40,22 @@ STATE_PATH = get_state_path()
 # Functions accept path parameters to allow testing without module reload.
 
 
+class LastCycleRecord(TypedDict, total=False):
+    """Per-instance grade and tally for the most recently finished search cycle (OUTCOME-01/06)."""
+
+    grade: str  # "success" | "partial" | "failed" | "nothing_needed"
+    accepted: int  # count of *arr search commands accepted this cycle
+    failed: int  # count of *arr search commands that raised an error this cycle
+    malformed_skipped: int  # count of malformed *arr records skipped (fed by Phase 80)
+    # accepted commands whose history row was not saved (D-15; includes PendingCapExceeded per R-02)
+    persistence_failed: int
+    failure_reasons: list[dict]  # [{"reason": sanitized str, "count": int}]
+    unevaluated: list[dict]  # [{"queue": "missing"|"cutoff", "reason": sanitized str}] (fed by Phase 79)
+    eligible: dict[str, int]  # per active, evaluated queue: the eligible item count the engine could draw from (R-01)
+    fetch_error: str | None  # sanitized reason the whole-cycle fetch failed, else None
+    finished_at: str  # ISO Z timestamp -- same value as last_run
+
+
 class AppState(TypedDict, total=False):
     """Per-instance searched-log and timing state."""
 
@@ -48,7 +64,15 @@ class AppState(TypedDict, total=False):
     missing_searched: list[str]  # Ordered searched-log (oldest first) for the missing queue
     cutoff_searched: list[str]  # Ordered searched-log (oldest first) for the cutoff queue
     last_run: str | None  # ISO timestamp
-    last_success: str | None  # ISO timestamp — last cycle that reached connected=True
+    # ISO timestamp -- LEGACY ONLY (R-05): pre-upgrade "last connected cycle" value, preserved
+    # verbatim for the "Last success (legacy)" label and as the downgrade fallback (see
+    # 78-01 <rollback>); new code never writes it.
+    last_success: str | None
+    # None until the first new-model cycle; absence drives "Not run yet" and the legacy label.
+    last_cycle: LastCycleRecord | None
+    # ISO timestamp -- last cycle where >=1 search command was accepted; written only by
+    # engine _finalize_cycle; never derived from last_success.
+    last_successful_search: str | None
     connected: bool | None  # True after successful fetch, False after failure
     unreachable_since: str | None  # ISO timestamp of first failure, None when healthy
     missing_count: int | None  # Total wanted-missing items (before filtering)
@@ -58,7 +82,15 @@ class AppState(TypedDict, total=False):
     cutoff_count: int | None  # Total cutoff-unmet items (before filtering)
     cutoff_searchable: int | None  # Searchable units for cutoff (Sonarr: seasons; None for Radarr)
     total_items: int | None  # Total library items (Radarr: movies, Sonarr: episodes)
-    tag_warnings: list[dict]  # Tag resolution warnings: [{"tag": name, "field": "missing"|"cutoff"}]
+    # [{"tag": name, "field": "missing"|"cutoff", "reason": "not_found"|"fetch_failed"}] --
+    # active tag-scoped queues skipped this cycle
+    tag_warnings: list[dict]
+    # Phase 79: {field: configured tag} for queues whose tag is unresolved this
+    # cycle (active or inactive)
+    unresolved_tag_scopes: dict[str, str]
+    # Phase 79: tag each committed scoped count was computed under (None =
+    # untagged); absent pre-upgrade
+    scoped_count_tags: dict[str, str | None]
 
 
 class TriggarrState(TypedDict, total=False):
@@ -81,6 +113,8 @@ def _default_instance_state() -> AppState:
         cutoff_searched=[],
         last_run=None,
         last_success=None,
+        last_cycle=None,
+        last_successful_search=None,
     )
 
 
@@ -151,6 +185,14 @@ def _merge_defaults(loaded: dict) -> TriggarrState:
                     # save_state would write them back indefinitely.
                     for legacy_key in ("missing_cursor", "cutoff_cursor"):
                         merged.pop(legacy_key, None)
+                    # Phase 78 (R-05): normalize a tampered/wrong-shape last_cycle or
+                    # last_successful_search on load rather than trusting disk contents.
+                    if merged.get("last_cycle") is not None and not isinstance(merged["last_cycle"], dict):
+                        merged["last_cycle"] = None
+                    if merged.get("last_successful_search") is not None and not isinstance(
+                        merged["last_successful_search"], str
+                    ):
+                        merged["last_successful_search"] = None
                     merged_section[instance_name] = merged
                 else:
                     merged_section[instance_name] = _default_instance_state()
@@ -182,8 +224,15 @@ def load_state(state_path: Path | None = None) -> TriggarrState:
     try:
         with open(resolved_state_path, encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        logger.warning("Corrupt state file at {path} -- resetting to defaults", path=resolved_state_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        # type(exc).__name__ + str(exc) names why loading failed (e.g. parser reason
+        # and position for JSONDecodeError) without ever touching exc.doc, which holds
+        # the raw file contents and must never be logged.
+        logger.warning(
+            "Corrupt state file at {path} -- resetting to defaults: {exc}",
+            path=resolved_state_path,
+            exc=f"{type(exc).__name__}: {exc}",
+        )
         return _default_state()
 
     if _is_v22_state_format(data):

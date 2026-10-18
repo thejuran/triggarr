@@ -21,10 +21,13 @@ Traceability (VALIDATION.md):
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import time
 import tomllib
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
@@ -32,6 +35,8 @@ from loguru import logger
 from pydantic import SecretStr
 
 from triggarr.auth import generate_session_secret, hash_password, sign_session, validate_session
+from triggarr.log_buffer import log_buffer
+from triggarr.logging import create_buffer_sink, create_redacting_sink
 from triggarr.models.config import AuthConfig, GeneralConfig
 from triggarr.models.config import Settings as SettingsModel
 from triggarr.web.middleware import AuthMiddleware
@@ -1018,3 +1023,179 @@ def test_request_confirmation_message_state(tmp_path):
             f"Message-branch context dict must have exactly 2 keys (step, message), "
             f"found {key_count} in: {ctx!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 77 Plan 04 — LOGSEC-01/LOGSEC-02: reset-token log-viewer lifecycle
+# ---------------------------------------------------------------------------
+
+# Literal, not imported from routes.py, so this test locks the exact wording (D-01).
+_D01_VIEWER_TEXT = (
+    "Password reset requested. Retrieve the token from the server logs "
+    "(Docker: docker logs) or reset-token.txt in the config directory."
+)
+
+
+@pytest.fixture
+def viewer_sinks():
+    """Register the production buffer + redacting-stderr sinks for lifecycle tests.
+
+    Mirrors triggarr.logging.setup_logging's two-sink registration with an empty
+    secrets list (the reset token is deliberately not a collected secret — D-02).
+    Yields the StringIO capturing the stderr-equivalent sink output.
+
+    A successful POST /reset/confirm calls setup_logging(), which calls
+    logger.remove() with no arguments and replaces EVERY registered loguru
+    handler (including the two this fixture adds) with its own, orphaning
+    this fixture's handler ids. Teardown therefore tolerates those ids
+    already being gone (suppresses ValueError), then does a catch-all
+    logger.remove() to clear any such orphaned production sinks too --
+    otherwise they would leak into (and double-log for) the next test.
+    """
+    log_buffer.clear()
+    stderr_capture = io.StringIO()
+    buffer_sink_id = logger.add(create_buffer_sink([]), level="WARNING", format="{message}")
+    redact_sink_id = logger.add(
+        create_redacting_sink([], stream=stderr_capture),
+        level="WARNING",
+        format="{message}",
+        colorize=False,
+    )
+    try:
+        yield stderr_capture
+    finally:
+        for sink_id in (buffer_sink_id, redact_sink_id):
+            with contextlib.suppress(ValueError):
+                logger.remove(sink_id)
+        # Catch-all: a mid-test setup_logging() call (POST /reset/confirm) replaces
+        # every handler with its own pair, under ids this fixture never recorded.
+        logger.remove()
+        log_buffer.clear()
+
+
+def _viewer_html(client: TestClient, app: FastAPI) -> str:
+    """GET /partials/log-viewer authenticated as the test user and return its HTML.
+
+    Re-reads the session secret from app.state on every call (not cached),
+    because a successful /reset/confirm rotates it mid-test.
+    """
+    secret = app.state.settings.auth.session_secret.get_secret_value()
+    resp = client.get(
+        "/partials/log-viewer",
+        cookies={"triggarr_session": sign_session(_TEST_USERNAME, secret)},
+    )
+    assert resp.status_code == 200, f"Expected 200 from GET /partials/log-viewer, got {resp.status_code}"
+    return resp.text
+
+
+def _buffer_messages() -> list[str]:
+    """Return the message text of every entry currently in log_buffer."""
+    return [entry.message for entry in log_buffer.get_recent(200)]
+
+
+def test_log_viewer_excludes_live_token_and_shows_retrieval_message(tmp_path, viewer_sinks):
+    """Mint -> buffer/viewer carry only the D-01 sentence; stderr carries the real token.
+
+    Covers D-01 (exact viewer wording), D-02 (stderr keeps the token), D-03 (buffer never
+    gets the token), D-04 (the token never appears in the mint HTTP response).
+    """
+    config_path = tmp_path / "triggarr.toml"
+    app = _make_reset_app(auth_config=_configured_reset_auth(), config_path=config_path)
+    client = TestClient(app, follow_redirects=False)
+
+    resp = client.post("/reset/request")
+
+    assert app.state.reset_token is not None
+    token1 = app.state.reset_token[0]
+
+    buffer_messages = _buffer_messages()
+    assert all(token1 not in msg for msg in buffer_messages), (
+        f"Token must never enter log_buffer (D-03); got: {buffer_messages}"
+    )
+    assert _D01_VIEWER_TEXT in buffer_messages, (
+        f"Expected the exact D-01 sentence in log_buffer; got: {buffer_messages}"
+    )
+
+    viewer_html = _viewer_html(client, app)
+    assert _D01_VIEWER_TEXT in viewer_html, "Expected the D-01 sentence to render in the log viewer"
+    assert token1 not in viewer_html, "Token must never appear in /partials/log-viewer (D-04)"
+
+    stderr_value = viewer_sinks.getvalue()
+    assert token1 in stderr_value, "Token must appear on the stderr channel (D-02, operator recovery)"
+
+    assert token1 not in resp.text, "Token must never appear in the mint HTTP response (D-04)"
+
+
+def test_log_viewer_excludes_token_after_consume(tmp_path, viewer_sinks):
+    """Mint -> consume (POST /reset/confirm succeeds) -> buffer and viewer still lack the token.
+
+    A successful confirm calls setup_logging(), replacing every loguru handler mid-test
+    (see viewer_sinks docstring) — the buffer assertions below exercise whichever buffer
+    sink is live at the time (this fixture's at mint, production's own after confirm),
+    and both apply the same structural viewer_message contract.
+    """
+    config_path = tmp_path / "triggarr.toml"
+    original_secret = _init_toml(config_path)
+    auth = _configured_reset_auth(session_secret=original_secret)
+    app = _make_reset_app(auth_config=auth, config_path=config_path)
+    client = TestClient(app, follow_redirects=False)
+
+    client.post("/reset/request")
+    assert app.state.reset_token is not None
+    token1 = app.state.reset_token[0]
+
+    resp = client.post(
+        "/reset/confirm",
+        data={"token": token1, "new_password": "newpass789!", "confirm_password": "newpass789!"},
+    )
+    assert resp.status_code == 303, f"Expected 303 from a successful confirm, got {resp.status_code}"
+
+    buffer_messages = _buffer_messages()
+    assert all(token1 not in msg for msg in buffer_messages), (
+        f"Token must still be absent from log_buffer after consume; got: {buffer_messages}"
+    )
+    assert token1 not in _viewer_html(client, app), (
+        "Token must still be absent from /partials/log-viewer after consume"
+    )
+
+
+def test_log_viewer_excludes_token_after_expiry_and_replacement(tmp_path, monkeypatch, viewer_sinks):
+    """Mint (token1) -> expire -> re-mint (token2) -> buffer/viewer lack both tokens.
+
+    Also asserts the D-01 sentence appears exactly twice in the buffer (once per mint).
+    """
+    config_path = tmp_path / "triggarr.toml"
+    app = _make_reset_app(auth_config=_configured_reset_auth(), config_path=config_path)
+    client = TestClient(app, follow_redirects=False)
+
+    clock = [1000.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+
+    client.post("/reset/request")
+    assert app.state.reset_token is not None
+    token1 = app.state.reset_token[0]
+
+    clock[0] += 901  # past the 900s TTL and the 60s request rate limit
+
+    assert all(token1 not in msg for msg in _buffer_messages()), (
+        "Token must be absent from log_buffer once expired"
+    )
+    assert token1 not in _viewer_html(client, app), (
+        "Token must be absent from /partials/log-viewer once expired"
+    )
+
+    client.post("/reset/request")
+    assert app.state.reset_token is not None
+    token2 = app.state.reset_token[0]
+    assert token2 != token1, "Re-mint after expiry must produce a different token"
+
+    buffer_messages = _buffer_messages()
+    assert all(token1 not in msg and token2 not in msg for msg in buffer_messages), (
+        f"Neither token must appear in log_buffer after expiry+replacement; got: {buffer_messages}"
+    )
+    viewer_html = _viewer_html(client, app)
+    assert token1 not in viewer_html
+    assert token2 not in viewer_html
+    assert buffer_messages.count(_D01_VIEWER_TEXT) == 2, (
+        f"Expected the D-01 sentence exactly twice (one per mint); got: {buffer_messages}"
+    )

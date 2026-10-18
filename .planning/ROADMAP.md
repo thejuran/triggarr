@@ -21,6 +21,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - ✅ v2.9 Launch-Hardening / Sibling Consistency -- Phases 68-71 (shipped 2026-06-03) -- [archive](milestones/v2.9-ROADMAP.md)
 - ✅ v2.10 Recovery, Counts & Config Parity -- Phases 72-75 (shipped 2026-06-04) -- [archive](milestones/v2.10-ROADMAP.md)
 - ✅ v2.11 Never-Searched-First Search Queue Priority -- Phase 76 (shipped 2026-06-04) -- [archive](milestones/v2.11-ROADMAP.md)
+- 🔨 v2.12 Search Correctness & Trustworthy Feedback -- Phases 77-81 (in progress)
 
 ## Phases
 
@@ -198,6 +199,168 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 
 </details>
 
+### 🔨 v2.12 Search Correctness & Trustworthy Feedback (Phases 77-81, in progress)
+
+**Milestone Goal:** Make Triggarr search exactly what the user configured and report honestly what happened — no silent scope widening, no misattributed stats, no false "success" status — and close the two highest-stakes log-exposure gaps.
+
+**Source of truth:** `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4).
+
+- [x] **Phase 77: Secret & Reset-Token Log Hygiene** - Reset token never reaches the in-app log viewer; *arr HTTP errors always logged with secrets redacted (completed 2026-10-08)
+- [x] **Phase 78: Honest Cycle Outcomes** - Each instance's last cycle grades Success/Partial/Failed/Nothing-needed, shown honestly on the dashboard (completed 2026-10-09)
+- [x] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag skips its queue instead of searching everything (completed 2026-10-18)
+- [ ] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle
+- [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note
+
+### Milestone status — reviewed 2026-10-17
+
+Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, and REQUIREMENTS.md. It describes recorded implementation progress, not a fresh test run or live NAS inspection.
+
+| Phase | Implemented / completed | Remaining | Status |
+|-------|-------------------------|-----------|--------|
+| 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | 1 deployed log-viewer walkthrough check in 77-HUMAN-UAT.md. | Implementation complete; human verification pending |
+| 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | 2 dashboard/interaction checks in 78-HUMAN-UAT.md. | Implementation complete; human verification pending |
+| 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | 3 live badge/polling/fetch-failure checks in 79-HUMAN-UAT.md, deferred to the milestone-end walkthrough (owner-approved 2026-10-18). | Implementation complete; human verification pending |
+| 80 — Cycle Robustness & Sonarr Season Dedup | No completed plans recorded. | Malformed-record handling, batch resilience, cross-queue season dedup, tests. | Not started — planning required |
+| 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Sandbox setup/connectivity reported in the external runbook; no completed implementation plans recorded. | Attribution ownership/migration, cutover note, version reporting, regression tests, live v4/v5 compatibility matrix. | Not started — planning required |
+
+**Counts:** 3/5 phases have completed implementation; 14/14 currently defined plans have summaries (Phases 80/81 still need plans, so 14/14 is not a milestone completion percentage). REQUIREMENTS.md marks 13/28 requirements complete. Public v2.12.0 release remains pending implementation, verification, and the milestone-end NAS walkthrough.
+
+**Next work:** plan/execute Phase 80; plan/execute Phase 81 and its compatibility task; complete the deferred NAS walkthrough checks before release.
+
+### Phase 77: Secret & Reset-Token Log Hygiene
+
+**Goal**: Close the two highest-stakes log-exposure gaps — the reset token stays out of the web-facing log viewer, and *arr API keys never leak through HTTP-error log lines.
+**Depends on**: Nothing (independent; sequenced first for risk reduction)
+**Requirements**: LOGSEC-01, LOGSEC-02, LOGSEC-03
+**Success Criteria** (what must be TRUE):
+
+  1. The reset token is absent from the in-app log viewer buffer and from `/partials/log-viewer` output, while still readable from the stderr log (`docker logs`).
+  2. The viewer stays redacted after the token is consumed, expires, or is replaced by a newly-issued token.
+  3. Any *arr HTTP error whose request URL contains an API key — including Sonarr's `detect_api_version` on legacy installs — is logged through the existing sanitizer (`_sanitize_exc`), key redacted.
+
+**Plans:** 5/5 plans complete
+Plans:
+**Wave 1**
+
+- [x] 77-01-PLAN.md — create_buffer_sink: bound viewer_message divergence + one-line redacted exception summary, no tracebacks in viewer (wave 1)
+- [x] 77-02-PLAN.md — relocate _sanitize_exc to clients.base; sanitize Sonarr detect_api_version warning (wave 1)
+- [x] 77-03-PLAN.md — load_state corrupt-file warning names the reason without contents (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 77-04-PLAN.md — reset-token mint: viewer gets D-01 sentence only, stderr keeps token; lifecycle tests (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 77-05-PLAN.md — strict SecretStr api_key for *arr clients + auth_api_key_set truthiness; migrate 64 test sites (wave 3)
+
+### Phase 78: Honest Cycle Outcomes
+
+**Goal**: Every instance's last cycle is graded honestly — Success, Partial, Failed, or Nothing needed searching — and the dashboard, timestamps, and failure counter all reflect that grade instead of a blanket "last success" stamp.
+**Depends on**: Nothing (independent of Phase 77; sequenced to define the grading model Phases 79 and 80 build on)
+**Requirements**: OUTCOME-01, OUTCOME-02, OUTCOME-03, OUTCOME-04, OUTCOME-05, OUTCOME-06
+**Success Criteria** (what must be TRUE):
+
+  1. Each instance's last cycle is graded Success / Partial / Failed / Nothing needed searching per spec §3.1, correctly for Radarr, Sonarr, and Lidarr, including when a queue is inactive or the cycle found nothing eligible.
+  2. The dashboard card reads "<Grade> · N accepted, M failed · <relative time>" — amber for Partial, red for Failed — with an expandable, sanitized failure-reason detail (no secrets, no stack traces).
+  3. "Last successful search" updates only when ≥1 command was accepted; "last checked" updates on every cycle finish including Failed; connection health remains a separate signal from the grade.
+  4. The consecutive-failure counter increments only on Failed and resets on Success, Partial, or Nothing needed searching.
+  5. A pre-upgrade `last_success` timestamp displays as "Last success (legacy)" until the instance's first new cycle completes, and an accepted command whose history write fails still counts as accepted, still updates "last successful search," and surfaces a separate persistence warning instead of being retried.
+
+**Plans:** 5/5 plans complete
+**UI hint**: yes
+Plans:
+**Wave 1**
+
+- [x] 78-01-PLAN.md — outcome model: grade_cycle (§3.1), CycleTally with Phase 79/80 hooks, cycle_view, LastCycleRecord + legacy-safe load (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 78-02-PLAN.md — engine helpers (_search_and_record split command/insert, _finalize_cycle) + Radarr honest grading, OUTCOME-06 persistence path (wave 2)
+- [x] 78-04-PLAN.md — dashboard card: grade line/colors, Last checked staleness, legacy + Not run yet, unreachable grade, grouped detail panel kept open across refresh, persistence warning (wave 2)
+
+**Wave 3** *(blocked on 78-02)*
+
+- [x] 78-03-PLAN.md — Sonarr + Lidarr honest grading; refresh helpers proven untouched (wave 3)
+
+**Wave 4** *(blocked on 78-02 and 78-03)*
+
+- [x] 78-05-PLAN.md — SAFETY-03 counter driven by grade for scheduled + Search Now; refresh-counts route boundary (wave 4)
+
+### Phase 79: Tag-Scoped Searches Stay in Scope
+
+**Goal**: A queue whose configured tag can't be resolved is skipped outright, never silently widened to search the whole library.
+**Depends on**: Phase 78 (grading model — a skipped queue must be reflected in the cycle grade)
+**Requirements**: TAGSCOPE-01, TAGSCOPE-02, TAGSCOPE-03, TAGSCOPE-04
+**Success Criteria** (what must be TRUE):
+
+  1. When a queue's tag can't be resolved (fetch failed or tag no longer exists), that queue issues zero searches while the other queue still runs if its own scope resolves — true for Radarr, Sonarr, and Lidarr.
+  2. A persistent card warning names the skipped queue and the reason, and clears automatically once the tag resolves on a later cycle.
+  3. A skipped queue counts as unevaluated for grading; paired with an empty other queue, the cycle grades Failed, never "Nothing needed searching."
+  4. README/docs no longer describe the old search-everything fallback.
+
+**Plans**: 4 plans
+
+Plans:
+**Wave 1**
+
+- [x] 79-01-PLAN.md — Shared `_resolve_tag_scope` helper; Radarr/Sonarr/Lidarr cycles skip unresolved-tag queues, grade them unevaluated, keep last good counts (wave 1)
+- [x] 79-02-PLAN.md — Card badge names skipped queue + reason; README fail-open claim retired with docs regression test (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 79-03-PLAN.md — Refresh counts never widen (active or inactive queue); end-to-end engine-to-card proof (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 79-04-PLAN.md — Fold copied R-07 both-inactive and hard-max cap blocks into shared helpers, behavior-preserving (wave 3)
+
+### Phase 80: Cycle Robustness & Sonarr Season Dedup
+
+**Goal**: One malformed *arr record can no longer wedge a whole cycle, and a Sonarr season eligible for both the missing and upgrade queues gets searched at most once per cycle.
+**Depends on**: Phase 78 (grading model — malformed-record counts and persistence warnings feed into the cycle grade)
+**Requirements**: ROBUST-01, ROBUST-02, ROBUST-03, ROBUST-04, DEDUP-01, DEDUP-02
+**Success Criteria** (what must be TRUE):
+
+  1. A malformed *arr record (null nested series/artist, malformed or naive grab date, non-string version) is skipped and logged; the cycle completes and its state persists.
+  2. A failure in any history insert — on the failure path or the success path — is logged and never aborts the batch; an accepted command whose history insert fails still counts as accepted, still updates "last successful search," and shows the persistence warning instead of being retried.
+  3. Tag autocomplete returns its documented empty-`<datalist>` fallback instead of a 500 when the upstream response is malformed.
+  4. Within one Sonarr cycle, each (series, season) receives at most one engine dispatch across the missing and upgrade queues — claimed on attempt even if that command fails — while the upgrade batch still fills to its limit from other eligible seasons and the excluded season's position in the upgrade searched-log is unchanged.
+
+**Plans**: TBD
+
+### Phase 81: Correct Sonarr Grab Attribution
+
+**Goal**: A Sonarr grab credits exactly the search that earned it — matching series and season, counted at most once ever — with effectiveness stats that honestly disclose the correction.
+**Depends on**: Attribution work is independent of Phases 79/80; final v4/v5 compatibility verification follows Phase 80. Carries the only DB migration and config addition.
+**Requirements**: ATTR-01, ATTR-02, ATTR-03, ATTR-04, ATTR-05, ATTR-06, SONARRV5-01, SONARRV5-02, SONARRV5-03
+**Success Criteria** (what must be TRUE):
+
+  1. A Sonarr grab credits a search only when both series and season match, and each grab is credited at most once, ever, keyed by (app, stable per-instance ID, grab ID) — holding across colliding grab IDs from different instances, instance renames, process restarts, and history pruning.
+  2. Each instance has a permanent Triggarr-assigned ID generated at creation, backfilled for existing instances on first load, and unchanged by renames.
+  3. Search↔grab ownership commits in the same transaction as the outcome/stat update; later tracking checks accumulate a search's previously-owned grabs and count distinct episodes.
+  4. Pre-cutover pending searches keep their existing rows and counters, are excluded from corrected attribution and from the active pending cap, and display as "Legacy — tracking discontinued."
+  5. Sonarr effectiveness stats show the attribution-corrected cutover note and label totals that include pre-cutover data as "Lifetime — includes historical estimates"; the cutover is recorded exactly once, only after the migration succeeds.
+
+  6. Sonarr v5 is reported as v5 (not v3), with safe malformed-version handling and no automatic API-route switch.
+  7. An isolated v4/v5 smoke matrix covers connection, tags, missing/cutoff pagination, counts, season commands, and grab tracking, recording exact builds and results. Alternate-order, season-pack, and multi-season attribution regression cases use Sonarr-returned identities and count distinct episodes correctly.
+
+**Plans**: TBD. Include one bounded **Verify Sonarr v5 compatibility** task per the design spec's Phase 81 addendum (2026-10-12). Keep current v3 routes and API-key authentication unless testing demonstrates an incompatibility; fix only affected existing flows. No production NAS upgrade, new Sonarr feature integration, or blanket v5 API migration. Live compatibility must be verified before claiming support; unavailable scenarios remain documented as unverified and the task stays open.
+
+### Phase 81 live test environment and remaining checks
+
+**Environment reference:** [Sonarr v5 sandbox runbook](/Users/julianamacbook/Cowork/mediaserver/SANDBOX-sonarr-v5.md). The runbook reports isolation checks and connectivity passed on 2026-10-12 against Sonarr v5.0.0.2569. This is historical setup evidence, not proof of scheduled-search or attribution compatibility; recheck the current environment before testing.
+
+- Separate compose project: `/volume1/docker/v5test`; sandbox data: `/volume1/data/v5test`; dedicated Triggarr config: `/volume1/docker/v5test/triggarr`.
+- Triggarr UI: `http://maguffynas:8494` (host 8494 → container 8484). Sonarr address from Triggarr: `http://sonarr-v5:8989`; LAN: `http://maguffynas:8990`. Use the fresh v5 API key without placing it in reports. `sonarr:8989` is production and is not the v5 test target.
+- The runbook reports authenticated connectivity to both API versions. Scheduled searching, pagination, deduplication, and corrected attribution remain unverified. SONARRV5-01..03 stay pending.
+- Deploy and identify a Triggarr build containing the Phase 80/81 changes. A mutable `:main` tag or the update-check banner does not establish which code is running.
+- Start with Triggarr disabled and test series unmonitored. After setup/configuration changes, run the runbook's isolation verification with the appropriate `SEARCHES=off/on` mode and Deluge destination check; require `ALL ISOLATION CHECKS PASSED` and `DELUGE DESTINATIONS PASSED` before controlled search testing. Deliberately monitor only the sandbox cases needed for the test, then restore the disabled/unmonitored baseline afterward.
+- Keep download category `tv-v5test`, sandbox download/move destinations, Remove Completed/Failed off, and test-only webhook/config targets. Shared iplayarr remains search-only; do not deploy or modify production services for this Triggarr task.
+- WUD can auto-update all test containers. Capture exact application versions, Triggarr commit/build identity, full image digests, and container start times before and after each run. Repeat any run interrupted by an update or restart. Record digests as evidence; do not change the runbook's tag-based deployment to digest pins.
+- Run the existing Phase 81 smoke matrix: connection, tags, missing/cutoff pagination, library counts, one controlled season dispatch, scheduled cycle, and repeated tracking checks; include alternate-order and season/multi-season-pack attribution cases. Use an isolated v4 instance for mutating v4 comparison tests; no isolated v4 endpoint is currently documented, so that part remains pending until provisioned.
+- Store sanitized results under `/volume1/docker/v5test/results/` and `/Users/julianamacbook/Cowork/mediaserver/v5test-results/`, linking the evidence from Phase 81 verification. Missing scenarios stay explicitly unverified; API reachability alone must never be reported as full v5 support.
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -207,135 +370,68 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 | 74. Count-Only Refresh | 3/3 | Complete   | 2026-06-04 |
 | 75. Drain-Timeout Config Parity & Deferred-Record Correction | 4/4 | Complete   | 2026-06-04 |
 | 76. Never-Searched-First Search Queue | 3/3 | Complete    | 2026-06-04 |
+| 77. Secret & Reset-Token Log Hygiene | 5/5 | Implemented; NAS UAT pending | 2026-10-08 (implementation) |
+| 78. Honest Cycle Outcomes | 5/5 | Implemented; NAS UAT pending | 2026-10-09 (implementation) |
+| 79. Tag-Scoped Searches Stay in Scope | 3/4 | In Progress|  |
+| 80. Cycle Robustness & Sonarr Season Dedup | 0/TBD | Not started | - |
+| 81. Correct Sonarr Grab Attribution + v5 Compatibility | 0/TBD | Not started; sandbox connectivity reported | - |
 
 ## Backlog
 
-### Phase 999.1: UI-based password recovery (BACKLOG — promoted to v2.10 Track A)
+**Triage approved 2026-10-17.** Finish v2.12 first. Retained items below are unscheduled follow-ups, not a commitment to another broad hardening milestone. Retired means **won't do under current scope**; do not repeatedly carry it forward or create plans without the stated reopening evidence. Original 999.x findings came from the 2026-06-26 deep review; recheck current code before implementation.
 
-**Status:** Promoted into v2.10 as Phases 72-73 (Track A). Retained here for historical context.
-**Goal:** [Captured for future planning] Self-service password reset flow in the Triggarr web UI so a locked-out user never has to hand-edit `triggarr.toml`. Context: a user got locked out after logging out and corrupted auth by typing a plaintext value into the bcrypt `password_hash` field (silent failure — bcrypt compare against a non-hash always rejects). Current recovery requires clearing `username`/`password_hash` in the TOML and re-running `/setup`. Single-user app, so likely a recovery mechanism gated on host/filesystem access (e.g. a one-time reset token written to the config volume or logs) rather than email-based reset.
-**Requirements:** RCOV-01..06 (v2.10)
-**Plans:** 0 plans
+### 999.4 — Keep: password hashing off the event loop
 
-Plans:
-- [ ] Promoted to v2.10 Phases 72-73
+Move synchronous bcrypt work in async authentication/setup/reset paths off the shared event loop, preserving authentication and rate-limit behavior. Verify unrelated requests and scheduled work can progress during hashing. No auth redesign or new settings.
 
-### Phase 999.2: Count-only / dry-run refresh without searching (BACKLOG — promoted to v2.10 Track B)
+### 999.9 — Keep: state and config consistency
 
-**Status:** Promoted into v2.10 as Phase 74 (Track B). Retained here for historical context.
-**Goal:** [Captured for future planning] Surface accurate missing & cutoff-unmet counts on demand WITHOUT triggering any indexer searches or advancing the search cursor. Context: today counting and searching are a single inseparable pass (`engine.py` fetches the full missing/cutoff lists — the source of accurate counts — then immediately slices a batch off the cursor and searches it). After a bulk quality-profile change a user wants to see the true post-change counts without launching a search wave. The expensive part (querying *arr for the lists) already exists; this is the existing cycle with the `search_movies` loop short-circuited. Design notes: (a) must NOT advance the cursor (nothing was searched, else next real cycle silently skips items); (b) prefer a thin shared fetch helper used by both the real cycle and the count-only path over a `count_only` flag tangling the hot path; (c) surface as a per-instance "Refresh counts" button and/or API endpoint.
-**Requirements:** CNT-01..05 (v2.10)
-**Plans:** 0 plans
+- Make instance removal write validated replacement settings before swapping live state; a failed write must preserve settings, scheduler jobs and clients.
+- Guard non-object state JSON (`[]`, `42`, `null`) so loading follows the documented recovery path instead of raising on dictionary access.
+- Require focused failure-path regression tests.
 
-Plans:
-- [ ] Promoted to v2.10 Phase 74
+### 999.10 — Narrow: evidence-backed auth boundary review
 
-### Phase 999.3: Reset token must not reach the in-UI log viewer (BACKLOG)
+Review cookie-authenticated mutations with missing Origin/Referer, auth-exempt path matching, trusted-proxy/rate-limit behavior, and cookie/CSP behavior in supported deployments. Reproduce each alleged defect and record its actual prerequisites before choosing a fix; older proposed remedies are not approved requirements. Keep API-key/Basic clients and supported reverse-proxy setups working. Do not automatically add auth modes, cookie settings, a CSP rewrite, or treat an HX-Request header alone as proof of CSRF protection.
 
-**Source:** `/deep-review --all` 2026-06-26 (security, highest real-world risk).
-**Goal:** [Captured for future planning] The password-reset token is logged at WARNING (`routes.py:~1840`), and `buffer_sink` (logging.py) captures WARNING messages into `log_buffer`, which `GET /partials/log-viewer` serves to the browser. The token is intentionally excluded from `collect_secrets`/redaction so operators can read it from `docker logs` — but that also means an authenticated user (or anyone, when auth is set to Disabled) can read it from the web log viewer and complete a password reset to take over the account. The in-code comment says "the token MUST NOT appear in any HTTP response," which this contradicts. PROJECT.md authorizes the *docker-logs* channel, not the *web-viewer* exposure. Fix direction: redact the active reset token from `buffer_sink` (add it to the live redaction set while a token is outstanding), or log the token only to the stderr sink and never to the buffer sink.
-**Requirements:** TBD
-**Plans:** 0 plans
+### 999.13 — Narrow: startup/shutdown resource cleanup
 
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+Keep concrete failure-path work: ensure database/client resources opened during partial startup are closed, and failure closing one client does not prevent closing remaining resources or the DB. Verify with injected initialization/close failures. Fix cursor lifetime defects locally if confirmed. Drop the blanket async-I/O/offloading rewrite; reopen performance work only for measured stalls. This does not retire 999.4's known CPU-blocking auth work.
 
-### Phase 999.4: Run bcrypt off the event loop (BACKLOG)
+### POST-retry semantics — Keep: ambiguous command acceptance
 
-**Source:** `/deep-review --all` 2026-06-26 (framework-fastapi, async-blocking).
-**Goal:** [Captured for future planning] `hash_password` and `verify_password` (bcrypt, 12 rounds, ~200-500ms CPU) are called synchronously on the asyncio event loop, serializing every other concurrent request for the duration. Sites: `routes.py:~1292` (setup_post), `~1467` (login_post — the hot path every unauthenticated request hits), `~1550/~1560` (change_password), `~1954` (reset_confirm_post), and `middleware.py:~193` (AuthMiddleware Basic-auth path). Fix direction: wrap each call in `await asyncio.get_running_loop().run_in_executor(None, fn, ...)` (or `asyncio.to_thread`). Cheap fix, outsized impact under any concurrency.
-**Requirements:** TBD
-**Plans:** 0 plans
+An automatic POST retry after a response timeout can duplicate a command already accepted upstream. Establish explicit retry behavior for search commands, distinguish confirmed acceptance from unknown delivery, and test response-loss scenarios. Keep safe read retries; do not broaden into a generic retry framework. This remains outside v2.12's one-engine-dispatch guarantee.
 
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+### Maintenance rules — no standalone implementation phase
 
-### Phase 999.5: Harden *arr API-response handling so one bad record can't wedge a cycle (BACKLOG)
+- **999.8 — atomic writes:** Retire consolidation of all writers/public APIs as a project. Preserve atomic replacement, appropriate secret-file permissions, cleanup and durability. Fix only demonstrated defects with focused tests. The current TOML writer uses `mkstemp`; omitting a later `chmod` does not by itself demonstrate world-readable output.
+- **999.11 — URL validation compatibility:** When a future validation change rejects a previously supported configuration, ship a migration/recovery path and regression test with that change. Do not prebuild a generic migration system or weaken existing validation. No standalone task until such a change is proposed.
 
-**Source:** `/deep-review --all` 2026-06-26 (bugs/language-python, robustness — 3 agents independently flagged the cycle-wedge).
-**Goal:** [Captured for future planning] Several paths let a single malformed/unexpected *arr API record abort a whole tracking-or-search cycle (state never persists, search cursor never advances → the instance is wedged every cycle until the bad record ages out). `_run_one_cycle`'s catch tuple is only `(httpx.HTTPError, pydantic.ValidationError, aiosqlite.Error)`, so `AttributeError`/`KeyError`/`TypeError`/`ValueError` escape to APScheduler as "code bugs." Specific cases: (a) `engine.py:~699` — `run_*_cycle` doesn't guard the null-nested-`series`/`artist` filter/dedup/tag block that `refresh_*_counts` already guards with `except (AttributeError, KeyError, TypeError)`; mirror that guard. (b) `correlation.py:~117` — `_parse_iso` raises `ValueError` (or yields a naive datetime → `TypeError` on the tz-aware compare) on a malformed/naive grab date; validate `GrabEvent.date` at the boundary or skip-and-log per grab. (c) `sonarr.py:~42` — `detect_api_version` does `data["version"].startswith(...)` and a non-string version raises `AttributeError`/`TypeError` that aborts startup connection validation; coerce `str()` or widen the catch. (d) `engine.py:~489` (×6 sites) — the failure-path `insert_search_entry` is itself unguarded, so a double-fault (DB degraded when the recovery insert also fails) aborts the whole batch; wrap it in its own suppress+log. (e) `routes.py:~769` — `tag_autocomplete` catches only `(httpx.HTTPError, pydantic.ValidationError)` but `get_json_list` can raise plain `ValueError`/`json.JSONDecodeError`, yielding a 500 instead of the documented empty-`<datalist>` fallback; add `ValueError`.
-**Requirements:** TBD
-**Plans:** 0 plans
+### Retired — won't do under current scope
 
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+| Item | Decision / reason | Reopen only when |
+|------|-------------------|------------------|
+| 999.7 — client registry and module reorganization | Retired as standalone architecture work; three supported apps do not justify a new abstraction project. | A new integration or demonstrated dispatch inconsistency requires it. |
+| 999.12 — changelog renderer rewrite | Retired; all three text insertion points are escaped, the security boundary is documented, and 19 changelog tests passed during the 2026-10-17 review. Preserve those protections. | A reproducible escaping defect or new untrusted content path appears. |
+| PERF-01/02 — per-endpoint timeout/page-size overrides | Retired; global settings already cover normal operation. | An observed endpoint-specific problem cannot be solved with existing settings. |
+| PERF-03 — state streaming/compression | Retired; no measured state-size or memory problem. | Profiling demonstrates a material bottleneck. |
+| SCALE-01 — more than five instances per app | Retired; no current deployment requirement. | An actual deployment needs more than five instances of one app. |
+| SCALE-02 — archival/PostgreSQL | Retired; SQLite and bounded history fit a single-process utility. | A concrete retention or scale requirement exceeds SQLite/current retention. |
+| AUDIT-01 — config audit log | Retired; limited value in the current single-user model. | A real operational accountability requirement emerges. |
+| OBS-01 — scheduler dashboard | Retired; existing cards and cycle outcomes cover core operational feedback. | A recurring diagnostic need cannot be answered by existing status/history/logs. |
+| UI-01/02/03 — pixel-exact verification | Retired as pixel-exact requirements; retain ordinary login, setup and security-settings usability checks. | A functional usability or accessibility regression is observed. |
+| Unused `--color-triggarr-primaryDark` token | Retired as tracked work; optional cleanup while editing that stylesheet. | It causes an actual styling defect. |
 
-### Phase 999.6: Close secret-redaction gaps across all log paths (BACKLOG)
+### Promoted / historical — removed from active backlog
 
-**Source:** `/deep-review --all` 2026-06-26 (compliance/security — SecretStr discipline per CLAUDE.md).
-**Goal:** [Captured for future planning] A few paths can let a secret or its diagnostic context escape the redaction discipline. (a) `sonarr.py:~49` — `detect_api_version` logs `httpx.HTTPError` via `logger.warning(exc=exc)` WITHOUT `_sanitize_exc`; on legacy Sonarr installs the apikey rides in the request URL embedded in the exception, so it could land in logs and the web viewer. `_sanitize_exc` is applied consistently elsewhere; apply it here. (b) `logging.py` `buffer_sink` redacts only `record["message"]`, not the full formatted output, so secrets in exception *tracebacks* aren't redacted before reaching the web log viewer (mitigated today since tracebacks aren't in `record["message"]`, but latent). (c) `clients/base.py:~26` — `ArrClient.__init__` accepts `api_key: str` (plaintext) rather than `SecretStr`, so a repr/traceback/debug dump could expose it; accept `SecretStr` and `get_secret_value()` only at the header-construction site. (d) `routes.py:~451` — `bool(settings.auth.api_key.get_secret_value())` extracts the plaintext just for a bool check; use `bool(settings.auth.api_key)` (SecretStr is truthy when non-empty). (e) `state.py:~185` — `load_state` swallows the load exception logging only the path, not `exc`; add `exc=exc` so the failure is diagnosable.
-**Requirements:** TBD
-**Plans:** 0 plans
+| Original item | Owning milestone/phase | Status |
+|---------------|------------------------|--------|
+| 999.1 — password recovery | v2.10, Phases 72–73; [archive](milestones/v2.10-ROADMAP.md) | Shipped; no duplicate backlog task. |
+| 999.2 — count-only refresh | v2.10, Phase 74; [archive](milestones/v2.10-ROADMAP.md) | Shipped; no duplicate backlog task. |
+| 999.3 — reset-token viewer exposure | v2.12, [Phase 77](#phase-77-secret--reset-token-log-hygiene) | Implementation complete; milestone NAS UAT remains pending. |
+| 999.6 — log secret-redaction gaps | v2.12, [Phase 77](#phase-77-secret--reset-token-log-hygiene) | Implementation complete; no duplicate backlog task. |
+| 999.5 — malformed upstream records | v2.12, [Phase 80](#phase-80-cycle-robustness--sonarr-season-dedup) | Pending in Phase 80, not retired or complete. |
 
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+### Other small follow-ups
 
-### Phase 999.7: Centralize the {radarr,sonarr,lidarr} client-dispatch registry (BACKLOG)
-
-**Source:** `/deep-review --all` 2026-06-26 (architecture/impact, duplication — flagged in 3 chunks).
-**Goal:** [Captured for future planning] The literal app-type→client-class mapping `{"radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient}` is hand-written verbatim in `routes.py:~641`, `startup.py:~148`, and `scheduler.py:~468`, plus duplicated `cycle_fns` dicts in `scheduler.py` (`make_search_job` and `_run_one_cycle`). None is derived from `APP_TYPES`. Adding a fourth *arr requires editing every site; miss one and `routes.py:641` `KeyError`s at runtime mid-mutation (a 500 during a settings save) while the updated startup/scheduler boot fine. Fix direction: a single `CLIENT_CLASSES` registry beside `APP_TYPES` (resolving classes at call-time so existing test monkeypatches of `RadarrClient`/etc. still work), consumed by all three sites, plus a test asserting `set(CLIENT_CLASSES) == set(APP_TYPES)`. Also resolves the related `routes.py` reach into private `_run_one_cycle`/`_TAG_CACHE_TTL_SECONDS` (promote to public or extract a `search/cycle.py`).
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
-### Phase 999.8: Consolidate the atomic-write ceremony + 0o600 chmod into one helper (BACKLOG)
-
-**Source:** `/deep-review --all` 2026-06-26 (architecture, duplication).
-**Goal:** [Captured for future planning] The full atomic write-then-rename sequence (mkstemp → write → flush → fsync → os.replace → parent-dir fsync → tiered OSError/cleanup) is implemented FOUR times with divergent cleanup/ownership bookkeeping: `config._atomic_toml_write`, `config.generate_default_config`, `state.save_state`, and the reset-token writer in `routes.py`. They're kept in sync only by hand and "matches config.py" comments. Separately, `routes.py` imports the PRIVATE `_atomic_toml_write` across the layer boundary at ~8 sites, and the `os.chmod(path, 0o600)` secret-protecting invariant is re-implemented at 6 of those call sites — one omission silently leaves the config world-readable with API keys in it. Fix direction: extract one `atomic_write(path, data|write_fn, *, mode=0o600)` primitive, and expose a public `config.save_settings(path, settings)` that does serialize + atomic-write + chmod 0o600 as one unit; replace all web-layer call sites with it.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
-### Phase 999.9: remove_instance write-then-swap + load_state non-dict guard (BACKLOG)
-
-**Source:** `/deep-review --all` 2026-06-26 (bugs, state-mutation).
-**Goal:** [Captured for future planning] Two in-memory-vs-disk consistency gaps. (a) `routes.py:~848` — `remove_instance` does `del instances[instance_name]` on the LIVE settings dict BEFORE the atomic disk write; if `_atomic_toml_write` raises (disk full/EACCES), in-memory settings has already lost the instance while disk still has it, and the scheduler/client/state teardown is skipped, orphaning a scheduler job and open httpx client. It's the lone outlier from the build-new-validated-then-swap pattern every other write handler uses (cf. `add_instance`); rebuild a new Settings, write first, swap only on success. (b) `state.py:~189` — `load_state` runs `json.load` (which accepts any valid JSON) then calls `data.get(...)`; a non-dict `state.json` (`[]`, `42`, `null`) raises `AttributeError` uncaught, defeating the documented reset-to-defaults safety net. Guard `isinstance(data, dict)`.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
-### Phase 999.10: Auth / CSRF / cookie hardening (BACKLOG)
-
-**Source:** `/deep-review --all` 2026-06-26 (security/impact — several scored below the deep threshold but are real, lower-confidence/lower-blast-radius items worth a deliberate pass).
-**Goal:** [Captured for future planning] A cluster of defense-in-depth gaps on the auth surface. (a) `middleware.py:~86` (`OriginCheckMiddleware`) — mutating requests are ALLOWED when both Origin and Referer are absent (the sole CSRF defense); a request crafted to omit both (e.g. `referrerPolicy=no-referrer`) passes, leaving only SameSite=Lax cookies, which don't cover non-top-level navigations. Consider a synchronizer token on sensitive forms or requiring `HX-Request` for htmx mutations. (b) `web/security.py:~15` — the session-cookie `Secure` flag is set only when `scheme=="https"`; deployed over plain HTTP (or with `TRUSTED_PROXY_IPS=*`, which is spoofable) the cookie is issued without `Secure`. Escalate the `TRUSTED_PROXY_IPS=*` warning to ERROR and/or add a `FORCE_SECURE_COOKIES` env for upstream-HTTPS deployments. (c) `middleware.py:~25` — `EXEMPT_PREFIXES` matches `/login`/`/setup` by bare `startswith` (unlike the hardened exact-or-`/reset/` predicate), so a future `/loginXYZ`/`/setup-wizard` route would silently bypass the auth gate; apply the same exact-or-trailing-slash predicate. (d) `routes.py:~1441` — the login (and reset-confirm) rate limiter keys on `request.client.host`; with `TRUSTED_PROXY_IPS=*` an attacker spoofs X-Forwarded-For per attempt to bypass the window — document/enforce the incompatibility. (e) `middleware.py:~54` — CSP `script-src 'self' 'nonce-…'` keeps `'self'`, so a same-origin script injection bypasses the nonce; add a nonce to the htmx `<script>` then drop `'self'`.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
-### Phase 999.11: validate_url_ssrf must not hard-fail startup on historical config (BACKLOG)
-
-**Source:** `/deep-review --all` 2026-06-26 (impact, breaking-api).
-**Goal:** [Captured for future planning] `InstanceConfig.validate_url_ssrf` (`models/config.py:~91`) runs unconditionally at config load and RAISES on failure. Because `Settings` loads `triggarr.toml` at startup, any future tightening of `BLOCKED_HOSTS`/`_BLOCKED_NETWORKS` in `web/validation.py` retroactively invalidates previously-accepted configs and aborts `Settings` construction — the daemon fails to start, and the very UI needed to fix the URL is behind the failed startup. Fix direction: treat the config-load blocklist as a frozen contract, or gate new rejections behind a migration path that warn-and-disables the offending instance rather than hard-failing the whole process. (Add a regression test loading a config with a now-blocked URL.)
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
-### Phase 999.12: Harden changelog raw-HTML rendering (BACKLOG)
-
-**Source:** `/deep-review --all` 2026-06-26 (security, XSS surface — restored from a scorer line-number false-drop).
-**Goal:** [Captured for future planning] `changelog.py` `parse_changelog` builds raw HTML returned via `HTMLResponse` and injected into the DOM via htmx `innerHTML`, bypassing Jinja2 autoescape entirely. `html.escape()` on the three text-insertion points is the SOLE XSS defense — defensible today since `CHANGELOG.md` is a repo-controlled file, but the barrier is a single hand-maintained escape discipline (any future text insertion without `html.escape` becomes stored XSS, and a supply-chain-modified CHANGELOG.md would execute). Fix direction: render the changelog through a Jinja2 template with autoescape (wrap parsed fragments in `Markup`) instead of a hand-built `HTMLResponse`, or at minimum verify CSP nonce coverage on the swapped container and add a guard comment marking the escape calls as the security boundary.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
-
-### Phase 999.13: Lifecycle & blocking-I/O correctness in the async paths (BACKLOG)
-
-**Source:** `/deep-review --all` 2026-06-26 (language-python/framework-fastapi — resource handling & async-blocking).
-**Goal:** [Captured for future planning] A set of lifecycle/blocking-I/O fixes in the scheduler/db async paths. (a) `scheduler.py:~455` — `aiosqlite.connect()` result is stored into `app.state.db` only at ~488; if any startup statement between (PRAGMA/init_db/migrate) raises, the lifespan `finally` calls `app.state.db.close()` before it's assigned → `AttributeError` and a leaked SQLite fd. Assign `app.state.db = db` immediately after connect (or guard the close with a None check). (b) `scheduler.py:~686` — shutdown closes HTTP clients in a bare loop then closes the DB; if any `client.close()` raises, `db.close()` is skipped, leaking the connection and skipping the WAL checkpoint. Wrap each client close in try/except (log+continue) and put `db.close()` in its own try/finally. (c) Blocking I/O on the event loop, not offloaded: `db.py:~103` `shutil.copy2` (migration backup) inside async `run_migrations`; `scheduler.py:~440` `load_state` in async lifespan; `routes.py:~1319` (×5) `load_settings` (TOML read+parse) in async handlers (or just assign the already-validated `new_settings` instead of re-reading from disk). Offload via `run_in_executor`/`asyncio.to_thread`. (d) `db.py:~159` — the `_migrate_v4` cursor isn't used as an `async with` context manager (unbounded cursor lifetime); align with the rest of the file.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+Existing screenshot/CI maintenance in `TODO.md` is unchanged by this triage. The older v2.9 follow-up (URL-validation duplication, Retry-Connection button behavior, bug-report version options) remains unscheduled and must be revalidated before work; it is not part of a new hardening program.

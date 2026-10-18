@@ -46,6 +46,40 @@
 </div>
 {% endif %}
 <script nonce="{{ csp_nonce }}">
+/* D-11 (78-04): Keep an open per-card failure-detail panel open across the 5s
+ * card refresh. Deliberately NOT hx-preserve -- that would freeze the panel's
+ * reasons at their old content, so a card whose grade changes while the panel
+ * is open would show stale reasons. Instead, remember which cards have an
+ * open panel and re-apply the open attribute to the freshly-rendered content
+ * after every htmx:afterSwap. */
+var openCycleDetails = new Set();
+
+document.addEventListener('toggle', function(evt) {
+  if (!evt.target.matches || !evt.target.matches('[data-cycle-detail]')) return;
+  var card = evt.target.closest('[id$="-card"]');
+  if (!card) return;
+  if (evt.target.open) {
+    openCycleDetails.add(card.id);
+  } else {
+    openCycleDetails.delete(card.id);
+  }
+}, true);
+
+document.addEventListener('htmx:afterSwap', function(evt) {
+  openCycleDetails.forEach(function(cardId) {
+    var card = document.getElementById(cardId);
+    if (!card) return;
+    var details = card.querySelector('[data-cycle-detail]');
+    if (details) {
+      details.open = true;
+    } else {
+      /* Grade recovered and the panel is gone -- forget it so a later
+       * Failed cycle on this card does not auto-open. */
+      openCycleDetails.delete(cardId);
+    }
+  });
+});
+
 /* Log viewer controls — lives outside partial to survive htmx outerHTML swaps */
 
 /* D-04: Auto-scroll log body to bottom after every htmx swap */

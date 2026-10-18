@@ -55,7 +55,13 @@ from triggarr.search.engine import (
     refresh_radarr_counts,
     refresh_sonarr_counts,
 )
-from triggarr.search.scheduler import _TAG_CACHE_TTL_SECONDS, _run_one_cycle, make_search_job
+from triggarr.search.outcome import cycle_view
+from triggarr.search.scheduler import (
+    _TAG_CACHE_TTL_SECONDS,
+    _cached_tags_cover_config,
+    _run_one_cycle,
+    make_search_job,
+)
 from triggarr.startup import collect_secrets
 from triggarr.state import _default_instance_state, save_state
 from triggarr.version import get_display_version
@@ -146,11 +152,35 @@ def _relative_time(dt: datetime | None, *, short_threshold: bool = False) -> str
 
 
 templates.env.filters["relative_time"] = _relative_time_filter
+
+
+def _exact_time_filter(iso_timestamp: str | None) -> str:
+    """Jinja2 filter: ISO timestamp string -> exact 'YYYY-MM-DD HH:MM:SS UTC' hover tooltip."""
+    if not iso_timestamp:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        dt = dt.astimezone(UTC)
+    except (ValueError, TypeError):
+        return iso_timestamp[:19].replace("T", " ")
+    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+templates.env.filters["exact_time"] = _exact_time_filter
 router = APIRouter()
 
 SEARCH_RATE_LIMIT_SECONDS = 10
 RESET_REQUEST_RATE_LIMIT_SECONDS = 60  # Prevent log/file flooding (~1 mint/min)
 RESET_CONFIRM_RATE_LIMIT_SECONDS = 5   # Throttle token-guessing attempts
+
+# D-01: the in-app log viewer's rendering of a reset-token mint. Retrieval
+# instructions only -- never a token value, never a "[hidden]"/"[REDACTED]" marker.
+RESET_MINT_VIEWER_MESSAGE = (
+    "Password reset requested. Retrieve the token from the server logs "
+    "(Docker: docker logs) or reset-token.txt in the config directory."
+)
 
 # Regex for multi-instance form field names: {app}__{instance}__{field}
 
@@ -250,6 +280,86 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
+# Queues whose card denominator is a stamped scoped count -- mirrors the
+# engine's _stamp_scoped_counts call sites. Radarr/Lidarr cutoff denominators
+# are the raw cutoff_count, which is never stamped.
+_STAMPED_SCOPED_FIELDS: dict[str, tuple[str, ...]] = {
+    "radarr": ("missing",),
+    "sonarr": ("missing", "cutoff"),
+    "lidarr": ("missing",),
+}
+
+
+def _scoped_count_unknown(
+    app_state: dict,
+    *,
+    configured_tags: dict[str, str | None] | None = None,
+    stamped_fields: tuple[str, ...] = ("missing", "cutoff"),
+) -> dict[str, bool]:
+    """Decide whether missing/cutoff progress counts must show as unknown (Phase 79 D-05/OQ1).
+
+    A tag-scoped queue whose tag is unresolved must never show the unscoped
+    whole-library count. Legacy (pre-upgrade) scoped counts carry no provenance
+    stamp and may have been computed fail-open, so they are not trusted; a kept
+    count is trusted only when it was computed under the same tag that is now
+    unresolved.
+
+    When ``configured_tags`` is given (the card route passes the instance's
+    current config), a queue in ``stamped_fields`` with a configured tag --
+    resolved or not -- shows its saved scoped count only if it is stamped with
+    that tag and is a number; the check runs before any unresolved marker, so
+    a stale marker for a previous tag never vouches for the new one. A count
+    computed under a previous tag, a legacy unstamped count, or a count cleared
+    by a refresh data fault stays unknown (never the raw whole-library
+    fallback) until a cycle or refresh recomputes it.
+
+    Everything read here comes from persisted state.json (possibly legacy or
+    tampered) and is validated before use -- never trusted by shape.
+    """
+    unresolved: dict[str, str] = {}
+    raw_unresolved = app_state.get("unresolved_tag_scopes")
+    if isinstance(raw_unresolved, dict):
+        for field in ("missing", "cutoff"):
+            tag_name = raw_unresolved.get(field)
+            if isinstance(tag_name, str) and tag_name:
+                unresolved[field] = tag_name
+
+    # Legacy/pre-first-cycle state has no unresolved_tag_scopes marker yet --
+    # fall back to tag_warnings, but let the engine marker win when both exist.
+    raw_warnings = app_state.get("tag_warnings")
+    if isinstance(raw_warnings, list):
+        for warning in raw_warnings:
+            if not isinstance(warning, dict):
+                continue
+            field = warning.get("field")
+            tag_name = warning.get("tag")
+            if field in ("missing", "cutoff") and isinstance(tag_name, str) and tag_name:
+                unresolved.setdefault(field, tag_name)
+
+    raw_stamps = app_state.get("scoped_count_tags")
+    stamps = raw_stamps if isinstance(raw_stamps, dict) else {}
+
+    missing_scoped_value = app_state.get("missing_searchable")
+    if missing_scoped_value is None:
+        missing_scoped_value = app_state.get("missing_eligible")
+    cutoff_scoped_value = app_state.get("cutoff_searchable")
+    scoped_values = {"missing": missing_scoped_value, "cutoff": cutoff_scoped_value}
+
+    result: dict[str, bool] = {}
+    for field in ("missing", "cutoff"):
+        configured = configured_tags.get(field) if configured_tags else None
+        if configured and field in stamped_fields:
+            # The current config decides first: an unresolved marker or warning
+            # left by an earlier cycle may still name a previous tag.
+            trusted = stamps.get(field) == configured and isinstance(scoped_values[field], int)
+        elif field in unresolved:
+            trusted = stamps.get(field) == unresolved[field] and isinstance(scoped_values[field], int)
+        else:
+            trusted = True
+        result[field] = not trusted
+    return result
+
+
 def _build_app_context(request: Request, app_name: str, instance_name: str | None = None) -> dict | None:
     """Build a template context dict for a single app instance.
 
@@ -283,18 +393,28 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
     if job and job.next_run_time:
         next_run = job.next_run_time.isoformat()
 
-    # RES-02: compute last_success_stale at render time (D-03)
-    # stale = (last_success is None) OR (now - last_success > 2 x search_interval_minutes)
+    # 78-04 / D-06: staleness moved from last_success to last_checked; R-05: the
+    # confirmed-search time is last_successful_search, which never falls back to
+    # the legacy last_success value.
     last_success = app_state.get("last_success")
-    last_success_stale = True  # default: no timestamp means stale
-    if last_success is not None:
+    last_checked = app_state.get("last_run")
+    last_checked_stale = False  # D-06: never amber on "Never" or an unparseable timestamp
+    if last_checked is not None:
         try:
-            ls_dt = datetime.fromisoformat(last_success.replace("Z", "+00:00"))
+            lc_dt = datetime.fromisoformat(last_checked.replace("Z", "+00:00"))
             instance_cfg = enabled[instance_name]
             threshold = timedelta(minutes=instance_cfg.search_interval * 2)
-            last_success_stale = (datetime.now(UTC) - ls_dt) > threshold
+            last_checked_stale = (datetime.now(UTC) - lc_dt) > threshold
         except (ValueError, TypeError):
-            last_success_stale = True
+            last_checked_stale = False
+
+    last_cycle = app_state.get("last_cycle")
+    instance_cfg = enabled[instance_name]
+    scope_unknown = _scoped_count_unknown(
+        app_state,
+        configured_tags={"missing": instance_cfg.missing_tag or None, "cutoff": instance_cfg.cutoff_tag or None},
+        stamped_fields=_STAMPED_SCOPED_FIELDS.get(app_name, ()),
+    )
 
     return {
         "name": app_name,
@@ -302,7 +422,12 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
         "card_id": _sanitize_card_id(f"{app_name}-{instance_name}"),
         "last_run": app_state.get("last_run"),
         "last_success": last_success,
-        "last_success_stale": last_success_stale,
+        "last_checked": last_checked,
+        "last_checked_stale": last_checked_stale,
+        "last_cycle": cycle_view(last_cycle, app_name.capitalize()),
+        "legacy_last_success": last_cycle is None and last_success is not None,
+        "last_successful_search": app_state.get("last_successful_search"),
+        "app_label": app_name.capitalize(),
         "next_run": next_run,
         "missing_cursor": len(app_state.get("missing_searched", [])),
         "cutoff_cursor": len(app_state.get("cutoff_searched", [])),
@@ -319,6 +444,8 @@ def _build_app_context(request: Request, app_name: str, instance_name: str | Non
         "total_items": app_state.get("total_items"),
         "skip_unreleased": settings.general.skip_unreleased,
         "tag_warnings": app_state.get("tag_warnings", []),
+        "missing_scope_unknown": scope_unknown["missing"],
+        "cutoff_scope_unknown": scope_unknown["cutoff"],
     }
 
 
@@ -448,7 +575,7 @@ async def settings_page(request: Request) -> HTMLResponse:
             "skip_unreleased": settings.general.skip_unreleased,
             "auth_method": settings.auth.method,
             "auth_is_disabled": settings.auth.is_disabled,
-            "auth_api_key_set": bool(settings.auth.api_key.get_secret_value()),
+            "auth_api_key_set": bool(settings.auth.api_key),
             "auth_username": settings.auth.username,
         },
     )
@@ -674,7 +801,7 @@ async def save_settings(request: Request) -> RedirectResponse:
                         clients_to_close.append(old_client)
                     clients_dict[inst_name] = client_class(
                         base_url=new_cfg.url,
-                        api_key=new_cfg.api_key.get_secret_value(),
+                        api_key=new_cfg.api_key,
                         timeout=new_settings.general.request_timeout,
                         page_size=new_settings.general.page_size,
                     )
@@ -932,7 +1059,9 @@ async def search_now(request: Request, app_name: str, instance_name: str) -> HTM
             entry = cache.get(cache_key)
             if entry is not None:
                 cached_tags, fetched_at = entry
-                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS and _cached_tags_cover_config(
+                    cached_tags, instance_config
+                ):
                     return cached_tags
             fresh_tags = await client.get_tags()
             cache[cache_key] = (fresh_tags, time.monotonic())
@@ -1031,7 +1160,9 @@ async def refresh_counts(request: Request, app_name: str, instance_name: str) ->
             entry = cache.get(cache_key)
             if entry is not None:
                 cached_tags, fetched_at = entry
-                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS:
+                if time.monotonic() - fetched_at < _TAG_CACHE_TTL_SECONDS and _cached_tags_cover_config(
+                    cached_tags, instance_config
+                ):
                     return cached_tags
             fresh_tags = await client.get_tags()
             cache[cache_key] = (fresh_tags, time.monotonic())
@@ -1786,6 +1917,8 @@ async def reset_request_post(request: Request) -> HTMLResponse:
       1. A warning-level log line (docker logs) — DELIBERATELY includes the token (D-02 + RESEARCH #4).
       2. A 0600 reset-token.txt in the config volume.
     The token NEVER appears in any HTTP response body, header, or template context.
+    The in-app web log viewer (GET /partials/log-viewer) receives only the fixed
+    RESET_MINT_VIEWER_MESSAGE retrieval-instructions sentence, never the token (D-01).
     """
     # Optimistic rate-limit check BEFORE lock (fast-fail for obvious cases — D-15)
     rate_key = "request"
@@ -1837,7 +1970,12 @@ async def reset_request_post(request: Request) -> HTMLResponse:
     # This is the ONLY log line that will ever contain the token value.
     # D-17: log line FIRST, THEN file write — so a file-write failure still leaves the token
     # recoverable from the log.
-    logger.warning(
+    # D-01/D-03: the in-app web log viewer receives ONLY RESET_MINT_VIEWER_MESSAGE via the
+    # bound viewer_message key -- create_buffer_sink (triggarr/logging.py) reads that bound
+    # value instead of this record's real message, so the token structurally never enters
+    # log_buffer. This holds for every lifecycle state (live, consumed, expired, replaced).
+    # Never scrub log_buffer after the fact -- the token must never be written there at all.
+    logger.bind(viewer_message=RESET_MINT_VIEWER_MESSAGE).warning(
         "Password reset token minted. Read from 'docker logs' or reset-token.txt: {token}",
         token=token,
     )

@@ -41,7 +41,7 @@ Run `docker compose up -d`, then visit [http://localhost:8484](http://localhost:
 - **Radarr, Sonarr, and Lidarr** — movies, TV shows, and music albums
 - Scheduled searches for missing and upgrade-eligible media
 - Multi-instance support — run multiple instances of each app with independent schedules
-- Tag-based filtering — scope searches to specific tags per instance; if a configured tag cannot be resolved or tag fetch fails, Triggarr logs a warning and searches all items for that queue (fail-open)
+- Tag-based filtering — scope searches to specific tags per instance; if a configured tag can't be found or the tag list can't be loaded, Triggarr skips that queue (zero searches) and shows a warning on the dashboard card until the tag resolves again. The other queue keeps running.
 - Closed-loop tracking — polls *arr history to confirm what was actually grabbed
 - Web dashboard with real-time connection status, grab effectiveness stats, and search history
 - In-app changelog — see what's new without leaving the UI

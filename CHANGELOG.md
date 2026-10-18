@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.12.0 (Unreleased)
+
+* Upgrade notes:
+
+  * Tag-scoped queues no longer fall back to searching your whole library. If a queue's configured tag can't be found in Radarr, Sonarr, or Lidarr (for example a stale or mistyped tag name), or the tag list can't be loaded, Triggarr now skips that queue instead. The dashboard card names the skipped queue and the reason. A skipped queue that is turned on makes the cycle grade Failed, or Partial when the other queue got at least one search accepted. Only Failed cycles count toward the consecutive-failure alert; a Partial cycle resets it, so an instance that keeps skipping one queue while the other's searches are accepted will not raise that alert. After upgrading, check each instance's tags and fix or clear any tag that no longer exists. A tag you create in the *arr app is picked up on the next cycle.
+
+  * Right after upgrading, the tag-scoped progress lines that use a saved scoped count — Missing on Radarr, Sonarr, and Lidarr cards, and Cutoff Unmet on Sonarr cards — show "—" instead of a number until the first search cycle or count refresh under this version. Counts saved by earlier versions can't be confirmed to match the queue's tag, so Triggarr doesn't display them. Radarr and Lidarr Cutoff Unmet lines keep showing their cutoff count.
+
 ## v2.11.0 (2026-06-04)
 
 Smarter search ordering — Triggarr now prioritizes items it has never searched before.

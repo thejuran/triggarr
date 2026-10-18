@@ -1,36 +1,56 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.11
-milestone_name: Never-Searched-First Search Queue Priority
-status: Awaiting next milestone
-stopped_at: Milestone v2.11 shipped and archived (released as v2.11.0; tag held locally, unpushed)
-last_updated: "2026-06-04T21:59:58.515Z"
-last_activity: 2026-06-04 — Milestone v2.11 completed and archived
+milestone: v2.12
+milestone_name: Search Correctness & Trustworthy Feedback
+status: ready_to_plan
+stopped_at: Phase 79 complete (4/4) — ready to discuss Phase 80
+last_updated: 2026-10-18T01:01:11.454Z
+last_activity: 2026-10-18 -- Phase 79 execution started
 progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 33
+  total_phases: 5
+  completed_phases: 3
+  total_plans: 14
+  completed_plans: 14
+  percent: 60
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-04)
+See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Planning next milestone (v2.11 shipped 2026-06-04 as v2.11.0)
+**Current focus:** Phase 80 — cycle robustness & sonarr season dedup
 
-> **Release tags held locally, unpushed:** `v2.11.0` (this milestone) and `v2.10.0` (prior milestone) are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
+> **Release tags held locally, unpushed:** `v2.11.0` (prior milestone) and `v2.10.0` are tagged locally but NOT pushed to origin — no public GitHub Release cut for either. The `:main` image IS deployed to the NAS and walkthrough-verified. To cut the public releases: `git push origin v2.10.0 v2.11.0` (each triggers the Release workflow → `:latest` + `:vX.Y.Z` images + GitHub Release).
 
 ## Current Position
 
-Phase: Milestone v2.11 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-06-04 — Milestone v2.11 completed and archived
+Phase: 80
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-18
+
+### v2.12 milestone shape
+
+Five phases derived 1:1 from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` §4, each phase matching one of the spec's five numbered subsections — a natural fit for Standard granularity (4-6 phases). Phase numbering continues from v2.11's Phase 76 (starts at 77, not reset to 1). 77 and 81 are independent fixes (77 sequenced first for risk reduction — isolated, small, highest-stakes; 81 last because it carries the only DB migration and config addition and is independent of 79/80 per spec §5); 78 defines the outcome-grading model that 79 and 80 both depend on. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention.
+
+| Phase | Goal | Requirements | Depends on |
+|-------|------|--------------|------------|
+| 77 — Secret & Reset-Token Log Hygiene | Redact the reset token from the in-app log viewer buffer permanently; route every *arr HTTP-error log line (incl. Sonarr `detect_api_version`) through the existing sanitizer | LOGSEC-01..03 | — (independent; sequenced first for risk reduction) |
+| 78 — Honest Cycle Outcomes | Grade each instance's last cycle Success/Partial/Failed/Nothing-needed per §3.1; split "last successful search" from "last checked"; drive the SAFETY-03 counter off the grade; dashboard card shows grade+counts+relative time | OUTCOME-01..06 | — (independent of 77; defines the model 79/80 build on) |
+| 79 — Tag-Scoped Searches Stay in Scope | An unresolved tag skips its queue (zero searches) instead of falling back to searching everything; persistent card warning; skipped queue counts as unevaluated for grading | TAGSCOPE-01..04 | Phase 78 (grading model) |
+| 80 — Cycle Robustness & Sonarr Season Dedup | A malformed *arr record is skipped, not fatal; history-insert failures never abort a batch or flip an accepted command to failed; each Sonarr season gets ≤1 engine dispatch per cycle across missing+upgrade queues | ROBUST-01..04, DEDUP-01..02 | Phase 78 (grading model) |
+| 81 — Correct Sonarr Grab Attribution | Grabs credit the matching series+season exactly once ever, keyed by (app, stable instance ID, grab ID); atomic ownership surviving restarts/pruning; pre-cutover rows frozen as "Legacy — tracking discontinued"; stats cutover note | ATTR-01..06 | — (independent of 79/80 per spec §5; carries the only DB migration + config addition) |
+
+### Key v2.12 Phasing Rationale
+
+- **One phase per spec subsection, not split further:** The approved design spec §4 already groups the 25 requirements into exactly five behaviorally-coherent clusters (log hygiene; grading; tag scope; robustness+dedup; attribution), each independently testable and each matching a real delivery boundary.
+- **OUTCOME-06 stays in 78, not 80:** OUTCOME-06 (an accepted command whose history write fails still counts as accepted and updates "last successful search") is a grading rule — it defines what "accepted" means for §3.1 — so it rides with the rest of the grading model in Phase 78. Phase 80's ROBUST-02 covers the mechanical guarantee (the insert-failure code path doesn't abort the batch); the two requirements describe the same scenario from two different layers (policy vs. mechanism) and are deliberately kept in separate phases.
+- **80 bundles robustness + dedup because they share code:** Both touch the same Sonarr cycle loop (malformed-record guards and season-claim bookkeeping sit in the same call sites), and 80's malformed-record counts feed into 78's grading model — splitting them would fracture one code path across two phases.
+- **81 is last and fully independent:** Per spec §5, it carries the only DB migration (ownership table + cutover marker) and the only config-schema addition (stable per-instance ID), and doesn't depend on 79 or 80's behavior.
+- **Backlog promotions:** 999.3 (reset-token log-viewer exposure) and 999.6 (secret-redaction gaps across log paths) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. The 2026-10-17 triage below supersedes blanket deferral: keep concrete fixes, narrow security/lifecycle work, convert 999.8/999.11 to maintenance rules, and retire speculative projects (spec §2).
 
 ### v2.11 milestone shape
 
@@ -83,16 +103,55 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 **Overall:**
 
-- Total plans completed: 169 across 15 shipped milestones (through v2.9)
+- Total plans completed: 183 across 15 shipped milestones (through v2.9)
 - Milestones shipped: 15 (v1.0, v1.1, v1.2, v2.0, v2.1, v2.2, v2.3, v2.4, v2.5, v2.6, v2.7, v2.8, v2.9)
-- Tests passing: 984 (post v2.9.0)
+- Tests passing: 1097 (post Phase 77 Plan 01)
 - Phases completed: 71 (through v2.9)
+
+| Phase | Duration | Tasks | Files |
+|-------|----------|-------|-------|
+| Phase 77 P01 | 25min | 2 tasks | 2 files |
+| Phase 77 P02 | 12min | 2 tasks | 4 files |
+| Phase 77 P03 | 8min | 2 tasks | 2 files |
+| Phase 77 P04 | 10min | 2 tasks | 2 files |
+| Phase 77 P05 | 11min | 2 tasks | 11 files |
+| Phase 78 P01 | 10min | 3 tasks | 4 files |
+| Phase 78 P02 | 38min | 4 tasks | 4 files |
+| Phase 78 P04 | 13min | 3 tasks | 7 files |
+| Phase 78 P03 | 18min | 2 tasks | 2 files |
+| Phase 78 P05 | 25min | 3 tasks | 5 files |
+| Phase 79 P01 | 15min | 3 tasks | 2 files |
+| Phase 79 P02 | 5min | 3 tasks | 6 files |
+| Phase 79 P03 | 26min | 3 tasks | 3 files |
+| Phase 79 P04 | 13min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
 ### Decisions
 
-Full decision log in PROJECT.md Key Decisions table. v2.10 design decisions resolved in brainstorming and recorded in `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` §7 (recovery trust model: filesystem-token; token lifecycle: in-memory/15-min/single-use/restart-invalidated; abuse defense: rate-limit both endpoints; engine seam: extract helper, no `count_only` flag; count-path state: health yes, `last_run`/failure-counter no; DEBT-06 precedence: config default, env overrides).
+Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
+
+- [Phase 77]: 77-01: create_buffer_sink reads a bound extra['viewer_message'] before falling back to record['message'], structurally excluding a value from log_buffer (D-03) rather than scrubbing it after insertion — Enables Plan 04 to bind the exact D-01 viewer wording at the reset-token mint call site with no further sink-side changes
+- [Phase 77]: 77-02: _sanitize_exc relocated from search/engine.py to clients/base.py (single definition, no upward import), closing the circular-import blocker so SonarrClient.detect_api_version can route its warning through it -- Sonarr detect_api_version failures now log a sanitized HTTP-status/timeout summary instead of the raw exception, so a legacy install's apikey-bearing URL never reaches a log sink
+- [Phase 77]: 77-03: load_state's corrupt-file warning now binds the caught exception and logs type(exc).__name__ plus str(exc), naming the failure reason without ever touching exc.doc — Closes backlog 999.6(e)/D-09(R7); JSONDecodeError/OSError text carries only parser-position or errno info, never file contents
+- [Phase 77]: 77-04: logger.bind(viewer_message=RESET_MINT_VIEWER_MESSAGE) on the reset-token mint warning lands LOGSEC-01/LOGSEC-02 end-to-end -- the token is absent from log_buffer/partials/log-viewer across live, consumed, expired, and replaced states, while docker logs and reset-token.txt keep it unchanged — Closes backlog 999.3; the viewer_sinks test fixture needed a catch-all logger.remove() in teardown because a successful /reset/confirm's own setup_logging() call replaces every loguru handler mid-test, orphaning the fixture's tracked ids and leaking duplicate buffer sinks into the next test
+- [Phase 77]: 77-05: ArrClient.__init__ (and the three *arr subclasses) now require api_key: SecretStr with a value-free TypeError guard; .get_secret_value() unwraps exactly once, at the X-Api-Key header line; startup.py/scheduler.py/routes.py pass the SecretStr straight through; auth_api_key_set now uses bool(settings.auth.api_key) — Closes backlog 999.6(c)/(d); strict SecretStr contract chosen over str|SecretStr per RESEARCH.md's resolved Open Question 2, migrating all 64 test call sites in the same wave
+- [Phase 78]: 78-01: grade_cycle's amended-R-01 backstop (accepted=0, failed=0, eligible_active>0) grades Failed, not Partial — the engine did no work while work existed, which should trip the SAFETY-03 alert; supersedes RESEARCH Open Question 1's Partial recommendation
+- [Phase 78]: 78-01: AppState.last_successful_search is never derived from the legacy last_success field — last_success stays frozen verbatim for the Last success (legacy) label and the documented NAS downgrade fallback (R-05)
+- [Phase 78]: 78-02: the cutoff filter chain, moved ahead of both dispatches so rebalance_batch_sizes sees both eligible counts, is guarded against malformed data (AttributeError/KeyError/TypeError) and degrades cutoff to empty for that cycle on fault — Preserves the pre-existing per-app guarantee that a cutoff-side data fault can never block the missing queue's dispatch, which the unguarded reordering broke
+- [Phase 78]: 78-02: insert_search_entry rolls back on any failure after its INSERT (catching bare Exception, not just aiosqlite.Error, since a driver-thread OSError leaves the same open transaction) — Prevents a partial write from staying pending on the shared connection -- a later successful insert can no longer commit a phantom row alongside it, and the pending-cap check only ever counts committed rows (R-08)
+- [Phase 78]: 78-04: Last successful search / Last success (legacy) row stays duplicated verbatim in both card bodies (connected and unreachable) rather than a second shared include, matching the plan's instruction and the file's existing per-body duplication convention for that row — cycle_grade.html's color dispatch collapses nothing_needed and any unexpected grade into one else branch since cycle_view() already restricts grade to exactly the four GRADE_LABELS keys
+- [Phase 78]: 78-03: run_sonarr_cycle and run_lidarr_cycle route through the same CycleTally/_fetch_wanted_queues/_search_and_record/_finalize_cycle/rebalance_batch_sizes helpers as Radarr, with a matching malformed-data guard on each app's cutoff filter chain so the pre-existing cross-queue fault-isolation guarantee survives the R-01-amended filter-chain reordering — Mirrors run_radarr_cycle exactly per the plan; the guard was required (not optional) because per-app regression tests (test_run_sonarr_cycle_cutoff_fault_does_not_block_missing_search, test_run_lidarr_cycle_cutoff_fault_does_not_block_missing_search) already pinned that a cutoff-side data fault must never block the missing queue's dispatch, and moving the cutoff filter chain earlier would otherwise break that guarantee
+- [Phase 78]: 78-05: _evaluate_cycle_outcome now derives the SAFETY-03 counter from state[app][inst]["last_cycle"]["grade"] instead of connected -- a reachable *arr that rejects every command now grades Failed and increments the counter — Previously connected=True reset the counter even when every search command was rejected, suppressing the alert; threshold/escalation logic in _record_cycle_failure is untouched
+- [Phase 78]: 78-05: tests/test_outcome_upgrade.py drives the real engine end-to-end (load_state -> run_*_cycle -> actual app-card route) rather than fabricating last_cycle dicts — Proves the engine's _finalize_cycle output actually renders correctly through the real route, which the Plan 04 fabricated-dict template tests cannot prove; all 6 tests passed on first run against Plans 01-04 as already built
+- [Phase 79]: 79-01: _resolve_tag_scope fires 'unresolved' on tag_id is None regardless of tag_fetch_ok, fixing a second pre-existing bug where a failed tag fetch produced no warning at all -- tag_fetch_ok now only selects which fixed reason string to use
+- [Phase 79]: 79-01: the unresolved-scope marker (ist['unresolved_tag_scopes']) is recorded for an unresolved queue regardless of whether it is active, per owner-resolved OQ1 -- only the warning badge and CycleTally.mark_unevaluated are gated on the queue being active (D-04)
+- [Phase 79]: 79-02: a tag_warnings entry with no reason key (pre-upgrade state.json) renders the 'not found' wording via an explicit {% else %} branch, never Jinja's implicit Undefined
+- [Phase 79]: 79-02: a legacy scoped count with no scoped_count_tags provenance stamp is never trusted even if a current unresolved_tag_scopes marker exists -- only a count stamped with the exact tag name that is now unresolved is kept, everything else shows the em dash
+- [Phase 79]: 79-02: the unresolved-tag skip gate for progress denominators applies regardless of whether the queue is currently flagged in tag_warnings (badge/grading stay gated on active per D-04), so an inactive unresolved queue's count also shows unknown (OQ1)
+- [Phase 79]: 79-03: _clear_faulted_scoped_counts is a pure per-queue gate, never reading or writing ist['scoped_count_tags']/ist['unresolved_tag_scopes'] -- the card already treats a None count as unknown regardless of the stamp — Keeps the fault-clearing logic simple and additive to Plan 02's card-side trust decision rather than a parallel reimplementation
+- [Phase 79]: 79-03: all six engine entry points (3 cycles + 3 refreshes) now share one tag-resolution path via _resolve_tag_scope and one provenance-stamping path via _stamp_scoped_counts — No inline tag-resolution code remains anywhere in engine.py; refresh functions pass tally=None so refresh never touches the grade
+- [Phase 79]: 79-04: _finish_both_inactive_unreachable and _cap_and_log fold the R-07 both-inactive early return and the hard-max cap-and-log block (each previously copied three times across run_radarr_cycle/run_sonarr_cycle/run_lidarr_cycle) into shared helpers mirroring _rebalance_and_log's style -- behavior-preserving, full suite green at 1369 tests
 
 ### Pending Todos
 
@@ -108,9 +167,13 @@ v2.10 roadmap created 2026-06-03 from the recovery/counts/config design spec. 14
 
 v2.11 roadmap created 2026-06-04 from the search-queue-priority design spec. 11 v1 requirements (QUEUE-01..11) mapped to a single phase (76, continuing from v2.10's Phase 75 — not reset to 1). 100% coverage, no orphans, no double-mapping. One coherent phase because the requirements are not independent tracks: a single pure `prioritize_batch()` + the same 6 cycle call sites realize the state model, the dispatch, and the lifecycle together. Flat phase layout (`.planning/phases/76-<slug>/`).
 
+v2.12 roadmap created 2026-10-08 from the approved search-correctness design spec. 25 v1 requirements across 5 phases (77-81, continuing from v2.11's Phase 76 — not reset to 1). 100% coverage, no orphans, no double-mapping. Phases derived 1:1 from spec §4's five numbered subsections; 79 and 80 depend on 78 (grading model); 77 and 81 are independent of each other and of 79/80. Backlog phases 999.3 and 999.6 (log-hygiene findings) promoted into Phase 77; 999.5 (cycle-wedge robustness) promoted into Phase 80. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention.
+
+2026-10-12 plan amendment: added SONARRV5-01..03 as one bounded Phase 81 compatibility task; v2.12 now has 28 requirements across the same five phases. Correct v5 version reporting, verify existing v3/API-key flows against isolated v4/v5 instances, and extend attribution fixtures for alternate orders and packs. Final compatibility verification follows Phase 80; no live v5 support claim until tested. Current execution position and completed-phase status are unchanged.
+
 ### Cross-cutting thread
 
-The three tracks share no code (confirmed in spec §1). The only cross-track coupling is the milestone-end NAS walkthrough and the security posture: Track A must add zero new network attack surface (token never in any HTTP response; rate-limited endpoints; SecretStr discipline on `password_hash`/`session_secret` maintained through the redacting sink). Track A's reset-confirm session rotation reuses the v2.8.1 `change_password` rotation pattern.
+77 and 81 are isolated fixes; 78 is the shared substrate for 79 and 80 (the grading model both consume). Every phase carries the same constraints from the project (spec §7): SecretStr discipline (`.get_secret_value()` only at HTTP client init), loguru-only logging through the redacting sink, atomic write-then-rename for config/state, and the established `httpx.HTTPError` + `pydantic.ValidationError` error-handling pattern, widened only where the spec says so (Phase 80's malformed-record guards). Phase 81's stable per-instance ID (backfilled via the atomic config write) is the only new config-schema addition this milestone, and its ownership-table migration is the only new DB migration.
 
 ### Blockers/Concerns
 
@@ -118,26 +181,22 @@ None.
 
 ### Deferred Items
 
-Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave this table at v2.10 close — DEBT-07/08/03 were already shipped (DOCS-01 corrects the record) and DEBT-06 ships in Phase 75.
+**Backlog triage approved 2026-10-17.** ROADMAP.md's Backlog is the detailed decision record. No broad next hardening milestone is presumed; the current v2.12 execution position and acceptance checks are unchanged.
 
-| Category | Item | Source Milestone | Status |
-|----------|------|------------------|--------|
-| shipped (record corrected) | DEBT-07/08/03 (request timeout / page size / search-history cap) | v2.9 (mis-recorded as parked) | shipped — config fields config.py:128-130 + settings inputs; DOCS-01 corrected the record in Phase 75 |
-| shipped in v2.10 | DEBT-06: Surface graceful-shutdown drain timeout in settings UI | v2.9 (spec D-5) | shipped — Phase 75 (CFG-03/CFG-04); general.shutdown_drain_timeout config field + settings input + env-override precedence |
-| requirement | UI-01: Login page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| requirement | UI-02: Setup page pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| requirement | UI-03: Settings security pixel-exact visual verification | v2.6 | human_needed (behind first-run setup, not launch-visible) |
-| tech-debt | `--color-triggarr-primaryDark` duplicate token (unused in templates) | v2.7 | cosmetic cleanup (unrelated to v2.10 tracks) |
-| v2 requirement | PERF-01: Per-endpoint request timeout overrides | v2.8 audit | deferred |
-| v2 requirement | PERF-02: Per-endpoint pagination page-size overrides | v2.8 audit | deferred |
-| v2 requirement | PERF-03: State JSON streaming/compression | v2.8 audit | deferred |
-| v2 requirement | SCALE-01: Lift 5-instance-per-app-type hard limit | v2.8 audit | deferred |
-| v2 requirement | SCALE-02: Search history archival / PostgreSQL path | v2.8 audit | deferred |
-| v2 requirement | AUDIT-01: Config change audit log | v2.8 audit | deferred |
-| v2 requirement | OBS-01: Scheduler job dashboard | v2.8 audit | deferred |
-| v2.9-audit follow-up | validate_arr_url dedup; Retry-Connection hx-disabled-elt; bug-report.yml v2.9 dropdown option | v2.9 | deferred |
-| Phase 74-count-only-refresh P01 | 35m | 3 tasks | 2 files |
-| Phase 74-count-only-refresh P03 | 8m | 1 tasks | 2 files |
+| Disposition | Items | Scope |
+|-------------|-------|-------|
+| Keep, unscheduled | 999.4, 999.9, POST-retry semantics | Event-loop responsiveness, state consistency/recovery, duplicate-command prevention. |
+| Narrow, unscheduled | 999.10 | Evidence-backed auth boundary review; fix demonstrated issues without adding speculative controls. |
+| Narrow, unscheduled | 999.13 | Startup/shutdown resource cleanup; blanket I/O optimization retired unless measured. |
+| Maintenance rules only | 999.8, 999.11 | Preserve atomic-write/security guarantees; provide migration/recovery with actual incompatible validation changes. No generic refactor projects. |
+| Retired | 999.7, 999.12 | Client registry abstraction and changelog rewrite; reopen only on concrete need/defect. |
+| Retired | PERF-01..03, SCALE-01..02, AUDIT-01, OBS-01 | Speculative tuning, scale, audit, and dashboard work. |
+| Retired | Pixel-exact UI-01..03; unused color token | Keep ordinary auth/setup/settings usability checks; no pixel matching obligation. |
+| Promoted / historical | 999.1/2 | Shipped in v2.10, Phases 72–74. |
+| Promoted / historical | 999.3/6 | Phase 77 implementation complete; its deployed UAT is still pending. |
+| Promoted, still pending | 999.5 | Owned by Phase 80; not retired. |
+| Shipped / historical | DEBT-07/08/03/06 | Previously delivered config controls; no longer deferred work. |
+| Unchanged small follow-ups | v2.9 URL-validation dedup, Retry-Connection button behavior, bug-report options; TODO.md maintenance | Revalidate before work; not promoted by this triage. |
 
 ### Quick Tasks Completed
 
@@ -147,19 +206,20 @@ Items parked this milestone and carried forward. Note: DEBT-07/08/03/06 leave th
 
 ### Reference Artifacts
 
-- `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` -- v2.10 design spec (source of truth for this milestone)
+- `docs/superpowers/specs/2026-10-08-search-correctness-design.md` -- v2.12 design spec (source of truth for this milestone)
+- `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` -- v2.10 design spec
 - `docs/superpowers/specs/2026-06-02-launch-hardening-design.md` -- v2.9 design spec
 - `.planning/milestones/v2.9-ROADMAP.md` -- archived v2.9 roadmap
 - `.planning/milestones/v2.8-ROADMAP.md` -- archived v2.8 roadmap
 - `.planning/codebase/CONCERNS.md` -- v2.8 source audit (2026-05-25); file:line pointers
-- **Note:** `.planning/research/SUMMARY.md` is STALE (prior milestone) — v2.10 skipped research because the design spec resolved all technical decisions against the live codebase. Do NOT treat that SUMMARY.md as current research for v2.10.
+- **Note:** `.planning/research/SUMMARY.md` is STALE (prior milestone) — v2.12 skipped research because the approved design spec resolved all technical decisions against the live codebase. Do NOT treat that SUMMARY.md as current research for v2.12.
 
 ## Session Continuity
 
-Last session: 2026-06-04T17:56:25.979Z
-Stopped at: Phase 76 context gathered
-Resume file: .planning/phases/76-never-searched-first-search-queue/76-CONTEXT.md
+Last session: 2026-10-18T00:46:53.245Z
+Stopped at: Completed 79-04-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 80 (`/bm:discuss-phase 80`, then `/bm:plan-phase 80`)

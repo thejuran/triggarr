@@ -25,6 +25,7 @@ from triggarr.db import init_db
 from triggarr.models.arr import Tag
 from triggarr.models.config import InstanceConfig
 from triggarr.search.engine import (
+    _fetch_wanted_queues,
     _lidarr_tags,
     cap_batch_sizes,
     deduplicate_to_seasons,
@@ -32,11 +33,13 @@ from triggarr.search.engine import (
     filter_sonarr_episodes,
     filter_unreleased_movies,
     prioritize_batch,
+    rebalance_batch_sizes,
     resolve_tag_id,
     run_lidarr_cycle,
     run_radarr_cycle,
     run_sonarr_cycle,
 )
+from triggarr.search.outcome import cycle_view
 from triggarr.state import _default_state
 
 # ---------------------------------------------------------------------------
@@ -1121,6 +1124,101 @@ def test_cap_batch_sizes_very_small_max():
 
 
 # ---------------------------------------------------------------------------
+# rebalance_batch_sizes (R-01 amended -- Phase 78 Plan 02 Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_rebalance_batch_sizes_reallocates_to_starved_queue_with_work():
+    """The starved queue (eligible>0) receives the unused slot."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=1,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=5, cutoff_eligible=0,
+        hard_max=1,
+    ) == (1, 0)
+
+
+def test_rebalance_batch_sizes_unchanged_when_capped_queue_has_the_work():
+    """When the queue that already got the cap slot has the eligible work, nothing changes."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=1,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=0, cutoff_eligible=5,
+        hard_max=1,
+    ) == (0, 1)
+
+
+def test_rebalance_batch_sizes_unchanged_when_both_have_work():
+    """Both queues have eligible work -- the cap_batch_sizes split is left unchanged."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=1,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=5, cutoff_eligible=5,
+        hard_max=1,
+    ) == (0, 1)
+
+
+def test_rebalance_batch_sizes_leftover_tops_up_the_other_queue():
+    """Leftover from a short queue tops up the other queue's dispatch."""
+    assert rebalance_batch_sizes(
+        missing_limit=5, cutoff_limit=5,
+        missing_configured=50, cutoff_configured=50,
+        missing_eligible=2, cutoff_eligible=30,
+        hard_max=10,
+    ) == (2, 8)
+
+
+def test_rebalance_batch_sizes_inactive_queue_never_gets_slots():
+    """An inactive queue (configured 0) never receives reallocated slots."""
+    assert rebalance_batch_sizes(
+        missing_limit=0, cutoff_limit=5,
+        missing_configured=0, cutoff_configured=50,
+        missing_eligible=9, cutoff_eligible=2,
+        hard_max=5,
+    ) == (0, 2)
+
+
+def test_rebalance_batch_sizes_unlimited_mode_returns_capped_inputs_unchanged():
+    """hard_max<=0 (unlimited) returns the capped inputs unchanged."""
+    assert rebalance_batch_sizes(
+        missing_limit=3, cutoff_limit=4,
+        missing_configured=3, cutoff_configured=4,
+        missing_eligible=0, cutoff_eligible=9,
+        hard_max=0,
+    ) == (3, 4)
+
+
+def test_rebalance_batch_sizes_invariant_sweep():
+    """For every combination, the result never exceeds hard_max, configured, or eligible,
+    and never dispatches zero to a queue with both configured>0 and eligible>0
+    when the other active queue has no eligible work to use the budget instead.
+    """
+    for hard_max in range(1, 7):
+        for missing_configured in (0, 1, 3, 50):
+            for cutoff_configured in (0, 1, 3, 50):
+                capped_m, capped_c = cap_batch_sizes(missing_configured, cutoff_configured, hard_max)
+                for missing_eligible in (0, 1, 4):
+                    for cutoff_eligible in (0, 1, 4):
+                        m, c = rebalance_batch_sizes(
+                            missing_limit=capped_m, cutoff_limit=capped_c,
+                            missing_configured=missing_configured, cutoff_configured=cutoff_configured,
+                            missing_eligible=missing_eligible, cutoff_eligible=cutoff_eligible,
+                            hard_max=hard_max,
+                        )
+                        assert m + c <= hard_max
+                        assert m <= missing_configured
+                        assert c <= cutoff_configured
+                        assert m <= missing_eligible
+                        assert c <= cutoff_eligible
+                        work_exists = (
+                            (missing_configured > 0 and missing_eligible > 0)
+                            or (cutoff_configured > 0 and cutoff_eligible > 0)
+                        )
+                        if work_exists:
+                            assert m + c >= 1
+
+
+# ---------------------------------------------------------------------------
 # Diagnostic cycle logging
 # ---------------------------------------------------------------------------
 
@@ -1159,15 +1257,18 @@ async def test_radarr_cycle_logs_diagnostic_summary(tmp_path):
         logger.remove(handler_id)
 
     output = sink.getvalue()
+    # 78-02 / R-04: the cycle-completed line now reports tally counts and the
+    # graded outcome instead of the old searched/skipped counters.
     assert "Radarr: Cycle completed in" in output
     assert "5 fetched" in output
-    assert "5 searched" in output
-    assert "0 skipped" in output
+    assert "5 accepted" in output
+    assert "0 failed" in output
+    assert "grade success" in output
     await db.close()
 
 
 async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
-    """Sonarr cycle logs a summary with fetched/searched/skipped counts."""
+    """Sonarr cycle logs a summary with fetched/accepted/failed counts and the graded outcome."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -1195,11 +1296,14 @@ async def test_sonarr_cycle_logs_diagnostic_summary(tmp_path):
         logger.remove(handler_id)
 
     output = sink.getvalue()
+    # 78-03 / R-04: the cycle-completed line now reports tally counts and the
+    # graded outcome instead of the old searched/skipped counters.
     assert "Sonarr: Cycle completed in" in output
     # 3 episodes fetched (raw count before filtering/dedup)
     assert "3 fetched" in output
-    assert "searched" in output
-    assert "skipped" in output
+    assert "3 accepted" in output
+    assert "0 failed" in output
+    assert "grade success" in output
     await db.close()
 
 
@@ -1235,10 +1339,13 @@ async def test_radarr_cycle_counts_skipped_on_search_failure(tmp_path):
         logger.remove(handler_id)
 
     output = sink.getvalue()
+    # 78-02 / R-04: the cycle-completed line now reports tally counts and the
+    # graded outcome instead of the old searched/skipped counters.
     assert "Radarr: Cycle completed in" in output
     assert "3 fetched" in output
-    assert "2 searched" in output
-    assert "1 skipped" in output
+    assert "2 accepted" in output
+    assert "1 failed" in output
+    assert "grade partial" in output
     await db.close()
 
 
@@ -1937,8 +2044,8 @@ async def test_no_tag_api_call_when_unconfigured(tmp_path):
     await db.close()
 
 
-async def test_radarr_tag_resolution_failure_searches_all(tmp_path):
-    """Radarr cycle with tag not found in tag list searches all items (fail-open)."""
+async def test_radarr_tag_not_found_skips_queue(tmp_path):
+    """Radarr cycle with tag not found in tag list skips that queue (TAGSCOPE-01)."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -1962,10 +2069,15 @@ async def test_radarr_tag_resolution_failure_searches_all(tmp_path):
     )
     settings = _cycle_settings(missing_count=5, cutoff_count=5)
 
-    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    # Tag not found -> fail-open, all monitored items searched
-    assert client.search_movies.call_count == 2
+    # Tag not found -> missing queue skipped, zero searches
+    assert client.search_movies.call_count == 0
+    ist = result["radarr"]["Default"]
+    assert ist["tag_warnings"] == [{"tag": "nonexistent", "field": "missing", "reason": "not_found"}]
+    # Cutoff is empty too -> grade is failed, never nothing_needed
+    assert ist["last_cycle"]["grade"] == "failed"
+    assert ist["last_cycle"]["unevaluated"] == [{"queue": "missing", "reason": "tag 'nonexistent' not found"}]
     await db.close()
 
 
@@ -2094,8 +2206,8 @@ async def test_sonarr_cycle_no_tag_searches_all(tmp_path):
     await db.close()
 
 
-async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
-    """Sonarr cycle with tag not found in tag list searches all (fail-open)."""
+async def test_sonarr_tag_not_found_skips_queue(tmp_path):
+    """Sonarr cycle with tag not found in tag list skips that queue (TAGSCOPE-01)."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -2118,10 +2230,13 @@ async def test_sonarr_tag_resolution_failure_searches_all(tmp_path):
     )
     settings = _cycle_settings(missing_count=10, cutoff_count=10)
 
-    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    # Tag not found -> fail-open, all seasons searched
-    assert client.search_season.call_count == 2
+    # Tag not found -> missing queue skipped, zero searches
+    assert client.search_season.call_count == 0
+    ist = result["sonarr"]["Default"]
+    assert ist["tag_warnings"][0]["reason"] == "not_found"
+    assert ist["last_cycle"]["grade"] == "failed"
     await db.close()
 
 
@@ -2183,8 +2298,8 @@ async def test_sonarr_cycle_missing_instance_state_skips(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_radarr_tag_fetch_failure_no_tag_not_found_warning(tmp_path):
-    """When get_tags() raises, 'tag not found' warning must NOT fire (BUG-08)."""
+async def test_radarr_tag_fetch_failure_skips_queue_and_warns(tmp_path):
+    """When get_tags() raises, the missing queue is skipped with a 'couldn't load tags' warning."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -2209,13 +2324,16 @@ async def test_radarr_tag_fetch_failure_no_tag_not_found_warning(tmp_path):
     sink = io.StringIO()
     handler_id = logger.add(sink, format="{message}", level="WARNING")
     try:
-        await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
     finally:
         logger.remove(handler_id)
 
     log_output = sink.getvalue()
     assert "Failed to fetch tags" in log_output, "Should log tag fetch failure"
+    assert "Missing queue skipped -- couldn't load tags" in log_output
     assert "not found" not in log_output, "Should NOT log 'tag not found' when fetch failed"
+    assert client.search_movies.call_count == 0
+    assert result["radarr"]["Default"]["tag_warnings"][0]["reason"] == "fetch_failed"
     await db.close()
 
 
@@ -2345,7 +2463,7 @@ async def test_tag_warning_state_stored_when_tag_not_found_radarr(tmp_path):
 
     ist = state["radarr"]["Default"]
     assert "tag_warnings" in ist
-    assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+    assert {"tag": "nonexistent", "field": "missing", "reason": "not_found"} in ist["tag_warnings"]
     await db.close()
 
 
@@ -2376,7 +2494,7 @@ async def test_tag_warning_state_stored_when_tag_not_found_sonarr(tmp_path):
 
     ist = state["sonarr"]["Default"]
     assert "tag_warnings" in ist
-    assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+    assert {"tag": "nonexistent", "field": "missing", "reason": "not_found"} in ist["tag_warnings"]
     await db.close()
 
 
@@ -2497,8 +2615,8 @@ async def test_tag_warning_state_cutoff_tag_not_found(tmp_path):
     await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
     ist = state["radarr"]["Default"]
-    assert {"tag": "nonexistent-missing", "field": "missing"} in ist["tag_warnings"]
-    assert {"tag": "nonexistent-cutoff", "field": "cutoff"} in ist["tag_warnings"]
+    assert {"tag": "nonexistent-missing", "field": "missing", "reason": "not_found"} in ist["tag_warnings"]
+    assert {"tag": "nonexistent-cutoff", "field": "cutoff", "reason": "not_found"} in ist["tag_warnings"]
     await db.close()
 
 
@@ -2753,8 +2871,8 @@ async def test_lidarr_tags_accessor():
     assert _lidarr_tags(album_no_artist) == []
 
 
-async def test_lidarr_tag_resolution_failure_searches_all_and_stores_warning(tmp_path):
-    """Lidarr cycle with tag not found searches all items (fail-open) and stores tag_warnings (SRCH-03)."""
+async def test_lidarr_tag_not_found_skips_queue_and_stores_warning(tmp_path):
+    """Lidarr cycle with tag not found skips that queue and stores tag_warnings (TAGSCOPE-01/02)."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -2778,15 +2896,16 @@ async def test_lidarr_tag_resolution_failure_searches_all_and_stores_warning(tmp
         )
         settings = _cycle_settings(missing_count=5, cutoff_count=5)
 
-        await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
 
-        # Tag not found -> fail-open, all monitored albums searched
-        assert client.search_albums.call_count == 2
+        # Tag not found -> missing queue skipped, zero searches
+        assert client.search_albums.call_count == 0
 
         # Tag warning stored in state
-        ist = state["lidarr"]["Default"]
+        ist = result["lidarr"]["Default"]
         assert "tag_warnings" in ist
-        assert {"tag": "nonexistent", "field": "missing"} in ist["tag_warnings"]
+        assert ist["tag_warnings"] == [{"tag": "nonexistent", "field": "missing", "reason": "not_found"}]
+        assert ist["last_cycle"]["grade"] == "failed"
     finally:
         await db.close()
 
@@ -2951,6 +3070,8 @@ async def test_run_radarr_cycle_all_searches_fail(tmp_path):
     assert result["radarr"]["Default"]["connected"] is True
     # Both items attempted (even though both failed)
     assert client.search_movies.call_count == 2
+    # 78-02 / R-01: accepted=0 with failed>0 grades failed, never nothing_needed.
+    assert result["radarr"]["Default"]["last_cycle"]["grade"] == "failed"
     await db.close()
 
 
@@ -3089,6 +3210,8 @@ async def test_run_radarr_cycle_empty_queues(tmp_path):
         assert result["radarr"]["Default"]["missing_searched"] == []
         assert result["radarr"]["Default"]["cutoff_searched"] == []
         assert result["radarr"]["Default"]["connected"] is True
+        # 78-02 / OUTCOME-02: no eligible work and no fetch failure grades nothing_needed.
+        assert result["radarr"]["Default"]["last_cycle"]["grade"] == "nothing_needed"
     finally:
         await db.close()
 
@@ -3115,6 +3238,8 @@ async def test_run_sonarr_cycle_empty_queues(tmp_path):
         assert result["sonarr"]["Default"]["missing_searched"] == []
         assert result["sonarr"]["Default"]["cutoff_searched"] == []
         assert result["sonarr"]["Default"]["connected"] is True
+        # 78-03 / OUTCOME-02: no eligible work and no fetch failure grades nothing_needed.
+        assert result["sonarr"]["Default"]["last_cycle"]["grade"] == "nothing_needed"
     finally:
         await db.close()
 
@@ -3142,6 +3267,8 @@ async def test_run_lidarr_cycle_empty_queues(tmp_path):
         assert result["lidarr"]["Default"]["missing_searched"] == []
         assert result["lidarr"]["Default"]["cutoff_searched"] == []
         assert result["lidarr"]["Default"]["connected"] is True
+        # 78-03 / OUTCOME-02: no eligible work and no fetch failure grades nothing_needed.
+        assert result["lidarr"]["Default"]["last_cycle"]["grade"] == "nothing_needed"
     finally:
         await db.close()
 
@@ -3219,7 +3346,7 @@ async def test_sonarr_cycle_all_filtered_by_tag(tmp_path):
 
 
 async def test_run_radarr_cycle_writes_last_success_on_success(tmp_path):
-    """A successful run_radarr_cycle sets last_success to a non-None ISO timestamp."""
+    """A successful run_radarr_cycle sets last_successful_search; legacy last_success is untouched."""
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
     await init_db(db, db_path)
@@ -3237,7 +3364,10 @@ async def test_run_radarr_cycle_writes_last_success_on_success(tmp_path):
 
     result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
 
-    assert result["radarr"]["Default"]["last_success"] is not None
+    # 78-02 / R-05: confirmed-search time lives in last_successful_search; the
+    # engine never writes the legacy last_success field.
+    assert result["radarr"]["Default"]["last_successful_search"] is not None
+    assert result["radarr"]["Default"]["last_success"] is None
     await db.close()
 
 
@@ -3258,6 +3388,942 @@ async def test_run_radarr_cycle_does_not_write_last_success_on_failure(tmp_path)
 
     assert result["radarr"]["Default"].get("last_success") is None
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 78 Plan 02: honest cycle grading for Radarr (R1/R2/R8/OUTCOME-06/D-10)
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_grade_success(tmp_path):
+    """2 monitored missing, cutoff empty, both accepted -> grade success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_successful_search"] == ist["last_run"] == ist["last_cycle"]["finished_at"]
+        assert ist["last_success"] is None
+    finally:
+        await db.close()
+
+
+async def test_radarr_grade_partial(tmp_path):
+    """One accepted command, one failed command -> grade partial."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://radarr:7878/api/v3/command")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock(
+            side_effect=[None, httpx.HTTPStatusError("err", request=request, response=response)]
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["last_cycle"]["failed"] == 1
+        assert ist["last_cycle"]["failure_reasons"] == [{"reason": "HTTP 500", "count": 1}]
+    finally:
+        await db.close()
+
+
+async def test_radarr_grade_failed_all_commands(tmp_path):
+    """All search commands fail -> grade failed; legacy last_success untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["connected"] is True
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_radarr_grade_failed_fetch(tmp_path):
+    """Fetch failure -> grade failed, last_run stamped, last_successful_search untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        state["radarr"]["Default"]["last_successful_search"] = "2025-12-31T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] == "2025-12-31T00:00:00Z"
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_radarr_grade_nothing_needed_empty(tmp_path):
+    """Both queues empty -> grade nothing_needed with eligible counts recorded as 0."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        state["radarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["last_cycle"]["eligible"] == {"missing": 0, "cutoff": 0}
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_radarr_grade_inactive_queue_ignored(tmp_path):
+    """An inactive (configured 0) queue is absent from eligible and doesn't block success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 2, "title": "Movie B", "monitored": True}]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert "cutoff" not in ist["last_cycle"]["eligible"]
+
+        # Both queues configured inactive (disabled instance, both counts 0) -> nothing_needed,
+        # regardless of what the fetch returns. InstanceConfig/Settings reject
+        # search_missing_count=0 and search_cutoff_count=0 together while enabled=True, so this
+        # scenario is only reachable via a disabled instance -- engine functions never read
+        # instance_config.enabled, so this still exercises the grading path directly.
+        state2 = _make_test_state()
+        settings2 = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config2 = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+        result2 = await run_radarr_cycle(client, state2, "Default", instance_config2, settings2, db)
+        ist2 = result2["radarr"]["Default"]
+
+        assert ist2["last_cycle"]["grade"] == "nothing_needed"
+        assert client.search_movies.call_count == 1  # only the first scenario's missing item
+    finally:
+        await db.close()
+
+
+async def test_radarr_grade_hard_max_starved_is_success(tmp_path):
+    """R-01: a queue starved to zero slots next to an accepted queue still grades success."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": i, "title": f"Movie {i}", "monitored": True} for i in range(5)]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 100 + i, "title": f"Cutoff {i}", "monitored": True} for i in range(5)]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 1
+        assert ist["last_cycle"]["grade"] == "success"
+    finally:
+        await db.close()
+
+
+async def test_radarr_persistence_failure_still_accepted(tmp_path):
+    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 3, "title": "Movie C", "monitored": True}]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 3
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["persistence_failed"] == 3
+        assert ist["last_successful_search"] is not None
+        assert client.search_movies.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_radarr_partial_history_write_rolled_back_never_resent(tmp_path):
+    """R-08/R8: a real prune failure mid-cycle rolls back cleanly; every accepted command stays
+    accepted and is never resent."""
+    from triggarr.db import insert_search_entry
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    db2 = None
+    try:
+        for i in range(2):
+            await insert_search_entry(db, "Radarr", "missing", f"Resolved {i}", outcome="failed")
+        await db.execute(
+            "CREATE TRIGGER fail_prune BEFORE DELETE ON search_history "
+            "BEGIN SELECT RAISE(ABORT, 'injected prune failure'); END"
+        )
+        await db.commit()
+
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=2, search_cutoff_count=0,
+            general=GeneralConfig(max_history_rows=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 2
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["persistence_failed"] == 2
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_successful_search"] is not None
+        assert db.in_transaction is False
+
+        await db.execute("DROP TRIGGER fail_prune")
+        await db.commit()
+
+        db2 = await aiosqlite.connect(db_path)
+        async with db2.execute("SELECT COUNT(*) FROM search_history WHERE outcome = 'searched'") as cursor:
+            pending_count = (await cursor.fetchone())[0]
+        assert pending_count == 0
+    finally:
+        if db2 is not None:
+            await db2.close()
+        await db.close()
+
+
+async def test_radarr_pending_cap_counts_as_persistence_failure(tmp_path):
+    """R-02: PendingCapExceeded on the success-path insert is a persistence failure, not a failed search."""
+    from unittest.mock import patch
+
+    from triggarr.db import PendingCapExceeded
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        cap_exc = PendingCapExceeded(
+            app="Radarr", instance_id="Default", item_name="Movie A", pending_count=10, cap=10,
+        )
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=cap_exc),
+        ):
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["last_cycle"]["persistence_failed"] == 1
+        assert ist["last_cycle"]["grade"] == "success"
+    finally:
+        await db.close()
+
+
+async def test_radarr_failed_path_insert_error_does_not_abort(tmp_path):
+    """R-04: a failure-path history insert that raises never aborts the cycle."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://radarr:7878/api/v3/command")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 2, "title": "Movie B", "monitored": True}]
+        )
+        client.search_movies = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert client.search_movies.call_count == 2
+    finally:
+        await db.close()
+
+
+async def test_radarr_last_cycle_never_contains_apikey(tmp_path):
+    """D-10: a search-command failure whose request URL carries ?apikey= never leaks into last_cycle."""
+    import json
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://radarr:7878/api/v3/command?apikey=SUPERSECRET123")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_movies = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=1)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+        assert "SUPERSECRET123" not in json.dumps(result["radarr"]["Default"])
+    finally:
+        await db.close()
+
+
+async def test_radarr_hard_max_reallocates_to_queue_with_work(tmp_path):
+    """R-01 amended: hard_max=1 reallocates to the queue with eligible work, never nothing_needed."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": i, "title": f"Movie {i}", "monitored": True} for i in range(3)]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 1
+        client.search_movies.assert_called_once_with([0])
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["eligible"] == {"missing": 3, "cutoff": 0}
+        assert ist["last_cycle"]["grade"] != "nothing_needed"
+    finally:
+        await db.close()
+
+
+async def test_radarr_hard_max_cutoff_with_work_missing_empty(tmp_path):
+    """R-01 amended: missing empty, cutoff has work -- hard_max=1 dispatches exactly one cutoff search."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": i, "title": f"Cutoff {i}", "monitored": True} for i in range(2)]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 1
+        assert ist["last_cycle"]["grade"] == "success"
+    finally:
+        await db.close()
+
+
+async def test_radarr_eligible_counts_after_filters(tmp_path):
+    """last_cycle["eligible"] reflects eligible counts AFTER the full filter chain runs."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        future = (datetime.now(UTC) + timedelta(days=30)).isoformat().replace("+00:00", "Z")
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Eligible", "monitored": True},
+                {"id": 2, "title": "Unmonitored", "monitored": False},
+                {
+                    "id": 3, "title": "Unreleased", "monitored": True,
+                    "digitalRelease": future, "physicalRelease": future,
+                },
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[
+                {"id": 4, "title": "Cutoff Eligible", "monitored": True},
+                {"id": 5, "title": "Cutoff Unmonitored", "monitored": False},
+            ]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+        instance_config = _cycle_instance_config(missing_count=5, cutoff_count=5)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["eligible"] == {"missing": 1, "cutoff": 1}
+    finally:
+        await db.close()
+
+
+async def test_radarr_zero_dispatch_with_work_never_nothing_needed(tmp_path):
+    """Backstop: a forced zero-dispatch cycle with eligible work grades failed, never nothing_needed."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        with patch("triggarr.search.engine.rebalance_batch_sizes", return_value=(0, 0)):
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 0
+        assert ist["last_cycle"]["grade"] == "failed"
+
+        view = cycle_view(ist["last_cycle"], "Radarr")
+        assert any("2 eligible items not searched this cycle" in reason["text"] for reason in view["reasons"])
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# _fetch_wanted_queues (R-07 inactive-queue fetch isolation)
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_wanted_queues_active_fetch_error_propagates():
+    """An active queue's fetch failure propagates out of the helper untouched."""
+    fetch_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    fetch_cutoff = AsyncMock(return_value=[])
+
+    with pytest.raises(httpx.ConnectError):
+        await _fetch_wanted_queues(
+            fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+            missing_active=True, cutoff_active=True, app_label="Radarr",
+        )
+
+
+async def test_fetch_wanted_queues_inactive_cutoff_fetch_fails():
+    """missing active and fetched; inactive cutoff fetch fails -> (missing_list, None)."""
+    fetch_missing = AsyncMock(return_value=[{"id": 1}])
+    fetch_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        missing, cutoff = await _fetch_wanted_queues(
+            fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+            missing_active=True, cutoff_active=False, app_label="Radarr",
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert missing == [{"id": 1}]
+    assert cutoff is None
+    assert fetch_missing.await_count == 1
+    assert fetch_cutoff.await_count == 1
+    assert "inactive" in sink.getvalue()
+
+
+async def test_fetch_wanted_queues_both_inactive_missing_fails_cutoff_succeeds():
+    """Both inactive: missing fetch fails, cutoff fetch succeeds -> (None, [x]); cutoff still awaited."""
+    fetch_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    fetch_cutoff = AsyncMock(return_value=[{"id": 2}])
+
+    missing, cutoff = await _fetch_wanted_queues(
+        fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+        missing_active=False, cutoff_active=False, app_label="Radarr",
+    )
+
+    assert missing is None
+    assert cutoff == [{"id": 2}]
+    assert fetch_cutoff.await_count == 1
+
+
+async def test_fetch_wanted_queues_active_fetched_before_inactive():
+    """With missing inactive and cutoff active, the active (cutoff) fetcher is awaited first."""
+    order: list[str] = []
+
+    async def fetch_missing():
+        order.append("missing")
+        return []
+
+    async def fetch_cutoff():
+        order.append("cutoff")
+        return []
+
+    await _fetch_wanted_queues(
+        fetch_missing=fetch_missing, fetch_cutoff=fetch_cutoff,
+        missing_active=False, cutoff_active=True, app_label="Radarr",
+    )
+
+    assert order == ["cutoff", "missing"]
+
+
+# ---------------------------------------------------------------------------
+# run_radarr_cycle: inactive-queue fetch isolation (R-07) + regression sweep
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_inactive_cutoff_fetch_fails_active_has_work(tmp_path):
+    """R-07: an inactive cutoff queue's fetch failure doesn't block the active missing queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Movie A", "monitored": True},
+                {"id": 2, "title": "Movie B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 2
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["fetch_error"] is None
+        assert ist["last_cycle"]["unevaluated"] == []
+        assert ist["connected"] is True
+        assert ist["unreachable_since"] is None
+        assert ist["last_successful_search"] is not None
+        assert ist["cutoff_count"] == 7
+        assert ist["cutoff_searched"] == ["99"]
+    finally:
+        await db.close()
+
+
+async def test_radarr_inactive_cutoff_fetch_fails_active_empty(tmp_path):
+    """R-07: inactive cutoff fetch failure with an empty active missing queue grades nothing_needed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("GET", "http://radarr:7878/api/v3/wanted/cutoff")
+        response = httpx.Response(503, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert ist["missing_count"] == 0
+        assert ist["cutoff_count"] == 7
+        assert ist["last_run"] is not None
+    finally:
+        await db.close()
+
+
+async def test_radarr_inactive_missing_fetch_fails_active_cutoff_has_work(tmp_path):
+    """R-07: an inactive missing queue's fetch failure doesn't block the active cutoff queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 3, "title": "Movie C", "monitored": True}]
+        )
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=0, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=0, cutoff_count=2)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["connected"] is True
+        assert ist["missing_count"] == 5
+        assert ist["missing_searched"] == ["42"]
+    finally:
+        await db.close()
+
+
+async def test_radarr_both_inactive_both_fetches_fail(tmp_path):
+    """R-07: both queues inactive and both fetches fail -> unreachable but graded nothing_needed, not failed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+        ist["last_successful_search"] = "2025-12-31T00:00:00Z"
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert client.search_movies.call_count == 0
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["last_cycle"]["fetch_error"] is None
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["connected"] is False
+        assert ist["unreachable_since"] is not None
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] == "2025-12-31T00:00:00Z"
+        assert ist["missing_count"] == 5
+        assert ist["cutoff_count"] == 7
+    finally:
+        await db.close()
+
+
+async def test_radarr_both_inactive_one_fetch_fails(tmp_path):
+    """R-07: both queues inactive, only one fetch fails -> still connected True (the other succeeded)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["radarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://radarr:7878", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert ist["missing_count"] == 1
+        assert ist["cutoff_count"] == 7
+        assert client.search_movies.call_count == 0
+    finally:
+        await db.close()
+
+
+async def test_radarr_active_fetch_failure_with_inactive_other_still_failed(tmp_path):
+    """R-07: an active queue's fetch failure still grades failed; the inactive endpoint is never probed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["radarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert client.get_wanted_cutoff.await_count == 0
+    finally:
+        await db.close()
+
+
+async def test_radarr_inactive_fetch_error_never_leaks_apikey(tmp_path):
+    """D-10: an inactive queue's fetch error carrying ?apikey= never reaches state or logs."""
+    import json
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("GET", "http://radarr:7878/api/v3/wanted/cutoff?apikey=SUPERSECRET123")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Movie A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+        client.get_library_count = AsyncMock(return_value=100)
+        client.search_movies = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        sink = io.StringIO()
+        handler_id = logger.add(sink, format="{message}", level="WARNING")
+        try:
+            result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+        finally:
+            logger.remove(handler_id)
+
+        assert "SUPERSECRET123" not in json.dumps(result["radarr"]["Default"])
+        assert "SUPERSECRET123" not in sink.getvalue()
+    finally:
+        await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -3334,13 +4400,13 @@ async def test_run_radarr_cycle_falls_back_to_client_get_tags_when_no_fn(tmp_pat
     await db.close()
 
 
-async def test_run_radarr_cycle_get_tags_fn_exception_suppresses_filtering(tmp_path):
-    """RES-03 (Pitfall 2/3): a get_tags_fn that raises is handled by the existing guard.
+async def test_run_radarr_cycle_get_tags_fn_exception_skips_tagged_queue(tmp_path):
+    """RES-03: a get_tags_fn that raises skips the tagged queue instead of failing open.
 
     When the resolver raises httpx.ConnectError, the cycle does NOT raise; the
-    existing except guard sets tags=[] / tag_fetch_ok=False so tag filtering is
-    suppressed and all monitored items are searched (no tag warning recorded,
-    because tag_fetch_ok is False).
+    existing except guard inside _resolve_tag_scope sets tags=[] /
+    tag_fetch_ok=False, which now skips the tagged queue (zero searches) and
+    records a fetch_failed tag warning.
     """
     db_path = tmp_path / "test.db"
     db = await aiosqlite.connect(db_path)
@@ -3371,8 +4437,2075 @@ async def test_run_radarr_cycle_get_tags_fn_exception_suppresses_filtering(tmp_p
     )
 
     resolver.assert_awaited_once()
-    # Tag filtering suppressed (tag_fetch_ok=False) -> both monitored items searched.
-    assert client.search_movies.call_count == 2
-    # No tag warning recorded because the fetch failed (tag_fetch_ok=False).
-    assert result["radarr"]["Default"]["tag_warnings"] == []
+    # Tagged queue skipped (tag_fetch_ok=False) -> zero searches.
+    assert client.search_movies.call_count == 0
+    assert result["radarr"]["Default"]["tag_warnings"] == [
+        {"tag": "triggarr", "field": "missing", "reason": "fetch_failed"},
+    ]
+    assert result["radarr"]["Default"]["last_cycle"]["grade"] == "failed"
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# 78-03: Sonarr honest grading, hard-max reallocation, R-07 fetch isolation
+# ---------------------------------------------------------------------------
+
+
+async def test_sonarr_grade_success(tmp_path):
+    """Two missing episodes in different seasons, both accepted -> grade success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=10, season_number=2, series_title="Show A", episode_id=101),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_successful_search"] == ist["last_run"] == ist["last_cycle"]["finished_at"]
+        assert ist["last_success"] is None
+    finally:
+        await db.close()
+
+
+async def test_sonarr_grade_partial(tmp_path):
+    """One accepted season search, one failed -> grade partial."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://sonarr:8989/api/v3/command")
+        response = httpx.Response(500, request=request)
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=200),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock(
+            side_effect=[None, httpx.HTTPStatusError("err", request=request, response=response)]
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["last_cycle"]["failed"] == 1
+        assert ist["last_cycle"]["failure_reasons"] == [{"reason": "HTTP 500", "count": 1}]
+    finally:
+        await db.close()
+
+
+async def test_sonarr_grade_failed_all_commands(tmp_path):
+    """All season searches fail -> grade failed; legacy last_success untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=200),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["sonarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["connected"] is True
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_sonarr_grade_failed_fetch(tmp_path):
+    """Fetch failure -> grade failed, last_run stamped, last_successful_search untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["sonarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        state["sonarr"]["Default"]["last_successful_search"] = "2025-12-31T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] == "2025-12-31T00:00:00Z"
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_sonarr_grade_nothing_needed_empty(tmp_path):
+    """Both queues empty -> grade nothing_needed with eligible counts recorded as 0."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        state["sonarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["last_cycle"]["eligible"] == {"missing": 0, "cutoff": 0}
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_sonarr_grade_inactive_queue_ignored(tmp_path):
+    """An inactive (configured 0) queue is absent from eligible and doesn't block success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[_make_sonarr_episode(series_id=10, season_number=1, series_title="Show A")]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[_make_sonarr_episode(series_id=20, season_number=1, series_title="Show B")]
+        )
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert "cutoff" not in ist["last_cycle"]["eligible"]
+
+        # Both queues configured inactive (disabled instance) -> nothing_needed.
+        state2 = _make_test_state()
+        settings2 = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config2 = InstanceConfig(
+            url="http://sonarr:8989", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+        result2 = await run_sonarr_cycle(client, state2, "Default", instance_config2, settings2, db)
+        ist2 = result2["sonarr"]["Default"]
+
+        assert ist2["last_cycle"]["grade"] == "nothing_needed"
+        assert client.search_season.call_count == 1  # only the first scenario's missing item
+    finally:
+        await db.close()
+
+
+async def test_sonarr_persistence_failure_still_accepted(tmp_path):
+    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=10, season_number=2, series_title="Show A", episode_id=101),
+        ]
+        cutoff_episodes = [
+            _make_sonarr_episode(series_id=30, season_number=1, series_title="Show C", episode_id=300),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=cutoff_episodes)
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 3
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["persistence_failed"] == 3
+        assert ist["last_successful_search"] is not None
+        assert client.search_season.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_sonarr_hard_max_reallocates_to_queue_with_work(tmp_path):
+    """R-01 amended: hard_max=1 reallocates to the queue with eligible work, never nothing_needed."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        episodes = [
+            _make_sonarr_episode(series_id=10 + i, season_number=1, series_title=f"Show {i}", episode_id=100 + i)
+            for i in range(3)
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 1
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["eligible"] == {"missing": 3, "cutoff": 0}
+    finally:
+        await db.close()
+
+
+async def test_sonarr_zero_dispatch_with_work_never_nothing_needed(tmp_path):
+    """Backstop: a forced zero-dispatch cycle with eligible work grades failed, never nothing_needed."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=10, season_number=2, series_title="Show A", episode_id=101),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        with patch("triggarr.search.engine.rebalance_batch_sizes", return_value=(0, 0)):
+            result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 0
+        assert ist["last_cycle"]["grade"] == "failed"
+    finally:
+        await db.close()
+
+
+async def test_sonarr_inactive_cutoff_fetch_fails_active_has_work(tmp_path):
+    """R-07: an inactive cutoff queue's fetch failure doesn't block the active missing queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        episodes = [
+            _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+            _make_sonarr_episode(series_id=10, season_number=2, series_title="Show A", episode_id=101),
+        ]
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=episodes)
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["sonarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searchable"] = 3
+        ist["cutoff_searched"] = ["9:1"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["4:1"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 2
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["fetch_error"] is None
+        assert ist["last_cycle"]["unevaluated"] == []
+        assert ist["connected"] is True
+        assert ist["unreachable_since"] is None
+        assert ist["last_successful_search"] is not None
+        assert ist["cutoff_count"] == 7
+        assert ist["cutoff_searchable"] == 3
+        assert ist["cutoff_searched"] == ["9:1"]
+    finally:
+        await db.close()
+
+
+async def test_sonarr_inactive_cutoff_fetch_fails_active_empty(tmp_path):
+    """R-07: inactive cutoff fetch failure with an empty active missing queue grades nothing_needed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("GET", "http://sonarr:8989/api/v3/wanted/cutoff")
+        response = httpx.Response(503, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(
+            side_effect=httpx.HTTPStatusError("err", request=request, response=response)
+        )
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["sonarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searchable"] = 3
+        ist["cutoff_searched"] = ["9:1"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["4:1"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert ist["cutoff_count"] == 7
+    finally:
+        await db.close()
+
+
+async def test_sonarr_both_inactive_both_fetches_fail(tmp_path):
+    """R-07: both queues inactive and both fetches fail -> unreachable but graded nothing_needed, not failed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["sonarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["9:1"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["4:1"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://sonarr:8989", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert client.search_season.call_count == 0
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["last_cycle"]["fetch_error"] is None
+        assert ist["connected"] is False
+        assert ist["unreachable_since"] is not None
+        assert ist["last_run"] is not None
+        assert ist["missing_count"] == 5
+        assert ist["cutoff_count"] == 7
+    finally:
+        await db.close()
+
+
+async def test_sonarr_both_inactive_one_fetch_fails(tmp_path):
+    """R-07: both queues inactive, only one fetch fails -> still connected True (the other succeeded)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[_make_sonarr_episode(series_id=10, season_number=1, series_title="Show A")]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["sonarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["9:1"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["4:1"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://sonarr:8989", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert client.search_season.call_count == 0
+    finally:
+        await db.close()
+
+
+async def test_sonarr_active_fetch_failure_with_inactive_other_still_failed(tmp_path):
+    """R-07: an active queue's fetch failure still grades failed; the inactive endpoint is never probed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_season = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["sonarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert client.get_wanted_cutoff.await_count == 0
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# 78-03: Lidarr honest grading, hard-max reallocation, R-07 fetch isolation,
+# D-01 refresh boundary guard
+# ---------------------------------------------------------------------------
+
+
+async def test_lidarr_grade_success(tmp_path):
+    """Two monitored missing albums, cutoff empty, both accepted -> grade success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 2
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_successful_search"] == ist["last_run"] == ist["last_cycle"]["finished_at"]
+        assert ist["last_success"] is None
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_partial(tmp_path):
+    """One accepted album search, one failed -> grade partial."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        request = httpx.Request("POST", "http://lidarr:8686/api/v1/command")
+        response = httpx.Response(500, request=request)
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock(
+            side_effect=[None, httpx.HTTPStatusError("err", request=request, response=response)]
+        )
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "partial"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert ist["last_cycle"]["failed"] == 1
+        assert ist["last_cycle"]["failure_reasons"] == [{"reason": "HTTP 500", "count": 1}]
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_failed_all_commands(tmp_path):
+    """All album searches fail -> grade failed; legacy last_success untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["lidarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["accepted"] == 0
+        assert ist["last_cycle"]["failed"] == 2
+        assert ist["connected"] is True
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_failed_fetch(tmp_path):
+    """Fetch failure -> grade failed, last_run stamped, last_successful_search untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        state = _make_test_state()
+        state["lidarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        state["lidarr"]["Default"]["last_successful_search"] = "2025-12-31T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] == "2025-12-31T00:00:00Z"
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_nothing_needed_empty(tmp_path):
+    """Both queues empty -> grade nothing_needed with eligible counts recorded as 0."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        state["lidarr"]["Default"]["last_success"] = "2026-01-01T00:00:00Z"
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["last_cycle"]["eligible"] == {"missing": 0, "cutoff": 0}
+        assert ist["last_run"] is not None
+        assert ist["last_successful_search"] is None
+        assert ist["last_success"] == "2026-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_grade_inactive_queue_ignored(tmp_path):
+    """An inactive (configured 0) queue is absent from eligible and doesn't block success."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Album A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 2, "title": "Album B", "monitored": True}]
+        )
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=1, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=1, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 1
+        assert "cutoff" not in ist["last_cycle"]["eligible"]
+
+        # Both queues configured inactive (disabled instance) -> nothing_needed.
+        state2 = _make_test_state()
+        settings2 = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config2 = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+        result2 = await run_lidarr_cycle(client, state2, "Default", instance_config2, settings2, db)
+        ist2 = result2["lidarr"]["Default"]
+
+        assert ist2["last_cycle"]["grade"] == "nothing_needed"
+        assert client.search_albums.call_count == 1  # only the first scenario's missing item
+    finally:
+        await db.close()
+
+
+async def test_lidarr_persistence_failure_still_accepted(tmp_path):
+    """R8/OUTCOME-06: a success-path history-insert failure keeps the command accepted."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(
+            return_value=[{"id": 3, "title": "Album C", "monitored": True}]
+        )
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=1)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=1)
+
+        with patch(
+            "triggarr.search.engine.insert_search_entry",
+            AsyncMock(side_effect=aiosqlite.OperationalError("database is locked")),
+        ):
+            result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["accepted"] == 3
+        assert ist["last_cycle"]["failed"] == 0
+        assert ist["last_cycle"]["persistence_failed"] == 3
+        assert ist["last_successful_search"] is not None
+        assert client.search_albums.call_count == 3
+    finally:
+        await db.close()
+
+
+async def test_lidarr_hard_max_reallocates_to_queue_with_work(tmp_path):
+    """R-01 amended: hard_max=1 reallocates to the queue with eligible work, never nothing_needed."""
+    from triggarr.models.config import GeneralConfig
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": i, "title": f"Album {i}", "monitored": True} for i in range(2)]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = make_settings(
+            search_missing_count=50, search_cutoff_count=50,
+            general=GeneralConfig(hard_max_per_cycle=1),
+        )
+        instance_config = _cycle_instance_config(missing_count=50, cutoff_count=50)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 1
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["last_cycle"]["eligible"] == {"missing": 2, "cutoff": 0}
+    finally:
+        await db.close()
+
+
+async def test_lidarr_zero_dispatch_with_work_never_nothing_needed(tmp_path):
+    """Backstop: a forced zero-dispatch cycle with eligible work grades failed, never nothing_needed."""
+    from unittest.mock import patch
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=2)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+
+        with patch("triggarr.search.engine.rebalance_batch_sizes", return_value=(0, 0)):
+            result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 0
+        assert ist["last_cycle"]["grade"] == "failed"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_inactive_cutoff_fetch_fails_active_has_work(tmp_path):
+    """R-07: an inactive cutoff queue's fetch failure doesn't block the active missing queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[
+                {"id": 1, "title": "Album A", "monitored": True},
+                {"id": 2, "title": "Album B", "monitored": True},
+            ]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 2
+        assert ist["last_cycle"]["grade"] == "success"
+        assert ist["connected"] is True
+        assert ist["cutoff_count"] == 7
+        assert ist["cutoff_searched"] == ["99"]
+    finally:
+        await db.close()
+
+
+async def test_lidarr_inactive_cutoff_fetch_fails_active_empty(tmp_path):
+    """R-07: inactive cutoff fetch failure with an empty active missing queue grades nothing_needed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[])
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+    finally:
+        await db.close()
+
+
+async def test_lidarr_both_inactive_both_fetches_fail(tmp_path):
+    """R-07: both queues inactive and both fetches fail -> unreachable but graded nothing_needed, not failed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert client.search_albums.call_count == 0
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is False
+        assert ist["unreachable_since"] is not None
+    finally:
+        await db.close()
+
+
+async def test_lidarr_both_inactive_one_fetch_fails(tmp_path):
+    """R-07: both queues inactive, only one fetch fails -> still connected True (the other succeeded)."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(
+            return_value=[{"id": 1, "title": "Album A", "monitored": True}]
+        )
+        client.get_wanted_cutoff = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["cutoff_count"] = 7
+        ist["cutoff_searched"] = ["99"]
+        ist["missing_count"] = 5
+        ist["missing_searched"] = ["42"]
+
+        settings = make_settings(
+            search_missing_count=0, search_cutoff_count=0,
+            radarr_enabled=False, sonarr_enabled=False, lidarr_enabled=False,
+        )
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=False,
+            search_missing_count=0, search_cutoff_count=0,
+        )
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "nothing_needed"
+        assert ist["connected"] is True
+        assert client.search_albums.call_count == 0
+    finally:
+        await db.close()
+
+
+async def test_lidarr_active_fetch_failure_with_inactive_other_still_failed(tmp_path):
+    """R-07: an active queue's fetch failure still grades failed; the inactive endpoint is never probed."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(side_effect=httpx.ConnectError("refused"))
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        settings = _cycle_settings(missing_count=2, cutoff_count=0)
+        instance_config = _cycle_instance_config(missing_count=2, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+        ist = result["lidarr"]["Default"]
+
+        assert ist["last_cycle"]["grade"] == "failed"
+        assert ist["last_cycle"]["fetch_error"] == "HTTP error: ConnectError"
+        assert ist["connected"] is False
+        assert client.get_wanted_cutoff.await_count == 0
+    finally:
+        await db.close()
+
+
+async def test_refresh_counts_never_touch_last_cycle(tmp_path):
+    """D-01/R2: refresh_*_counts never touch last_cycle, last_run, last_successful_search, or last_success.
+
+    Regression guard -- refresh_*_counts already never write these fields (D-01
+    predates this phase); this test pins that contract against this phase's new
+    last_cycle/last_successful_search fields and passes immediately.
+    """
+    from triggarr.search.engine import refresh_lidarr_counts, refresh_radarr_counts, refresh_sonarr_counts
+
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+    try:
+        frozen_last_cycle = {
+            "grade": "success", "accepted": 1, "failed": 0, "malformed_skipped": 0,
+            "persistence_failed": 0, "failure_reasons": [], "unevaluated": [],
+            "eligible": {"missing": 1}, "fetch_error": None, "finished_at": "2026-01-01T00:00:00Z",
+        }
+        settings = _cycle_settings()
+        instance_config = _cycle_instance_config()
+
+        for app_type, refresh_fn in (
+            ("radarr", refresh_radarr_counts),
+            ("sonarr", refresh_sonarr_counts),
+            ("lidarr", refresh_lidarr_counts),
+        ):
+            client = AsyncMock()
+            client.get_wanted_missing = AsyncMock(return_value=[])
+            client.get_wanted_cutoff = AsyncMock(return_value=[])
+            state = _make_test_state()
+            ist = state[app_type]["Default"]
+            ist["last_cycle"] = dict(frozen_last_cycle)
+            ist["last_run"] = "2026-01-01T00:00:00Z"
+            ist["last_successful_search"] = "2026-01-01T00:00:00Z"
+            ist["last_success"] = "2025-01-01T00:00:00Z"
+
+            await refresh_fn(client, state, "Default", instance_config, settings)
+
+            assert ist["last_cycle"] == frozen_last_cycle
+            assert ist["last_run"] == "2026-01-01T00:00:00Z"
+            assert ist["last_successful_search"] == "2026-01-01T00:00:00Z"
+            assert ist["last_success"] == "2025-01-01T00:00:00Z"
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: Radarr/Lidarr tag-scope skip-and-warn (TAGSCOPE-01..03, D-01..05)
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_missing_tag_unresolved_cutoff_tag_resolves_cutoff_still_runs(tmp_path):
+    """TAGSCOPE-01: missing's tag is unresolved but cutoff's tag resolves -- cutoff still dispatches."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": [5]},
+        {"id": 3, "title": "Movie C", "monitored": True, "tags": [6]},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="gone", cutoff_tag="4k",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_movies.call_count == 1
+    client.search_movies.assert_called_once_with([2])
+    ist = result["radarr"]["Default"]
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+    assert ist["last_cycle"]["grade"] == "partial"
+    await db.close()
+
+
+async def test_lidarr_missing_tag_unresolved_cutoff_tag_resolves_cutoff_still_runs(tmp_path):
+    """TAGSCOPE-01: missing's tag is unresolved but cutoff's tag resolves -- cutoff still dispatches."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": []}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": [5]}},
+            {"id": 3, "title": "Album C", "monitored": True, "artist": {"tags": [6]}},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="gone", cutoff_tag="4k",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+        assert client.search_albums.call_count == 1
+        client.search_albums.assert_called_once_with([2])
+        ist = result["lidarr"]["Default"]
+        assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+        assert ist["last_cycle"]["grade"] == "partial"
+    finally:
+        await db.close()
+
+
+async def test_radarr_cutoff_tag_unresolved_missing_untagged_still_runs(tmp_path):
+    """TAGSCOPE-01: cutoff's tag is unresolved but missing has no tag -- missing still dispatches."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=9, label="other")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+        {"id": 2, "title": "Movie B", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 3, "title": "Movie C", "monitored": True, "tags": []},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        cutoff_tag="gone",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_movies.call_count == 2
+    assert result["radarr"]["Default"]["last_cycle"]["grade"] == "partial"
+    await db.close()
+
+
+async def test_radarr_tag_unresolved_keeps_last_good_counts_and_searched_log(tmp_path):
+    """R5/D-05: an unresolved-tag queue keeps its last-good counts and searched-log untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_monitored"] = 9
+    ist["missing_searched"] = ["1"]
+    ist["scoped_count_tags"] = {"missing": "gone"}
+
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=0,
+        missing_tag="gone",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=0)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    out_ist = result["radarr"]["Default"]
+    assert out_ist["missing_eligible"] == 7
+    assert out_ist["missing_monitored"] == 9
+    assert out_ist["missing_searched"] == ["1"]
+    assert out_ist["scoped_count_tags"] == {"missing": "gone"}
+    assert out_ist["unresolved_tag_scopes"] == {"missing": "gone"}
+    await db.close()
+
+
+async def test_lidarr_tag_unresolved_keeps_last_good_counts_and_searched_log(tmp_path):
+    """R5/D-05: an unresolved-tag queue keeps its last-good counts and searched-log untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": []}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["missing_eligible"] = 7
+        ist["missing_monitored"] = 9
+        ist["missing_searched"] = ["1"]
+        ist["scoped_count_tags"] = {"missing": "gone"}
+
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=0,
+            missing_tag="gone",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=0)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+        out_ist = result["lidarr"]["Default"]
+        assert out_ist["missing_eligible"] == 7
+        assert out_ist["missing_monitored"] == 9
+        assert out_ist["missing_searched"] == ["1"]
+        assert out_ist["scoped_count_tags"] == {"missing": "gone"}
+        assert out_ist["unresolved_tag_scopes"] == {"missing": "gone"}
+    finally:
+        await db.close()
+
+
+async def test_radarr_resolved_scope_stamps_scoped_counts(tmp_path):
+    """D-05 revision 1: a resolved scope stamps the committed count with its tag name."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="4k",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert result["radarr"]["Default"]["scoped_count_tags"]["missing"] == "4k"
+    await db.close()
+
+
+async def test_radarr_resolved_scope_stamps_scoped_counts_none_when_untagged(tmp_path):
+    """D-05 revision 1: an untagged missing queue stamps scoped_count_tags['missing'] as None."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert result["radarr"]["Default"]["scoped_count_tags"]["missing"] is None
+    await db.close()
+
+
+async def test_lidarr_resolved_scope_stamps_scoped_counts(tmp_path):
+    """D-05 revision 1: a resolved scope stamps the committed count with its tag name."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": [5]}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="4k",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+        assert result["lidarr"]["Default"]["scoped_count_tags"]["missing"] == "4k"
+    finally:
+        await db.close()
+
+
+async def test_lidarr_resolved_scope_stamps_scoped_counts_none_when_untagged(tmp_path):
+    """D-05 revision 1: an untagged missing queue stamps scoped_count_tags['missing'] as None."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    try:
+        client = AsyncMock()
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": []}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+        assert result["lidarr"]["Default"]["scoped_count_tags"]["missing"] is None
+    finally:
+        await db.close()
+
+
+async def test_radarr_inactive_queue_unresolved_tag_no_warning_no_grade_effect(tmp_path):
+    """D-04/OQ1: an inactive queue's unresolved tag never warns or affects the grade."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Movie B", "monitored": True},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_eligible"] = 4
+
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=0, search_cutoff_count=5,
+        missing_tag="gone",
+    )
+    settings = _cycle_settings(missing_count=0, cutoff_count=5)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    out_ist = result["radarr"]["Default"]
+    assert out_ist["tag_warnings"] == []
+    assert out_ist["last_cycle"]["unevaluated"] == []
+    assert out_ist["last_cycle"]["grade"] == "success"
+    assert out_ist["missing_eligible"] == 4
+    assert out_ist["unresolved_tag_scopes"] == {"missing": "gone"}
+    await db.close()
+
+
+async def test_radarr_tag_warning_clears_when_tag_resolves(tmp_path):
+    """TAGSCOPE-02: the tag-skip warning clears automatically once the tag resolves."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True, "tags": [5]},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="4k",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    client.get_tags = AsyncMock(return_value=[])
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["tag_warnings"] != []
+    assert client.search_movies.call_count == 0
+
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+    assert result["radarr"]["Default"]["tag_warnings"] == []
+    assert client.search_movies.call_count == 1
+    client.search_movies.assert_called_once_with([1])
+    await db.close()
+
+
+async def test_radarr_both_tags_fetch_failure_skips_both_queues(tmp_path):
+    """TAGSCOPE-01/02: a tag-list fetch failure skips both configured queues."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Movie B", "monitored": True},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="a", cutoff_tag="b",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_movies.call_count == 0
+    ist = result["radarr"]["Default"]
+    assert len(ist["tag_warnings"]) == 2
+    assert all(w["reason"] == "fetch_failed" for w in ist["tag_warnings"])
+    assert ist["last_cycle"]["grade"] == "failed"
+    await db.close()
+
+
+async def test_radarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        {"id": 1, "title": "Movie A", "monitored": True},
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {"id": 2, "title": "Movie B", "monitored": True, "tags": 5},
+    ])
+    client.search_movies = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["radarr"]["Default"]
+    ist["missing_monitored"] = 9
+    ist["missing_eligible"] = 7
+    ist["missing_searched"] = ["1"]
+    ist["scoped_count_tags"] = {"missing": "gone"}
+
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=5, search_cutoff_count=5,
+        missing_tag="gone", cutoff_tag="4k",
+    )
+    settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+    result = await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_movies.call_count == 0
+    out_ist = result["radarr"]["Default"]
+    assert out_ist["missing_monitored"] == 9
+    assert out_ist["missing_eligible"] == 7
+    assert out_ist["missing_searched"] == ["1"]
+    assert out_ist["scoped_count_tags"] == {"missing": "gone"}
+    assert {e["queue"] for e in out_ist["last_cycle"]["unevaluated"]} == {"missing", "cutoff"}
+    assert out_ist["last_cycle"]["grade"] == "failed"
+    await db.close()
+
+
+async def test_lidarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    try:
+        client = AsyncMock()
+        client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+        client.get_wanted_missing = AsyncMock(return_value=[
+            {"id": 1, "title": "Album A", "monitored": True, "artist": {"tags": []}},
+        ])
+        client.get_wanted_cutoff = AsyncMock(return_value=[
+            {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": 5}},
+        ])
+        client.get_library_count = AsyncMock(return_value=10)
+        client.search_albums = AsyncMock()
+
+        state = _make_test_state()
+        ist = state["lidarr"]["Default"]
+        ist["missing_monitored"] = 9
+        ist["missing_eligible"] = 7
+        ist["missing_searched"] = ["1"]
+        ist["scoped_count_tags"] = {"missing": "gone"}
+
+        instance_config = InstanceConfig(
+            url="http://lidarr:8686", api_key="test-key", enabled=True,
+            search_missing_count=5, search_cutoff_count=5,
+            missing_tag="gone", cutoff_tag="4k",
+        )
+        settings = _cycle_settings(missing_count=5, cutoff_count=5)
+
+        result = await run_lidarr_cycle(client, state, "Default", instance_config, settings, db)
+
+        assert client.search_albums.call_count == 0
+        out_ist = result["lidarr"]["Default"]
+        assert out_ist["missing_monitored"] == 9
+        assert out_ist["missing_eligible"] == 7
+        assert out_ist["missing_searched"] == ["1"]
+        assert out_ist["scoped_count_tags"] == {"missing": "gone"}
+        assert {e["queue"] for e in out_ist["last_cycle"]["unevaluated"]} == {"missing", "cutoff"}
+        assert out_ist["last_cycle"]["grade"] == "failed"
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: Sonarr tag-scope skip-and-warn (TAGSCOPE-01..03, D-01..05)
+# ---------------------------------------------------------------------------
+
+
+async def test_sonarr_missing_tag_unresolved_cutoff_tag_resolves_cutoff_still_runs(tmp_path):
+    """TAGSCOPE-01: missing's tag is unresolved but cutoff's tag resolves -- cutoff still dispatches."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="4k")])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[10]),
+        _ep(series_id=300, season_number=1, series_title="Show C", episode_id=3, series_tags=[11]),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="gone", cutoff_tag="4k",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 1
+    client.search_season.assert_called_once_with(200, 1)
+    assert result["sonarr"]["Default"]["last_cycle"]["grade"] == "partial"
+    await db.close()
+
+
+async def test_sonarr_tag_fetch_failure_skips_tagged_queue(tmp_path):
+    """TAGSCOPE-01/02: a tag-list fetch failure skips the tagged queue."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(side_effect=httpx.ConnectError("refused"))
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="triggarr",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 0
+    ist = result["sonarr"]["Default"]
+    assert ist["tag_warnings"][0]["reason"] == "fetch_failed"
+    assert ist["last_cycle"]["grade"] == "failed"
+    await db.close()
+
+
+async def test_sonarr_tag_unresolved_keeps_last_good_counts(tmp_path):
+    """R5/D-05: an unresolved-tag queue keeps its last-good counts and searched-log untouched."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["missing_searched"] = ["10:1"]
+    ist["cutoff_searchable"] = 2
+    ist["scoped_count_tags"] = {"missing": "m", "cutoff": "c"}
+
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="m", cutoff_tag="c",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    out_ist = result["sonarr"]["Default"]
+    assert out_ist["missing_eligible"] == 7
+    assert out_ist["missing_searchable"] == 3
+    assert out_ist["missing_searched"] == ["10:1"]
+    assert out_ist["cutoff_searchable"] == 2
+    assert out_ist["scoped_count_tags"] == {"missing": "m", "cutoff": "c"}
+    assert out_ist["unresolved_tag_scopes"] == {"missing": "m", "cutoff": "c"}
+    await db.close()
+
+
+async def test_sonarr_resolved_scopes_stamp_both_queues(tmp_path):
+    """D-05 revision 1: resolved scopes stamp both queues' committed counts with their tag names."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[Tag(id=10, label="m"), Tag(id=11, label="c")])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1, series_tags=[10]),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2, series_tags=[11]),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="m", cutoff_tag="c",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert result["sonarr"]["Default"]["scoped_count_tags"] == {"missing": "m", "cutoff": "c"}
+    await db.close()
+
+
+async def test_sonarr_inactive_queue_unresolved_tag_no_warning(tmp_path):
+    """D-04/OQ1: an inactive queue's unresolved tag never warns or affects the grade."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    _ep = _make_tagged_sonarr_episode
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _ep(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        _ep(series_id=200, season_number=1, series_title="Show B", episode_id=2),
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["cutoff_searchable"] = 5
+
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=0,
+        cutoff_tag="gone",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=0)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    out_ist = result["sonarr"]["Default"]
+    assert out_ist["tag_warnings"] == []
+    assert out_ist["cutoff_searchable"] == 5
+    assert out_ist["last_cycle"]["unevaluated"] == []
+    await db.close()
+
+
+async def test_sonarr_skipped_missing_survives_cutoff_data_fault(tmp_path):
+    """Revision 2/D-05: a cutoff-side data fault never clears a skipped missing queue's stamps."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_tags = AsyncMock(return_value=[])
+    client.get_wanted_missing = AsyncMock(return_value=[
+        _make_tagged_sonarr_episode(series_id=100, season_number=1, series_title="Show A", episode_id=1),
+    ])
+    client.get_wanted_cutoff = AsyncMock(return_value=[
+        {
+            "id": 2,
+            "seriesId": 200,
+            "seasonNumber": 1,
+            "monitored": True,
+            "airDateUtc": "2025-01-01T00:00:00Z",
+            "series": "garbage",
+        },
+    ])
+    client.search_season = AsyncMock()
+
+    state = _make_test_state()
+    ist = state["sonarr"]["Default"]
+    ist["missing_eligible"] = 7
+    ist["missing_searchable"] = 3
+    ist["missing_searched"] = ["10:1"]
+    ist["cutoff_searchable"] = 2
+    ist["scoped_count_tags"] = {"missing": "gone", "cutoff": "c"}
+
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=True,
+        search_missing_count=10, search_cutoff_count=10,
+        missing_tag="gone",
+    )
+    settings = _cycle_settings(missing_count=10, cutoff_count=10)
+
+    result = await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    assert client.search_season.call_count == 0
+    out_ist = result["sonarr"]["Default"]
+    assert out_ist["missing_eligible"] == 7
+    assert out_ist["missing_searchable"] == 3
+    assert out_ist["missing_searched"] == ["10:1"]
+    assert out_ist["cutoff_searchable"] == 2
+    assert out_ist["scoped_count_tags"] == {"missing": "gone", "cutoff": "c"}
+    assert out_ist["last_cycle"]["grade"] == "failed"
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: _resolve_tag_scope (TAGSCOPE-01..03, D-01..05, OQ1)
+# ---------------------------------------------------------------------------
+
+
+def _tag_scope_instance_config(
+    *,
+    missing_tag: str = "",
+    cutoff_tag: str = "",
+    missing_count: int = 5,
+    cutoff_count: int = 5,
+) -> InstanceConfig:
+    """Build an InstanceConfig for _resolve_tag_scope unit tests."""
+    return InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=True,
+        search_missing_count=missing_count, search_cutoff_count=cutoff_count,
+        missing_tag=missing_tag, cutoff_tag=cutoff_tag,
+    )
+
+
+async def test_resolve_tag_scope_no_tags_configured_never_fetches():
+    """Neither queue has a tag configured -- fetch_tags is never awaited, nothing unresolved."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    ist["tag_warnings"] = [{"tag": "stale", "field": "missing"}]
+    ist["unresolved_tag_scopes"] = {"missing": "old"}
+    tally = CycleTally()
+    fetch_tags = AsyncMock()
+    instance_config = _tag_scope_instance_config()
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    fetch_tags.assert_not_awaited()
+    assert scope.missing_tag_id is None
+    assert scope.cutoff_tag_id is None
+    assert scope.missing_unresolved is False
+    assert scope.cutoff_unresolved is False
+    assert ist["tag_warnings"] == []
+    assert ist["unresolved_tag_scopes"] == {}
+
+
+async def test_resolve_tag_scope_both_resolve():
+    """Both configured tags resolve -- no warnings, no unevaluated entries, no unresolved markers."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[Tag(id=5, label="4k"), Tag(id=6, label="upgrade")])
+    instance_config = _tag_scope_instance_config(missing_tag="4K ", cutoff_tag="upgrade")
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    assert scope.missing_tag_id == 5
+    assert scope.cutoff_tag_id == 6
+    assert scope.missing_unresolved is False
+    assert scope.cutoff_unresolved is False
+    assert ist["tag_warnings"] == []
+    assert tally.unevaluated == []
+    assert ist["unresolved_tag_scopes"] == {}
+
+
+async def test_resolve_tag_scope_missing_not_found_active():
+    """Configured tag is not in the tag list -- missing queue unresolved, warned, graded."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[Tag(id=1, label="other")])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", missing_count=5, cutoff_count=0)
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+            app_label="Radarr", tally=tally,
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert scope.missing_unresolved is True
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+    assert tally.unevaluated == [{"queue": "missing", "reason": "tag 'gone' not found"}]
+    log_output = sink.getvalue()
+    assert "Missing queue skipped" in log_output
+    assert "not found" in log_output
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_resolve_tag_scope_fetch_failure_active_both_queues():
+    """Tag-list fetch itself fails -- both configured queues unresolved with fetch_failed reason."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(side_effect=httpx.ConnectError("boom apikey=SECRET123"))
+    instance_config = _tag_scope_instance_config(missing_tag="a", cutoff_tag="b")
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        scope = await _resolve_tag_scope(
+            instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+            app_label="Radarr", tally=tally,
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert scope.missing_unresolved is True
+    assert scope.cutoff_unresolved is True
+    assert len(ist["tag_warnings"]) == 2
+    assert all(w["reason"] == "fetch_failed" for w in ist["tag_warnings"])
+    assert len(tally.unevaluated) == 2
+    assert all(entry["reason"] == "couldn't load tags" for entry in tally.unevaluated)
+    log_output = sink.getvalue()
+    assert "Failed to fetch tags" in log_output
+    serialized = repr(ist["tag_warnings"]) + repr(tally.unevaluated) + repr(ist["unresolved_tag_scopes"])
+    assert "boom" not in serialized
+    assert "SECRET123" not in serialized
+    assert ist["unresolved_tag_scopes"] == {"missing": "a", "cutoff": "b"}
+
+
+async def test_resolve_tag_scope_inactive_queue_unresolved_no_warning_no_grade():
+    """D-04/OQ1: an inactive queue's unresolved tag freezes counts but never warns or grades."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", missing_count=0, cutoff_count=5)
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    assert scope.missing_unresolved is True
+    assert ist["tag_warnings"] == []
+    assert tally.unevaluated == []
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+async def test_resolve_tag_scope_tally_none_still_warns():
+    """Refresh-mode call (tally=None) still records the warning without raising."""
+    from triggarr.search.engine import _resolve_tag_scope
+
+    ist = _make_test_state()["radarr"]["Default"]
+    fetch_tags = AsyncMock(return_value=[])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", missing_count=5, cutoff_count=0)
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=None,
+    )
+
+    assert scope.missing_unresolved is True
+    assert ist["tag_warnings"] == [{"tag": "gone", "field": "missing", "reason": "not_found"}]
+
+
+async def test_resolve_tag_scope_one_queue_resolves_other_not():
+    """Independent per-queue resolution: one tag resolves while the other doesn't."""
+    from triggarr.search.engine import _resolve_tag_scope
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    tally = CycleTally()
+    fetch_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
+    instance_config = _tag_scope_instance_config(missing_tag="gone", cutoff_tag="4k")
+
+    scope = await _resolve_tag_scope(
+        instance_config=instance_config, fetch_tags=fetch_tags, ist=ist,
+        app_label="Radarr", tally=tally,
+    )
+
+    assert scope.missing_unresolved is True
+    assert scope.cutoff_unresolved is False
+    assert scope.cutoff_tag_id == 5
+    assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 79: _stamp_scoped_counts
+# ---------------------------------------------------------------------------
+
+
+def test_stamp_scoped_counts_creates_and_preserves_other_field():
+    from triggarr.search.engine import _stamp_scoped_counts
+
+    ist = _make_test_state()["radarr"]["Default"]
+    assert "scoped_count_tags" not in ist
+
+    _stamp_scoped_counts(ist, "missing", "4k")
+    assert ist["scoped_count_tags"] == {"missing": "4k"}
+
+    _stamp_scoped_counts(ist, "cutoff", None)
+    assert ist["scoped_count_tags"] == {"missing": "4k", "cutoff": None}
+
+
+def test_stamp_scoped_counts_replaces_non_dict_value():
+    from triggarr.search.engine import _stamp_scoped_counts
+
+    ist = _make_test_state()["radarr"]["Default"]
+    ist["scoped_count_tags"] = "garbage"
+
+    _stamp_scoped_counts(ist, "missing", "4k")
+
+    assert ist["scoped_count_tags"] == {"missing": "4k"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 79-04: shared _finish_both_inactive_unreachable / _cap_and_log helpers
+# ---------------------------------------------------------------------------
+
+
+def test_finish_both_inactive_unreachable_marks_unreachable_and_grades_nothing_needed():
+    from triggarr.search.engine import _finish_both_inactive_unreachable
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["sonarr"]["Default"]
+    tally = CycleTally()
+    instance_config = InstanceConfig(
+        url="http://sonarr:8989", api_key="test-key", enabled=False,
+        search_missing_count=0, search_cutoff_count=0,
+    )
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        _finish_both_inactive_unreachable(
+            ist=ist, tally=tally, instance_config=instance_config, app_label="Sonarr",
+        )
+    finally:
+        logger.remove(handler_id)
+
+    assert ist["connected"] is False
+    assert ist["unreachable_since"] is not None
+    assert ist["last_cycle"]["grade"] == "nothing_needed"
+    log_output = sink.getvalue()
+    assert (
+        "Sonarr: both queues inactive and neither could be fetched -- "
+        "marked unreachable; not graded Failed"
+    ) in log_output
+
+
+def test_finish_both_inactive_unreachable_preserves_existing_unreachable_since():
+    from triggarr.search.engine import _finish_both_inactive_unreachable
+    from triggarr.search.outcome import CycleTally
+
+    ist = _make_test_state()["radarr"]["Default"]
+    ist["unreachable_since"] = "2025-01-01T00:00:00Z"
+    tally = CycleTally()
+    instance_config = InstanceConfig(
+        url="http://radarr:7878", api_key="test-key", enabled=False,
+        search_missing_count=0, search_cutoff_count=0,
+    )
+
+    _finish_both_inactive_unreachable(
+        ist=ist, tally=tally, instance_config=instance_config, app_label="Radarr",
+    )
+
+    assert ist["unreachable_since"] == "2025-01-01T00:00:00Z"
+
+
+def test_cap_and_log_returns_cap_batch_sizes_result():
+    from triggarr.search.engine import _cap_and_log
+
+    assert _cap_and_log(
+        app_label="Radarr", missing_configured=5, cutoff_configured=5, hard_max=4,
+    ) == cap_batch_sizes(5, 5, 4)
+    assert _cap_and_log(
+        app_label="Radarr", missing_configured=5, cutoff_configured=5, hard_max=0,
+    ) == (5, 5)
+
+
+def test_cap_and_log_logs_only_when_capped():
+    from triggarr.search.engine import _cap_and_log
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="DEBUG")
+    try:
+        _cap_and_log(app_label="Lidarr", missing_configured=5, cutoff_configured=5, hard_max=4)
+        _cap_and_log(app_label="Lidarr", missing_configured=1, cutoff_configured=1, hard_max=10)
+        _cap_and_log(app_label="Lidarr", missing_configured=5, cutoff_configured=5, hard_max=0)
+    finally:
+        logger.remove(handler_id)
+
+    output = sink.getvalue()
+    assert "Lidarr: Hard max 4 applied -- missing=2, cutoff=2" in output
+    assert output.count("Hard max") == 1

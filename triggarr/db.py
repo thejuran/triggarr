@@ -373,6 +373,10 @@ async def insert_search_entry(
             pending row count is already >= PENDING_CAP_MULTIPLIER *
             max_rows. The insert is rejected; existing pending rows are
             NOT evicted (eviction would lose tracking semantics).
+        Exception: any database error raised by the INSERT, the prune
+            DELETE, or the commit propagates after the transaction is
+            rolled back, so no partial write stays pending on the shared
+            connection (R-08).
 
     Args:
         db: Open aiosqlite connection.
@@ -420,26 +424,55 @@ async def insert_search_entry(
             )
 
     timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    await db.execute(
-        "INSERT INTO search_history "
-        "(timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, missing_count, instance_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, missing_count, instance_id),
-    )
-    # Tracking-aware pruning (DEBT-03): only prune resolved rows, preserve pending (outcome='searched')
-    await db.execute(
-        """
-        DELETE FROM search_history
-        WHERE COALESCE(outcome, 'searched') != 'searched'
-        AND id NOT IN (
-            SELECT id FROM search_history
-            WHERE COALESCE(outcome, 'searched') != 'searched'
-            ORDER BY id DESC LIMIT ?
+    try:
+        await db.execute(
+            "INSERT INTO search_history "
+            "(timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, "
+            "missing_count, instance_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                timestamp, app, queue_type, item_name, outcome, detail,
+                item_id, season_number, missing_count, instance_id,
+            ),
         )
-        """,
-        (max_rows,),
-    )
-    await db.commit()
+        # Tracking-aware pruning (DEBT-03): only prune resolved rows, preserve pending (outcome='searched')
+        await db.execute(
+            """
+            DELETE FROM search_history
+            WHERE COALESCE(outcome, 'searched') != 'searched'
+            AND id NOT IN (
+                SELECT id FROM search_history
+                WHERE COALESCE(outcome, 'searched') != 'searched'
+                ORDER BY id DESC LIMIT ?
+            )
+            """,
+            (max_rows,),
+        )
+        await db.commit()
+    except Exception as exc:
+        # R-08: any failure between the INSERT and the commit leaves the
+        # transaction open on the shared connection; roll it back before
+        # propagating so the next caller's insert can't commit this one's
+        # row too, and so the pending-cap check above only ever counts
+        # committed rows. Exception (not just aiosqlite.Error) because a
+        # driver-thread OSError leaves the same open transaction.
+        # asyncio.CancelledError is a BaseException and is intentionally
+        # not caught here -- awaiting a rollback during cancellation is
+        # unsafe, and closing the connection at shutdown discards an
+        # uncommitted SQLite transaction anyway.
+        try:
+            await db.rollback()
+        except Exception as rollback_exc:
+            logger.error(
+                "search_history rollback failed after insert error for {app}/{instance_id} {item_name!r}: "
+                "{rollback_exc} (original: {exc_type})",
+                app=app,
+                instance_id=instance_id,
+                item_name=item_name,
+                rollback_exc=rollback_exc,
+                exc_type=type(exc).__name__,
+            )
+        raise
 
 
 async def get_recent_searches(

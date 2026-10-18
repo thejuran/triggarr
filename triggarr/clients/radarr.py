@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from pydantic import SecretStr
 
 from triggarr.clients.base import ArrClient
 from triggarr.models.arr import GrabEvent
@@ -17,7 +18,7 @@ class RadarrClient(ArrClient):
     endpoint paths for wanted/missing and wanted/cutoff movie lists.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, page_size: int = 50) -> None:
+    def __init__(self, base_url: str, api_key: SecretStr, timeout: float = 30.0, page_size: int = 50) -> None:
         super().__init__(base_url, api_key, timeout, page_size)
         self._app_name = "Radarr"
 
