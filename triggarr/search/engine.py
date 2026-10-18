@@ -775,8 +775,10 @@ def _clear_faulted_scoped_counts(
     resolution (``scope is None``). Only a queue whose tag scope RESOLVED
     this refresh has its listed fields cleared to None. Never reads or
     writes ``ist["scoped_count_tags"]`` or ``ist["unresolved_tag_scopes"]``
-    -- the card already treats a None count as unknown regardless of the
-    stamp.
+    -- the card (``routes._scoped_count_unknown``) shows a cleared scoped
+    count as unknown for a tag-scoped queue, never the raw whole-library
+    count. An untagged queue's cleared count falls back to the raw count,
+    which is that queue's real scope.
     """
     missing_preserved = (scope is not None and scope.missing_unresolved) or (
         scope is None and bool(instance_config.missing_tag)

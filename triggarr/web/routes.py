@@ -306,9 +306,10 @@ def _scoped_count_unknown(
 
     When ``configured_tags`` is given (the card route passes the instance's
     current config), a resolved queue in ``stamped_fields`` with a configured
-    tag shows its saved scoped count only if it is stamped with that tag. A
-    count computed under a previous tag, or a legacy unstamped count, stays
-    unknown until a cycle or refresh recomputes it under the current tag.
+    tag shows its saved scoped count only if it is stamped with that tag and
+    is a number. A count computed under a previous tag, a legacy unstamped
+    count, or a count cleared by a refresh data fault stays unknown (never the
+    raw whole-library fallback) until a cycle or refresh recomputes it.
 
     Everything read here comes from persisted state.json (possibly legacy or
     tampered) and is validated before use -- never trusted by shape.
@@ -346,7 +347,10 @@ def _scoped_count_unknown(
     for field in ("missing", "cutoff"):
         if field not in unresolved:
             configured = configured_tags.get(field) if configured_tags else None
-            result[field] = bool(configured) and field in stamped_fields and stamps.get(field) != configured
+            if not configured or field not in stamped_fields:
+                result[field] = False
+            else:
+                result[field] = stamps.get(field) != configured or not isinstance(scoped_values[field], int)
             continue
         trusted = stamps.get(field) == unresolved[field] and isinstance(scoped_values[field], int)
         result[field] = not trusted

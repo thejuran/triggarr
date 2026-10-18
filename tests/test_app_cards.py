@@ -1092,3 +1092,18 @@ def test_resolved_tag_card_hides_count_from_previous_tag(client, test_app):
     text = html.unescape(response.text)
     assert "0 of —" in text
     assert "0 of 3" not in text
+
+
+def test_resolved_tag_card_cleared_scoped_count_never_shows_whole_library(client, test_app):
+    """A refresh data fault clears a resolved tagged queue's scoped count; the card shows '—', not the raw count."""
+    cfg = test_app.state.settings.radarr["Default"]
+    test_app.state.settings.radarr["Default"] = cfg.model_copy(update={"missing_tag": "4k"})
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_count"] = 500
+    test_app.state.triggarr_state["radarr"]["Default"]["missing_eligible"] = None
+    test_app.state.triggarr_state["radarr"]["Default"]["scoped_count_tags"] = {"missing": "4k"}
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = html.unescape(response.text)
+    assert "0 of 500" not in text
+    assert "0 of —" in text
