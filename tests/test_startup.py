@@ -327,6 +327,48 @@ async def test_detect_api_version_parses_v4() -> None:
     assert result == "v4"
 
 
+async def test_detect_api_version_parses_v5() -> None:
+    """SonarrClient.detect_api_version returns 'v5' for v5 version strings (SONARRV5-01)."""
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"version": "5.0.0.2569"})
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
+        sonarr._client = client
+        result = await sonarr.detect_api_version()
+
+    assert result == "v5"
+
+
+async def test_detect_api_version_v5_keeps_v3_routes() -> None:
+    """Reporting v5 never changes which API routes are called (SONARRV5-01, spec v5 addendum)."""
+    requested: list[tuple[str, str | None]] = []
+
+    async def _handler(request: httpx.Request) -> httpx.Response:
+        requested.append((request.url.path, request.headers.get("X-Api-Key")))
+        if request.url.path == "/api/v3/system/status":
+            return httpx.Response(200, json={"version": "5.0.0.2569"})
+        if request.url.path == "/api/v3/history/series":
+            return httpx.Response(200, json=[])
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(_handler)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers={"X-Api-Key": "fake-key"}
+    ) as client:
+        sonarr = SonarrClient("http://test", SecretStr("fake-key"))
+        sonarr._client = client
+        version = await sonarr.detect_api_version()
+        await sonarr.get_grab_history(series_id=10)
+
+    assert version == "v5"
+    assert requested, "expected at least one request to be recorded"
+    assert all(path.startswith("/api/v3/") for path, _ in requested)
+    assert all(api_key == "fake-key" for _, api_key in requested)
+
+
 async def test_detect_api_version_handles_error() -> None:
     """SonarrClient.detect_api_version falls back to 'unknown' on error."""
 
@@ -581,10 +623,10 @@ async def test_validate_connections_multi_sonarr_returns_both() -> None:
 
 
 async def test_detect_api_version_future_major() -> None:
-    """detect_api_version returns 'unknown' for future major version 5.x (API-03, D-17)."""
+    """detect_api_version returns 'unknown' for future major version 6.x (API-03, D-17, SONARRV5-01)."""
 
     async def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"version": "5.0.0.100"})
+        return httpx.Response(200, json={"version": "6.0.0.100"})
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -722,10 +764,10 @@ async def test_detect_api_version_non_string_version_list() -> None:
 
 
 async def test_detect_api_version_unrecognized_major_reports_unknown() -> None:
-    """detect_api_version reports 'unknown' for an unrecognized major and names the reply as such (D-17)."""
+    """detect_api_version reports 'unknown' for an unrecognized major (6.x), names the reply so (D-17, SONARRV5-01)."""
 
     async def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"version": "5.0.0.2569"})
+        return httpx.Response(200, json={"version": "6.0.0.2569"})
 
     transport = httpx.MockTransport(_handler)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
