@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.12.0 (Unreleased)
+
+* Upgrade notes:
+
+  * Tag-scoped queues no longer fall back to searching your whole library. If a queue's configured tag can't be found in Radarr, Sonarr, or Lidarr (for example a stale or mistyped tag name), or the tag list can't be loaded, Triggarr now skips that queue instead. The dashboard card names the skipped queue and the reason, and a skipped queue that is turned on makes the cycle grade Partial or Failed, which counts toward the consecutive-failure alert. After upgrading, check each instance's tags and fix or clear any tag that no longer exists. A tag you create in the *arr app is picked up on the next cycle.
+
+  * Right after upgrading, a tag-scoped queue's progress line shows "—" instead of a number until its first search cycle or count refresh under this version. Counts saved by earlier versions can't be confirmed to match the queue's tag, so Triggarr doesn't display them.
+
 ## v2.11.0 (2026-06-04)
 
 Smarter search ordering — Triggarr now prioritizes items it has never searched before.
