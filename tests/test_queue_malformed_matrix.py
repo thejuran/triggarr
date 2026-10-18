@@ -465,6 +465,171 @@ async def test_naive_date_ignored_where_no_filter_reads_it(tmp_path, app, queue,
 
 
 # ---------------------------------------------------------------------------
+# Eligibility first: a field is validated only where the next step reads it
+# ---------------------------------------------------------------------------
+
+# Every queue drops unmonitored records before it reads anything else, and a
+# record another safe check already excluded (out of tag scope, not yet aired,
+# not yet released) never reaches the steps that read its other fields. Such a
+# record must not be counted as malformed for a field nothing reads. A record
+# that is not an object is still malformed: its eligibility cannot be read.
+# (app, queue, kind, tag-scoped)
+_UNREAD_CASES = [
+    *[(app, queue, kind, False) for app in APPS for queue in QUEUES for kind in ("id-string", "id-missing")],
+    *[(app, queue, "tags-null", True) for app in APPS for queue in QUEUES],
+    ("sonarr", "missing", "nested-null", False),
+    ("sonarr", "cutoff", "nested-null", False),
+    ("lidarr", "missing", "nested-null", True),
+    ("lidarr", "cutoff", "nested-null", True),
+    ("sonarr", "missing", "naive-date", False),
+    ("sonarr", "cutoff", "naive-date", False),
+    ("radarr", "missing", "naive-date", False),
+]
+
+
+def _bad_record(app: str, rid: int, kind: str, *, monitored: bool) -> dict:
+    record = _record(app, rid)
+    record["monitored"] = monitored
+    id_field = "seriesId" if app == "sonarr" else "id"
+    if kind == "id-string":
+        record[id_field] = "abc"
+    elif kind == "id-missing":
+        del record[id_field]
+    elif kind == "tags-null":
+        _set_tags(app, record, None)
+    elif kind == "nested-null":
+        record["series" if app == "sonarr" else "artist"] = None
+    elif kind == "naive-date":
+        record["airDateUtc" if app == "sonarr" else "digitalRelease"] = "2020-01-01T00:00:00"
+    return record
+
+
+def _ids(cases):
+    return [f"{a}-{q}-{k}-{'tagged' if t else 'untagged'}" for a, q, k, t in cases]
+
+
+@pytest.mark.parametrize(("app", "queue", "kind", "tagged"), _UNREAD_CASES, ids=_ids(_UNREAD_CASES))
+async def test_unmonitored_malformed_record_not_counted(tmp_path, app, queue, kind, tagged):
+    """An unmonitored record is dropped by the monitored check before any of its
+    other fields are read, so it is never counted as malformed: valid records
+    are searched, the grade stays Success and the monitored count excludes it."""
+    records = [_record(app, 1), _bad_record(app, 2, kind, monitored=False), _record(app, 3)]
+    fake = _FakeArr({queue: _page(records), _OTHER[queue]: _page(_other_queue_record(app))})
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=queue if tagged else None)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == [1, 3, 90]
+    assert rec["malformed_by_queue"] == {}
+    assert rec["unevaluated"] == []
+    assert rec["eligible"][queue] == 2
+    assert rec["grade"] == "success"
+    if queue == "missing" and app != "sonarr":
+        assert ist["missing_monitored"] == 2
+        assert ist["missing_eligible"] == 2
+
+
+@pytest.mark.parametrize(("app", "queue", "kind", "tagged"), _UNREAD_CASES, ids=_ids(_UNREAD_CASES))
+async def test_monitored_malformed_record_still_counted_beside_unmonitored(tmp_path, app, queue, kind, tagged):
+    """The same malformed shape on a MONITORED record is still skipped and
+    counted once (the unmonitored copy is not), valid records are still
+    searched, the grade is Partial, and the malformed record is not counted as
+    monitored."""
+    records = [
+        _record(app, 1),
+        _bad_record(app, 2, kind, monitored=True),
+        _bad_record(app, 4, kind, monitored=False),
+        _record(app, 3),
+    ]
+    fake = _FakeArr({queue: _page(records), _OTHER[queue]: _page(_other_queue_record(app))})
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=queue if tagged else None)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == [1, 3, 90]
+    assert rec["malformed_by_queue"] == {queue: 1}
+    assert rec["unevaluated"] == []
+    assert rec["eligible"][queue] == 2
+    assert rec["grade"] == "partial"
+    if queue == "missing" and app != "sonarr":
+        assert ist["missing_monitored"] == 2
+        assert ist["missing_eligible"] == 2
+
+
+@pytest.mark.parametrize("queue", QUEUES)
+@pytest.mark.parametrize("app", APPS)
+async def test_only_unmonitored_malformed_records_need_nothing(tmp_path, app, queue):
+    """A queue holding nothing but unmonitored records with a bad ID has no
+    work and nothing malformed to report: the cycle grades Nothing needed."""
+    fake = _FakeArr({queue: _page([_bad_record(app, 2, "id-string", monitored=False)]), _OTHER[queue]: _page([])})
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=None)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == []
+    assert rec["malformed_by_queue"] == {}
+    assert rec["grade"] == "nothing_needed"
+
+
+def _out_of_scope(app: str, rid: int) -> dict:
+    """A monitored record whose tags exclude it from a tag-scoped queue."""
+    return _set_tags(app, _record(app, rid), [])
+
+
+@pytest.mark.parametrize(
+    ("app", "queue", "tagged", "excluded", "expected_monitored"),
+    [
+        # Out of tag scope: tags are read, then nothing else.
+        ("radarr", "missing", True, lambda: {**_out_of_scope("radarr", 2), "id": "abc"}, 3),
+        ("radarr", "missing", True, lambda: {**_out_of_scope("radarr", 2), "digitalRelease": _NAIVE}, 3),
+        ("radarr", "cutoff", True, lambda: {**_out_of_scope("radarr", 2), "id": "abc"}, None),
+        ("lidarr", "missing", True, lambda: {**_out_of_scope("lidarr", 2), "id": "abc"}, 3),
+        ("lidarr", "cutoff", True, lambda: {**_out_of_scope("lidarr", 2), "id": "abc"}, None),
+        ("sonarr", "missing", True, lambda: {**_out_of_scope("sonarr", 2), "seriesId": "abc"}, None),
+        ("sonarr", "cutoff", True, lambda: {**_out_of_scope("sonarr", 2), "seasonNumber": 1.5}, None),
+        # Not yet released / aired: the date check excludes it before dispatch reads the ID.
+        (
+            "radarr", "missing", False,
+            lambda: {**_record("radarr", 2), "id": "abc",
+                     "digitalRelease": "2999-01-01T00:00:00Z", "physicalRelease": "2999-01-01T00:00:00Z"},
+            3,
+        ),
+        ("sonarr", "missing", False, lambda: {**_record("sonarr", 2), "seriesId": "abc",
+                                               "airDateUtc": "2999-01-01T00:00:00Z"}, None),
+        ("sonarr", "cutoff", False, lambda: {**_record("sonarr", 2), "seriesId": None, "airDateUtc": None}, None),
+    ],
+    ids=[
+        "radarr-missing-out-of-scope-bad-id", "radarr-missing-out-of-scope-naive-date",
+        "radarr-cutoff-out-of-scope-bad-id", "lidarr-missing-out-of-scope-bad-id",
+        "lidarr-cutoff-out-of-scope-bad-id", "sonarr-missing-out-of-scope-bad-series-id",
+        "sonarr-cutoff-out-of-scope-fractional-season", "radarr-missing-unreleased-bad-id",
+        "sonarr-missing-unaired-bad-series-id", "sonarr-cutoff-tba-null-series-id",
+    ],
+)
+async def test_record_excluded_by_earlier_check_not_counted(
+    tmp_path, app, queue, tagged, excluded, expected_monitored
+):
+    """A monitored record that an earlier safe check already excludes (tag
+    scope, release date, air date) is never read for the fields only later
+    steps use, so a bad ID or date on it is not counted as malformed. Saved
+    counts keep their meaning: an out-of-scope or unreleased movie is still a
+    monitored record, just not an eligible one."""
+    records = [_record(app, 1), excluded(), _record(app, 3)]
+    fake = _FakeArr({queue: _page(records), _OTHER[queue]: _page(_other_queue_record(app))})
+
+    ist = await _run(tmp_path, app, fake, tagged_queue=queue if tagged else None)
+    rec = ist["last_cycle"]
+
+    assert fake.searched() == [1, 3, 90]
+    assert rec["malformed_by_queue"] == {}
+    assert rec["eligible"][queue] == 2
+    assert rec["grade"] == "success"
+    if expected_monitored is not None:
+        assert ist["missing_monitored"] == expected_monitored
+        assert ist["missing_eligible"] == 2
+
+
+# ---------------------------------------------------------------------------
 # Truthful saved counts: a skipped malformed record is not a monitored record
 # ---------------------------------------------------------------------------
 
