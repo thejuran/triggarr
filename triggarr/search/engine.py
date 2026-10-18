@@ -75,11 +75,13 @@ def _lidarr_tags(item: dict) -> list[int]:
     return item.get("artist", {}).get("tags", [])
 
 
-def _split_malformed(items: list, nested_key: str) -> tuple[list[dict], list]:
+def _split_malformed(items: list, nested_key: str | None) -> tuple[list[dict], list]:
     """Split records into well-formed and malformed, per item (ROBUST-01/04).
 
     A record is malformed when it is not a dict, or when ``nested_key`` is
-    present with a non-dict value -- an explicit ``None`` included.
+    present with a non-dict value -- an explicit ``None`` included. With
+    ``nested_key=None`` only the record itself is checked (a non-dict record
+    is malformed; nested values are not inspected).
     ``.get(nested_key, {})`` only substitutes the default on a *missing*
     key, never on an explicit null value, so this checks the value's type
     directly instead of relying on a ``.get`` default (RESEARCH.md Pitfall
@@ -90,7 +92,8 @@ def _split_malformed(items: list, nested_key: str) -> tuple[list[dict], list]:
         items: Candidate records from an *arr API response (untrusted;
             arbitrary types may appear).
         nested_key: The nested-object key to validate (``"series"`` for
-            Sonarr, ``"artist"`` for Lidarr).
+            Sonarr, ``"artist"`` for Lidarr), or ``None`` to check only that
+            each record is an object.
 
     Returns:
         Tuple of (valid, skipped) -- ``valid`` holds every well-formed dict
@@ -103,7 +106,7 @@ def _split_malformed(items: list, nested_key: str) -> tuple[list[dict], list]:
         if not isinstance(item, dict):
             skipped.append(item)
             continue
-        if nested_key in item and not isinstance(item[nested_key], dict):
+        if nested_key is not None and nested_key in item and not isinstance(item[nested_key], dict):
             skipped.append(item)
             continue
         valid.append(item)
@@ -1531,9 +1534,15 @@ async def run_lidarr_cycle(
     # only path that ever reads "artist" (Pitfall 4) -- before the rest of
     # the chain runs (ROBUST-01); the try/except below is the backstop for
     # any other unexpected fault, mirroring the cutoff chain's existing
-    # guard. ---
+    # guard. A record that is not an object at all is skipped per item first,
+    # on every queue, tagged or not -- filter_monitored would otherwise raise
+    # on it and drop the whole queue (ROBUST-01). ---
     if missing is not None:
         try:
+            missing, skipped = _split_malformed(missing, None)
+            if skipped:
+                _log_malformed_skip("Lidarr", "missing", "record", skipped)
+                tally.record_malformed("missing", len(skipped))
             missing = filter_monitored(missing)
             ist["missing_monitored"] = len(missing)
             if scope.missing_tag_id is not None:
@@ -1565,9 +1574,14 @@ async def run_lidarr_cycle(
     # must not regress. On a fault the queue is left unprocessed (None):
     # never dispatched, its searched-log untouched, and -- when active --
     # marked unevaluated so the cycle can never grade Nothing needed
-    # searching (spec 3.1). ---
+    # searching (spec 3.1). A record that is not an object at all is skipped
+    # per item first, tagged or not, as on the missing side. ---
     if cutoff is not None:
         try:
+            cutoff, skipped = _split_malformed(cutoff, None)
+            if skipped:
+                _log_malformed_skip("Lidarr", "cutoff", "record", skipped)
+                tally.record_malformed("cutoff", len(skipped))
             cutoff = filter_monitored(cutoff)
             if scope.cutoff_tag_id is not None:
                 cutoff, skipped = _split_malformed(cutoff, "artist")
