@@ -43,7 +43,7 @@ from triggarr.clients.base import Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.config import _atomic_toml_write, _settings_to_dict, load_settings
+from triggarr.config import _atomic_toml_write, _settings_to_dict, load_settings, new_instance_id
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
@@ -683,6 +683,7 @@ async def save_settings(request: Request) -> RedirectResponse:
                     submitted_key = current_cfg.api_key
 
                 new_config[name][inst_name] = {
+                    "id": current_cfg.id if current_cfg else new_instance_id(),
                     "url": url,
                     "api_key": submitted_key,
                     "enabled": fields.get("enabled") == "on",
@@ -697,6 +698,7 @@ async def save_settings(request: Request) -> RedirectResponse:
             # Keep SecretStr objects; _settings_to_dict extracts for TOML write
             for inst_name, existing_cfg in current_instances.items():
                 new_config[name][inst_name] = {
+                    "id": existing_cfg.id,
                     "url": existing_cfg.url,
                     "api_key": existing_cfg.api_key,
                     "enabled": existing_cfg.enabled,
@@ -906,6 +908,7 @@ async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
     config_dict = _settings_to_dict(settings)
     config_dict[app_name][instance_name] = InstanceConfig().model_dump()
     config_dict[app_name][instance_name]["api_key"] = ""
+    config_dict[app_name][instance_name]["id"] = new_instance_id()
     try:
         new_settings = SettingsModel(**config_dict)
     except pydantic.ValidationError as exc:
