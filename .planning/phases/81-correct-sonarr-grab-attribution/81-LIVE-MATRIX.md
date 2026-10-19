@@ -86,6 +86,12 @@ The runbook's Step 4 text ("Set RSS Sync Interval back to 15, enable the triggar
 
 This directly conflicts with the owner's 2026-10-19 instruction: *"Never start any controlled search (schedule enable, series monitor, SeasonSearch) until the owner-run SEARCHES=on gate AND Deluge-destination check output ... show ALL ISOLATION CHECKS PASSED and DELUGE DESTINATIONS PASSED."* All three listed actions are exactly what Step 4 wants done first. No prep that would enable or fire a search was performed; this is reported as a checkpoint question rather than decided unilaterally. See the Task 1/2 checkpoint for the question and options put to the owner.
 
+### Owner decision: "Executor sets RSS, I run 1 cmd" (2026-10-19, interactive)
+
+Scope given: change only `sonarr-v5`'s global RSS Sync Interval via the sandbox API (never touch monitoring, never enable the `triggarr-test` `v5test` instance, never trigger a search); then hand the owner one combined command for `SEARCHES=on` + `deluge-check`; after the owner reports back, the executor verifies both files itself and only then (if both passed, accepting the existing Hacks S01 torrent for the Deluge check) proceeds to monitor Hacks Season 2 and enable the `v5test` instance for Task 2's controlled run. No post-grab Deluge re-check was requested.
+
+**Done:** `PUT /api/v3/config/indexer/1` against `sonarr-v5` (LAN `:8990`, never production `sonarr`) changed `rssSyncInterval` `0` → `15`, all other fields unchanged (`minimumAge`, `retention`, `maximumSize` all `0`, `id` `1`). Re-fetched `GET /api/v3/config/indexer` to confirm the value stuck. Confirmed immediately after: both series (`Hacks`, `That Mitchell and Webb Look`) still `monitored: false`; `triggarr-test`'s `/volume1/docker/v5test/triggarr/triggarr.toml` still has `enabled = false` for `[sonarr.v5test]`. No series was monitored, no instance was enabled, no search was triggered.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
