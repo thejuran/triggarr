@@ -3,7 +3,9 @@
      hx-trigger="every 30s"
      hx-swap="outerHTML"
      hx-include="[name='instance']"
-     class="grid grid-cols-2 {% if instance_app_type %}md:grid-cols-3{% else %}md:grid-cols-5{% endif %} gap-4 mb-4">
+     class="mb-4">
+
+  <div class="grid grid-cols-2 {% if instance_app_type %}md:grid-cols-3{% else %}md:grid-cols-5{% endif %} gap-4">
 
   <!-- Hero Grab Rate card — STAT-01, STAT-02, STAT-03, STAT-04 -->
   <div class="{% if instance_app_type %}md:col-span-1{% else %}md:col-span-2{% endif %} bg-triggarr-card border border-triggarr-border rounded-lg p-5 flex flex-col justify-between shadow-sm">
@@ -11,7 +13,7 @@
       <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Grab Rate</span>
       <i class="ph ph-chart-line-up text-lg text-triggarr-primary"></i>
     </div>
-    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-4">{% if stats.overall_rate is not none %}{{ "%.0f" | format(stats.overall_rate) }}<span class="text-2xl text-triggarr-muted">%</span>{% else %}&mdash;{% endif %}</div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-4">{% if stats.overall_rate is not none %}{{ "%.0f" | format(stats.overall_rate) }}<span class="text-2xl text-triggarr-muted">%</span>{% else %}&mdash;{% endif %}{% if stats.overall_rate_includes_historical %} <span class="text-[10px] font-normal text-triggarr-muted align-middle">Includes historical estimates</span>{% endif %}</div>
     <div class="flex items-center justify-between gap-4 mt-2">
       {% if stats.radarr_rate is not none %}
       <div class="flex-1">
@@ -21,7 +23,7 @@
       {% endif %}
       {% if stats.sonarr_rate is not none %}
       <div class="flex-1">
-        <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Sonarr</span><span>{{ "%.0f" | format(stats.sonarr_rate) }}%</span></div>
+        <div class="flex justify-between text-[10px] text-triggarr-muted mb-1"><span>Sonarr{% if stats.sonarr_rate_includes_historical %} <span class="text-triggarr-muted/80">(Includes historical estimates)</span>{% endif %}</span><span>{{ "%.0f" | format(stats.sonarr_rate) }}%</span></div>
         <div class="w-full h-1 bg-triggarr-bg rounded-full overflow-hidden"><div class="h-full bg-triggarr-sonarr rounded-full" style="width: {{ [0, [100, stats.sonarr_rate] | min] | max | int }}%"></div></div>
       </div>
       {% endif %}
@@ -63,6 +65,7 @@
       {% if stats.episodes_found is not none and stats.episodes_updated is not none %}
         {{ stats.episodes_found + stats.episodes_updated }}
       {% else %}&mdash;{% endif %}
+      {% if disclosure and disclosure.sonarr_lifetime_includes_historical %} <span class="text-[10px] font-normal text-triggarr-muted align-middle">Lifetime — includes historical estimates</span>{% endif %}
     </div>
     <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
       <span class="w-1.5 h-1.5 rounded-full bg-triggarr-sonarr opacity-80"></span>In Sonarr
@@ -94,10 +97,16 @@
       <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Next Scan</span>
       <i class="ph ph-clock-countdown text-lg text-triggarr-muted"></i>
     </div>
-    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ time_to_grab }}</div>
+    <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ time_to_grab }}{% if stats.avg_time_to_grab_includes_historical %} <span class="text-[10px] font-normal text-triggarr-muted align-middle">Includes historical estimates</span>{% endif %}</div>
     <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
       <i class="ph ph-calendar text-sm text-triggarr-primary"></i>Scheduled automatically
     </div>
   </div>
+
+  </div>
+
+  {% if disclosure and disclosure.show_cutover_note %}
+  <p class="text-xs text-triggarr-muted mt-2">Attribution corrected on {{ disclosure.cutover_date }}. Earlier results may include misattributed or double-counted grabs.</p>
+  {% endif %}
 
 </div>

@@ -2179,7 +2179,8 @@ def test_health_summary_disconnected(client, test_app):
 
 
 def test_stats_row_instance_filter(client, test_app):
-    """GET /partials/stats-row?instance=radarr/Default passes instance_id to get_dashboard_stats."""
+    """GET /partials/stats-row?instance=radarr/Default passes app + instance_stable_id to get_dashboard_stats."""
+    test_app.state.settings.radarr["Default"].id = "radarr-default-id"
     with patch("triggarr.web.routes.get_dashboard_stats", new_callable=AsyncMock) as mock_stats:
         mock_stats.return_value = {
             "overall_rate": None, "radarr_rate": None, "sonarr_rate": None, "lidarr_rate": None,
@@ -2191,7 +2192,8 @@ def test_stats_row_instance_filter(client, test_app):
         assert response.status_code == 200
         mock_stats.assert_awaited_once()
         call_kwargs = mock_stats.call_args
-        assert call_kwargs[1].get("instance_id") == "Default"
+        assert call_kwargs[1].get("app") == "Radarr"
+        assert call_kwargs[1].get("instance_stable_id") == "radarr-default-id"
 
 
 def test_stats_row_no_filter(client, test_app):

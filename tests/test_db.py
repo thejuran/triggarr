@@ -1355,6 +1355,269 @@ async def test_get_dashboard_stats_instance_scoped(tmp_path):
     await db.close()
 
 
+# ---------------------------------------------------------------------------
+# Phase 81 Plan 05: get_dashboard_stats app + stable-ID scoping, legacy
+# exclusion from rates (D-07), and per-metric historical flags (D-06)
+# ---------------------------------------------------------------------------
+
+
+async def _insert_cutover_row(db: aiosqlite.Connection, legacy_max_history_id: int) -> None:
+    """Insert an attribution_cutover row directly (the two pre-fix fact columns are unused by
+    get_dashboard_stats -- only legacy_max_history_id drives _LEGACY_MAX_ID_SQL)."""
+    await db.execute(
+        "INSERT INTO attribution_cutover "
+        "(id, cutover_at, legacy_max_history_id, any_pre_fix_sonarr_data, pre_fix_sonarr_lifetime) "
+        "VALUES (1, '2026-01-01T00:00:00Z', ?, 0, 0)",
+        (legacy_max_history_id,),
+    )
+    await db.commit()
+
+
+async def test_dashboard_stats_excludes_legacy_from_rates(tmp_path):
+    """Legacy pending Sonarr rows (pre-cutover 'searched'/'partial') leave both rate denominators (D-07)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="unresolved")  # id 2
+    await insert_search_entry(db, "Sonarr", "missing", "Show C", outcome="searched")  # id 3, legacy pending
+    await insert_search_entry(db, "Sonarr", "missing", "Show D", outcome="partial")  # id 4, legacy pending
+    await _insert_cutover_row(db, legacy_max_history_id=4)
+    await insert_search_entry(db, "Sonarr", "missing", "Show E", outcome="grabbed")  # id 5, post-cutover
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="unresolved")  # id 6
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate"] == pytest.approx(2 / 3 * 100)
+    assert stats["overall_rate"] == pytest.approx(2 / 4 * 100)
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id IN (3, 4) ORDER BY id") as cursor:
+        rows = await cursor.fetchall()
+    assert [row[0] for row in rows] == ["searched", "partial"]
+    await db.close()
+
+
+async def test_dashboard_stats_keeps_resolved_historical_rows(tmp_path):
+    """Resolved pre-cutover rows (not legacy pending) still count toward the rate."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="unresolved")  # id 2
+    await _insert_cutover_row(db, legacy_max_history_id=2)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate"] == pytest.approx(50.0)
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_rate(tmp_path):
+    """A resolved pre-fix Sonarr row trips both rate historical flags."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is True
+    assert stats["overall_rate_includes_historical"] is True
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_rate_false_when_only_legacy_pending_or_failed(tmp_path):
+    """When the only pre-fix Sonarr rows are legacy-pending or 'failed', both rate flags are False."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="searched")  # id 1, legacy pending
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="failed")  # id 2
+    await _insert_cutover_row(db, legacy_max_history_id=2)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is False
+    assert stats["overall_rate_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_ttg_only_grabbed(tmp_path):
+    """TTG flag stays False when the only pre-fix Sonarr row doesn't qualify for the TTG query."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="unresolved")  # id 1
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is True
+    assert stats["overall_rate_includes_historical"] is True
+    assert stats["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_ttg_true_when_grabbed_with_resolved_at(tmp_path):
+    """TTG flag is True when a pre-fix Sonarr row is grabbed and has a resolved_at timestamp."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["avg_time_to_grab_includes_historical"] is True
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_scoped_to_view(tmp_path):
+    """Historical flags are scoped by (app, instance_stable_id), not raised by an unrelated instance."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Show A", outcome="grabbed", instance_stable_id="sid-main",
+    )  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats_4k = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-4k")
+    assert stats_4k["sonarr_rate_includes_historical"] is False
+    assert stats_4k["overall_rate_includes_historical"] is False
+    assert stats_4k["avg_time_to_grab_includes_historical"] is False
+
+    stats_main = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-main")
+    assert stats_main["sonarr_rate_includes_historical"] is True
+    assert stats_main["overall_rate_includes_historical"] is True
+    assert stats_main["avg_time_to_grab_includes_historical"] is True
+    await db.close()
+
+
+async def test_dashboard_stats_shared_name_scoped_by_app(tmp_path):
+    """A Radarr instance and a Sonarr instance sharing the display name 'Default' never contaminate
+    each other's rates, lifetime totals or historical flags once scoped by app + stable ID (R3)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie A", outcome="unresolved",
+        instance_id="Default", instance_stable_id="sid-r",
+    )  # id 1
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Show A", outcome="grabbed",
+        instance_id="Default", instance_stable_id="sid-s",
+    )  # id 2
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 2", ("2026-01-02T00:00:00Z",))
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_stable_id = ?, movies_found = 0 "
+        "WHERE app = 'Radarr' AND instance_id = 'Default'", ("sid-r",),
+    )
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_stable_id = ?, episodes_found = 5 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'", ("sid-s",),
+    )
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=2)
+
+    stats_r = await get_dashboard_stats(db, app="Radarr", instance_stable_id="sid-r")
+    assert stats_r["overall_rate"] == 0.0
+    assert stats_r["radarr_rate"] == 0.0
+    assert stats_r["sonarr_rate"] is None
+    assert stats_r["episodes_found"] == 0
+    assert stats_r["overall_rate_includes_historical"] is False
+    assert stats_r["sonarr_rate_includes_historical"] is False
+    assert stats_r["avg_time_to_grab_includes_historical"] is False
+
+    stats_s = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-s")
+    assert stats_s["overall_rate"] == 100.0
+    assert stats_s["sonarr_rate"] == 100.0
+    assert stats_s["radarr_rate"] is None
+    assert stats_s["episodes_found"] == 5
+    assert stats_s["overall_rate_includes_historical"] is True
+    assert stats_s["sonarr_rate_includes_historical"] is True
+    assert stats_s["avg_time_to_grab_includes_historical"] is True
+
+    stats_combined = await get_dashboard_stats(db, instance_id="Default")
+    assert stats_combined["overall_rate"] == 50.0
+    await db.close()
+
+
+async def test_dashboard_stats_follows_stable_id_after_rename(tmp_path):
+    """Displayed figures follow the stable ID through a rename, and a different server reusing the
+    old name gets none of the original history or flags (S1)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Old Show", outcome="grabbed",
+        instance_id="Old", instance_stable_id="sid-a",
+    )  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_id = 'Old', instance_stable_id = 'sid-a', episodes_found = 7 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'"
+    )
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats_a = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-a")
+    assert stats_a["episodes_found"] == 7
+    assert stats_a["sonarr_rate"] == 100.0
+    assert stats_a["sonarr_rate_includes_historical"] is True
+    assert stats_a["overall_rate_includes_historical"] is True
+    assert stats_a["avg_time_to_grab_includes_historical"] is True
+
+    stats_c = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-c")
+    assert stats_c["episodes_found"] == 0
+    assert stats_c["sonarr_rate"] is None
+    assert stats_c["sonarr_rate_includes_historical"] is False
+    assert stats_c["overall_rate_includes_historical"] is False
+    assert stats_c["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_ignores_unassociated_rows_per_instance(tmp_path):
+    """Unassociated rows (NULL/'' stable id) count only in the all-apps call, never per-instance (S1)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Removed Show", outcome="grabbed")
+    await db.commit()
+
+    stats_all = await get_dashboard_stats(db)
+    assert stats_all["sonarr_rate"] == 100.0
+
+    stats_scoped = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-anything")
+    assert stats_scoped["sonarr_rate"] is None
+    await db.close()
+
+
+async def test_dashboard_stats_scope_args_validated(tmp_path):
+    """Invalid scope-argument combinations raise ValueError."""
+    db, db_path = await _init_test_db(tmp_path)
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, app="Sonarr")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, instance_stable_id="sid-a")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, app="Sonarr", instance_stable_id="")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, instance_id="Default", app="Sonarr")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, instance_id="Default", instance_stable_id="sid-a")
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_ignore_other_apps(tmp_path):
+    """Only pre-fix Radarr rows existing never trips any Sonarr-only historical flag."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="grabbed")  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is False
+    assert stats["overall_rate_includes_historical"] is False
+    assert stats["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_no_cutover_no_flags(tmp_path):
+    """With no cutover row recorded, historical flags are False and rates compute exactly as before Phase 81."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="unresolved")
+    await db.commit()
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate"] == 50.0
+    assert stats["sonarr_rate_includes_historical"] is False
+    assert stats["overall_rate_includes_historical"] is False
+    assert stats["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
 async def test_migration_v6_adds_instance_id_column(tmp_path):
     """Migration v6 adds instance_id column with 'Default' as default value."""
     db, db_path = await _init_test_db(tmp_path)

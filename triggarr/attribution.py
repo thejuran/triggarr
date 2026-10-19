@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 from loguru import logger
@@ -156,3 +157,89 @@ async def ensure_cutover_recorded(db: aiosqlite.Connection, sonarr_instances: Ma
         any_pre_fix=any_pre_fix_sonarr_data,
         count=instance_count,
     )
+
+
+async def get_attribution_disclosure(
+    db: aiosqlite.Connection, *, view_app: str | None = None, sonarr_stable_id: str | None = None,
+) -> dict[str, Any]:
+    """Resolve the cutover note and lifetime-label booleans for one dashboard view.
+
+    These are two independent facts, each read from its own persisted
+    column (R4): the note follows ``any_pre_fix_sonarr_data`` /
+    ``has_pre_fix_data`` (any pre-fix Sonarr data exists at all, including
+    frozen legacy pending rows); the lifetime label follows
+    ``pre_fix_sonarr_lifetime`` / ``lifetime_includes_pre_fix`` (pre-fix
+    data actually contributed to a lifetime total). A legacy-pending-only
+    instance can show the note without ever showing the lifetime label.
+
+    Args:
+        db: Open aiosqlite connection.
+        view_app: The dashboard view's app type ("radarr", "sonarr",
+            "lidarr") or None for the all-apps view. None reads the global
+            facts (which can include retained data from removed
+            instances, D-08); "sonarr" reads the per-instance facts for
+            sonarr_stable_id; "radarr"/"lidarr" never disclose at all
+            (D-02), since neither app's data is ever pre-fix Sonarr data.
+        sonarr_stable_id: The selected Sonarr instance's stable ID, only
+            meaningful when view_app == "sonarr". Looked up from settings
+            by the caller, never taken from the request (T-81-23).
+
+    Returns:
+        Dict with keys: show_cutover_note, cutover_date ("YYYY-MM-DD" or
+        None), sonarr_lifetime_includes_historical.
+    """
+    async with db.execute(
+        "SELECT cutover_at, any_pre_fix_sonarr_data, pre_fix_sonarr_lifetime FROM attribution_cutover WHERE id = 1"
+    ) as cursor:
+        cutover_row = await cursor.fetchone()
+
+    if cutover_row is None:
+        return {
+            "show_cutover_note": False,
+            "cutover_date": None,
+            "sonarr_lifetime_includes_historical": False,
+        }
+
+    cutover_at, global_any_pre_fix, global_lifetime_pre_fix = cutover_row
+
+    if view_app is not None and view_app != "sonarr":
+        # Radarr/Lidarr views never disclose, even when the global flag is
+        # set (D-02) -- neither app's data is ever pre-fix Sonarr data.
+        return {
+            "show_cutover_note": False,
+            "cutover_date": None,
+            "sonarr_lifetime_includes_historical": False,
+        }
+
+    if view_app == "sonarr":
+        if not sonarr_stable_id:
+            return {
+                "show_cutover_note": False,
+                "cutover_date": None,
+                "sonarr_lifetime_includes_historical": False,
+            }
+        async with db.execute(
+            "SELECT has_pre_fix_data, lifetime_includes_pre_fix FROM sonarr_instance_pre_fix "
+            "WHERE instance_stable_id = ?",
+            (sonarr_stable_id,),
+        ) as cursor:
+            instance_row = await cursor.fetchone()
+        if instance_row is None:
+            return {
+                "show_cutover_note": False,
+                "cutover_date": None,
+                "sonarr_lifetime_includes_historical": False,
+            }
+        show_cutover_note = bool(instance_row[0])
+        lifetime_includes_historical = bool(instance_row[1])
+    else:
+        # All-apps view (view_app is None): read the global facts, which
+        # include retained lifetime_stats from removed instances (D-08).
+        show_cutover_note = bool(global_any_pre_fix)
+        lifetime_includes_historical = bool(global_lifetime_pre_fix)
+
+    return {
+        "show_cutover_note": show_cutover_note,
+        "cutover_date": cutover_at[:10] if show_cutover_note else None,
+        "sonarr_lifetime_includes_historical": lifetime_includes_historical,
+    }
