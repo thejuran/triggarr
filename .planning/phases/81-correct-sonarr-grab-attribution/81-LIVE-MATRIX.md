@@ -20,16 +20,20 @@ Recorded once per sandbox, before and after each live run. Empty until Plan 07/0
 
 | Field | Before run | After run |
 |---|---|---|
-| Triggarr commit SHA (full) | _(empty)_ | _(empty)_ |
-| Triggarr image tag | _(empty)_ | _(empty)_ |
-| Triggarr image ID | _(empty)_ | _(empty)_ |
-| Triggarr repo digest | _(empty)_ | _(empty)_ |
-| Container start time | _(empty)_ | _(empty)_ |
-| Sonarr version / branch | _(empty)_ | _(empty)_ |
-| Sonarr runtime fingerprint (.NET / SQLite) | _(empty)_ | _(empty)_ |
-| Date | _(empty)_ | _(empty)_ |
+| Triggarr commit SHA (full) | `a139879794c621692593346f35b3c98700b9b222` | _(empty — fill after Task 2's full matrix run)_ |
+| Triggarr image tag | `triggarr:phase81-a139879794` | _(empty)_ |
+| Triggarr image ID | `sha256:72e6b23f0697f3748844025ce9dcbc9dff63dbaf8d6852037e986a7859add219` | _(empty)_ |
+| Triggarr repo digest | n/a — local NAS build, never pushed to a registry (matches runbook guidance to avoid `@sha256` pins that WUD can't parse; image ID above is the authoritative identity) | _(empty)_ |
+| Container start time | `2026-10-19T22:06:35.036944811Z` | _(empty)_ |
+| Sonarr version / branch | `5.0.0.2701` / `develop` (sonarr-v5 container; WUD auto-advanced it from the 2026-10-12 `5.0.0.2569` baseline — expected per the sandbox docs) | _(empty)_ |
+| Sonarr runtime fingerprint (.NET / SQLite) | `.NET 10.0.13` / `SQLite 3.53.4` | _(empty)_ |
+| Date | 2026-10-19 | _(empty)_ |
 
-Prior fingerprint on file (`v5test-results.md`, 2026-10-12, not re-verified for this phase): Sonarr `5.0.0.2569` / develop, .NET 10.0.12, SQLite 3.53.4, image ref `linuxserver/sonarr:develop`, image ID `sha256:64e1d669b88d…`, repo digest `linuxserver/sonarr@sha256:2c1e9317f330…008f53`. This is historical setup evidence, not a current fingerprint — WUD may have advanced the build since.
+Prior fingerprint on file (`v5test-results.md`, 2026-10-12, not re-verified for this phase): Sonarr `5.0.0.2569` / develop, .NET 10.0.12, SQLite 3.53.4, image ref `linuxserver/sonarr:develop`, image ID `sha256:64e1d669b88d…`, repo digest `linuxserver/sonarr@sha256:2c1e9317f330…008f53`. This is historical setup evidence, not a current fingerprint — WUD may have advanced the build since (confirmed above: it has).
+
+**Deployment confirmed (2026-10-19, docker-only, passwordless):** `triggarr-test` now runs the exact Phase 81 commit, built on the NAS from `git archive HEAD` (never the Mac's arm64 build) in `/volume1/docker/v5test/build-phase81-a139879794`, tagged `triggarr:phase81-a139879794` with an `org.opencontainers.image.revision` label matching the commit SHA exactly. Only `/volume1/docker/v5test/docker-compose.yml`'s `triggarr-test` image line was changed (backup kept at `docker-compose.yml.bak-phase81-a139879794`); `sonarr-v5` and `seedsyncarr-test` container start times are unchanged from before the recreate, confirming only the one service was touched. Startup logs (sanitized, no keys) confirm: schema migration v9 → v10 ran ("add grab ownership, attribution cutover and stable-id association"), the attribution cutover was recorded (`pre-fix Sonarr data: False, instances: 1`), and the `v5test` Sonarr instance's configured URL is `http://sonarr-v5:8989` (read directly from the host-owned `triggarr.toml`, which is outside prod and contains no `sonarr:8989` reference). Evidence: `v5test-results/81-1-fingerprint-before.txt`.
+
+**Deferred to Task 2 (assumption drift, advisory — see Task 1 execution note below):** the plan's Task 1 step 5 expected the startup log to already show "Detected API v5" at this point. The code only runs that detection for *enabled* Sonarr instances (`validate_connections` iterates `get_enabled_instances`), and the `v5test` instance must stay `enabled=false` until the owner's `SEARCHES=on` + Deluge-destination gates pass (owner decision, 2026-10-19: never enable schedule/monitoring before those gates pass). So the live "v5" detection log and the Settings "Test connection" result are confirmed in Task 2, after the owner's gates authorize enabling the instance — not a gap, just later in the sequence than the plan's prose assumed.
 
 ### v4 sandbox (not yet provisioned)
 
@@ -53,6 +57,22 @@ Blocked before any sandbox change. `setup-sonarr-v5-test.sh`'s `ACTION=verify` /
 No NAS or sandbox state was changed: all reads were via already-world-readable/writable files or the passwordless `docker inspect` path. Confirmed `triggarr-test`'s current (pre-change) identity: image `ghcr.io/thejuran/triggarr:main`, image ID `sha256:91fa99eea2ef972bf94370c7bb0732d148f25abf3e0d3c887a5f05c711420197`, revision label `c914cbca16bb550fed5ab3dbd87a625d39ccca75` (not the Phase 81 build), started `2026-10-18T02:44:05Z`. The `v5test` Sonarr instance in `triggarr-test`'s config remains `enabled = false` (unchanged baseline). The Phase 81 build (`git rev-parse HEAD` = `9f7da49edf3983a4de318675f155e1b5f573f9ea`, clean tree confirmed against `triggarr tests Dockerfile pyproject.toml uv.lock`) was never built or deployed. No isolation or Deluge-destination gate was run, so every v5 Live cell in `## Matrix` stays `unverified-live` for this reason, not a failed check.
 
 Task 2 did not run (depends on Task 1's gates). Per the plan's own Task 1 instruction ("If any gate fails: stop, restore the baseline... record the failure, and go to the Task 3 checkpoint"), this is reported as a blocking checkpoint rather than an owner-reviewable result.
+
+### Plan 07 Task 1 continuation (2026-10-19, same date)
+
+Owner decision: "You run the gates" — the owner runs every step needing interactive sudo (the isolation gate, Deluge-destination check, any sudo-requiring fingerprint) personally in their own terminal; the executor does everything that works password-free.
+
+Completed without a password, in order:
+1. Confirmed the Phase 81 build identity: `git rev-parse HEAD` = `a139879794c621692593346f35b3c98700b9b222` (branch `phase-81-sonarr-attribution`); `git status --porcelain -- triggarr tests Dockerfile pyproject.toml uv.lock` empty (clean).
+2. Captured a pre-change fingerprint using `sudo /usr/local/bin/docker inspect`/`exec` only (NOPASSWD): all three sandbox containers' image refs/IDs/digests/start times, plus Sonarr's own `/api/v3` and `/api/v5` `system/status` (both reporting `5.0.0.2701`/`develop`, read via the sonarr-v5 container's own world-readable `/config/config.xml` API key, not the host-level file). Confirmed `triggarr-test` was still byte-for-byte the container recorded in the prior blocker note (same image ID, same start time) — no drift while blocked. Saved sanitized to `v5test-results/81-1-fingerprint-before.txt`.
+3. Streamed `git archive --format=tar HEAD` over `ssh nas` into a fresh `/volume1/docker/v5test/build-phase81-a139879794` (world-writable dir, no sudo needed to create it) and built with `sudo /usr/local/bin/docker build --label org.opencontainers.image.revision=<sha> -t triggarr:phase81-a139879794 .` (NOPASSWD docker build). Image ID `sha256:72e6b23f0697f3748844025ce9dcbc9dff63dbaf8d6852037e986a7859add219`; revision label confirmed to match the SHA exactly.
+4. Backed up `/volume1/docker/v5test/docker-compose.yml` (world-writable, owned by <nas-user>) to `docker-compose.yml.bak-phase81-a139879794`, changed only the `triggarr-test` service's `image:` line, and ran `sudo /usr/local/bin/docker compose -p v5test up -d triggarr-test` (NOPASSWD). Confirmed via `docker inspect`: `triggarr-test` now runs the new image/ID/revision; `sonarr-v5` and `seedsyncarr-test` start times unchanged (only the one service was recreated).
+5. Read startup logs (NOPASSWD `docker logs`): schema migration v9 → v10 ran, attribution cutover recorded (`pre-fix Sonarr data: False, instances: 1`), banner shows `Sonarr/v5test: disabled` (instance still disabled, matching the required pre-gate baseline). No secrets appear in the captured logs.
+6. Read the `v5test` instance's configured Sonarr URL directly from the host-owned (`<nas-user>:users`, mode 600) `/volume1/docker/v5test/triggarr/triggarr.toml` — no sudo or docker exec needed, since the SSH session already owns the file. Confirmed `url = "http://sonarr-v5:8989"` (never `sonarr:8989`), `enabled = false`, `search_missing_count`/`search_cutoff_count` both positive (so enabling later will pass the app's own validation). The raw file (contains the v5test Sonarr API key, Triggarr's own API key, and a bcrypt password hash) was read transiently and never written to any saved file — only these sanitized facts are recorded here.
+
+Not done (owner's role, not yet run): `ACTION=verify SEARCHES=off` — the next required gate before anything that could enable searching. No controlled-test prep (monitoring a series, enabling the schedule) has happened or will happen before this gate's output is read and confirmed `ALL ISOLATION CHECKS PASSED`.
+
+This is reported as a checkpoint (type human-action), not a blocker: everything password-free is done, and the next step is squarely the owner's per the 2026-10-19 decision.
 
 ## Matrix
 
