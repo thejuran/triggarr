@@ -65,15 +65,15 @@ Prior fingerprint on file (`v5test-results.md`, 2026-10-12, not re-verified for 
 
 ## Authorization
 
-_Recorded by Plan 81-06 Task 2 after the owner's decision. Placeholder only -- do not infer from silence or from any prior message._
+_Recorded by Plan 81-06 Task 2 after the owner's decision, given interactively via the orchestrator's question prompt._
 
-- **Selected option:** _(empty -- one of option-a, option-b, option-c)_
-- **Date:** _(empty -- YYYY-MM-DD)_
-- **v5 deployment of the Phase 81 build:** _(empty -- authorized / not authorized)_
-- **v4 sandbox provisioning:** _(empty -- authorized / not authorized)_
-- **Constraints:** _(empty -- e.g. time window, scope limits, if any)_
+- **Selected option:** option-a -- "Authorize both: v5 deployment of the Phase 81 build and v4 sandbox provisioning"
+- **Date:** 2026-10-19
+- **v5 deployment of the Phase 81 build:** authorized -- build a Triggarr image from the exact Phase 81 commit on the NAS, run it only as the existing `triggarr-test` container in the isolated `v5test` project (never production), pass the runbook's isolation and Deluge-destination gates, then run the controlled matrix in `## Matrix` above and record results.
+- **v4 sandbox provisioning:** authorized -- create a new isolated Sonarr v4 sandbox next to the v5 one (own data folders, own download category, same isolation checks), then run the same controlled matrix.
+- **Constraints:** None stated beyond the plan's and runbook's existing isolation gates (production untouched, sandbox Triggarr never points at production Sonarr per D-10).
 
-Until this section is filled in by the owner's explicit answer, every row above stays `unverified-live`, SONARRV5-02 stays open, and Phase 81 stays incomplete per D-13.
+Plans 07 and 08 act only within this authorized scope. Any row not produced live under this authorization stays `unverified-live`, SONARRV5-02 stays open, and Phase 81 stays incomplete per D-13.
 
 ## Evidence locations
 
