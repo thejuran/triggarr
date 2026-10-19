@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: "Phase 81 executing — paused after Wave 1 (3/9 plans) at owner request (Phase 80 scheduled-cycle check pending separately)"
-stopped_at: "Phase 81 Wave 1 complete (81-01..81-03); paused by owner before Wave 2 (81-04, 81-05)"
-last_updated: "2026-10-18T22:48:32Z"
-last_activity: "2026-10-18 -- Phase 81 Wave 1 executed on branch phase-81-sonarr-attribution (81-01 stable instance ID, 81-02 v5 reporting + season-aware correlation, 81-03 atomic v10 migration/ownership/cutover); 1,883 tests pass, ruff clean"
+status: "Phase 81 executing — Waves 1-2 complete (5/9 plans); next is the 81-06 owner authorization checkpoint (Phase 80 scheduled-cycle check pending separately)"
+stopped_at: "Phase 81 Wave 2 complete (81-04, 81-05); next: Wave 3 (81-06 live matrix + owner authorization checkpoint)"
+last_updated: "2026-10-19T22:05:00Z"
+last_activity: "2026-10-19 -- Phase 81 Wave 2 executed and merged on branch phase-81-sonarr-attribution (81-04 ownership-aware tracking + scheduler wiring, 81-05 stats disclosure); 1,957 tests pass, ruff clean"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 28
-  completed_plans: 22
+  completed_plans: 24
   percent: 80
 ---
 
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 
 ## Current Position
 
-Phase: 81 (correct-sonarr-grab-attribution) — EXECUTING; paused after Wave 1
-Plan: 3 of 9 complete (81-01..81-03 executed; 81-04..81-09 remaining; plans in in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
-Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2. Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) and the isolated v4/v5 live matrix not started. Phase 81 remains incomplete. Live sandbox work waits for the owner authorization checkpoint in 81-06.
+Phase: 81 (correct-sonarr-grab-attribution) — EXECUTING; Waves 1-2 complete
+Plan: 5 of 9 complete (81-01..81-05 executed; 81-06..81-09 remaining; plans in in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
+Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). The isolated v4/v5 live matrix has not started. Phase 81 remains incomplete. Live sandbox work waits for the owner authorization checkpoint in 81-06.
 
 Phase 80 operational check (separate): Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI (run 39157110156) and Release (run 39157384992) passed; deployed to production 2026-10-18 (container running `dee25df5cedd28f8016f556129f20a0d5537b635`, image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`, started 19:11:47Z; health OK; startup Radarr and Sonarr cycles graded Success). The previous image is tagged `ghcr.io/thejuran/triggarr:rollback-d41b484` on the NAS and config/state were backed up to `~/triggarr-backup-pre-pr28-20261018T191121Z` before the restart. Not yet operationally verified: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
-Last activity: 2026-10-18 -- Phase 81 Wave 1 complete (3/9 plans: 81-01, 81-02, 81-03); paused before Wave 2 at owner request
+Last activity: 2026-10-19 -- Phase 81 Wave 2 complete (5/9 plans: 81-04, 81-05 merged); next is the 81-06 owner authorization checkpoint
 
 ### v2.12 milestone shape
 
