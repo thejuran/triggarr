@@ -101,6 +101,20 @@ Owner ran the combined command (`ACTION=verify SEARCHES=on ... && ACTION=deluge-
 
 Both gates now passed. Per the owner's 2026-10-19 scoping, this authorizes: monitor Hacks Season 2 only, enable the `triggarr-test` `v5test` instance, and proceed with Task 2's controlled run.
 
+### Task 2: controlled run in progress (2026-10-19, continuing same date)
+
+**Monitored Hacks Season 2 only:** `PUT /api/v3/series/1` against `sonarr-v5` set `monitored: true` on the series and `monitored: true` on season 2 only (seasons 1/3/4/5 stay `false`; season 1 was already fully grabbed 2026-10-12 and stays untouched). `That Mitchell and Webb Look` (series 2) untouched, still fully unmonitored. Confirmed via a fresh `GET /api/v3/series`.
+
+**Enabled the `triggarr-test` `v5test` instance:** via Triggarr's own `POST /settings` (authenticated with Triggarr's internal `X-Api-Key`, not a session cookie — preserves the app's Pydantic validation + atomic TOML write, rather than hand-editing the config file), submitting the instance's existing `url`/`api_key`/`search_interval`/`search_missing_count`/`search_cutoff_count` unchanged and only flipping `enabled` to `true`, with the `[general]` block resubmitted at its current values to avoid resetting anything. Confirmed by re-reading `triggarr.toml` (`enabled = true`) and by the container log.
+
+**This immediately fired the scheduler's "first run: now" cycle, as expected and previously flagged:** log line `Enabled Sonarr/v5test search every 30m` followed at 2026-10-19T19:34:45 local by `Sonarr: Searched Hacks - Season 2 (missing)`, `Cycle completed in 0.5s -- 8 fetched, 1 accepted, 0 failed, 0 history not saved -- grade success`. Sonarr accepted and grabbed **`Hacks S02 1080p BluRay x264-BRAVERY`** via **<private indexers> (Prowlarr)**, freeleech, `downloadId 3E4FEA683286B4FAD6CCDA4C8F8F60A880C7D9C5`, landing in `/home/<seedbox-user>/v5test-incomplete/...` (sandbox path, confirmed via Sonarr's queue — never prod staging). This is the plan's required "one controlled SeasonSearch accepted" (D-11.1), produced live by the Phase 81 build, for a season genuinely distinct from the pre-existing Hacks S01 grab.
+
+Triggarr's own `search_history` recorded it immediately: `{id: 1, app: Sonarr, instance_id: v5test, item_name: "Hacks - Season 2", outcome: searched, detail: "search triggered", season_number: 2, resolved_at: null}`. `grab_ownership` has no rows yet (nothing credited — the grab hasn't resolved/imported yet) and `lifetime_stats` for Sonarr still shows only the original 2026-10-12 seed row (`instance_id: Default`, `0/0`) — expected, since D-08 keys lifetime stats by stable instance ID and this instance's first-ever credit hasn't landed. Saved: `v5test-results/81-4-db-check-1-post-search.txt`.
+
+The same cycle's tracking pass logged 10 `Tracking[v5test]: skipped grab N for series 1 -- missing season` warnings — these are Sonarr's **pre-existing** Hacks S01 grab-history entries from the 2026-10-12 manual Interactive Search (never dispatched by Triggarr, so they don't correlate to any Triggarr `search_history` row for the right season). `attribution_cutover` confirms `any_pre_fix_sonarr_data: 0` (this instance has no pre-fix Sonarr data — correct, it's a fresh instance), so these warnings are expected background noise from the earlier manual grab, not a Phase 81 defect.
+
+**Now waiting (download ~28 min, then import, then subsequent scheduled cycles ~30 min apart) for:** the download to complete and be imported (via seedsyncarr-test → Sonarr), a later tracking check to credit the grab in `grab_ownership` + `lifetime_stats` (the season-pack-credits-once-with-distinct-episodes evidence, D-11.2), and a second, later check showing the counts unchanged (no re-credit, D-11.1's "repeated tracking checks" requirement). A background poll (every 4 min, up to 80 min budget) is capturing queue status and DB snapshots to `/private/tmp/.../scratchpad/monitor.log` for analysis once it completes or times out. Per the owner's scope, no post-grab Deluge re-check was requested for this run.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
