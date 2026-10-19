@@ -46,6 +46,14 @@ Prior fingerprint on file (`v5test-results.md`, 2026-10-12, not re-verified for 
 
 **Note:** WUD (`dockercompose.v5test` trigger, 6-hourly digest watch) auto-updates the v5 sandbox's Sonarr and Triggarr test containers on its own schedule. Any run interrupted by a WUD update or an unplanned container restart must be repeated in full — a fingerprint captured before the interruption cannot be assumed to still match the container that finished the run.
 
+### Plan 07 Task 1 execution note (2026-10-19)
+
+Blocked before any sandbox change. `setup-sonarr-v5-test.sh`'s `ACTION=verify` / `ACTION=deluge-check` paths (and the script generally) start with `sudo -v` and use bare `sudo` throughout (config reads, `mkdir`/`chown`, embedded `python3` checks) — only `/usr/local/bin/docker` and `/usr/local/bin/docker-compose` are NOPASSWD on this NAS (per `CLAUDE.md`). Both `ssh nas '...'` and `ssh -t nas '...'` invocations of the script failed identically: `sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper` / `sudo: a password is required`. Confirmed with `sudo -n true` (fails) vs. `sudo -n -l` (succeeds, non-interactive — lists only the two NOPASSWD docker entries). No askpass helper is configured. This is a genuine interactive-credential requirement, not a script bug: the isolation/Deluge-destination gate cannot be produced by the automated executor in this session.
+
+No NAS or sandbox state was changed: all reads were via already-world-readable/writable files or the passwordless `docker inspect` path. Confirmed `triggarr-test`'s current (pre-change) identity: image `ghcr.io/thejuran/triggarr:main`, image ID `sha256:91fa99eea2ef972bf94370c7bb0732d148f25abf3e0d3c887a5f05c711420197`, revision label `c914cbca16bb550fed5ab3dbd87a625d39ccca75` (not the Phase 81 build), started `2026-10-18T02:44:05Z`. The `v5test` Sonarr instance in `triggarr-test`'s config remains `enabled = false` (unchanged baseline). The Phase 81 build (`git rev-parse HEAD` = `9f7da49edf3983a4de318675f155e1b5f573f9ea`, clean tree confirmed against `triggarr tests Dockerfile pyproject.toml uv.lock`) was never built or deployed. No isolation or Deluge-destination gate was run, so every v5 Live cell in `## Matrix` stays `unverified-live` for this reason, not a failed check.
+
+Task 2 did not run (depends on Task 1's gates). Per the plan's own Task 1 instruction ("If any gate fails: stop, restore the baseline... record the failure, and go to the Task 3 checkpoint"), this is reported as a blocking checkpoint rather than an owner-reviewable result.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
