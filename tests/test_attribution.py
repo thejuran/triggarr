@@ -16,7 +16,7 @@ import pytest
 from loguru import logger
 
 from tests.migration_faults import STANDARD_MAPPING, V10_FAULT_POINTS, inject_v10_failure, seed_v9_db
-from triggarr.attribution import ensure_cutover_recorded
+from triggarr.attribution import ensure_cutover_recorded, get_attribution_disclosure
 from triggarr.db import MigrationRecoveryError, init_db, insert_search_entry
 
 _LEFTOVER_SHAPE_SQL = (
@@ -413,4 +413,164 @@ async def test_cutover_refused_after_recovery_error(tmp_path, monkeypatch):
         "SELECT name FROM sqlite_master WHERE type='table' AND name='attribution_cutover'"
     ) as cursor:
         assert await cursor.fetchone() is None
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Phase 81 Plan 05: get_attribution_disclosure (D-01, D-02, D-03, D-05, D-06, D-08)
+# ---------------------------------------------------------------------------
+
+
+async def test_disclosure_no_cutover_row_both_false(tmp_path):
+    """No cutover row recorded -> both booleans False, no cutover date."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    disclosure = await get_attribution_disclosure(db, view_app=None, sonarr_stable_id=None)
+    assert disclosure["show_cutover_note"] is False
+    assert disclosure["sonarr_lifetime_includes_historical"] is False
+    assert disclosure["cutover_date"] is None
+    await db.close()
+
+
+async def test_disclosure_global_view_reads_global_flags(tmp_path):
+    """view_app=None reads the global any_pre_fix_sonarr_data / pre_fix_sonarr_lifetime facts."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO search_history "
+        "(timestamp, app, queue_type, item_name, outcome, instance_id, instance_stable_id) "
+        "VALUES (?, 'Sonarr', 'missing', 'Show A', 'grabbed', 'Main', 'sid-a')",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_stable_id = 'sid-a', episodes_found = 3 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'"
+    )
+    await db.commit()
+    await ensure_cutover_recorded(db, {"Main": "sid-a"})
+
+    disclosure = await get_attribution_disclosure(db, view_app=None, sonarr_stable_id=None)
+    assert disclosure["show_cutover_note"] is True
+    assert disclosure["sonarr_lifetime_includes_historical"] is True
+    assert disclosure["cutover_date"] is not None
+    await db.close()
+
+
+async def test_disclosure_global_legacy_pending_only_no_lifetime_label(tmp_path):
+    """Global any=1, lifetime=0 (legacy-pending-only install): note shows, lifetime label does not (R4)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO search_history "
+        "(timestamp, app, queue_type, item_name, outcome, instance_id, instance_stable_id) "
+        "VALUES (?, 'Sonarr', 'missing', 'Pending Show', 'searched', 'Main', 'sid-a')",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.commit()
+    await ensure_cutover_recorded(db, {"Main": "sid-a"})
+
+    disclosure = await get_attribution_disclosure(db, view_app=None, sonarr_stable_id=None)
+    assert disclosure["show_cutover_note"] is True
+    assert disclosure["sonarr_lifetime_includes_historical"] is False
+    await db.close()
+
+
+async def test_disclosure_sonarr_instance_both_true(tmp_path):
+    """view_app='sonarr' with has_pre_fix_data=1 and lifetime_includes_pre_fix=1 -> both True."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO search_history "
+        "(timestamp, app, queue_type, item_name, outcome, instance_id, instance_stable_id) "
+        "VALUES (?, 'Sonarr', 'missing', 'Show A', 'grabbed', 'Main', 'sid-a')",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_stable_id = 'sid-a', episodes_found = 3 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'"
+    )
+    await db.commit()
+    await ensure_cutover_recorded(db, {"Main": "sid-a"})
+
+    disclosure = await get_attribution_disclosure(db, view_app="sonarr", sonarr_stable_id="sid-a")
+    assert disclosure["show_cutover_note"] is True
+    assert disclosure["sonarr_lifetime_includes_historical"] is True
+    await db.close()
+
+
+async def test_disclosure_sonarr_instance_legacy_pending_only(tmp_path):
+    """view_app='sonarr' with has_pre_fix_data=1 and lifetime_includes_pre_fix=0 -> note True, lifetime False (R4)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO search_history "
+        "(timestamp, app, queue_type, item_name, outcome, instance_id, instance_stable_id) "
+        "VALUES (?, 'Sonarr', 'missing', 'Pending Show', 'searched', 'Main', 'sid-a')",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.commit()
+    await ensure_cutover_recorded(db, {"Main": "sid-a"})
+
+    disclosure = await get_attribution_disclosure(db, view_app="sonarr", sonarr_stable_id="sid-a")
+    assert disclosure["show_cutover_note"] is True
+    assert disclosure["sonarr_lifetime_includes_historical"] is False
+    await db.close()
+
+
+async def test_disclosure_sonarr_instance_clean_both_false(tmp_path):
+    """view_app='sonarr' with a clean instance (0/0 pre-fix facts) -> both False."""
+    db, db_path = await _init_test_db(tmp_path)
+    await ensure_cutover_recorded(db, {"Clean": "sid-clean"})
+
+    disclosure = await get_attribution_disclosure(db, view_app="sonarr", sonarr_stable_id="sid-clean")
+    assert disclosure["show_cutover_note"] is False
+    assert disclosure["sonarr_lifetime_includes_historical"] is False
+    await db.close()
+
+
+async def test_disclosure_sonarr_instance_missing_row_both_false(tmp_path):
+    """view_app='sonarr' with a stable id that has no sonarr_instance_pre_fix row -> both False."""
+    db, db_path = await _init_test_db(tmp_path)
+    await ensure_cutover_recorded(db, {})
+
+    disclosure = await get_attribution_disclosure(db, view_app="sonarr", sonarr_stable_id="sid-unknown")
+    assert disclosure["show_cutover_note"] is False
+    assert disclosure["sonarr_lifetime_includes_historical"] is False
+    await db.close()
+
+
+async def test_disclosure_sonarr_instance_none_id_both_false(tmp_path):
+    """view_app='sonarr' with sonarr_stable_id=None -> both False even with global pre-fix data."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO search_history "
+        "(timestamp, app, queue_type, item_name, outcome, instance_id, instance_stable_id) "
+        "VALUES (?, 'Sonarr', 'missing', 'Show A', 'grabbed', 'Main', 'sid-a')",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.commit()
+    await ensure_cutover_recorded(db, {"Main": "sid-a"})
+
+    disclosure = await get_attribution_disclosure(db, view_app="sonarr", sonarr_stable_id=None)
+    assert disclosure["show_cutover_note"] is False
+    assert disclosure["sonarr_lifetime_includes_historical"] is False
+    await db.close()
+
+
+async def test_disclosure_radarr_or_lidarr_view_always_false(tmp_path):
+    """view_app='radarr'/'lidarr' -> both False even when the global flag is 1 (D-02)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO search_history "
+        "(timestamp, app, queue_type, item_name, outcome, instance_id, instance_stable_id) "
+        "VALUES (?, 'Sonarr', 'missing', 'Show A', 'grabbed', 'Main', 'sid-a')",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_stable_id = 'sid-a', episodes_found = 3 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'"
+    )
+    await db.commit()
+    await ensure_cutover_recorded(db, {"Main": "sid-a"})
+
+    for view_app in ("radarr", "lidarr"):
+        disclosure = await get_attribution_disclosure(db, view_app=view_app, sonarr_stable_id=None)
+        assert disclosure["show_cutover_note"] is False
+        assert disclosure["sonarr_lifetime_includes_historical"] is False
     await db.close()
