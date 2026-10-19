@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: "Phase 81 executing — Waves 1-2 complete (5/9 plans); next is the 81-06 owner authorization checkpoint (Phase 80 scheduled-cycle check pending separately)"
-stopped_at: "Phase 81 Wave 2 complete (81-04, 81-05); next: Wave 3 (81-06 live matrix + owner authorization checkpoint)"
-last_updated: "2026-10-19T22:05:00Z"
+status: "Phase 81 executing — Waves 1-3 complete (6/9 plans); live v5 sandbox run (81-07) next, authorized option-a (Phase 80 scheduled-cycle check pending separately)"
+stopped_at: "Phase 81 Wave 3 complete (81-06; owner authorized v5 deploy + v4 sandbox, option-a, 2026-10-19); next: Wave 4 (81-07 live v5 matrix)"
+last_updated: "2026-10-19T22:30:00Z"
 last_activity: "2026-10-19 -- Phase 81 Wave 2 executed and merged on branch phase-81-sonarr-attribution (81-04 ownership-aware tracking + scheduler wiring, 81-05 stats disclosure); 1,957 tests pass, ruff clean"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 28
-  completed_plans: 24
+  completed_plans: 25
   percent: 80
 ---
 
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 
 ## Current Position
 
-Phase: 81 (correct-sonarr-grab-attribution) — EXECUTING; Waves 1-2 complete
-Plan: 5 of 9 complete (81-01..81-05 executed; 81-06..81-09 remaining; plans in in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
-Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). The isolated v4/v5 live matrix has not started. Phase 81 remains incomplete. Live sandbox work waits for the owner authorization checkpoint in 81-06.
+Phase: 81 (correct-sonarr-grab-attribution) — EXECUTING; Waves 1-3 complete
+Plan: 6 of 9 complete (81-01..81-06 executed; 81-07..81-09 remaining; plans in in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
+Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). 81-06 built the live acceptance matrix; the owner authorized both the v5 deploy of the Phase 81 build and v4 sandbox provisioning (option-a, 2026-10-19). Live runs have not started. Phase 81 remains incomplete. Live sandbox work waits for the owner authorization checkpoint in 81-06.
 
 Phase 80 operational check (separate): Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI (run 39157110156) and Release (run 39157384992) passed; deployed to production 2026-10-18 (container running `dee25df5cedd28f8016f556129f20a0d5537b635`, image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`, started 19:11:47Z; health OK; startup Radarr and Sonarr cycles graded Success). The previous image is tagged `ghcr.io/thejuran/triggarr:rollback-d41b484` on the NAS and config/state were backed up to `~/triggarr-backup-pre-pr28-20261018T191121Z` before the restart. Not yet operationally verified: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
-Last activity: 2026-10-19 -- Phase 81 Wave 2 complete (5/9 plans: 81-04, 81-05 merged); next is the 81-06 owner authorization checkpoint
+Last activity: 2026-10-19 -- Phase 81 Wave 2 complete (5/9 plans: 81-04, 81-05 merged); 81-06 complete (owner authorized option-a); next is the 81-07 live v5 run
 
 ### v2.12 milestone shape
 
