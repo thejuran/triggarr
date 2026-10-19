@@ -28,6 +28,7 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import SecretStr
 
+from triggarr.attribution import get_attribution_disclosure
 from triggarr.auth import (
     COOKIE_MAX_AGE,
     generate_api_key,
@@ -492,6 +493,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
     health = _build_health_summary(request)
     all_instances = _build_all_instances(settings)
+    disclosure = await get_attribution_disclosure(request.app.state.db, view_app=None)
 
     return templates.TemplateResponse(
         request=request,
@@ -505,6 +507,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "all_instances": all_instances,
             "selected_instance": "",
             "instance_app_type": None,
+            "disclosure": disclosure,
             "show_migration_banner": (_runtime_config_dir(request) / ".migrated").exists(),
             "radarr_enabled": bool(settings.get_enabled_instances("radarr")),
             "sonarr_enabled": bool(settings.get_enabled_instances("sonarr")),
@@ -1261,32 +1264,52 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
     instance_param = request.query_params.get("instance")
     if instance_param and len(instance_param) > 128:
         return HTMLResponse("Invalid instance parameter", status_code=400)
+    settings = request.app.state.settings
     instance_id: str | None = None
     instance_app_type: str | None = None
+    cfg: InstanceConfig | None = None
 
     if instance_param:
         if "/" in instance_param:
             app_type, inst_name = instance_param.split("/", 1)
             if app_type not in APP_TYPES:
                 return HTMLResponse("Invalid instance parameter", status_code=400)
-            enabled = request.app.state.settings.get_enabled_instances(app_type)
+            enabled = settings.get_enabled_instances(app_type)
             if inst_name not in enabled:
                 return HTMLResponse("Invalid instance parameter", status_code=400)
             instance_id = inst_name
             instance_app_type = app_type
+            cfg = enabled[inst_name]
         else:
             instance_id = instance_param
             # Determine app type by checking which app has this instance
-            settings = request.app.state.settings
             for app_name in APP_TYPES:
-                if instance_id in settings.get_enabled_instances(app_name):
+                enabled = settings.get_enabled_instances(app_name)
+                if instance_id in enabled:
                     instance_app_type = app_name
+                    cfg = enabled[instance_id]
                     break
 
-    stats = await get_dashboard_stats(request.app.state.db, instance_id=instance_id)
+        # A stable ID is required to scope stats and disclosure by the same
+        # identity (T-81-23, T-81-27b); it is looked up from settings, never
+        # taken from the request. This cannot happen after the startup
+        # backfill and add_instance, but a missing one must never fall back
+        # to name-only stats (which could match an unassociated row).
+        if cfg is None or not cfg.id:
+            return HTMLResponse("Invalid instance parameter", status_code=400)
+
+    if instance_app_type is not None and cfg is not None:
+        app_title = instance_app_type.title()
+        stats = await get_dashboard_stats(request.app.state.db, app=app_title, instance_stable_id=cfg.id)
+    else:
+        stats = await get_dashboard_stats(request.app.state.db, instance_id=instance_id)
+
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
-    all_instances = _build_all_instances(request.app.state.settings)
-    settings = request.app.state.settings
+    all_instances = _build_all_instances(settings)
+    sonarr_stable_id = cfg.id if instance_app_type == "sonarr" and cfg is not None else None
+    disclosure = await get_attribution_disclosure(
+        request.app.state.db, view_app=instance_app_type, sonarr_stable_id=sonarr_stable_id,
+    )
     return templates.TemplateResponse(
         request=request,
         name="partials/stats_row.html",
@@ -1296,6 +1319,7 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
             "all_instances": all_instances,
             "selected_instance": instance_param or "",
             "instance_app_type": instance_app_type,
+            "disclosure": disclosure,
             "radarr_enabled": bool(settings.get_enabled_instances("radarr")),
             "sonarr_enabled": bool(settings.get_enabled_instances("sonarr")),
             "lidarr_enabled": bool(settings.get_enabled_instances("lidarr")),

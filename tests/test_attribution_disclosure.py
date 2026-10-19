@@ -9,6 +9,7 @@ rail (ATTR-05, D-04).
 from __future__ import annotations
 
 import asyncio
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -24,6 +25,11 @@ from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import log_buffer
 from triggarr.models.config import InstanceConfig
 from triggarr.web.routes import STATIC_DIR, router
+
+
+def _renders_number(text: str, value: int) -> bool:
+    """True if *value* appears as a standalone rendered number (tolerates surrounding whitespace/newlines)."""
+    return re.search(rf">\s*{value}\s*<", text) is not None
 
 
 @pytest.fixture(autouse=True)
@@ -225,7 +231,7 @@ async def test_stats_row_rename_shows_history_and_disclosure(app_env):
         response = client.get("/partials/stats-row?instance=sonarr/New")
     assert response.status_code == 200
     text = response.text
-    assert ">7<" in text
+    assert _renders_number(text, 7)
     assert "Attribution corrected on" in text
     assert "Lifetime — includes historical estimates" in text
     assert "Includes historical estimates" in text
@@ -340,8 +346,8 @@ def test_stats_row_bare_unknown_name_rejected(app_env):
     assert response.status_code == 400
 
 
-async def test_stats_row_avg_ttg_label_only_when_flagged(app_env):
-    """The avg time-to-grab label shows only when avg_time_to_grab_includes_historical is True."""
+async def test_stats_row_avg_ttg_label_absent_when_not_flagged(app_env):
+    """The avg time-to-grab label does not show when the only pre-fix row isn't grabbed+resolved."""
     app, db = app_env
     _add_instance(app.state.settings, "sonarr", "Main", instance_id="sid-main")
     # Pre-fix row is resolved (trips the rate flags) but not 'grabbed', so TTG stays unflagged.
@@ -359,18 +365,24 @@ async def test_stats_row_avg_ttg_label_only_when_flagged(app_env):
     # Only the overall-rate and Sonarr-bar labels show; the TTG one does not.
     assert text.count("Includes historical estimates") == 2
 
-    # Now add a grabbed + resolved pre-fix row so the TTG flag also trips.
+
+async def test_stats_row_avg_ttg_label_present_when_flagged(app_env):
+    """The avg time-to-grab label shows when a pre-fix row is grabbed and has resolved_at."""
+    app, db = app_env
+    _add_instance(app.state.settings, "sonarr", "Main", instance_id="sid-main")
     await insert_search_entry(
-        db, "Sonarr", "missing", "Show B", outcome="grabbed",
+        db, "Sonarr", "missing", "Show A", outcome="grabbed",
         instance_id="Main", instance_stable_id="sid-main",
     )
-    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 2", ("2026-01-02T00:00:00Z",))
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
     await db.commit()
+    # legacy_max_history_id captures id 1 as pre-fix at cutover time.
+    await ensure_cutover_recorded(db, {"Main": "sid-main"})
 
     with TestClient(app) as client:
-        response2 = client.get("/partials/stats-row?instance=sonarr/Main")
-    assert response2.status_code == 200
-    assert response2.text.count("Includes historical estimates") == 3
+        response = client.get("/partials/stats-row?instance=sonarr/Main")
+    assert response.status_code == 200
+    assert response.text.count("Includes historical estimates") == 3
 
 
 async def test_stats_row_polling_refresh_single_note_element(app_env):
