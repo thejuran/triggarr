@@ -755,6 +755,36 @@ async def test_run_radarr_cycle_new_item_jumps_line(tmp_path):
     await db.close()
 
 
+async def test_radarr_cycle_records_instance_stable_id(tmp_path):
+    """Phase 81 (S1): every search_history row this cycle writes carries the instance's stable ID."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[
+            {"id": 1, "title": "Movie A", "monitored": True},
+            {"id": 2, "title": "Movie B", "monitored": True},
+        ]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_movies = AsyncMock(side_effect=[None, httpx.ConnectError("boom")])
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+    instance_config.id = "sid-main"
+
+    await run_radarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    async with db.execute("SELECT instance_stable_id FROM search_history WHERE app = 'Radarr'") as cursor:
+        rows = await cursor.fetchall()
+    assert len(rows) == 2
+    assert all(row["instance_stable_id"] == "sid-main" for row in rows)
+    await db.close()
+
+
 async def test_run_radarr_cycle_pass_reset(tmp_path):
     """When all eligible items are covered, missing_searched is cleared and missing_pass increments."""
     db_path = tmp_path / "test.db"
@@ -874,6 +904,36 @@ async def test_run_sonarr_cycle_happy_path(tmp_path):
     client.search_season.assert_any_call(10, 2)
     assert result["sonarr"]["Default"]["connected"] is True
     assert result["sonarr"]["Default"]["last_run"] is not None
+    await db.close()
+
+
+async def test_sonarr_cycle_records_instance_stable_id(tmp_path):
+    """Phase 81 (S1): every search_history row this cycle writes carries the instance's stable ID."""
+    db_path = tmp_path / "test.db"
+    db = await aiosqlite.connect(db_path)
+    await init_db(db, db_path)
+
+    episodes = [
+        _make_sonarr_episode(series_id=10, season_number=1, series_title="Show A", episode_id=100),
+        _make_sonarr_episode(series_id=20, season_number=1, series_title="Show B", episode_id=200),
+    ]
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=episodes)
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.search_season = AsyncMock(side_effect=[None, httpx.ConnectError("boom")])
+
+    state = _make_test_state()
+    settings = _cycle_settings(missing_count=2, cutoff_count=2)
+    instance_config = _cycle_instance_config(missing_count=2, cutoff_count=2)
+    instance_config.id = "sid-main"
+
+    await run_sonarr_cycle(client, state, "Default", instance_config, settings, db)
+
+    async with db.execute("SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr'") as cursor:
+        rows = await cursor.fetchall()
+    assert len(rows) == 2
+    assert all(row["instance_stable_id"] == "sid-main" for row in rows)
     await db.close()
 
 

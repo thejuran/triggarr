@@ -38,6 +38,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from loguru import logger
 
+from triggarr.attribution import ensure_cutover_recorded
 from triggarr.clients.base import ArrClient, Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
@@ -216,6 +217,7 @@ def make_search_job(
                         app_name.title(),
                         instance_name,
                         app.state.settings.general.tracking_window_minutes,
+                        instance_stable_id=instance_config.id,
                     )
                     resolved = (
                         tracking_result["grabbed"]
@@ -223,16 +225,19 @@ def make_search_job(
                         + tracking_result.get("partial_expired", 0)
                         + tracking_result["unresolved"]
                     )
-                    if resolved > 0 or tracking_result["errors"] > 0:
+                    identity_skipped = tracking_result.get("identity_skipped", 0)
+                    if resolved > 0 or tracking_result["errors"] > 0 or identity_skipped > 0:
                         logger.info(
                             "Tracking: {grabbed} grabbed, {partial} partial, "
                             "{partial_expired} partial_expired, "
-                            "{unresolved} unresolved, {errors} errors",
+                            "{unresolved} unresolved, {errors} errors, "
+                            "identity_skipped={identity_skipped}",
                             grabbed=tracking_result["grabbed"],
                             partial=tracking_result["partial"],
                             partial_expired=tracking_result.get("partial_expired", 0),
                             unresolved=tracking_result["unresolved"],
                             errors=tracking_result["errors"],
+                            identity_skipped=identity_skipped,
                         )
                 except (
                     httpx.HTTPError,
@@ -491,7 +496,23 @@ def create_lifespan(
         db = await aiosqlite.connect(db_path)
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA synchronous=NORMAL")
-        await init_db(db, db_path)
+        # Phase 81 (S1): ensure_config has already backfilled every instance's
+        # stable ID before this lifespan runs (startup runs before the
+        # lifespan, triggarr/__main__.py _run), so this mapping is complete
+        # for the one-time v10 association of existing rows.
+        instance_stable_ids = {
+            (app_type.title(), name): cfg.id
+            for app_type in APP_TYPES
+            for name, cfg in getattr(settings, app_type).items()
+            if cfg.id
+        }
+        await init_db(db, db_path, instance_stable_ids=instance_stable_ids)
+        # Phase 81: record the attribution cutover exactly once, immediately
+        # after the migration that creates its schema. Deliberately not
+        # caught -- a failed cutover must stop startup the same way a failed
+        # migration does, so pre-cutover pending rows are never tracked
+        # under the new ownership rules.
+        await ensure_cutover_recorded(db, {name: cfg.id for name, cfg in settings.sonarr.items()})
 
         # Migrate existing search_log from state.json to SQLite (one-time)
         if state.get("search_log"):
