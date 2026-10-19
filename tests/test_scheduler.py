@@ -11,6 +11,7 @@ import asyncio
 import importlib
 import io
 import re
+import shutil
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1935,3 +1936,260 @@ async def test_search_now_failure_returns_card_200(tmp_path):
     assert "app_card" in response.text or "radarr" in response.text.lower(), (
         f"Expected app_card partial content in response, got: {response.text[:200]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 81 (Plan 04): attribution cutover + stable-ID wiring at startup
+# ---------------------------------------------------------------------------
+
+
+class _FakeScheduler:
+    """Scheduler stand-in that records calls without scheduling real jobs."""
+
+    def __init__(self) -> None:
+        self.started = False
+        self.shutdown_wait: bool | None = None
+        self.jobs: list[tuple[tuple, dict]] = []
+        self.listeners: list[tuple[tuple, dict]] = []
+
+    def add_job(self, *args, **kwargs) -> None:
+        self.jobs.append((args, kwargs))
+
+    def add_listener(self, *args, **kwargs) -> None:
+        self.listeners.append((args, kwargs))
+
+    def start(self) -> None:
+        self.started = True
+
+    def shutdown(self, wait: bool = True) -> None:
+        self.shutdown_wait = wait
+
+
+async def test_lifespan_records_attribution_cutover_once(tmp_path):
+    """Running the lifespan twice leaves exactly one attribution_cutover row with an unchanged cutover_at."""
+    from triggarr.search.scheduler import create_lifespan
+
+    settings = Settings(
+        sonarr={"Default": InstanceConfig(
+            url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True, id="sid-sonarr",
+        )},
+    )
+    state_path = tmp_path / "state.json"
+    config_path = tmp_path / "triggarr.toml"
+
+    with patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()):
+        lifespan_fn = create_lifespan(settings, state_path, config_path)
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            db = app.state.db
+            async with db.execute("SELECT cutover_at FROM attribution_cutover") as cursor:
+                rows = await cursor.fetchall()
+            assert len(rows) == 1
+            first_cutover_at = rows[0]["cutover_at"]
+            async with db.execute("SELECT instance_stable_id FROM sonarr_instance_pre_fix") as cursor:
+                pre_fix_rows = await cursor.fetchall()
+            assert {r["instance_stable_id"] for r in pre_fix_rows} == {"sid-sonarr"}
+
+    with patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()):
+        lifespan_fn2 = create_lifespan(settings, state_path, config_path)
+        app2 = FastAPI(lifespan=lifespan_fn2)
+        async with lifespan_fn2(app2):
+            db2 = app2.state.db
+            async with db2.execute("SELECT cutover_at FROM attribution_cutover") as cursor:
+                rows2 = await cursor.fetchall()
+            assert len(rows2) == 1
+            assert rows2[0]["cutover_at"] == first_cutover_at
+
+
+async def test_lifespan_cutover_after_init_db(tmp_path):
+    """ensure_cutover_recorded is called exactly once, right after init_db, with the name->stable-id mapping."""
+    from triggarr.search.scheduler import create_lifespan
+
+    settings = Settings(
+        sonarr={"Default": InstanceConfig(
+            url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True, id="sid-sonarr",
+        )},
+    )
+    state_path = tmp_path / "state.json"
+    config_path = tmp_path / "triggarr.toml"
+
+    call_order: list[str] = []
+    captured_mapping: dict[str, str] = {}
+
+    async def fake_init_db(db, db_path, **kwargs):
+        call_order.append("init_db")
+
+    async def fake_ensure_cutover_recorded(db, sonarr_instances):
+        call_order.append("ensure_cutover_recorded")
+        captured_mapping.update(sonarr_instances)
+
+    with (
+        patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=fake_init_db)),
+        patch(
+            "triggarr.search.scheduler.ensure_cutover_recorded",
+            new=AsyncMock(side_effect=fake_ensure_cutover_recorded),
+        ),
+        patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()),
+    ):
+        lifespan_fn = create_lifespan(settings, state_path, config_path)
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            pass
+
+    assert call_order == ["init_db", "ensure_cutover_recorded"]
+    assert captured_mapping == {"Default": "sid-sonarr"}
+
+
+async def test_lifespan_passes_stable_id_mapping_to_init_db(tmp_path):
+    """S1: init_db receives a {(app, name): stable id} mapping built from every configured instance."""
+    from triggarr.search.scheduler import create_lifespan
+
+    settings = Settings(
+        radarr={"Default": InstanceConfig(
+            url="http://radarr:7878", api_key="radarr-test-key", enabled=True, id="sid-r",
+        )},
+        sonarr={"Main": InstanceConfig(
+            url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True, id="sid-m",
+        )},
+    )
+    state_path = tmp_path / "state.json"
+    config_path = tmp_path / "triggarr.toml"
+
+    captured: dict = {}
+
+    async def fake_init_db(db, db_path, **kwargs):
+        captured.update(kwargs)
+
+    with (
+        patch("triggarr.search.scheduler.init_db", new=AsyncMock(side_effect=fake_init_db)),
+        patch("triggarr.search.scheduler.ensure_cutover_recorded", new=AsyncMock()),
+        patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()),
+    ):
+        lifespan_fn = create_lifespan(settings, state_path, config_path)
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            pass
+
+    assert captured["instance_stable_ids"] == {("Radarr", "Default"): "sid-r", ("Sonarr", "Main"): "sid-m"}
+
+
+async def test_lifespan_associates_existing_rows_on_upgrade(tmp_path, monkeypatch):
+    """S1: a v9 DB's existing Sonarr rows get associated with their stable ID at startup, columns unchanged."""
+    from tests.migration_faults import seed_v9_db
+    from triggarr.search.scheduler import create_lifespan
+
+    v9_db_path = await seed_v9_db(tmp_path, monkeypatch)
+    state_path = tmp_path / "state.json"
+    db_path = state_path.parent / "triggarr.db"
+    shutil.copy(v9_db_path, db_path)
+
+    settings = Settings(
+        radarr={"Default": InstanceConfig(
+            url="http://radarr:7878", api_key="radarr-test-key", enabled=True, id="sid-r",
+        )},
+        sonarr={"Old": InstanceConfig(
+            url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True, id="sid-a",
+        )},
+    )
+    config_path = tmp_path / "triggarr.toml"
+
+    with patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()):
+        lifespan_fn = create_lifespan(settings, state_path, config_path)
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            db = app.state.db
+            async with db.execute(
+                "SELECT item_name, outcome, instance_stable_id FROM search_history "
+                "WHERE instance_id = 'Old' ORDER BY id"
+            ) as cursor:
+                rows = await cursor.fetchall()
+            assert [r["item_name"] for r in rows] == ["Old Show A", "Old Show B", "Old Show C"]
+            assert [r["outcome"] for r in rows] == ["searched", "partial", "grabbed"]
+            assert all(r["instance_stable_id"] == "sid-a" for r in rows)
+
+            async with db.execute(
+                "SELECT episodes_found, episodes_updated, instance_stable_id FROM lifetime_stats "
+                "WHERE app = 'Sonarr' AND instance_id = 'Old'"
+            ) as cursor:
+                lifetime_row = await cursor.fetchone()
+            assert lifetime_row["episodes_found"] == 3
+            assert lifetime_row["episodes_updated"] == 1
+            assert lifetime_row["instance_stable_id"] == "sid-a"
+
+
+async def test_tracking_job_passes_instance_stable_id(tmp_path):
+    """The scheduled job's tracking call passes instance_stable_id = that instance's InstanceConfig.id."""
+    radarr_client = AsyncMock()
+    sonarr_client = AsyncMock()
+    app, db, state_path = await _make_app_with_db(tmp_path, radarr_client=radarr_client, sonarr_client=sonarr_client)
+    app.state.settings.radarr["Default"].id = "sid-radarr"
+    app.state.settings.sonarr["Default"].id = "sid-sonarr"
+
+    tracking_result = {
+        "grabbed": 0, "partial": 0, "partial_expired": 0, "unresolved": 0, "errors": 0, "identity_skipped": 0,
+    }
+
+    try:
+        with (
+            patch(
+                "triggarr.search.scheduler.run_radarr_cycle",
+                new=AsyncMock(return_value=app.state.triggarr_state),
+            ),
+            patch(
+                "triggarr.search.scheduler.run_sonarr_cycle",
+                new=AsyncMock(return_value=app.state.triggarr_state),
+            ),
+            patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+            patch(
+                "triggarr.search.scheduler.run_tracking_check",
+                new=AsyncMock(return_value=tracking_result),
+            ) as mock_tracking,
+        ):
+            radarr_job = make_search_job(app, "radarr", "Default", state_path)
+            await radarr_job()
+            sonarr_job = make_search_job(app, "sonarr", "Default", state_path)
+            await sonarr_job()
+
+        assert mock_tracking.call_count == 2
+        radarr_kwargs = mock_tracking.call_args_list[0].kwargs
+        sonarr_kwargs = mock_tracking.call_args_list[1].kwargs
+        assert radarr_kwargs["instance_stable_id"] == "sid-radarr"
+        assert sonarr_kwargs["instance_stable_id"] == "sid-sonarr"
+    finally:
+        await db.close()
+
+
+async def test_tracking_summary_logs_identity_skipped(tmp_path):
+    """A non-zero identity_skipped count is both logged and a reason to emit the tracking summary line."""
+    sonarr_client = AsyncMock()
+    app, db, state_path = await _make_app_with_db(tmp_path, sonarr_client=sonarr_client)
+
+    captured_messages: list[str] = []
+    sink_id = logger.add(lambda m: captured_messages.append(str(m)), level="INFO")
+
+    tracking_result = {
+        "grabbed": 0, "partial": 0, "partial_expired": 0, "unresolved": 0, "errors": 0, "identity_skipped": 3,
+    }
+
+    try:
+        with (
+            patch(
+                "triggarr.search.scheduler.run_sonarr_cycle",
+                new=AsyncMock(return_value=app.state.triggarr_state),
+            ),
+            patch("triggarr.search.scheduler.save_state", new=MagicMock()),
+            patch(
+                "triggarr.search.scheduler.run_tracking_check",
+                new=AsyncMock(return_value=tracking_result),
+            ),
+        ):
+            job = make_search_job(app, "sonarr", "Default", state_path)
+            await job()
+
+        tracking_logs = [m for m in captured_messages if "Tracking:" in m]
+        assert any("identity_skipped=3" in m for m in tracking_logs), (
+            f"Expected an identity_skipped=3 tracking summary log, got: {captured_messages}"
+        )
+    finally:
+        logger.remove(sink_id)
+        await db.close()
