@@ -92,6 +92,15 @@ Scope given: change only `sonarr-v5`'s global RSS Sync Interval via the sandbox 
 
 **Done:** `PUT /api/v3/config/indexer/1` against `sonarr-v5` (LAN `:8990`, never production `sonarr`) changed `rssSyncInterval` `0` → `15`, all other fields unchanged (`minimumAge`, `retention`, `maximumSize` all `0`, `id` `1`). Re-fetched `GET /api/v3/config/indexer` to confirm the value stuck. Confirmed immediately after: both series (`Hacks`, `That Mitchell and Webb Look`) still `monitored: false`; `triggarr-test`'s `/volume1/docker/v5test/triggarr/triggarr.toml` still has `enabled = false` for `[sonarr.v5test]`. No series was monitored, no instance was enabled, no search was triggered.
 
+### Gate 2 result: `SEARCHES=on` + `deluge-check` — BOTH PASSED (owner-run, 2026-10-19 18:31 ET)
+
+Owner ran the combined command (`ACTION=verify SEARCHES=on ... && ACTION=deluge-check ...`, single sudo prompt) interactively. Both sanitized (no keys found by grep) and saved:
+
+- `v5test-results/81-3-verify-searches-on.txt` (46 lines) — ends `ALL ISOLATION CHECKS PASSED`, `isolation checks failed: 0`. `sonarr-v5 RSS sync interval: 15 min` (the change above took effect), indexers <private indexers> RSS+auto-search on, `series: 2 (0 monitored)` (unchanged — nothing monitored yet, as scoped), `scheduled RSS grabbing: ON`, matching `SEARCHES=on`.
+- `v5test-results/81-3-deluge-check.txt` (19 lines) — ends `DELUGE DESTINATIONS PASSED`, `deluge-check failures: 0`. Passed against the **existing** `Hacks.S01.XviD-AFG` torrent from 2026-10-12 (`state=Seeding 100%`, `download=/home/<seedbox-user>/v5test`, not in prod staging, pulled into the sandbox) — no fresh grab was needed or triggered, consistent with the owner's "no post-grab Deluge re-check requested" scope. Matches the orchestrator's independent read (line 45/43 of the verify file, line 18 of the deluge-check file).
+
+Both gates now passed. Per the owner's 2026-10-19 scoping, this authorizes: monitor Hacks Season 2 only, enable the `triggarr-test` `v5test` instance, and proceed with Task 2's controlled run.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
