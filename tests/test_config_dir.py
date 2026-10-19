@@ -142,6 +142,7 @@ async def test_lifespan_derives_sqlite_path_from_injected_state_path(tmp_path: P
     with (
         patch("triggarr.search.scheduler.aiosqlite.connect", AsyncMock(return_value=fake_db)) as mock_connect,
         patch("triggarr.search.scheduler.init_db", new_callable=AsyncMock) as mock_init_db,
+        patch("triggarr.search.scheduler.ensure_cutover_recorded", new_callable=AsyncMock) as mock_cutover,
         patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=fake_scheduler),
     ):
         async with lifespan(app):
@@ -149,7 +150,11 @@ async def test_lifespan_derives_sqlite_path_from_injected_state_path(tmp_path: P
             assert app.state.state_path == state_path
 
     mock_connect.assert_awaited_once_with(expected_db_path)
-    mock_init_db.assert_awaited_once_with(fake_db, expected_db_path)
+    # Phase 81: init_db now also receives the (empty, since Settings() has no
+    # configured instances) stable-ID association mapping; ensure_cutover_recorded
+    # runs once right after it.
+    mock_init_db.assert_awaited_once_with(fake_db, expected_db_path, instance_stable_ids={})
+    mock_cutover.assert_awaited_once_with(fake_db, {})
     assert fake_scheduler.started is True
     assert fake_scheduler.shutdown_wait is False
 
