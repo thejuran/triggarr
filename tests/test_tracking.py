@@ -116,14 +116,17 @@ async def _get_detail(db, row_id: int) -> str:
 async def _get_stat(
     db, app: str, column: str, instance_id: str = "Default", instance_stable_id: str = "sid-test",
 ) -> int:
-    """Read a specific stat value from lifetime_stats for an app+instance+stable-id."""
-    db.row_factory = aiosqlite.Row
+    """Read a specific stat value from lifetime_stats for an app+instance+stable-id.
+
+    Relies on ``init_db``'s connection-wide ``row_factory = aiosqlite.Row``
+    (never toggles it) so a mid-test call never breaks a later
+    ``run_tracking_check`` call on the same shared connection.
+    """
     async with db.execute(
         f"SELECT {column} FROM lifetime_stats WHERE app = ? AND instance_id = ? AND instance_stable_id = ?",  # noqa: S608
         (app, instance_id, instance_stable_id),
     ) as cursor:
         row = await cursor.fetchone()
-    db.row_factory = None
     if row is None:
         return 0
     return row[column]
@@ -628,10 +631,12 @@ async def test_original_repro_season_one_grab_credits_once(tmp_path):
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
 
     row_s1 = await _insert_entry(
-        db, app="Sonarr", item_id=10, missing_count=1, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=10, missing_count=1, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
     row_s2 = await _insert_entry(
-        db, app="Sonarr", item_id=10, missing_count=1, season_number=2, timestamp=searched_at,
+        db, app="Sonarr", item_id=10, missing_count=1, season_number=2,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
 
     sonarr = AsyncMock()
@@ -644,7 +649,7 @@ async def test_original_repro_season_one_grab_credits_once(tmp_path):
 
     assert await _get_outcome(db, row_s1) == "grabbed"
     assert await _get_outcome(db, row_s2) == "searched"
-    assert await _get_stat(db, "Sonarr", "episodes_found", instance_stable_id="sid-main") == 1
+    assert await _get_stat(db, "Sonarr", "episodes_found", instance_id="Main", instance_stable_id="sid-main") == 1
     assert counts["grabbed"] == 1
     owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=10)
     assert len(owned) == 1
@@ -659,7 +664,7 @@ async def test_original_repro_season_one_grab_credits_once(tmp_path):
         db, sonarr, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
     )
     assert await _get_outcome(db, row_s2) == "unresolved"
-    assert await _get_stat(db, "Sonarr", "episodes_found", instance_stable_id="sid-main") == 1
+    assert await _get_stat(db, "Sonarr", "episodes_found", instance_id="Main", instance_stable_id="sid-main") == 1
     assert counts2["unresolved"] == 1
     owned_after = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=10)
     assert len(owned_after) == 1
@@ -672,7 +677,8 @@ async def test_owned_grab_not_recredited_to_second_search(tmp_path):
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
 
     row_a = await _insert_entry(
-        db, app="Sonarr", item_id=20, missing_count=1, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=20, missing_count=1, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
 
     sonarr = AsyncMock()
@@ -688,7 +694,7 @@ async def test_owned_grab_not_recredited_to_second_search(tmp_path):
     # A second pending S1 search, inserted later, whose window also covers grab G.
     row_b = await _insert_entry(
         db, app="Sonarr", item_id=20, missing_count=1, season_number=1,
-        timestamp=searched_at + timedelta(minutes=1),
+        instance_stable_id="sid-main", timestamp=searched_at + timedelta(minutes=1),
     )
 
     counts2 = await run_tracking_check(
@@ -816,8 +822,9 @@ async def test_rename_during_partial_tracking_completes(tmp_path):
     assert len(owned_after_check2) == 3
 
     # The lifetime increment lands on the single row keyed by stable ID
-    # "sid-a" -- nothing existed before this check, so it is created now.
-    assert await _get_stat(db, "Sonarr", "episodes_found", instance_stable_id="sid-a") == 3
+    # "sid-a" -- nothing existed before this check, so it is created now
+    # (under "New", the display name in effect at creation time).
+    assert await _get_stat(db, "Sonarr", "episodes_found", instance_id="New", instance_stable_id="sid-a") == 3
     async with db.execute(
         "SELECT COUNT(*) FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
     ) as cursor:
@@ -893,7 +900,8 @@ async def test_missing_episode_ids_do_not_inflate_count(tmp_path):
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=5)
     row_id = await _insert_entry(
-        db, app="Sonarr", item_id=60, missing_count=2, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=60, missing_count=2, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
 
     grab1 = GrabEvent(
@@ -926,7 +934,8 @@ async def test_conflicting_or_mismatched_identity_skipped(tmp_path):
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=5)
     row_id = await _insert_entry(
-        db, app="Sonarr", item_id=70, missing_count=3, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=70, missing_count=3, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
 
     conflicting_episode_id = GrabEvent(
@@ -965,7 +974,8 @@ async def test_pruned_owner_does_not_recredit(tmp_path):
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
 
     row_a = await _insert_entry(
-        db, app="Sonarr", item_id=80, missing_count=1, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=80, missing_count=1, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
     sonarr = AsyncMock()
     grab = _grab(8301, searched_at + timedelta(minutes=2), season_number=1, series_id=80)
@@ -982,7 +992,7 @@ async def test_pruned_owner_does_not_recredit(tmp_path):
 
     row_b = await _insert_entry(
         db, app="Sonarr", item_id=80, missing_count=1, season_number=1,
-        timestamp=searched_at + timedelta(minutes=1),
+        instance_stable_id="sid-main", timestamp=searched_at + timedelta(minutes=1),
     )
 
     counts = await run_tracking_check(
@@ -1000,7 +1010,8 @@ async def test_restart_does_not_recredit(tmp_path):
     searched_at = datetime.now(UTC) - timedelta(minutes=10)
 
     row_a = await _insert_entry(
-        db, app="Sonarr", item_id=90, missing_count=1, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=90, missing_count=1, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
     sonarr = AsyncMock()
     grab = _grab(8401, searched_at + timedelta(minutes=2), season_number=1, series_id=90)
@@ -1012,11 +1023,14 @@ async def test_restart_does_not_recredit(tmp_path):
     assert await _get_outcome(db, row_a) == "grabbed"
     await db.close()
 
-    # Restart: reopen the same database file.
+    # Restart: reopen the same database file (mirrors production lifespan,
+    # which always re-runs init_db on startup -- idempotent, and sets
+    # row_factory on the new connection).
     db2 = await aiosqlite.connect(db_path)
+    await init_db(db2, db_path)
     row_b = await _insert_entry(
         db2, app="Sonarr", item_id=90, missing_count=1, season_number=1,
-        timestamp=searched_at + timedelta(minutes=1),
+        instance_stable_id="sid-main", timestamp=searched_at + timedelta(minutes=1),
     )
 
     counts = await run_tracking_check(
@@ -1033,7 +1047,8 @@ async def test_partial_accumulates_to_complete(tmp_path):
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=5)
     row_id = await _insert_entry(
-        db, app="Sonarr", item_id=95, missing_count=4, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=95, missing_count=4, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
 
     sonarr = AsyncMock()
@@ -1077,7 +1092,7 @@ async def test_partial_accumulates_to_complete(tmp_path):
     )
     assert await _get_outcome(db, row_id) == "grabbed"
     assert counts3["grabbed"] == 1
-    assert await _get_stat(db, "Sonarr", "episodes_found", instance_stable_id="sid-main") == 4
+    assert await _get_stat(db, "Sonarr", "episodes_found", instance_id="Main", instance_stable_id="sid-main") == 4
     owned3 = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=95)
     assert len(owned3) == 4
     await db.close()
@@ -1088,7 +1103,8 @@ async def test_season_pack_repeat_grab_counts_episode_once(tmp_path):
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=5)
     row_id = await _insert_entry(
-        db, app="Sonarr", item_id=96, missing_count=3, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=96, missing_count=3, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
 
     sonarr = AsyncMock()
@@ -1117,7 +1133,8 @@ async def test_legacy_pending_not_tracked(tmp_path):
     db, _ = await _init_db(tmp_path)
     searched_at = datetime.now(UTC) - timedelta(minutes=5)
     row_id = await _insert_entry(
-        db, app="Sonarr", item_id=97, missing_count=1, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=97, missing_count=1, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
     await ensure_cutover_recorded(db, {"Main": "sid-main"})
 
@@ -1174,10 +1191,12 @@ async def test_ownership_integrity_error_is_nonfatal(tmp_path):
     searched_at = datetime.now(UTC) - timedelta(minutes=5)
 
     row_a = await _insert_entry(
-        db, app="Sonarr", item_id=101, missing_count=1, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=101, missing_count=1, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
     row_b = await _insert_entry(
-        db, app="Sonarr", item_id=102, missing_count=1, season_number=1, timestamp=searched_at,
+        db, app="Sonarr", item_id=102, missing_count=1, season_number=1,
+        instance_stable_id="sid-main", timestamp=searched_at,
     )
 
     def _history(series_id: int) -> list[GrabEvent]:
