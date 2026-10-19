@@ -32,6 +32,11 @@ def _renders_number(text: str, value: int) -> bool:
     return re.search(rf">\s*{value}\s*<", text) is not None
 
 
+def _renders_text(text: str, value: str) -> bool:
+    """True if *value* appears as rendered element text content (tolerates surrounding whitespace/newlines)."""
+    return re.search(rf">\s*{re.escape(value)}\s*<", text) is not None
+
+
 @pytest.fixture(autouse=True)
 def _clear_log_buffer():
     """Reset shared log_buffer before and after each test."""
@@ -422,3 +427,105 @@ def test_stats_row_existing_mocked_dict_without_new_keys_still_renders(app_env):
     assert response.status_code == 200
     assert "Includes historical estimates" not in response.text
     assert "Lifetime — includes historical estimates" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Legacy history / activity-rail labeling (ATTR-05, D-04)
+# ---------------------------------------------------------------------------
+
+
+async def test_history_page_legacy_pending_shows_legacy_badge(app_env):
+    """GET /history with a legacy pending Sonarr row shows the Legacy badge, not 'searched'."""
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", outcome="searched")
+    await ensure_cutover_recorded(db, {})
+
+    with TestClient(app) as client:
+        response = client.get("/history")
+    assert response.status_code == 200
+    text = response.text
+    assert "Legacy — tracking discontinued" in text
+    assert not _renders_text(text, "searched")
+
+
+async def test_history_page_post_cutover_and_radarr_pending_still_searched(app_env):
+    """A post-cutover pending Sonarr row and a Radarr pending row still render 'searched'."""
+    app, db = app_env
+    await ensure_cutover_recorded(db, {})  # legacy_max_history_id = 0, nothing is legacy yet
+    await insert_search_entry(db, "Sonarr", "missing", "New Pending Show", outcome="searched")
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="searched")
+    await db.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/history")
+    assert response.status_code == 200
+    text = response.text
+    assert "Legacy — tracking discontinued" not in text
+    assert _renders_text(text, "searched")
+
+
+async def test_history_page_resolved_pre_cutover_rows_render_stored_outcome(app_env):
+    """Resolved pre-cutover rows (not legacy pending) render their stored outcome, not the Legacy badge."""
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Old Show", outcome="grabbed")
+    await ensure_cutover_recorded(db, {})
+
+    with TestClient(app) as client:
+        response = client.get("/history")
+    assert response.status_code == 200
+    text = response.text
+    assert "Legacy — tracking discontinued" not in text
+    assert _renders_text(text, "grabbed")
+
+
+async def test_history_results_partial_with_filters_renders_legacy_badge(app_env):
+    """/partials/history-results with filters renders the same Legacy badge."""
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", outcome="searched")
+    await ensure_cutover_recorded(db, {})
+
+    with TestClient(app) as client:
+        response = client.get("/partials/history-results?app=Sonarr&queue=missing")
+    assert response.status_code == 200
+    assert "Legacy — tracking discontinued" in response.text
+
+
+async def test_activity_rail_renders_legacy_badge(app_env):
+    """/partials/activity-rail renders 'Legacy — tracking discontinued' for a legacy row."""
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", outcome="searched")
+    await ensure_cutover_recorded(db, {})
+
+    with TestClient(app) as client:
+        response = client.get("/partials/activity-rail")
+    assert response.status_code == 200
+    assert "Legacy — tracking discontinued" in response.text
+
+
+async def test_history_page_no_divider_or_banner_for_cutover(app_env):
+    """No divider, banner or cutover marker element appears on the History page."""
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", outcome="searched")
+    await ensure_cutover_recorded(db, {})
+
+    with TestClient(app) as client:
+        response = client.get("/history")
+    assert response.status_code == 200
+    text = response.text
+    assert "Attribution corrected on" not in text
+    assert "cutover" not in text.lower()
+
+
+async def test_history_page_legacy_row_stored_outcome_unchanged(app_env):
+    """The stored outcome of the legacy row is still 'searched' after rendering."""
+    app, db = app_env
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", outcome="searched")
+    await ensure_cutover_recorded(db, {})
+
+    with TestClient(app) as client:
+        response = client.get("/history")
+    assert response.status_code == 200
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "searched"
