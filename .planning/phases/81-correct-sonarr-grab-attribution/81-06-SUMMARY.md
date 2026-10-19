@@ -93,3 +93,12 @@ None - no external service configuration required.
 ---
 *Phase: 81-correct-sonarr-grab-attribution*
 *Completed: 2026-10-19*
+
+## Self-Check: PASSED
+
+- `.planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md` — FOUND
+- `.planning/phases/81-correct-sonarr-grab-attribution/81-06-SUMMARY.md` — FOUND
+- Commit `6fc98fb` (Task 1) — FOUND in `git log --oneline --all`
+- Commit `35cdb5c` (Task 2) — FOUND in `git log --oneline --all`
+- Commit `9098d51` (this SUMMARY) — FOUND in `git log --oneline --all`
+- `.planning/STATE.md`, `.planning/ROADMAP.md`, `docs/bm-greptile-codex-blueprint.md` — confirmed still showing only the pre-existing unrelated owner edits in `git status --short`, not staged or committed by this plan
