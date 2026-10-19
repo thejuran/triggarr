@@ -74,6 +74,18 @@ Not done (owner's role, not yet run): `ACTION=verify SEARCHES=off` — the next 
 
 This is reported as a checkpoint (type human-action), not a blocker: everything password-free is done, and the next step is squarely the owner's per the 2026-10-19 decision.
 
+### Gate 1 result: `SEARCHES=off` — PASSED (owner-run, 2026-10-19 17:40 ET)
+
+Owner ran `ACTION=verify SEARCHES=off bash /tmp/setup-sonarr-v5-test.sh` interactively (their own sudo password). Output: 46 lines, ends `ALL ISOLATION CHECKS PASSED`, `isolation checks failed: 0`. Sanitized copy (no keys found by grep) saved to `v5test-results/81-2-verify-searches-off.txt`; NAS auto-saved copy `/volume1/docker/v5test/results/verify-20261019-174049.txt`.
+
+Key facts from this run: Sonarr v5 is now `5.0.0.2701`/develop (WUD advanced it further since the Task 1 fingerprint captured minutes earlier at the same version); `triggarr-test` confirmed resolving `sonarr-v5` by name (not prod), v5 key rejected by prod (401); no prod cross-references in either direction; `sonarr-v5 RSS sync interval: 0 min`, indexers <private indexers> have their per-indexer RSS flag already on (harmless while the global interval is 0); **series: 2 (0 monitored)** — one more series exists than the 2026-10-12 record (`Hacks` only); `scheduled RSS grabbing: OFF`, matching `SEARCHES=off`.
+
+### Runbook Step 4 ordering conflict — surfaced, not resolved unilaterally
+
+The runbook's Step 4 text ("Set RSS Sync Interval back to 15, enable the triggarr-test schedule, and monitor the test series. **Then** run `ACTION=verify SEARCHES=on`...") assumes those three actions happen *before* the `SEARCHES=on` gate, because that gate's own pass condition requires them: `search_state()` in the script only checks Sonarr's global RSS Sync Interval and per-indexer RSS flags (prints, but does not gate on, monitored series count) — `scheduled = bool(rss) and bool(rss_idx)`; it fails with `SEARCHES=on expected, but RSS sync is off` unless the interval is already non-zero. Likewise `deluge_check()` fails (`NONE no torrents labelled tv-v5test yet`) unless a `tv-v5test`-labelled torrent already exists in Deluge — i.e. an actual grab, from Sonarr or from Triggarr, needs to have happened or still be seeding.
+
+This directly conflicts with the owner's 2026-10-19 instruction: *"Never start any controlled search (schedule enable, series monitor, SeasonSearch) until the owner-run SEARCHES=on gate AND Deluge-destination check output ... show ALL ISOLATION CHECKS PASSED and DELUGE DESTINATIONS PASSED."* All three listed actions are exactly what Step 4 wants done first. No prep that would enable or fire a search was performed; this is reported as a checkpoint question rather than decided unilaterally. See the Task 1/2 checkpoint for the question and options put to the owner.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
