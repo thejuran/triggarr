@@ -445,7 +445,9 @@ async def test_history_page_legacy_pending_shows_legacy_badge(app_env):
     assert response.status_code == 200
     text = response.text
     assert "Legacy — tracking discontinued" in text
-    assert not _renders_text(text, "searched")
+    # Scope the "searched" check to the results list, not the filter bar (which always lists it).
+    results_fragment = text[text.index('class="space-y-0"') :]
+    assert not _renders_text(results_fragment, "searched")
 
 
 async def test_history_page_post_cutover_and_radarr_pending_still_searched(app_env):
