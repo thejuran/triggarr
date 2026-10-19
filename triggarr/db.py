@@ -1275,33 +1275,80 @@ async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -
     return count
 
 
-async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | None = None) -> dict[str, Any]:
+async def get_dashboard_stats(
+    db: aiosqlite.Connection,
+    *,
+    instance_id: str | None = None,
+    app: str | None = None,
+    instance_stable_id: str | None = None,
+) -> dict[str, Any]:
     """Compute aggregate dashboard statistics from search_history and lifetime_stats.
+
+    Per-instance views must pass ``app`` (the stored title-case app name,
+    e.g. ``"Radarr"``) together with a non-empty ``instance_stable_id`` --
+    this scopes metrics, historical flags and lifetime totals by the same
+    identity, so a Radarr and a Sonarr instance sharing a display name
+    never contaminate each other's figures (R3), and displayed figures
+    follow a rename or survive a different server reusing an old name
+    (S1). ``instance_id`` alone keeps the legacy name-only scoping for any
+    remaining caller. These selection modes are mutually exclusive.
 
     Args:
         db: Open aiosqlite connection.
-        instance_id: If set, scope stats to this instance only.
+        instance_id: If set (and app/instance_stable_id are not), scope
+            stats to this display name only (legacy, name-only scoping).
+        app: Stored title-case app name (e.g. "Radarr", "Sonarr",
+            "Lidarr"). Must be given together with instance_stable_id.
+        instance_stable_id: Stable per-instance ID. Must be given together
+            with app, and must be non-empty (an empty string would match
+            unassociated rows).
+
+    Raises:
+        ValueError: If instance_id is combined with app or
+            instance_stable_id, or if exactly one of app/instance_stable_id
+            is given, or if instance_stable_id is given as an empty string.
 
     Returns:
         Dict with keys: overall_rate, radarr_rate, sonarr_rate, lidarr_rate,
         movies_found, movies_updated, episodes_found, episodes_updated,
-        albums_found, albums_updated, avg_time_to_grab_seconds.
-        Rate values are percentages (0-100) or None if no data.
+        albums_found, albums_updated, avg_time_to_grab_seconds,
+        overall_rate_includes_historical, sonarr_rate_includes_historical,
+        avg_time_to_grab_includes_historical. Rate values are percentages
+        (0-100) or None if no data. The three *_includes_historical flags
+        are True only when pre-fix Sonarr data actually contributes to that
+        specific metric's inputs in the current view (D-06).
     """
-    # Build optional instance filter clause
+    if app is not None or instance_stable_id is not None:
+        if instance_id is not None:
+            msg = "get_dashboard_stats: instance_id cannot be combined with app/instance_stable_id"
+            raise ValueError(msg)
+        if not app or not instance_stable_id:
+            msg = "get_dashboard_stats: app and instance_stable_id must be given together, both non-empty"
+            raise ValueError(msg)
+
+    # Build optional instance filter clause. Per-instance (app + stable ID)
+    # scoping is one identity shared by the effectiveness, flag and
+    # lifetime_stats queries below (R3, S1); legacy instance_id scoping is
+    # name-only, matching today's behavior for any remaining caller.
     inst_clause = ""
     inst_params: tuple = ()
-    if instance_id is not None:
+    if app is not None and instance_stable_id is not None:
+        inst_clause = " AND app = ? AND instance_stable_id = ?"
+        inst_params = (app, instance_stable_id)
+    elif instance_id is not None:
         inst_clause = " AND instance_id = ?"
         inst_params = (instance_id,)
 
-    # 1. Effectiveness: grab rate per app
+    # 1. Effectiveness: grab rate per app. Frozen legacy pending rows are
+    # excluded from both the per-app and overall denominators (D-07) --
+    # they are untracked outcomes, not confirmed misses. Resolved
+    # historical rows stay in, covered by the disclosure.
     async with db.execute(
         "SELECT app, "
         "SUM(CASE WHEN outcome IN ('grabbed', 'partial', 'partial_expired') THEN 1 ELSE 0 END) AS grabbed_count, "
         "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
         "FROM search_history "
-        f"WHERE outcome IS NOT NULL{inst_clause} "
+        f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
         "GROUP BY app",
         inst_params,
     ) as cursor:
@@ -1309,7 +1356,7 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
 
     total_grabbed = 0
     total_count = 0
-    app_rates: dict[str, float | None] = {app: None for app in APP_TYPES}
+    app_rates: dict[str, float | None] = {app_type: None for app_type in APP_TYPES}
 
     for row in effectiveness_rows:
         app_name = row["app"]
@@ -1332,13 +1379,20 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
     albums_found = 0
     albums_updated = 0
 
-    if instance_id is not None:
+    if app is not None and instance_stable_id is not None:
+        stats_query = (
+            "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
+            "albums_found, albums_updated "
+            "FROM lifetime_stats WHERE app = ? AND instance_stable_id = ?"
+        )
+        stats_params: tuple[str | int, ...] = (app, instance_stable_id)
+    elif instance_id is not None:
         stats_query = (
             "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
             "albums_found, albums_updated "
             "FROM lifetime_stats WHERE instance_id = ?"
         )
-        stats_params: tuple[str | int, ...] = (instance_id,)
+        stats_params = (instance_id,)
     else:
         stats_query = (
             "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
@@ -1367,6 +1421,32 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
 
     avg_seconds: float | None = ttg_row[0] if ttg_row and ttg_row[0] is not None else None
 
+    # 4. Per-metric historical-contribution flags (D-06). Each flag reflects
+    # only that metric's real input set in the current view, not just
+    # whether any pre-fix row exists anywhere -- an unrelated app, instance
+    # or disqualified row must never trip a label it doesn't feed.
+    async with db.execute(
+        "SELECT EXISTS("
+        "SELECT 1 FROM search_history "
+        f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
+        f"AND app = 'Sonarr' AND outcome != 'failed' AND id <= {_LEGACY_MAX_ID_SQL}"
+        ")",
+        inst_params,
+    ) as cursor:
+        rate_flag_row = await cursor.fetchone()
+    rate_includes_historical = bool(rate_flag_row[0]) if rate_flag_row is not None else False
+
+    async with db.execute(
+        "SELECT EXISTS("
+        "SELECT 1 FROM search_history "
+        f"WHERE outcome = 'grabbed' AND resolved_at IS NOT NULL{inst_clause} "
+        f"AND app = 'Sonarr' AND id <= {_LEGACY_MAX_ID_SQL}"
+        ")",
+        inst_params,
+    ) as cursor:
+        ttg_flag_row = await cursor.fetchone()
+    ttg_includes_historical = bool(ttg_flag_row[0]) if ttg_flag_row is not None else False
+
     return {
         "overall_rate": overall_rate,
         "radarr_rate": app_rates.get("radarr"),
@@ -1379,4 +1459,7 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
         "albums_found": albums_found,
         "albums_updated": albums_updated,
         "avg_time_to_grab_seconds": avg_seconds,
+        "overall_rate_includes_historical": rate_includes_historical,
+        "sonarr_rate_includes_historical": rate_includes_historical,
+        "avg_time_to_grab_includes_historical": ttg_includes_historical,
     }
