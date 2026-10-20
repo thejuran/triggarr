@@ -157,6 +157,34 @@ Ran, sha256-verified immediately before execution (`echo "90e9e8e5...2196  /tmp/
 
 **Per the explicit instruction for this step, the frozen script was NOT modified.** This is reported as a finding, not fixed in place — any fix (narrowing the W8 pattern check to exclude `triggarr-test`'s own known-legitimate v5test path, or excluding `triggarr-test` from that specific grep) changes the frozen script and would need its own re-verification and, per the owner's rule above, likely another review pass before a fresh freeze.
 
+### Plan 81-08: owner decisions on the W8 false positive and the credential incident (2026-10-20)
+
+**Owner decisions (2026-10-20, interactive), recorded verbatim:**
+
+> **Gate:** "1 — scope it, quick independent re-check. The reviewer should confirm the restriction applies to exactly sonarr-v4 and seedsyncarr-v4test, while triggarr-test retains its other isolation checks. Verify both that the legitimate shared config mount passes and that a forbidden mount on either v4 container still fails. Then freeze a new checksum and rerun the entire searches-off gate. The old checksum's authorization does not carry forward."
+>
+> _[Security-sensitive detail removed before publication; the full record is kept privately.]_
+
+**BINDING from now on (per this decision):** never print a whole config section/file or any secret-bearing key during this plan's execution; read individual non-secret keys only (allowlist), e.g. `configparser.get("Lftp", "local_path")` for one named key at a time. Note: the script's own checks already followed this pattern (every `say(...)` call compares or prints one named field, never a whole section or a secret value) — the exposure was in an ad hoc verification command run directly against the live file outside the script, not in the script's own logic.
+
+_[Security-sensitive detail removed before publication; the full record is kept privately.]_
+
+### Plan 81-08: W8 check rescoped (2026-10-20, not yet frozen or run)
+
+Restricted the W8 mount pattern (`v5-sandbox or prod data path`) to run only for `sonarr-v4` and `seedsyncarr-v4test`; `triggarr-test` is excluded from that one check but keeps the prod-config-dir check and every other isolation check unchanged (its actual mount, `/volume1/docker/v5test/triggarr`, does not match the prod-config-dir pattern either, so nothing about `triggarr-test`'s coverage regresses).
+
+**Minimal, non-rig dry test** (no docker/sudo calls; synthetic mount strings fed directly into the extracted check logic):
+- (a) `triggarr-test` with its real, legitimate mount (`/volume1/docker/v5test/triggarr:/config:true`) -> 0 failures (the false positive is gone).
+- (b) `sonarr-v4` with a synthetic forbidden mount (`/volume1/docker/v5test/x:...` and separately `/volume1/data/media:...`) -> 1 failure each (still correctly caught).
+- (c) `seedsyncarr-v4test` with the same two synthetic forbidden mounts -> 1 failure each (still correctly caught).
+- (d)/(e) sanity: both containers' own real, legitimate mounts -> 0 failures each (unchanged from before).
+
+**Static verification:** `bash -n` clean (laptop + NAS, identical sha256); every embedded Python block (6 heredocs + the B3 inline block) parses via `ast.parse`; no bare `sudo` introduced; no credential literal in the script. Diff vs the previously-frozen script shows only the W8 scoping change (a `case "$c" in sonarr-v4|seedsyncarr-v4test)` guard around the one grep, plus an expanded comment explaining why `triggarr-test` is excluded) — 28 lines changed, nothing else touched.
+
+**Previously frozen sha256 `90e9e8e5219d8056ba1f0af81f5cac583be4607c07160978d9c29d7eeec8afd4` is marked SUPERSEDED.** Per the owner's ruling, its authorization does not carry forward to any script version, including this one.
+
+**New provisional (not frozen) sha256:** `00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e` — identical on laptop and NAS (`/tmp/setup-sonarr-v4-test.sh`). Per the owner's instruction, this version is not frozen and the gate has not been run; an independent quick re-check comes first.
+
 ### Plan 07 Task 1 execution note (2026-10-19)
 
 Blocked before any sandbox change. `setup-sonarr-v5-test.sh`'s `ACTION=verify` / `ACTION=deluge-check` paths (and the script generally) start with `sudo -v` and use bare `sudo` throughout (config reads, `mkdir`/`chown`, embedded `python3` checks) — only `/usr/local/bin/docker` and `/usr/local/bin/docker-compose` are NOPASSWD on this NAS (per `CLAUDE.md`). Both `ssh nas '...'` and `ssh -t nas '...'` invocations of the script failed identically: `sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper` / `sudo: a password is required`. Confirmed with `sudo -n true` (fails) vs. `sudo -n -l` (succeeds, non-interactive — lists only the two NOPASSWD docker entries). No askpass helper is configured. This is a genuine interactive-credential requirement, not a script bug: the isolation/Deluge-destination gate cannot be produced by the automated executor in this session.
