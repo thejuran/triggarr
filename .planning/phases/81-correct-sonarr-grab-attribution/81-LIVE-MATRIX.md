@@ -235,6 +235,29 @@ This command alone does not set `rssSyncInterval` (that field is currently `0`, 
 
 **Not yet done:** `ACTION=verify SEARCHES=on` — per the owner's authorization, this is the owner's own run, not the executor's. Per instruction, nothing was enabled/monitored/searched and no `deluge-check` was bundled into this step.
 
+**Correction (orchestrator, 2026-10-20):** the frozen script's B1 check (`setup-sonarr-v4-test.sh` line 385) requires the `v4test` instance to be **enabled** under `SEARCHES=on` (`say(bool(en4) and all(en4), "v4test instance enabled (SEARCHES=on)")`), so the one-liner prepared above — run with the instance still disabled — would have failed `ACTION=verify SEARCHES=on`. The expected-output note accompanying that one-liner was wrong; corrected below.
+
+### Plan 81-08: bounded live action — enable the v4test instance, confirm zero searches (2026-10-20)
+
+**Owner decision (2026-10-20, interactive), recorded verbatim — explicit authorization of a bounded live action, not merely a configuration check:**
+
+> "1 — enable first, then gate, provided the empty-state checks are fresh and complete: zero monitored series, and both missing and cutoff queries succeed with zero results. Errors or incomplete responses must not count as empty. Keep the test season unmonitored until the frozen searches-on gate passes. After enabling, confirm the immediate cycle issued zero search commands. One wording correction: monitoring makes the season eligible; the next scheduled or manual cycle triggers the search. Enabling is therefore a bounded live action requiring your explicit authorization, not merely a configuration check."
+
+**Step 1 — fresh, fail-closed empty-state checks, immediately before enabling:**
+- `GET /api/v3/series` -> HTTP 200, parsed OK, `1` series, `0` monitored series, `0` monitored seasons.
+- `GET /api/v3/wanted/missing?includeSeries=true&pageSize=50` -> HTTP 200, valid JSON, `totalRecords: 0`, `records: []`.
+- `GET /api/v3/wanted/cutoff?includeSeries=true&pageSize=50` -> HTTP 200, valid JSON, `totalRecords: 0`, `records: []`.
+
+Each check was coded to fail closed: any non-200 status, JSON parse error, missing `totalRecords`/`records` field, a non-integer `totalRecords`, or a non-list `records` would all have counted as **not empty** and stopped the run before enabling. None of those conditions occurred; every check independently confirmed empty via its own fresh HTTP response. Evidence: `v5test-results/81-v4-11-pre-enable-empty-state.txt`.
+
+**Step 2 — enabled ONLY the `v4test` instance**, via Triggarr's own validated `POST /settings` (authenticated with its internal `X-Api-Key`, not a session cookie), resubmitting the `[general]` block and both instances' existing `url`/`search_interval`/`search_missing_count`/`search_cutoff_count`/tags unchanged (blank `api_key` fields preserve each instance's existing key server-side) and flipping only `sonarr__v4test__enabled` to `on`. Confirmed by a fresh, sanitized read of only the three named non-secret keys (`enabled`/`url`/`search_interval`, never any key value): `sonarr.v4test: enabled=true url=http://sonarr-v4:8989 search_interval=30` (changed only `enabled`); `sonarr.v5test: enabled=false url=http://sonarr-v5:8989 search_interval=30` (fully unchanged).
+
+**Step 3 — confirmed the immediate cycle issued zero search commands:** the enable fired the scheduler's "first run: now" job as expected (matches the owner's wording correction — monitoring makes a season eligible, but with zero series monitored there was nothing for this cycle to find). `triggarr-test` log: `Enabled Sonarr/v4test search every 30m` immediately followed by `Sonarr: Cycle completed in 0.0s -- 0 fetched, 0 accepted, 0 failed, 0 history not saved -- grade nothing_needed`. `sonarr-v4`'s `/api/v3/command` history (14 commands total since container start) contains only Sonarr's own housekeeping (`RefreshMonitoredDownloads`, `ProcessMonitoredDownloads`, `ImportListSync`, `MessagingCleanup`, `RssSync`) — **no `SeasonSearch`, `EpisodeSearch`, or `MissingEpisodeSearch` command anywhere**, before or after enable. `triggarr.db`'s `search_history` table has **0 rows** for `instance_id='v4test'`. Evidence: `v5test-results/81-v4-12-post-enable-zero-searches.txt`.
+
+**Step 4 — re-confirmed `sonarr-v4` still has 0 monitored series** (fresh `GET /api/v3/series`): `series: 1, monitored: 0`, `Hacks monitored=False monitored seasons=[]`. Nothing was monitored at any point in this step.
+
+**Current state:** `v4test` instance is now `enabled=true` (as the frozen script's `SEARCHES=on` check requires), `search_interval` still `30`, nothing monitored, zero searches issued. The test season stays unmonitored until the frozen `SEARCHES=on` gate passes, per the owner's instruction.
+
 ### Plan 07 Task 1 execution note (2026-10-19)
 
 Blocked before any sandbox change. `setup-sonarr-v5-test.sh`'s `ACTION=verify` / `ACTION=deluge-check` paths (and the script generally) start with `sudo -v` and use bare `sudo` throughout (config reads, `mkdir`/`chown`, embedded `python3` checks) — only `/usr/local/bin/docker` and `/usr/local/bin/docker-compose` are NOPASSWD on this NAS (per `CLAUDE.md`). Both `ssh nas '...'` and `ssh -t nas '...'` invocations of the script failed identically: `sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper` / `sudo: a password is required`. Confirmed with `sudo -n true` (fails) vs. `sudo -n -l` (succeeds, non-interactive — lists only the two NOPASSWD docker entries). No askpass helper is configured. This is a genuine interactive-credential requirement, not a script bug: the isolation/Deluge-destination gate cannot be produced by the automated executor in this session.
