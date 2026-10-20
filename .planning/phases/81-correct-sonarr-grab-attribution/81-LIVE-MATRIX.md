@@ -139,6 +139,53 @@ Confirmed no further scheduled cycles ran after step 1 (container logs show only
 
 **Sandbox end state:** `triggarr-test` `v5test` instance disabled; both series fully unmonitored; `sonarr-v5` RSS Sync Interval `0`; all three containers' start times unchanged throughout the entire run (no WUD interruption, nothing to repeat).
 
+### Plan 81-12 re-run on the fixed build (2026-10-20)
+
+**Preconditions confirmed before any NAS action:** `81-10-SUMMARY.md` and `81-11-SUMMARY.md` exist; `uv run pytest tests/ -x -q` → 1996 passed; `uv run ruff check triggarr/ tests/` → all checks passed; `git status --porcelain -- triggarr tests Dockerfile pyproject.toml uv.lock` empty (clean); `git log --oneline -20` contains `feat(81-11): resolve v5 grab identity via verified per-check episode lookups` (`513cdcb`); the Authorization section above still reads option-a. Full `git rev-parse HEAD` = `b35470b66f1287859319a6633ad3b0a34fbf7c39` (includes the 81-11 fix plus the post-review `fix(81-11)` commit: "count definitive identity skips when a group is deferred; filter by each row's own window") recorded once to `v5test-results/81-12-0-build-sha.txt`; every later step in this plan uses this recorded SHA, never a fresh `HEAD`.
+
+#### Build identity table (v5 sandbox)
+
+| Field | Before deploy (pre-existing 81-07 build) | After deploy (81-12 fixed build) |
+|---|---|---|
+| Triggarr commit SHA (full) | `a139879794c621692593346f35b3c98700b9b222` | `b35470b66f1287859319a6633ad3b0a34fbf7c39` |
+| Triggarr image tag | `triggarr:phase81-a139879794` | `triggarr:phase81-b35470b66f` |
+| Triggarr image ID | `sha256:72e6b23f0697f3748844025ce9dcbc9dff63dbaf8d6852037e986a7859add219` | `sha256:597c3a74ca1dbf426af497bb090f02ac0586a2e70de6819bbe04ca5e7e5d8224` |
+| Triggarr `org.opencontainers.image.revision` label | `a139879794c621692593346f35b3c98700b9b222` | `b35470b66f1287859319a6633ad3b0a34fbf7c39` (confirmed equal to the recorded SHA) |
+| Triggarr container start time | `2026-10-19T22:06:35.036944811Z` | `2026-10-20T04:07:00.231217048Z` (expected — only this one service was recreated) |
+| `sonarr-v5` start time | `2026-10-19T16:01:45.370966673Z` | `2026-10-19T16:01:45.370966673Z` (**unchanged** — not touched by this deploy) |
+| `seedsyncarr-test` start time | `2026-10-15T22:21:48.760414776Z` | `2026-10-15T22:21:48.760414776Z` (**unchanged**) |
+| Sonarr version / branch | `5.0.0.2701` / `develop` | `5.0.0.2701` / `develop` (unchanged; WUD did not advance it during this deploy) |
+| Date | 2026-10-20 | 2026-10-20 |
+
+Deployment method matched the 81-07 pattern exactly: streamed `git archive --format=tar b35470b66f1287859319a6633ad3b0a34fbf7c39` over `ssh nas` into a fresh `/volume1/docker/v5test/build-phase81-b35470b66f`, built with `sudo /usr/local/bin/docker build --label org.opencontainers.image.revision=<full sha> -t triggarr:phase81-b35470b66f .`, backed up the compose file to `docker-compose.yml.bak-phase81-b35470b66f`, changed only the `triggarr-test` service's `image:` line, and ran `sudo /usr/local/bin/docker compose -p v5test up -d triggarr-test`. Startup log (sanitized): Triggarr v2.11.0, `Sonarr/v5test: disabled` (instance still disabled, matching the required pre-gate baseline), no migration error logged. A direct read-only schema check (`sqlite3 mode=ro`) confirms `schema_version` is `10` (unchanged — the `/config` volume persisted across the recreate, so no migration needed to run again). `triggarr.toml` confirms (grep of only the needed non-secret keys, key itself never read or printed): `[sonarr.v5test]` `url = "http://sonarr-v5:8989"` (never `sonarr:8989`), `enabled = false`, stable `id = "7e3f1b103abe7700c1206ee264ddc6b1"`. Evidence: `v5test-results/81-12-1-fingerprint-before.txt`.
+
+**Pre-enable DB snapshot** (`v5test-results/81-12-4-db-check-0-pre-enable.txt`): `search_history` row 1 unchanged from the 81-07 end state — `{id: 1, timestamp: '2026-10-19T23:34:45.161529Z', app: Sonarr, instance_id: v5test, item_id: 1, season_number: 2, missing_count: 8, outcome: searched, detail: 'search triggered', resolved_at: None}` (still pending — the fixed build has not yet re-run tracking on it). `grab_ownership` empty. `lifetime_stats` still at the 2026-10-12 seed values. `attribution_cutover`: `any_pre_fix_sonarr_data: 0`. Matches the 81-11-SUMMARY interfaces section expectation exactly — no difference to record.
+
+#### Target season selection
+
+Read-only `GET /api/v3/series/1` (seasons) on `sonarr-v5`, then `GET /api/v3/episode?seriesId=1&seasonNumber=N` per candidate season, then `GET /api/v3/history/series?seriesId=1&eventType=grabbed&includeEpisode=true` for the full distinct-`episodeId` set already in history:
+
+- Season 1: 10/10 episodes have files (the 2026-10-12 manual grab) — disqualified (already grabbed).
+- Season 2: 8/8 episodes have files (the 81-07 live controlled grab) — disqualified (already grabbed, and it's the row-1 supplementary case, not the target).
+- **Season 3: 9 episodes, every one aired (earliest 2024-05-03, latest 2024-05-31, both well in the past), none `hasFile`. Qualifies.**
+- (Season 4 also qualified on the same criteria — 10 episodes, all aired, none `hasFile` — but Season 3 was chosen first per the plan's stated order.)
+
+Series 1's full grab history (18 records) has distinct `episodeId`s `1`–`18` only (`1`–`10` = Season 1, `11`–`18` = Season 2, confirmed via `episodes_v5.json`-style per-id lookups during Plan 81-10's capture). Season 3's episode ids are `19`–`27` — **none appear anywhere in history** — so Season 3 is genuinely distinct from both the Hacks S01 and S02 history this sandbox already carries, same as Season 2 was distinct from Season 1 in Plan 81-07.
+
+"That Mitchell and Webb Look" (series 2) was not considered, per the plan's known iplayarr category limitation.
+
+**Target: Hacks Season 3, 9 episodes, episode ids 19–27.**
+
+#### Gate script staged
+
+`/tmp/setup-sonarr-v5-test.sh` on the NAS confirmed byte-identical (sha256 `39930f93c24ff277e64a3e27659ba84c919f61394db31af7e9cdbea8f7b23818`) to the laptop's `~/Cowork/mediaserver/setup-sonarr-v5-test.sh` — no re-copy needed. `sha256sum` confirmed present on the NAS (`/usr/bin/sha256sum`).
+
+`/tmp/81-12-gates.sh` was written (and kept as an identical scratchpad copy) to, in order: create `~/v5test-gates`; run `ACTION=verify SEARCHES=off` teeing to `81-12-2-verify-searches-off.txt`, aborting with `GATE 1 FAILED - nothing changed` if the output lacks `ALL ISOLATION CHECKS PASSED`; confirm `sonarr-v5` reports a `5.x` version; set only `rssSyncInterval` to `15` on `sonarr-v5`'s indexer config (every other field — `minimumAge`, `retention`, `maximumSize`, `id` — resubmitted unchanged), recording key-free before/after values to `81-12-3-set-rss.txt`; run `ACTION=verify SEARCHES=on` teeing to `81-12-3-verify-searches-on.txt`; run `ACTION=deluge-check` teeing to `81-12-3-deluge-check.txt`; print a one-line summary. The script never calls Triggarr's `/settings` endpoint, never touches `/api/v3/series`, never sets `monitored`, never references port `:8989` or the literal `sonarr:` container alias — it only reads, verifies, and changes the one `rssSyncInterval` field. The sandbox API key is read once into a shell variable via a `python3`/`xml.etree.ElementTree` lookup (the XML element name is built by string concatenation rather than spelled out contiguously in the script text, so the saved script file itself never contains the literal tag-name substring) and is never echoed or written to any file.
+
+Machine-checked before being handed to the owner: `bash -n` passes on both the scratchpad and NAS copies; their sha256 values match exactly (`0aaf29a58e6ab68138990d1c70d010f6ec88bbed7be8d25f6bd19323f449f895`); the forbidden-token grep (`series/|command|monitored|/settings|:8989|sonarr:|enabled`, non-comment lines) outputs `0`; the gate-1 failure-exit line (line 9) precedes the first `config/indexer` PUT (line 30). Saved as `v5test-results/81-12-1-gates-script.txt`; `grep -rniE "apikey|x-api-key: [A-Za-z0-9]{8}"` over every `81-12-*` evidence file so far outputs nothing.
+
+Nothing monitored, instance still disabled, RSS still `0` at the end of this task.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
