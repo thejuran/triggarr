@@ -223,7 +223,7 @@ PR #28 merged on 2026-10-18 at `dee25df5cedd28f8016f556129f20a0d5537b635` (GitHu
 | 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | None open. 78-1 passed live. 78-2: green/red/gray grades and the post-first-cycle label passed live; amber Partial and the legacy-label states verified only by local fixture (owner-accepted). | Complete — merged and deployed; UAT partial (live + fixture) |
 | 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | None open. 79-1 and 79-2 passed live on the sandbox (badge auto-clear also confirmed the PR #26 tag-cache refetch); 79-3 upstream tag-fetch failure has automated-test coverage only. | Complete — merged and deployed; UAT partial (79-3 automated only) |
 | 80 — Cycle Robustness & Sonarr Season Dedup | All 5 plans; per-item malformed-record skips with per-queue card rows, per-grab date hardening, honest "unknown" Sonarr version, tag-autocomplete fallback, cross-queue Sonarr season dedup. Automated verification recorded (4/4 truths). | None blocking. Card UAT passed 2026-10-18 on a local build with a fake Sonarr (Partial + Failed); legacy single-count record covered by tests only. Pass-1 review: Sonarr upgrade-pass finding fixed (DEDUP-03); the first Lidarr non-object-record fix (5bdd49c) was engine-only and ineffective on real responses — corrected on the real client path for all three apps in c6947fe after the pass-2 review; Greptile status comment reconciled. Follow-up outside the PR: Refresh-counts malformed-record behavior. | Merged and deployed — PR #28 (`dee25df`); scheduled-cycle verification pending |
-| 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Context gathered 2026-10-18 (81-CONTEXT.md D-01..D-14); planned 2026-10-18 (9 plans, 6 waves); sandbox setup/connectivity reported in the external runbook. Code plans 81-01..05 executed 2026-10-18/19 on branch `phase-81-sonarr-attribution` (1,957 tests pass, ruff clean; not pushed or reviewed). Live acceptance matrix built; owner authorized v5 deploy + v4 sandbox (option-a, 2026-10-19). Live v5 run (81-07) executed: season-pack attribution and repeated-tracking checks FAIL — Sonarr v5 grab history omits season identity, so no v5 grab is credited (never mis-credited); owner approved the record and scoped a fix inside Phase 81. SONARRV5-02 open. | Gap-closure fix plans (episode-ID fallback + real v5 fixtures, then live v5 rerun) being planned; then v4 matrix (81-08) and closeout (81-09). | Executing — 7/9 plans; gap closure pending |
+| 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Context gathered 2026-10-18 (81-CONTEXT.md D-01..D-14); planned 2026-10-18 (9 plans, 6 waves); sandbox setup/connectivity reported in the external runbook. Code plans 81-01..05 executed 2026-10-18/19 on branch `phase-81-sonarr-attribution` (1,957 tests pass, ruff clean; not pushed or reviewed). Live acceptance matrix built; owner authorized v5 deploy + v4 sandbox (option-a, 2026-10-19). Live v5 run (81-07) executed: season-pack attribution and repeated-tracking checks FAIL — Sonarr v5 grab history omits season identity, so no v5 grab is credited (never mis-credited); owner approved the record and scoped a fix inside Phase 81. SONARRV5-02 open. | Gap closure: 81-10 real v5 fixtures, 81-11 episode-ID fallback, 81-12 live v5 rerun; then v4 matrix (81-08) and closeout (81-09). | Executing — 7/12 plans |
 
 **Counts:** 4/5 phases complete by the merged/verified criterion — 77–79 merged and deployed; 80 merged via PR #28 and deployed (running `dee25df` verified); its recurring scheduled-cycle check is still pending. 19/28 currently defined plans have summaries (Phase 81's 9 plans are not yet executed). REQUIREMENTS.md marks 19/28 requirements complete. Public v2.12.0 release remains pending Phase 81, remaining deployment/verification checks, and the release version bump.
 
@@ -360,7 +360,7 @@ Plans:
   6. Sonarr v5 is reported as v5 (not v3), with safe malformed-version handling and no automatic API-route switch.
   7. An isolated v4/v5 smoke matrix covers connection, tags, missing/cutoff pagination, counts, season commands, and grab tracking, recording exact builds and results. Alternate-order, season-pack, and multi-season attribution regression cases use Sonarr-returned identities and count distinct episodes correctly.
 
-**Plans:** 9 plans (planned 2026-10-18). The bounded **Verify Sonarr v5 compatibility** task is Plans 81-06..81-08 per the design spec's Phase 81 addendum (2026-10-12). Keep current v3 routes and API-key authentication unless testing demonstrates an incompatibility; fix only affected existing flows. No production NAS upgrade, new Sonarr feature integration, or blanket v5 API migration. Live compatibility must be verified before claiming support; unavailable scenarios remain documented as unverified and the task stays open. Live sandbox work runs only after the owner's recorded authorization (Plan 81-06, D-09/D-10).
+**Plans:** 12 plans (9 planned 2026-10-18; gap-closure plans 81-10..81-12 added 2026-10-19 after the live v5 run found Sonarr v5 grab history omits season identity). The bounded **Verify Sonarr v5 compatibility** task is Plans 81-06..81-08 per the design spec's Phase 81 addendum (2026-10-12). Keep current v3 routes and API-key authentication unless testing demonstrates an incompatibility; fix only affected existing flows. No production NAS upgrade, new Sonarr feature integration, or blanket v5 API migration. Live compatibility must be verified before claiming support; unavailable scenarios remain documented as unverified and the task stays open. Live sandbox work runs only after the owner's recorded authorization (Plan 81-06, D-09/D-10).
 
 Plans:
 **Wave 1**
@@ -378,11 +378,17 @@ Plans:
 
 - [x] 81-06-PLAN.md — live/fixture acceptance matrix + owner authorization of sandbox work (checkpoint) (wave 3)
 
-**Wave 4–6** *(sequential, owner-gated)*
+**Wave 4** *(owner-gated)*
 
-- [x] 81-07-PLAN.md — v5 sandbox: deploy exact Phase 81 build, isolation gates, live matrix incl. season-pack attribution (wave 4)
-- [ ] 81-08-PLAN.md — isolated v4 sandbox provisioning, isolation gates, live matrix (wave 5)
-- [ ] 81-09-PLAN.md — on-screen disclosure check + D-13 status reconciliation of REQUIREMENTS/ROADMAP/STATE (wave 6)
+- [x] 81-07-PLAN.md — v5 sandbox: deploy exact Phase 81 build, isolation gates, live matrix incl. season-pack attribution (wave 4) — executed; season-pack attribution and repeated-tracking checks FAIL (v5 grab history omits season identity)
+
+**Waves 5–9** *(gap closure, then sequential owner-gated live checks)*
+
+- [ ] 81-10-PLAN.md — capture sanitized real Sonarr v5 history/episode responses (read-only), relabel schema-derived fixtures, fixture hygiene test (wave 5, gap closure)
+- [ ] 81-11-PLAN.md — episode-ID fallback: per-check series episode list + per-id fallback, series validation, transient deferral with per-row 24h escalation, no credit on missing/conflicting identity (wave 6, gap closure, TDD)
+- [ ] 81-12-PLAN.md — live v5 rerun on the fixed build: season-pack attribution and non-vacuous repeated tracking checks, owner-run isolation gates (wave 7, gap closure)
+- [ ] 81-08-PLAN.md — isolated v4 sandbox provisioning, isolation gates, live matrix on the fixed build (wave 8)
+- [ ] 81-09-PLAN.md — on-screen disclosure check + D-13 status reconciliation of REQUIREMENTS/ROADMAP/STATE (wave 9)
 
 ### Phase 81 live test environment and remaining checks
 
