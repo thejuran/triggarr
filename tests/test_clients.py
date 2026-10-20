@@ -15,12 +15,12 @@ import pytest
 from loguru import logger
 from pydantic import SecretStr
 
-from tests.sonarr_fixtures import load_sonarr_fixture
+from tests.sonarr_fixtures import load_sonarr_episode_fixture, load_sonarr_fixture, load_sonarr_series_episode_list
 from triggarr.clients.base import ArrClient
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.models.arr import GrabEvent, Tag
+from triggarr.models.arr import EpisodeSummary, GrabEvent, Tag
 
 
 class _ConcreteClient(ArrClient):
@@ -1068,6 +1068,154 @@ async def test_sonarr_grab_history_scene_numbers_ignored() -> None:
             assert not hasattr(event.episode, "sceneSeasonNumber")
         assert result[3].episode is not None
         assert result[3].episode.seasonNumber == 2
+    finally:
+        await client.close()
+
+
+# ---------------------------------------------------------------------------
+# SonarrClient.get_series_episodes / get_episode (Phase 81, gap closure:
+# v5 episode-identity resolution)
+# ---------------------------------------------------------------------------
+
+
+async def test_sonarr_get_series_episodes_sends_series_id_with_api_key() -> None:
+    """get_series_episodes GETs /api/v3/episode?seriesId=<id> with X-Api-Key set."""
+    series_list = load_sonarr_series_episode_list("episodes_v5", 1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/episode"
+        assert request.url.params["seriesId"] == "1"
+        assert request.headers["X-Api-Key"] == "test-key"
+        return httpx.Response(200, json=series_list)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("test-key"))
+    client._client = httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers={"X-Api-Key": "test-key"}
+    )
+    try:
+        result = await client.get_series_episodes(1)
+        assert len(result) == len(series_list)
+        assert all(isinstance(e, EpisodeSummary) for e in result)
+        assert result[0].seriesId == 1
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_series_episodes_non_list_body_raises_value_error() -> None:
+    """A non-list JSON body raises ValueError (never silently returns an empty list)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"not": "a list"})
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        with pytest.raises(ValueError, match="Expected JSON array"):
+            await client.get_series_episodes(1)
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_series_episodes_skips_non_object_entries() -> None:
+    """A non-dict entry in the list is skipped rather than raising."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[
+            {"id": 1, "seriesId": 1, "seasonNumber": 1, "episodeNumber": 1},
+            "oops",
+            {"id": 2, "seriesId": 1, "seasonNumber": 1, "episodeNumber": 2},
+        ])
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_series_episodes(1)
+        assert len(result) == 2
+        assert [e.id for e in result] == [1, 2]
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_series_episodes_http_error_no_retry() -> None:
+    """A failing request raises immediately -- no 2s sleep, exactly one request."""
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(503, json={"error": "unavailable"})
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            with pytest.raises(httpx.HTTPStatusError):
+                await client.get_series_episodes(1)
+            mock_sleep.assert_not_called()
+        assert call_count == 1
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_episode_returns_episode_summary() -> None:
+    """get_episode GETs /api/v3/episode/{id} and returns the parsed EpisodeSummary."""
+    episodes = load_sonarr_episode_fixture("episodes_v5")
+    body = episodes[18]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/episode/18"
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        result = await client.get_episode(18)
+        assert isinstance(result, EpisodeSummary)
+        assert result.seriesId == 1
+        assert result.seasonNumber == 2
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_episode_404_raises_without_retry() -> None:
+    """A 404 raises httpx.HTTPStatusError after exactly one request -- no retry, no sleep."""
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(404, json={"error": "not found"})
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            with pytest.raises(httpx.HTTPStatusError):
+                await client.get_episode(999999)
+            mock_sleep.assert_not_called()
+        assert call_count == 1
+    finally:
+        await client.close()
+
+
+async def test_sonarr_get_episode_non_object_body_raises_validation_error() -> None:
+    """A non-object response body raises pydantic.ValidationError."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json="oops")
+
+    transport = httpx.MockTransport(handler)
+    client = SonarrClient(base_url="http://test", api_key=SecretStr("key"))
+    client._client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    try:
+        with pytest.raises(pydantic.ValidationError):
+            await client.get_episode(1)
     finally:
         await client.close()
 
