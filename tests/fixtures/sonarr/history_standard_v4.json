@@ -1,6 +1,7 @@
 {
   "_meta": {
     "source": "synthesized from the Sonarr v3 OpenAPI HistoryResource/EpisodeResource schema on the v5-develop branch; sanitized",
+    "origin": "synthesized",
     "sonarr_major": "v4",
     "live_evidence": false,
     "scenario": "Two single-episode grabs in season 1 of a standard series order."

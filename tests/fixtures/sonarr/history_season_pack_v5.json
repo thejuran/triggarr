@@ -1,129 +1,600 @@
 {
   "_meta": {
-    "source": "synthesized from the Sonarr v3 OpenAPI HistoryResource/EpisodeResource schema on the v5-develop branch; sanitized",
+    "origin": "live-capture",
+    "source": "read-only GET from the isolated Sonarr v5 sandbox (sonarr-v5), sanitized",
+    "endpoints": [
+      "/api/v3/history/series?seriesId=1&eventType=grabbed&includeEpisode=true"
+    ],
     "sonarr_major": "v5",
+    "sonarr_version": "5.0.0.2701",
+    "branch": "develop",
+    "captured_at": "2026-10-20T03:01:17Z",
+    "sanitized": true,
+    "sanitized_fields": [
+      "data (cleared to {})",
+      "downloadId (replaced with stable DL-REDACTED-<n> placeholders)",
+      "sourceTitle (redacted only if it named an indexer/tracker or held a URL; none did here)"
+    ],
     "live_evidence": false,
-    "scenario": "One season-1 pack grab (6 episodes) plus a repeat grab of episode 3, to exercise distinct-episode counting."
+    "live_evidence_note": "Real v5 response shape for fixture regressions. Not live verification of Phase 81 attribution (D-12); live evidence is recorded in 81-LIVE-MATRIX.md (Plan 81-12).",
+    "scenario": "Hacks S01 pack from the 2026-10-12 manual Interactive Search and the Phase 81 Hacks S02 pack grabbed 2026-10-19; v5 omits the nested episode object"
   },
   "records": [
     {
-      "id": 9101,
-      "episodeId": 601,
-      "seriesId": 202,
-      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
-      "date": "2026-02-01T09:00:00Z",
+      "episodeId": 18,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
       "eventType": "grabbed",
-      "downloadId": "DL-PACK202",
       "data": {},
-      "episode": {
-        "id": 601,
-        "seriesId": 202,
-        "seasonNumber": 1,
-        "episodeNumber": 1,
-        "title": "Example Episode 1"
-      }
+      "id": 28
     },
     {
-      "id": 9102,
-      "episodeId": 602,
-      "seriesId": 202,
-      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
-      "date": "2026-02-01T09:00:01Z",
+      "episodeId": 17,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
       "eventType": "grabbed",
-      "downloadId": "DL-PACK202",
       "data": {},
-      "episode": {
-        "id": 602,
-        "seriesId": 202,
-        "seasonNumber": 1,
-        "episodeNumber": 2,
-        "title": "Example Episode 2"
-      }
+      "id": 27
     },
     {
-      "id": 9103,
-      "episodeId": 603,
-      "seriesId": 202,
-      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
-      "date": "2026-02-01T09:00:02Z",
+      "episodeId": 16,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
       "eventType": "grabbed",
-      "downloadId": "DL-PACK202",
       "data": {},
-      "episode": {
-        "id": 603,
-        "seriesId": 202,
-        "seasonNumber": 1,
-        "episodeNumber": 3,
-        "title": "Example Episode 3"
-      }
+      "id": 26
     },
     {
-      "id": 9104,
-      "episodeId": 604,
-      "seriesId": 202,
-      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
-      "date": "2026-02-01T09:00:03Z",
+      "episodeId": 15,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
       "eventType": "grabbed",
-      "downloadId": "DL-PACK202",
       "data": {},
-      "episode": {
-        "id": 604,
-        "seriesId": 202,
-        "seasonNumber": 1,
-        "episodeNumber": 4,
-        "title": "Example Episode 4"
-      }
+      "id": 25
     },
     {
-      "id": 9105,
-      "episodeId": 605,
-      "seriesId": 202,
-      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
-      "date": "2026-02-01T09:00:04Z",
+      "episodeId": 14,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
       "eventType": "grabbed",
-      "downloadId": "DL-PACK202",
       "data": {},
-      "episode": {
-        "id": 605,
-        "seriesId": 202,
-        "seasonNumber": 1,
-        "episodeNumber": 5,
-        "title": "Example Episode 5"
-      }
+      "id": 24
     },
     {
-      "id": 9106,
-      "episodeId": 606,
-      "seriesId": 202,
-      "sourceTitle": "Example.Show.S01.1080p.WEB-DL-GRP",
-      "date": "2026-02-01T09:00:05Z",
+      "episodeId": 13,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
       "eventType": "grabbed",
-      "downloadId": "DL-PACK202",
       "data": {},
-      "episode": {
-        "id": 606,
-        "seriesId": 202,
-        "seasonNumber": 1,
-        "episodeNumber": 6,
-        "title": "Example Episode 6"
-      }
+      "id": 23
     },
     {
-      "id": 9107,
-      "episodeId": 603,
-      "seriesId": 202,
-      "sourceTitle": "Example.Show.S01E03.1080p.WEB-DL-GRP2",
-      "date": "2026-02-02T09:00:00Z",
+      "episodeId": 12,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
       "eventType": "grabbed",
-      "downloadId": "DL-PACK202B",
       "data": {},
-      "episode": {
-        "id": 603,
-        "seriesId": 202,
-        "seasonNumber": 1,
-        "episodeNumber": 3,
-        "title": "Example Episode 3"
-      }
+      "id": 22
+    },
+    {
+      "episodeId": 11,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S02 1080p BluRay x264-BRAVERY",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 7,
+          "name": "Bluray-1080p",
+          "source": "bluray",
+          "resolution": 1080
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": false,
+      "date": "2026-10-19T23:34:51Z",
+      "downloadId": "DL-REDACTED-1",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 21
+    },
+    {
+      "episodeId": 10,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:12:00Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 10
+    },
+    {
+      "episodeId": 9,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:12:00Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 9
+    },
+    {
+      "episodeId": 8,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:12:00Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 8
+    },
+    {
+      "episodeId": 7,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:12:00Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 7
+    },
+    {
+      "episodeId": 6,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:12:00Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 6
+    },
+    {
+      "episodeId": 5,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:12:00Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 5
+    },
+    {
+      "episodeId": 4,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:11:59Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 4
+    },
+    {
+      "episodeId": 3,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:11:59Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 3
+    },
+    {
+      "episodeId": 2,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:11:59Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 2
+    },
+    {
+      "episodeId": 1,
+      "seriesId": 1,
+      "sourceTitle": "Hacks S01 XviD-AFG",
+      "languages": [
+        {
+          "id": 1,
+          "name": "English"
+        }
+      ],
+      "quality": {
+        "quality": {
+          "id": 0,
+          "name": "Unknown",
+          "source": "unknown",
+          "resolution": 0
+        },
+        "revision": {
+          "version": 1,
+          "real": 0,
+          "isRepack": false
+        }
+      },
+      "customFormats": [],
+      "customFormatScore": 0,
+      "qualityCutoffNotMet": true,
+      "date": "2026-10-13T00:11:59Z",
+      "downloadId": "DL-REDACTED-2",
+      "eventType": "grabbed",
+      "data": {},
+      "id": 1
     }
   ]
 }

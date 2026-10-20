@@ -1,8 +1,10 @@
 {
   "_meta": {
     "source": "synthesized from the Sonarr v3 OpenAPI HistoryResource/EpisodeResource schema on the v5-develop branch; sanitized",
-    "sonarr_major": "v5",
+    "origin": "synthesized",
+    "sonarr_major": "synthetic (nested-episode shape)",
     "live_evidence": false,
+    "shape_note": "Synthesized from the Sonarr v3 OpenAPI schema. Models the nested `episode` object that v4 returns; live Sonarr v5 5.0.0.2701 omits it (captured 2026-10-19, see history_season_pack_v5.json). Multi-season packs and alternate series orders cannot be captured from the sandbox (no such series or grabs exist there), so this file stays synthesized.",
     "scenario": "One multi-season pack grab spanning season 1 and season 2, three episodes each."
   },
   "records": [
