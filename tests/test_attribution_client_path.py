@@ -1451,3 +1451,81 @@ async def test_client_path_conflicting_identity_not_counted(tmp_path):
     # Never log the release title.
     assert not any("WEB-DL" in line for line in warning_lines)
     await db.close()
+
+
+async def test_client_path_v5_definitive_skip_counted_when_group_deferred(tmp_path):
+    """A definitively bad grab (series mismatch) is still logged and counted in
+    identity_skipped on a check where another grab in the same series hits a
+    transient lookup failure and the row is deferred (not yet escalated)."""
+    db = await _init_db(tmp_path)
+    when = datetime.now(UTC) - timedelta(minutes=10)
+    record_bad = {
+        "id": 70090, "episodeId": 951, "seriesId": 61,
+        "sourceTitle": "MixedGroup.1080p-GRP", "date": when.isoformat().replace("+00:00", "Z"),
+        "eventType": "grabbed", "downloadId": "DL-MIXED1", "data": {},
+    }
+    record_transient = {
+        "id": 70091, "episodeId": 952, "seriesId": 61,
+        "sourceTitle": "MixedGroup.1080p-GRP", "date": when.isoformat().replace("+00:00", "Z"),
+        "eventType": "grabbed", "downloadId": "DL-MIXED2", "data": {},
+    }
+    fake = _SonarrHistoryFake(
+        {61: [record_bad, record_transient]},
+        series_episode_lists={61: []},  # both ids need the per-id fallback
+        episodes={951: {"id": 951, "seriesId": 999, "seasonNumber": 1, "episodeNumber": 1}},
+    )
+    fake.episode_status[952] = 500
+    client = _client(fake)
+
+    search_time = datetime.now(UTC) - timedelta(minutes=15)
+    row = await _seed(db, item_id=61, season_number=1, missing_count=2, timestamp=search_time)
+
+    try:
+        counts = await run_tracking_check(
+            db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+        )
+    finally:
+        await client.close()
+
+    assert await _outcome(db, row) == "searched"  # deferred by the transient grab
+    assert counts["identity_skipped"] == 1  # the series-mismatch grab is still counted
+    assert counts["errors"] == 1
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=61)
+    assert len(owned) == 0
+    await db.close()
+
+
+async def test_client_path_v5_grab_between_row_windows_not_resolved(tmp_path):
+    """A grab needing resolution that falls between two pending rows' windows (inside
+    their combined span but outside each row's own window) can never be credited, so
+    it makes no episode request and is not counted."""
+    db = await _init_db(tmp_path)
+    now_ref = datetime.now(UTC)
+    grab_time = now_ref - timedelta(hours=3)
+    record = {
+        "id": 70095, "episodeId": 961, "seriesId": 62,
+        "sourceTitle": "BetweenWindows.1080p-GRP", "date": grab_time.isoformat().replace("+00:00", "Z"),
+        "eventType": "grabbed", "downloadId": "DL-BETWEEN", "data": {},
+    }
+    fake = _SonarrHistoryFake(
+        {62: [record]},
+        series_episode_lists={62: [{"id": 961, "seriesId": 62, "seasonNumber": 1, "episodeNumber": 1}]},
+    )
+    client = _client(fake)
+
+    await _seed(db, item_id=62, season_number=1, missing_count=1, timestamp=now_ref - timedelta(hours=5))
+    await _seed(db, item_id=62, season_number=1, missing_count=1, timestamp=now_ref - timedelta(minutes=30))
+
+    try:
+        counts = await run_tracking_check(
+            db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+        )
+    finally:
+        await client.close()
+
+    assert counts["identity_skipped"] == 0
+    assert len(_list_requests(fake)) == 0
+    assert len(_per_id_requests(fake)) == 0
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=62)
+    assert len(owned) == 0
+    await db.close()
