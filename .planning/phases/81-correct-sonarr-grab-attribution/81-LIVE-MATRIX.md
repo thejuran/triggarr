@@ -258,6 +258,46 @@ Each check was coded to fail closed: any non-200 status, JSON parse error, missi
 
 **Current state:** `v4test` instance is now `enabled=true` (as the frozen script's `SEARCHES=on` check requires), `search_interval` still `30`, nothing monitored, zero searches issued. The test season stays unmonitored until the frozen `SEARCHES=on` gate passes, per the owner's instruction.
 
+### Plan 81-08: owner-run `SEARCHES=on` gate — PASSED (2026-10-20 ~15:47 CDT)
+
+Owner ran the sha-verified one-liner against the frozen script (`00ca2909...9d77e`, guarded by `sha256sum -c &&`). Result, independently read and sanitize-checked by the executor before saving (clean: no `apikey=`/`x-api-key:`/password pattern, no raw `[section]` header): `isolation checks failed: 0`; `RSS sync interval: 15 min`; `v4test instance enabled (SEARCHES=on)` — **pass**; `scheduled RSS grabbing: ON`; `auto-search indexers are all within the documented set`; ends `ALL ISOLATION CHECKS PASSED`. Saved to `v5test-results/81-v4-10-verify-searches-on.txt`.
+
+Per the owner's "Yes, if gates pass" conditional authorization, this clears the last precondition for the controlled v4 test (Task 2).
+
+### Plan 81-08 Task 2: target season selection (2026-10-20)
+
+`sonarr-v4`'s grab history is completely empty (`GET /api/v3/history/series?seriesId=1&eventType=grabbed` -> 0 records) — this is a brand-new instance with no prior activity at all, unlike the v5 sandbox's accumulated history. Every season of the one sandbox series (Hacks) is therefore equally "distinct" in the sense Plans 07/12 cared about; all five seasons are fully aired (earliest season 1, 2021; latest season 5, through 2026-05-29, both well before today) and none has `hasFile`:
+
+| Season | Episodes | Aired | hasFile |
+|---|---|---|---|
+| 1 | 10 | all (2021-05-14 -> 2021-06-11) | 0 |
+| 2 | 8 | all (2022-05-13 -> 2022-06-03) | 0 |
+| 3 | 9 | all (2024-05-03 -> 2024-05-31) | 0 |
+| 4 | 10 | all (2025-04-11 -> 2025-05-30) | 0 |
+| 5 | 10 | all (2026-04-10 -> 2026-05-29) | 0 |
+
+**Target: Season 2** — the smallest episode count (8) among equally-qualifying candidates, chosen for faster full-season completion while gathering evidence; episode ids `11`-`18`, none shared with any other season.
+
+### Plan 81-08 Task 2: controlled run — grab succeeded, deluge-check FAILED on the seedbox connectivity (2026-10-20, stopped and baseline restored)
+
+**Monitored Hacks Season 2 only:** `PUT /api/v3/series/1` on `sonarr-v4` set `monitored: true` on the series and on season 2 only (seasons 1/3/4/5 stay `false`). Confirmed via the response body.
+
+**Owner decision (2026-10-20, interactive), recorded verbatim:** "Yes, one Search now" — after monitoring the single test season, trigger exactly one manual Triggarr "Search now" for the `v4test` instance (`POST /api/search-now/sonarr/v4test`, the same validated path the dashboard card button uses) so the controlled search runs immediately instead of waiting for the next 30-min cycle; only one manual trigger, no retries if rate-limited/failed; fall back to the next scheduled cycle if needed; the "scheduled cycle graded" row must still come from a later scheduled (non-manual) cycle.
+
+Before firing it, confirmed no scheduled cycle had already searched Season 2 since monitoring (triggarr-test log showed no cycle since the enable-time one at 16:43:49; `search_history` had 0 rows for `v4test`) — so the manual trigger was needed and not a duplicate. Fired once: HTTP 200. Confirmed fired, not rate-limited: triggarr-test log — `Sonarr: Searched Hacks - Season 2 (missing)` / `Sonarr: Missing pass 1 complete (1 searched)` / `Sonarr: Cycle completed in 0.4s -- 8 fetched, 1 accepted, 0 failed, 0 history not saved -- grade success` / `Sonarr/v4test: Manual search triggered`. `search_history` gained exactly one row (id 5, `Hacks - Season 2`, season_number 2, `outcome='searched'`, `resolved_at=None`, pending).
+
+**The grab: a genuine single-download season pack.** `sonarr-v4`'s own grab history (`GET /api/v3/history/series?seriesId=1&eventType=grabbed`) shows 8 new grab records (ids 1-8), **all sharing the same `downloadId` prefix `DC45E9DF97`** — one combined-release torrent covering the whole season, not 9 per-episode releases like Plan 81-12's Hacks S3 run. `sonarr-v4`'s command history confirms a `SeasonSearch` command completed. This is recorded honestly as what the indexer actually served this run — no other season was substituted or retried.
+
+**Immediately after the grab appeared, ran `ACTION=deluge-check` against the frozen script, sha256-verified first (`00ca2909...9d77e` confirmed) — FAILED:** `ssh: connect to host <seedbox-host> port 22: Connection refused`, `Deluge destination check failed (rc=255)`, `deluge-check failures: 1`, ends `DELUGE DESTINATION PROBLEMS: 1`, not `DELUGE DESTINATIONS PASSED`. A single additional diagnostic probe (`ssh -o ConnectTimeout=5 <seedbox-user>@<seedbox-host> echo ok`, not a gate retry) confirmed the same `Connection refused` — the seedbox's SSH port is actively refusing connections right now, a host-side connectivity fact, not a script defect or an isolation problem (no sandbox state, no prod state, and no script logic is implicated). Evidence: `v5test-results/81-v4-13-deluge-check-FAILED-the seedbox-unreachable.txt`.
+
+**Per the owner's explicit instruction, stopped here (no retry loop) and restored baseline:**
+1. Disabled the `triggarr-test` `v4test` instance via the same validated `/settings` path (`v5test` instance fully unchanged throughout — confirmed `enabled=false`, same url/interval both before and after).
+2. Unmonitored Hacks — series and all five seasons confirmed `monitored: false` via the API response.
+3. Reset `sonarr-v4`'s RSS Sync Interval back to `0` — confirmed via a fresh `GET /api/v3/config/indexer`.
+4. Confirmed via fresh reads: `sonarr.v4test: enabled=false`, `series: 1, monitored: 0`, `rssSyncInterval: 0`. Confirmed no further scheduled cycle ran after the disable (the triggarr-test log's last cycle is still the one dispatched search from the manual trigger).
+
+**Task 1 stays formally open** (per the owner's "Task 1 stays formally open until it passes" rule) until a passing `deluge-check` exists. **The Hacks Season 2 grab remains in Sonarr's history** (a real artifact of this authorized run), but since the download never reached the sandbox (the seedbox unreachable), no files exist in the sandbox library from it. The downloaded torrent's actual fate on the seedbox (whether it's still queued, failed, or will resume once the seedbox is reachable again) is unknown and not something this check can determine from the NAS side.
+
 ### Plan 07 Task 1 execution note (2026-10-19)
 
 Blocked before any sandbox change. `setup-sonarr-v5-test.sh`'s `ACTION=verify` / `ACTION=deluge-check` paths (and the script generally) start with `sudo -v` and use bare `sudo` throughout (config reads, `mkdir`/`chown`, embedded `python3` checks) — only `/usr/local/bin/docker` and `/usr/local/bin/docker-compose` are NOPASSWD on this NAS (per `CLAUDE.md`). Both `ssh nas '...'` and `ssh -t nas '...'` invocations of the script failed identically: `sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper` / `sudo: a password is required`. Confirmed with `sudo -n true` (fails) vs. `sudo -n -l` (succeeds, non-interactive — lists only the two NOPASSWD docker entries). No askpass helper is configured. This is a genuine interactive-credential requirement, not a script bug: the isolation/Deluge-destination gate cannot be produced by the automated executor in this session.
