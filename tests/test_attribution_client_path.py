@@ -983,7 +983,9 @@ async def test_client_path_v5_row_escalation_old_row_resolves_recent_held(tmp_pa
     identity_skipped counted; the recent row gets no write and errors += 1."""
     db = await _init_db(tmp_path)
     now_ref = datetime.now(UTC)
-    grab_time = now_ref - timedelta(hours=10)
+    # Inside the recent row's window (3h..2h ago) so the grab genuinely needs
+    # resolution; the old row's escalation still applies to the whole check.
+    grab_time = now_ref - timedelta(hours=2, minutes=30)
     record = {
         "id": 70050, "episodeId": 701, "seriesId": 41,
         "sourceTitle": "Escalation.1080p-GRP",

@@ -422,8 +422,6 @@ async def _resolve_group_identities(
     window = timedelta(minutes=tracking_window_minutes)
     window_starts = [_parse_timestamp(e["timestamp"]) for e in group_entries]
     window_ends = [s + window for s in window_starts]
-    earliest_start = min(window_starts)
-    latest_end = max(window_ends)
 
     gate_grabs: list[GrabEvent] = []
     definitive: list[tuple[GrabEvent, str]] = []
@@ -444,7 +442,7 @@ async def _resolve_group_identities(
         except (ValueError, TypeError):
             dropped += 1
             continue
-        if grab_time < earliest_start or grab_time > latest_end:
+        if not any(start <= grab_time <= end for start, end in zip(window_starts, window_ends, strict=True)):
             dropped += 1
             continue
         to_resolve.append(grab)
@@ -603,6 +601,11 @@ async def _run_sonarr_tracking_check(
             else _GroupResolutionResult(candidate_grabs, [], [])
         )
 
+        # Definitive skips are final regardless of what happens to the rest of
+        # the group, so log and count them before any transient deferral.
+        for grab, reason in group_resolution.definitive_skips:
+            _log_identity_skip(instance_id, grab.id, series_id, reason, counts)
+
         held_ids: set[int] = set()
         if group_resolution.transient:
             escalated_ids, held_ids = _split_escalation(group_entries, now, tracking_window_minutes)
@@ -618,8 +621,8 @@ async def _run_sonarr_tracking_check(
                 continue
 
             for grab, reason in group_resolution.transient:
-                group_resolution.definitive_skips.append(
-                    (grab, f"episode identity unavailable after escalation: {reason}")
+                _log_identity_skip(
+                    instance_id, grab.id, series_id, f"episode identity unavailable after escalation: {reason}", counts
                 )
             max_hours = max(
                 (now - (_parse_timestamp(e["timestamp"]) + timedelta(minutes=tracking_window_minutes)))
@@ -636,9 +639,6 @@ async def _run_sonarr_tracking_check(
                 id=series_id,
                 n=len(escalated_ids),
             )
-
-        for grab, reason in group_resolution.definitive_skips:
-            _log_identity_skip(instance_id, grab.id, series_id, reason, counts)
 
         # Identity gate (R2, R6): a grab without a trustworthy Sonarr
         # identity can never be credited, and must never inflate a count.
