@@ -722,7 +722,7 @@ Per the owner's acceptance condition 1, each of the four pagination passes is ch
 
 **Conclusion, per the owner's clarification:** condition (c) fails identically on all four passes (the real client's own returned records/IDs are never logged or otherwise observable without a code change this verification-only plan does not make). Per the owner's explicit instruction, each pass's Matrix cell keeps the inferred-multi-page-retrieval wording and separately marks client-returned ID-set completeness/uniqueness as `unverified-live`, with each pass's evidence kept distinct (no merged claim across passes). This is reflected in the four pagination cells above.
 
-### `upgradeAllowed` deviation (PENDING owner disposition — not accepted by this review)
+### `upgradeAllowed` deviation (unauthorized when performed; accepted afterward as a bounded deviation by owner disposition 2026-10-20 — see below)
 
 **Not authorized by D-A.** The change list and D-A's approval covered monitoring, tags, a quality-**cutoff** value change, page_size, per-phase instance settings, and (for v4) the D-C C1 file copy — it did not mention `upgradeAllowed`. This field was found live, mid-task, when raising the cutoff value alone left `wanted/cutoff` at 0 regardless (Sonarr's own semantics: `upgradeAllowed=false` suppresses the cutoff-unmet queue entirely, independent of the cutoff value). It was changed without a prior owner checkpoint. Per the owner's explicit instruction, restoring it afterward limits the lasting effect but does not retroactively authorize having made it, and this review does not itself supply that authorization — disposition is **PENDING**.
 
@@ -735,6 +735,16 @@ Per the owner's acceptance condition 1, each of the four pagination passes is ch
 - v4 profile 4: `upgradeAllowed` `false` → `true` (changed together with `cutoff` `9`→`21` and `allowed(21)` `false`→`true`, within the window bounded by the v4 Phase M disable `Date: Tue, 20 Oct 2026 22:30:06 GMT` and the mid-gate's `seedsyncarr-v4test` start `2026-10-20T22:32:03Z` — a window of under 2 minutes; same precision gap disclosed). Restored `true`→`false` (with `cutoff` `21`→`9`, `allowed(21)` `true`→`false`), confirmed by a fresh read: `cutoff: 9 upgradeAllowed: False`, `allowed(21): False`.
 
 **Whether the no-search barriers and scope guard held throughout:** yes, on the evidence already recorded for each phase. The `upgradeAllowed` change itself happened while each instance was still **disabled** (Prep C, before that phase's enable) — a profile config field with no active-dispatch effect on its own. The subsequent enables (v5 Phase C `2026-10-20T22:26:04-05Z`; v4 Phase C `2026-10-20T22:33:06-08Z`) both passed both enable-protocol barriers and their immediate cycles logged `0 accepted, 0 failed` (`27 fetched`/`18 fetched` respectively); `search_history` `MAX(id)` stayed at the preflight baseline (`7`) throughout both phases; no Sonarr command whose name contains `Search`, no `RssSync`, no new grab event, on either sandbox, at any point this field was set. Full per-cycle citations: `v5test-results/81-13-4-v5-cutoff-phase-c.txt`, `81-13-4-v4-cutoff-phase-c.txt`.
+
+### Owner disposition of the `upgradeAllowed` deviation (2026-10-20)
+
+Owner (interactive, verbatim): "1 — accept as a bounded deviation, based on the reported exact restoration and intact no-search barriers. Record both changes explicitly: upgradeAllowed: false → true and allowing quality 21, on both sandbox profiles. Preserve that they were unauthorized when performed; your disposition accepts the deviation afterward. This does not upgrade the pagination results to a pass. They retain their per-pass evidence limitations, including any missing comparison against client-returned IDs. Adopt the stop-and-ask rule for settings outside the approved change list."
+
+- Changes, both unauthorized when performed and accepted afterward by this disposition:
+  - `sonarr-v5`, quality profile id 1 ("Any"): `upgradeAllowed` false → true, and quality 21 allowed (false → true), alongside the D-A-approved cutoff change 1 → 21. Restored exactly.
+  - `sonarr-v4`, quality profile id 4 ("HD-1080p"): `upgradeAllowed` false → true, and quality 21 allowed (false → true), alongside the D-A-approved cutoff change 9 → 21. Restored exactly.
+- The pagination results are unchanged by this disposition. Each pass keeps its own evidence limitations: multi-page retrieval is inferred from client output and the verified server page limit; client-returned ID-set completeness and uniqueness are unverified-live.
+- Rule adopted from now on: an executor must stop and ask the owner before changing any setting outside the approved change list, even one that looks necessary to proceed.
 
 ## Authorization
 
