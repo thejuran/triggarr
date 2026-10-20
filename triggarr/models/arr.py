@@ -80,6 +80,12 @@ class GrabEvent(BaseModel):
     ``episodeId``/``seriesId``/``episode`` are Sonarr-only (populated
     when the history request used ``includeEpisode=true``); Radarr and
     Lidarr responses never carry them, so they stay None.
+
+    Sonarr v5 never nests ``episode`` in its history response (unlike v4),
+    so a v5 ``GrabEvent`` is parsed with ``episode=None`` here. Sonarr
+    tracking (``triggarr.tracking``) may then resolve the episode/season
+    identity itself from Sonarr's episode endpoint and attach a verified
+    ``EpisodeSummary`` via ``model_copy`` before the identity gate runs.
     """
 
     model_config = ConfigDict(extra="ignore")

@@ -10,7 +10,7 @@ from loguru import logger
 from pydantic import SecretStr
 
 from triggarr.clients.base import ArrClient, _sanitize_exc
-from triggarr.models.arr import GrabEvent
+from triggarr.models.arr import EpisodeSummary, GrabEvent
 
 
 class SonarrClient(ArrClient):
@@ -127,6 +127,47 @@ class SonarrClient(ArrClient):
             },
         )
         return [GrabEvent.model_validate(r) for r in records]
+
+    async def get_series_episodes(self, series_id: int) -> list[EpisodeSummary]:
+        """Fetch every episode of a series from Sonarr (v5 episode-identity resolution only).
+
+        Used only to resolve a v5 grab-history record's episode/season
+        identity when its nested ``episode`` object is absent or lacks a
+        valid season (Sonarr v5 omits it entirely; v4 never needs this
+        method). One GET to ``/api/v3/episode?seriesId=<id>`` (``X-Api-Key``
+        auth via the base client) covers a season pack or complete-series
+        pack of any size in a single request. No retry -- a transient
+        failure here defers resolution to the next tracking check rather
+        than doubling request latency.
+
+        Raises:
+            ValueError: If the response body is not a JSON array.
+            httpx.HTTPError: On a non-2xx response or transport failure.
+            pydantic.ValidationError: If a record fails model validation.
+        """
+        response = await self._client.get("/api/v3/episode", params={"seriesId": series_id})
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, list):
+            raise ValueError(f"Expected JSON array from /api/v3/episode, got {type(data).__name__}")
+        return [EpisodeSummary.model_validate(item) for item in data if isinstance(item, dict)]
+
+    async def get_episode(self, episode_id: int) -> EpisodeSummary:
+        """Fetch a single episode by id (v5 episode-identity resolution fallback only).
+
+        Used only as a fallback for an episode id missing from
+        :meth:`get_series_episodes`'s result (rare: a deleted or moved
+        episode). One GET to ``/api/v3/episode/{episode_id}``, no retry.
+
+        Raises:
+            httpx.HTTPError: On a non-2xx response (including 404 when the
+                episode id does not exist) or transport failure.
+            pydantic.ValidationError: If the response body fails model
+                validation.
+        """
+        response = await self._client.get(f"/api/v3/episode/{episode_id}")
+        response.raise_for_status()
+        return EpisodeSummary.model_validate(response.json())
 
     async def search_season(self, series_id: int, season_number: int) -> httpx.Response:
         """Trigger a SeasonSearch command for a specific season."""
