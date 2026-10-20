@@ -2,12 +2,20 @@
 
 These are fixture regressions, not live evidence: a real ``SonarrClient``
 talks over ``httpx.MockTransport`` to sanitized fixture records
-(``tests/fixtures/sonarr/``, synthesized from the Sonarr v3 OpenAPI schema,
-each labelled ``live_evidence: false``). They prove the production parsing,
-identity-gate, season-match and ownership-accumulation code handles these
-response shapes correctly end to end (``SonarrClient.get_grab_history`` ->
-``GrabEvent`` validation -> ``run_tracking_check``). They do not substitute
-for the live v4/v5 verification required by SONARRV5-02.
+(``tests/fixtures/sonarr/``, each labelled ``live_evidence: false``). They
+prove the production parsing, identity-gate, season-match and
+ownership-accumulation code handles these response shapes correctly end to
+end (``SonarrClient.get_grab_history`` -> ``GrabEvent`` validation ->
+``run_tracking_check``). They do not substitute for the live v4/v5
+verification required by SONARRV5-02.
+
+``history_standard_v4`` is synthesized from the Sonarr v3 OpenAPI schema.
+``history_season_pack_nested_synth``, ``history_multi_season_pack_nested_synth``
+and ``history_alternate_order_nested_synth`` are also synthesized -- they
+model the pre-v5 nested ``episode`` shape, and cover the multi-season-pack
+and alternate-order scenarios that the v5 sandbox cannot produce.
+``history_season_pack_v5`` and ``episodes_v5`` are a sanitized, live-captured
+real Sonarr v5 response confirming v5 omits that nested object entirely.
 """
 
 from __future__ import annotations
@@ -104,7 +112,7 @@ async def _stat(db, column: str, instance_stable_id: str = "sid-main") -> int:
 async def test_client_path_season_pack_credits_season_once(tmp_path):
     """A season-1 pack (plus a repeat grab of one episode) credits only the S1 search, once."""
     db = await _init_db(tmp_path)
-    records = load_sonarr_fixture("history_season_pack_v5")
+    records = load_sonarr_fixture("history_season_pack_nested_synth")
     fake = _SonarrHistoryFake({202: records})
     client = _client(fake)
 
@@ -140,7 +148,7 @@ async def test_client_path_season_pack_credits_season_once(tmp_path):
 async def test_client_path_multi_season_pack_no_cross_season(tmp_path):
     """A pack spanning two seasons credits each season's search independently, with no shared grab id."""
     db = await _init_db(tmp_path)
-    records = load_sonarr_fixture("history_multi_season_pack_v5")
+    records = load_sonarr_fixture("history_multi_season_pack_nested_synth")
     fake = _SonarrHistoryFake({303: records})
     client = _client(fake)
 
@@ -178,7 +186,7 @@ async def test_client_path_multi_season_pack_no_cross_season(tmp_path):
 async def test_client_path_alternate_order_uses_canonical_season(tmp_path):
     """Scene numbering reporting the wrong season never overrides Sonarr's canonical season."""
     db = await _init_db(tmp_path)
-    records = load_sonarr_fixture("history_alternate_order_v5")
+    records = load_sonarr_fixture("history_alternate_order_nested_synth")
     fake = _SonarrHistoryFake({404: records})
     client = _client(fake)
 

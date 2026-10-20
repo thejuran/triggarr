@@ -434,7 +434,7 @@ class TestSeasonAwareCorrelation:
 
     def test_correlate_alternate_order_scene_numbering_ignored(self) -> None:
         """Alternate-order fixture: alternate-numbered records credit only their canonical season (D-12)."""
-        records = load_sonarr_fixture("history_alternate_order_v5")
+        records = load_sonarr_fixture("history_alternate_order_nested_synth")
         grabs = [GrabEvent.model_validate(r) for r in records]
 
         searched_at = datetime(2026, 4, 1, 6, 59, 0, tzinfo=UTC)
@@ -453,7 +453,7 @@ class TestSeasonAwareCorrelation:
 
     def test_correlate_multi_season_pack_fixture_splits_by_season(self) -> None:
         """Multi-season pack fixture: each season's search gets exactly its own three records (ATTR-01)."""
-        records = load_sonarr_fixture("history_multi_season_pack_v5")
+        records = load_sonarr_fixture("history_multi_season_pack_nested_synth")
         grabs = [GrabEvent.model_validate(r) for r in records]
 
         searched_at = datetime(2026, 3, 1, 7, 59, 0, tzinfo=UTC)
@@ -475,7 +475,7 @@ class TestSeasonAwareCorrelation:
 
     def test_correlate_season_pack_fixture_matches_all_including_repeat(self) -> None:
         """Season-pack fixture: a single season-1 search matches all 7 records (repeat grab included)."""
-        records = load_sonarr_fixture("history_season_pack_v5")
+        records = load_sonarr_fixture("history_season_pack_nested_synth")
         grabs = [GrabEvent.model_validate(r) for r in records]
 
         searched_at = datetime(2026, 2, 1, 8, 59, 0, tzinfo=UTC)

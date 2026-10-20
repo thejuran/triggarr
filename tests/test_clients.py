@@ -1051,7 +1051,7 @@ async def test_sonarr_grab_history_identity_malformed_is_none() -> None:
 
 async def test_sonarr_grab_history_scene_numbers_ignored() -> None:
     """Scene numbering is never modelled -- canonical seasonNumber wins (ATTR-01, D-12)."""
-    records = load_sonarr_fixture("history_alternate_order_v5")
+    records = load_sonarr_fixture("history_alternate_order_nested_synth")
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=records)
