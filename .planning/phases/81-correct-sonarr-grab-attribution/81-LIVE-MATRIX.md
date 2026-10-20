@@ -186,6 +186,22 @@ Machine-checked before being handed to the owner: `bash -n` passes on both the s
 
 Nothing monitored, instance still disabled, RSS still `0` at the end of this task.
 
+#### Task 2: owner gate run and probe decision (2026-10-20, interactive)
+
+Owner verbatim response: **"gates done, probe"** — ran `ssh -t nas 'echo "0aaf29a58e6ab68138990d1c70d010f6ec88bbed7be8d25f6bd19323f449f895  /tmp/81-12-gates.sh" | sha256sum -c && bash /tmp/81-12-gates.sh'` interactively (own sudo password); the script's final line read `SUMMARY: SEARCHES=off PASSED, SEARCHES=on PASSED, DELUGE DESTINATIONS PASSED`.
+
+Independently verified (not merely trusted) by reading each gate file directly with `ssh nas cat`:
+- `~/v5test-gates/81-12-2-verify-searches-off.txt` — ends `ALL ISOLATION CHECKS PASSED`, `isolation checks failed: 0`; `triggarr-test` revision-confirmed against `triggarr:phase81-b35470b66f`; RSS `0 min`, `series: 2 (0 monitored)`, `scheduled RSS grabbing: OFF`, matching `SEARCHES=off`.
+- `~/v5test-gates/81-12-3-verify-searches-on.txt` — ends `ALL ISOLATION CHECKS PASSED`, `isolation checks failed: 0`; RSS `15 min`, `series: 2 (0 monitored)` (still nothing monitored, as expected before Task 3), `scheduled RSS grabbing: ON`, matching `SEARCHES=on`.
+- `~/v5test-gates/81-12-3-deluge-check.txt` — ends `DELUGE DESTINATIONS PASSED`, `deluge-check failures: 0`; passed against the **existing** `Hacks.S01.XviD-AFG` and `Hacks S02 1080p BluRay x264-BRAVERY` torrents (both `state=Seeding 100%`, both outside prod staging) — no fresh grab needed or triggered.
+- `~/v5test-gates/81-12-3-set-rss.txt` — confirms only `rssSyncInterval` changed (`0` → `15`); `minimumAge`/`retention`/`maximumSize` unchanged at `0`.
+
+All four sanitized (`grep -rniE "apikey|x-api-key: [A-Za-z0-9]{8}"` found nothing) and saved as `v5test-results/81-12-2-verify-searches-off.txt`, `81-12-3-verify-searches-on.txt`, `81-12-3-deluge-check.txt`, `81-12-3-set-rss.txt`.
+
+**Probe decision: PROBE.** Owner verbatim: authorized the labelled probe rows A and B exactly as designed in the plan — sandbox `triggarr-test` DB only, parameterized INSERT, same series and season (Hacks Season 3), dated 1s/2s before the real search, `missing_count` 9, no search sent to Sonarr, probe B only inserted after probe A resolves, close-out UPDATE rules as planned.
+
+Both gates now passed; this authorizes proceeding to Task 3: monitor Hacks Season 3 only, enable the `triggarr-test` `v5test` instance, run the controlled search, observe credits and repeat checks (with the authorized probes), restore baseline, and record results.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
