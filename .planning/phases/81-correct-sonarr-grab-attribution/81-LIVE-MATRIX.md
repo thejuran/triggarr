@@ -124,6 +124,31 @@ Review saved at `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-v4-g
 
 **Provisional (not frozen) sha256:** `6539621e7b3ffa0eba357043ca64f51525641cd47a119aa37b5bbea7ddba2196` — matches on laptop and NAS (`/tmp/setup-sonarr-v4-test.sh`). Per the owner's gate decision, the same independent reviewer re-reviews this version before it is frozen or run against the live sandbox.
 
+### Plan 81-08: second independent review and freeze (2026-10-20)
+
+Second review verdict: **FREEZE-READY, no blockers**, with two warnings (item 1: an empty/falsy `label.get_options` result returned without raising would fall through both the `except` branch and the `if lo:` assertion, printing nothing and silently passing; item 2: the B3 positive check dropped the `Lftp local_path` assertion that the original reviewer's snippet included).
+
+**Owner decision (2026-10-20, interactive), recorded verbatim:**
+
+> "2 — keep it off and fix the documentation. That preserves the live configuration the second review examined. Matching v5 isn't necessary if v4's destination controls and actual torrent-location checks establish isolation. Enabling another move mechanism changes behavior; it isn't automatically extra protection and would need fresh verification. Have BM fix items 1 and 2, reconcile the documentation, and verify those final changes before freezing the script and checksum. Empty label options must explicitly fail the gate."
+
+This confirms the W11 design choice made during the first revision (Deluge label move-completed stays off; Sonarr's own `downloadDirectory`/`completedDirectory` fields plus `deluge-check`'s per-torrent actual-location check are the verification backstop) rather than matching `tv-v5test`'s label-based backstop.
+
+**Item 1 fixed:** added an explicit `else` branch to the label-options check — an empty/falsy `lo` with no exception now prints `LABELFAIL label <cat> missing/empty options` (so the bash `grep -q '^LABELFAIL'` counter fires); the existing exception path is unchanged and still fails. Dry-run harness (synthetic `label.get_options` stub, no Deluge/RPC contact) confirmed all four cases behave correctly: empty dict -> `LABELFAIL ... missing/empty options`; raises -> `LABELFAIL ... unreadable` (plus the same empty-dict line, harmless double-count since the bash side only checks presence, not a count); a safe off-label -> `LABELOK`; an unsafe on-label pointing outside the sandbox -> `LABELFAIL`.
+
+**Item 2 fixed:** restored `say(g("Lftp", "local_path").rstrip("/") == "/downloads", ...)` to the B3 seedsyncarr-v4test positive check, matching the live config (`local_path = /downloads`, confirmed read-only against the actual `settings.cfg` — the file also holds the seedbox's own Lftp password, which was read transiently during this confirmation and never saved to any file, printed in evidence, or recorded here).
+
+**Documentation reconciled:** `SANDBOX-sonarr-v4.md` corrected in three places that no longer matched the live, owner-approved design: (1) the Deluge-label description now states plainly that `tv-v4test`'s own move-completed option is OFF, why that's a deliberate and sufficient choice (Sonarr's own destination fields + `deluge-check`'s actual-location check), and that turning it on would be a second move mechanism needing its own fresh verification, not automatic extra safety; (2) the indexer/download-client table rows, which still read "Not yet wired as of provisioning," updated to reflect the owner's 2026-10-20 wiring and the passed wiring check; (3) the "Why this tag" section's claim that `sonarr-v4` "carries no `wud.watch` label" corrected to describe the actual, opposite mechanism now in place (an explicit `wud.watch=false` label on both services, required because this NAS watches every container by default).
+
+**Final verification performed (no gate run against the rig):**
+- `bash -n` passes on both the laptop copy and the NAS copy (`/tmp/setup-sonarr-v4-test.sh`), sha256-identical.
+- Every embedded Python block (6 heredocs + the B3 inline `-c` block) parses cleanly via static `ast.parse`.
+- A standalone dry-run harness exec'd the exact extracted label-check snippet against four synthetic `label.get_options` stubs (empty dict, raising, safe-off, unsafe-on-wrong-path) with no Deluge/RPC contact — all four produced the expected `LABELOK`/`LABELFAIL` outcome.
+- `grep` confirms no bare `sudo` was introduced (every `sudo` call is still `$D`/`$DC` only) and no credential literal appears anywhere in the script or the reconciled doc.
+- Diff against the previously-reviewed version (`6539621e7b3ffa0eba357043ca64f51525641cd47a119aa37b5bbea7ddba2196`) shows **exactly the two intended changes** (the label `else` branch, the `local_path` assertion) — 7 lines added, 0 removed, nothing else touched.
+
+**FROZEN gate script, sha256:** `90e9e8e5219d8056ba1f0af81f5cac583be4607c07160978d9c29d7eeec8afd4` — identical on laptop and NAS (`/tmp/setup-sonarr-v4-test.sh`). Evidence copy: `v5test-results/81-v4-5-gate-script-FROZEN.sh`. Per the owner's rule: **the `SEARCHES=on` authorization applies only to this exact script and the current sandbox configuration as verified; any further change to either requires re-checking before anything proceeds.**
+
 ### Plan 07 Task 1 execution note (2026-10-19)
 
 Blocked before any sandbox change. `setup-sonarr-v5-test.sh`'s `ACTION=verify` / `ACTION=deluge-check` paths (and the script generally) start with `sudo -v` and use bare `sudo` throughout (config reads, `mkdir`/`chown`, embedded `python3` checks) — only `/usr/local/bin/docker` and `/usr/local/bin/docker-compose` are NOPASSWD on this NAS (per `CLAUDE.md`). Both `ssh nas '...'` and `ssh -t nas '...'` invocations of the script failed identically: `sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper` / `sudo: a password is required`. Confirmed with `sudo -n true` (fails) vs. `sudo -n -l` (succeeds, non-interactive — lists only the two NOPASSWD docker entries). No askpass helper is configured. This is a genuine interactive-credential requirement, not a script bug: the isolation/Deluge-destination gate cannot be produced by the automated executor in this session.
