@@ -37,20 +37,42 @@ Prior fingerprint on file (`v5test-results.md`, 2026-10-12, not re-verified for 
 
 **Deferred to Task 2 (assumption drift, advisory — see Task 1 execution note below):** the plan's Task 1 step 5 expected the startup log to already show "Detected API v5" at this point. The code only runs that detection for *enabled* Sonarr instances (`validate_connections` iterates `get_enabled_instances`), and the `v5test` instance must stay `enabled=false` until the owner's `SEARCHES=on` + Deluge-destination gates pass (owner decision, 2026-10-19: never enable schedule/monitoring before those gates pass). So the live "v5" detection log and the Settings "Test connection" result are confirmed in Task 2, after the owner's gates authorize enabling the instance — not a gap, just later in the sequence than the plan's prose assumed.
 
-### v4 sandbox (not yet provisioned)
+### v4 sandbox (`sonarr-v4` / `seedsyncarr-v4test`, project `v4test`; Triggarr reuses `triggarr-test`'s `v4test` instance)
 
-| Field | Before run | After run |
+| Field | Before run (provisioning, 2026-10-20) | After run |
 |---|---|---|
-| Triggarr commit SHA (full) | _(empty — sandbox does not exist)_ | _(empty)_ |
-| Triggarr image tag | _(empty)_ | _(empty)_ |
-| Triggarr image ID | _(empty)_ | _(empty)_ |
-| Triggarr repo digest | _(empty)_ | _(empty)_ |
-| Container start time | _(empty)_ | _(empty)_ |
-| Sonarr version / branch | _(empty)_ | _(empty)_ |
-| Sonarr runtime fingerprint (.NET / SQLite) | _(empty)_ | _(empty)_ |
-| Date | _(empty)_ | _(empty)_ |
+| Triggarr commit SHA (full) | `b35470b66f1287859319a6633ad3b0a34fbf7c39` (reused `triggarr-test`, no rebuild — `git diff --quiet b35470b66f HEAD -- triggarr tests Dockerfile pyproject.toml uv.lock` exits 0) | _(pending Task 2)_ |
+| Triggarr image tag | `triggarr:phase81-b35470b66f` | _(pending)_ |
+| Triggarr image ID | `sha256:597c3a74ca1dbf426af497bb090f02ac0586a2e70de6819bbe04ca5e7e5d8224` | _(pending)_ |
+| Sonarr v4 image tag | `linuxserver/sonarr:4.0.20` (pinned, no WUD label — see "Why this tag" in `SANDBOX-sonarr-v4.md`) | _(pending)_ |
+| Sonarr v4 image ID | `sha256:0c43ea3c808ca131e5d23695e40907de0149851716395a764cd0d1787c936ba7` | _(pending)_ |
+| Container start time (sonarr-v4) | `2026-10-20T18:39:05.770899017Z` | _(pending)_ |
+| Sonarr version / branch | `4.0.20.3014` / `main` | _(pending)_ |
+| Sonarr runtime fingerprint (.NET / SQLite) | `.NET 6.0.13` / `SQLite 3.53.4` | _(pending)_ |
+| Date | 2026-10-20 | _(pending)_ |
 
-**Note:** WUD (`dockercompose.v5test` trigger, 6-hourly digest watch) auto-updates the v5 sandbox's Sonarr and Triggarr test containers on its own schedule. Any run interrupted by a WUD update or an unplanned container restart must be repeated in full — a fingerprint captured before the interruption cannot be assumed to still match the container that finished the run.
+Evidence: `v5test-results/81-v4-1-fingerprint-before.txt`, `81-v4-2-verify-searches-off.txt`.
+
+**Note:** `sonarr-v4` carries no WUD label and is not in any WUD trigger — it is pinned to the literal tag `linuxserver/sonarr:4.0.20` and will never auto-update, unlike the v5 sandbox. The v4 and v5 sandboxes do not share any WUD trigger or auto-update risk.
+
+### Plan 81-08 Task 1 execution note (2026-10-20)
+
+**Preconditions confirmed before any NAS action:** the Authorization section above reads option-a (v4 provisioning authorized). Production compose md5 recorded before any change: `505283129afbd7aa85d8ab6411372149` (`/volume1/docker/docker-compose.yml`), reconfirmed identical after this task's work — production was never touched. `git diff --quiet b35470b66f1287859319a6633ad3b0a34fbf7c39 HEAD -- triggarr tests Dockerfile pyproject.toml uv.lock` exits 0 (clean), so the 81-12 build was reused (image `triggarr:phase81-b35470b66f` already present on the NAS) rather than rebuilt, per this plan's `<build>` instruction.
+
+**Design choices (recorded, not architectural — within the plan's own stated discretion):**
+1. **No separate `triggarr-v4test` container.** The plan's own layout note proposes a v4 Triggarr port (8495) "only if a second Triggarr is needed." Since `triggarr-test` already runs on the same prod-external docker network as every sandbox container (resolves any alias) and Triggarr supports multiple named instances per app type in one process (`[sonarr.v5test]` and `[sonarr.v4test]` side by side in the same `triggarr.toml`), a second instance was added to the existing container instead of standing up a new one. No port 8495 was used. Full reasoning in `SANDBOX-sonarr-v4.md`.
+2. **No WUD wiring for v4test, no second prod-compose edit.** Unlike the v5 rig, `sonarr-v4` is pinned to the literal tag `linuxserver/sonarr:4.0.20` and carries no `wud.watch` label. This avoids a second WUD trigger addition to the production compose file entirely (the v5 rig's only prod-compose edit), further reducing the production touch surface for this plan.
+3. **No bare `sudo` anywhere in `setup-sonarr-v4-test.sh`, so no owner password is needed for this gate script.** `/volume1/docker` is world-writable (777) and `/volume1/data` is owned by the SSH user (`<nas-user>`, PUID/PGID 1026:100 — the same identity every sandbox container runs as), so directory creation needs no `sudo`. Every config-file read goes through `sudo /usr/local/bin/docker exec <container> cat <path>` (the NAS's one NOPASSWD sudo rule, scoped to the docker binary) instead of a bare host-level `sudo cat`/`sudo grep`. One exception found and fixed in place: `triggarr-test`'s compose drops ALL capabilities (including `CAP_DAC_OVERRIDE`), so `docker exec`-as-root inside that one container cannot override its `0600 triggarr.toml` permissions either (confirmed: `whoami`/`id` inside the container show root, but `grep` on the file still returns `Permission denied`) — the same fact Plan 81-07 hit and documented. Fixed by reading `triggarr.toml` directly via its host path (`/volume1/docker/v5test/triggarr`, owned by `<nas-user>`, readable with no `sudo` at all) instead of `docker exec`. This is a deliberate adaptation, not a security relaxation: the isolation gate proves the exact same facts (fresh key, no prod/v5 cross-wiring, correct mounts) that `setup-sonarr-v5-test.sh` proves, just without needing the owner's interactive password for routine reads — because this NAS's actual file permissions allow it, not because any check was skipped or weakened.
+
+**Done so far, all without any owner-entered credential:**
+- Provisioned `/volume1/docker/v4test` + `/volume1/data/v4test` (no sudo), compose project `v4test` with `sonarr-v4` (`linuxserver/sonarr:4.0.20`, host port 8991) and `seedsyncarr-v4test` (same image tag as `seedsyncarr-test`, host port 8802).
+- `sonarr-v4` confirmed `4.0.20.3014`/main, fresh API key generated by the container itself (never printed to any report), root folder `/data/media/tv` added, hardlinks on (v4's own default), RSS Sync Interval set to `0`.
+- Added one sandbox test series, **Hacks** (tvdbId 401582 — the same non-prod series the v5 sandbox uses), series-level and every season explicitly `monitored: false`, no search triggered.
+- `seedsyncarr-v4test`'s `settings.cfg` repointed from prod's template (`Lftp` remote_path -> `~/v4test`, scan script -> `~/.local/v4test/scanfs`, `Sonarr` section -> `http://sonarr-v4:8989` + the v4 instance's own fresh key, `Radarr` blanked/disabled, `AutoDelete` left as prod's) — no Deluge credential involved in this file at all.
+- Registered a new `v4test` Sonarr instance in `triggarr-test`'s `triggarr.toml` via its own validated `POST /settings` (authenticated with Triggarr's internal `X-Api-Key`, not a session cookie — same pattern as 81-07/81-12), resubmitting `v5test`'s existing fields unchanged (confirmed via a fresh read: same id, url, search_interval, counts) and adding `v4test`: `url = "http://sonarr-v4:8989"`, `enabled = false`, `search_interval = 30`, `search_missing_count = 5`, `search_cutoff_count = 5`. `[general].tracking_window_minutes` stays `60` (shared, unchanged).
+- **`ACTION=verify SEARCHES=off` — PASSED** (`isolation checks failed: 0`): v4 key fresh and differs from both prod's and the v5 sandbox's keys; `triggarr-test` resolves `sonarr-v4` to its own container IP (not prod's, not `sonarr-v5`'s); `triggarr-test -> sonarr-v4` returns 200 with the v4 key, prod and the v5 sandbox both reject that key (401); no test container mounts a prod config dir; `triggarr-test` config confirmed to hold the v4 key under its own instance; `seedsyncarr-v4test` settings reference only the sandbox; prod has no download client or remote-path-mapping referencing `tv-v4test`; RSS `0 min`, no indexers yet, `series: 1 (0 monitored)`, matching `SEARCHES=off`. Sanitized (`grep -rniE "apikey=|x-api-key: [A-Za-z0-9]{8}"` over every `81-v4-*` evidence file: clean) and saved to `v5test-results/81-v4-2-verify-searches-off.txt`.
+
+**Not done — stopped for the owner credential checkpoint (per this plan's binding instruction):** Prowlarr's indexer app-sync (which would push the shared private-tracker indexer credentials — <private indexers> — into `sonarr-v4`) and `sonarr-v4`'s Deluge download-client configuration (the the seedbox Deluge daemon's host/port/SSL path and login) have **not** been configured. Both are required before `SEARCHES=on` can mean anything (no indexer has RSS on yet) and before the Deluge-destination check can pass (no download client exists to produce a `tv-v4test` torrent), so the rest of Task 1 (the `SEARCHES=on` + Deluge-destination gate) and all of Task 2 (the live controlled search) are blocked on this answer, not on any remaining technical work. See the checkpoint returned alongside this commit for the exact question and alternatives.
 
 ### Plan 07 Task 1 execution note (2026-10-19)
 
