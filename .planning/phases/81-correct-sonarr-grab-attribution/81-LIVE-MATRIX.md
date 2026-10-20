@@ -217,6 +217,24 @@ This command alone does not set `rssSyncInterval` (that field is currently `0`, 
 
 **Searches remain PAUSED** per the owner's 2026-10-20 ruling until both this corrected gate (now passing) and the seedbox credential rotation are complete. No request to run `SEARCHES=on` has been made.
 
+### Plan 81-08: credential recovery confirmed, RSS step, and next gate (2026-10-20)
+
+**Owner decisions (2026-10-20, interactive), recorded verbatim:**
+
+> _[Security-sensitive detail removed before publication; the full record is kept privately.]_
+>
+> **RSS step:** "Yes, RSS only" — may set `sonarr-v4` `rssSyncInterval` 0 -> 15 (only that field, via the sandbox API, nothing monitored), then confirm by fresh read nothing else changed.
+>
+> **Deluge check:** "Defer to first grab" — the searches-on gate covers client folders/category/removal settings; run `ACTION=deluge-check` (frozen script) immediately after the controlled grab, before any further step; if it fails, stop and restore baseline. Task 1 stays formally open until it passes.
+>
+> **Authorization:** "Yes, if gates pass" — the controlled v4 test (monitor one test season only, enable the v4test instance, a single season search) with probe rows as in 81-12 is authorized, CONDITIONAL on: searches-off rerun, owner-run searches-on, and the post-grab deluge-check all passing on frozen script `00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e` and the current configuration. Interval rule unchanged (30 until import and `wanted/missing` + `wanted/cutoff` `totalRecords` 0, then 5; never unmonitor mid-run; scope guard).
+
+**Step 1 — re-ran the full `SEARCHES=off` gate after the password rotation** (`seedsyncarr-v4test`'s own config changed, so the prior pass no longer covers its current state): sha-verified on the NAS immediately before running (`00ca2909...9d77e` confirmed), then `isolation checks failed: 0`, ends `ALL ISOLATION CHECKS PASSED`. Output checked for secrets/whole-section dumps before saving (clean) and saved to `v5test-results/81-v4-9-verify-searches-off-after-rotation.txt`.
+
+**Step 2 — set `sonarr-v4`'s `rssSyncInterval` 0 -> 15, only that field:** `PUT /api/v3/config/indexer/1` resubmitted `minimumAge`/`retention`/`maximumSize`/`id` unchanged (all `0`/`0`/`0`/`1`), changed only `rssSyncInterval`. Confirmed via a fresh `GET /api/v3/config/indexer`: value stuck at `15`, every other field unchanged. Confirmed nothing else moved: `series: 1, monitored: 0` (unchanged) and the `triggarr-test` `v4test` instance still `enabled = false`, `url = http://sonarr-v4:8989` (unchanged). No series was monitored, no instance was enabled, no search was triggered.
+
+**Not yet done:** `ACTION=verify SEARCHES=on` — per the owner's authorization, this is the owner's own run, not the executor's. Per instruction, nothing was enabled/monitored/searched and no `deluge-check` was bundled into this step.
+
 ### Plan 07 Task 1 execution note (2026-10-19)
 
 Blocked before any sandbox change. `setup-sonarr-v5-test.sh`'s `ACTION=verify` / `ACTION=deluge-check` paths (and the script generally) start with `sudo -v` and use bare `sudo` throughout (config reads, `mkdir`/`chown`, embedded `python3` checks) — only `/usr/local/bin/docker` and `/usr/local/bin/docker-compose` are NOPASSWD on this NAS (per `CLAUDE.md`). Both `ssh nas '...'` and `ssh -t nas '...'` invocations of the script failed identically: `sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper` / `sudo: a password is required`. Confirmed with `sudo -n true` (fails) vs. `sudo -n -l` (succeeds, non-interactive — lists only the two NOPASSWD docker entries). No askpass helper is configured. This is a genuine interactive-credential requirement, not a script bug: the isolation/Deluge-destination gate cannot be produced by the automated executor in this session.
