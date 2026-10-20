@@ -278,3 +278,46 @@ def test_mini_bars_horizontal_layout(client):
     assert "flex items-center justify-between gap-4" in response.text
     assert "h-1 bg-triggarr-bg rounded-full overflow-hidden" in response.text
     assert "h-full bg-triggarr-radarr rounded-full" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 81 scope addition: the fourth card shows average time to grab, so its
+# title and subtitle must say so (the historical-estimates label qualifies it).
+# ---------------------------------------------------------------------------
+
+
+def test_time_to_grab_card_title_and_subtitle(client):
+    """The time-to-grab card is titled for its metric, not as a scan schedule."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert ">Average time to grab<" in response.text
+    assert "From search to grab" in response.text
+    assert "Next Scan" not in response.text
+    assert "Scheduled automatically" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 81 scope addition: the instance selector and the 30s stats-row poll
+# both replace #stats-row. Without a shared hx-sync scope, an older
+# All-instances poll can land after the selection and the selected
+# instance's response is then swapped into a detached element.
+# ---------------------------------------------------------------------------
+
+
+def test_instance_selector_replaces_in_flight_stats_poll(client):
+    """The selector syncs on #stats-row and aborts an in-flight poll."""
+    response = client.get("/")
+    assert response.status_code == 200
+    select_start = response.text.index('<select name="instance"')
+    select_tag = response.text[select_start : response.text.index(">", select_start)]
+    assert 'hx-sync="#stats-row:replace"' in select_tag
+
+
+def test_stats_row_poll_drops_while_request_in_flight(client):
+    """The stats-row poll never overlaps a request already in flight on #stats-row."""
+    for path in ("/", "/partials/stats-row"):
+        response = client.get(path)
+        assert response.status_code == 200
+        row_start = response.text.index('<div id="stats-row"')
+        row_tag = response.text[row_start : response.text.index(">", row_start)]
+        assert 'hx-sync="this:drop"' in row_tag, path
