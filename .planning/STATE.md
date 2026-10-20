@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: "Phase 81 executing — Waves 1-3 complete (6/9 plans); live v5 sandbox run (81-07) next, authorized option-a (Phase 80 scheduled-cycle check pending separately)"
-stopped_at: "Phase 81 Wave 3 complete (81-06; owner authorized v5 deploy + v4 sandbox, option-a, 2026-10-19); next: Wave 4 (81-07 live v5 matrix)"
-last_updated: "2026-10-19T22:30:00Z"
+status: "Phase 81 executing — 7/9 plans; live v5 run (81-07) found a v5 grab-identity gap (attribution FAIL, SONARRV5-02 open); gap-closure fix being planned (Phase 80 scheduled-cycle check pending separately)"
+stopped_at: "Phase 81 81-07 complete with live FAIL on v5 season-pack attribution (owner-approved record 2026-10-19); next: gap-closure plans (episode-ID fallback, real v5 fixtures, live v5 rerun), then 81-08 v4 on the fixed build"
+last_updated: "2026-10-20T02:10:00Z"
 last_activity: "2026-10-19 -- Phase 81 Wave 2 executed and merged on branch phase-81-sonarr-attribution (81-04 ownership-aware tracking + scheduler wiring, 81-05 stats disclosure); 1,957 tests pass, ruff clean"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 28
-  completed_plans: 25
+  completed_plans: 26
   percent: 80
 ---
 
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 
 ## Current Position
 
-Phase: 81 (correct-sonarr-grab-attribution) — EXECUTING; Waves 1-3 complete
-Plan: 6 of 9 complete (81-01..81-06 executed; 81-07..81-09 remaining; plans in in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
-Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). 81-06 built the live acceptance matrix; the owner authorized both the v5 deploy of the Phase 81 build and v4 sandbox provisioning (option-a, 2026-10-19). Live runs have not started. Phase 81 remains incomplete. Live sandbox work waits for the owner authorization checkpoint in 81-06.
+Phase: 81 (correct-sonarr-grab-attribution) — EXECUTING; Waves 1-4 complete; gap closure pending
+Plan: 7 of 9 complete (81-01..81-07 executed; 81-08..81-09 remaining plus gap-closure plans being added; plans in in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
+Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). 81-06 built the live acceptance matrix; the owner authorized both the v5 deploy of the Phase 81 build and v4 sandbox provisioning (option-a, 2026-10-19). 81-07 ran the Phase 81 build on the isolated v5 sandbox (owner ran the sudo isolation gates; both passed): the controlled Hacks S02 SeasonSearch was dispatched, grabbed and imported, but season-pack attribution and repeated-tracking checks FAIL because Sonarr v5 (5.0.0.2701) grab history omits season identity, so the identity gate credits nothing. Tag/missing/cutoff were reachable only (empty sandbox). The owner approved this as an accurate record of a failed compatibility test (not v5 support) and scoped a targeted fix inside Phase 81 (episode-ID fallback with series validation, per-check caching, no credit on missing/conflicting identity, real v5 fixtures), then a live v5 rerun; 81-08 v4 still runs. v4 behavior is unverified until 81-08. Sandbox restored to disabled baseline; production untouched. Phase 81 remains incomplete. Live sandbox work waits for the owner authorization checkpoint in 81-06.
 
 Phase 80 operational check (separate): Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI (run 39157110156) and Release (run 39157384992) passed; deployed to production 2026-10-18 (container running `dee25df5cedd28f8016f556129f20a0d5537b635`, image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`, started 19:11:47Z; health OK; startup Radarr and Sonarr cycles graded Success). The previous image is tagged `ghcr.io/thejuran/triggarr:rollback-d41b484` on the NAS and config/state were backed up to `~/triggarr-backup-pre-pr28-20261018T191121Z` before the restart. Not yet operationally verified: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
-Last activity: 2026-10-19 -- Phase 81 Wave 2 complete (5/9 plans: 81-04, 81-05 merged); 81-06 complete (owner authorized option-a); next is the 81-07 live v5 run
+Last activity: 2026-10-19 -- Phase 81 Wave 2 complete (5/9 plans: 81-04, 81-05 merged); 81-07 complete (live v5 attribution FAIL recorded, owner-approved); gap-closure fix being planned
 
 ### v2.12 milestone shape
 
