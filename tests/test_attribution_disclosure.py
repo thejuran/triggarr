@@ -117,7 +117,7 @@ async def test_dashboard_global_pre_fix_shows_note_and_lifetime_label_once(app_e
     assert text.count("Lifetime — includes historical estimates") == 1
 
     series_idx = text.index(">Series<")
-    next_scan_idx = text.index(">Next Scan<")
+    next_scan_idx = text.index(">Average time to grab<")
     label_idx = text.index("Lifetime — includes historical estimates")
     assert series_idx < label_idx < next_scan_idx
 

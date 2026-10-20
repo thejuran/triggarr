@@ -651,7 +651,7 @@ def test_dashboard_renders_stats_cards(client):
     assert "Grab Rate" in response.text, "Dashboard should show Grab Rate card"
     assert "Movies" in response.text, "Dashboard should show Movies card"
     assert "Series" in response.text, "Dashboard should show Series card"
-    assert "Next Scan" in response.text, "Dashboard should show Next Scan card"
+    assert "Average time to grab" in response.text, "Dashboard should show the time-to-grab card"
 
 
 def test_stats_row_partial_returns_200(client):

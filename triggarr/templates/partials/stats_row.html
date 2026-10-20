@@ -1,6 +1,7 @@
 <div id="stats-row"
      hx-get="{{ request.url_for('partial_stats_row') }}"
      hx-trigger="every 30s"
+     hx-sync="this:drop"
      hx-swap="outerHTML"
      hx-include="[name='instance']"
      class="mb-4">
@@ -91,15 +92,15 @@
   </div>
   {% endif %}
 
-  <!-- Next Scan card -->
+  <!-- Average time to grab card -->
   <div class="bg-triggarr-card border border-triggarr-border rounded-lg p-5 flex flex-col justify-between shadow-sm">
     <div class="flex justify-between items-start mb-4">
-      <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Next Scan</span>
+      <span class="text-xs font-bold tracking-widest uppercase text-triggarr-muted">Average time to grab</span>
       <i class="ph ph-clock-countdown text-lg text-triggarr-muted"></i>
     </div>
     <div class="text-[32px] font-bold text-triggarr-text leading-none mb-3">{{ time_to_grab }}{% if stats.avg_time_to_grab_includes_historical %} <span class="text-[10px] font-normal text-triggarr-muted align-middle">Includes historical estimates</span>{% endif %}</div>
     <div class="flex items-center text-xs text-triggarr-muted gap-1.5">
-      <i class="ph ph-calendar text-sm text-triggarr-primary"></i>Scheduled automatically
+      <i class="ph ph-timer text-sm text-triggarr-primary"></i>From search to grab
     </div>
   </div>
 

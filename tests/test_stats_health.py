@@ -203,7 +203,7 @@ def test_per_app_bars_with_colors(client):
 
 
 def test_stat_cards_have_shadow(client):
-    """All stat cards (hero + Movies + Series + Albums + Next Scan) have shadow-sm."""
+    """All stat cards (hero + Movies + Series + Albums + Average time to grab) have shadow-sm."""
     response = client.get("/")
     assert response.status_code == 200
     count = response.text.count("shadow-sm")
@@ -235,7 +235,7 @@ def test_stat_cards_have_phosphor_icons(client):
     assert "ph ph-chart-line-up" in response.text  # Grab Rate
     assert "ph ph-film-strip" in response.text  # Movies
     assert "ph ph-television" in response.text  # Series
-    assert "ph ph-clock-countdown" in response.text  # Next Scan
+    assert "ph ph-clock-countdown" in response.text  # Average time to grab
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +251,7 @@ def test_stat_card_subtitles(client):
     assert "In Radarr" in response.text
     assert "w-1.5 h-1.5 rounded-full bg-triggarr-sonarr" in response.text
     assert "In Sonarr" in response.text
-    assert "Scheduled automatically" in response.text
+    assert "From search to grab" in response.text
 
 
 # ---------------------------------------------------------------------------
