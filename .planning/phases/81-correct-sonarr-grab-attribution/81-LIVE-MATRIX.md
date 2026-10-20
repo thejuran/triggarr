@@ -630,6 +630,14 @@ Full detail in `v5test-results/81-13-2-prep-m.txt`, `81-13-2-v4-gate-pre.txt`. S
 - **Triggarr settings (one combined `POST /settings`, both instances, validated path, authenticated via Triggarr's own internal `X-Api-Key` against the host-mapped port, never a session cookie):** `general.page_size` `50` → `10` (D-B); `general.skip_unreleased` explicitly resubmitted `true` (the form silently defaults this to `false` if the checkbox field is omitted, so it was included deliberately to avoid an unintended drift); every other `[general]` field resubmitted unchanged. Both instances: `missing_tag` `""` → `"t81-in"` / `search_missing_count` `5` → `0` (evidence queue, structurally zero-search); `cutoff_tag` `""` → `"t81-none"` / `search_cutoff_count` `5` → `1` (active/armed queue, resolves to 0 series); `search_interval` unchanged `30`; `enabled` unchanged `false` for both (the actual enable is gated by Task 5's two-barrier protocol). Read-back confirmed every value exactly; `[radarr]`/`[lidarr]` confirmed still zero configured instances (vacuously `enabled=false`).
 - **Zero-search confirmation:** a fresh read of each sandbox's Sonarr command list immediately after the settings save shows only routine scheduled jobs — no `Search*`/`RssSync` command, matching the "both instances disabled, RSS 0 on both Sonarrs, no Sonarr command issued" acceptance criterion.
 
+#### Task 4: owner-run v5 pre-gate (2026-10-20 17:15 local)
+
+Owner ran the sha-verified one-liner (`echo "39930f93c24ff277e64a3e27659ba84c919f61394db31af7e9cdbea8f7b23818  /tmp/setup-sonarr-v5-test.sh" | sha256sum -c && ...`) interactively (their own sudo password), reporting: "ALL ISOLATION CHECKS PASSED (saved: /volume1/docker/v5test/results/verify-20261020-171501.txt)".
+
+Independently re-verified (not merely trusted) by reading the gate file directly with `ssh nas cat ~/v5test-gates/81-13-2-v5-gate-pre.txt`: ends `ALL ISOLATION CHECKS PASSED`, `isolation checks failed: 0`; `sonarr-v5 RSS sync interval: 0 min`, `series: 2 (2 monitored)` (correctly reflects Task 3's Phase M monitoring — Hacks + That Mitchell and Webb Look, one season each), `scheduled RSS grabbing: OFF`, matching `SEARCHES=off`. The NAS's `/tmp/setup-sonarr-v5-test.sh` sha256 (`39930f93c24ff277e64a3e27659ba84c919f61394db31af7e9cdbea8f7b23818`) reconfirmed identical to the laptop copy. Sanitized (no credential-header pattern, no password text, no filesystem-location field) and saved to `v5test-results/81-13-2-v5-gate-pre.txt`.
+
+Both gate runs (v4 pre-gate, Task 3; v5 pre-gate, this task) now pass; this authorizes proceeding to Task 5: run Phase M and Phase C on v5 then v4 under the two-barrier enable protocol, restore baselines, and record results.
+
 ## Matrix
 
 | Scenario | D-ref | v5 Live | v4 Live | Fixture / automated evidence | Notes |
