@@ -4,7 +4,7 @@ milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: "Phase 81 executing — 7/9 plans; live v5 run (81-07) found a v5 grab-identity gap (attribution FAIL, SONARRV5-02 open); gap-closure fix being planned (Phase 80 scheduled-cycle check pending separately)"
 stopped_at: "Phase 81 81-07 complete with live FAIL on v5 season-pack attribution (owner-approved record 2026-10-19); next: 81-08 v4 sandbox on the fixed build b35470b (81-12 v5 rerun owner-approved 2026-10-20: S2 pack 8/8 by fixed build, S3 single-episode 9/9, repeat checks probe-assisted pass; SONARRV5-02 open pending v4)"
-last_updated: "2026-10-20T18:45:00Z"
+last_updated: "2026-10-20T20:50:00Z"
 last_activity: "2026-10-19 -- Phase 81 Wave 2 executed and merged on branch phase-81-sonarr-attribution (81-04 ownership-aware tracking + scheduler wiring, 81-05 stats disclosure); 1,957 tests pass, ruff clean"
 progress:
   total_phases: 5
@@ -180,7 +180,7 @@ v2.12 roadmap created 2026-10-08 from the approved search-correctness design spe
 
 ### Blockers/Concerns
 
-None.
+- _[Security-sensitive detail removed before publication; the full record is kept privately.]_
 
 ### Future Milestones
 
