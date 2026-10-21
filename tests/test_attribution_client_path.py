@@ -1636,3 +1636,26 @@ async def test_client_path_v5_grab_between_row_windows_not_resolved(tmp_path):
     owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=62)
     assert len(owned) == 0
     await db.close()
+
+
+async def test_fixed_date_tests_do_not_depend_on_the_wall_clock(tmp_path, monkeypatch):
+    """The fixed-date regressions that expect a row to stay 'searched' must keep
+    passing whatever today's date is. With tracking's clock moved past their
+    _WIDE_WINDOW (2028), each one must still pass rather than flip to 'unresolved'."""
+
+    class _Future(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            future = datetime(2028, 6, 1, tzinfo=UTC)
+            return future if tz is None else future.astimezone(tz)
+
+    monkeypatch.setattr(tracking_module, "datetime", _Future)
+
+    for test in (
+        test_client_path_season_pack_credits_season_once,
+        test_client_path_missing_episode_id_not_counted,
+        test_client_path_conflicting_identity_not_counted,
+    ):
+        case_dir = tmp_path / test.__name__
+        case_dir.mkdir()
+        await test(case_dir)
