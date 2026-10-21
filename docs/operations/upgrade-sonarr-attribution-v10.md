@@ -17,7 +17,7 @@ switching images.
 - Stop the container and copy `/config/triggarr.db` (with any
   `triggarr.db-wal` and `triggarr.db-shm` beside it), `triggarr.toml` and
   `state.json` somewhere outside `/config`. Triggarr also writes
-  `triggarr.v9-backup` itself before migrating.
+  its own backup (`triggarr.vN-backup`, see below) before migrating.
 
 ## Supported: forward-only
 
@@ -45,15 +45,48 @@ stop, and:
 ## Emergency only: restoring the pre-upgrade database
 
 Use this only when forward recovery is not possible. It has not been
-rehearsed, and it loses data.
+rehearsed, and it loses data. Complete steps 1–3 before touching the live
+database; if any step fails, stop and follow "If any step fails" below.
 
-1. Stop the container.
-2. Move `triggarr.db`, `triggarr.db-wal` and `triggarr.db-shm` out of
+1. **Find the real pre-upgrade backup.** Do not assume a file name. On its
+   first start, the upgrade logged `Database backed up to <path>`, and the
+   file is named after the schema version the database had before the
+   upgrade: `triggarr.v9-backup` when upgrading from v2.7 through v2.11.x,
+   and a lower number (for example `triggarr.v8-backup` from v2.5.x) from
+   older releases. If an earlier attempt had already made one, the upgrade
+   kept it and also wrote
+   `triggarr.vN-backup-<timestamp>`; the file without a timestamp is the
+   earliest, taken before any attempt. A brand-new database has no backup.
+   The copy you saved yourself under "Before upgrading" is the other
+   candidate.
+2. **Check that backup, on a copy, before using it.** Copy it outside
+   `/config` and, with the `sqlite3` tool, confirm that
+   `PRAGMA integrity_check;` prints `ok` and that
+   `SELECT version FROM schema_version;` prints the pre-upgrade version (the
+   number in the backup's name, such as 9 for `triggarr.v9-backup`). Never
+   continue with a version of 10 or more: that is not a pre-upgrade
+   database.
+3. **Choose a compatible image.** Use the image you ran before the
+   upgrade. Its schema version must be at least the backup's version, and
+   it must be a build without the attribution correction (v2.11.x or
+   earlier). An image older than the backup's schema version does not
+   recognize it and does not stop.
+4. Stop the container.
+5. Move `triggarr.db`, `triggarr.db-wal` and `triggarr.db-shm` out of
    `/config` and keep them.
-3. Copy `triggarr.v9-backup` to `/config/triggarr.db`. This is the database
-   as it was immediately before the first upgrade attempt.
-4. Keep the current `state.json` and `triggarr.toml`.
-5. Start the older image.
+6. Copy the checked backup to `/config/triggarr.db`, and confirm the copy
+   matches it byte for byte (for example, with `sha256sum` on both).
+7. Keep the current `state.json` and `triggarr.toml`.
+8. Start the image from step 3, and only if every step above succeeded.
+
+If any step fails — no backup can be found, a check does not print the
+expected result, no compatible image is available, or a copy or move fails
+— do not start Triggarr with any image. Leave the container stopped, put
+the files from step 5 back into `/config` unchanged, and recover forward
+with a fixed newer build instead. Starting an older image against a missing
+or partly restored database creates a new, empty one; starting it against
+the v10 database causes the problems listed under "Do not roll back by
+changing the image only".
 
 What this loses or changes:
 
