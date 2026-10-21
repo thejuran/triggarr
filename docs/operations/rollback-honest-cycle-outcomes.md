@@ -6,6 +6,12 @@ split timestamps, and grade-driven failure counter), and for safely
 upgrading again afterward. It applies to any docker-compose deployment;
 substitute your own compose file path and service name where shown.
 
+> **Database schema v10:** v2.12 also includes the Sonarr attribution
+> correction, which moves `triggarr.db` to schema v10. Once a build with that
+> change has run, this rollback procedure no longer applies -- see
+> [Upgrading past Sonarr attribution](upgrade-sonarr-attribution-v10.md).
+> Rolling back by changing the image alone is not supported.
+
 ## What changed in state.json
 
 Three new or re-scoped fields live per instance inside `/config/state.json`.

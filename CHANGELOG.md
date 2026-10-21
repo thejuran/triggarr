@@ -8,6 +8,10 @@
 
   * Right after upgrading, the tag-scoped progress lines that use a saved scoped count — Missing on Radarr, Sonarr, and Lidarr cards, and Cutoff Unmet on Sonarr cards — show "—" instead of a number until the first search cycle or count refresh under this version. Counts saved by earlier versions can't be confirmed to match the queue's tag, so Triggarr doesn't display them. Radarr and Lidarr Cutoff Unmet lines keep showing their cutoff count.
 
+  * Sonarr attribution correction changes the database to schema version 10 and writes a stable `id` into each instance in `triggarr.toml` on the first start after upgrading. The config directory must be writable for that start; if Triggarr cannot save the file, it logs why and does not start. Read-only config mounts and single-file bind mounts of `triggarr.toml` are not supported.
+
+  * After this upgrade, recover from problems by deploying a newer build, not an older one. Do not start an older image against the upgraded database: it double-counts lifetime grabs and writes searches the corrected tracker cannot pick up again. Restoring the pre-upgrade database is an emergency-only step that loses history and tracking since the upgrade — see [Upgrading past Sonarr attribution](docs/operations/upgrade-sonarr-attribution-v10.md).
+
 ## v2.11.0 (2026-06-04)
 
 Smarter search ordering — Triggarr now prioritizes items it has never searched before.

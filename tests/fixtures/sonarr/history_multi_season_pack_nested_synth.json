@@ -1,0 +1,114 @@
+{
+  "_meta": {
+    "source": "synthesized from the Sonarr v3 OpenAPI HistoryResource/EpisodeResource schema on the v5-develop branch; sanitized",
+    "origin": "synthesized",
+    "sonarr_major": "synthetic (nested-episode shape)",
+    "live_evidence": false,
+    "shape_note": "Synthesized from the Sonarr v3 OpenAPI schema. Models the nested `episode` object that v4 returns; live Sonarr v5 5.0.0.2701 omits it (captured 2026-10-19, see history_season_pack_v5.json). Multi-season packs and alternate series orders cannot be captured from the sandbox (no such series or grabs exist there), so this file stays synthesized.",
+    "scenario": "One multi-season pack grab spanning season 1 and season 2, three episodes each."
+  },
+  "records": [
+    {
+      "id": 9201,
+      "episodeId": 701,
+      "seriesId": 303,
+      "sourceTitle": "Example.Show.S01-S02.1080p.WEB-DL-GRP",
+      "date": "2026-03-01T08:00:00Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-MULTI303",
+      "data": {},
+      "episode": {
+        "id": 701,
+        "seriesId": 303,
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "title": "Example Episode S1E1"
+      }
+    },
+    {
+      "id": 9202,
+      "episodeId": 702,
+      "seriesId": 303,
+      "sourceTitle": "Example.Show.S01-S02.1080p.WEB-DL-GRP",
+      "date": "2026-03-01T08:00:01Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-MULTI303",
+      "data": {},
+      "episode": {
+        "id": 702,
+        "seriesId": 303,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "title": "Example Episode S1E2"
+      }
+    },
+    {
+      "id": 9203,
+      "episodeId": 703,
+      "seriesId": 303,
+      "sourceTitle": "Example.Show.S01-S02.1080p.WEB-DL-GRP",
+      "date": "2026-03-01T08:00:02Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-MULTI303",
+      "data": {},
+      "episode": {
+        "id": 703,
+        "seriesId": 303,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "title": "Example Episode S1E3"
+      }
+    },
+    {
+      "id": 9204,
+      "episodeId": 711,
+      "seriesId": 303,
+      "sourceTitle": "Example.Show.S01-S02.1080p.WEB-DL-GRP",
+      "date": "2026-03-01T08:00:03Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-MULTI303",
+      "data": {},
+      "episode": {
+        "id": 711,
+        "seriesId": 303,
+        "seasonNumber": 2,
+        "episodeNumber": 1,
+        "title": "Example Episode S2E1"
+      }
+    },
+    {
+      "id": 9205,
+      "episodeId": 712,
+      "seriesId": 303,
+      "sourceTitle": "Example.Show.S01-S02.1080p.WEB-DL-GRP",
+      "date": "2026-03-01T08:00:04Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-MULTI303",
+      "data": {},
+      "episode": {
+        "id": 712,
+        "seriesId": 303,
+        "seasonNumber": 2,
+        "episodeNumber": 2,
+        "title": "Example Episode S2E2"
+      }
+    },
+    {
+      "id": 9206,
+      "episodeId": 713,
+      "seriesId": 303,
+      "sourceTitle": "Example.Show.S01-S02.1080p.WEB-DL-GRP",
+      "date": "2026-03-01T08:00:05Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-MULTI303",
+      "data": {},
+      "episode": {
+        "id": 713,
+        "seriesId": 303,
+        "seasonNumber": 2,
+        "episodeNumber": 3,
+        "title": "Example Episode S2E3"
+      }
+    }
+  ]
+}

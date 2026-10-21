@@ -22,6 +22,7 @@
   <select name="instance"
           hx-get="{{ request.url_for('partial_stats_row') }}"
           hx-target="#stats-row"
+          hx-sync="#stats-row:replace"
           hx-swap="outerHTML"
           hx-include="this"
           class="bg-triggarr-card border border-triggarr-border rounded text-sm px-2 py-1 text-white">

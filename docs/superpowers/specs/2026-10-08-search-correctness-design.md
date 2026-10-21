@@ -24,11 +24,11 @@ This milestone fixes those four, plus three backlog items on the same theme:
 **In scope:** findings #1–#4 and backlog items 999.3, 999.5, 999.6, plus a bounded Sonarr v5 compatibility task in Phase 81 (added 2026-10-12).
 
 **Out of scope** (2026-10-17 backlog triage supersedes the earlier blanket deferral to a next hardening milestone):
-- 999.4/999.9 remain unscheduled fixes; 999.10/999.13 are narrowed to evidence-backed security and lifecycle work; 999.8/999.11 are maintenance rules; 999.7/999.12 are retired under current scope. See `.planning/ROADMAP.md` Backlog.
+- Retained fixes are organized in ROADMAP.md under the future Reliability and Authentication Safety & Responsiveness milestones (2026-10-18). Maintenance rules and closed decisions live in `.planning/backlog/`; none expands v2.12.
 - new features
 - Lidarr/Radarr attribution changes (the season bug is Sonarr-specific)
 - recomputing historical stats
-- changing the HTTP client's automatic single retry of POST requests. A timeout after the server already accepted a command can still produce a duplicate command. This remains an unscheduled concrete reliability follow-up; no new hardening milestone is presumed.
+- changing the HTTP client's automatic single retry of POST requests. A timeout after the server already accepted a command can still produce a duplicate command. This is assigned to the future Reliability milestone; implementation remains outside v2.12.
 
 ## 3. Locked definitions
 
@@ -166,6 +166,7 @@ Consequences:
   - In history views they display as **"Legacy — tracking discontinued"**. Their stored outcomes are not rewritten.
 - **Ownership retention.** Ownership records are independent of `search_history` rows. Pruning or deleting history never cascades to ownership records (no cascading foreign key or cleanup), so "each grab credited at most once, ever" holds after pruning. Ownership rows are small, one per credited grab, and this milestone does not prune them.
 - **Stats note.** A persistent note beside Sonarr effectiveness stats reads: *"Attribution corrected on <date>. Earlier results may include misattributed or double-counted grabs."* Totals that include pre-cutover data are labelled *"Lifetime — includes historical estimates."*
+  - *Refined 2026-10-18 (Phase 81 context D-01..D-08):* the note and labels appear only when pre-fix Sonarr data exists, determined and persisted per stable instance ID at migration so later pruning cannot hide it; fresh installs show neither. The note is permanent (no dismiss) and is not shown in Radarr/Lidarr-only views. Forever counters use "Lifetime — includes historical estimates"; history-derived metrics (Sonarr and overall grab rate, avg time-to-grab) use "Includes historical estimates" only while pre-fix rows contribute to that metric. Frozen legacy pending rows are excluded from grab rates.
 - Existing history rows and counters are never modified or reset.
 
 **Acceptance (regression tests)**

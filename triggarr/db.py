@@ -13,7 +13,8 @@ import math
 import re
 import shutil
 import sqlite3
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -88,8 +89,104 @@ async def set_schema_version(db: aiosqlite.Connection, version: int) -> None:
     await db.commit()
 
 
-async def run_migrations(db: aiosqlite.Connection, db_path: Path) -> None:
-    """Run pending schema migrations with backup-before-migrate."""
+# Versions that run inside the runner's own explicit transaction instead of
+# committing themselves. sqlite3's legacy transaction control (the mode
+# aiosqlite uses by default) only opens an implicit transaction before
+# INSERT/UPDATE/DELETE statements, never before DDL -- a CREATE, DROP or
+# ALTER issued with no transaction open commits itself immediately. v10
+# rebuilds lifetime_stats (a DDL-heavy change), so it opens its own explicit
+# transaction before any of its statements run and that same transaction
+# also records the version, making the whole upgrade all-or-nothing. v1-v9
+# deliberately keep committing themselves, exactly as they always have.
+_ATOMIC_MIGRATIONS = frozenset({10})
+
+# Versions whose migration function needs the name -> stable-instance-ID
+# mapping (built from the already-backfilled config) in addition to the
+# connection. Today this is the same set as _ATOMIC_MIGRATIONS, but the two
+# concerns are independent, so they're tracked separately.
+_MIGRATIONS_WITH_INSTANCE_IDS = frozenset({10})
+
+
+class MigrationRecoveryError(RuntimeError):
+    """Raised when a migration finds a leftover partial state it cannot safely resolve itself."""
+
+
+async def _apply_atomic_migration(
+    db: aiosqlite.Connection,
+    version: int,
+    fn: Callable[..., Awaitable[None]],
+    *,
+    instance_stable_ids: Mapping[tuple[str, str], str] | None,
+    earliest_backup: Path | None,
+) -> None:
+    """Run one migration and its version record inside a single explicit transaction.
+
+    Opens the transaction, runs the migration function, records the new
+    schema version inline (not via set_schema_version, which would commit
+    on its own), and issues the single commit for all of it. On any
+    exception the transaction is rolled back, one error line is logged
+    (never including any stable-ID value), and the original exception is
+    re-raised so the caller's startup fails instead of continuing on a
+    half-applied schema.
+
+    Raises:
+        RuntimeError: if a transaction is already open when this is called
+            (fails closed rather than committing someone else's pending
+            work).
+    """
+    if db.in_transaction:
+        msg = f"migration v{version} cannot start: a transaction is already open"
+        raise RuntimeError(msg)
+
+    await db.execute("BEGIN IMMEDIATE")
+    try:
+        if version in _MIGRATIONS_WITH_INSTANCE_IDS:
+            await fn(db, instance_stable_ids=instance_stable_ids or {})
+        else:
+            await fn(db)
+        await db.execute("UPDATE schema_version SET version = ?", (version,))
+        await db.commit()
+    except Exception as exc:
+        try:
+            await db.rollback()
+        except Exception as rollback_exc:
+            logger.error(
+                "Rollback after failed v{version} migration also failed: {exc_type}",
+                version=version,
+                exc_type=type(rollback_exc).__name__,
+            )
+        exc_detail = type(exc).__name__
+        if isinstance(exc, MigrationRecoveryError):
+            exc_detail = f"{exc_detail}: {exc}"
+        backup_desc = str(earliest_backup) if earliest_backup is not None else "no backup: new database"
+        logger.error(
+            "Migration v{version} failed and was rolled back; schema remains at the previous "
+            "version ({exc_detail}); restore from {backup} if recovery is needed",
+            version=version,
+            exc_detail=exc_detail,
+            backup=backup_desc,
+        )
+        raise
+
+
+async def run_migrations(
+    db: aiosqlite.Connection,
+    db_path: Path,
+    *,
+    instance_stable_ids: Mapping[tuple[str, str], str] | None = None,
+) -> None:
+    """Run pending schema migrations with backup-before-migrate.
+
+    Args:
+        db: Open aiosqlite connection.
+        db_path: Path to the SQLite database file (needed for backup).
+        instance_stable_ids: Optional mapping of (stored title-case app,
+            instance name) -> stable instance ID, used only by migrations
+            in ``_MIGRATIONS_WITH_INSTANCE_IDS`` (today, only v10). The
+            caller's lifespan builds this from the already-backfilled
+            config; ``None`` (fresh installs, most tests) means no
+            association is attempted.
+    """
     current = await get_schema_version(db)
     if not MIGRATIONS:
         return
@@ -97,18 +194,45 @@ async def run_migrations(db: aiosqlite.Connection, db_path: Path) -> None:
     if current >= target:
         logger.debug("Schema is up to date (v{v})", v=current)
         return
-    # Backup before first migration (user decision: backup-before-migrate)
+
+    # Backup before first migration (user decision: backup-before-migrate).
+    # The canonical backup name is never overwritten -- if it already exists
+    # (e.g. a prior failed attempt), a second, timestamped backup is written
+    # alongside it, so the recovery error below can always point at the
+    # earliest backup taken before any failed attempt.
     backup_path = db_path.with_suffix(f".v{current}-backup")
+    earliest_backup: Path | None = None
     if db_path.exists():
-        shutil.copy2(db_path, backup_path)
-        logger.info("Database backed up to {path}", path=backup_path)
+        if backup_path.exists():
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            timestamped_path = db_path.with_suffix(f".v{current}-backup-{stamp}")
+            shutil.copy2(db_path, timestamped_path)
+            logger.info(
+                "Database backed up to {path} (earlier backup preserved at {earlier})",
+                path=timestamped_path,
+                earlier=backup_path,
+            )
+            earliest_backup = backup_path
+        else:
+            shutil.copy2(db_path, backup_path)
+            logger.info("Database backed up to {path}", path=backup_path)
+            earliest_backup = backup_path
+
     for version in sorted(MIGRATIONS.keys()):
         if version <= current:
             continue
         desc, fn = MIGRATIONS[version]
         logger.info("Migrating schema v{old} -> v{new}: {desc}", old=version - 1, new=version, desc=desc)
-        await fn(db)
-        await set_schema_version(db, version)
+        if version in _ATOMIC_MIGRATIONS:
+            await _apply_atomic_migration(
+                db, version, fn, instance_stable_ids=instance_stable_ids, earliest_backup=earliest_backup
+            )
+        elif version in _MIGRATIONS_WITH_INSTANCE_IDS:
+            await fn(db, instance_stable_ids=instance_stable_ids or {})
+            await set_schema_version(db, version)
+        else:
+            await fn(db)
+            await set_schema_version(db, version)
     logger.info("Schema migration complete (now v{v})", v=target)
 
 
@@ -283,6 +407,196 @@ async def _migrate_v9(db: aiosqlite.Connection) -> None:
     await db.commit()
 
 
+# v9's exact lifetime_stats shape, used by the leftover-recovery check below:
+# only when the live table still matches this shape is a leftover partial
+# copy provably safe to discard.
+_V9_LIFETIME_STATS_COLUMNS = frozenset({
+    "app", "instance_id", "movies_found", "movies_updated",
+    "episodes_found", "episodes_updated", "last_reset_at",
+    "albums_found", "albums_updated",
+})
+_V9_LIFETIME_STATS_PK = ("app", "instance_id")
+
+
+async def _v10_resolve_leftover_lifetime_stats(db: aiosqlite.Connection) -> None:
+    """Resolve a leftover lifetime_stats_v10 from a previously interrupted upgrade attempt.
+
+    Does nothing if no leftover table exists. If a leftover exists and the
+    live lifetime_stats table still has the exact v9 column set and primary
+    key, the leftover is a disposable partial copy and is dropped so the
+    rebuild below can proceed. Otherwise the live table is missing or has
+    some other shape -- which can only mean a prior attempt already dropped
+    the original before this leftover could be confirmed safe -- so this
+    raises before touching anything, naming both tables and pointing at the
+    earliest pre-migration backup. This runs inside the caller's single
+    transaction and therefore never finalizes anything on its own: it issues
+    no transaction-ending statement, and an error here is never papered over.
+    """
+    async with db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lifetime_stats_v10'"
+    ) as cursor:
+        leftover_exists = await cursor.fetchone() is not None
+    if not leftover_exists:
+        return
+
+    async with db.execute("PRAGMA table_info(lifetime_stats)") as cursor:
+        original_columns = await cursor.fetchall()
+
+    original_is_v9_shape = False
+    if original_columns:
+        names = {row[1] for row in original_columns}
+        pk_ordinal = {row[1]: row[5] for row in original_columns}
+        original_is_v9_shape = (
+            names == _V9_LIFETIME_STATS_COLUMNS
+            and pk_ordinal.get("app") == 1
+            and pk_ordinal.get("instance_id") == 2
+            and all(pk_ordinal.get(col) == 0 for col in names if col not in _V9_LIFETIME_STATS_PK)
+        )
+
+    if not original_is_v9_shape:
+        msg = (
+            "lifetime_stats_v10 exists but lifetime_stats is missing or not in the expected shape; "
+            "lifetime_stats_v10 may be the only surviving copy of lifetime totals and was not "
+            "touched -- restore from the earliest pre-migration backup (the .v9-backup file next "
+            "to the database) or inspect both tables before retrying"
+        )
+        raise MigrationRecoveryError(msg)
+
+    await db.execute("DROP TABLE lifetime_stats_v10")
+    logger.warning(
+        "Discarded a leftover lifetime_stats_v10 partial copy from an interrupted upgrade "
+        "(the original lifetime_stats was verified intact first)"
+    )
+
+
+async def _migrate_v10(db: aiosqlite.Connection, *, instance_stable_ids: Mapping[tuple[str, str], str]) -> None:
+    """Add grab ownership, the attribution cutover marker and stable-ID association.
+
+    The runner owns this migration's transaction and its version record
+    (see _apply_atomic_migration): every statement below either runs or
+    none of them do, together with the schema_version update that follows
+    this function's return. Because of that, the "schema fully present but
+    version still 9" state that an older, non-atomic build could leave
+    cannot arise once a database has migrated through this path -- every
+    guard below (table/index existence, a column-presence check before the
+    lifetime_stats rebuild) exists only to make a *rerun* of this same
+    transaction a no-op, not to recover from a partial version record that
+    this runner never produces.
+
+    Every change here is additive: a new nullable column on search_history,
+    a key-widening rebuild of lifetime_stats that copies every existing
+    value unchanged, and three new tables. No existing outcome, detail,
+    counter or name is ever modified, and nothing is ever deleted from
+    search_history or lifetime_stats.
+    """
+    if not db.in_transaction:
+        msg = "migration v10 must run inside the runner's transaction"
+        raise RuntimeError(msg)
+
+    # Ownership: durable, independent of search_history so pruning or a
+    # restart can never lose a credited grab. Deliberately no referential
+    # constraint back to search_history -- ownership must outlive the
+    # search row that earned it.
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS grab_ownership ("
+        "app TEXT NOT NULL, instance_stable_id TEXT NOT NULL, grab_id INTEGER NOT NULL, "
+        "history_id INTEGER NOT NULL, series_id INTEGER, season_number INTEGER, "
+        "episode_id INTEGER, credited_at TEXT NOT NULL, "
+        "PRIMARY KEY (app, instance_stable_id, grab_id))"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_grab_ownership_series "
+        "ON grab_ownership(app, instance_stable_id, series_id)"
+    )
+
+    # Cutover bookkeeping: recorded later, exactly once, by
+    # triggarr.attribution.ensure_cutover_recorded -- this migration only
+    # creates the tables and never writes a row into either.
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS attribution_cutover ("
+        "id INTEGER PRIMARY KEY CHECK (id = 1), cutover_at TEXT NOT NULL, "
+        "legacy_max_history_id INTEGER NOT NULL, any_pre_fix_sonarr_data INTEGER NOT NULL, "
+        "pre_fix_sonarr_lifetime INTEGER NOT NULL)"
+    )
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS sonarr_instance_pre_fix ("
+        "instance_stable_id TEXT PRIMARY KEY, has_pre_fix_data INTEGER NOT NULL, "
+        "lifetime_includes_pre_fix INTEGER NOT NULL)"
+    )
+
+    # search_history gains the association column. Guarded by a column
+    # check (not a suppressed error) so a rerun of this same transaction is
+    # a no-op.
+    async with db.execute("PRAGMA table_info(search_history)") as cursor:
+        search_history_columns = await cursor.fetchall()
+    if not any(row[1] == "instance_stable_id" for row in search_history_columns):
+        await db.execute("ALTER TABLE search_history ADD COLUMN instance_stable_id TEXT")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_search_history_instance_stable_id "
+        "ON search_history(instance_stable_id)"
+    )
+
+    # Resolve any leftover partial copy from a previously interrupted
+    # upgrade before attempting the rebuild below.
+    await _v10_resolve_leftover_lifetime_stats(db)
+
+    # lifetime_stats needs its primary key widened to include the stable
+    # ID, which SQLite cannot do with ALTER TABLE -- so, like _migrate_v7,
+    # this rebuilds the table with an explicit column copy. Guarded by a
+    # column check so a rerun is a no-op. Every original value moves
+    # across unchanged; nothing here is recomputed.
+    async with db.execute("PRAGMA table_info(lifetime_stats)") as cursor:
+        lifetime_stats_columns = await cursor.fetchall()
+    if not any(row[1] == "instance_stable_id" for row in lifetime_stats_columns):
+        await db.execute(
+            "CREATE TABLE lifetime_stats_v10 ("
+            "app TEXT NOT NULL, instance_id TEXT NOT NULL DEFAULT 'Default', "
+            "instance_stable_id TEXT NOT NULL DEFAULT '', "
+            "movies_found INTEGER NOT NULL DEFAULT 0, movies_updated INTEGER NOT NULL DEFAULT 0, "
+            "episodes_found INTEGER NOT NULL DEFAULT 0, episodes_updated INTEGER NOT NULL DEFAULT 0, "
+            "last_reset_at TEXT NOT NULL, "
+            "albums_found INTEGER NOT NULL DEFAULT 0, albums_updated INTEGER NOT NULL DEFAULT 0, "
+            "PRIMARY KEY (app, instance_id, instance_stable_id))"
+        )
+        await db.execute(
+            "INSERT INTO lifetime_stats_v10 "
+            "(app, instance_id, movies_found, movies_updated, episodes_found, episodes_updated, "
+            "last_reset_at, albums_found, albums_updated, instance_stable_id) "
+            "SELECT app, instance_id, movies_found, movies_updated, episodes_found, episodes_updated, "
+            "last_reset_at, albums_found, albums_updated, '' "
+            "FROM lifetime_stats"
+        )
+        await db.execute("DROP TABLE lifetime_stats")
+        await db.execute("ALTER TABLE lifetime_stats_v10 RENAME TO lifetime_stats")
+
+    # Association: set the stable ID on existing rows of configured
+    # instances. These are the only UPDATE statements in this migration,
+    # and each one sets only the association column -- nothing else about
+    # an existing row ever changes.
+    associated = 0
+    for (app, name), stable_id in instance_stable_ids.items():
+        if not stable_id:
+            continue
+        await db.execute(
+            "UPDATE search_history SET instance_stable_id = ? "
+            "WHERE app = ? AND instance_id = ? AND instance_stable_id IS NULL",
+            (stable_id, app, name),
+        )
+        await db.execute(
+            "UPDATE lifetime_stats SET instance_stable_id = ? "
+            "WHERE app = ? AND instance_id = ? AND instance_stable_id = ''",
+            (stable_id, app, name),
+        )
+        associated += 1
+
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_lifetime_stats_app_stable_id "
+        "ON lifetime_stats(app, instance_stable_id) WHERE instance_stable_id != ''"
+    )
+
+    logger.info("Migration v10: associated {count} existing instance name(s) with stable IDs", count=associated)
+
+
 # Register migrations after functions are defined
 MIGRATIONS = {
     1: ("add outcome and detail columns", _migrate_v1),
@@ -294,6 +608,7 @@ MIGRATIONS = {
     7: ("rebuild lifetime_stats with composite key", _migrate_v7),
     8: ("recompute episode stats and fix partial_expired outcomes", _migrate_v8),
     9: ("add Lidarr album stats columns", _migrate_v9),
+    10: ("add grab ownership, attribution cutover and stable-id association", _migrate_v10),
 }
 
 
@@ -302,12 +617,22 @@ MIGRATIONS = {
 # ---------------------------------------------------------------------------
 
 
-async def init_db(db: aiosqlite.Connection, db_path: Path) -> None:
+async def init_db(
+    db: aiosqlite.Connection,
+    db_path: Path,
+    *,
+    instance_stable_ids: Mapping[tuple[str, str], str] | None = None,
+) -> None:
     """Create base tables, run migrations.
 
     Args:
         db: Open aiosqlite connection.
         db_path: Path to the SQLite database file (needed for backup).
+        instance_stable_ids: Optional mapping of (stored title-case app,
+            instance name) -> stable instance ID, forwarded to migration
+            v10 for associating existing rows with the already-backfilled
+            config's stable IDs. ``None`` (the default, and every
+            existing two-argument call site) means no association.
     """
     # Set row_factory globally so all queries return Row objects (dict-like access)
     # instead of plain tuples. This eliminates per-function row_factory mutation.
@@ -327,13 +652,27 @@ async def init_db(db: aiosqlite.Connection, db_path: Path) -> None:
         ON search_history(timestamp DESC)
     """)
     await db.commit()
-    await run_migrations(db, db_path)
+    await run_migrations(db, db_path, instance_stable_ids=instance_stable_ids)
     logger.debug("Search history database initialized at {path}", path=db_path)
 
 
 # ---------------------------------------------------------------------------
 # CRUD operations
 # ---------------------------------------------------------------------------
+
+
+# A pre-cutover pending Sonarr row is identified at query time by comparing
+# its id to the cutover's recorded legacy_max_history_id, never by writing a
+# flag onto the row. ids are AUTOINCREMENT and never reused, so this holds
+# forever once a row is frozen -- unlike an ISO timestamp comparison, it
+# isn't sensitive to same-second ordering. Defaults to 0 (nothing is legacy)
+# when no cutover has been recorded yet.
+_LEGACY_MAX_ID_SQL = "COALESCE((SELECT legacy_max_history_id FROM attribution_cutover WHERE id = 1), 0)"
+_LEGACY_PENDING_SQL = (
+    "(app = 'Sonarr' AND COALESCE(outcome, 'searched') IN ('searched', 'partial') AND id <= "
+    + _LEGACY_MAX_ID_SQL
+    + ")"
+)
 
 
 async def insert_search_entry(
@@ -348,17 +687,18 @@ async def insert_search_entry(
     season_number: int | None = None,
     missing_count: int | None = None,
     instance_id: str = "Default",
+    instance_stable_id: str | None = None,
     max_rows: int = 1000,
 ) -> None:
     """Insert a search log entry, enforcing bounded growth on both row classes.
 
     Bounds:
-        * Resolved rows (outcome != 'searched') are trimmed inline after
+        * Resolved rows (any outcome but 'searched'/'partial') are trimmed inline after
           every insert to keep their count <= max_rows. The trim runs in
           the same transaction as the insert (single ``db.commit()`` at
           the end), so the cap holds immediately on the next read. Closes
           SAFETY-01.
-        * Pending rows (outcome == 'searched') are bounded separately at
+        * Pending rows ('searched' and non-terminal 'partial') are bounded separately at
           ``PENDING_CAP_MULTIPLIER * max_rows`` (default 2x). If the
           pending count is already at or above this cap, a new pending
           insert is REJECTED with ``PendingCapExceeded`` and a WARNING
@@ -389,19 +729,38 @@ async def insert_search_entry(
         season_number: Season number (Sonarr only).
         missing_count: Number of missing episodes at search time (Sonarr only).
         instance_id: Instance name for multi-instance scoping.
+        instance_stable_id: Stable per-instance ID (survives renames). When
+            given, both the pending-cap count and the stored row are scoped
+            by this identity instead of (or alongside) the display name --
+            a renamed Sonarr instance keeps counting against the same cap,
+            and a different server that reuses an old name gets its own.
+            Falsy values (``None`` or ``""``) store ``NULL``.
         max_rows: Maximum resolved rows to keep. The pending cap is
             derived as ``PENDING_CAP_MULTIPLIER * max_rows``.
     """
     # SAFETY-01b: bound pending rows so a stalled tracker cannot grow
     # the table unboundedly. Resolved inserts bypass this guard -- they
-    # are bounded by the resolved-row trim further below.
+    # are bounded by the resolved-row trim further below. Pre-cutover
+    # legacy Sonarr pending rows are excluded from the count: they are
+    # frozen and can never be resolved, so they must not count against a
+    # cap meant to catch a *currently* stalled tracker.
     if outcome == "searched":
         cap = PENDING_CAP_MULTIPLIER * max_rows
-        async with db.execute(
-            "SELECT COUNT(*) FROM search_history "
-            "WHERE outcome = 'searched' AND app = ? AND instance_id = ?",
-            (app, instance_id),
-        ) as cursor:
+        if instance_stable_id:
+            cap_query = (
+                "SELECT COUNT(*) FROM search_history "
+                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_stable_id = ? "
+                "AND NOT " + _LEGACY_PENDING_SQL
+            )
+            cap_params: tuple[str, str] = (app, instance_stable_id)
+        else:
+            cap_query = (
+                "SELECT COUNT(*) FROM search_history "
+                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_id = ? "
+                "AND NOT " + _LEGACY_PENDING_SQL
+            )
+            cap_params = (app, instance_id)
+        async with db.execute(cap_query, cap_params) as cursor:
             row = await cursor.fetchone()
         pending_count = row[0] if row is not None else 0
         if pending_count >= cap:
@@ -428,21 +787,24 @@ async def insert_search_entry(
         await db.execute(
             "INSERT INTO search_history "
             "(timestamp, app, queue_type, item_name, outcome, detail, item_id, season_number, "
-            "missing_count, instance_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "missing_count, instance_id, instance_stable_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 timestamp, app, queue_type, item_name, outcome, detail,
-                item_id, season_number, missing_count, instance_id,
+                item_id, season_number, missing_count, instance_id, instance_stable_id or None,
             ),
         )
-        # Tracking-aware pruning (DEBT-03): only prune resolved rows, preserve pending (outcome='searched')
+        # Tracking-aware pruning (DEBT-03): only prune resolved rows. Pending
+        # rows -- 'searched' and the non-terminal 'partial' a tracked search
+        # holds while it is still being credited -- are never pruned; their
+        # owned grabs would otherwise be stranded uncredited.
         await db.execute(
             """
             DELETE FROM search_history
-            WHERE COALESCE(outcome, 'searched') != 'searched'
+            WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
             AND id NOT IN (
                 SELECT id FROM search_history
-                WHERE COALESCE(outcome, 'searched') != 'searched'
+                WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
                 ORDER BY id DESC LIMIT ?
             )
             """,
@@ -486,18 +848,20 @@ async def get_recent_searches(
         instance_id: If set, filter to entries from this instance only.
 
     Returns:
-        List of dicts with keys: name, timestamp, app, queue_type, outcome, detail, instance_id.
-        Ordered newest-first (by id DESC).
+        List of dicts with keys: name, timestamp, app, queue_type, outcome,
+        detail, instance_id, is_legacy (pre-cutover frozen Sonarr pending
+        row). Ordered newest-first (by id DESC).
     """
+    is_legacy_col = f"CASE WHEN {_LEGACY_PENDING_SQL} THEN 1 ELSE 0 END AS is_legacy"
     if instance_id is not None:
         query = (
-            "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+            f"SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id, {is_legacy_col} "
             "FROM search_history WHERE instance_id = ? ORDER BY id DESC LIMIT ?"
         )
         params: tuple[str | int, ...] = (instance_id, limit)
     else:
         query = (
-            "SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+            f"SELECT timestamp, app, queue_type, item_name, outcome, detail, instance_id, {is_legacy_col} "
             "FROM search_history ORDER BY id DESC LIMIT ?"
         )
         params = (limit,)
@@ -512,6 +876,7 @@ async def get_recent_searches(
             "outcome": row["outcome"] or "searched",
             "detail": row["detail"] or "",
             "instance_id": row["instance_id"] or "Default",
+            "is_legacy": bool(row["is_legacy"]),
         }
         for row in rows
     ]
@@ -592,7 +957,8 @@ async def get_search_history(
     # Paginated results
     offset = (page - 1) * per_page
     async with db.execute(
-        f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail, instance_id "
+        f"SELECT id, timestamp, app, queue_type, item_name, outcome, detail, instance_id, "
+        f"CASE WHEN {_LEGACY_PENDING_SQL} THEN 1 ELSE 0 END AS is_legacy "
         f"FROM search_history{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
         [*params, per_page, offset],
     ) as cursor:
@@ -608,6 +974,7 @@ async def get_search_history(
             "outcome": row["outcome"] or "searched",
             "detail": row["detail"] or "",
             "instance_id": row["instance_id"] or "Default",
+            "is_legacy": bool(row["is_legacy"]),
         }
         for row in rows
     ]
@@ -622,32 +989,54 @@ async def get_search_history(
 
 
 async def get_trackable_entries(
-    db: aiosqlite.Connection, *, instance_id: str | None = None,
+    db: aiosqlite.Connection, *, instance_id: str | None = None, instance_stable_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return search history entries eligible for tracking resolution.
 
     Finds rows with outcome ``'searched'`` or ``'partial'`` that have a
     non-null ``item_id`` (entries without an item_id cannot be correlated
-    with grab events).
+    with grab events). Pre-cutover frozen Sonarr pending rows (see
+    ``_LEGACY_PENDING_SQL``) are always excluded -- they are "Legacy --
+    tracking discontinued" and must never be picked up again.
+
+    Sonarr callers should select by ``instance_stable_id`` so a rename or a
+    different server reusing an old name can never misroute a pending
+    search; Radarr/Lidarr callers (out of scope for this phase) keep
+    selecting by display name.
 
     Args:
         db: Open aiosqlite connection.
-        instance_id: If set, filter to entries from this instance only.
+        instance_id: If set, filter to entries from this instance's
+            display name only.
+        instance_stable_id: If set, filter to entries from this stable
+            instance ID only (preferred for Sonarr).
+
+    Raises:
+        ValueError: if both instance_id and instance_stable_id are given --
+            exactly one selection mode may be used at a time.
 
     Returns:
         List of dicts ordered by ``id ASC`` (oldest first) with keys:
         id, app, queue_type, item_id, season_number, missing_count, timestamp,
-        outcome, instance_id.
+        outcome, instance_id, instance_stable_id.
     """
+    if instance_id is not None and instance_stable_id is not None:
+        msg = "get_trackable_entries: pass instance_id or instance_stable_id, not both"
+        raise ValueError(msg)
+
     base = (
         "SELECT id, app, queue_type, item_id, season_number, missing_count, "
-        "timestamp, outcome, instance_id "
+        "timestamp, outcome, instance_id, instance_stable_id "
         "FROM search_history "
-        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL"
+        "WHERE outcome IN ('searched', 'partial') AND item_id IS NOT NULL "
+        "AND NOT " + _LEGACY_PENDING_SQL
     )
-    if instance_id is not None:
+    if instance_stable_id is not None:
+        query = f"{base} AND instance_stable_id = ? ORDER BY id ASC"
+        params: tuple[str | int, ...] = (instance_stable_id,)
+    elif instance_id is not None:
         query = f"{base} AND instance_id = ? ORDER BY id ASC"
-        params: tuple[str | int, ...] = (instance_id,)
+        params = (instance_id,)
     else:
         query = f"{base} ORDER BY id ASC"
         params = ()
@@ -664,6 +1053,7 @@ async def get_trackable_entries(
             "timestamp": row["timestamp"],
             "outcome": row["outcome"],
             "instance_id": row["instance_id"] or "Default",
+            "instance_stable_id": row["instance_stable_id"],
         }
         for row in rows
     ]
@@ -678,6 +1068,25 @@ _ALLOWED_STAT_COLUMNS = frozenset({
 })
 
 
+@dataclass(frozen=True)
+class OwnedGrab:
+    """A grab event to credit atomically with an outcome/stat update (ATTR-02, ATTR-04)."""
+
+    grab_id: int
+    episode_id: int | None
+    series_id: int | None
+    season_number: int | None
+
+
+@dataclass(frozen=True)
+class OwnedGrabRecord:
+    """A previously credited grab, as returned by get_owned_grabs."""
+
+    grab_id: int
+    history_id: int
+    episode_id: int | None
+
+
 async def update_outcome_and_stats(
     db: aiosqlite.Connection,
     history_id: int,
@@ -687,29 +1096,49 @@ async def update_outcome_and_stats(
     app: str,
     queue_type: str,
     instance_id: str = "Default",
+    instance_stable_id: str | None = None,
     stat_increments: dict[str, int] | None = None,
+    owned_grabs: Sequence[OwnedGrab] = (),
 ) -> None:
-    """Atomically update a search entry's outcome and increment lifetime stats.
+    """Atomically update a search entry's outcome, lifetime stats and grab ownership.
 
-    Performs both updates in a single transaction so that a crash between the
-    outcome write and the stats write cannot leave the database inconsistent.
+    Performs all three writes in a single transaction so that a crash or an
+    already-owned grab_id cannot leave the database inconsistent: either
+    everything here lands, or none of it does.
 
     Args:
         db: Open aiosqlite connection.
         history_id: Primary key of the search_history row to update.
         outcome: New outcome value (e.g. "grabbed", "partial", "unresolved").
         detail: Human-readable detail string.
-        app: Application name for lifetime_stats lookup.
+        app: Application name for lifetime_stats/ownership lookup.
         queue_type: Queue type (unused in SQL, kept for caller convenience/logging).
-        instance_id: Instance name for lifetime_stats composite key lookup.
+        instance_id: Instance display name. Used for the lifetime_stats
+            lookup only when *instance_stable_id* is not given (legacy
+            callers); stored as the row's name when a new stable-ID row is
+            created.
+        instance_stable_id: Stable per-instance ID. When given, lifetime
+            increments and ownership are keyed by this identity instead of
+            the display name: a rename keeps adding to the same row (whose
+            stored name stays as it was), and a different server that
+            reuses an old name gets its own row (enforced by the
+            idx_lifetime_stats_app_stable_id partial unique index). Without
+            one, increments fall back to the legacy ``(app, instance_id,
+            '')`` row, created if missing.
         stat_increments: Optional mapping of column name to increment value,
             e.g. ``{"movies_found": 1}``.  Only columns in lifetime_stats are
             allowed; a ``ValueError`` is raised for unknown column names.
+        owned_grabs: Grab events to credit in the same transaction. Each
+            becomes one ``grab_ownership`` row keyed by (app,
+            instance_stable_id, grab_id); a grab_id already owned by this
+            instance raises ``sqlite3.IntegrityError`` and rolls back the
+            whole call, crediting closed rather than double-counting.
 
     Raises:
         ValueError: If *stat_increments* contains a column name not in
             ``{movies_found, movies_updated, episodes_found, episodes_updated,
-            albums_found, albums_updated}``.
+            albums_found, albums_updated}``, or if *owned_grabs* is
+            non-empty and *instance_stable_id* is falsy.
     """
     if stat_increments:
         unknown = set(stat_increments.keys()) - _ALLOWED_STAT_COLUMNS
@@ -717,36 +1146,105 @@ async def update_outcome_and_stats(
             msg = f"Unknown stat column(s): {', '.join(sorted(unknown))}"
             raise ValueError(msg)
 
-    # 1. Update outcome and resolved_at timestamp
+    if owned_grabs and not instance_stable_id:
+        msg = "update_outcome_and_stats: owned_grabs requires a non-empty instance_stable_id"
+        raise ValueError(msg)
+
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    await db.execute(
-        "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? WHERE id = ?",
-        (outcome, detail, now, history_id),
-    )
-
-    # 2. Increment lifetime stats (if any) using composite key (app, instance_id)
-    if stat_increments:
-        # Ensure the stats row exists for this app+instance combo
+    try:
+        # 1. Update outcome and resolved_at timestamp
         await db.execute(
-            "INSERT OR IGNORE INTO lifetime_stats (app, instance_id, last_reset_at) VALUES (?, ?, ?)",
-            (app, instance_id, now),
-        )
-        set_parts = [f"{col} = {col} + ?" for col in stat_increments]
-        values = [*stat_increments.values(), app, instance_id]
-        await db.execute(
-            f"UPDATE lifetime_stats SET {', '.join(set_parts)} WHERE app = ? AND instance_id = ?",  # noqa: S608
-            values,
+            "UPDATE search_history SET outcome = ?, detail = ?, resolved_at = ? WHERE id = ?",
+            (outcome, detail, now, history_id),
         )
 
-    # 3. Single commit for the whole transaction
-    await db.commit()
+        # 2. Increment lifetime stats (if any), keyed by stable ID when given (S1).
+        if stat_increments:
+            if instance_stable_id:
+                await db.execute(
+                    "INSERT OR IGNORE INTO lifetime_stats "
+                    "(app, instance_id, instance_stable_id, last_reset_at) VALUES (?, ?, ?, ?)",
+                    (app, instance_id, instance_stable_id, now),
+                )
+                set_parts = [f"{col} = {col} + ?" for col in stat_increments]
+                values = [*stat_increments.values(), app, instance_stable_id]
+                await db.execute(
+                    f"UPDATE lifetime_stats SET {', '.join(set_parts)} "  # noqa: S608
+                    "WHERE app = ? AND instance_stable_id = ?",
+                    values,
+                )
+            else:
+                # Legacy path: the (app, name, '') row, created if missing.
+                await db.execute(
+                    "INSERT OR IGNORE INTO lifetime_stats "
+                    "(app, instance_id, instance_stable_id, last_reset_at) VALUES (?, ?, '', ?)",
+                    (app, instance_id, now),
+                )
+                set_parts = [f"{col} = {col} + ?" for col in stat_increments]
+                values = [*stat_increments.values(), app, instance_id]
+                await db.execute(
+                    f"UPDATE lifetime_stats SET {', '.join(set_parts)} "  # noqa: S608
+                    "WHERE app = ? AND instance_id = ? AND instance_stable_id = ''",
+                    values,
+                )
+
+        # 3. Ownership (ATTR-02, ATTR-04). Plain INSERT, not OR IGNORE, so a
+        # grab_id already owned by this instance fails the whole call
+        # closed rather than silently double-counting. No referential
+        # constraint back to search_history, so ownership survives pruning
+        # and restarts.
+        for grab in owned_grabs:
+            await db.execute(
+                "INSERT INTO grab_ownership "
+                "(app, instance_stable_id, grab_id, history_id, series_id, season_number, "
+                "episode_id, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    app, instance_stable_id, grab.grab_id, history_id,
+                    grab.series_id, grab.season_number, grab.episode_id, now,
+                ),
+            )
+
+        # 4. Single commit for the whole transaction -- outcome, stats and
+        # ownership all land together or none of them do.
+        await db.commit()
+    except Exception as exc:
+        try:
+            await db.rollback()
+        except Exception as rollback_exc:
+            logger.error(
+                "update_outcome_and_stats rollback failed for history_id={hid}: {rollback_exc} "
+                "(original: {exc_type})",
+                hid=history_id,
+                rollback_exc=rollback_exc,
+                exc_type=type(exc).__name__,
+            )
+        raise
     logger.debug(
-        "Updated history_id={hid} outcome={out} instance={inst} stats={stats}",
+        "Updated history_id={hid} outcome={out} instance={inst} stats={stats} owned={owned}",
         hid=history_id,
         out=outcome,
         inst=instance_id,
         stats=stat_increments or {},
+        owned=len(owned_grabs),
     )
+
+
+async def get_owned_grabs(
+    db: aiosqlite.Connection, *, app: str, instance_stable_id: str, series_id: int,
+) -> list[OwnedGrabRecord]:
+    """Return previously credited grabs for one (app, stable instance ID, series).
+
+    Ownership rows carry no referential constraint back to search_history
+    and are never pruned, so this reflects every grab ever credited for the
+    series, regardless of whether the owning search_history row still exists.
+    """
+    async with db.execute(
+        "SELECT grab_id, history_id, episode_id FROM grab_ownership "
+        "WHERE app = ? AND instance_stable_id = ? AND series_id = ?",
+        (app, instance_stable_id, series_id),
+    ) as cursor:
+        rows = await cursor.fetchall()
+    return [OwnedGrabRecord(row["grab_id"], row["history_id"], row["episode_id"]) for row in rows]
 
 
 async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -> int:
@@ -782,33 +1280,80 @@ async def migrate_from_state(db: aiosqlite.Connection, search_log: list[dict]) -
     return count
 
 
-async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | None = None) -> dict[str, Any]:
+async def get_dashboard_stats(
+    db: aiosqlite.Connection,
+    *,
+    instance_id: str | None = None,
+    app: str | None = None,
+    instance_stable_id: str | None = None,
+) -> dict[str, Any]:
     """Compute aggregate dashboard statistics from search_history and lifetime_stats.
+
+    Per-instance views must pass ``app`` (the stored title-case app name,
+    e.g. ``"Radarr"``) together with a non-empty ``instance_stable_id`` --
+    this scopes metrics, historical flags and lifetime totals by the same
+    identity, so a Radarr and a Sonarr instance sharing a display name
+    never contaminate each other's figures (R3), and displayed figures
+    follow a rename or survive a different server reusing an old name
+    (S1). ``instance_id`` alone keeps the legacy name-only scoping for any
+    remaining caller. These selection modes are mutually exclusive.
 
     Args:
         db: Open aiosqlite connection.
-        instance_id: If set, scope stats to this instance only.
+        instance_id: If set (and app/instance_stable_id are not), scope
+            stats to this display name only (legacy, name-only scoping).
+        app: Stored title-case app name (e.g. "Radarr", "Sonarr",
+            "Lidarr"). Must be given together with instance_stable_id.
+        instance_stable_id: Stable per-instance ID. Must be given together
+            with app, and must be non-empty (an empty string would match
+            unassociated rows).
+
+    Raises:
+        ValueError: If instance_id is combined with app or
+            instance_stable_id, or if exactly one of app/instance_stable_id
+            is given, or if instance_stable_id is given as an empty string.
 
     Returns:
         Dict with keys: overall_rate, radarr_rate, sonarr_rate, lidarr_rate,
         movies_found, movies_updated, episodes_found, episodes_updated,
-        albums_found, albums_updated, avg_time_to_grab_seconds.
-        Rate values are percentages (0-100) or None if no data.
+        albums_found, albums_updated, avg_time_to_grab_seconds,
+        overall_rate_includes_historical, sonarr_rate_includes_historical,
+        avg_time_to_grab_includes_historical. Rate values are percentages
+        (0-100) or None if no data. The three *_includes_historical flags
+        are True only when pre-fix Sonarr data actually contributes to that
+        specific metric's inputs in the current view (D-06).
     """
-    # Build optional instance filter clause
+    if app is not None or instance_stable_id is not None:
+        if instance_id is not None:
+            msg = "get_dashboard_stats: instance_id cannot be combined with app/instance_stable_id"
+            raise ValueError(msg)
+        if not app or not instance_stable_id:
+            msg = "get_dashboard_stats: app and instance_stable_id must be given together, both non-empty"
+            raise ValueError(msg)
+
+    # Build optional instance filter clause. Per-instance (app + stable ID)
+    # scoping is one identity shared by the effectiveness, flag and
+    # lifetime_stats queries below (R3, S1); legacy instance_id scoping is
+    # name-only, matching today's behavior for any remaining caller.
     inst_clause = ""
     inst_params: tuple = ()
-    if instance_id is not None:
+    if app is not None and instance_stable_id is not None:
+        inst_clause = " AND app = ? AND instance_stable_id = ?"
+        inst_params = (app, instance_stable_id)
+    elif instance_id is not None:
         inst_clause = " AND instance_id = ?"
         inst_params = (instance_id,)
 
-    # 1. Effectiveness: grab rate per app
+    # 1. Effectiveness: grab rate per app. Frozen legacy pending rows are
+    # excluded from both the per-app and overall denominators (D-07) --
+    # they are untracked outcomes, not confirmed misses. Resolved
+    # historical rows stay in, covered by the disclosure.
     async with db.execute(
         "SELECT app, "
         "SUM(CASE WHEN outcome IN ('grabbed', 'partial', 'partial_expired') THEN 1 ELSE 0 END) AS grabbed_count, "
         "SUM(CASE WHEN outcome != 'failed' THEN 1 ELSE 0 END) AS total_count "
         "FROM search_history "
-        f"WHERE outcome IS NOT NULL{inst_clause} "
+        f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
         "GROUP BY app",
         inst_params,
     ) as cursor:
@@ -816,7 +1361,7 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
 
     total_grabbed = 0
     total_count = 0
-    app_rates: dict[str, float | None] = {app: None for app in APP_TYPES}
+    app_rates: dict[str, float | None] = {app_type: None for app_type in APP_TYPES}
 
     for row in effectiveness_rows:
         app_name = row["app"]
@@ -839,13 +1384,20 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
     albums_found = 0
     albums_updated = 0
 
-    if instance_id is not None:
+    if app is not None and instance_stable_id is not None:
+        stats_query = (
+            "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
+            "albums_found, albums_updated "
+            "FROM lifetime_stats WHERE app = ? AND instance_stable_id = ?"
+        )
+        stats_params: tuple[str | int, ...] = (app, instance_stable_id)
+    elif instance_id is not None:
         stats_query = (
             "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
             "albums_found, albums_updated "
             "FROM lifetime_stats WHERE instance_id = ?"
         )
-        stats_params: tuple[str | int, ...] = (instance_id,)
+        stats_params = (instance_id,)
     else:
         stats_query = (
             "SELECT movies_found, movies_updated, episodes_found, episodes_updated, "
@@ -874,6 +1426,32 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
 
     avg_seconds: float | None = ttg_row[0] if ttg_row and ttg_row[0] is not None else None
 
+    # 4. Per-metric historical-contribution flags (D-06). Each flag reflects
+    # only that metric's real input set in the current view, not just
+    # whether any pre-fix row exists anywhere -- an unrelated app, instance
+    # or disqualified row must never trip a label it doesn't feed.
+    async with db.execute(
+        "SELECT EXISTS("
+        "SELECT 1 FROM search_history "
+        f"WHERE outcome IS NOT NULL{inst_clause} AND NOT {_LEGACY_PENDING_SQL} "
+        f"AND app = 'Sonarr' AND outcome != 'failed' AND id <= {_LEGACY_MAX_ID_SQL}"
+        ")",
+        inst_params,
+    ) as cursor:
+        rate_flag_row = await cursor.fetchone()
+    rate_includes_historical = bool(rate_flag_row[0]) if rate_flag_row is not None else False
+
+    async with db.execute(
+        "SELECT EXISTS("
+        "SELECT 1 FROM search_history "
+        f"WHERE outcome = 'grabbed' AND resolved_at IS NOT NULL{inst_clause} "
+        f"AND app = 'Sonarr' AND id <= {_LEGACY_MAX_ID_SQL}"
+        ")",
+        inst_params,
+    ) as cursor:
+        ttg_flag_row = await cursor.fetchone()
+    ttg_includes_historical = bool(ttg_flag_row[0]) if ttg_flag_row is not None else False
+
     return {
         "overall_rate": overall_rate,
         "radarr_rate": app_rates.get("radarr"),
@@ -886,4 +1464,7 @@ async def get_dashboard_stats(db: aiosqlite.Connection, *, instance_id: str | No
         "albums_found": albums_found,
         "albums_updated": albums_updated,
         "avg_time_to_grab_seconds": avg_seconds,
+        "overall_rate_includes_historical": rate_includes_historical,
+        "sonarr_rate_includes_historical": rate_includes_historical,
+        "avg_time_to_grab_includes_historical": ttg_includes_historical,
     }

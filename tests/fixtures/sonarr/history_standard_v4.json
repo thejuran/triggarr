@@ -1,0 +1,45 @@
+{
+  "_meta": {
+    "source": "synthesized from the Sonarr v3 OpenAPI HistoryResource/EpisodeResource schema on the v5-develop branch; sanitized",
+    "origin": "synthesized",
+    "sonarr_major": "v4",
+    "live_evidence": false,
+    "scenario": "Two single-episode grabs in season 1 of a standard series order."
+  },
+  "records": [
+    {
+      "id": 9001,
+      "episodeId": 501,
+      "seriesId": 101,
+      "sourceTitle": "Example.Show.S01E01.1080p.WEB-DL-GRP",
+      "date": "2026-01-10T10:00:00Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-AAA111",
+      "data": {},
+      "episode": {
+        "id": 501,
+        "seriesId": 101,
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "title": "Example Episode 1"
+      }
+    },
+    {
+      "id": 9002,
+      "episodeId": 502,
+      "seriesId": 101,
+      "sourceTitle": "Example.Show.S01E02.1080p.WEB-DL-GRP",
+      "date": "2026-01-11T10:00:00Z",
+      "eventType": "grabbed",
+      "downloadId": "DL-AAA112",
+      "data": {},
+      "episode": {
+        "id": 502,
+        "seriesId": 101,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "title": "Example Episode 2"
+      }
+    }
+  ]
+}

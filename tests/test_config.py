@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import io
+import os
+import re
+import stat
 import tomllib
 from pathlib import Path
 from unittest.mock import patch
@@ -1092,3 +1095,559 @@ def test_ensure_config_mentions_no_backup_when_absent(tmp_path: Path) -> None:
     assert exc_info.value.code == 1
     text = sink.getvalue()
     assert "No automatic backup" in text
+
+
+# ---------------------------------------------------------------------------
+# Stable instance id (ATTR-03)
+# ---------------------------------------------------------------------------
+
+
+def test_instance_id_default_empty() -> None:
+    """An InstanceConfig built without an id has the empty "needs backfill" value."""
+    assert InstanceConfig().id == ""
+    assert InstanceConfig(id="a1b2").id == "a1b2"
+
+
+@pytest.mark.parametrize("bad", ["bad id!", "x" * 65, "a/b", "ü"])
+def test_instance_id_rejects_invalid(bad: str) -> None:
+    """id accepts only "" or 1-64 chars of [A-Za-z0-9_-]."""
+    with pytest.raises(ValidationError):
+        InstanceConfig(id=bad)
+
+
+def test_instance_id_accepts_max_length_and_strips() -> None:
+    """A 64-char id is valid and surrounding whitespace is stripped."""
+    assert InstanceConfig(id="a" * 64).id == "a" * 64
+    assert InstanceConfig(id="  abc-1_2  ").id == "abc-1_2"
+
+
+def test_new_instance_id_is_32_hex() -> None:
+    """new_instance_id returns 32 lowercase hex chars and never repeats."""
+    import re
+
+    from triggarr.config import new_instance_id
+
+    first = new_instance_id()
+    second = new_instance_id()
+    assert re.fullmatch(r"[0-9a-f]{32}", first)
+    assert re.fullmatch(r"[0-9a-f]{32}", second)
+    assert first != second
+
+
+def test_instance_id_survives_rename(tmp_path: Path) -> None:
+    """Renaming an instance's table key keeps its id (D-08)."""
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_text(
+        '[general]\nlog_level = "info"\n\n'
+        '[sonarr.Primary]\nurl = "http://sonarr:8989"\napi_key = "k"\nid = "abc123"\n'
+    )
+    settings = load_settings(config_file)
+    assert settings.sonarr["Primary"].id == "abc123"
+
+
+def test_settings_to_dict_carries_instance_id() -> None:
+    """_settings_to_dict is importable from config and routes and carries id."""
+    from triggarr.config import _settings_to_dict
+    from triggarr.web.routes import _settings_to_dict as routes_settings_to_dict
+
+    assert routes_settings_to_dict is _settings_to_dict
+    settings = Settings(
+        radarr={"Default": InstanceConfig(url="http://radarr:7878", api_key=SecretStr("k"), id="abc")},
+    )
+    result = _settings_to_dict(settings)
+    assert result["radarr"]["Default"]["id"] == "abc"
+    assert result["radarr"]["Default"]["api_key"] == "k"
+
+
+# ---------------------------------------------------------------------------
+# Comment-preserving startup backfill of instance ids (ATTR-03)
+# ---------------------------------------------------------------------------
+
+_HEX32 = r"[0-9a-f]{32}"
+_ID_LINE_RE = re.compile(rb'^id = "' + _HEX32.encode() + rb'"\r?\n$')
+
+STANDARD_SHAPE_TOML = b"""\
+# Triggarr configuration
+# Hand-edited by the operator
+
+[general]
+log_level = "info"  # verbose enough
+
+[radarr.main]
+url = "http://radarr:7878"
+api_key = "radarr-key"
+# the main radarr box
+enabled = true
+
+[sonarr."Main"]
+url = "http://sonarr:8989"
+api_key = "sonarr-key"
+
+[sonarr."My Show Box"]  # 4K box
+url = "http://sonarr4k:8989"
+api_key = "sonarr4k-key"
+
+[lidarr . "Music"]
+url = "http://lidarr:8686"
+api_key = "lidarr-key"
+"""
+
+INLINE_SHAPE_TOML = b"""\
+[general]
+log_level = "info"
+
+[sonarr]
+# the inline-table instance
+Main = { url = "http://sonarr:8989", api_key = "sonarr-key" }  # trailing
+"""
+
+DOTTED_SHAPE_TOML = b"""\
+[general]
+log_level = "info"
+
+[sonarr]
+# dotted-key instance
+Main.url = "http://sonarr:8989"  # u
+Main.api_key = "sonarr-key"
+"""
+
+THREE_INSTANCES_TOML = b"""\
+[general]
+log_level = "info"
+
+[sonarr."Main"]
+url = "http://sonarr:8989"
+api_key = "sonarr-key"
+
+[sonarr."4K"]
+url = "http://sonarr4k:8989"
+api_key = "sonarr4k-key"
+
+[radarr."Default"]
+url = "http://radarr:7878"
+api_key = "radarr-key"
+"""
+
+
+def _write(tmp_path: Path, content: bytes) -> Path:
+    config_file = tmp_path / "triggarr.toml"
+    config_file.write_bytes(content)
+    return config_file
+
+
+def _all_ids(settings: Settings) -> dict[tuple[str, str], str]:
+    return {
+        (app, name): cfg.id
+        for app in ("radarr", "sonarr", "lidarr")
+        for name, cfg in getattr(settings, app).items()
+    }
+
+
+def _file_ids(config_file: Path) -> dict[tuple[str, str], str]:
+    data = tomllib.loads(config_file.read_text())
+    return {
+        (app, name): inst.get("id", "")
+        for app in ("radarr", "sonarr", "lidarr")
+        for name, inst in data.get(app, {}).items()
+    }
+
+
+def _assert_only_ids_changed(original: bytes, new: bytes, ids: dict[tuple[str, str], str]) -> None:
+    """tomllib(new) equals tomllib(original) with exactly the given ids set."""
+    expected = tomllib.loads(original.decode())
+    for (app, name), inst_id in ids.items():
+        expected[app][name]["id"] = inst_id
+    assert tomllib.loads(new.decode()) == expected
+
+
+def _capture(level: str) -> tuple[io.StringIO, int]:
+    sink = io.StringIO()
+    return sink, logger.add(sink, format="{level} {message}", level=level)
+
+
+def test_ensure_config_backfills_instance_id(tmp_path: Path) -> None:
+    """Instances without an id get distinct 32-hex ids, persisted to the file."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    settings = ensure_config(config_file)
+
+    ids = _all_ids(settings)
+    assert set(ids) == {("sonarr", "Main"), ("sonarr", "4K"), ("radarr", "Default")}
+    assert all(re.fullmatch(_HEX32, v) for v in ids.values())
+    assert len(set(ids.values())) == 3
+    assert _file_ids(config_file) == ids
+
+
+def test_backfill_preserves_comments_standard_table(tmp_path: Path) -> None:
+    """Standard tables: removing the added id lines yields the original bytes exactly."""
+    config_file = _write(tmp_path, STANDARD_SHAPE_TOML)
+    settings = ensure_config(config_file)
+    new = config_file.read_bytes()
+
+    new_lines = new.splitlines(keepends=True)
+    added = [line for line in new_lines if _ID_LINE_RE.match(line)]
+    assert len(added) == 4
+    stripped = b"".join(line for line in new_lines if not _ID_LINE_RE.match(line))
+    assert stripped == STANDARD_SHAPE_TOML
+
+    # Normalization 1: each id line is the last key line of its own table.
+    text = new.decode()
+    for name, last_key in [
+        ('[radarr.main]', "enabled = true"),
+        ('[sonarr."Main"]', 'api_key = "sonarr-key"'),
+        ('[sonarr."My Show Box"]  # 4K box', 'api_key = "sonarr4k-key"'),
+        ('[lidarr . "Music"]', 'api_key = "lidarr-key"'),
+    ]:
+        block = text.split(name, 1)[1]
+        assert re.search(re.escape(last_key) + r'\nid = "' + _HEX32 + '"\n', block.split("[", 1)[0])
+    for comment in ("# Triggarr configuration", "# verbose enough", "# the main radarr box", "# 4K box"):
+        assert comment in text
+    _assert_only_ids_changed(STANDARD_SHAPE_TOML, new, _all_ids(settings))
+
+
+def test_backfill_preserves_comments_inline_table(tmp_path: Path) -> None:
+    """Inline tables are backfilled in place inside the braces; comments survive."""
+    config_file = _write(tmp_path, INLINE_SHAPE_TOML)
+    settings = ensure_config(config_file)
+    new_id = settings.sonarr["Main"].id
+    assert re.fullmatch(_HEX32, new_id)
+
+    expected = INLINE_SHAPE_TOML.replace(
+        b'api_key = "sonarr-key" }  # trailing',
+        b'api_key = "sonarr-key", id = "' + new_id.encode() + b'"}  # trailing',
+    )
+    assert config_file.read_bytes() == expected
+    assert _file_ids(config_file) == {("sonarr", "Main"): new_id}
+
+
+def test_backfill_preserves_comments_dotted_keys(tmp_path: Path) -> None:
+    """Dotted keys gain one Main.id line after the first Main.* line; all else identical."""
+    config_file = _write(tmp_path, DOTTED_SHAPE_TOML)
+    settings = ensure_config(config_file)
+    new_id = settings.sonarr["Main"].id
+    assert re.fullmatch(_HEX32, new_id)
+
+    expected = DOTTED_SHAPE_TOML.replace(
+        b'Main.url = "http://sonarr:8989"  # u\n',
+        b'Main.url = "http://sonarr:8989"  # u\nMain.id = "' + new_id.encode() + b'"\n',
+    )
+    assert config_file.read_bytes() == expected
+    assert _file_ids(config_file) == {("sonarr", "Main"): new_id}
+
+
+def test_backfill_preserves_crlf(tmp_path: Path) -> None:
+    """Every original CRLF line keeps CRLF; the added line may end with LF."""
+    original = THREE_INSTANCES_TOML.replace(b"\n", b"\r\n")
+    config_file = _write(tmp_path, original)
+    settings = ensure_config(config_file)
+    new = config_file.read_bytes()
+
+    new_lines = new.splitlines(keepends=True)
+    kept = [line for line in new_lines if not _ID_LINE_RE.match(line)]
+    assert b"".join(kept) == original
+    assert len(new_lines) - len(kept) == 3
+    _assert_only_ids_changed(original, new, _all_ids(settings))
+    assert load_settings(config_file).sonarr["Main"].id == settings.sonarr["Main"].id
+
+
+def test_backfill_header_last_line_without_newline(tmp_path: Path) -> None:
+    """A final instance header with no trailing newline still yields valid TOML."""
+    config_file = _write(tmp_path, b'[general]\nlog_level = "info"\n\n[sonarr.Main]')
+    settings = ensure_config(config_file)
+    new_id = settings.sonarr["Main"].id
+    assert re.fullmatch(_HEX32, new_id)
+    assert load_settings(config_file).sonarr["Main"].id == new_id
+
+
+def test_ensure_config_instance_id_stable_second_load(tmp_path: Path) -> None:
+    """A second startup returns the same ids and does not rewrite the file."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    first = _all_ids(ensure_config(config_file))
+    before_bytes = config_file.read_bytes()
+    before_mtime = config_file.stat().st_mtime_ns
+
+    second = _all_ids(ensure_config(config_file))
+    assert second == first
+    assert config_file.read_bytes() == before_bytes
+    assert config_file.stat().st_mtime_ns == before_mtime
+
+
+def test_ensure_config_no_rewrite_when_ids_present(tmp_path: Path) -> None:
+    """All ids present and valid: file untouched and tomlkit never used."""
+    config_file = _write(
+        tmp_path,
+        b'[general]\nlog_level = "info"\n\n[sonarr.Main]\nurl = "http://sonarr:8989"\nid = "abc"\n\n'
+        b'[radarr.Main]\nurl = "http://radarr:7878"\nid = "abc"\n',
+    )
+    before_bytes = config_file.read_bytes()
+    before_mtime = config_file.stat().st_mtime_ns
+
+    with patch("triggarr.config.tomlkit.parse", side_effect=AssertionError("tomlkit used")), \
+         patch("triggarr.config._atomic_text_write", side_effect=AssertionError("written")):
+        settings = ensure_config(config_file)
+
+    assert settings.sonarr["Main"].id == "abc"
+    assert settings.radarr["Main"].id == "abc"  # same id in a different app is not a duplicate
+    assert config_file.read_bytes() == before_bytes
+    assert config_file.stat().st_mtime_ns == before_mtime
+
+
+def test_instance_id_duplicate_regenerated(tmp_path: Path) -> None:
+    """The later duplicate within an app is replaced in place, with a warning."""
+    original = (
+        b'[general]\nlog_level = "info"\n\n'
+        b'[sonarr.Main]\nurl = "http://sonarr:8989"\nid = "dup"  # keep me\n\n'
+        b'[sonarr]\nCopy = { url = "http://sonarr2:8989", id = "dup" }\n'
+    )
+    config_file = _write(tmp_path, original)
+    sink, handler_id = _capture("WARNING")
+    try:
+        settings = ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+
+    assert settings.sonarr["Main"].id == "dup"
+    new_id = settings.sonarr["Copy"].id
+    assert re.fullmatch(_HEX32, new_id)
+    new = config_file.read_bytes()
+    assert b'id = "dup"  # keep me\n' in new
+    assert new.count(b"id = ") == 2
+    assert new == original.replace(b'id = "dup" }', b'id = "' + new_id.encode() + b'" }')
+    warning = sink.getvalue()
+    assert "sonarr" in warning
+    assert "Main" in warning
+    assert "Copy" in warning
+    assert "dup" not in warning
+
+
+def test_backfill_empty_id_replaced_in_place(tmp_path: Path) -> None:
+    """id = "" has its value replaced on the same line, not a second id key."""
+    original = b'[sonarr.Main]\nurl = "http://sonarr:8989"\nid = ""  # filled later\napi_key = "k"\n'
+    config_file = _write(tmp_path, original)
+    new_id = ensure_config(config_file).sonarr["Main"].id
+    assert re.fullmatch(_HEX32, new_id)
+    assert config_file.read_bytes() == original.replace(b'id = ""', b'id = "' + new_id.encode() + b'"')
+
+
+@pytest.mark.parametrize(
+    "content",
+    [STANDARD_SHAPE_TOML, INLINE_SHAPE_TOML, DOTTED_SHAPE_TOML, THREE_INSTANCES_TOML],
+    ids=["standard", "inline", "dotted", "three"],
+)
+def test_backfill_only_ids_change(tmp_path: Path, content: bytes) -> None:
+    """For every shape, the parsed result differs from the original only by the new ids."""
+    config_file = _write(tmp_path, content)
+    settings = ensure_config(config_file)
+    _assert_only_ids_changed(content, config_file.read_bytes(), _all_ids(settings))
+
+
+def test_backfill_mismatch_exits_without_write(tmp_path: Path) -> None:
+    """If the edited document changes anything besides ids, startup exits and the file is untouched."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    tampered = THREE_INSTANCES_TOML.decode().replace("radarr-key", "changed") + '\n[sonarr."X"]\nid = "zz"\n'
+    sink, handler_id = _capture("ERROR")
+    try:
+        with patch("triggarr.config.tomlkit.dumps", return_value=tampered), \
+             pytest.raises(SystemExit) as exc_info:
+            ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+    assert exc_info.value.code == 1
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML
+    assert str(config_file) in sink.getvalue()
+    assert "changed" not in sink.getvalue()
+
+
+@pytest.mark.parametrize("target", ["os.replace", "os.fsync", "os.fchmod"])
+def test_backfill_fails_before_replace_leaves_original(tmp_path: Path, target: str) -> None:
+    """Case (a): a failure before or at os.replace leaves the original, removes the temp, exits 1."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("ERROR")
+    try:
+        with patch(f"triggarr.config.{target}", side_effect=OSError("EROFS")), \
+             pytest.raises(SystemExit) as exc_info:
+            ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc_info.value.code == 1
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML
+    assert list(tmp_path.glob("*.tmp")) == []
+    text = sink.getvalue()
+    assert str(config_file) in text
+    assert "OSError" in text
+
+
+def test_backfill_retry_after_pre_replace_failure(tmp_path: Path) -> None:
+    """After a case (a) failure, the next startup mints ids and succeeds; a third changes nothing."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    with patch("triggarr.config.os.replace", side_effect=OSError("EROFS")), pytest.raises(SystemExit):
+        ensure_config(config_file)
+
+    ids = _all_ids(ensure_config(config_file))
+    assert all(re.fullmatch(_HEX32, v) for v in ids.values())
+    assert _file_ids(config_file) == ids
+    assert config_file.read_text().count("\nid = ") == 3
+
+    before = config_file.read_bytes()
+    before_mtime = config_file.stat().st_mtime_ns
+    assert _all_ids(ensure_config(config_file)) == ids
+    assert config_file.read_bytes() == before
+    assert config_file.stat().st_mtime_ns == before_mtime
+
+
+def test_backfill_temp_file_is_0600_before_replace(tmp_path: Path) -> None:
+    """The temp file is already 0600 when it replaces the config; no chmod on the config path."""
+    import os
+
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    config_file.chmod(0o644)
+    real_replace = os.replace
+    real_chmod = os.chmod
+    recorded: list[int] = []
+    chmod_paths: list[str] = []
+
+    def _spy_replace(src, dst):  # noqa: ANN001, ANN202
+        recorded.append(os.stat(src).st_mode & 0o777)
+        return real_replace(src, dst)
+
+    def _spy_chmod(path, mode, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        chmod_paths.append(str(path))
+        return real_chmod(path, mode, *args, **kwargs)
+
+    with patch("triggarr.config.os.replace", side_effect=_spy_replace), \
+         patch("triggarr.config.os.chmod", side_effect=_spy_chmod):
+        ensure_config(config_file)
+
+    assert recorded == [0o600]
+    assert config_file.stat().st_mode & 0o777 == 0o600
+    assert str(config_file) not in chmod_paths
+
+
+def _fail_second_fsync():  # noqa: ANN202
+    """Return an os.fsync stand-in whose second call (the directory fsync) fails."""
+    import os
+
+    real_fsync = os.fsync
+    calls = {"n": 0}
+
+    def _fsync(fd):  # noqa: ANN001, ANN202
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("EIO")
+        return real_fsync(fd)
+
+    return _fsync
+
+
+def test_backfill_post_replace_fsync_failure_continues(tmp_path: Path) -> None:
+    """Case (b): only the directory fsync fails, so startup continues on the committed ids."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("WARNING")
+    try:
+        with patch("triggarr.config.os.fsync", side_effect=_fail_second_fsync()):
+            settings = ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+
+    ids = _all_ids(settings)
+    assert all(re.fullmatch(_HEX32, v) for v in ids.values())
+    assert _file_ids(config_file) == ids
+    assert "directory sync failed" in sink.getvalue()
+
+
+def test_backfill_retry_after_post_replace_failure_keeps_ids(tmp_path: Path) -> None:
+    """After case (b), the next startup reads the same ids without re-minting or rewriting."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    with patch("triggarr.config.os.fsync", side_effect=_fail_second_fsync()):
+        ids = _all_ids(ensure_config(config_file))
+
+    before = config_file.read_bytes()
+    before_mtime = config_file.stat().st_mtime_ns
+    assert _all_ids(ensure_config(config_file)) == ids
+    assert config_file.read_bytes() == before
+    assert config_file.stat().st_mtime_ns == before_mtime
+
+
+def test_backfill_preserves_api_key_and_mode(tmp_path: Path) -> None:
+    """API key strings are unchanged and the file is 0600 after a backfill write."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    ensure_config(config_file)
+    data = tomllib.loads(config_file.read_text())
+    assert data["sonarr"]["Main"]["api_key"] == "sonarr-key"
+    assert data["sonarr"]["4K"]["api_key"] == "sonarr4k-key"
+    assert data["radarr"]["Default"]["api_key"] == "radarr-key"
+    assert config_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_backfill_write_failure_logs_reason_before_exit(tmp_path: Path) -> None:
+    """A failed instance-id backfill write logs why before exiting (never a silent exit 1)."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("ERROR")
+
+    def _fail(path: Path, text: str) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    try:
+        with patch("triggarr.config._atomic_text_write", side_effect=_fail), pytest.raises(SystemExit) as exc:
+            ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc.value.code == 1
+    out = sink.getvalue()
+    assert "ERROR" in out
+    assert str(config_file) in out
+    assert "writable" in out
+    assert "PermissionError" in out
+    assert "sonarr-key" not in out
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML
+
+
+def _error_lines(out: str) -> list[str]:
+    return [line for line in out.splitlines() if line.startswith("ERROR ")]
+
+
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root ignores directory permissions")
+def test_backfill_in_read_only_config_dir_logs_one_error_and_exits(tmp_path: Path) -> None:
+    """Real early failure: the temp file cannot be created in a read-only config dir -- one error line, exit 1."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_file = _write(config_dir, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("ERROR")
+    os.chmod(config_dir, stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        with pytest.raises(SystemExit) as exc:
+            ensure_config(config_file)
+    finally:
+        os.chmod(config_dir, stat.S_IRWXU)
+        logger.remove(handler_id)
+
+    assert exc.value.code == 1
+    errors = _error_lines(sink.getvalue())
+    assert len(errors) == 1, errors
+    assert str(config_file) in errors[0]
+    assert "PermissionError" in errors[0]
+    assert "writable" in errors[0]
+    assert "sonarr-key" not in sink.getvalue()
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML
+    assert [p.name for p in config_dir.iterdir()] == ["triggarr.toml"]
+
+
+def test_backfill_failure_after_temp_file_logs_one_error_and_leaves_no_temp(tmp_path: Path) -> None:
+    """A write failure after the temp file exists is reported once (no second generic line) and cleaned up."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("ERROR")
+    try:
+        with patch("triggarr.config.os.replace", side_effect=PermissionError(13, "Permission denied")), \
+             pytest.raises(SystemExit) as exc:
+            ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc.value.code == 1
+    errors = _error_lines(sink.getvalue())
+    assert len(errors) == 1, errors
+    assert "writable" in errors[0]
+    assert "PermissionError" in errors[0]
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML
+    assert [p.name for p in tmp_path.iterdir()] == ["triggarr.toml"]

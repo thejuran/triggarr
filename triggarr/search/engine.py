@@ -520,6 +520,7 @@ async def _search_and_record(
     item_id: int | None = None,
     season_number: int | None = None,
     missing_count: int | None = None,
+    instance_stable_id: str | None = None,
 ) -> bool:
     """Run one *arr search command and record its outcome (R-04).
 
@@ -551,6 +552,7 @@ async def _search_and_record(
                 season_number=season_number,
                 missing_count=missing_count,
                 instance_id=instance_name,
+                instance_stable_id=instance_stable_id,
                 max_rows=max_rows,
             )
         except (aiosqlite.Error, OSError) as insert_exc:
@@ -573,6 +575,7 @@ async def _search_and_record(
             season_number=season_number,
             missing_count=missing_count,
             instance_id=instance_name,
+            instance_stable_id=instance_stable_id,
             max_rows=max_rows,
         )
         logger.info("{app}: Searched {name} ({queue})", app=app_label, name=item_name, queue=queue)
@@ -1177,6 +1180,7 @@ async def run_radarr_cycle(
                 instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
                 item_id=movie.get("id"),
+                instance_stable_id=instance_config.id,
             )
         ist["missing_searched"] = [] if pass_done else new_log
         if pass_done:
@@ -1204,6 +1208,7 @@ async def run_radarr_cycle(
                 instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
                 item_id=movie.get("id"),
+                instance_stable_id=instance_config.id,
             )
         ist["cutoff_searched"] = [] if pass_done else new_log
         if pass_done:
@@ -1485,6 +1490,7 @@ async def run_sonarr_cycle(
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
+                instance_stable_id=instance_config.id,
             )
         ist["missing_searched"] = [] if pass_done else new_log
         if pass_done:
@@ -1529,6 +1535,7 @@ async def run_sonarr_cycle(
                 item_id=season.get("seriesId"),
                 season_number=season.get("seasonNumber"),
                 missing_count=season.get("episode_count"),
+                instance_stable_id=instance_config.id,
             )
         ist["cutoff_searched"] = [] if pass_done else new_log
         if pass_done:
@@ -1786,6 +1793,7 @@ async def run_lidarr_cycle(
                 instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
                 item_id=album.get("id"),
+                instance_stable_id=instance_config.id,
             )
         ist["missing_searched"] = [] if pass_done else new_log
         if pass_done:
@@ -1813,6 +1821,7 @@ async def run_lidarr_cycle(
                 instance_name=instance_name,
                 max_rows=settings.general.max_history_rows,
                 item_id=album.get("id"),
+                instance_stable_id=instance_config.id,
             )
         ist["cutoff_searched"] = [] if pass_done else new_log
         if pass_done:

@@ -208,26 +208,28 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 - [x] **Phase 77: Secret & Reset-Token Log Hygiene** - Reset token never reaches the in-app log viewer; *arr HTTP errors always logged with secrets redacted (completed 2026-10-08)
 - [x] **Phase 78: Honest Cycle Outcomes** - Each instance's last cycle grades Success/Partial/Failed/Nothing-needed, shown honestly on the dashboard (completed 2026-10-09)
 - [x] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag skips its queue instead of searching everything (completed 2026-10-18)
-- [ ] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle (executed 2026-10-18; PR #28 open, in review — not merged)
-- [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note
+- [x] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle (merged and deployed 2026-10-18 via PR #28; scheduled-cycle verification pending)
+- [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note; includes the bounded Sonarr v5 compatibility verification (executed 2026-10-18/21, 14/14 plans; all requirements met — SONARRV5-02 closed 2026-10-21 after 81-14; in review on PR #29 — PR deep review finalized APPROVED at af676d3, owner acceptance and merge pending)
 
 ### Milestone status — reviewed 2026-10-18
 
-Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, REQUIREMENTS.md, merged PRs and the deployed build. Phases 77–79 merged via PR #26 (merge commit `c914cbc`, 2026-10-18), published as `ghcr.io/thejuran/triggarr:main` and deployed to production (running `c914cbc` verified). The connection-pill polling loop found by the walkthrough (pre-existing since Phase 60) was fixed in PR #27 (`d41b484`). The version badge still reads v2.11.0; the bump belongs to the v2.12 release process, and `c914cbc` identifies the tested build until then.
+Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, REQUIREMENTS.md, merged PRs and the deployed build. Phases 77–79 merged via PR #26 (merge commit `c914cbc`, 2026-10-18), published as `ghcr.io/thejuran/triggarr:main` and deployed to production (running `c914cbc` verified). The connection-pill polling loop found by the walkthrough (pre-existing since Phase 60) was fixed in PR #27 (`d41b484`). The version badge still reads v2.11.0; the bump belongs to the v2.12 release process, use revision/digest evidence rather than the version badge to identify a running build.
+
+PR #28 merged on 2026-10-18 at `dee25df5cedd28f8016f556129f20a0d5537b635` (GitHub merge status verified). Final reviewed head: `ef01a3e757a060132640aed72b9cff5e21ad11b3`; reported verification: 1,735 tests, clean ruff, Greptile 5/5 and vibe-check pass 6 with Codex clear. Main CI and release run `39157384992` reportedly passed, publishing image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`. Publication is not deployment: production was then redeployed and verified running `dee25df` (digest above, started 19:11:47Z, health OK, startup Radarr and Sonarr cycles graded Success). Still pending: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
 
 | Phase | Implemented / completed | Remaining | Status |
 |-------|-------------------------|-----------|--------|
 | 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | None. Live UAT passed 2026-10-18 on the sandbox (same `c914cbc` image). | Complete — merged and deployed; UAT complete (live) |
 | 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | None open. 78-1 passed live. 78-2: green/red/gray grades and the post-first-cycle label passed live; amber Partial and the legacy-label states verified only by local fixture (owner-accepted). | Complete — merged and deployed; UAT partial (live + fixture) |
 | 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | None open. 79-1 and 79-2 passed live on the sandbox (badge auto-clear also confirmed the PR #26 tag-cache refetch); 79-3 upstream tag-fetch failure has automated-test coverage only. | Complete — merged and deployed; UAT partial (79-3 automated only) |
-| 80 — Cycle Robustness & Sonarr Season Dedup | All 5 plans; per-item malformed-record skips with per-queue card rows, per-grab date hardening, honest "unknown" Sonarr version, tag-autocomplete fallback, cross-queue Sonarr season dedup. Automated verification recorded (4/4 truths). | None blocking. Card UAT passed 2026-10-18 on a local build with a fake Sonarr (Partial + Failed); legacy single-count record covered by tests only. Pass-1 review: Sonarr upgrade-pass finding fixed (DEDUP-03); the first Lidarr non-object-record fix (5bdd49c) was engine-only and ineffective on real responses — corrected on the real client path for all three apps in c6947fe after the pass-2 review; Greptile status comment reconciled. Follow-up outside the PR: Refresh-counts malformed-record behavior. | Executed — PR #28 open, in review (Greptile + owner vibe-check); not merged or deployed |
-| 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Sandbox setup/connectivity reported in the external runbook; no completed implementation plans recorded. | Attribution ownership/migration, cutover note, version reporting, regression tests, live v4/v5 compatibility matrix. | Not started — planning required |
+| 80 — Cycle Robustness & Sonarr Season Dedup | All 5 plans; per-item malformed-record skips with per-queue card rows, per-grab date hardening, honest "unknown" Sonarr version, tag-autocomplete fallback, cross-queue Sonarr season dedup. Automated verification recorded (4/4 truths). | None blocking. Card UAT passed 2026-10-18 on a local build with a fake Sonarr (Partial + Failed); legacy single-count record covered by tests only. Pass-1 review: Sonarr upgrade-pass finding fixed (DEDUP-03); the first Lidarr non-object-record fix (5bdd49c) was engine-only and ineffective on real responses — corrected on the real client path for all three apps in c6947fe after the pass-2 review; Greptile status comment reconciled. Follow-up outside the PR: Refresh-counts malformed-record behavior. | Merged and deployed — PR #28 (`dee25df`); scheduled-cycle verification pending |
+| 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Context gathered 2026-10-18 (81-CONTEXT.md D-01..D-14); planned 2026-10-18 (9 plans, 6 waves); sandbox setup/connectivity reported in the external runbook. Code plans 81-01..05 executed 2026-10-18/19 on branch `phase-81-sonarr-attribution` (1,957 tests pass, ruff clean; not pushed or reviewed). Live acceptance matrix built; owner authorized v5 deploy + v4 sandbox (option-a, 2026-10-19). Live v5 run (81-07) executed: season-pack attribution and repeated-tracking checks FAIL — Sonarr v5 grab history omits season identity, so no v5 grab is credited (never mis-credited); owner approved the record and scoped a fix inside Phase 81. SONARRV5-02 open. Gap closure: 81-10 captured sanitized real v5 fixtures; 81-11 episode-ID fallback implemented plus a post-review fix (1,996 tests pass, ruff clean). 81-12 live v5 rerun on the fixed build: owner-approved — S2 single-download season pack credited 8/8 once by the fixed build (search dispatched by the earlier Phase 81 build), S3 single-episode attribution 9/9, repeat checks probe-assisted pass (not unattended scheduled-cycle verification). SONARRV5-02 open pending v4. 81-08 isolated v4 sandbox (Sonarr 4.0.20) on the fixed build, owner-approved with corrections: S2 single-download pack sent and credited 8/8 once by the fixed build; repeat checks probe-assisted pass; tag filtering and missing/cutoff pagination remain unverified-live (empty sandboxes) on v4 and v5 — required D-11.1 checks still open, SONARRV5-02 open; v4 sandbox parked disabled. 81-13 zero-search live checks executed on both sandboxes (zero searches): tag filtering pass; missing/cutoff multi-page retrieval inferred from client output and verified server page limit, but client-returned ID-set completeness/uniqueness unverified-live (owner condition); owner dispositioned the unauthorized quality-profile upgradeAllowed change as an accepted bounded deviation (restored exactly, no-search barriers held; pagination verdicts unchanged). 81-09 closeout: on-screen disclosure review via two `/walkthrough` runs against local scratch instances (never NAS/production) passed CP1-CP6 both before and after two owner-approved bounded scope additions — the fourth stats card retitled "Average time to grab" (it always showed time-to-grab, not a scan schedule), and an instance-selector/stats-row poll `hx-sync` race fixed (commits `e996322` test, `09421ab` fix; full suite 1999 passed, ruff clean) — re-verify run then passed CP1-CP6 with 0 console errors; owner response "Accepted". D-13 reconciliation done: ATTR-01..06, SONARRV5-01, SONARRV5-03 marked complete in REQUIREMENTS.md; SONARRV5-02 stays open (client-returned ID-set completeness/uniqueness for missing/cutoff pagination on v5+v4; multi-season pack and alternate series order, fixture-only; v4 library counts unverified-live). Deep review (vibe-check) closed 2026-10-21 at frozen `9a1d423`: full Phase 81 review at `a2b8c1c`, then revision reviews at `d14b71e` and `9a1d423` (fixes for the backfill write diagnostic, Radarr/Lidarr credit by the row's own stable ID, legacy import before the cutover, the forward-only upgrade note and the emergency-restore backup steps); owner dispositions recorded, name-based Radarr/Lidarr selection deferred; frozen commit 2012 tests pass, ruff clean; approval covers review dispositions only (`.turingmind/REVIEW.md`). 81-14 (2026-10-21) closed the remaining D-11 gaps with a zero-search, read-only probe of the real client (separately authorized drafting, read-only preflight and Sonarr-side change list; all four isolation gates passed; sandboxes restored to an identical baseline): client-returned ID sets complete and duplicate-free on missing/cutoff pagination, v5 and v4, and a dedicated v4 Refresh-counts run matching Sonarr. The owner closed SONARRV5-02; multi-season pack and alternate series order remain unverified-live under D-12's fallback. PR #29 opened 2026-10-21 (history scrubbed of private details before the first push; code byte-identical). Fixes made during PR review, each red-test first: certifi bump (PYSEC-2026-4320); v5 per-id lookup budget overflow keeps verified progress; clock pinned in the fixed-date attribution tests; held Sonarr rows never get a terminal outcome; pending partial rows survive pruning and count toward the pending cap. At `af676d3`: 2020 tests pass, ruff clean, CI green, Greptile 5/5; PR deep review (vibe-check, 3 passes) finalized APPROVED, with 2 refactor rows deferred to backlog MAINTENANCE.md. | Owner marks PR #29 ready and approves review acceptance for the exact final head, then decides on merge; rerun the 81-14 probe if clients/, models/arr.py or search/engine.py change before merge (unchanged so far). | Executed — 14/14 plans; all requirements met; in review on PR #29 (CI green, Greptile 5/5, PR deep review APPROVED at af676d3); owner acceptance pending |
 
-**Counts:** 3/5 phases complete — 77–79 merged and deployed; 80 executed and in review on PR #28 (not merged or deployed). 19/19 currently defined plans have summaries (Phase 81 still needs plans, so 19/19 is not a milestone completion percentage). REQUIREMENTS.md marks 19/28 requirements complete. Public v2.12.0 release remains pending Phase 80's merge, Phase 81, their verification, and the release version bump.
+**Counts:** 4/5 phases complete by the merged/verified criterion — 77–79 merged and deployed; 80 merged via PR #28 and deployed (running `dee25df` verified); its recurring scheduled-cycle check is still pending. 19/28 currently defined plans have summaries (Phase 81's 9 plans are not yet executed). REQUIREMENTS.md marks 19/28 requirements complete. Public v2.12.0 release remains pending Phase 81, remaining deployment/verification checks, and the release version bump.
 
 **Walkthrough evidence (2026-10-18):** `.planning/walkthroughs/20261018-023529-pending-live-human-checks/` (local, git-ignored). No searches ran during it, so it is not evidence of Sonarr v5 search compatibility; SONARRV5-01..03 remain open.
 
-**Next work:** finish PR #28 (push the review-fix checkpoint, re-review that head, record dispositions, owner acceptance, merge); plan/execute Phase 81 and its compatibility task (including the live v4/v5 search matrix); bump the version in the v2.12 release. Follow-up outside PR #28: decide whether "Refresh counts" should skip one malformed record per item like scheduled cycles do.
+**Next work:** confirm Phase 80's next scheduled production cycles (deployment of `dee25df` is verified); owner review acceptance and merge decision for Phase 81 on PR #29 (executed 14/14 plans; SONARRV5-02 closed 2026-10-21 after 81-14; PR-review fixes pushed; CI green, Greptile 5/5 and PR deep review finalized APPROVED at `af676d3`); bump the version in the v2.12 release. Follow-up outside PR #28: decide whether "Refresh counts" should skip one malformed record per item like scheduled cycles do.
 
 ### Phase 77: Secret & Reset-Token Log Hygiene
 
@@ -358,7 +360,42 @@ Plans:
   6. Sonarr v5 is reported as v5 (not v3), with safe malformed-version handling and no automatic API-route switch.
   7. An isolated v4/v5 smoke matrix covers connection, tags, missing/cutoff pagination, counts, season commands, and grab tracking, recording exact builds and results. Alternate-order, season-pack, and multi-season attribution regression cases use Sonarr-returned identities and count distinct episodes correctly.
 
-**Plans**: TBD. Include one bounded **Verify Sonarr v5 compatibility** task per the design spec's Phase 81 addendum (2026-10-12). Keep current v3 routes and API-key authentication unless testing demonstrates an incompatibility; fix only affected existing flows. No production NAS upgrade, new Sonarr feature integration, or blanket v5 API migration. Live compatibility must be verified before claiming support; unavailable scenarios remain documented as unverified and the task stays open.
+**Plans:** 13 plans (9 planned 2026-10-18; gap-closure plans 81-10..81-12 added 2026-10-19 after the live v5 run found Sonarr v5 grab history omits season identity; 81-13 added 2026-10-20 for the open tag-filtering and pagination live checks). The bounded **Verify Sonarr v5 compatibility** task is Plans 81-06..81-08 per the design spec's Phase 81 addendum (2026-10-12). Keep current v3 routes and API-key authentication unless testing demonstrates an incompatibility; fix only affected existing flows. No production NAS upgrade, new Sonarr feature integration, or blanket v5 API migration. Live compatibility must be verified before claiming support; unavailable scenarios remain documented as unverified and the task stays open. Live sandbox work runs only after the owner's recorded authorization (Plan 81-06, D-09/D-10).
+
+Plans:
+**Wave 1**
+
+- [x] 81-01-PLAN.md — permanent instance ID: InstanceConfig.id, startup backfill with atomic write, save_settings/add_instance preservation fix (wave 1)
+- [x] 81-02-PLAN.md — Sonarr v5 version reporting, grab episode identity (includeEpisode), season-aware correlation + sanitized fixtures (wave 1)
+- [x] 81-03-PLAN.md — migration v10, frozen legacy pending rows, atomic grab ownership, cutover recorded exactly once (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 81-04-PLAN.md — ownership-aware Sonarr tracking (distinct episodes, accumulation), client-path fixture regressions, scheduler wiring (wave 2)
+- [x] 81-05-PLAN.md — stats disclosure: legacy exclusion from rates, per-metric historical labels, cutover note, Legacy history label (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 81-06-PLAN.md — live/fixture acceptance matrix + owner authorization of sandbox work (checkpoint) (wave 3)
+
+**Wave 4** *(owner-gated)*
+
+- [x] 81-07-PLAN.md — v5 sandbox: deploy exact Phase 81 build, isolation gates, live matrix incl. season-pack attribution (wave 4) — executed; season-pack attribution and repeated-tracking checks FAIL (v5 grab history omits season identity)
+
+**Waves 5–9** *(gap closure, then sequential owner-gated live checks)*
+
+- [x] 81-10-PLAN.md — capture sanitized real Sonarr v5 history/episode responses (read-only), relabel schema-derived fixtures, fixture hygiene test (wave 5, gap closure)
+- [x] 81-11-PLAN.md — episode-ID fallback: per-check series episode list + per-id fallback, series validation, transient deferral with per-row 24h escalation, no credit on missing/conflicting identity (wave 6, gap closure, TDD)
+- [x] 81-12-PLAN.md — live v5 rerun on the fixed build: season-pack attribution and non-vacuous repeated tracking checks, owner-run isolation gates (wave 7, gap closure)
+- [x] 81-08-PLAN.md — isolated v4 sandbox provisioning, isolation gates, live matrix on the fixed build (wave 8)
+- [x] 81-13-PLAN.md — zero-search live checks of tag filtering (include/exclude) and missing/cutoff pagination on the v5 and v4 sandboxes (wave 9, gap closure)
+- [x] 81-09-PLAN.md — on-screen disclosure check + D-13 status reconciliation of REQUIREMENTS/ROADMAP/STATE (wave 10)
+
+**81-09 closeout notes (2026-10-20/21):** Task 1 built two local scratch Triggarr instances (prefix = seeded pre-fix Sonarr data, fresh = clean install), local-only with fake keys, never NAS/production. Task 2 (owner on-screen review) ran as two `/walkthrough` observe-and-report passes; the first found two reportable items the owner approved as bounded Phase 81 scope additions rather than deferring:
+1. The fourth stats card was titled "Next Scan" / "Scheduled automatically" but always rendered the average time-to-grab — retitled "Average time to grab" / "From search to grab" (`ph-timer`).
+2. A selector/poll race: an in-flight "All instances" poll landing between a Radarr selection's request and response left the wrong (stale) disclosure showing until the next poll, because the instance selector and the 30s stats-row poll both swapped `#stats-row` with no shared `hx-sync` scope. Fixed with `hx-sync="#stats-row:replace"` on the selector and `hx-sync="this:drop"` on `#stats-row`.
+
+Both landed as `e996322` (test RED) + `09421ab` (fix); full suite 1999 passed, ruff clean (independently re-run for this record). A re-verify `/walkthrough` run on `09421ab` passed CP1-CP6 with 0 console errors. Owner response: "Accepted." Full detail in `81-LIVE-MATRIX.md` "Owner review (disclosure)". Task 3 reconciled REQUIREMENTS/ROADMAP/STATE per D-13 (see the milestone status row above and `81-LIVE-MATRIX.md` "## Status").
 
 ### Phase 81 live test environment and remaining checks
 
@@ -386,65 +423,61 @@ Plans:
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete | 2026-10-08 (merged/deployed 2026-10-18) |
 | 78. Honest Cycle Outcomes | 5/5 | Complete (UAT partial: fixture for amber/legacy) | 2026-10-09 (merged/deployed 2026-10-18) |
 | 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
-| 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Executed — PR #28 in review (not merged) | 2026-10-18 |
-| 81. Correct Sonarr Grab Attribution + v5 Compatibility | 0/TBD | Not started; sandbox connectivity reported | - |
+| 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Merged and deployed — PR #28; scheduled-cycle check pending | 2026-10-18 |
+| 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Executed — all requirements met (SONARRV5-02 closed 2026-10-21 after 81-14; multi-season pack and alternate series order unverified-live under D-12); in review on PR #29, owner acceptance and merge pending | - |
+
+## Next milestone after v2.12: CI & Review Workflow
+
+**Goal:** Make Triggarr the reference for meaningful CI, publication of the tested artifact, and BM-led review with an independent Codex pass and risk-based vibe-check recommendations.
+
+- [ ] **CI reference baseline:** implement and verify the bounded shipped-image startup, browser regression, and release-version checks in [the CI plan](../docs/ci-reference-baseline-plan.md). Plan the remaining dependency, audit, maintenance, and permissions improvements from that plan with explicit scope and acceptance criteria.
+- [ ] **BM + Codex review pairing:** implement [the review blueprint](../docs/bm-greptile-codex-blueprint.md), updating `CLAUDE.md` and supported BM configuration/instructions so every BM code review has an independent Codex pass on the review checkpoint. Demonstrate normal, quick-task, and revision paths; missing or stale review evidence remains incomplete.
+- [ ] **Codex plan-checker routing (investigation):** evaluate the owner-preferred, narrowly scoped `agent.spawn` mod hook for `bm:bm-plan-checker` through model-gateway, retaining BM's original agent and checking loop. Runtime support on inspected Claude Code 2.1.281 and end-to-end routing are unverified. Follow [the recorded investigation and pilot checks](../docs/bm-greptile-codex-blueprint.md#deferred-investigation-codex-plan-checker-through-model-gateway); include the [blind original-Phase-81 comparison](../docs/bm-greptile-codex-blueprint.md#blind-comparison-original-phase-81-plans) with matched context, reproduction checks and a separate revision round. Recover and hash the original ignored plans first; no activation during v2.12.
+- [ ] **Risk-based review depth:** BM recommends depth at each checkpoint and explicitly suggests vibe-check when risk is high, recording the owner's choice. Keep Greptile and exact-commit owner acceptance; do not build another orchestrator.
+- [ ] **Reference verification:** demonstrate claimed CI failure gates and review handoffs, preserve exact-artifact publication, and record pilot results and reusable guidance for other repositories. Distinguish instruction-based review requirements from GitHub-enforced checks.
+
+**Done when:** the selected CI baseline checks have positive and negative verification evidence; the actual BM controls demonstrate paired Codex review and high-risk vibe-check recommendations; review evidence matches the final commit; existing safeguards remain intact; publication and deployment evidence are recorded separately when applicable.
+
+**Sequence:** immediately follows v2.12 closeout, before Reliability. Read both linked plans during milestone planning; assign release version and phase numbers then. This entry does not activate workflow changes during v2.12.
+
+## Following milestone: Reliability
+
+**Goal:** Keep scheduled searching and saved state correct through failed writes, ambiguous network responses, partial startup and shutdown.
+
+- [ ] **State/config consistency (999.9):** write validated replacement settings before removing an instance from live state. Failed writes must preserve settings, jobs and clients. Recover safely from non-object state JSON (`[]`, `42`, `null`).
+- [ ] **Resource lifecycle (999.13, narrowed):** close resources opened during failed startup; a client-close failure must not prevent other clients or the database from closing. Correct cursor lifetime issues locally if confirmed. No blanket I/O/offloading rewrite.
+- [ ] **Search-command delivery (POST-retry semantics):** prevent blind retries from duplicating an already-accepted search after a response timeout. Distinguish confirmed acceptance from unknown delivery and retain safe read retries; no generic retry framework.
+
+**Done when:** targeted write-failure, malformed-state, partial-startup, shutdown and response-loss regressions pass with the existing suite; an isolated built-image smoke test demonstrates restart/recovery behavior. Record residual delivery limitations explicitly rather than claiming exactly-once behavior without evidence.
+
+**Sequence:** follows CI & Review Workflow. Check current implementation before planning each carried-forward fix. Release version and phase numbers are assigned during milestone planning; no implementation is started by this organization.
+
+## Later milestone: Authentication Safety & Responsiveness
+
+**Goal:** Keep authentication responsive and close demonstrated boundary defects without redesigning the authentication system.
+
+- [ ] **Password hashing (999.4):** move synchronous bcrypt work off the shared event loop across async login/setup/password/reset and Basic-auth paths, preserving authentication and rate limiting. Verify other requests and scheduled work can progress during hashing.
+- [ ] **Auth-boundary review (999.10, narrowed):** validate missing-Origin/Referer mutation handling, auth-exempt path matching, trusted-proxy/rate-limit behavior, and cookie/CSP behavior in supported deployments. Reproduce issues and establish prerequisites before choosing fixes; older proposals are not requirements.
+- [ ] **Compatibility verification:** verify browser login/setup/reset/logout and existing API-key/Basic clients, plus supported reverse-proxy deployments, for the boundaries changed. No new auth modes or speculative security settings; HX-Request alone is not proof of CSRF protection.
+
+**Done when:** demonstrated defects have focused regression tests, authentication remains compatible, bcrypt work no longer stalls unrelated async work, and relevant deployed browser checks pass. If review finds an active credential exposure or exploitable bypass, fix it promptly rather than waiting for this milestone.
+
+**Sequence:** follows Reliability; release version and phase numbers assigned during planning.
 
 ## Backlog
 
-**Triage approved 2026-10-17.** Finish v2.12 first. Retained items below are unscheduled follow-ups, not a commitment to another broad hardening milestone. Retired means **won't do under current scope**; do not repeatedly carry it forward or create plans without the stated reopening evidence. Original 999.x findings came from the 2026-06-26 deep review; recheck current code before implementation.
+### Phase 999.14: Deferred: Migrate the Sonarr client to the v5 API before v3 is retired (BACKLOG)
 
-### 999.4 — Keep: password hashing off the event loop
+**Goal:** Keep Sonarr support working when Sonarr removes its `/api/v3` routes. Triggarr calls `/api/v3` with API-key auth today; Sonarr v5 still serves v3, and Phase 81 deliberately kept those routes (no blanket v5 migration in v2.12).
+**Scope when promoted:** track Sonarr's v3 deprecation/removal timeline; migrate the existing flows (system status, tags, missing/cutoff pagination, series counts, SeasonSearch, grab-history tracking with episode identity — v5 uses `includeSubresources` instead of `includeSeries`/`includeEpisode`), select routes from the detected version, keep v4 support while needed, and re-run the live v4/v5 matrix. Background: Phase 81 research (v5 OpenAPI differences).
+**Requirements:** TBD
+**Plans:** 0 plans
 
-Move synchronous bcrypt work in async authentication/setup/reset paths off the shared event loop, preserving authentication and rate-limit behavior. Verify unrelated requests and scheduled work can progress during hashing. No auth redesign or new settings.
+Plans:
+- [ ] TBD (promote with /bm:review-backlog when ready)
 
-### 999.9 — Keep: state and config consistency
+## Planning boundaries and maintenance
 
-- Make instance removal write validated replacement settings before swapping live state; a failed write must preserve settings, scheduler jobs and clients.
-- Guard non-object state JSON (`[]`, `42`, `null`) so loading follows the documented recovery path instead of raising on dictionary access.
-- Require focused failure-path regression tests.
+Keep the existing single-process architecture, SQLite and the current product scope. Finish v2.12 and its outstanding verification before starting these milestones. Routine maintenance and change-time safeguards live in [maintenance](backlog/MAINTENANCE.md), including the separately approved-after-v2.12 workflow discussion.
 
-### 999.10 — Narrow: evidence-backed auth boundary review
-
-Review cookie-authenticated mutations with missing Origin/Referer, auth-exempt path matching, trusted-proxy/rate-limit behavior, and cookie/CSP behavior in supported deployments. Reproduce each alleged defect and record its actual prerequisites before choosing a fix; older proposed remedies are not approved requirements. Keep API-key/Basic clients and supported reverse-proxy setups working. Do not automatically add auth modes, cookie settings, a CSP rewrite, or treat an HX-Request header alone as proof of CSRF protection.
-
-### 999.13 — Narrow: startup/shutdown resource cleanup
-
-Keep concrete failure-path work: ensure database/client resources opened during partial startup are closed, and failure closing one client does not prevent closing remaining resources or the DB. Verify with injected initialization/close failures. Fix cursor lifetime defects locally if confirmed. Drop the blanket async-I/O/offloading rewrite; reopen performance work only for measured stalls. This does not retire 999.4's known CPU-blocking auth work.
-
-### POST-retry semantics — Keep: ambiguous command acceptance
-
-An automatic POST retry after a response timeout can duplicate a command already accepted upstream. Establish explicit retry behavior for search commands, distinguish confirmed acceptance from unknown delivery, and test response-loss scenarios. Keep safe read retries; do not broaden into a generic retry framework. This remains outside v2.12's one-engine-dispatch guarantee.
-
-### Maintenance rules — no standalone implementation phase
-
-- **999.8 — atomic writes:** Retire consolidation of all writers/public APIs as a project. Preserve atomic replacement, appropriate secret-file permissions, cleanup and durability. Fix only demonstrated defects with focused tests. The current TOML writer uses `mkstemp`; omitting a later `chmod` does not by itself demonstrate world-readable output.
-- **999.11 — URL validation compatibility:** When a future validation change rejects a previously supported configuration, ship a migration/recovery path and regression test with that change. Do not prebuild a generic migration system or weaken existing validation. No standalone task until such a change is proposed.
-
-### Retired — won't do under current scope
-
-| Item | Decision / reason | Reopen only when |
-|------|-------------------|------------------|
-| 999.7 — client registry and module reorganization | Retired as standalone architecture work; three supported apps do not justify a new abstraction project. | A new integration or demonstrated dispatch inconsistency requires it. |
-| 999.12 — changelog renderer rewrite | Retired; all three text insertion points are escaped, the security boundary is documented, and 19 changelog tests passed during the 2026-10-17 review. Preserve those protections. | A reproducible escaping defect or new untrusted content path appears. |
-| PERF-01/02 — per-endpoint timeout/page-size overrides | Retired; global settings already cover normal operation. | An observed endpoint-specific problem cannot be solved with existing settings. |
-| PERF-03 — state streaming/compression | Retired; no measured state-size or memory problem. | Profiling demonstrates a material bottleneck. |
-| SCALE-01 — more than five instances per app | Retired; no current deployment requirement. | An actual deployment needs more than five instances of one app. |
-| SCALE-02 — archival/PostgreSQL | Retired; SQLite and bounded history fit a single-process utility. | A concrete retention or scale requirement exceeds SQLite/current retention. |
-| AUDIT-01 — config audit log | Retired; limited value in the current single-user model. | A real operational accountability requirement emerges. |
-| OBS-01 — scheduler dashboard | Retired; existing cards and cycle outcomes cover core operational feedback. | A recurring diagnostic need cannot be answered by existing status/history/logs. |
-| UI-01/02/03 — pixel-exact verification | Retired as pixel-exact requirements; retain ordinary login, setup and security-settings usability checks. | A functional usability or accessibility regression is observed. |
-| Unused `--color-triggarr-primaryDark` token | Retired as tracked work; optional cleanup while editing that stylesheet. | It causes an actual styling defect. |
-
-### Promoted / historical — removed from active backlog
-
-| Original item | Owning milestone/phase | Status |
-|---------------|------------------------|--------|
-| 999.1 — password recovery | v2.10, Phases 72–73; [archive](milestones/v2.10-ROADMAP.md) | Shipped; no duplicate backlog task. |
-| 999.2 — count-only refresh | v2.10, Phase 74; [archive](milestones/v2.10-ROADMAP.md) | Shipped; no duplicate backlog task. |
-| 999.3 — reset-token viewer exposure | v2.12, [Phase 77](#phase-77-secret--reset-token-log-hygiene) | Implementation complete; milestone NAS UAT remains pending. |
-| 999.6 — log secret-redaction gaps | v2.12, [Phase 77](#phase-77-secret--reset-token-log-hygiene) | Implementation complete; no duplicate backlog task. |
-| 999.5 — malformed upstream records | v2.12, [Phase 80](#phase-80-cycle-robustness--sonarr-season-dedup) | Implemented in Phase 80 (PR #28 open, in review; not merged). |
-
-### Other small follow-ups
-
-Existing screenshot/CI maintenance in `TODO.md` is unchanged by this triage. The older v2.9 follow-up (URL-validation duplication, Retry-Connection button behavior, bug-report version options) remains unscheduled and must be revalidated before work; it is not part of a new hardening program.
+[Earlier backlog and closed decisions](backlog/archive/2026-10-18/README.md) are preserved outside this active work list.

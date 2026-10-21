@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
@@ -650,7 +651,7 @@ def test_dashboard_renders_stats_cards(client):
     assert "Grab Rate" in response.text, "Dashboard should show Grab Rate card"
     assert "Movies" in response.text, "Dashboard should show Movies card"
     assert "Series" in response.text, "Dashboard should show Series card"
-    assert "Next Scan" in response.text, "Dashboard should show Next Scan card"
+    assert "Average time to grab" in response.text, "Dashboard should show the time-to-grab card"
 
 
 def test_stats_row_partial_returns_200(client):
@@ -1450,6 +1451,30 @@ def test_add_instance_max_limit(multi_instance_app):
     assert "maximum" in response.text.lower()
 
 
+def test_add_instance_assigns_fresh_id(multi_instance_app):
+    """POST /api/instance/add assigns a fresh 32-hex id, distinct from every existing id (ATTR-03)."""
+    settings = multi_instance_app.state.settings
+    settings.radarr["Default"].id = "a" * 32
+    settings.radarr["4K"].id = "b" * 32
+    settings.sonarr["Default"].id = "c" * 32
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/add",
+            data={"app_name": "sonarr", "instance_name": "4K"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+
+    new_id = multi_instance_app.state.settings.sonarr["4K"].id
+    assert re.fullmatch(r"[0-9a-f]{32}", new_id)
+    existing_ids = {"a" * 32, "b" * 32, "c" * 32}
+    assert new_id not in existing_ids
+    assert multi_instance_app.state.settings.radarr["Default"].id == "a" * 32
+    assert multi_instance_app.state.settings.radarr["4K"].id == "b" * 32
+    assert multi_instance_app.state.settings.sonarr["Default"].id == "c" * 32
+
+
 def test_remove_instance_happy_path(multi_instance_app):
     """POST /api/instance/remove removes instance and cleans up."""
     with TestClient(multi_instance_app) as tc:
@@ -1459,6 +1484,24 @@ def test_remove_instance_happy_path(multi_instance_app):
         )
     assert response.status_code == 303
     assert "4K" not in multi_instance_app.state.settings.radarr
+
+
+def test_remove_instance_keeps_other_ids(multi_instance_app):
+    """POST /api/instance/remove leaves the remaining instances' ids unchanged (ATTR-03)."""
+    settings = multi_instance_app.state.settings
+    settings.radarr["Default"].id = "a" * 32
+    settings.radarr["4K"].id = "b" * 32
+    settings.sonarr["Default"].id = "c" * 32
+
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/remove/radarr/4K",
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+    assert "4K" not in multi_instance_app.state.settings.radarr
+    assert multi_instance_app.state.settings.radarr["Default"].id == "a" * 32
+    assert multi_instance_app.state.settings.sonarr["Default"].id == "c" * 32
 
 
 def test_remove_instance_nonexistent(multi_instance_app):
@@ -1761,6 +1804,153 @@ def test_save_settings_preserves_tag_fields(test_app, tmp_path):
     assert written["radarr"]["Default"]["cutoff_tag"] == "upgrade"
 
 
+def test_save_settings_preserves_id_with_instance_fields(test_app, tmp_path):
+    """POST /settings with {app}__{inst}__* fields for every instance keeps each id (ATTR-03)."""
+    radarr_id = "a" * 32
+    sonarr_id = "b" * 32
+    test_app.state.settings = Settings(
+        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+        radarr={
+            "Default": InstanceConfig(
+                url="http://radarr:7878", api_key="default-key", enabled=True, id=radarr_id,
+            ),
+        },
+        sonarr={
+            "Default": InstanceConfig(
+                url="http://sonarr:8989", api_key="sonarr-key", enabled=True, id=sonarr_id,
+            ),
+        },
+    )
+    radarr_default_client = MagicMock()
+    radarr_default_client.close = AsyncMock()
+    test_app.state.radarr_clients = {"Default": radarr_default_client}
+
+    with TestClient(test_app) as tc:
+        response = tc.post(
+            "/settings",
+            data={
+                "log_level": "info",
+                "radarr__Default__url": "http://radarr:7878",
+                "radarr__Default__api_key": "",
+                "radarr__Default__enabled": "on",
+                "radarr__Default__search_interval": "30",
+                "radarr__Default__search_missing_count": "5",
+                "radarr__Default__search_cutoff_count": "5",
+                "radarr__Default__missing_tag": "",
+                "radarr__Default__cutoff_tag": "",
+                "sonarr__Default__url": "http://sonarr:8989",
+                "sonarr__Default__api_key": "",
+                "sonarr__Default__enabled": "on",
+                "sonarr__Default__search_interval": "30",
+                "sonarr__Default__search_missing_count": "5",
+                "sonarr__Default__search_cutoff_count": "5",
+                "sonarr__Default__missing_tag": "",
+                "sonarr__Default__cutoff_tag": "",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+
+    import tomllib
+    with open(test_app.state.config_path, "rb") as f:
+        written = tomllib.load(f)
+
+    assert written["radarr"]["Default"]["id"] == radarr_id
+    assert written["sonarr"]["Default"]["id"] == sonarr_id
+    assert test_app.state.settings.radarr["Default"].id == radarr_id
+    assert test_app.state.settings.sonarr["Default"].id == sonarr_id
+
+
+def test_save_settings_preserves_id_without_instance_fields(test_app, tmp_path):
+    """POST /settings with only general fields (preserve branch) keeps every id unchanged (ATTR-03)."""
+    radarr_id = "a" * 32
+    sonarr_id = "b" * 32
+    test_app.state.settings = Settings(
+        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+        radarr={
+            "Default": InstanceConfig(
+                url="http://radarr:7878", api_key="default-key", enabled=True, id=radarr_id,
+            ),
+        },
+        sonarr={
+            "Default": InstanceConfig(
+                url="http://sonarr:8989", api_key="sonarr-key", enabled=True, id=sonarr_id,
+            ),
+        },
+    )
+    radarr_default_client = MagicMock()
+    radarr_default_client.close = AsyncMock()
+    test_app.state.radarr_clients = {"Default": radarr_default_client}
+
+    with TestClient(test_app) as tc:
+        response = tc.post(
+            "/settings",
+            data={"log_level": "info"},
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+
+    import tomllib
+    with open(test_app.state.config_path, "rb") as f:
+        written = tomllib.load(f)
+
+    assert written["radarr"]["Default"]["id"] == radarr_id
+    assert written["sonarr"]["Default"]["id"] == sonarr_id
+    assert test_app.state.settings.radarr["Default"].id == radarr_id
+    assert test_app.state.settings.sonarr["Default"].id == sonarr_id
+
+
+def test_save_settings_new_form_instance_gets_id(test_app, tmp_path):
+    """A sonarr instance name submitted via form but absent from current settings gets a fresh id (ATTR-03)."""
+    sonarr_id = "b" * 32
+    test_app.state.settings = Settings(
+        general=GeneralConfig(skip_unreleased=True, tracking_delay_seconds=90),
+        radarr={},
+        sonarr={
+            "Default": InstanceConfig(
+                url="http://sonarr:8989", api_key="sonarr-key", enabled=True, id=sonarr_id,
+            ),
+        },
+    )
+    test_app.state.radarr_clients = {}
+
+    with TestClient(test_app) as tc:
+        response = tc.post(
+            "/settings",
+            data={
+                "log_level": "info",
+                "sonarr__Default__url": "http://sonarr:8989",
+                "sonarr__Default__api_key": "",
+                "sonarr__Default__enabled": "on",
+                "sonarr__Default__search_interval": "30",
+                "sonarr__Default__search_missing_count": "5",
+                "sonarr__Default__search_cutoff_count": "5",
+                "sonarr__Default__missing_tag": "",
+                "sonarr__Default__cutoff_tag": "",
+                "sonarr__NewOne__url": "http://sonarr-new:8989",
+                "sonarr__NewOne__api_key": "new-key",
+                "sonarr__NewOne__enabled": "on",
+                "sonarr__NewOne__search_interval": "30",
+                "sonarr__NewOne__search_missing_count": "5",
+                "sonarr__NewOne__search_cutoff_count": "5",
+                "sonarr__NewOne__missing_tag": "",
+                "sonarr__NewOne__cutoff_tag": "",
+            },
+            follow_redirects=False,
+        )
+    assert response.status_code == 303
+
+    import tomllib
+    with open(test_app.state.config_path, "rb") as f:
+        written = tomllib.load(f)
+
+    assert written["sonarr"]["Default"]["id"] == sonarr_id
+    new_id = written["sonarr"]["NewOne"]["id"]
+    assert re.fullmatch(r"[0-9a-f]{32}", new_id)
+    assert new_id != sonarr_id
+    assert test_app.state.settings.sonarr["NewOne"].id == new_id
+
+
 def test_save_settings_uses_atomic_toml_write(test_app, tmp_path):
     """POST /settings writes config using _atomic_toml_write, not manual tempfile (BUG-05 dedup)."""
     with TestClient(test_app) as tc, \
@@ -1989,7 +2179,8 @@ def test_health_summary_disconnected(client, test_app):
 
 
 def test_stats_row_instance_filter(client, test_app):
-    """GET /partials/stats-row?instance=radarr/Default passes instance_id to get_dashboard_stats."""
+    """GET /partials/stats-row?instance=radarr/Default passes app + instance_stable_id to get_dashboard_stats."""
+    test_app.state.settings.radarr["Default"].id = "radarr-default-id"
     with patch("triggarr.web.routes.get_dashboard_stats", new_callable=AsyncMock) as mock_stats:
         mock_stats.return_value = {
             "overall_rate": None, "radarr_rate": None, "sonarr_rate": None, "lidarr_rate": None,
@@ -2001,7 +2192,8 @@ def test_stats_row_instance_filter(client, test_app):
         assert response.status_code == 200
         mock_stats.assert_awaited_once()
         call_kwargs = mock_stats.call_args
-        assert call_kwargs[1].get("instance_id") == "Default"
+        assert call_kwargs[1].get("app") == "Radarr"
+        assert call_kwargs[1].get("instance_stable_id") == "radarr-default-id"
 
 
 def test_stats_row_no_filter(client, test_app):

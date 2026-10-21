@@ -14,10 +14,16 @@ import aiosqlite
 import pytest
 from loguru import logger
 
+from tests.migration_faults import STANDARD_MAPPING, original_projection, seed_v9_db, snapshot
 from triggarr.db import (
+    OwnedGrab,
+    OwnedGrabRecord,
     PendingCapExceeded,
+    _apply_atomic_migration,
     _migrate_v1,
+    _migrate_v10,
     get_dashboard_stats,
+    get_owned_grabs,
     get_recent_searches,
     get_schema_version,
     get_search_history,
@@ -370,7 +376,7 @@ async def test_schema_version_tracked(tmp_path):
     """Schema version is tracked and reaches the expected final version."""
     db, db_path = await _init_test_db(tmp_path)
     version = await get_schema_version(db)
-    assert version == 9
+    assert version == 10
     await db.close()
 
 
@@ -1094,7 +1100,7 @@ async def test_run_migrations_fresh_install(tmp_path, monkeypatch):
 
     # Verify migrations ran to completion (no FileNotFoundError)
     version = await get_schema_version(db)
-    assert version == 9
+    assert version == 10
 
     # Verify no backup file was created (guard skipped the copy)
     backup = db_path.with_suffix(".v0-backup")
@@ -1349,6 +1355,269 @@ async def test_get_dashboard_stats_instance_scoped(tmp_path):
     await db.close()
 
 
+# ---------------------------------------------------------------------------
+# Phase 81 Plan 05: get_dashboard_stats app + stable-ID scoping, legacy
+# exclusion from rates (D-07), and per-metric historical flags (D-06)
+# ---------------------------------------------------------------------------
+
+
+async def _insert_cutover_row(db: aiosqlite.Connection, legacy_max_history_id: int) -> None:
+    """Insert an attribution_cutover row directly (the two pre-fix fact columns are unused by
+    get_dashboard_stats -- only legacy_max_history_id drives _LEGACY_MAX_ID_SQL)."""
+    await db.execute(
+        "INSERT INTO attribution_cutover "
+        "(id, cutover_at, legacy_max_history_id, any_pre_fix_sonarr_data, pre_fix_sonarr_lifetime) "
+        "VALUES (1, '2026-01-01T00:00:00Z', ?, 0, 0)",
+        (legacy_max_history_id,),
+    )
+    await db.commit()
+
+
+async def test_dashboard_stats_excludes_legacy_from_rates(tmp_path):
+    """Legacy pending Sonarr rows (pre-cutover 'searched'/'partial') leave both rate denominators (D-07)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="unresolved")  # id 2
+    await insert_search_entry(db, "Sonarr", "missing", "Show C", outcome="searched")  # id 3, legacy pending
+    await insert_search_entry(db, "Sonarr", "missing", "Show D", outcome="partial")  # id 4, legacy pending
+    await _insert_cutover_row(db, legacy_max_history_id=4)
+    await insert_search_entry(db, "Sonarr", "missing", "Show E", outcome="grabbed")  # id 5, post-cutover
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="unresolved")  # id 6
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate"] == pytest.approx(2 / 3 * 100)
+    assert stats["overall_rate"] == pytest.approx(2 / 4 * 100)
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id IN (3, 4) ORDER BY id") as cursor:
+        rows = await cursor.fetchall()
+    assert [row[0] for row in rows] == ["searched", "partial"]
+    await db.close()
+
+
+async def test_dashboard_stats_keeps_resolved_historical_rows(tmp_path):
+    """Resolved pre-cutover rows (not legacy pending) still count toward the rate."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="unresolved")  # id 2
+    await _insert_cutover_row(db, legacy_max_history_id=2)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate"] == pytest.approx(50.0)
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_rate(tmp_path):
+    """A resolved pre-fix Sonarr row trips both rate historical flags."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is True
+    assert stats["overall_rate_includes_historical"] is True
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_rate_false_when_only_legacy_pending_or_failed(tmp_path):
+    """When the only pre-fix Sonarr rows are legacy-pending or 'failed', both rate flags are False."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="searched")  # id 1, legacy pending
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="failed")  # id 2
+    await _insert_cutover_row(db, legacy_max_history_id=2)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is False
+    assert stats["overall_rate_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_ttg_only_grabbed(tmp_path):
+    """TTG flag stays False when the only pre-fix Sonarr row doesn't qualify for the TTG query."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="unresolved")  # id 1
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is True
+    assert stats["overall_rate_includes_historical"] is True
+    assert stats["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_ttg_true_when_grabbed_with_resolved_at(tmp_path):
+    """TTG flag is True when a pre-fix Sonarr row is grabbed and has a resolved_at timestamp."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["avg_time_to_grab_includes_historical"] is True
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_scoped_to_view(tmp_path):
+    """Historical flags are scoped by (app, instance_stable_id), not raised by an unrelated instance."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Show A", outcome="grabbed", instance_stable_id="sid-main",
+    )  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats_4k = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-4k")
+    assert stats_4k["sonarr_rate_includes_historical"] is False
+    assert stats_4k["overall_rate_includes_historical"] is False
+    assert stats_4k["avg_time_to_grab_includes_historical"] is False
+
+    stats_main = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-main")
+    assert stats_main["sonarr_rate_includes_historical"] is True
+    assert stats_main["overall_rate_includes_historical"] is True
+    assert stats_main["avg_time_to_grab_includes_historical"] is True
+    await db.close()
+
+
+async def test_dashboard_stats_shared_name_scoped_by_app(tmp_path):
+    """A Radarr instance and a Sonarr instance sharing the display name 'Default' never contaminate
+    each other's rates, lifetime totals or historical flags once scoped by app + stable ID (R3)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Radarr", "missing", "Movie A", outcome="unresolved",
+        instance_id="Default", instance_stable_id="sid-r",
+    )  # id 1
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Show A", outcome="grabbed",
+        instance_id="Default", instance_stable_id="sid-s",
+    )  # id 2
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 2", ("2026-01-02T00:00:00Z",))
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_stable_id = ?, movies_found = 0 "
+        "WHERE app = 'Radarr' AND instance_id = 'Default'", ("sid-r",),
+    )
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_stable_id = ?, episodes_found = 5 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'", ("sid-s",),
+    )
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=2)
+
+    stats_r = await get_dashboard_stats(db, app="Radarr", instance_stable_id="sid-r")
+    assert stats_r["overall_rate"] == 0.0
+    assert stats_r["radarr_rate"] == 0.0
+    assert stats_r["sonarr_rate"] is None
+    assert stats_r["episodes_found"] == 0
+    assert stats_r["overall_rate_includes_historical"] is False
+    assert stats_r["sonarr_rate_includes_historical"] is False
+    assert stats_r["avg_time_to_grab_includes_historical"] is False
+
+    stats_s = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-s")
+    assert stats_s["overall_rate"] == 100.0
+    assert stats_s["sonarr_rate"] == 100.0
+    assert stats_s["radarr_rate"] is None
+    assert stats_s["episodes_found"] == 5
+    assert stats_s["overall_rate_includes_historical"] is True
+    assert stats_s["sonarr_rate_includes_historical"] is True
+    assert stats_s["avg_time_to_grab_includes_historical"] is True
+
+    stats_combined = await get_dashboard_stats(db, instance_id="Default")
+    assert stats_combined["overall_rate"] == 50.0
+    await db.close()
+
+
+async def test_dashboard_stats_follows_stable_id_after_rename(tmp_path):
+    """Displayed figures follow the stable ID through a rename, and a different server reusing the
+    old name gets none of the original history or flags (S1)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Old Show", outcome="grabbed",
+        instance_id="Old", instance_stable_id="sid-a",
+    )  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_id = 'Old', instance_stable_id = 'sid-a', episodes_found = 7 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'"
+    )
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats_a = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-a")
+    assert stats_a["episodes_found"] == 7
+    assert stats_a["sonarr_rate"] == 100.0
+    assert stats_a["sonarr_rate_includes_historical"] is True
+    assert stats_a["overall_rate_includes_historical"] is True
+    assert stats_a["avg_time_to_grab_includes_historical"] is True
+
+    stats_c = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-c")
+    assert stats_c["episodes_found"] == 0
+    assert stats_c["sonarr_rate"] is None
+    assert stats_c["sonarr_rate_includes_historical"] is False
+    assert stats_c["overall_rate_includes_historical"] is False
+    assert stats_c["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_ignores_unassociated_rows_per_instance(tmp_path):
+    """Unassociated rows (NULL/'' stable id) count only in the all-apps call, never per-instance (S1)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Removed Show", outcome="grabbed")
+    await db.commit()
+
+    stats_all = await get_dashboard_stats(db)
+    assert stats_all["sonarr_rate"] == 100.0
+
+    stats_scoped = await get_dashboard_stats(db, app="Sonarr", instance_stable_id="sid-anything")
+    assert stats_scoped["sonarr_rate"] is None
+    await db.close()
+
+
+async def test_dashboard_stats_scope_args_validated(tmp_path):
+    """Invalid scope-argument combinations raise ValueError."""
+    db, db_path = await _init_test_db(tmp_path)
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, app="Sonarr")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, instance_stable_id="sid-a")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, app="Sonarr", instance_stable_id="")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, instance_id="Default", app="Sonarr")
+    with pytest.raises(ValueError):
+        await get_dashboard_stats(db, instance_id="Default", instance_stable_id="sid-a")
+    await db.close()
+
+
+async def test_dashboard_stats_historical_flags_ignore_other_apps(tmp_path):
+    """Only pre-fix Radarr rows existing never trips any Sonarr-only historical flag."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", outcome="grabbed")  # id 1
+    await db.execute("UPDATE search_history SET resolved_at = ? WHERE id = 1", ("2026-01-02T00:00:00Z",))
+    await db.commit()
+    await _insert_cutover_row(db, legacy_max_history_id=1)
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate_includes_historical"] is False
+    assert stats["overall_rate_includes_historical"] is False
+    assert stats["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
+async def test_dashboard_stats_no_cutover_no_flags(tmp_path):
+    """With no cutover row recorded, historical flags are False and rates compute exactly as before Phase 81."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", outcome="grabbed")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", outcome="unresolved")
+    await db.commit()
+
+    stats = await get_dashboard_stats(db)
+    assert stats["sonarr_rate"] == 50.0
+    assert stats["sonarr_rate_includes_historical"] is False
+    assert stats["overall_rate_includes_historical"] is False
+    assert stats["avg_time_to_grab_includes_historical"] is False
+    await db.close()
+
+
 async def test_migration_v6_adds_instance_id_column(tmp_path):
     """Migration v6 adds instance_id column with 'Default' as default value."""
     db, db_path = await _init_test_db(tmp_path)
@@ -1473,3 +1742,829 @@ async def test_get_schema_version_on_empty_db(tmp_path: Path) -> None:
         assert version == 0
     finally:
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Migration v10: grab ownership, attribution cutover, stable-ID association
+# ---------------------------------------------------------------------------
+
+
+async def test_migration_v10_creates_attribution_tables(tmp_path):
+    """v10 creates grab_ownership/attribution_cutover/sonarr_instance_pre_fix and their indexes."""
+    db, db_path = await _init_test_db(tmp_path)
+
+    for table in ("grab_ownership", "attribution_cutover", "sonarr_instance_pre_fix"):
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ) as cursor:
+            assert await cursor.fetchone() is not None, f"missing table {table}"
+
+    for index in (
+        "idx_grab_ownership_series",
+        "idx_search_history_instance_stable_id",
+        "idx_lifetime_stats_app_stable_id",
+    ):
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name=?", (index,)
+        ) as cursor:
+            assert await cursor.fetchone() is not None, f"missing index {index}"
+
+    async with db.execute("PRAGMA table_info(search_history)") as cursor:
+        sh_cols = {row[1] for row in await cursor.fetchall()}
+    assert "instance_stable_id" in sh_cols
+
+    async with db.execute("PRAGMA table_info(lifetime_stats)") as cursor:
+        ls_cols = {row[1] for row in await cursor.fetchall()}
+    assert "instance_stable_id" in ls_cols
+
+    async with db.execute("PRAGMA table_info(attribution_cutover)") as cursor:
+        cutover_cols = {row[1] for row in await cursor.fetchall()}
+    assert {"any_pre_fix_sonarr_data", "pre_fix_sonarr_lifetime"} <= cutover_cols
+
+    async with db.execute("PRAGMA table_info(sonarr_instance_pre_fix)") as cursor:
+        pre_fix_cols = {row[1] for row in await cursor.fetchall()}
+    assert {"has_pre_fix_data", "lifetime_includes_pre_fix"} <= pre_fix_cols
+
+    assert await get_schema_version(db) == 10
+
+    async with db.execute("SELECT COUNT(*) FROM attribution_cutover") as cursor:
+        count = (await cursor.fetchone())[0]
+    assert count == 0
+    await db.close()
+
+
+async def test_migration_v10_preserves_existing_rows(tmp_path, monkeypatch):
+    """With no mapping, v10 associates nothing and changes zero existing column values."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    before = await original_projection(db)
+
+    await init_db(db, db_path)
+
+    after = await original_projection(db)
+    assert after == before
+
+    async with db.execute("SELECT instance_stable_id FROM search_history") as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+
+    async with db.execute("SELECT instance_stable_id FROM lifetime_stats") as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] == "" for row in rows)
+    await db.close()
+
+
+async def test_migration_v10_associates_stable_ids(tmp_path, monkeypatch):
+    """Mapped (app, name) rows get the stable ID in both tables; unmapped rows stay empty/NULL."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    before = await original_projection(db)
+
+    await init_db(db, db_path, instance_stable_ids=STANDARD_MAPPING)
+
+    after = await original_projection(db)
+    assert after == before
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Old'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] == "sid-a" for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Gone'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM lifetime_stats WHERE app = 'Sonarr' AND instance_id = 'Old'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "sid-a"
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM lifetime_stats WHERE app = 'Sonarr' AND instance_id = 'Gone'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == ""
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Radarr' AND instance_id = 'Default'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] == "sid-r" for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM lifetime_stats WHERE app = 'Radarr' AND instance_id = 'Default'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row[0] == "sid-r"
+
+    assert await get_schema_version(db) == 10
+    await db.close()
+
+
+async def test_migration_v10_mapping_ignores_other_apps_and_empty_ids(tmp_path, monkeypatch):
+    """A mapping entry for a different app and one with an empty stable ID are both ignored."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+
+    mapping = {("Radarr", "Old"): "sid-x", ("Sonarr", "Gone"): ""}
+    await init_db(db, db_path, instance_stable_ids=mapping)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Old'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+
+    async with db.execute(
+        "SELECT instance_stable_id FROM search_history WHERE app = 'Sonarr' AND instance_id = 'Gone'"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert rows and all(row[0] is None for row in rows)
+    await db.close()
+
+
+async def test_migration_v10_rerun_is_noop(tmp_path, monkeypatch):
+    """Re-running _apply_atomic_migration for v10 on an already-migrated DB changes nothing."""
+    db_path = await seed_v9_db(tmp_path, monkeypatch)
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    await init_db(db, db_path, instance_stable_ids=STANDARD_MAPPING)
+
+    before = await snapshot(db)
+
+    await _apply_atomic_migration(
+        db, 10, _migrate_v10, instance_stable_ids=STANDARD_MAPPING, earliest_backup=None
+    )
+
+    after = await snapshot(db)
+    assert after == before
+    assert await get_schema_version(db) == 10
+    await db.close()
+
+
+async def test_migration_v10_no_foreign_key(tmp_path):
+    """grab_ownership declares no FOREIGN KEY, so pruning search_history can never cascade into it."""
+    db, db_path = await _init_test_db(tmp_path)
+    async with db.execute("PRAGMA foreign_key_list(grab_ownership)") as cursor:
+        rows = await cursor.fetchall()
+    assert rows == []
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Stable-ID selection, pending cap, and frozen legacy pending rows
+# ---------------------------------------------------------------------------
+
+
+async def _insert_cutover(db, legacy_max_history_id: int) -> None:
+    """Insert a minimal attribution_cutover row directly, as the tests are told to."""
+    await db.execute(
+        "INSERT INTO attribution_cutover "
+        "(id, cutover_at, legacy_max_history_id, any_pre_fix_sonarr_data, pre_fix_sonarr_lifetime) "
+        "VALUES (1, ?, ?, 1, 0)",
+        ("2026-01-01T00:00:00Z", legacy_max_history_id),
+    )
+    await db.commit()
+
+
+async def test_insert_search_entry_records_stable_id(tmp_path):
+    """insert_search_entry stores the stable ID; omitting it or passing '' stores NULL."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", instance_id="Main", instance_stable_id="sid-a")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", instance_id="Main")
+    await insert_search_entry(db, "Sonarr", "missing", "Show C", instance_id="Main", instance_stable_id="")
+
+    async with db.execute("SELECT item_name, instance_stable_id FROM search_history ORDER BY id") as cursor:
+        rows = await cursor.fetchall()
+    by_name = {row[0]: row[1] for row in rows}
+    assert by_name["Show A"] == "sid-a"
+    assert by_name["Show B"] is None
+    assert by_name["Show C"] is None
+    await db.close()
+
+
+async def test_trackable_by_stable_id_follows_rename(tmp_path):
+    """get_trackable_entries(instance_stable_id=...) follows identity, not the display name."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Old Show", item_id=1, instance_id="Old", instance_stable_id="sid-a",
+    )
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", item_id=2, instance_id="Original")
+
+    by_stable = await get_trackable_entries(db, instance_stable_id="sid-a")
+    assert {e["item_id"] for e in by_stable} == {1}
+
+    by_other_stable = await get_trackable_entries(db, instance_stable_id="sid-c")
+    assert by_other_stable == []
+
+    # Radarr/Lidarr callers (out of scope for stable-ID scoping) still select by name.
+    by_name = await get_trackable_entries(db, instance_id="Original")
+    assert {e["item_id"] for e in by_name} == {2}
+    await db.close()
+
+
+async def test_trackable_stable_id_and_name_are_exclusive(tmp_path):
+    """Passing both instance_id and instance_stable_id to get_trackable_entries raises ValueError."""
+    db, db_path = await _init_test_db(tmp_path)
+    with pytest.raises(ValueError, match="instance_id"):
+        await get_trackable_entries(db, instance_id="Old", instance_stable_id="sid-a")
+    await db.close()
+
+
+async def test_pending_cap_counts_by_stable_id(tmp_path):
+    """The pending cap scoped by stable ID follows identity: renames count, name reuse doesn't."""
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 2  # cap = 2 * PENDING_CAP_MULTIPLIER = 4
+    for i in range(4):
+        await insert_search_entry(
+            db,
+            "Sonarr",
+            "missing",
+            f"Old Show {i}",
+            instance_id="Old",
+            instance_stable_id="sid-a",
+            max_rows=max_rows,
+        )
+
+    # A different server that reuses the name "Old" has its own stable ID and is not capped.
+    await insert_search_entry(
+        db, "Sonarr", "missing", "New Server Show", instance_id="Old", instance_stable_id="sid-c", max_rows=max_rows,
+    )
+
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(
+            db,
+            "Sonarr",
+            "missing",
+            "One Too Many",
+            instance_id="New Name",  # renamed instance, same stable ID still capped
+            instance_stable_id="sid-a",
+            max_rows=max_rows,
+        )
+    await db.close()
+
+
+async def test_legacy_pending_excluded_from_trackable(tmp_path):
+    """Pre-cutover pending Sonarr rows are excluded from tracking; everything else is unaffected."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Searched", item_id=1, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Partial", item_id=2, outcome="partial")
+    legacy_max_id = 2
+    await insert_search_entry(db, "Sonarr", "missing", "Post-cutover Searched", item_id=3, outcome="searched")
+    await insert_search_entry(db, "Radarr", "missing", "Legacy Radarr Searched", item_id=4, outcome="searched")
+
+    await _insert_cutover(db, legacy_max_id)
+
+    entries = await get_trackable_entries(db)
+    item_ids = {e["item_id"] for e in entries}
+    assert item_ids == {3, 4}
+    await db.close()
+
+
+async def test_legacy_pending_excluded_from_cap(tmp_path):
+    """Legacy Sonarr pending rows don't count toward the pending cap; post-cutover rows still do."""
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 1  # cap = PENDING_CAP_MULTIPLIER * 1 = 2
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy A", instance_id="Default", max_rows=max_rows)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy B", instance_id="Default", max_rows=max_rows)
+    async with db.execute("SELECT MAX(id) FROM search_history") as cursor:
+        legacy_max_id = (await cursor.fetchone())[0]
+    await _insert_cutover(db, legacy_max_id)
+
+    # Legacy rows already fill the cap, but a new post-cutover insert still succeeds.
+    await insert_search_entry(db, "Sonarr", "missing", "Post A", instance_id="Default", max_rows=max_rows)
+    await insert_search_entry(db, "Sonarr", "missing", "Post B", instance_id="Default", max_rows=max_rows)
+
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(db, "Sonarr", "missing", "Post C", instance_id="Default", max_rows=max_rows)
+    await db.close()
+
+
+async def test_legacy_pending_rows_untouched(tmp_path):
+    """Legacy rows keep their outcome, detail and resolved_at, and lifetime_stats stay unchanged."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Searched", item_id=1, outcome="searched")
+    await _insert_cutover(db, 1)
+
+    async with db.execute("SELECT * FROM lifetime_stats ORDER BY app, instance_id") as cursor:
+        before_stats = [tuple(row) for row in await cursor.fetchall()]
+
+    await get_trackable_entries(db)
+    await insert_search_entry(db, "Sonarr", "missing", "Post Searched", item_id=2, outcome="searched")
+
+    async with db.execute(
+        "SELECT outcome, detail, resolved_at FROM search_history WHERE item_name = 'Legacy Searched'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "searched"
+    assert row["detail"] in (None, "")
+    assert row["resolved_at"] is None
+
+    async with db.execute("SELECT * FROM lifetime_stats ORDER BY app, instance_id") as cursor:
+        after_stats = [tuple(row) for row in await cursor.fetchall()]
+    assert after_stats == before_stats
+    await db.close()
+
+
+async def test_legacy_pending_flag_in_listings(tmp_path):
+    """get_search_history and get_recent_searches flag pre-cutover pending Sonarr rows as legacy."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Searched", item_id=1, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Legacy Resolved", item_id=2, outcome="grabbed")
+    legacy_max_id = 2
+    await insert_search_entry(db, "Sonarr", "missing", "Post Searched", item_id=3, outcome="searched")
+    await insert_search_entry(db, "Radarr", "missing", "Legacy Radarr Searched", item_id=4, outcome="searched")
+
+    await _insert_cutover(db, legacy_max_id)
+
+    history = await get_search_history(db, per_page=50)
+    flags = {e["name"]: e["is_legacy"] for e in history["entries"]}
+    assert flags["Legacy Searched"] is True
+    assert flags["Legacy Resolved"] is False
+    assert flags["Post Searched"] is False
+    assert flags["Legacy Radarr Searched"] is False
+
+    recent = await get_recent_searches(db, limit=50)
+    recent_flags = {e["name"]: e["is_legacy"] for e in recent}
+    assert recent_flags["Legacy Searched"] is True
+    assert recent_flags["Legacy Resolved"] is False
+    assert recent_flags["Post Searched"] is False
+    assert recent_flags["Legacy Radarr Searched"] is False
+    await db.close()
+
+
+async def test_no_legacy_pending_without_cutover_row(tmp_path):
+    """With no attribution_cutover row, nothing is legacy and tracking/cap behave as before."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Pending Show", item_id=1, outcome="searched")
+
+    entries = await get_trackable_entries(db)
+    assert {e["item_id"] for e in entries} == {1}
+
+    history = await get_search_history(db, per_page=50)
+    assert all(e["is_legacy"] is False for e in history["entries"])
+
+    recent = await get_recent_searches(db, limit=50)
+    assert all(e["is_legacy"] is False for e in recent)
+    await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Grab ownership: atomic with outcome/stats, keyed by (app, stable ID, grab ID)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_outcome_and_stats_ownership_commits_together(tmp_path):
+    """Ownership rows commit in the same transaction as the outcome/stat update."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+
+    owned_grabs = [OwnedGrab(501, 9001, 10, 1), OwnedGrab(502, 9002, 10, 1)]
+    await update_outcome_and_stats(
+        db,
+        1,
+        "grabbed",
+        "grabbed: 2/2 episodes",
+        app="Sonarr",
+        queue_type="missing",
+        instance_stable_id="sid-a",
+        stat_increments={"episodes_found": 2},
+        owned_grabs=owned_grabs,
+    )
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "grabbed"
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 2
+
+    async with db.execute(
+        "SELECT grab_id, history_id, series_id, season_number, episode_id FROM grab_ownership "
+        "WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a' ORDER BY grab_id"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert [tuple(r) for r in rows] == [(501, 1, 10, 1, 9001), (502, 1, 10, 1, 9002)]
+    await db.close()
+
+
+async def test_update_outcome_and_stats_ownership_rollback_on_failure(tmp_path):
+    """An already-owned grab_id rolls back the outcome/stat update too -- all or nothing."""
+    import sqlite3
+
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db,
+        1,
+        "grabbed",
+        "grabbed: 1/1 episodes",
+        app="Sonarr",
+        queue_type="missing",
+        instance_stable_id="sid-a",
+        stat_increments={"episodes_found": 1},
+        owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+
+    async with db.execute(
+        "SELECT outcome, detail, resolved_at FROM search_history WHERE id = 1"
+    ) as cursor:
+        before_history = tuple(await cursor.fetchone())
+    async with db.execute(
+        "SELECT * FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        before_stats = tuple(await cursor.fetchone())
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=11, outcome="searched")
+    with pytest.raises(sqlite3.IntegrityError):
+        await update_outcome_and_stats(
+            db,
+            2,
+            "grabbed",
+            "grabbed: 1/1 episodes",
+            app="Sonarr",
+            queue_type="missing",
+            instance_stable_id="sid-a",
+            stat_increments={"episodes_found": 1},
+            owned_grabs=[OwnedGrab(501, 9002, 11, 1)],  # grab_id 501 already owned by sid-a
+        )
+
+    async with db.execute(
+        "SELECT outcome, detail, resolved_at FROM search_history WHERE id = 1"
+    ) as cursor:
+        after_history = tuple(await cursor.fetchone())
+    async with db.execute(
+        "SELECT * FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        after_stats = tuple(await cursor.fetchone())
+    assert after_history == before_history
+    assert after_stats == before_stats
+
+    async with db.execute(
+        "SELECT outcome FROM search_history WHERE id = 2"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "searched"  # the failed update never landed
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM grab_ownership WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        count = (await cursor.fetchone())[0]
+    assert count == 1  # only the original grab_id 501 row, nothing from the failed call
+    await db.close()
+
+
+async def test_update_outcome_and_stats_ownership_requires_stable_id(tmp_path):
+    """Non-empty owned_grabs with no stable ID raises ValueError before any write."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+
+    for bad_stable_id in (None, ""):
+        with pytest.raises(ValueError, match="instance_stable_id"):
+            await update_outcome_and_stats(
+                db,
+                1,
+                "grabbed",
+                "grabbed: 1/1 episodes",
+                app="Sonarr",
+                queue_type="missing",
+                instance_stable_id=bad_stable_id,
+                owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+            )
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "searched"  # unchanged -- the ValueError fired before any write
+    await db.close()
+
+
+async def test_update_outcome_and_stats_without_ownership_unchanged(tmp_path):
+    """Calling update_outcome_and_stats with no new kwargs behaves exactly as before (Radarr/Lidarr)."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Radarr", "missing", "Movie A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Radarr", queue_type="missing", stat_increments={"movies_found": 1},
+    )
+
+    async with db.execute("SELECT outcome FROM search_history WHERE id = 1") as cursor:
+        row = await cursor.fetchone()
+    assert row["outcome"] == "grabbed"
+
+    async with db.execute(
+        "SELECT movies_found FROM lifetime_stats WHERE app = 'Radarr' AND instance_id = 'Default'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["movies_found"] == 1
+
+    async with db.execute("SELECT COUNT(*) FROM grab_ownership") as cursor:
+        count = (await cursor.fetchone())[0]
+    assert count == 0
+    await db.close()
+
+
+async def test_ownership_cross_instance_same_grab_id(tmp_path):
+    """The same grab_id for two different stable instance IDs is stored independently."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=20, outcome="searched")
+
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+    await update_outcome_and_stats(
+        db, 2, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-b", owned_grabs=[OwnedGrab(501, 9002, 20, 1)],
+    )
+
+    async with db.execute(
+        "SELECT instance_stable_id, history_id FROM grab_ownership "
+        "WHERE grab_id = 501 ORDER BY instance_stable_id"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    assert [tuple(r) for r in rows] == [("sid-a", 1), ("sid-b", 2)]
+    await db.close()
+
+
+async def test_ownership_survives_pruning(tmp_path):
+    """grab_ownership has no reference to search_history, so pruning the owner row leaves it intact."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched", max_rows=1)
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+
+    # Insert enough resolved rows to prune the owner row out of search_history (max_rows=1).
+    for i in range(3):
+        await insert_search_entry(
+            db, "Sonarr", "missing", f"Filler {i}", item_id=20 + i, outcome="grabbed", max_rows=1,
+        )
+
+    async with db.execute("SELECT COUNT(*) FROM search_history WHERE id = 1") as cursor:
+        assert (await cursor.fetchone())[0] == 0  # owner row was pruned
+
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-a", series_id=10)
+    assert owned == [OwnedGrabRecord(501, 1, 9001)]
+    await db.close()
+
+
+async def test_ownership_survives_restart(tmp_path):
+    """Ownership rows persist across a connection close and reopen."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+    await db.close()
+
+    db2 = await aiosqlite.connect(db_path)
+    await init_db(db2, db_path)
+    owned = await get_owned_grabs(db2, app="Sonarr", instance_stable_id="sid-a", series_id=10)
+    assert owned == [OwnedGrabRecord(501, 1, 9001)]
+    await db2.close()
+
+
+async def test_lifetime_increment_follows_stable_id_after_rename(tmp_path):
+    """A rename keeps adding to the same stable-ID row; its stored name stays the old one."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO lifetime_stats (app, instance_id, instance_stable_id, episodes_found, last_reset_at) "
+        "VALUES ('Sonarr', 'Old', 'sid-a', 7, ?)",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.commit()
+    async with db.execute("SELECT COUNT(*) FROM lifetime_stats") as cursor:
+        count_before = (await cursor.fetchone())[0]
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="New",
+        instance_stable_id="sid-a", stat_increments={"episodes_found": 2},
+    )
+
+    async with db.execute(
+        "SELECT instance_id, episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["instance_id"] == "Old"
+    assert row["episodes_found"] == 9
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM lifetime_stats WHERE instance_id = 'New'"
+    ) as cursor:
+        assert (await cursor.fetchone())[0] == 0
+
+    async with db.execute("SELECT COUNT(*) FROM lifetime_stats") as cursor:
+        assert (await cursor.fetchone())[0] == count_before
+    await db.close()
+
+
+async def test_lifetime_increment_name_reuse_gets_own_row(tmp_path):
+    """A different server reusing an old name gets its own row; the original stable-ID row is untouched."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "INSERT INTO lifetime_stats (app, instance_id, instance_stable_id, episodes_found, last_reset_at) "
+        "VALUES ('Sonarr', 'Old', 'sid-a', 7, ?)",
+        ("2026-01-01T00:00:00Z",),
+    )
+    await db.commit()
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="Old",
+        instance_stable_id="sid-c", stat_increments={"episodes_found": 3},
+    )
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-c'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 3
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 7
+    await db.close()
+
+
+async def test_lifetime_increment_never_touches_unassociated_rows(tmp_path):
+    """An unassociated ('') row is never incremented again, whatever stable ID is used."""
+    db, db_path = await _init_test_db(tmp_path)
+    await db.execute(
+        "UPDATE lifetime_stats SET instance_id = 'Gone', episodes_found = 4 "
+        "WHERE app = 'Sonarr' AND instance_id = 'Default'"
+    )
+    await db.commit()
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="Gone",
+        instance_stable_id="sid-z", stat_increments={"episodes_found": 1},
+    )
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats "
+        "WHERE app = 'Sonarr' AND instance_id = 'Gone' AND instance_stable_id = ''"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 4
+    await db.close()
+
+
+async def test_lifetime_increment_without_stable_id_legacy_path(tmp_path):
+    """With no stable ID, increments the legacy (app, name, '') row, creating it if missing."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, instance_id="Legacy", outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_id="Legacy",
+        stat_increments={"episodes_found": 5},
+    )
+
+    async with db.execute(
+        "SELECT episodes_found, instance_stable_id FROM lifetime_stats "
+        "WHERE app = 'Sonarr' AND instance_id = 'Legacy'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["episodes_found"] == 5
+    assert row["instance_stable_id"] == ""
+    await db.close()
+
+
+async def test_lifetime_increment_rolls_back_with_ownership_failure(tmp_path):
+    """The stable-ID lifetime row is unchanged when the ownership insert fails."""
+    import sqlite3
+
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+        instance_stable_id="sid-a", stat_increments={"episodes_found": 1},
+        owned_grabs=[OwnedGrab(501, 9001, 10, 1)],
+    )
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        before = (await cursor.fetchone())[0]
+
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=11, outcome="searched")
+    with pytest.raises(sqlite3.IntegrityError):
+        await update_outcome_and_stats(
+            db, 2, "grabbed", "grabbed", app="Sonarr", queue_type="missing",
+            instance_stable_id="sid-a", stat_increments={"episodes_found": 10},
+            owned_grabs=[OwnedGrab(501, 9002, 11, 1)],
+        )
+
+    async with db.execute(
+        "SELECT episodes_found FROM lifetime_stats WHERE app = 'Sonarr' AND instance_stable_id = 'sid-a'"
+    ) as cursor:
+        after = (await cursor.fetchone())[0]
+    assert after == before
+    await db.close()
+
+
+async def test_get_owned_grabs_scoped(tmp_path):
+    """get_owned_grabs returns only the given (app, stable ID, series) rows."""
+    db, db_path = await _init_test_db(tmp_path)
+    await insert_search_entry(db, "Sonarr", "missing", "Show A", item_id=10, outcome="searched")
+    await insert_search_entry(db, "Sonarr", "missing", "Show B", item_id=20, outcome="searched")
+    await update_outcome_and_stats(
+        db, 1, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_stable_id="sid-a",
+        owned_grabs=[OwnedGrab(501, 9001, 10, 1), OwnedGrab(502, 9002, 10, 1)],
+    )
+    await update_outcome_and_stats(
+        db, 2, "grabbed", "grabbed", app="Sonarr", queue_type="missing", instance_stable_id="sid-a",
+        owned_grabs=[OwnedGrab(601, 9101, 20, 1)],
+    )
+
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-a", series_id=10)
+    assert set(owned) == {OwnedGrabRecord(501, 1, 9001), OwnedGrabRecord(502, 1, 9002)}
+    await db.close()
+
+
+async def _set_outcome(db, row_ids, outcome: str) -> None:
+    """Move existing rows to ``outcome`` without an insert (and so without a prune)."""
+    for row_id in row_ids:
+        await db.execute("UPDATE search_history SET outcome = ? WHERE id = ?", (outcome, row_id))
+    await db.commit()
+
+
+async def _ids(db, where: str = "1 = 1", params: tuple = ()) -> list[int]:
+    async with db.execute(f"SELECT id FROM search_history WHERE {where} ORDER BY id", params) as cursor:  # noqa: S608
+        return [r[0] for r in await cursor.fetchall()]
+
+
+async def test_pruning_preserves_partial_rows_and_trims_terminal(tmp_path):
+    """Pending rows -- 'searched' AND non-terminal 'partial' (a held or in-window search
+    still being tracked) -- survive insertion-time pruning; terminal outcomes, including
+    'partial_expired', stay prunable down to max_rows."""
+    db, db_path = await _init_test_db(tmp_path)
+    for i in range(4):
+        await insert_search_entry(db, "Sonarr", "missing", f"Pending {i}", item_id=i, max_rows=3)
+    pending_ids = await _ids(db)
+    await _set_outcome(db, pending_ids[:2], "partial")
+
+    for i, outcome in enumerate(["partial_expired", "unresolved", "grabbed", "partial_expired", "grabbed", "failed"]):
+        await insert_search_entry(db, "Sonarr", "missing", f"Done {i}", outcome=outcome, max_rows=3)
+
+    assert await _ids(db, "outcome = 'partial'") == pending_ids[:2]
+    assert await _ids(db, "outcome = 'searched'") == pending_ids[2:]
+    terminal = await _ids(db, "outcome NOT IN ('searched', 'partial')")
+    assert len(terminal) == 3  # trimmed to max_rows, oldest first
+    async with db.execute(
+        "SELECT outcome FROM search_history WHERE outcome NOT IN ('searched', 'partial') ORDER BY id"
+    ) as cursor:
+        assert [r[0] for r in await cursor.fetchall()] == ["partial_expired", "grabbed", "failed"]
+    await db.close()
+
+
+async def test_pending_cap_counts_active_partial_rows(tmp_path):
+    """Active 'partial' rows count toward the pending cap with 'searched' rows, scoped by
+    app and stable instance ID; legacy pre-cutover rows stay excluded; the rejection
+    behaviour (PendingCapExceeded, no write) is unchanged."""
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 2  # cap = PENDING_CAP_MULTIPLIER * 2 = 4
+
+    # Two legacy pending rows (one partial) -- frozen, never counted.
+    for i in range(2):
+        await insert_search_entry(
+            db, "Sonarr", "missing", f"Legacy {i}", instance_id="Main", instance_stable_id="sid-a", max_rows=max_rows,
+        )
+    legacy_ids = await _ids(db)
+    await _set_outcome(db, legacy_ids[:1], "partial")
+    await _insert_cutover(db, legacy_ids[-1])
+
+    # Four post-cutover pending rows for sid-a, two of them now partial.
+    for i in range(4):
+        await insert_search_entry(
+            db, "Sonarr", "missing", f"Post {i}", instance_id="Main", instance_stable_id="sid-a", max_rows=max_rows,
+        )
+    post_ids = await _ids(db, "id > ?", (legacy_ids[-1],))
+    await _set_outcome(db, post_ids[:2], "partial")
+
+    # Another stable instance is isolated: its own cap, unaffected by sid-a.
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Other server", instance_id="Main", instance_stable_id="sid-b", max_rows=max_rows,
+    )
+
+    before = await _ids(db)
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(
+            db, "Sonarr", "missing", "One Too Many", instance_id="Main", instance_stable_id="sid-a",
+            max_rows=max_rows,
+        )
+    assert await _ids(db) == before  # rejected with no write
+    await db.close()

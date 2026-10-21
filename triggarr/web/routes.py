@@ -28,6 +28,7 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import SecretStr
 
+from triggarr.attribution import get_attribution_disclosure
 from triggarr.auth import (
     COOKIE_MAX_AGE,
     generate_api_key,
@@ -43,7 +44,7 @@ from triggarr.clients.base import Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
-from triggarr.config import _atomic_toml_write, load_settings
+from triggarr.config import _atomic_toml_write, _settings_to_dict, load_settings, new_instance_id
 from triggarr.db import get_dashboard_stats, get_recent_searches, get_search_history
 from triggarr.log_buffer import log_buffer
 from triggarr.logging import setup_logging
@@ -246,32 +247,6 @@ def _safe_next_url(next_param: str | None) -> str:
     if not next_param.startswith("/"):
         return "/"
     return next_param
-
-
-def _settings_to_dict(settings: SettingsModel) -> dict:
-    """Convert Settings to a plain dict suitable for TOML serialization.
-
-    This is the sole extraction point for SecretStr -> plain string outside of
-    HTTP client init (see CLAUDE.md SecretStr convention).
-    """
-    result: dict = {"general": settings.general.model_dump()}
-    for app_name in APP_TYPES:
-        instances = getattr(settings, app_name)
-        result[app_name] = {}
-        for inst_name, cfg in instances.items():
-            d = cfg.model_dump()
-            d["api_key"] = cfg.api_key.get_secret_value()  # TOML serialization extraction
-            result[app_name][inst_name] = d
-    # Auth section: extract SecretStr values for TOML serialization
-    auth = settings.auth
-    result["auth"] = {
-        "method": auth.method,
-        "username": auth.username,
-        "password_hash": auth.password_hash.get_secret_value(),
-        "api_key": auth.api_key.get_secret_value(),
-        "session_secret": auth.session_secret.get_secret_value(),
-    }
-    return result
 
 
 @router.get("/health")
@@ -518,6 +493,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
     health = _build_health_summary(request)
     all_instances = _build_all_instances(settings)
+    disclosure = await get_attribution_disclosure(request.app.state.db, view_app=None)
 
     return templates.TemplateResponse(
         request=request,
@@ -531,6 +507,7 @@ async def dashboard(request: Request) -> HTMLResponse:
             "all_instances": all_instances,
             "selected_instance": "",
             "instance_app_type": None,
+            "disclosure": disclosure,
             "show_migration_banner": (_runtime_config_dir(request) / ".migrated").exists(),
             "radarr_enabled": bool(settings.get_enabled_instances("radarr")),
             "sonarr_enabled": bool(settings.get_enabled_instances("sonarr")),
@@ -709,6 +686,7 @@ async def save_settings(request: Request) -> RedirectResponse:
                     submitted_key = current_cfg.api_key
 
                 new_config[name][inst_name] = {
+                    "id": current_cfg.id if current_cfg else new_instance_id(),
                     "url": url,
                     "api_key": submitted_key,
                     "enabled": fields.get("enabled") == "on",
@@ -723,6 +701,7 @@ async def save_settings(request: Request) -> RedirectResponse:
             # Keep SecretStr objects; _settings_to_dict extracts for TOML write
             for inst_name, existing_cfg in current_instances.items():
                 new_config[name][inst_name] = {
+                    "id": existing_cfg.id,
                     "url": existing_cfg.url,
                     "api_key": existing_cfg.api_key,
                     "enabled": existing_cfg.enabled,
@@ -932,6 +911,7 @@ async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
     config_dict = _settings_to_dict(settings)
     config_dict[app_name][instance_name] = InstanceConfig().model_dump()
     config_dict[app_name][instance_name]["api_key"] = ""
+    config_dict[app_name][instance_name]["id"] = new_instance_id()
     try:
         new_settings = SettingsModel(**config_dict)
     except pydantic.ValidationError as exc:
@@ -1284,32 +1264,52 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
     instance_param = request.query_params.get("instance")
     if instance_param and len(instance_param) > 128:
         return HTMLResponse("Invalid instance parameter", status_code=400)
+    settings = request.app.state.settings
     instance_id: str | None = None
     instance_app_type: str | None = None
+    cfg: InstanceConfig | None = None
 
     if instance_param:
         if "/" in instance_param:
             app_type, inst_name = instance_param.split("/", 1)
             if app_type not in APP_TYPES:
                 return HTMLResponse("Invalid instance parameter", status_code=400)
-            enabled = request.app.state.settings.get_enabled_instances(app_type)
+            enabled = settings.get_enabled_instances(app_type)
             if inst_name not in enabled:
                 return HTMLResponse("Invalid instance parameter", status_code=400)
             instance_id = inst_name
             instance_app_type = app_type
+            cfg = enabled[inst_name]
         else:
             instance_id = instance_param
             # Determine app type by checking which app has this instance
-            settings = request.app.state.settings
             for app_name in APP_TYPES:
-                if instance_id in settings.get_enabled_instances(app_name):
+                enabled = settings.get_enabled_instances(app_name)
+                if instance_id in enabled:
                     instance_app_type = app_name
+                    cfg = enabled[instance_id]
                     break
 
-    stats = await get_dashboard_stats(request.app.state.db, instance_id=instance_id)
+        # A stable ID is required to scope stats and disclosure by the same
+        # identity (T-81-23, T-81-27b); it is looked up from settings, never
+        # taken from the request. This cannot happen after the startup
+        # backfill and add_instance, but a missing one must never fall back
+        # to name-only stats (which could match an unassociated row).
+        if cfg is None or not cfg.id:
+            return HTMLResponse("Invalid instance parameter", status_code=400)
+
+    if instance_app_type is not None and cfg is not None:
+        app_title = instance_app_type.title()
+        stats = await get_dashboard_stats(request.app.state.db, app=app_title, instance_stable_id=cfg.id)
+    else:
+        stats = await get_dashboard_stats(request.app.state.db, instance_id=instance_id)
+
     time_to_grab = _format_duration(stats["avg_time_to_grab_seconds"])
-    all_instances = _build_all_instances(request.app.state.settings)
-    settings = request.app.state.settings
+    all_instances = _build_all_instances(settings)
+    sonarr_stable_id = cfg.id if instance_app_type == "sonarr" and cfg is not None else None
+    disclosure = await get_attribution_disclosure(
+        request.app.state.db, view_app=instance_app_type, sonarr_stable_id=sonarr_stable_id,
+    )
     return templates.TemplateResponse(
         request=request,
         name="partials/stats_row.html",
@@ -1319,6 +1319,7 @@ async def partial_stats_row(request: Request) -> HTMLResponse:
             "all_instances": all_instances,
             "selected_instance": instance_param or "",
             "instance_app_type": instance_app_type,
+            "disclosure": disclosure,
             "radarr_enabled": bool(settings.get_enabled_instances("radarr")),
             "sonarr_enabled": bool(settings.get_enabled_instances("sonarr")),
             "lidarr_enabled": bool(settings.get_enabled_instances("lidarr")),

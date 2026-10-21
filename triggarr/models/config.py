@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import parse_qsl, urlparse
@@ -12,6 +13,8 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, TomlConf
 
 APP_TYPES: tuple[str, ...] = ("radarr", "sonarr", "lidarr")
 """Supported *arr application types. Used across config, state, scheduler, and routes."""
+
+_INSTANCE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def get_config_dir() -> Path:
@@ -52,6 +55,11 @@ class InstanceConfig(BaseModel):
     url: str = ""
     api_key: SecretStr = SecretStr("")
     enabled: bool = False
+    # Permanent Triggarr-assigned ID used for grab ownership and pending-search
+    # selection. It survives renames and settings saves. "" means the instance
+    # still needs one; startup backfills it. Deliberately not a default_factory:
+    # a factory would mint a new ID on every construction that omits the field.
+    id: str = ""
 
     # Search tuning (sensible defaults -- override in config to customize)
     search_interval: int = 30  # Minutes between search cycles
@@ -61,6 +69,16 @@ class InstanceConfig(BaseModel):
     # Tag filtering (empty = search all items, no filtering)
     missing_tag: str = ""  # Tag name for missing queue filter
     cutoff_tag: str = ""  # Tag name for cutoff queue filter
+
+    @field_validator("id")
+    @classmethod
+    def validate_instance_id(cls, v: str) -> str:
+        """Allow "" (needs backfill) or 1-64 characters of [A-Za-z0-9_-]."""
+        v = v.strip()
+        if v and not _INSTANCE_ID_RE.fullmatch(v):
+            msg = "Instance id must be 1-64 characters of letters, digits, '_' or '-'"
+            raise ValueError(msg)
+        return v
 
     @field_validator("url")
     @classmethod
