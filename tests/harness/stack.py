@@ -322,14 +322,23 @@ def assert_image_identity(image: str, expected_id: str) -> None:
 
 
 def wait_for_http_health(base: str, timeout: float, *, poll_interval: float = 1.0) -> None:
-    """Poll checks.check_health until it passes or timeout elapses."""
+    """Poll checks.check_health until it passes or timeout elapses.
+
+    While the server is still starting up (or mid-restart, between the old
+    process closing its socket and the new one binding it), a connection
+    attempt can legitimately fail with a connection-refused/reset OSError
+    (urllib.error.URLError is itself an OSError subclass) rather than a
+    well-formed SmokeCheckError -- that is an expected transient condition
+    during polling, not a terminal failure, so it is retried exactly like a
+    SmokeCheckError until the deadline.
+    """
     deadline = time.monotonic() + timeout
     last_exc: Exception | None = None
     while time.monotonic() < deadline:
         try:
             checks.check_health(base)
             return
-        except SmokeCheckError as exc:
+        except (SmokeCheckError, OSError) as exc:
             last_exc = exc
             time.sleep(poll_interval)
     raise SmokeCheckError("health-timeout", f"did not become healthy within {timeout}s: {last_exc}")

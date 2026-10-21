@@ -84,9 +84,23 @@ def _request(
         return exc.code, resp_headers, exc.read()
 
 
+def _header(headers: dict[str, str], name: str) -> str | None:
+    """Case-insensitive header lookup (HTTP header names are case-insensitive, RFC 7230 S3.2).
+
+    A real ASGI server (Starlette/Uvicorn, as used by the shipped image) emits
+    response header names in lowercase over the wire -- a plain dict.get() with
+    mixed-case names like "Set-Cookie"/"Location" silently misses them.
+    """
+    target = name.lower()
+    for key, value in headers.items():
+        if key.lower() == target:
+            return value
+    return None
+
+
 def _cookie_value(headers: dict[str, str], name: str) -> str | None:
     """Parse a Set-Cookie response header and return the named cookie's value, if present."""
-    raw = headers.get("Set-Cookie")
+    raw = _header(headers, "Set-Cookie")
     if not raw:
         return None
     jar: SimpleCookie[str] = SimpleCookie()
@@ -142,7 +156,7 @@ def complete_setup(base: str, username: str, password: str) -> str:
 def check_setup_closed(base: str) -> None:
     """GET /setup must redirect to /login once setup has already been completed."""
     status, headers, _ = _request(base, "/setup")
-    location = headers.get("Location", "")
+    location = _header(headers, "Location") or ""
     if status != 302 or "/login" not in location:
         raise SmokeCheckError("setup-still-open", f"GET /setup returned status={status}")
 
@@ -189,7 +203,7 @@ def check_dashboard(base: str, cookie: str) -> None:
 def check_protected_redirects_to_login(base: str) -> None:
     """GET / without a session must redirect a browser request to /login."""
     status, headers, _ = _request(base, "/", headers={"Accept": "text/html"})
-    location = headers.get("Location", "")
+    location = _header(headers, "Location") or ""
     if status != 302 or "/login" not in location:
         raise SmokeCheckError("protected-page-open", f"GET / without session returned status={status}")
 

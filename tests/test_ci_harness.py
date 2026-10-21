@@ -347,6 +347,22 @@ def test_complete_setup_returns_cookie_value(fake_server: tuple[_FakeServerState
     assert cookie == "abc123"
 
 
+def test_complete_setup_returns_cookie_value_from_lowercase_header(
+    fake_server: tuple[_FakeServerState, str],
+) -> None:
+    """A real ASGI server (Starlette/Uvicorn) emits "set-cookie" lowercase over the wire."""
+    state, base = fake_server
+    state.set_response(
+        "POST",
+        "/setup",
+        200,
+        headers={"set-cookie": f"{checks.SESSION_COOKIE}=abc123; HttpOnly; Path=/"},
+        body=b"Account Created",
+    )
+    cookie = checks.complete_setup(base, "admin", "irrelevant-test-password")
+    assert cookie == "abc123"
+
+
 def test_complete_setup_fails_without_cookie(fake_server: tuple[_FakeServerState, str]) -> None:
     state, base = fake_server
     state.set_response("POST", "/setup", 200, body=b"Account Created")
@@ -358,6 +374,15 @@ def test_complete_setup_fails_without_cookie(fake_server: tuple[_FakeServerState
 def test_check_setup_closed_passes(fake_server: tuple[_FakeServerState, str]) -> None:
     state, base = fake_server
     state.set_response("GET", "/setup", 302, headers={"Location": "/login?setup=done"})
+    checks.check_setup_closed(base)  # Does not raise.
+
+
+def test_check_setup_closed_passes_with_lowercase_location_header(
+    fake_server: tuple[_FakeServerState, str],
+) -> None:
+    """A real ASGI server (Starlette/Uvicorn) emits "location" lowercase over the wire."""
+    state, base = fake_server
+    state.set_response("GET", "/setup", 302, headers={"location": "/login?setup=done"})
     checks.check_setup_closed(base)  # Does not raise.
 
 
@@ -435,6 +460,15 @@ def test_check_dashboard_fails_on_redirect(fake_server: tuple[_FakeServerState, 
 def test_check_protected_redirects_to_login_passes(fake_server: tuple[_FakeServerState, str]) -> None:
     state, base = fake_server
     state.set_response("GET", "/", 302, headers={"Location": "/login?next=%2F"})
+    checks.check_protected_redirects_to_login(base)  # Does not raise.
+
+
+def test_check_protected_redirects_to_login_passes_with_lowercase_location_header(
+    fake_server: tuple[_FakeServerState, str],
+) -> None:
+    """A real ASGI server (Starlette/Uvicorn) emits "location" lowercase over the wire."""
+    state, base = fake_server
+    state.set_response("GET", "/", 302, headers={"location": "/login?next=%2F"})
     checks.check_protected_redirects_to_login(base)  # Does not raise.
 
 

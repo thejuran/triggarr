@@ -401,6 +401,34 @@ def test_wait_for_http_health_times_out(monkeypatch: pytest.MonkeyPatch) -> None
         stack.wait_for_http_health("http://127.0.0.1:1", 0.05)
 
 
+def test_wait_for_http_health_retries_past_a_connection_reset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transient connection-refused/reset OSError (e.g. mid-restart) is retried, not raised."""
+    calls = {"count": 0}
+
+    def refused_then_ok(base: str) -> None:
+        calls["count"] += 1
+        if calls["count"] < 2:
+            raise ConnectionResetError("Connection reset by peer")
+
+    monkeypatch.setattr(stack.checks, "check_health", refused_then_ok)
+    monkeypatch.setattr(stack.time, "sleep", lambda _seconds: None)
+
+    stack.wait_for_http_health("http://127.0.0.1:1", 5.0)  # Does not raise.
+    assert calls["count"] >= 2
+
+
+def test_wait_for_http_health_times_out_on_repeated_connection_reset(monkeypatch: pytest.MonkeyPatch) -> None:
+    def always_refused(base: str) -> None:
+        raise ConnectionResetError("Connection reset by peer")
+
+    monkeypatch.setattr(stack.checks, "check_health", always_refused)
+    monkeypatch.setattr(stack.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(stack.SmokeCheckError) as excinfo:
+        stack.wait_for_http_health("http://127.0.0.1:1", 0.05)
+    assert excinfo.value.reason == "health-timeout"
+
+
 def test_wait_for_http_health_succeeds_once_check_passes(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"count": 0}
 
