@@ -977,6 +977,65 @@ async def test_client_path_v5_per_id_cap_defers_second_lookup(tmp_path, monkeypa
     await db.close()
 
 
+async def test_client_path_v5_per_id_budget_overflow_keeps_progress_across_checks(tmp_path):
+    """More ids missing from the series list than one check's per-id budget allows:
+    the verified lookups are kept (owned, row partial) so the next check spends its
+    budget only on the rest and credits every episode -- never the same lookups
+    repeated until 24h escalation undercounts the search."""
+    budget = tracking_module._MAX_EPISODE_ID_LOOKUPS_PER_CHECK
+    total = budget + 1
+    db = await _init_db(tmp_path)
+    when = datetime.now(UTC) - timedelta(minutes=10)
+    records = [
+        {
+            "id": 71000 + n, "episodeId": 1000 + n, "seriesId": 61,
+            "sourceTitle": "Overflow.S01.1080p-GRP", "date": when.isoformat().replace("+00:00", "Z"),
+            "eventType": "grabbed", "downloadId": "DL-OVERFLOW", "data": {},
+        }
+        for n in range(total)
+    ]
+    fake = _SonarrHistoryFake(
+        {61: records},
+        series_episode_lists={61: []},  # no id present -- every grab needs the per-id fallback
+        episodes={
+            1000 + n: {"id": 1000 + n, "seriesId": 61, "seasonNumber": 1, "episodeNumber": n + 1}
+            for n in range(total)
+        },
+    )
+
+    search_time = datetime.now(UTC) - timedelta(minutes=15)
+    row = await _seed(db, item_id=61, season_number=1, missing_count=total, timestamp=search_time)
+
+    client = _client(fake)
+    try:
+        await run_tracking_check(
+            db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+        )
+    finally:
+        await client.close()
+
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=61)
+    assert len(owned) == budget  # verified progress kept, not discarded
+    assert await _outcome(db, row) == "partial"  # non-terminal while one identity is unverified
+    first_check_lookups = len(_per_id_requests(fake))
+    assert first_check_lookups == budget
+
+    client = _client(fake)
+    try:
+        await run_tracking_check(
+            db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+        )
+    finally:
+        await client.close()
+
+    assert len(_per_id_requests(fake)) - first_check_lookups == 1  # only the remaining id
+    assert await _outcome(db, row) == "grabbed"
+    assert f"{total}/{total}" in await _detail(db, row)
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=61)
+    assert {o.episode_id for o in owned} == {1000 + n for n in range(total)}
+    await db.close()
+
+
 async def test_client_path_v5_row_escalation_old_row_resolves_recent_held(tmp_path):
     """One series with an old row (26h past its window end) and a recently-expired
     row (2h past), list returning 503: the old row escalates to 'unresolved' with
