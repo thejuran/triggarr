@@ -7,6 +7,9 @@ const {releaseIdentityGate, parseReleaseTag, parseProjectVersion} = require('./r
 const IMAGE_ID_RE = /^sha256:[a-f0-9]{64}$/;
 const COMMIT_SHA_RE = /^[a-f0-9]{40}$/;
 const REHEARSAL_REPO = {owner: 'rehearsal', repo: 'triggarr'};
+// Same version shape release-policy.cjs's RELEASE_TAG_RE accepts after the "v". A package version
+// outside it (e.g. "2.13.0.dev0", "2.6.1-dev") can never be released, so no tag can match it.
+const RELEASABLE_VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 function buildContentsStandIn(pyprojectText, sha) {
   return {
@@ -121,6 +124,17 @@ async function rehearseReleaseIdentity({pyprojectText, sha, imageVersion, imageI
   const core = {info: () => {}};
 
   const lines = [`Rehearsing release identity for image ${imageId} at commit ${sha}`];
+  if (!RELEASABLE_VERSION_RE.test(packageVersion)) {
+    // A dev/pre-release package version is not releasable: no tag can ever match it, so the
+    // matching, mismatched and missing cases have nothing to rehearse. Skip them (visibly) rather
+    // than failing CI for a commit that is not a release candidate; the malformed case still runs.
+    const reason = `skipped (package version ${JSON.stringify(packageVersion)} is not a releasable X.Y.Z version)`;
+    lines.push(`matching: ${reason}`);
+    lines.push(`mismatched: ${reason}`);
+    lines.push(await malformedCase({packageVersion, imageVersion, sha, github, core, gate, parseTag}));
+    lines.push(`missing: ${reason}`);
+    return lines;
+  }
   lines.push(await matchingCase({packageVersion, imageVersion, sha, github, core, gate}));
   lines.push(await mismatchedCase({packageVersion, imageVersion, sha, github, core, gate}));
   lines.push(await malformedCase({packageVersion, imageVersion, sha, github, core, gate, parseTag}));

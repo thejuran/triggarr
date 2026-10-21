@@ -74,6 +74,18 @@ test('gate exercises its own pyproject.toml parsing via the contents API, not a 
   assert.equal(lines[1], 'matching: accepted 9.9.9');
 });
 
+test('a dev/pre-release package version skips the matching, mismatched and missing cases instead of failing', async () => {
+  for (const devVersion of ['2.13.0.dev0', '2.6.1-dev']) {
+    const pyprojectText = `[project]\nname = "demo"\nversion = "${devVersion}"\n`;
+    const lines = await rehearseReleaseIdentity({pyprojectText, sha: SHA, imageVersion: devVersion, imageId: IMAGE_ID});
+    assert.equal(lines.length, 5);
+    assert.match(lines[1], /^matching: skipped \(package version .* is not a releasable X\.Y\.Z version\)$/);
+    assert.match(lines[2], /^mismatched: skipped /);
+    assert.equal(lines[3], 'malformed: rejected as expected (malformed)');
+    assert.match(lines[4], /^missing: skipped /);
+  }
+});
+
 test('an image label drifted from the package version rejects matching as "matching tag was not accepted"', async () => {
   await assert.rejects(
     rehearseReleaseIdentity({pyprojectText: PYPROJECT_212, sha: SHA, imageVersion: '2.12.1', imageId: IMAGE_ID}),
