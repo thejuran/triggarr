@@ -1,0 +1,17 @@
+# Disposable CI fixture -- image-smoke harness only (Plan 82-04).
+# Points at the stub *arr service (tests/harness/arr_stub.py) started on the
+# same harness-session Docker network under the "arr-stub" alias. Never used
+# outside a throwaway CI container; the api_key below is not a secret.
+# No [auth] table -- setup must still be required when this config is seeded.
+
+[general]
+log_level = "info"
+
+[radarr.ci-stub]
+url = "http://arr-stub:9696"
+api_key = "ci-stub-key-not-a-secret"
+enabled = true
+
+[sonarr]
+
+[lidarr]
