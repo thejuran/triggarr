@@ -305,10 +305,10 @@ def test_seed_volume_creates_copies_and_removes(monkeypatch: pytest.MonkeyPatch,
         config_file=config_file,
     )
 
-    commands = [call[1] if len(call) > 1 else "" for call in issued]
-    assert "create" in commands
-    assert "cp" in commands
-    assert "rm" in commands
+    flattened = [" ".join(call) for call in issued]
+    assert any("container create" in call for call in flattened)
+    assert any(call.startswith("docker cp ") for call in flattened)
+    assert any("docker rm " in call for call in flattened)
     # Every issued argv is a plain list of strings -- never a shell string.
     for call in issued:
         assert isinstance(call, list)
