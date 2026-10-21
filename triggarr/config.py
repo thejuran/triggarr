@@ -209,8 +209,9 @@ def _atomic_text_write(path: Path, text: str) -> None:
     comments).
 
     Failure before or at os.replace (temp write, fsync, fchmod, replace
-    itself): logs an error naming the path and the exception type, removes
-    the temp file, and re-raises -- the destination file is untouched.
+    itself): removes the temp file and re-raises -- the destination file is
+    untouched. The caller (backfill_instance_ids) logs the one error line
+    for the failure, so this helper does not log it a second time.
     Failure only on the post-replace directory fsync: the new contents are
     already committed, so this logs a warning and returns normally.
 
@@ -241,11 +242,6 @@ def _atomic_text_write(path: Path, text: str) -> None:
                 exc=exc,
             )
             return
-        logger.error(
-            "Config write failed: {path} - {exc_type}",
-            path=path,
-            exc_type=type(exc).__name__,
-        )
         if not fd_owned:
             # os.fdopen never took ownership -- close the raw fd to avoid a leak.
             with contextlib.suppress(OSError):
