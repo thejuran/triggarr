@@ -1391,3 +1391,47 @@ async def test_radarr_name_reuse_through_real_client_keeps_card_consistent(tmp_p
     assert old_card["movies_found"] == 1
     assert old_card["radarr_rate"] == 100.0
     await db.close()
+
+
+async def test_lidarr_name_reuse_through_real_client_keeps_card_consistent(tmp_path):
+    """Real LidarrClient path (paginated /api/v1/history): credit lands on the searching instance's stable ID."""
+    from pydantic import SecretStr
+
+    from triggarr.clients.lidarr import LidarrClient
+    from triggarr.db import get_dashboard_stats
+
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    await _insert_entry(
+        db, app="Lidarr", item_id=202, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
+    )
+    grab = {"id": 7001, "albumId": 202, "sourceTitle": "Artist - Album [FLAC]",
+            "date": (searched_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
+            "eventType": "grabbed", "downloadId": "DL-7001", "data": {}}
+    history_params: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/history":
+            history_params.append(dict(request.url.params))
+            page = int(request.url.params["page"])
+            records = [grab] if page == 1 else []
+            return httpx.Response(200, json={"page": page, "pageSize": 50, "sortKey": "date", "totalRecords": 1,
+                                             "records": records})
+        return httpx.Response(404, json={})
+
+    client = LidarrClient("http://new-lidarr.test", SecretStr("k" * 32))
+    client._client = httpx.AsyncClient(base_url="http://new-lidarr.test", transport=httpx.MockTransport(handler))
+    try:
+        await run_tracking_check(db, client, "Lidarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new")
+    finally:
+        await client.close()
+
+    assert history_params and history_params[0]["albumId"] == "202"
+    assert history_params[0]["eventType"] == "1"
+    new_card = await get_dashboard_stats(db, app="Lidarr", instance_stable_id="sid-new")
+    old_card = await get_dashboard_stats(db, app="Lidarr", instance_stable_id="sid-old")
+    assert new_card["albums_found"] == 0
+    assert new_card["lidarr_rate"] is None
+    assert old_card["albums_found"] == 1
+    assert old_card["lidarr_rate"] == 100.0
+    await db.close()

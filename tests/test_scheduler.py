@@ -2267,3 +2267,78 @@ async def test_lifespan_imported_rows_keep_outcomes_and_stay_unassociated(tmp_pa
     assert all(r["instance_id"] == "Default" for r in snap["rows"])
     assert snap["main_view"]["show_cutover_note"] is False
     assert snap["search_log_after"] == []
+
+
+def _legacy_import_startup(tmp_path):
+    """Real lifespan inputs with a legacy state.json search_log; returns (settings, state_path, config_path)."""
+    import json
+
+    settings = Settings(
+        sonarr={"Main": InstanceConfig(url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True,
+                                       id="sid-sonarr-main")},
+    )
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps({"radarr": {}, "sonarr": {}, "lidarr": {}, "search_log": _LEGACY_SEARCH_LOG}))
+    return settings, state_path, tmp_path / "triggarr.toml"
+
+
+async def _run_lifespan(settings, state_path, config_path, probe):
+    """Run one real startup/shutdown, calling ``probe(db)`` while the app is up."""
+    from triggarr.search.scheduler import create_lifespan
+
+    with patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()):
+        lifespan_fn = create_lifespan(settings, state_path, config_path)
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            return await probe(app.state.db)
+
+
+async def test_lifespan_imported_legacy_rows_stay_out_of_grab_rate_denominators(tmp_path):
+    """Frozen legacy Sonarr rows are excluded from grab-rate denominators; unresolved rows still count."""
+    from triggarr.db import get_dashboard_stats, insert_search_entry
+
+    settings, state_path, config_path = _legacy_import_startup(tmp_path)
+
+    async def probe(db):
+        imported = await get_dashboard_stats(db)
+        # A pre-cutover Sonarr row that later resolved as unresolved is no
+        # longer frozen, so it counts against the rate.
+        await db.execute("UPDATE search_history SET outcome = 'unresolved' WHERE item_name = 'Old Show S01'")
+        await db.commit()
+        after_unresolved = await get_dashboard_stats(db)
+        # A post-cutover Sonarr row counts as usual.
+        await insert_search_entry(
+            db, "Sonarr", "missing", "New Show S01", outcome="grabbed", item_id=7, instance_id="Main",
+            instance_stable_id="sid-sonarr-main",
+        )
+        return imported, after_unresolved, await get_dashboard_stats(db)
+
+    imported, after_unresolved, after_new = await _run_lifespan(settings, state_path, config_path, probe)
+    assert imported["sonarr_rate"] is None
+    assert imported["radarr_rate"] == 0.0
+    assert imported["overall_rate"] == 0.0
+    assert after_unresolved["sonarr_rate"] == 0.0
+    assert after_new["sonarr_rate"] == 50.0
+    assert after_new["overall_rate"] == pytest.approx(100 / 3)
+
+
+async def test_lifespan_restart_after_legacy_import_neither_reimports_nor_moves_cutover(tmp_path):
+    """A second start finds search_log cleared: no duplicate rows, cutover and legacy rows unchanged."""
+    from triggarr.db import get_search_history
+
+    settings, state_path, config_path = _legacy_import_startup(tmp_path)
+
+    async def probe(db):
+        async with db.execute("SELECT legacy_max_history_id, any_pre_fix_sonarr_data, cutover_at "
+                              "FROM attribution_cutover") as cursor:
+            cutover = [dict(r) for r in await cursor.fetchall()]
+        async with db.execute("SELECT id, item_name FROM search_history ORDER BY id") as cursor:
+            rows = [tuple(r) for r in await cursor.fetchall()]
+        history = await get_search_history(db)
+        return cutover, rows, {e["name"]: e["is_legacy"] for e in history["entries"]}
+
+    first = await _run_lifespan(settings, state_path, config_path, probe)
+    second = await _run_lifespan(settings, state_path, config_path, probe)
+    assert len(first[0]) == 1
+    assert second == first
+    assert [name for _, name in second[1]] == ["Old Show S01", "Old Show S02", "Old Movie"]

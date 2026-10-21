@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import io
+import os
 import re
+import stat
 import tomllib
 from pathlib import Path
 from unittest.mock import patch
@@ -1599,3 +1601,53 @@ def test_backfill_write_failure_logs_reason_before_exit(tmp_path: Path) -> None:
     assert "PermissionError" in out
     assert "sonarr-key" not in out
     assert config_file.read_bytes() == THREE_INSTANCES_TOML
+
+
+def _error_lines(out: str) -> list[str]:
+    return [line for line in out.splitlines() if line.startswith("ERROR ")]
+
+
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root ignores directory permissions")
+def test_backfill_in_read_only_config_dir_logs_one_error_and_exits(tmp_path: Path) -> None:
+    """Real early failure: the temp file cannot be created in a read-only config dir -- one error line, exit 1."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_file = _write(config_dir, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("ERROR")
+    os.chmod(config_dir, stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        with pytest.raises(SystemExit) as exc:
+            ensure_config(config_file)
+    finally:
+        os.chmod(config_dir, stat.S_IRWXU)
+        logger.remove(handler_id)
+
+    assert exc.value.code == 1
+    errors = _error_lines(sink.getvalue())
+    assert len(errors) == 1, errors
+    assert str(config_file) in errors[0]
+    assert "PermissionError" in errors[0]
+    assert "writable" in errors[0]
+    assert "sonarr-key" not in sink.getvalue()
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML
+    assert [p.name for p in config_dir.iterdir()] == ["triggarr.toml"]
+
+
+def test_backfill_failure_after_temp_file_logs_one_error_and_leaves_no_temp(tmp_path: Path) -> None:
+    """A write failure after the temp file exists is reported once (no second generic line) and cleaned up."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("ERROR")
+    try:
+        with patch("triggarr.config.os.replace", side_effect=PermissionError(13, "Permission denied")), \
+             pytest.raises(SystemExit) as exc:
+            ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc.value.code == 1
+    errors = _error_lines(sink.getvalue())
+    assert len(errors) == 1, errors
+    assert "writable" in errors[0]
+    assert "PermissionError" in errors[0]
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML
+    assert [p.name for p in tmp_path.iterdir()] == ["triggarr.toml"]
