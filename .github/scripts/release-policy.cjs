@@ -1,6 +1,6 @@
 // This file is loaded from main by the release preflight, never from a tag.
 // The release-identity functions below follow that same rule: they are never read from the tag.
-const REQUIRED_JOBS = ['test', 'lint', 'docker', 'secrets', 'dependencies', 'CI ready'];
+const REQUIRED_JOBS = ['test', 'lint', 'docker', 'secrets', 'dependencies', 'image-smoke', 'browser-e2e', 'CI ready'];
 const RELEASE_TAG_RE = /^refs\/tags\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 function describeVersions({tag, packageVersion, imageVersion}) {

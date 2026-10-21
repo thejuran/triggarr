@@ -316,7 +316,7 @@ jobs:
   ci-ready:
     name: CI ready
     if: always()
-    needs: [test, lint, docker, secrets, dependencies]
+    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -326,7 +326,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os, sys
-          required = {"test", "lint", "docker", "secrets", "dependencies"}
+          required = {"test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e"}
           results = json.loads(os.environ["RESULTS"])
           if set(results) != required:
               sys.exit("Missing or unexpected mandatory CI jobs")
