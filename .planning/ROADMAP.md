@@ -242,8 +242,8 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [ ] 82-05-PLAN.md — Playwright dev deps, browser setup/login/logout flows, artifact secret scan
 - [ ] 82-06-PLAN.md — connection-pill polling regression test and local sensitivity check
 - [ ] 82-07-PLAN.md — image-smoke and browser-e2e CI jobs joined to CI ready and REQUIRED_JOBS
-- [ ] 82-08-PLAN.md — reproduction recipes, first real PR run, time-budget measurement (owner checkpoint)
-- [ ] 82-09-PLAN.md — recorded negative demonstrations on draft PRs after owner go-ahead
+- [ ] 82-08-PLAN.md — reproduction recipes, pre-push deep-review decision, first real PR run with reconciled commit identities, time-budget measurement
+- [ ] 82-09-PLAN.md — browser sensitivity on the audited image (local) and gate-enforcement demonstrations on draft PRs after owner go-ahead
 
 ### Phase 83: Paired BM + Codex Review & Risk-Based Depth
 

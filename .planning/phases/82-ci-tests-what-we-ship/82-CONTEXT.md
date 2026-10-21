@@ -76,9 +76,30 @@ Out of this phase: the docs/planning-only CI exemption (Phase 85, ACCEPT-03), lo
 - **D-31:** The owner accepts bounded CISHIP-03 evidence on these conditions:
   - (a) **Rehearsal fidelity.** The CI rehearsal calls the exact same validation entry points `release.yml` uses (`parseReleaseTag` and `releaseIdentityGate` from `release-policy.cjs`), not a re-implementation, against the exact saved/audited publish-candidate image (same image ID as the `audited-image` artifact's `image-id.txt`). It covers four input cases: matching, mismatched, malformed and missing version inputs. Each negative case asserts its specific rejection reason.
   - (b) **Wiring means blocking, not ordering.** Wiring tests must show a rejection blocks every publication path: registry login (`docker/login-action`), image push/promotion and GitHub Release creation. No `always()`, `cancelled()`/`!cancelled()`, `failure()` or `continue-on-error` bypass; the gate is in the same job before them, or a downstream publishing job `needs:` it; no other publication path in `release.yml` skips it. Tests must fail if someone adds a bypass.
-  - (c) **Evidence record.** Evidence records the exact commit SHA, image identity (image ID / tarball sha256), the CI run URL, run ID and attempt, and the expected rejection reason for each negative case.
+  - (c) **Evidence record.** Evidence records the commit identities defined in D-34 (PR head SHA, PR base SHA, tested SHA, image revision label), image identity (image ID / tarball sha256), the CI run URL, run ID and attempt, and the expected rejection reason for each negative case. (Amended by D-34, 2026-10-21: "exact commit SHA" means the tested SHA for CI evidence, reconciled against the PR head.)
   - (d) **Limitation wording**, recorded verbatim: "Version validation and release wiring verified; actual tag-triggered publication remains unverified until the next authorized release."
   - (e) **Evidence standard.** Permanent negative tests may produce a green CI run by correctly detecting the expected failures. A deliberately red tag-triggered run is **not** required and is not performed. The deliberately broken draft-PR demonstrations for the entrypoint and the pill stay as planned, each push still needing the owner's go-ahead (D-10).
+
+### Evidence and checkpoint corrections (owner review of 4ca7c23, 2026-10-21)
+- **D-32:** Two kinds of pill-regression evidence are kept apart.
+  - (i) **Browser sensitivity evidence**: the real browser suite (same `tests/e2e` files, same harness, same CI flags) fails on each mutation (request loop, polling disabled). It runs against variant images built `FROM` the exact audited CI image of the phase head, where the only change is the pill template file(s), verified by a file-manifest diff. This runs on the maintainer machine in a clearly labelled demonstration setting (`triggarr-demo:*` tags, scratch directory, never pushed or published). That is a narrow claim, which D-07 allows locally. Reason: the existing header unit tests (`tests/test_header_redesign.py`) reject both mutations in the `test` job, and `docker` needs `test`, so a pushed mutation never reaches `browser-e2e`. Reaching it on GitHub would need a new or altered workflow, which counts as a CI bypass.
+  - (ii) **Aggregate-gate enforcement evidence**: on isolated draft PRs (owner go-ahead before each push, D-10), the broken entrypoint fails `image-smoke`. The pill mutations fail the `test` job through the existing header tests, so `docker`, `image-smoke` and `browser-e2e` are skipped. In every case `CI ready` stays red. The unit-test catch is legitimate gate evidence and is labelled as such, not as browser evidence.
+  - The header tests are never weakened, skipped or deleted. No CI bypass. Never main, never a production tag.
+- **D-33:** Screenshot and trace safety is achieved by prevention, not detection. Tests that render credential or API-key pages (setup/registration, login, logout) are marked `credential_pages` and run with tracing, screenshots and video off. A conftest guard refuses to run them with any capture enabled. Captured tests authenticate by injecting a session cookie obtained over HTTP and visit only pages that show no credential or API key. A probe in which setup fails *before* the API key is registered must leave no capture holding it. Byte scanning of artifacts stays as an extra defence only. It is not proof that screenshots are safe, because pixels cannot be byte-searched.
+- **D-34:** Evidence records commit identities as separate fields:
+  - PR head SHA
+  - PR base SHA
+  - tested SHA (`github.sha`, which equals the checkout HEAD; on `pull_request` this can be GitHub's synthetic merge commit)
+  - image revision label (`org.opencontainers.image.revision`)
+  - image ID / tarball sha256
+
+  CI evidence (smoke, browser, rehearsal) is tied to the tested SHA. Review evidence (Greptile, vibe-check, owner acceptance) is tied to the PR head and base. Every record includes an explicit reconciliation line explaining any difference between the head and the tested SHA. Example: the tested SHA is the merge of head H into base B, verified through the merge commit's parents. This amends D-31(c).
+- **D-35:** Checkpoints follow `docs/buildomator-greptile-pilot.md` and `docs/owner-cli-acceptance.md`, with three distinct activities that are never merged into one stop:
+  - (1) **Budget/CI-minutes review**: stops only when D-14's ~5-minute threshold is exceeded.
+  - (2) **Technical review**: the `/deep-review` offer is settled *before* the push as its own step. Greptile reviews the pushed head automatically. The owner may run vibe-check in parallel on the same head SHA. There is no pause after every push.
+  - (3) **Exact-commit owner acceptance** through the `review-acceptance` environment, on the final phase head. It happens after CI, the current Greptile review, any vibe-check and the dispositions are complete, outside Plans 08/09.
+
+  The only stops in Plans 08/09 are: the pre-push deep-review decision, a D-14 budget overrun, and the D-10 go-ahead before each deliberately broken push.
 
 ### Claude's Discretion
 - Browser tool choice. Playwright is expected, added as a dev/CI dependency without changing the runtime image.

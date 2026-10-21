@@ -45,14 +45,15 @@ created: 2026-10-21
 | 82-04-T1 | CISHIP-01 | Container argv builders and lifecycle helpers | unit | `uv run --no-sync pytest tests/test_ci_harness_stack.py -q` | ❌ W0 | ⬜ pending |
 | 82-04-T2 | CISHIP-01 | Health/setup/login/static/writable-config/persistence via real entrypoint; missing static asset fails (permanent negative) | smoke (Docker) | `uv run --no-sync python -m tests.harness.image_smoke run --image triggarr:local --expected-image-id-file ...` | ❌ W0 | ⬜ pending |
 | 82-05-T1 | CISHIP-02 | Playwright deps installed; tests/e2e excluded from default run | config | `uv lock --check && uv run --no-sync pytest tests/ -q -x` | ✅ (extend) | ⬜ pending |
-| 82-05-T2 | CISHIP-02 | No secrets in uploaded artifacts | unit | `uv run --no-sync pytest tests/test_artifact_scan.py -q` | ❌ W0 | ⬜ pending |
-| 82-05-T3 | CISHIP-02 | Setup/login/logout browser flows | browser | `uv run --no-sync pytest tests/e2e -q --browser chromium` (live container) | ❌ W0 | ⬜ pending |
-| 82-06-T1 | CISHIP-02 | Pill polls on bounded schedule, updates between polls | browser | `uv run --no-sync pytest tests/e2e/test_pill_polling.py --browser chromium` | ❌ W0 | ⬜ pending |
+| 82-05-T2 | CISHIP-02 | Byte scan of artifacts (extra defence for text artifacts; not proof screenshots are safe, D-33) | unit | `uv run --no-sync pytest tests/test_artifact_scan.py -q` | ❌ W0 | ⬜ pending |
+| 82-05-T3 | CISHIP-02 | Setup/login/logout browser flows; credential pages never captured (guard + setup-fails-before-registration probe, D-33) | browser | `uv run --no-sync pytest tests/e2e -q -m credential_pages --browser chromium --tracing off --screenshot off --video off` (live container) | ❌ W0 | ⬜ pending |
+| 82-06-T1 | CISHIP-02 | Pill polls on bounded schedule, updates between polls (cookie-injected, no credential page captured) | browser | `uv run --no-sync pytest tests/e2e -m "not credential_pages" --browser chromium --tracing retain-on-failure --screenshot only-on-failure` | ❌ W0 | ⬜ pending |
 | 82-06-T2 | CISHIP-02 | Reintroduced loop / disabled polling fail the suite (local evidence) | browser (local sensitivity) | `uv run --no-sync pytest tests/e2e/test_pill_polling.py --browser chromium` | ❌ W0 | ⬜ pending |
 | 82-07-T1 | CISHIP-01, CISHIP-02 | image-smoke and browser-e2e CI jobs | CI wiring | `node --test .github/scripts/*.test.cjs` + YAML job presence check | ✅ (extend) | ⬜ pending |
 | 82-07-T2, 82-07-T3 | CISHIP-04 | New jobs in `ci-ready`; missing/skipped job fails gate; all actions SHA-pinned | static consistency | `node --test .github/scripts/ci-job-consistency.test.cjs && uv run --no-sync pytest tests/test_ci_gate.py tests/test_github_workflows.py -q` | ✅ / ❌ W0 | ⬜ pending |
-| 82-08-T1..T3 | CISHIP-01..04 | Recipes documented; first real CI run and time budget recorded | real CI run + owner vibe-check | phase PR CI run (`image-smoke`, `browser-e2e`, `ci-ready`) | n/a | ⬜ pending |
-| 82-09-T1..T3 | CISHIP-01, CISHIP-02 | Broken entrypoint / pill bug fail CI on isolated draft PRs (owner go-ahead, D-10) | recorded demonstration | isolated-branch CI runs per `docs/ci-negative-demonstrations.md` | n/a | ⬜ pending |
+| 82-08-T1..T3 | CISHIP-01..04 | Recipes documented; pre-push /deep-review decision; first real CI run with head/base/tested SHA reconciled; budget stop only if over threshold (D-34, D-35) | real CI run | phase PR CI run (`image-smoke`, `browser-e2e`, `ci-ready`) | n/a | ⬜ pending |
+| 82-09-T1 | CISHIP-02 | (i) Browser sensitivity: real browser suite fails on template-only variants of the exact audited image (D-32) | local demonstration (narrow claim, D-07) | `pytest tests/e2e -m "not credential_pages"` with ci.yml flags against `triggarr-demo:pill-*` | n/a | ⬜ pending |
+| 82-09-T2, 82-09-T3 | CISHIP-01, CISHIP-02 | (ii) Gate enforcement: broken entrypoint fails image-smoke; pill mutations fail the test job via header tests, downstream skipped; CI ready red (owner go-ahead, D-10) | recorded demonstration | isolated draft-PR CI runs per `docs/ci-negative-demonstrations.md` | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -74,7 +75,9 @@ created: 2026-10-21
 ## Verification Expectations (D-31, owner decision 2026-10-21)
 
 - CISHIP-03 evidence is bounded: permanent negatives (four rehearsal cases on the exact audited image, structural bypass tests) pass inside green CI runs. A deliberately red tag-triggered run is not required.
-- Evidence records commit SHA, image ID and image.tar sha256, run URL, run ID and attempt, and expected vs observed reason per negative case.
+- Evidence records, as separate fields (D-34): PR head SHA, PR base SHA, tested SHA (github.sha / checkout HEAD, possibly GitHub's merge commit), image revision label, image ID and image.tar sha256, plus run URL, run ID and attempt, and expected vs observed reason per negative case. CI evidence binds to the tested SHA; review evidence (Greptile, vibe-check, owner acceptance) binds to the PR head and base; a "Reconciliation:" line explains any head/tested difference.
+- Pill regression evidence is two separate kinds (D-32): (i) browser sensitivity on template-only variants of the audited image; (ii) gate enforcement where the header unit tests fail the test job and CI ready stays red. Neither is presented as the other.
+- Screenshot safety comes from the capture policy (D-33); byte scanning is an extra defence and is not proof screenshots are safe.
 - Phase verification records this sentence verbatim: "Version validation and release wiring verified; actual tag-triggered publication remains unverified until the next authorized release."
 
 ---
@@ -83,8 +86,9 @@ created: 2026-10-21
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Broken entrypoint makes image-smoke fail | CISHIP-01 | Requires a deliberately broken commit; owner go-ahead needed before each push (D-10) | Follow the documented recipe on an isolated branch/draft PR; record the failing run URL |
-| Reintroduced pill polling bug makes browser suite fail | CISHIP-02 | Same — deliberately broken commit | Follow recipe; record failing run URL; confirm uploaded artifacts contain no secrets |
+| Broken entrypoint makes image-smoke fail and CI ready red | CISHIP-01 | Requires a deliberately broken commit; owner go-ahead needed before each push (D-10) | Recipe 1 on an isolated draft PR; record D-34 fields and the failing run |
+| Reintroduced pill bugs make the real browser assertions fail (i) | CISHIP-02 | A pushed mutation is stopped earlier by header unit tests, so this runs locally on template-only variants of the audited image (D-32) | Recipes 2-3 part (i); record manifest diff, failure lines and artifact check |
+| Pill mutations keep CI ready red (ii) | CISHIP-02 | Deliberately broken commit; owner go-ahead (D-10) | Recipes 2-3 part (ii); test job fails on header tests, downstream skipped |
 
 ---
 
