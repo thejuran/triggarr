@@ -55,6 +55,20 @@ v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 (released as 
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
+## Current Milestone: v2.13 CI & Review Workflow
+
+**Goal:** Make Triggarr the reference repository for meaningful CI, publication of exactly the artifact that passed checks, and BM-led review paired with an independent Codex pass and risk-based vibe-check recommendations.
+
+**Target features:**
+- **CI tests what we ship:** the published image starts through its real entrypoint with isolated data; a small browser regression suite (connection-pill request loop, setup/login); release tags must agree with package and image versions. Each gate is proven by a deliberately broken case that fails.
+- **Paired BM + Codex review:** every BM code review (phase execution, quick tasks, explicit review, review after fixes) gets an independent Codex adversarial pass on the same commit, wired through `CLAUDE.md` and BM's supported settings. Missing, failed, skipped or stale Codex evidence stays incomplete.
+- **Risk-based review depth:** BM recommends quick/standard/deep at each checkpoint, explicitly suggests vibe-check when risk is high, and records the owner's choice.
+- **Codex plan-checker investigation:** verify whether a narrowly scoped `agent.spawn` hook can route only `bm:bm-plan-checker` through model-gateway, plus the blind comparison on the original Phase 81 plans (or record it as unavailable).
+- **Follow-on CI improvements:** lockfile-matched Docker dependencies, grouped Dependabot updates, OS image audit, workflow lint, `coverage.xml` with exact-commit provenance, and least-privilege publish permissions, each with explicit acceptance criteria.
+- **Pilot and reference record:** 3–5 representative PRs under the new workflow, results recorded, an owner decision on retiring routine vibe-check, and reusable guidance for other repositories.
+
+**Key context:** Scope confirmed by the owner 2026-10-21 as written in `docs/ci-reference-baseline-plan.md` and `docs/bm-greptile-codex-blueprint.md`. Greptile (Apex tier during the comparison), exact-commit owner acceptance through the protected `review-acceptance` environment, exact audited-image publication and full-SHA action pinning all stay. No custom orchestrator, no BM fork. Instruction-enforced requirements are labelled separately from GitHub-enforced checks. Phase numbering continues at 82. Phase 81 directories are kept (not cleared) because the blind comparison needs the original plan inputs.
+
 ## Next Milestone Goals
 
 Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
@@ -258,7 +272,12 @@ Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
 
 ### Active
 
-(Defined with the next milestone via `/bm:new-milestone`.)
+- [ ] CI starts and exercises the shipped image, runs focused browser regressions, and rejects version mismatches before publication — v2.13
+- [ ] Every BM code review is paired with an exact-commit Codex adversarial pass; missing or stale evidence is incomplete — v2.13
+- [ ] BM recommends review depth per checkpoint and suggests vibe-check for high risk, recording the owner's choice — v2.13
+- [ ] Codex plan-checker routing investigated with recorded evidence — v2.13
+- [ ] Follow-on CI improvements (dependencies, updates, image audit, workflow lint, coverage, permissions) delivered with acceptance evidence — v2.13
+- [ ] Pilot results and reusable guidance recorded — v2.13
 
 ### Out of Scope
 
@@ -374,4 +393,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-21 after v2.12 milestone*
+*Last updated: 2026-10-21 after starting v2.13 CI & Review Workflow*

@@ -1,27 +1,27 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.12
-milestone_name: Search Correctness & Trustworthy Feedback
-status: "Awaiting next milestone -- v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 as v2.12.0 (5 phases, 33 plans, 28/28 requirements); production runs v2.12.0"
-stopped_at: "v2.12 milestone closed 2026-10-21; post-v2.12 review blueprint and CI plan confirmed by the owner as written. Next: /bm:new-milestone for CI & Review Workflow (start in a fresh session)"
-last_updated: "2026-10-21T18:49:52Z"
-last_activity: "2026-10-21 -- v2.12 milestone closed; v2.12.0 released and deployed"
+milestone: v2.13
+milestone_name: CI & Review Workflow
+status: "planning -- v2.13 CI & Review Workflow started; defining requirements"
+stopped_at: "v2.13 started 2026-10-21 on branch ci-review-workflow; PROJECT.md updated; requirements and roadmap next"
+last_updated: "2026-10-21T19:07:00Z"
+last_activity: "2026-10-21 -- Milestone v2.13 CI & Review Workflow started"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 33
-  completed_plans: 33
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-08)
+See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Between milestones -- v2.12 shipped 2026-10-21 (v2.12.0); post-v2.12 review-workflow and CI proposals confirmed by the owner as written; next: plan the CI & Review Workflow milestone (/bm:new-milestone)
+**Current focus:** v2.13 CI & Review Workflow -- defining requirements and roadmap (phases start at 82)
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. The version string still reads v2.11.0 until the v2.12 release bump.
 
@@ -29,12 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 
 ## Current Position
 
-Phase: 81 (correct-sonarr-grab-attribution) — COMPLETE; v2.12 milestone shipped 2026-10-21 as v2.12.0 and closed
-Plan: 14 of 14 complete (all 33 v2.12 plans have summaries)
-Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). 81-06 built the live acceptance matrix; the owner authorized both the v5 deploy of the Phase 81 build and v4 sandbox provisioning (option-a, 2026-10-19). 81-07 ran the Phase 81 build on the isolated v5 sandbox (owner ran the sudo isolation gates; both passed): the controlled Hacks S02 SeasonSearch was dispatched, grabbed and imported, but season-pack attribution and repeated-tracking checks FAIL because Sonarr v5 (5.0.0.2701) grab history omits season identity, so the identity gate credits nothing. Tag/missing/cutoff were reachable only (empty sandbox). The owner approved this as an accurate record of a failed compatibility test (not v5 support) and scoped a targeted fix inside Phase 81 (episode-ID fallback with series validation, per-check caching, no credit on missing/conflicting identity, real v5 fixtures), then a live v5 rerun; 81-10/81-11/81-12 closed that gap (fixtures, fallback fix, live v5 rerun owner-approved). 81-08 ran the same matrix on an isolated v4 sandbox, owner-approved with corrections. 81-13 ran zero-search live tag/pagination checks on both sandboxes (tag filtering pass; pagination multi-page retrieval inferred, client-returned ID-set completeness/uniqueness unverified-live) and the owner dispositioned an unauthorized quality-profile `upgradeAllowed` change as an accepted bounded deviation (restored exactly). 81-09 closed the phase out: Task 1 built two local scratch disclosure-check instances; Task 2's owner on-screen review (two `/walkthrough` runs) approved the disclosure plus two bounded scope additions (stats-card retitle, selector/poll `hx-sync` race fix — commits `e996322`/`09421ab`, full suite 1999 passed, ruff clean); Task 3 reconciled REQUIREMENTS.md (ATTR-01..06, SONARRV5-01, SONARRV5-03 complete; SONARRV5-02 stays open with every unverified scenario listed) and this file. Sandboxes restored to disabled baseline; production untouched throughout. 81-14 (2026-10-21) closed the remaining D-11 gaps with a zero-search, read-only probe of the real client inside triggarr-test (separate owner authorizations for drafting, read-only preflight and the Sonarr-side change list; all four isolation gates passed; sandboxes restored to an identical baseline): client-returned ID sets complete and duplicate-free on all four pagination cases, and a dedicated v4 Refresh-counts run matching Sonarr. The owner then closed SONARRV5-02. **Phase 81 is complete:** reviewed and merged via PR #29 (`196b967`) on 2026-10-21, then released in v2.12.0.
-
-Phase 80 operational check: PASSED 2026-10-21. The pre-upgrade DB backup shows 24 consecutive scheduled cycles every 180 min on dee25df (Oct 18 19:12Z to Oct 21 16:12Z), 72 searches, 0 failed, and no (series, season) dispatched twice in a cycle. Per-cycle grade lines for that period were lost with the replaced container; grades were confirmed Success for the 2026-10-21 cycles.
-Last activity: 2026-10-21 -- v2.12 milestone closed; v2.12.0 released (tag on dbb38fa) and deployed to production
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-10-21 — Milestone v2.13 started
 
 ### v2.12 milestone shape
 
