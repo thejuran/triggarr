@@ -31,6 +31,8 @@ dev = [
     "pytest-asyncio",
     "pytailwindcss",
     "ruff",
+    "playwright>=1.60",
+    "pytest-playwright>=0.9",
 ]
 
 [project.scripts]

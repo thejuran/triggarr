@@ -72,3 +72,7 @@ tmp/
 .claude/scheduled_tasks.lock
 .playwright-mcp/
 .orchestrator.json
+
+# Browser-e2e suite output (Playwright --output directories)
+e2e-artifacts/
+test-results/
