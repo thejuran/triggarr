@@ -103,7 +103,10 @@ def test_connection_pill_polls_on_schedule_without_loop_and_shows_new_state(
     page.goto(f"{base_url}/")
     expect(page.locator("#connection-pill")).to_contain_text("Connection Stable", timeout=10_000)
 
-    # 4. Loop guard: real time only, clock still paused -- no scheduled tick is due.
+    # 4. Loop guard: a small clock advance, well under the 30s interval, flushes any
+    # swap-triggered re-processing a regression would cause; then real time only --
+    # no scheduled tick is due at this point either way.
+    page.clock.fast_forward(3000)
     time.sleep(3)
     looped_count = len(pill_requests)
     assert 1 <= looped_count <= 2, f"connection pill request loop: {looped_count} requests without any scheduled tick"
