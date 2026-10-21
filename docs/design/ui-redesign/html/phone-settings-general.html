@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Triggarr Settings Phone</title>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0e1422}
+a{color:#e6edf7}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="min-height: 1400px; background: #0e1422; color: #e6edf7; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column">
+
+<header style="position: sticky; top: 0; border-bottom: 1px solid #222c40; background: #111827">
+<div style="height: 56px; padding: 0 8px 0 4px; display: flex; align-items: center; gap: 4px">
+<a href="#" aria-label="Back to settings" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #c3cfe0">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+</a>
+<h1 style="margin: 0; font-size: 17px; font-weight: 600">General</h1>
+</div>
+</header>
+
+<main style="flex: 1; padding: 16px 16px 180px; display: flex; flex-direction: column; gap: 20px">
+
+<section aria-labelledby="p-search">
+<h2 id="p-search" style="margin: 0 0 8px 4px; font-size: 12px; font-weight: 600; color: #8494ad; letter-spacing: 0.02em">SEARCHING</h2>
+<div style="border-radius: 12px; background: #161e2e; border: 1px solid #222c40; overflow: hidden">
+<div style="padding: 14px 16px; border-bottom: 1px solid #1d2638">
+<label for="pm" style="display: block; font-weight: 500">Max items per cycle</label>
+<p style="margin: 2px 0 10px; font-size: 13px; color: #8494ad">Per app. 0 means no limit.</p>
+<input id="pm" type="number" value="0" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #2a3550; background: #0f1625; color: #e6edf7; font: inherit">
+</div>
+<div style="padding: 14px 16px; border-bottom: 1px solid #1d2638">
+<label for="pt" style="display: block; font-weight: 500">Tracking window <span style="color: #f5a524; font-size: 12px">· changed</span></label>
+<p style="margin: 2px 0 10px; font-size: 13px; color: #8494ad">Wait this long for a grab before “No grab”.</p>
+<div style="display: flex; align-items: center; gap: 8px"><input id="pt" type="text" inputmode="numeric" value="[YOUR VALUE]" style="flex: 1; min-width: 0; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #f5a524; background: #0f1625; color: #e6edf7; font: inherit"><span style="color: #8494ad; font-size: 13px">min</span></div>
+</div>
+<label style="padding: 14px 16px; display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer">
+<span style="flex: 1"><span style="display: block; font-weight: 500">Skip unreleased movies</span><span style="display: block; margin-top: 2px; font-size: 13px; color: #8494ad">No release date yet → don't search.</span></span>
+<input type="checkbox" checked style="width: 22px; height: 22px; accent-color: #2f9e5b">
+</label>
+</div>
+</section>
+
+<section aria-labelledby="p-data">
+<h2 id="p-data" style="margin: 0 0 8px 4px; font-size: 12px; font-weight: 600; color: #8494ad; letter-spacing: 0.02em">HISTORY &amp; LOGS</h2>
+<div style="border-radius: 12px; background: #161e2e; border: 1px solid #222c40; overflow: hidden">
+<div style="padding: 14px 16px; border-bottom: 1px solid #1d2638">
+<label for="ph" style="display: block; font-weight: 500">History rows to keep <span style="color: #f5a524; font-size: 12px">· changed</span></label>
+<p style="margin: 2px 0 10px; font-size: 13px; color: #8494ad">0 keeps everything.</p>
+<input id="ph" type="number" value="1000" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #f5a524; background: #0f1625; color: #e6edf7; font: inherit">
+</div>
+<div style="padding: 14px 16px">
+<label for="pl" style="display: block; font-weight: 500; margin-bottom: 10px">Log level</label>
+<select id="pl" style="box-sizing: border-box; width: 100%; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #2a3550; background: #0f1625; color: #e6edf7; font: inherit"><option>Debug</option><option selected>Info</option><option>Warning</option><option>Error</option></select>
+</div>
+</div>
+</section>
+
+<a href="#" style="display: flex; align-items: center; min-height: 52px; padding: 0 16px; border-radius: 12px; background: #161e2e; border: 1px solid #222c40; text-decoration: none">
+<span style="flex: 1; font-weight: 500">Advanced</span><span style="font-size: 13px; color: #8494ad; margin-right: 8px">Timeouts, paging</span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8494ad" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+</a>
+
+</main>
+
+<div role="region" aria-label="Unsaved changes" style="position: sticky; bottom: 0; border-top: 1px solid #2a3550; background: #141c2b; padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 13px; color: #c3cfe0"><span style="color: #f5a524">●</span> 2 unsaved changes</span>
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px">
+<button type="button" style="min-height: 48px; border-radius: 8px; border: 1px solid #2a3550; background: transparent; color: #c3cfe0; font: inherit">Discard</button>
+<button type="button" style="min-height: 48px; border-radius: 8px; border: none; background: #2f9e5b; color: #ffffff; font: inherit; font-weight: 600">Save changes</button>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1400}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
