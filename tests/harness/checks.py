@@ -77,11 +77,12 @@ def _request(
         request_headers["Cookie"] = f"{SESSION_COOKIE}={cookie}"
     request = urllib.request.Request(base + path, data=data, headers=request_headers, method=method)
     try:
-        response = _opener.open(request, timeout=_TIMEOUT_SECONDS)
-        return response.status, dict(response.headers.items()), response.read()
+        with _opener.open(request, timeout=_TIMEOUT_SECONDS) as response:
+            return response.status, dict(response.headers.items()), response.read()
     except urllib.error.HTTPError as exc:
-        resp_headers = dict(exc.headers.items()) if exc.headers else {}
-        return exc.code, resp_headers, exc.read()
+        with exc:
+            resp_headers = dict(exc.headers.items()) if exc.headers else {}
+            return exc.code, resp_headers, exc.read()
 
 
 def _header(headers: dict[str, str], name: str) -> str | None:
