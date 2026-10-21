@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: "Phase 81 executed -- 14/14 plans; all requirements met (SONARRV5-02 closed 2026-10-21 after plan 81-14). In review: PR #29 (draft) opened 2026-10-21; fixes made during PR review, each with a failing test first: certifi 2026.10.19 lockfile bump (PYSEC-2026-4320, 85c7254); v5 per-id lookup budget overflow now keeps verified progress (1f54a86/b540531, Codex); clock pinned in the fixed-date attribution tests (9ae2285/faec9a1, Greptile); held Sonarr rows never get a terminal outcome (6239d76/a11e31d, vibe-check pass 2); pending partial rows survive pruning and count toward the pending cap (9f0b62b/af676d3, Greptile). At af676d3: full suite 2020 passed, ruff clean, CI green, Greptile 5/5; the PR deep review (vibe-check, 3 passes) was finalized APPROVED (.turingmind/REVIEW.md; 2 fixed Codex rows dismissed as verified, 2 refactor rows deferred to backlog MAINTENANCE.md). The 81-14 probe evidence still holds (clients/, models/arr.py and search/engine.py unchanged since b35470b). Next: owner review acceptance and merge decision on the final PR head; Phase 80 scheduled-cycle check pending separately"
-stopped_at: "PR #29 head carries the PR-review fixes and this docs update; PR #29 (draft) opened 2026-10-21; fixes made during PR review, each with a failing test first: certifi 2026.10.19 lockfile bump (PYSEC-2026-4320, 85c7254); v5 per-id lookup budget overflow now keeps verified progress (1f54a86/b540531, Codex); clock pinned in the fixed-date attribution tests (9ae2285/faec9a1, Greptile); held Sonarr rows never get a terminal outcome (6239d76/a11e31d, vibe-check pass 2); pending partial rows survive pruning and count toward the pending cap (9f0b62b/af676d3, Greptile). At af676d3: full suite 2020 passed, ruff clean, CI green, Greptile 5/5; the PR deep review (vibe-check, 3 passes) was finalized APPROVED (.turingmind/REVIEW.md; 2 fixed Codex rows dismissed as verified, 2 refactor rows deferred to backlog MAINTENANCE.md). The 81-14 probe evidence still holds (clients/, models/arr.py and search/engine.py unchanged since b35470b). Next: owner marks PR #29 ready, approves review acceptance for the exact final head, then decides on merge. Review closure is not owner acceptance, merge, deployment or release approval"
-last_updated: "2026-10-21T17:34:43Z"
-last_activity: "2026-10-21 -- PR #29 review fixes pushed and PR deep review finalized APPROVED at af676d3; earlier: SONARRV5-02 closed after plan 81-14"
+status: "Awaiting next milestone -- v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 as v2.12.0 (5 phases, 33 plans, 28/28 requirements); production runs v2.12.0"
+stopped_at: "v2.12 milestone closed 2026-10-21: archived to milestones/v2.12-ROADMAP.md and v2.12-REQUIREMENTS.md; Phase 80 scheduled-cycle check passed; Phase 77-79 verification/UAT reconciled with the 2026-10-18 live walkthrough. Next: owner confirms the post-v2.12 review-workflow and CI proposals, then /bm:new-milestone"
+last_updated: "2026-10-21T18:33:12Z"
+last_activity: "2026-10-21 -- v2.12 milestone closed; v2.12.0 released and deployed"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 33
   completed_plans: 33
-  percent: 80
+  percent: 100
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 81 execution (`/bm:execute-phase 81`); separately, confirm Phase 80's next scheduled production cycles
+**Current focus:** Between milestones -- v2.12 shipped 2026-10-21 (v2.12.0); next: confirm post-v2.12 review-workflow and CI proposals, then plan the next milestone
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. The version string still reads v2.11.0 until the v2.12 release bump.
 
@@ -29,12 +29,12 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 
 ## Current Position
 
-Phase: 81 (correct-sonarr-grab-attribution) — EXECUTED (14/14 plans); all requirements met (SONARRV5-02 closed 2026-10-21 after 81-14); PR #29 in review — PR deep review finalized APPROVED at af676d3, CI green, Greptile 5/5; owner acceptance and merge decision pending
-Plan: 14 of 14 complete (81-01..81-14 executed; plans in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
+Phase: 81 (correct-sonarr-grab-attribution) — COMPLETE; v2.12 milestone shipped 2026-10-21 as v2.12.0 and closed
+Plan: 14 of 14 complete (all 33 v2.12 plans have summaries)
 Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). 81-06 built the live acceptance matrix; the owner authorized both the v5 deploy of the Phase 81 build and v4 sandbox provisioning (option-a, 2026-10-19). 81-07 ran the Phase 81 build on the isolated v5 sandbox (owner ran the sudo isolation gates; both passed): the controlled Hacks S02 SeasonSearch was dispatched, grabbed and imported, but season-pack attribution and repeated-tracking checks FAIL because Sonarr v5 (5.0.0.2701) grab history omits season identity, so the identity gate credits nothing. Tag/missing/cutoff were reachable only (empty sandbox). The owner approved this as an accurate record of a failed compatibility test (not v5 support) and scoped a targeted fix inside Phase 81 (episode-ID fallback with series validation, per-check caching, no credit on missing/conflicting identity, real v5 fixtures), then a live v5 rerun; 81-10/81-11/81-12 closed that gap (fixtures, fallback fix, live v5 rerun owner-approved). 81-08 ran the same matrix on an isolated v4 sandbox, owner-approved with corrections. 81-13 ran zero-search live tag/pagination checks on both sandboxes (tag filtering pass; pagination multi-page retrieval inferred, client-returned ID-set completeness/uniqueness unverified-live) and the owner dispositioned an unauthorized quality-profile `upgradeAllowed` change as an accepted bounded deviation (restored exactly). 81-09 closed the phase out: Task 1 built two local scratch disclosure-check instances; Task 2's owner on-screen review (two `/walkthrough` runs) approved the disclosure plus two bounded scope additions (stats-card retitle, selector/poll `hx-sync` race fix — commits `e996322`/`09421ab`, full suite 1999 passed, ruff clean); Task 3 reconciled REQUIREMENTS.md (ATTR-01..06, SONARRV5-01, SONARRV5-03 complete; SONARRV5-02 stays open with every unverified scenario listed) and this file. Sandboxes restored to disabled baseline; production untouched throughout. 81-14 (2026-10-21) closed the remaining D-11 gaps with a zero-search, read-only probe of the real client inside triggarr-test (separate owner authorizations for drafting, read-only preflight and the Sonarr-side change list; all four isolation gates passed; sandboxes restored to an identical baseline): client-returned ID sets complete and duplicate-free on all four pagination cases, and a dedicated v4 Refresh-counts run matching Sonarr. The owner then closed SONARRV5-02. **Phase 81 is in review**, pending review and merge.
 
-Phase 80 operational check (separate): Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI (run 39157110156) and Release (run 39157384992) passed; deployed to production 2026-10-18 (container running `dee25df5cedd28f8016f556129f20a0d5537b635`, image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`, started 19:11:47Z; health OK; startup Radarr and Sonarr cycles graded Success). The previous image is tagged `ghcr.io/thejuran/triggarr:rollback-d41b484` on the NAS and config/state were backed up to `~/triggarr-backup-pre-pr28-20261018T191121Z` before the restart. Not yet operationally verified: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
-Last activity: 2026-10-21 -- PR #29 review fixes pushed and PR deep review finalized APPROVED at af676d3; earlier: SONARRV5-02 closed after plan 81-14
+Phase 80 operational check: PASSED 2026-10-21. The pre-upgrade DB backup shows 24 consecutive scheduled cycles every 180 min on dee25df (Oct 18 19:12Z to Oct 21 16:12Z), 72 searches, 0 failed, and no (series, season) dispatched twice in a cycle. Per-cycle grade lines for that period were lost with the replaced container; grades were confirmed Success for the 2026-10-21 cycles.
+Last activity: 2026-10-21 -- v2.12 milestone closed; v2.12.0 released (tag on dbb38fa) and deployed to production
 
 ### v2.12 milestone shape
 
@@ -159,7 +159,7 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 
 ### Pending Todos
 
-- Deferred (D-14): whether v2.12 may ship while SONARRV5-02 is open is decided at release time by the owner. Not satisfied by Phase 81; shipping with it open needs an explicit owner scope exception. **Moot since 2026-10-21:** SONARRV5-02 closed after 81-14, so no scope exception is needed for it.
+- Resolved (D-14): not needed -- SONARRV5-02 closed before release, so v2.12.0 shipped with no scope exception.
 - Deferred follow-up: bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). Not Phase 81 scope.
 
 ### Roadmap Evolution
@@ -186,7 +186,7 @@ v2.12 roadmap created 2026-10-08 from the approved search-correctness design spe
 
 ### Future Milestones
 
-Organized 2026-10-18 following SeedSyncarr's structure. Finish v2.12 first; its current execution position and verification requirements are unchanged. ROADMAP.md defines three future milestones; release versions and phase numbers will be assigned during planning.
+Organized 2026-10-18 following SeedSyncarr's structure. v2.12 shipped 2026-10-21; these are the next milestones. ROADMAP.md defines three future milestones; release versions and phase numbers will be assigned during planning.
 
 1. **CI & Review Workflow:** shipped-artifact CI checks, paired BM/Codex review, risk-based vibe-check recommendations, and reusable planning conventions; see the linked blueprint and CI plan in ROADMAP.md. Also evaluate the owner-preferred `agent.spawn` hook for Codex routing of only `bm:bm-plan-checker`; runtime support and end-to-end behavior remain unverified. See [the deferred investigation](../docs/bm-greptile-codex-blueprint.md#deferred-investigation-codex-plan-checker-through-model-gateway). Include a blind comparison against the original Phase 81 plans, with matched context and reproduction checks; original snapshot recovery remains a prerequisite. Current v2.12 workflow unchanged.
 2. **Reliability:** state/config recovery (999.9), narrowed startup/shutdown cleanup (999.13), and ambiguous POST delivery/retry semantics.
@@ -213,12 +213,12 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 ## Session Continuity
 
 Last session: 2026-10-21T01:30:00Z
-Stopped at: Phase 81 in review on PR #29 (branch phase-81-sonarr-attribution); PR deep review finalized APPROVED at af676d3; owner review acceptance and merge decision pending
+Stopped at: v2.12 closed; between milestones
 Resume file: None (phase executed; next step is review/merge, not further plan execution)
 
 ## Operator Next Steps
 
-- Confirm Phase 80 in operation: after the next scheduled cycles (every 180 min, next about 22:12Z) check the production logs and dashboard cards for the expected grades and per-queue malformed rows. The deployment itself is verified (running `dee25df`, digest `sha256:4bb6e50b…`); do not repeat approval, merge or deploy.
+- Review and confirm the post-v2.12 proposals (CLAUDE.md): [the BM + Greptile + Codex review blueprint](../docs/bm-greptile-codex-blueprint.md) and [the CI reference-baseline plan](../docs/ci-reference-baseline-plan.md)
 - Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (per-item screening remains deferred; the shared release-date fix also benefits refresh). Decide whether to align it.
-- Phase 81: executed (81-01..81-14, 14/14 plans); SONARRV5-02 closed 2026-10-21 by owner decision (multi-season pack and alternate series order remain unverified-live under D-12). PR #29 (draft) opened 2026-10-21; fixes made during PR review, each with a failing test first: certifi 2026.10.19 lockfile bump (PYSEC-2026-4320, 85c7254); v5 per-id lookup budget overflow now keeps verified progress (1f54a86/b540531, Codex); clock pinned in the fixed-date attribution tests (9ae2285/faec9a1, Greptile); held Sonarr rows never get a terminal outcome (6239d76/a11e31d, vibe-check pass 2); pending partial rows survive pruning and count toward the pending cap (9f0b62b/af676d3, Greptile). At af676d3: full suite 2020 passed, ruff clean, CI green, Greptile 5/5; the PR deep review (vibe-check, 3 passes) was finalized APPROVED (.turingmind/REVIEW.md; 2 fixed Codex rows dismissed as verified, 2 refactor rows deferred to backlog MAINTENANCE.md). The 81-14 probe evidence still holds (clients/, models/arr.py and search/engine.py unchanged since b35470b). Next: owner review acceptance and merge decision.
+- Then start the next milestone with `/bm:new-milestone` (agreed order in ROADMAP.md: CI & Review Workflow, Reliability, Authentication Safety & Responsiveness)
 - Phase 81 checkout handoff: `.planning/` is excluded locally (`.git/info/exclude`). Already-tracked planning files (STATE.md, ROADMAP.md and others) are carried by Git; new or untracked ones (REQUIREMENTS.md and the Phase 81 phase directory) are not. If Phase 81 work moves to a new worktree/checkout, copy the ignored files explicitly — at minimum `.planning/REQUIREMENTS.md` (ATTR-06 refined locally) and `.planning/phases/81-correct-sonarr-grab-attribution/` (81-CONTEXT.md, 81-DISCUSSION-LOG.md). Branch from `cycle-robustness` HEAD so the three docs commits (2ff03a9, 480c291, 98e01b6) are preserved, and carry the uncommitted ROADMAP.md/STATE.md edits rather than discarding them.

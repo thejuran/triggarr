@@ -1,5 +1,21 @@
 # Milestones
 
+## v2.12 Search Correctness & Trustworthy Feedback (Shipped: 2026-10-21)
+
+**Phases completed:** 5 phases (77-81), 33 plans. Released as **v2.12.0** (tag on `dbb38fa`; PRs #26–#30). 2023 tests passing, ruff clean. 309 commits, 2026-10-08 → 2026-10-21. Requirements 28/28.
+
+**Key accomplishments:**
+
+- **Log hygiene (Phase 77):** the reset token never reaches the in-app log viewer or any HTTP response, and every *arr HTTP error is logged through `_sanitize_exc`.
+- **Honest cycle outcomes (Phase 78):** each instance's last cycle is graded Success / Partial / Failed / Nothing needed; "last successful search" is split from "last checked"; the consecutive-failure counter counts Failed only.
+- **Scope and robustness (Phases 79–80):** an unresolved tag skips its queue instead of widening the search; one malformed *arr record is skipped per item instead of wedging the cycle; each Sonarr season gets at most one dispatch per cycle. The scheduled-cycle check (2026-10-21) found 24 consecutive 180-minute production cycles, 72 searches, 0 failed and no duplicate season dispatch.
+- **Correct Sonarr grab attribution (Phase 81):** series+season matching; each grab credited once ever via a grab-ownership table keyed by (app, stable instance ID, grab ID); distinct-episode counting; permanent instance IDs; a one-time attribution cutover with honest "historical estimates" labels; schema v10 (forward-only). Sonarr v5 compatibility via verified episode-identity lookups, checked live on isolated v5/v4 sandboxes (SONARRV5-02 closed after plan 81-14's zero-search client probe).
+- **Review and release:** Buildomator + Greptile pilot with protected owner acceptance. The deep reviews and PR-time Greptile/vibe-check findings were fixed test-first: per-id lookup budget progress, held rows never terminal, pending partial rows kept through pruning and counted in the cap, and test-clock pinning. The pre-push history was scrubbed of private infrastructure details. A production walkthrough of the v2.12 build was clean apart from a version-badge drift (v2.11.1 had bumped only pyproject), fixed with a guard test in the release PR.
+
+**Notes:** No formal milestone audit was run (owner decision at close); evidence is the per-phase verification, three deep reviews, live sandbox matrices and the production walkthrough. At close, the Phase 77–79 verification and 78/79 UAT files were reconciled with the 2026-10-18 live walkthrough. Owner-accepted limits: 78-2's amber Partial and legacy-label states are fixture-verified only, and 79-3 (a live tag-fetch failure) is covered by automated tests only. Unverified-live under D-12: Sonarr multi-season packs and alternate series order. Deferred to backlog MAINTENANCE.md: a shared pending-outcome predicate in db.py, the fifth atomic-write copy, and the lifecycle of pending searches of a removed instance (bugs-005).
+
+---
+
 ## v2.11 Never-Searched-First Search Queue Priority (Shipped: 2026-06-04)
 
 **Phases completed:** 1 phase (76), 3 plans, 8 tasks. Released as **v2.11.0**. 1090 tests passing, ruff clean.
