@@ -99,6 +99,34 @@ class TriggarrContainer:
     name: str
 
 
+@dataclass(frozen=True)
+class StubControl:
+    """A control handle for this session's stub *arr service, on its Docker-assigned host port.
+
+    No fixed port anywhere in this class (D-33 amendment B) -- ``base_url`` is
+    built from :attr:`E2EStack.stub_port`, which ``tests.harness.stack`` reads
+    back from Docker after the stub container starts.
+    """
+
+    base_url: str
+
+    def set_up(self, up: bool) -> None:
+        """POST ``{"up": up}`` to the stub's control endpoint."""
+        request = urllib.request.Request(
+            f"{self.base_url}/__control/state",
+            data=json.dumps({"up": up}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=5):
+            pass
+
+    def state(self) -> dict[str, Any]:
+        """GET the stub's current ``{"up", "api_requests"}`` state."""
+        with urllib.request.urlopen(f"{self.base_url}/__control/state", timeout=5) as response:
+            return json.loads(response.read())
+
+
 def _record_session(session: HarnessSession, network: str | None) -> None:
     """Write {session_id, network, containers, volumes} to $E2E_SESSION_RECORD, if set.
 
@@ -268,6 +296,14 @@ def credentials(sensitive_registry: SensitiveRegistry) -> Credentials:
     sensitive_registry.register(password)
     sensitive_registry.register(stack.STUB_API_KEY)
     return Credentials(username="e2e-admin", password=password)
+
+
+@pytest.fixture
+def stub_control(e2e_stack: E2EStack) -> Iterator[StubControl]:
+    """A handle to flip this session's stub *arr service up/down mid-test; resets to up=True at teardown."""
+    control = StubControl(base_url=f"http://127.0.0.1:{e2e_stack.stub_port}")
+    yield control
+    control.set_up(True)
 
 
 _container_counter = itertools.count(1)
