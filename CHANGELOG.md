@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.12.0 (Unreleased)
+## v2.12.0 (2026-10-21)
 
 * Upgrade notes:
 
