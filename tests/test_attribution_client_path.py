@@ -934,7 +934,8 @@ async def test_client_path_v5_series_list_cap_defers_other_group(tmp_path, monke
 
 async def test_client_path_v5_per_id_cap_defers_second_lookup(tmp_path, monkeypatch):
     """With the per-id lookup budget capped to 1 and two ids missing from the list,
-    the second is transient and the row is deferred (no partial credit this check)."""
+    the second is transient: the row never resolves terminally this check, but the
+    verified grab keeps its ownership as non-terminal partial progress."""
     monkeypatch.setattr(tracking_module, "_MAX_EPISODE_ID_LOOKUPS_PER_CHECK", 1)
 
     db = await _init_db(tmp_path)
@@ -969,11 +970,11 @@ async def test_client_path_v5_per_id_cap_defers_second_lookup(tmp_path, monkeypa
     finally:
         await client.close()
 
-    assert await _outcome(db, row) == "searched"  # deferred -- not credited this check
+    assert await _outcome(db, row) == "partial"  # non-terminal progress, not resolved
     assert counts["identity_skipped"] == 0
     assert len(_per_id_requests(fake)) == 1
     owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=31)
-    assert len(owned) == 0
+    assert {o.episode_id for o in owned} == {601}
     await db.close()
 
 
@@ -1033,6 +1034,51 @@ async def test_client_path_v5_per_id_budget_overflow_keeps_progress_across_check
     assert f"{total}/{total}" in await _detail(db, row)
     owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=61)
     assert {o.episode_id for o in owned} == {1000 + n for n in range(total)}
+    await db.close()
+
+
+async def test_client_path_v5_held_expired_row_records_progress_without_terminal_outcome(tmp_path, monkeypatch):
+    """A row past its window end (but not 24h past it) whose group has an unverified
+    grab records its verified grab as non-terminal 'partial' -- never 'partial_expired'
+    or 'unresolved' while an identity is still unverified."""
+    monkeypatch.setattr(tracking_module, "_MAX_EPISODE_ID_LOOKUPS_PER_CHECK", 1)
+
+    db = await _init_db(tmp_path)
+    now_ref = datetime.now(UTC)
+    when = now_ref - timedelta(hours=2, minutes=30)
+    records = [
+        {
+            "id": 71100 + n, "episodeId": 1100 + n, "seriesId": 62,
+            "sourceTitle": "HeldExpired.1080p-GRP", "date": when.isoformat().replace("+00:00", "Z"),
+            "eventType": "grabbed", "downloadId": f"DL-HELDEXP{n}", "data": {},
+        }
+        for n in range(2)
+    ]
+    fake = _SonarrHistoryFake(
+        {62: records},
+        series_episode_lists={62: []},
+        episodes={
+            1100 + n: {"id": 1100 + n, "seriesId": 62, "seasonNumber": 1, "episodeNumber": n + 1}
+            for n in range(2)
+        },
+    )
+    client = _client(fake)
+
+    search_time = now_ref - timedelta(hours=3)  # window end 2h ago -- expired, not escalated
+    row = await _seed(db, item_id=62, season_number=1, missing_count=2, timestamp=search_time)
+
+    try:
+        counts = await run_tracking_check(
+            db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+        )
+    finally:
+        await client.close()
+
+    assert await _outcome(db, row) == "partial"
+    assert counts["identity_skipped"] == 0
+    assert counts["errors"] == 1
+    owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=62)
+    assert {o.episode_id for o in owned} == {1100}
     await db.close()
 
 

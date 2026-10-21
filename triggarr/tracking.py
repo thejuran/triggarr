@@ -24,11 +24,14 @@ earliest-window-end-first order so an exhausted budget starves the least
 urgent group first. Resolution only ever credits a grab when the resolved
 identity agrees with the grab and the tracked series -- any mismatch is
 definitive (no credit, counted and logged, row resolves normally). A
-transient problem (network/malformed/other HTTP error) never resolves a
-row this check (mirrors a grab-history fetch failure) unless that row is
-individually more than ``_TRANSIENT_ESCALATION_HOURS`` past its own window
-end, in which case its unverifiable grabs are treated as definitive so the
-row can finally resolve. A single circuit breaker (opened by any transport
+transient problem (network/malformed/other HTTP error, or an exhausted
+budget) never resolves a row as unresolved or partial_expired this check
+(mirrors a grab-history fetch failure) unless that row is individually
+more than ``_TRANSIENT_ESCALATION_HOURS`` past its own window end, in which
+case its unverifiable grabs are treated as definitive so the row can
+finally resolve. Grabs that did verify still record their ownership as
+non-terminal progress, so a later check spends its budget only on the
+grabs still unresolved instead of repeating the same lookups. A single circuit breaker (opened by any transport
 error) stops all further episode requests for the rest of the check.
 """
 
@@ -614,6 +617,10 @@ async def _run_sonarr_tracking_check(
         if group_resolution.transient:
             escalated_ids, held_ids = _split_escalation(group_entries, now, tracking_window_minutes)
             if not escalated_ids:
+                # Every row is held: none may resolve terminally while a grab's
+                # identity is unverified, but verified grabs still record their
+                # ownership below (non-terminal) so the next check's per-id
+                # budget is spent only on the grabs still unresolved.
                 logger.warning(
                     "Tracking[{inst}]: deferred Sonarr item {id} -- episode identity lookup "
                     "unavailable ({reason})",
@@ -621,28 +628,27 @@ async def _run_sonarr_tracking_check(
                     id=series_id,
                     reason=group_resolution.transient[0][1],
                 )
-                counts["errors"] += len(group_entries)
-                continue
-
-            for grab, reason in group_resolution.transient:
-                _log_identity_skip(
-                    instance_id, grab.id, series_id, f"episode identity unavailable after escalation: {reason}", counts
+            else:
+                for grab, reason in group_resolution.transient:
+                    _log_identity_skip(
+                        instance_id, grab.id, series_id,
+                        f"episode identity unavailable after escalation: {reason}", counts,
+                    )
+                max_hours = max(
+                    (now - (_parse_timestamp(e["timestamp"]) + timedelta(minutes=tracking_window_minutes)))
+                    .total_seconds()
+                    / 3600
+                    for e in group_entries
+                    if e["id"] in escalated_ids
                 )
-            max_hours = max(
-                (now - (_parse_timestamp(e["timestamp"]) + timedelta(minutes=tracking_window_minutes)))
-                .total_seconds()
-                / 3600
-                for e in group_entries
-                if e["id"] in escalated_ids
-            )
-            logger.warning(
-                "Tracking[{inst}]: episode identity still unavailable {hours}h after window for "
-                "Sonarr item {id} -- resolving {n} row(s) without unverified grabs",
-                inst=instance_id,
-                hours=round(max_hours, 1),
-                id=series_id,
-                n=len(escalated_ids),
-            )
+                logger.warning(
+                    "Tracking[{inst}]: episode identity still unavailable {hours}h after window for "
+                    "Sonarr item {id} -- resolving {n} row(s) without unverified grabs",
+                    inst=instance_id,
+                    hours=round(max_hours, 1),
+                    id=series_id,
+                    n=len(escalated_ids),
+                )
 
         # Identity gate (R2, R6): a grab without a trustworthy Sonarr
         # identity can never be credited, and must never inflate a count.
@@ -668,15 +674,18 @@ async def _run_sonarr_tracking_check(
         results = correlate_grabs(searches, trustworthy_grabs, tracking_window_minutes, match_season=True)
 
         for entry, result in zip(group_entries, results, strict=True):
-            if entry["id"] in held_ids:
-                # A sibling row in this group escalated, but this row has
-                # not yet been pending 24h past its own window end -- no
-                # write this check, mirroring a grab-history fetch failure.
-                counts["errors"] += 1
-                continue
-
             window_end = _parse_timestamp(entry["timestamp"]) + timedelta(minutes=tracking_window_minutes)
             window_expired = now > window_end
+
+            if entry["id"] in held_ids:
+                # A grab in this group has an unverified identity and this row
+                # is not yet 24h past its own window end: it must not resolve
+                # as unresolved or partial_expired this check. Treat it as
+                # still in-window so verified grabs only record non-terminal
+                # progress (ownership + partial), mirroring a fetch failure
+                # for everything else.
+                counts["errors"] += 1
+                window_expired = False
 
             previous = [o for o in owned if o.history_id == entry["id"]]
             new_grabs = result.matched_grabs
