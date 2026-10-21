@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- Phase 82 planned (9 plans, 7 waves); ready to execute"
-stopped_at: "Phase 82 (CI Tests What We Ship) planned: 9 plans in 7 waves, plan-checker passed after owner review rounds (decisions D-31..D-35 added); PR #33 in review; next is /bm:execute-phase 82"
-last_updated: "2026-10-21T21:08:10Z"
-last_activity: "2026-10-21 -- Phase 82 plan-phase: research, pattern map, 9 plans, plan-checker passed"
+status: "executing -- Phase 82 (9 plans, 7 waves)"
+stopped_at: "Phase 82 execution started: wave 1 (82-01, 82-02) dispatching"
+last_updated: "2026-10-21T21:09:30Z"
+last_activity: "2026-10-21 -- Phase 82 execute-phase started"
 progress:
   total_phases: 5
   completed_phases: 0
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 82 (ci-tests-what-we-ship) — Not started
+Phase: 82 (ci-tests-what-we-ship) — Executing
 Plan: 0 of 9
-Status: Ready to execute (planned; plan-checker passed)
-Last activity: 2026-10-21 -- Phase 82 planned (9 plans, 7 waves)
+Status: Executing (wave 1 of 7)
+Last activity: 2026-10-21 -- Phase 82 execution started
 
 ### v2.13 milestone shape
 
