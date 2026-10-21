@@ -401,6 +401,36 @@ Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` 
 
 ---
 
+## Milestone: v2.12 — Search Correctness & Trustworthy Feedback
+
+**Shipped:** 2026-10-21
+**Phases:** 5 | **Plans:** 33
+
+### What Was Built
+- Log hygiene, honest cycle grades, tag-scope enforcement, malformed-record robustness, Sonarr season dedup.
+- Correct Sonarr grab attribution with grab ownership, stable instance IDs, a one-time cutover and honest disclosure labels; Sonarr v5 support verified live.
+
+### What Worked
+- Test-first fixes on every review finding, including PR-time findings from Greptile, Codex and vibe-check, which kept regressions out.
+- Codex as an adversarial lane caught real defects that the native agents missed (per-id budget starvation, held rows resolving 'grabbed' early).
+- Zero-search, GET-only probes with in-process write guards made live sandbox verification safe and repeatable.
+- Owner checkpoints between drafting, read-only preflight and mutation kept live work bounded.
+
+### What Was Inefficient
+- My first fix for the starvation bug introduced a new defect (held rows resolving 'grabbed'); it took another review round. Reason about terminal outcomes before declaring a held state safe.
+- Planning files and logs carried private infrastructure details, which forced a full history scrub before the first public push.
+- The release body was published from a reformatted changelog instead of the owner-approved text and had to be redone.
+- v2.11.1's version drift went unnoticed until the v2.12 production walkthrough.
+
+### Patterns Established
+- Hand-edit STATE/ROADMAP; verify the Roadmaps page (it keys on words such as "await" and "complete").
+- Record review-register dispositions for the exact head before every push.
+- Show the exact release text to the owner before publishing.
+
+### Key Lessons
+- Never publish tracked planning text that names private hosts, usernames or credential locations.
+- A docs-only head still needs a fresh Greptile pass and acceptance under the pilot.
+
 ## Cross-Milestone Trends
 
 ### Process Evolution

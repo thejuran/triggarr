@@ -10,9 +10,16 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as v2.11.0). 1090 tests passing, ruff clean. 76 phases, 180 plans completed across 17 shipped milestones.
+v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 (released as v2.12.0). 2023 tests passing, ruff clean. 81 phases, 213 plans completed across 18 shipped milestones. Production runs v2.12.0 (schema v10).
 
-**Latest milestone delivered (v2.11):**
+**Latest milestone delivered (v2.12):**
+- Log hygiene: the reset token never reaches the in-app log viewer; every *arr HTTP error is logged through `_sanitize_exc`.
+- Honest cycle outcomes: each instance's last cycle is graded Success / Partial / Failed / Nothing needed; "last successful search" is split from "last checked"; SAFETY-03 counts Failed only.
+- Tag scope and robustness: an unresolved tag skips its queue (never widens); one malformed record is skipped per item instead of wedging the cycle; each Sonarr season gets at most one dispatch per cycle.
+- Sonarr grab attribution: series+season matching, each grab credited once ever via a grab-ownership table keyed by (app, stable instance ID, grab ID), distinct-episode counting, permanent instance IDs, and a one-time attribution cutover with an honest stats note. Sonarr v5 is supported via verified episode-identity lookups, checked live on isolated v5/v4 sandboxes.
+- Process: Buildomator + Greptile pilot with protected owner acceptance; three deep reviews and PR-time fixes, each test-first (per-id budget progress, held rows never terminal, pending partial rows kept through pruning); live production walkthrough clean; version-drift guard test added.
+
+**Prior milestone delivered (v2.11):**
 - Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` + `slice_batch`) with an ordered per-instance searched-log on `AppState` + a pure `prioritize_batch()` dispatcher: never-searched-first, top-up oldest-searched-first, mark-on-attempt (`bool(batch)` pass guard so a zero-search cycle never completes a pass), reset-per-pass, prune-to-eligible, commit-at-cycle-end. Wired into all 6 cycle call sites; `slice_batch` removed.
 - Per-app `key_fn` (Radarr/Lidarr `str(id)`, Sonarr composite `seriesId:seasonNumber`); `_merge_defaults` strips legacy cursor keys on load (load→save absence test); count-only refresh stays queue-independent.
 - Codex adversarial review caught 2 design blockers + 2 mediums at the plan stage; deep review APPROVED after fixing a dashboard half-migration (cursor read → "0 of N" frozen, rewired to searched-log length) + a negative-batch_size clamp. Audit passed (11/11 reqs, 11/11 wired); live NAS walkthrough confirmed the dashboard numerator climbs + Sonarr composite-key path end-to-end, 0 bugs.
@@ -48,7 +55,16 @@ v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
-## Current Milestone: v2.12 Search Correctness & Trustworthy Feedback
+## Next Milestone Goals
+
+Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
+
+- **CI & Review Workflow:** shipped-artifact CI checks (image startup, browser regressions, release-version consistency), paired BM/Codex review, risk-based vibe-check recommendations. Scope confirmed by the owner 2026-10-21, as written: `docs/bm-greptile-codex-blueprint.md` and `docs/ci-reference-baseline-plan.md`; next step is planning this milestone.
+- **Reliability:** state/config consistency (999.9), narrowed startup/shutdown resource lifecycle (999.13), ambiguous POST delivery/retry semantics.
+- **Authentication Safety & Responsiveness:** bcrypt off the event loop (999.4), evidence-backed auth-boundary review (999.10).
+
+<details>
+<summary>Shipped milestone: v2.12 Search Correctness & Trustworthy Feedback (2026-10-21)</summary>
 
 **Goal:** Make Triggarr search exactly what the user configured and report honestly what happened — no silent scope widening, no misattributed stats, no false "success" status — and close the two highest-stakes log-exposure gaps.
 
@@ -62,6 +78,8 @@ v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as
 **Progress (2026-10-18):** Phases 77–79 merged and deployed (PR #26). Phase 80 complete on branch `cycle-robustness` (ROBUST-01..04, DEDUP-01/02 verified; 1441 tests passing; card UAT passed locally), not yet merged. Phase 81 remaining.
 
 **Key context:** Source of truth is the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4). Findings #1–#4 came from an external correctness review; 999.3/999.5/999.6 from the 2026-06-26 deep review. Phase numbering continues from v2.11 (Phases 77–81). One DB migration (Phase 81) plus a config addition (stable per-instance ID). Remaining deep-review backlog (999.4, 999.7–999.13) and HTTP POST-retry semantics deferred to the next hardening milestone. Public release target v2.12.0.
+
+</details>
 
 <details>
 <summary>Shipped milestone: v2.11 Never-Searched-First Search Queue Priority (2026-06-04)</summary>
@@ -232,13 +250,15 @@ v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as
 - ✓ Presentation overhaul: README rewrite, SECURITY.md reconciled with v2.8/v2.8.1 hardening + at-rest caveat, community-health + repo-metadata, v2.9.0 release notes + in-app changelog, SeedSyncarr signal reconciliation, fresh Playwright screenshots — v2.9 (PDISC-01..03, PREW-01..07)
 - ✓ Never-searched-first search queue: ordered per-instance searched-log on `AppState` + pure `prioritize_batch()` dispatcher (never-searched-first, top-up oldest-first, mark-on-attempt, `bool(batch)` pass guard, reset-per-pass, prune-to-eligible, commit-at-cycle-end); per-app `key_fn` (Sonarr composite key); `_merge_defaults` strip-on-load; `slice_batch` removed; count-only refresh stays queue-independent — v2.11 (QUEUE-01..11)
 
+- ✓ Reset token never reaches the in-app log viewer or any HTTP response; *arr HTTP errors always logged sanitized — v2.12 (Phase 77)
+- ✓ Each instance's last cycle graded Success / Partial / Failed / Nothing needed, with last successful search split from last checked — v2.12 (Phase 78)
+- ✓ An unresolvable tag skips and flags its queue, never widening the search — v2.12 (Phase 79)
+- ✓ A malformed *arr record never aborts a cycle; each Sonarr season gets at most one dispatch per cycle — v2.12 (Phase 80)
+- ✓ Sonarr grabs credit only the matching series+season search, once ever, counting distinct episodes, with a visible attribution cutover note; Sonarr v5 verified live on isolated sandboxes — v2.12 (Phase 81)
+
 ### Active
 
-- [x] Reset token never reaches the in-app log viewer or any HTTP response; *arr HTTP errors always logged sanitized (v2.12) — Validated in Phase 77: Secret & Reset-Token Log Hygiene
-- [x] Each instance's last cycle is graded Success / Partial / Failed / Nothing needed searching, with "last successful search" and "last checked" tracked separately and the failure counter driven by the grade (v2.12) — Validated in Phase 78: Honest Cycle Outcomes
-- [ ] A tag-scoped queue whose tag can't be resolved is skipped and flagged, never widened to all items (v2.12)
-- [ ] A malformed *arr record never aborts a cycle; each Sonarr season receives at most one engine dispatch per cycle (v2.12)
-- [ ] Sonarr grabs credit only the matching series+season search, exactly once ever, with a visible attribution cutover note (v2.12)
+(Defined with the next milestone via `/bm:new-milestone`.)
 
 ### Out of Scope
 
@@ -261,14 +281,14 @@ v2.11 Never-Searched-First Search Queue Priority shipped 2026-06-04 (released as
 
 ## Context
 
-Shipped v2.8 (Hardening & Observability) on 2026-06-01. 961 tests passing. 67 phases, 155 plans completed across 14 shipped milestones. v2.8 added no new runtime dependencies — it hardened existing config/scheduler/security paths and added the dashboard "Last OK" signal + tag-list cache.
+Shipped v2.12 (Search Correctness & Trustworthy Feedback) on 2026-10-21 as v2.12.0. 2023 tests passing. 81 phases, 213 plans across 18 shipped milestones. v2.12 added one runtime dependency, `tomlkit` (comment-preserving stable-ID backfill), and database schema v10 (forward-only; see docs/operations/upgrade-sonarr-attribution-v10.md). Earlier: v2.8 shipped 2026-06-01 with 961 tests.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff, bcrypt, itsdangerous, Phosphor Icons (vendored regular weight).
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache. `:main`/`:dev` tags on main push, `:latest` + version tag on release.
 Registry: ghcr.io/thejuran/triggarr
 Repo: github.com/thejuran/triggarr
 
-Known tech debt: _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted); test_state_wrong_structure_list_crashes documents a limitation in _merge_defaults (list JSON). UI-01/UI-02/UI-03 pixel-exact visual verification from v2.6 still pending (auth pages). Duplicate `--color-triggarr-primaryDark` token declared but unused (templates use `triggarr-green-dark` alias) — collapse in future cleanup pass.
+Known tech debt (v2.12 deferrals in .planning/backlog/MAINTENANCE.md: shared pending-outcome predicate in db.py; fifth atomic-write copy): _update_info as module-level mutable dict (should move to app.state); tag_warnings typed as list[dict] (should be list[TagWarning] TypedDict); Sonarr eligible/total mixes units (accepted); test_state_wrong_structure_list_crashes documents a limitation in _merge_defaults (list JSON). UI-01/UI-02/UI-03 pixel-exact visual verification from v2.6 still pending (auth pages). Duplicate `--color-triggarr-primaryDark` token declared but unused (templates use `triggarr-green-dark` alias) — collapse in future cleanup pass.
 
 ## Constraints
 
@@ -330,6 +350,11 @@ Known tech debt: _update_info as module-level mutable dict (should move to app.s
 | CSS `--font-mono: "Geist Mono"` alias (v2.7 Phase 62) | Enables `font-mono` utility class to map to Geist Mono without requiring Tailwind v4 theme restructuring; preserves existing `font-geist-mono` utility for version badge while letting activity rail/log viewer/app card schedule rows use standard `font-mono`. | ✓ Good — v2.7 |
 | Regenerate 16×16/32×32 favicons from SVG via qlmanage (P63 D-19) | Bypasses realfavicongenerator.net's downsampled pipeline that caused the Mar 11 aliasing artifact. macOS `qlmanage -t -s 16/32` renders directly from the clean SVG master, producing bytes that differ from Mar 11 backup (verified via `cmp`). | ✓ Good — v2.7 |
 | SVG-primary favicon `<link>` before `.ico` fallback (P63) | Modern browsers pick the crisp SVG; legacy fall through to rasters. SVG master also serves as the source for the 24×24 in-header `<img class="w-6 h-6">` app icon via same `url_for('static', path='favicon.svg')`. | ✓ Good — v2.7 |
+| Permanent per-instance stable IDs backfilled into triggarr.toml via tomlkit (v2.12) | Renames and name reuse must not move history or stats; comments preserved, validated before an atomic 0600 write | ✓ Good — v2.12 |
+| Grab ownership in its own table keyed by (app, stable instance ID, grab ID), never cascaded from search_history (v2.12) | "Credited once, ever" must survive restarts, renames and history pruning | ✓ Good — v2.12 |
+| One-time attribution cutover; pre-fix pending Sonarr rows frozen as Legacy, old totals kept and labeled, not recomputed (v2.12) | Old attributions can't be corrected retroactively; honesty over rewriting history | ✓ Good — v2.12 |
+| Schema v10 is forward-only; recover by deploying a newer build (v2.12) | An older image against v10 double-counts stats; emergency restore documented, not rehearsed | — Pending (never exercised) |
+| Sonarr v5 identity via per-check episode lookups; held rows never terminal while an identity is unverified (v2.12) | v5 history omits season; never guess, never credit on missing identity, keep verified progress | ✓ Good — v2.12 |
 
 ## Evolution
 
@@ -349,4 +374,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-18 after Phase 80 (Cycle Robustness & Sonarr Season Dedup) complete*
+*Last updated: 2026-10-21 after v2.12 milestone*

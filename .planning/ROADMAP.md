@@ -21,7 +21,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - ✅ v2.9 Launch-Hardening / Sibling Consistency -- Phases 68-71 (shipped 2026-06-03) -- [archive](milestones/v2.9-ROADMAP.md)
 - ✅ v2.10 Recovery, Counts & Config Parity -- Phases 72-75 (shipped 2026-06-04) -- [archive](milestones/v2.10-ROADMAP.md)
 - ✅ v2.11 Never-Searched-First Search Queue Priority -- Phase 76 (shipped 2026-06-04) -- [archive](milestones/v2.11-ROADMAP.md)
-- 🔨 v2.12 Search Correctness & Trustworthy Feedback -- Phases 77-81 (in progress)
+- ✅ v2.12 Search Correctness & Trustworthy Feedback -- Phases 77-81 (shipped 2026-10-21) -- [archive](milestones/v2.12-ROADMAP.md)
 
 ## Phases
 
@@ -199,217 +199,20 @@ Full phase details: [milestones/v2.11-ROADMAP.md](milestones/v2.11-ROADMAP.md)
 
 </details>
 
-### 🔨 v2.12 Search Correctness & Trustworthy Feedback (Phases 77-81, in progress)
+<details>
+<summary>✅ v2.12 Search Correctness & Trustworthy Feedback (Phases 77-81) -- SHIPPED 2026-10-21</summary>
 
-**Milestone Goal:** Make Triggarr search exactly what the user configured and report honestly what happened — no silent scope widening, no misattributed stats, no false "success" status — and close the two highest-stakes log-exposure gaps.
+- [x] Phase 77: Secret & Reset-Token Log Hygiene (5/5 plans) -- completed 2026-10-08
+- [x] Phase 78: Honest Cycle Outcomes (5/5 plans) -- completed 2026-10-09
+- [x] Phase 79: Tag-Scoped Searches Stay in Scope (4/4 plans) -- completed 2026-10-18
+- [x] Phase 80: Cycle Robustness & Sonarr Season Dedup (5/5 plans) -- completed 2026-10-18
+- [x] Phase 81: Correct Sonarr Grab Attribution + v5 Compatibility (14/14 plans) -- completed 2026-10-21
 
-**Source of truth:** `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4).
+Search exactly what the user configured and report honestly what happened. Reset tokens and *arr secrets stay out of the in-app logs; each cycle is graded Success/Partial/Failed/Nothing needed; an unresolved tag skips its queue; one malformed record no longer wedges a cycle and a Sonarr season gets at most one dispatch per cycle; Sonarr grabs credit only the matching series+season, once, counting distinct episodes, with stable instance IDs and an honest stats cutover note; Sonarr v5 compatibility verified live on isolated v5/v4 sandboxes. Released as v2.12.0 (PRs #26-#30; tag on dbb38fa).
 
-- [x] **Phase 77: Secret & Reset-Token Log Hygiene** - Reset token never reaches the in-app log viewer; *arr HTTP errors always logged with secrets redacted (completed 2026-10-08)
-- [x] **Phase 78: Honest Cycle Outcomes** - Each instance's last cycle grades Success/Partial/Failed/Nothing-needed, shown honestly on the dashboard (completed 2026-10-09)
-- [x] **Phase 79: Tag-Scoped Searches Stay in Scope** - An unresolved tag skips its queue instead of searching everything (completed 2026-10-18)
-- [x] **Phase 80: Cycle Robustness & Sonarr Season Dedup** - A malformed record can't wedge a cycle; a Sonarr season gets at most one dispatch per cycle (merged and deployed 2026-10-18 via PR #28; scheduled-cycle verification pending)
-- [ ] **Phase 81: Correct Sonarr Grab Attribution** - Grabs credit the matching series+season exactly once, ever, with an honest stats cutover note; includes the bounded Sonarr v5 compatibility verification (executed 2026-10-18/21, 14/14 plans; all requirements met — SONARRV5-02 closed 2026-10-21 after 81-14; in review on PR #29 — PR deep review finalized APPROVED at af676d3, owner acceptance and merge pending)
+Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 
-### Milestone status — reviewed 2026-10-18
-
-Status below is reconciled against plan SUMMARY files, phase VERIFICATION/HUMAN-UAT records, REQUIREMENTS.md, merged PRs and the deployed build. Phases 77–79 merged via PR #26 (merge commit `c914cbc`, 2026-10-18), published as `ghcr.io/thejuran/triggarr:main` and deployed to production (running `c914cbc` verified). The connection-pill polling loop found by the walkthrough (pre-existing since Phase 60) was fixed in PR #27 (`d41b484`). The version badge still reads v2.11.0; the bump belongs to the v2.12 release process, use revision/digest evidence rather than the version badge to identify a running build.
-
-PR #28 merged on 2026-10-18 at `dee25df5cedd28f8016f556129f20a0d5537b635` (GitHub merge status verified). Final reviewed head: `ef01a3e757a060132640aed72b9cff5e21ad11b3`; reported verification: 1,735 tests, clean ruff, Greptile 5/5 and vibe-check pass 6 with Codex clear. Main CI and release run `39157384992` reportedly passed, publishing image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`. Publication is not deployment: production was then redeployed and verified running `dee25df` (digest above, started 19:11:47Z, health OK, startup Radarr and Sonarr cycles graded Success). Still pending: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
-
-| Phase | Implemented / completed | Remaining | Status |
-|-------|-------------------------|-----------|--------|
-| 77 — Secret & Reset-Token Log Hygiene | All 5 plans; token-free viewer messages, sanitized connection errors, SecretStr client boundary. Automated verification recorded. | None. Live UAT passed 2026-10-18 on the sandbox (same `c914cbc` image). | Complete — merged and deployed; UAT complete (live) |
-| 78 — Honest Cycle Outcomes | All 5 plans; cycle grades, timestamps, persistence warnings, dashboard details, grade-driven failure counter. Automated verification recorded. | None open. 78-1 passed live. 78-2: green/red/gray grades and the post-first-cycle label passed live; amber Partial and the legacy-label states verified only by local fixture (owner-accepted). | Complete — merged and deployed; UAT partial (live + fixture) |
-| 79 — Tag-Scoped Searches Stay in Scope | All 4 plans; shared tag-scope resolution, reworded badge/unknown-count card behavior, refresh never-widen + end-to-end proof, and the R-07/hard-max shared-helper cleanup. Automated verification recorded (12/12 must-haves, no gaps). | None open. 79-1 and 79-2 passed live on the sandbox (badge auto-clear also confirmed the PR #26 tag-cache refetch); 79-3 upstream tag-fetch failure has automated-test coverage only. | Complete — merged and deployed; UAT partial (79-3 automated only) |
-| 80 — Cycle Robustness & Sonarr Season Dedup | All 5 plans; per-item malformed-record skips with per-queue card rows, per-grab date hardening, honest "unknown" Sonarr version, tag-autocomplete fallback, cross-queue Sonarr season dedup. Automated verification recorded (4/4 truths). | None blocking. Card UAT passed 2026-10-18 on a local build with a fake Sonarr (Partial + Failed); legacy single-count record covered by tests only. Pass-1 review: Sonarr upgrade-pass finding fixed (DEDUP-03); the first Lidarr non-object-record fix (5bdd49c) was engine-only and ineffective on real responses — corrected on the real client path for all three apps in c6947fe after the pass-2 review; Greptile status comment reconciled. Follow-up outside the PR: Refresh-counts malformed-record behavior. | Merged and deployed — PR #28 (`dee25df`); scheduled-cycle verification pending |
-| 81 — Correct Sonarr Grab Attribution + v5 Compatibility | Context gathered 2026-10-18 (81-CONTEXT.md D-01..D-14); planned 2026-10-18 (9 plans, 6 waves); sandbox setup/connectivity reported in the external runbook. Code plans 81-01..05 executed 2026-10-18/19 on branch `phase-81-sonarr-attribution` (1,957 tests pass, ruff clean; not pushed or reviewed). Live acceptance matrix built; owner authorized v5 deploy + v4 sandbox (option-a, 2026-10-19). Live v5 run (81-07) executed: season-pack attribution and repeated-tracking checks FAIL — Sonarr v5 grab history omits season identity, so no v5 grab is credited (never mis-credited); owner approved the record and scoped a fix inside Phase 81. SONARRV5-02 open. Gap closure: 81-10 captured sanitized real v5 fixtures; 81-11 episode-ID fallback implemented plus a post-review fix (1,996 tests pass, ruff clean). 81-12 live v5 rerun on the fixed build: owner-approved — S2 single-download season pack credited 8/8 once by the fixed build (search dispatched by the earlier Phase 81 build), S3 single-episode attribution 9/9, repeat checks probe-assisted pass (not unattended scheduled-cycle verification). SONARRV5-02 open pending v4. 81-08 isolated v4 sandbox (Sonarr 4.0.20) on the fixed build, owner-approved with corrections: S2 single-download pack sent and credited 8/8 once by the fixed build; repeat checks probe-assisted pass; tag filtering and missing/cutoff pagination remain unverified-live (empty sandboxes) on v4 and v5 — required D-11.1 checks still open, SONARRV5-02 open; v4 sandbox parked disabled. 81-13 zero-search live checks executed on both sandboxes (zero searches): tag filtering pass; missing/cutoff multi-page retrieval inferred from client output and verified server page limit, but client-returned ID-set completeness/uniqueness unverified-live (owner condition); owner dispositioned the unauthorized quality-profile upgradeAllowed change as an accepted bounded deviation (restored exactly, no-search barriers held; pagination verdicts unchanged). 81-09 closeout: on-screen disclosure review via two `/walkthrough` runs against local scratch instances (never NAS/production) passed CP1-CP6 both before and after two owner-approved bounded scope additions — the fourth stats card retitled "Average time to grab" (it always showed time-to-grab, not a scan schedule), and an instance-selector/stats-row poll `hx-sync` race fixed (commits `e996322` test, `09421ab` fix; full suite 1999 passed, ruff clean) — re-verify run then passed CP1-CP6 with 0 console errors; owner response "Accepted". D-13 reconciliation done: ATTR-01..06, SONARRV5-01, SONARRV5-03 marked complete in REQUIREMENTS.md; SONARRV5-02 stays open (client-returned ID-set completeness/uniqueness for missing/cutoff pagination on v5+v4; multi-season pack and alternate series order, fixture-only; v4 library counts unverified-live). Deep review (vibe-check) closed 2026-10-21 at frozen `9a1d423`: full Phase 81 review at `a2b8c1c`, then revision reviews at `d14b71e` and `9a1d423` (fixes for the backfill write diagnostic, Radarr/Lidarr credit by the row's own stable ID, legacy import before the cutover, the forward-only upgrade note and the emergency-restore backup steps); owner dispositions recorded, name-based Radarr/Lidarr selection deferred; frozen commit 2012 tests pass, ruff clean; approval covers review dispositions only (`.turingmind/REVIEW.md`). 81-14 (2026-10-21) closed the remaining D-11 gaps with a zero-search, read-only probe of the real client (separately authorized drafting, read-only preflight and Sonarr-side change list; all four isolation gates passed; sandboxes restored to an identical baseline): client-returned ID sets complete and duplicate-free on missing/cutoff pagination, v5 and v4, and a dedicated v4 Refresh-counts run matching Sonarr. The owner closed SONARRV5-02; multi-season pack and alternate series order remain unverified-live under D-12's fallback. PR #29 opened 2026-10-21 (history scrubbed of private details before the first push; code byte-identical). Fixes made during PR review, each red-test first: certifi bump (PYSEC-2026-4320); v5 per-id lookup budget overflow keeps verified progress; clock pinned in the fixed-date attribution tests; held Sonarr rows never get a terminal outcome; pending partial rows survive pruning and count toward the pending cap. At `af676d3`: 2020 tests pass, ruff clean, CI green, Greptile 5/5; PR deep review (vibe-check, 3 passes) finalized APPROVED, with 2 refactor rows deferred to backlog MAINTENANCE.md. | Owner marks PR #29 ready and approves review acceptance for the exact final head, then decides on merge; rerun the 81-14 probe if clients/, models/arr.py or search/engine.py change before merge (unchanged so far). | Executed — 14/14 plans; all requirements met; in review on PR #29 (CI green, Greptile 5/5, PR deep review APPROVED at af676d3); owner acceptance pending |
-
-**Counts:** 4/5 phases complete by the merged/verified criterion — 77–79 merged and deployed; 80 merged via PR #28 and deployed (running `dee25df` verified); its recurring scheduled-cycle check is still pending. 19/28 currently defined plans have summaries (Phase 81's 9 plans are not yet executed). REQUIREMENTS.md marks 19/28 requirements complete. Public v2.12.0 release remains pending Phase 81, remaining deployment/verification checks, and the release version bump.
-
-**Walkthrough evidence (2026-10-18):** `.planning/walkthroughs/20261018-023529-pending-live-human-checks/` (local, git-ignored). No searches ran during it, so it is not evidence of Sonarr v5 search compatibility; SONARRV5-01..03 remain open.
-
-**Next work:** confirm Phase 80's next scheduled production cycles (deployment of `dee25df` is verified); owner review acceptance and merge decision for Phase 81 on PR #29 (executed 14/14 plans; SONARRV5-02 closed 2026-10-21 after 81-14; PR-review fixes pushed; CI green, Greptile 5/5 and PR deep review finalized APPROVED at `af676d3`); bump the version in the v2.12 release. Follow-up outside PR #28: decide whether "Refresh counts" should skip one malformed record per item like scheduled cycles do.
-
-### Phase 77: Secret & Reset-Token Log Hygiene
-
-**Goal**: Close the two highest-stakes log-exposure gaps — the reset token stays out of the web-facing log viewer, and *arr API keys never leak through HTTP-error log lines.
-**Depends on**: Nothing (independent; sequenced first for risk reduction)
-**Requirements**: LOGSEC-01, LOGSEC-02, LOGSEC-03
-**Success Criteria** (what must be TRUE):
-
-  1. The reset token is absent from the in-app log viewer buffer and from `/partials/log-viewer` output, while still readable from the stderr log (`docker logs`).
-  2. The viewer stays redacted after the token is consumed, expires, or is replaced by a newly-issued token.
-  3. Any *arr HTTP error whose request URL contains an API key — including Sonarr's `detect_api_version` on legacy installs — is logged through the existing sanitizer (`_sanitize_exc`), key redacted.
-
-**Plans:** 5/5 plans complete
-Plans:
-**Wave 1**
-
-- [x] 77-01-PLAN.md — create_buffer_sink: bound viewer_message divergence + one-line redacted exception summary, no tracebacks in viewer (wave 1)
-- [x] 77-02-PLAN.md — relocate _sanitize_exc to clients.base; sanitize Sonarr detect_api_version warning (wave 1)
-- [x] 77-03-PLAN.md — load_state corrupt-file warning names the reason without contents (wave 1)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 77-04-PLAN.md — reset-token mint: viewer gets D-01 sentence only, stderr keeps token; lifecycle tests (wave 2)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 77-05-PLAN.md — strict SecretStr api_key for *arr clients + auth_api_key_set truthiness; migrate 64 test sites (wave 3)
-
-### Phase 78: Honest Cycle Outcomes
-
-**Goal**: Every instance's last cycle is graded honestly — Success, Partial, Failed, or Nothing needed searching — and the dashboard, timestamps, and failure counter all reflect that grade instead of a blanket "last success" stamp.
-**Depends on**: Nothing (independent of Phase 77; sequenced to define the grading model Phases 79 and 80 build on)
-**Requirements**: OUTCOME-01, OUTCOME-02, OUTCOME-03, OUTCOME-04, OUTCOME-05, OUTCOME-06
-**Success Criteria** (what must be TRUE):
-
-  1. Each instance's last cycle is graded Success / Partial / Failed / Nothing needed searching per spec §3.1, correctly for Radarr, Sonarr, and Lidarr, including when a queue is inactive or the cycle found nothing eligible.
-  2. The dashboard card reads "<Grade> · N accepted, M failed · <relative time>" — amber for Partial, red for Failed — with an expandable, sanitized failure-reason detail (no secrets, no stack traces).
-  3. "Last successful search" updates only when ≥1 command was accepted; "last checked" updates on every cycle finish including Failed; connection health remains a separate signal from the grade.
-  4. The consecutive-failure counter increments only on Failed and resets on Success, Partial, or Nothing needed searching.
-  5. A pre-upgrade `last_success` timestamp displays as "Last success (legacy)" until the instance's first new cycle completes, and an accepted command whose history write fails still counts as accepted, still updates "last successful search," and surfaces a separate persistence warning instead of being retried.
-
-**Plans:** 5/5 plans complete
-**UI hint**: yes
-Plans:
-**Wave 1**
-
-- [x] 78-01-PLAN.md — outcome model: grade_cycle (§3.1), CycleTally with Phase 79/80 hooks, cycle_view, LastCycleRecord + legacy-safe load (wave 1)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 78-02-PLAN.md — engine helpers (_search_and_record split command/insert, _finalize_cycle) + Radarr honest grading, OUTCOME-06 persistence path (wave 2)
-- [x] 78-04-PLAN.md — dashboard card: grade line/colors, Last checked staleness, legacy + Not run yet, unreachable grade, grouped detail panel kept open across refresh, persistence warning (wave 2)
-
-**Wave 3** *(blocked on 78-02)*
-
-- [x] 78-03-PLAN.md — Sonarr + Lidarr honest grading; refresh helpers proven untouched (wave 3)
-
-**Wave 4** *(blocked on 78-02 and 78-03)*
-
-- [x] 78-05-PLAN.md — SAFETY-03 counter driven by grade for scheduled + Search Now; refresh-counts route boundary (wave 4)
-
-### Phase 79: Tag-Scoped Searches Stay in Scope
-
-**Goal**: A queue whose configured tag can't be resolved is skipped outright, never silently widened to search the whole library.
-**Depends on**: Phase 78 (grading model — a skipped queue must be reflected in the cycle grade)
-**Requirements**: TAGSCOPE-01, TAGSCOPE-02, TAGSCOPE-03, TAGSCOPE-04
-**Success Criteria** (what must be TRUE):
-
-  1. When a queue's tag can't be resolved (fetch failed or tag no longer exists), that queue issues zero searches while the other queue still runs if its own scope resolves — true for Radarr, Sonarr, and Lidarr.
-  2. A persistent card warning names the skipped queue and the reason, and clears automatically once the tag resolves on a later cycle.
-  3. A skipped queue counts as unevaluated for grading; paired with an empty other queue, the cycle grades Failed, never "Nothing needed searching."
-  4. README/docs no longer describe the old search-everything fallback.
-
-**Plans**: 4 plans
-
-Plans:
-**Wave 1**
-
-- [x] 79-01-PLAN.md — Shared `_resolve_tag_scope` helper; Radarr/Sonarr/Lidarr cycles skip unresolved-tag queues, grade them unevaluated, keep last good counts (wave 1)
-- [x] 79-02-PLAN.md — Card badge names skipped queue + reason; README fail-open claim retired with docs regression test (wave 1)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 79-03-PLAN.md — Refresh counts never widen (active or inactive queue); end-to-end engine-to-card proof (wave 2)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 79-04-PLAN.md — Fold copied R-07 both-inactive and hard-max cap blocks into shared helpers, behavior-preserving (wave 3)
-
-### Phase 80: Cycle Robustness & Sonarr Season Dedup
-
-**Goal**: One malformed *arr record can no longer wedge a whole cycle, and a Sonarr season eligible for both the missing and upgrade queues gets searched at most once per cycle.
-**Depends on**: Phase 78 (grading model — malformed-record counts and persistence warnings feed into the cycle grade)
-**Requirements**: ROBUST-01, ROBUST-02, ROBUST-03, ROBUST-04, DEDUP-01, DEDUP-02
-**Success Criteria** (what must be TRUE):
-
-  1. A malformed *arr record (null nested series/artist, malformed or naive grab date, non-string version) is skipped and logged; the cycle completes and its state persists.
-  2. A failure in any history insert — on the failure path or the success path — is logged and never aborts the batch; an accepted command whose history insert fails still counts as accepted, still updates "last successful search," and shows the persistence warning instead of being retried.
-  3. Tag autocomplete returns its documented empty-`<datalist>` fallback instead of a 500 when the upstream response is malformed.
-  4. Within one Sonarr cycle, each (series, season) receives at most one engine dispatch across the missing and upgrade queues — claimed on attempt even if that command fails — while the upgrade batch still fills to its limit from other eligible seasons and the excluded season's position in the upgrade searched-log is unchanged.
-
-**Plans:** 5/5 plans complete
-Plans:
-**Wave 1**
-
-- [x] 80-01-PLAN.md — per-queue malformed tally (record_malformed(queue)), additive malformed_by_queue record field, D-07 card rows with legacy fallback (wave 1)
-- [x] 80-02-PLAN.md — correlation: skip malformed/naive grab dates per grab; tracking job no longer aborts (wave 1)
-- [x] 80-03-PLAN.md — detect_api_version reports "unknown" when uncertain (visible change from v3 fallback); tag_autocomplete empty fallback on ValueError (wave 1)
-- [x] 80-04-PLAN.md — Sonarr cross-queue season dedup: prioritize_batch exclude_keys + claim set + D-14 log (wave 1)
-
-**Wave 2** *(blocked on 80-01 and 80-04)*
-
-- [x] 80-05-PLAN.md — engine per-item malformed guards (Sonarr series, Lidarr tag-scoped artist), missing-side backstops, _resolve_tag_scope ValueError, ROBUST-02 three-app regression parity (wave 2)
-
-### Phase 81: Correct Sonarr Grab Attribution
-
-**Goal**: A Sonarr grab credits exactly the search that earned it — matching series and season, counted at most once ever — with effectiveness stats that honestly disclose the correction.
-**Depends on**: Attribution work is independent of Phases 79/80; final v4/v5 compatibility verification follows Phase 80. Carries the only DB migration and config addition.
-**Requirements**: ATTR-01, ATTR-02, ATTR-03, ATTR-04, ATTR-05, ATTR-06, SONARRV5-01, SONARRV5-02, SONARRV5-03
-**Success Criteria** (what must be TRUE):
-
-  1. A Sonarr grab credits a search only when both series and season match, and each grab is credited at most once, ever, keyed by (app, stable per-instance ID, grab ID) — holding across colliding grab IDs from different instances, instance renames, process restarts, and history pruning.
-  2. Each instance has a permanent Triggarr-assigned ID generated at creation, backfilled for existing instances on first load, and unchanged by renames.
-  3. Search↔grab ownership commits in the same transaction as the outcome/stat update; later tracking checks accumulate a search's previously-owned grabs and count distinct episodes.
-  4. Pre-cutover pending searches keep their existing rows and counters, are excluded from corrected attribution and from the active pending cap, and display as "Legacy — tracking discontinued."
-  5. Sonarr effectiveness stats show the attribution-corrected cutover note and label totals that include pre-cutover data as "Lifetime — includes historical estimates"; the cutover is recorded exactly once, only after the migration succeeds.
-
-  6. Sonarr v5 is reported as v5 (not v3), with safe malformed-version handling and no automatic API-route switch.
-  7. An isolated v4/v5 smoke matrix covers connection, tags, missing/cutoff pagination, counts, season commands, and grab tracking, recording exact builds and results. Alternate-order, season-pack, and multi-season attribution regression cases use Sonarr-returned identities and count distinct episodes correctly.
-
-**Plans:** 13 plans (9 planned 2026-10-18; gap-closure plans 81-10..81-12 added 2026-10-19 after the live v5 run found Sonarr v5 grab history omits season identity; 81-13 added 2026-10-20 for the open tag-filtering and pagination live checks). The bounded **Verify Sonarr v5 compatibility** task is Plans 81-06..81-08 per the design spec's Phase 81 addendum (2026-10-12). Keep current v3 routes and API-key authentication unless testing demonstrates an incompatibility; fix only affected existing flows. No production NAS upgrade, new Sonarr feature integration, or blanket v5 API migration. Live compatibility must be verified before claiming support; unavailable scenarios remain documented as unverified and the task stays open. Live sandbox work runs only after the owner's recorded authorization (Plan 81-06, D-09/D-10).
-
-Plans:
-**Wave 1**
-
-- [x] 81-01-PLAN.md — permanent instance ID: InstanceConfig.id, startup backfill with atomic write, save_settings/add_instance preservation fix (wave 1)
-- [x] 81-02-PLAN.md — Sonarr v5 version reporting, grab episode identity (includeEpisode), season-aware correlation + sanitized fixtures (wave 1)
-- [x] 81-03-PLAN.md — migration v10, frozen legacy pending rows, atomic grab ownership, cutover recorded exactly once (wave 1)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 81-04-PLAN.md — ownership-aware Sonarr tracking (distinct episodes, accumulation), client-path fixture regressions, scheduler wiring (wave 2)
-- [x] 81-05-PLAN.md — stats disclosure: legacy exclusion from rates, per-metric historical labels, cutover note, Legacy history label (wave 2)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 81-06-PLAN.md — live/fixture acceptance matrix + owner authorization of sandbox work (checkpoint) (wave 3)
-
-**Wave 4** *(owner-gated)*
-
-- [x] 81-07-PLAN.md — v5 sandbox: deploy exact Phase 81 build, isolation gates, live matrix incl. season-pack attribution (wave 4) — executed; season-pack attribution and repeated-tracking checks FAIL (v5 grab history omits season identity)
-
-**Waves 5–9** *(gap closure, then sequential owner-gated live checks)*
-
-- [x] 81-10-PLAN.md — capture sanitized real Sonarr v5 history/episode responses (read-only), relabel schema-derived fixtures, fixture hygiene test (wave 5, gap closure)
-- [x] 81-11-PLAN.md — episode-ID fallback: per-check series episode list + per-id fallback, series validation, transient deferral with per-row 24h escalation, no credit on missing/conflicting identity (wave 6, gap closure, TDD)
-- [x] 81-12-PLAN.md — live v5 rerun on the fixed build: season-pack attribution and non-vacuous repeated tracking checks, owner-run isolation gates (wave 7, gap closure)
-- [x] 81-08-PLAN.md — isolated v4 sandbox provisioning, isolation gates, live matrix on the fixed build (wave 8)
-- [x] 81-13-PLAN.md — zero-search live checks of tag filtering (include/exclude) and missing/cutoff pagination on the v5 and v4 sandboxes (wave 9, gap closure)
-- [x] 81-09-PLAN.md — on-screen disclosure check + D-13 status reconciliation of REQUIREMENTS/ROADMAP/STATE (wave 10)
-
-**81-09 closeout notes (2026-10-20/21):** Task 1 built two local scratch Triggarr instances (prefix = seeded pre-fix Sonarr data, fresh = clean install), local-only with fake keys, never NAS/production. Task 2 (owner on-screen review) ran as two `/walkthrough` observe-and-report passes; the first found two reportable items the owner approved as bounded Phase 81 scope additions rather than deferring:
-1. The fourth stats card was titled "Next Scan" / "Scheduled automatically" but always rendered the average time-to-grab — retitled "Average time to grab" / "From search to grab" (`ph-timer`).
-2. A selector/poll race: an in-flight "All instances" poll landing between a Radarr selection's request and response left the wrong (stale) disclosure showing until the next poll, because the instance selector and the 30s stats-row poll both swapped `#stats-row` with no shared `hx-sync` scope. Fixed with `hx-sync="#stats-row:replace"` on the selector and `hx-sync="this:drop"` on `#stats-row`.
-
-Both landed as `e996322` (test RED) + `09421ab` (fix); full suite 1999 passed, ruff clean (independently re-run for this record). A re-verify `/walkthrough` run on `09421ab` passed CP1-CP6 with 0 console errors. Owner response: "Accepted." Full detail in `81-LIVE-MATRIX.md` "Owner review (disclosure)". Task 3 reconciled REQUIREMENTS/ROADMAP/STATE per D-13 (see the milestone status row above and `81-LIVE-MATRIX.md` "## Status").
-
-### Phase 81 live test environment and remaining checks
-
-**Environment reference:** [Sonarr v5 sandbox runbook](/Users/julianamacbook/Cowork/mediaserver/SANDBOX-sonarr-v5.md). The runbook reports isolation checks and connectivity passed on 2026-10-12 against Sonarr v5.0.0.2569. This is historical setup evidence, not proof of scheduled-search or attribution compatibility; recheck the current environment before testing.
-
-- Separate compose project: `/volume1/docker/v5test`; sandbox data: `/volume1/data/v5test`; dedicated Triggarr config: `/volume1/docker/v5test/triggarr`.
-- Triggarr UI: `http://maguffynas:8494` (host 8494 → container 8484). Sonarr address from Triggarr: `http://sonarr-v5:8989`; LAN: `http://maguffynas:8990`. Use the fresh v5 API key without placing it in reports. `sonarr:8989` is production and is not the v5 test target.
-- The runbook reports authenticated connectivity to both API versions. Scheduled searching, pagination, deduplication, and corrected attribution remain unverified. SONARRV5-01..03 stay pending.
-- Deploy and identify a Triggarr build containing the Phase 80/81 changes. A mutable `:main` tag or the update-check banner does not establish which code is running.
-- Start with Triggarr disabled and test series unmonitored. After setup/configuration changes, run the runbook's isolation verification with the appropriate `SEARCHES=off/on` mode and Deluge destination check; require `ALL ISOLATION CHECKS PASSED` and `DELUGE DESTINATIONS PASSED` before controlled search testing. Deliberately monitor only the sandbox cases needed for the test, then restore the disabled/unmonitored baseline afterward.
-- Keep download category `tv-v5test`, sandbox download/move destinations, Remove Completed/Failed off, and test-only webhook/config targets. Shared iplayarr remains search-only; do not deploy or modify production services for this Triggarr task.
-- WUD can auto-update all test containers. Capture exact application versions, Triggarr commit/build identity, full image digests, and container start times before and after each run. Repeat any run interrupted by an update or restart. Record digests as evidence; do not change the runbook's tag-based deployment to digest pins.
-- Run the existing Phase 81 smoke matrix: connection, tags, missing/cutoff pagination, library counts, one controlled season dispatch, scheduled cycle, and repeated tracking checks; include alternate-order and season/multi-season-pack attribution cases. Use an isolated v4 instance for mutating v4 comparison tests; no isolated v4 endpoint is currently documented, so that part remains pending until provisioned.
-- Store sanitized results under `/volume1/docker/v5test/results/` and `/Users/julianamacbook/Cowork/mediaserver/v5test-results/`, linking the evidence from Phase 81 verification. Missing scenarios stay explicitly unverified; API reachability alone must never be reported as full v5 support.
+</details>
 
 ## Progress
 
@@ -423,12 +226,14 @@ Both landed as `e996322` (test RED) + `09421ab` (fix); full suite 1999 passed, r
 | 77. Secret & Reset-Token Log Hygiene | 5/5 | Complete | 2026-10-08 (merged/deployed 2026-10-18) |
 | 78. Honest Cycle Outcomes | 5/5 | Complete (UAT partial: fixture for amber/legacy) | 2026-10-09 (merged/deployed 2026-10-18) |
 | 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
-| 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Merged and deployed — PR #28; scheduled-cycle check pending | 2026-10-18 |
-| 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Executed — all requirements met (SONARRV5-02 closed 2026-10-21 after 81-14; multi-season pack and alternate series order unverified-live under D-12); in review on PR #29, owner acceptance and merge pending | - |
+| 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Complete (scheduled-cycle check passed 2026-10-21: 24 consecutive 180-min cycles, 0 failed, no duplicate season dispatch) | 2026-10-18 |
+| 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Complete (multi-season pack and alternate series order unverified-live under D-12) | 2026-10-21 |
 
 ## Next milestone after v2.12: CI & Review Workflow
 
 **Goal:** Make Triggarr the reference for meaningful CI, publication of the tested artifact, and BM-led review with an independent Codex pass and risk-based vibe-check recommendations.
+
+**Scope confirmed by the owner 2026-10-21 at v2.12 closeout:** the BM + Greptile + Codex review blueprint and the CI reference-baseline plan, both as written. Nothing is activated until this milestone's plans implement and verify it.
 
 - [ ] **CI reference baseline:** implement and verify the bounded shipped-image startup, browser regression, and release-version checks in [the CI plan](../docs/ci-reference-baseline-plan.md). Plan the remaining dependency, audit, maintenance, and permissions improvements from that plan with explicit scope and acceptance criteria.
 - [ ] **BM + Codex review pairing:** implement [the review blueprint](../docs/bm-greptile-codex-blueprint.md), updating `CLAUDE.md` and supported BM configuration/instructions so every BM code review has an independent Codex pass on the review checkpoint. Demonstrate normal, quick-task, and revision paths; missing or stale review evidence remains incomplete.
