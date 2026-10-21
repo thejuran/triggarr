@@ -233,7 +233,17 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   2. A small browser regression suite asserts the connection-pill request-loop behavior and critical setup/login behavior as observable behavior, not screenshots; reintroducing the polling bug makes the suite fail, and failure logs/screenshots are uploaded as artifacts with no secrets present. (GitHub-enforced)
   3. Before any version-tag publication, CI rejects a tag that disagrees with package metadata or image version, and accepts one that matches — both proven without publishing a production tag, with exact-commit CI and artifact-identity checks preserved. (GitHub-enforced)
   4. The CISHIP jobs join the existing required aggregate gate and consistency checks together; a missing or skipped mandatory job cannot let the gate pass, and the artifact published afterward is the same tested/audited image, never rebuilt. (GitHub-enforced)
-**Plans**: TBD
+**Plans**: 9 plans
+
+- [ ] 82-01-PLAN.md — release tag/package/image identity rules in release-policy.cjs (TDD)
+- [ ] 82-02-PLAN.md — CI harness: stub *arr service and reason-coded HTTP checks (TDD)
+- [ ] 82-03-PLAN.md — release.yml identity gate before publication, CI rehearsal script, wiring tests
+- [ ] 82-04-PLAN.md — shipped-image startup smoke driver with isolated config and missing-asset negative
+- [ ] 82-05-PLAN.md — Playwright dev deps, browser setup/login/logout flows, artifact secret scan
+- [ ] 82-06-PLAN.md — connection-pill polling regression test and local sensitivity check
+- [ ] 82-07-PLAN.md — image-smoke and browser-e2e CI jobs joined to CI ready and REQUIRED_JOBS
+- [ ] 82-08-PLAN.md — reproduction recipes, first real PR run, time-budget measurement (owner checkpoint)
+- [ ] 82-09-PLAN.md — recorded negative demonstrations on draft PRs after owner go-ahead
 
 ### Phase 83: Paired BM + Codex Review & Risk-Based Depth
 
