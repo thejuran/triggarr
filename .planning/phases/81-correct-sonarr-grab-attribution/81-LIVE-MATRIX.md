@@ -767,6 +767,43 @@ Sanitized result files only -- no API keys, no production URLs, no raw Sonarr/Tr
 
 Both locations already hold the 2026-10-12 isolation/setup evidence (`v5test-results.md` and its numbered step files) and the empty "Phase 81 compatibility checks" table that Plans 07/08 are expected to fill in once authorized. Nothing in this plan added, removed, or touched any file at either location.
 
+## Owner review (disclosure)
+
+**Plan 81-09, Task 2 — 2026-10-20/21.** Verification used two `/walkthrough` observe-and-report runs against the local "prefix" (pre-fix Sonarr data) and "fresh" (no history) scratch instances built for Task 1, never the NAS or a real *arr instance:
+
+- `/tmp/walkthrough/20261020-192018-phase-81-disclosure-check` — first run.
+- `/tmp/walkthrough/20261020-200612-reverify-phase-81-disclosure-fixed` — re-verify run, against build HEAD `09421abce51f7e7b4e887f9fd8fc7bcc5e627927`.
+
+**First run (prefix + fresh, build HEAD at the time):** CP1-CP6 all PASS. CP1/CP2: the cutover note present exactly once, no dismiss control; Grab Rate, Sonarr bar and Series labels present and correctly worded ("Lifetime — includes historical estimates" on Series; "Includes historical estimates" elsewhere). CP3: Radarr/Default selection shows neither note nor labels (a transient poll race was observed and investigated further, see below). CP4: the pending pre-fix row shows "Legacy — tracking discontinued", no divider/banner. CP5: the fresh instance shows neither note nor labels anywhere, and an empty History page. CP6: readability/placement pass, with two reported observations:
+- **O1 (readability):** the fourth stats card was titled "Next Scan" / "Scheduled automatically" while its value is the average time-to-grab, so the new "Includes historical estimates" label read as if it qualified the scan schedule rather than the time-to-grab figure.
+- **O3 (race, investigated post-run):** reproduced in a browser with a server-side delay harness (scratch-only `run_repro.py`, port 8586, no repo change): an in-flight "All instances" poll landing between a Radarr selection's request and its response left the Sonarr disclosure under a Radarr selection until the next poll, because the Radarr response (HTTP 200) was swapped into a detached element. Root cause: the instance selector and the 30s stats-row poll both swap `#stats-row` with no shared `hx-sync` scope.
+
+**Owner-approved scope additions (bounded, within Phase 81):**
+1. Retitle the fourth card "Average time to grab" / "From search to grab" (`ph-timer`), since it was always rendering `time_to_grab`, never a scan schedule.
+2. Fix the selector/poll race: `hx-sync="#stats-row:replace"` on the instance selector, `hx-sync="this:drop"` on `#stats-row`'s own poll. Verified in the browser in both response orderings (stale poll resolves `ERR_ABORTED`/`htmx:sendAbort`, the Radarr view is preserved, later refreshes keep it). The drop path (a poll firing while a selection request is in flight) is covered by the attribute test only — not separately re-reproduced in the browser.
+
+Commits: `e996322` (test RED — failing assertions for the new title and the sync attributes) and `09421ab` (fix — retitle in `triggarr/templates/partials/stats_row.html`, `hx-sync` on both the selector in `triggarr/templates/dashboard.html` and `#stats-row` itself, with matching test updates). Independently re-run at HEAD for this record: `uv run pytest tests/ -q` → **1999 passed**; `uv run ruff check triggarr/ tests/` → **all checks passed**, confirming the commit message's own claim.
+
+**Re-verify run (prefix + fresh, build HEAD `09421ab`):** CP1-CP6 all PASS, 0 console errors. Card reads "Average time to grab" / "From search to grab"; "Next Scan" / "Scheduled automatically" no longer appear (0 matches). Radarr selection shows no note/labels immediately and after the next poll (view preserved); Sonarr selection and All-instances both show their correct note/labels. History and the fresh instance unchanged from the first run's PASS. Not re-exercised in this run: the delayed-response race harness (already covered in the first run's post-run investigation on this same build) and keyboard operation of the native `<select>`.
+
+**Owner response (verbatim, relayed by the orchestrator):** "Accepted."
+
+No edits, commits, pushes, or deploys were made by either `/walkthrough` run itself; the scope-addition commits above were made separately, between the two runs, per the owner's explicit approval recorded in the first run's journal. No NAS or production contact at any point in this review.
+
+## Status
+
+Summary for SONARRV5-02 and Phase 81 closeout (D-13), read from the `## Matrix` table above — the Matrix is authoritative; this section only restates its verdicts per D-11 item.
+
+- **D-11.1 (v5 core flows, live): OPEN.** Pass: connection/status and reported version, tag lookup (81-13: pass, zero-search count-only procedure), one controlled SeasonSearch, scheduled cycle graded, repeated tracking checks (pass, probe-assisted — explicitly *not* unattended scheduled-cycle verification, per the owner's 81-12 review), library counts/refresh-counts, `/api/v3` routes + `X-Api-Key` auth retained. **Missing:** client-returned ID-set completeness/uniqueness for missing-queue pagination (v5) and cutoff-queue pagination (v5) — 81-13 established multi-page retrieval by inference (cycle-log fetch counts against a verified page size) and compared against an independent Sonarr read, never the real client's own returned records, which are never logged.
+- **D-11.2 (v5 season-pack attribution, live): PASS** (81-12, owner decision 2026-10-20). A genuine single-download season pack, dispatched by the earlier Phase 81 build and credited 8/8 once by the fixed build (`b35470b66f1287859319a6633ad3b0a34fbf7c39`).
+- **D-11.3 (v4 core flows, live): OPEN.** Pass: connection/status, tag lookup (81-13: pass, same procedure as v5), one controlled SeasonSearch, scheduled cycle graded, repeated tracking checks (pass, probe-assisted, same caveat as v5), `/api/v3` routes + auth retained. **Missing:** client-returned ID-set completeness/uniqueness for missing-queue pagination (v4) and cutoff-queue pagination (v4) — same inference-only basis as v5; library counts/refresh-counts on v4 — never dedicatedly re-verified after the controlled-run baseline restore (81-13's repeated calls during Task 5 are incidental confirmation only, not a standalone pass per the Matrix's own note).
+
+**Unverified-live, fixture-only (D-12 — never required live; not blocking on their own terms, but still open items under SONARRV5-02 until D-13's full-scenario bar is met):**
+- Multi-season pack (no cross-season leakage) — fixture + real-client-path regression tests only (`tests/test_attribution_client_path.py::test_client_path_multi_season_pack_no_cross_season`, `tests/test_correlation.py::TestSeasonAwareCorrelation::test_correlate_multi_season_pack_fixture_splits_by_season`).
+- Alternate series order — fixture + regression tests only (`tests/test_attribution_client_path.py::test_client_path_alternate_order_uses_canonical_season`, `tests/test_correlation.py::TestSeasonAwareCorrelation::test_correlate_alternate_order_scene_numbering_ignored`).
+
+**Conclusion:** D-11.1 and D-11.3 both have open sub-items (client-returned ID-set completeness/uniqueness on both pagination queues, both Sonarr versions; v4 library counts). Per D-11, any missing item blocks SONARRV5-02 and Phase 81. **SONARRV5-02 stays open.** The `upgradeAllowed` deviation (unauthorized when performed, accepted afterward as a bounded deviation) and the season-pack identity-gap finding are recorded above in their own sections and in `.planning/STATE.md`; not duplicated here.
+
 ---
 
 *Phase: 81-correct-sonarr-grab-attribution*
