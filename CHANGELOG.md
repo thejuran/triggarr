@@ -2,6 +2,50 @@
 
 ## v2.12.0 (2026-10-21)
 
+Search correctness and trustworthy feedback: Triggarr now searches only what you scoped it to, grades every cycle honestly, survives bad records from your *arr apps, and credits Sonarr grabs to the right search exactly once.
+
+* Features:
+
+  * Correct Sonarr grab attribution. A grab is credited only to a search for the same series and season, each grab counts once, ever, and each episode counts once. See "How Sonarr grab counts change" below.
+
+  * Sonarr v5 support, verified on isolated v5 and v4 test instances. v5 grab history no longer names a grab's season, so Triggarr looks it up in Sonarr's episode data and never guesses. Multi-season packs and alternate episode ordering are covered by tests but not yet verified live.
+
+  * Honest cycle outcomes. Each instance's last cycle is graded Success, Partial, Failed or Nothing needed on the dashboard.
+
+  * Tag-scoped searches stay in scope. If a queue's tag can't be found, that queue is skipped rather than searching your whole library.
+
+  * More robust cycles. One malformed record from Radarr, Sonarr or Lidarr no longer stops a cycle, and a Sonarr season is searched at most once per cycle.
+
+  * Permanent instance IDs. Renaming an instance keeps its history and stats.
+
+* Security:
+
+  * Reset tokens never appear in the in-app log viewer, and *arr errors are always logged with secrets removed.
+
+  * certifi updated to 2026.10.19 (PYSEC-2026-4320).
+
+* Fixes:
+
+  * The dashboard's connection indicator no longer re-requests itself in a loop.
+
+  * The fourth stats card is titled "Average time to grab", which is what it always showed.
+
+  * The version badge shows the real version again. v2.11.1 builds showed "v2.11.0" and offered v2.11.1 as an update.
+
+* How Sonarr grab counts change:
+
+  * Until now, Sonarr grab tracking ignored the season, so a grab for Season 3 could be credited to a search for Season 1 of the same show. It could also credit the same grab more than once, to more than one search or again on a later check. And it counted grab events rather than episodes, so an episode grabbed twice (for example a re-grabbed season pack) counted twice.
+
+  * Your existing totals don't drop. Triggarr doesn't recalculate the past. Sonarr's lifetime "episodes found" and "upgraded" totals keep their current values and grow correctly from now on.
+
+  * New Sonarr grabs will usually add up more slowly than before, because the over-counting has stopped, not because fewer episodes are found.
+
+  * Sonarr stats that include pre-upgrade data are labeled. Grab rate, the lifetime episode total and average time to grab carry "Includes historical estimates" or "Lifetime — includes historical estimates". A note reads "Attribution corrected on <date>. Earlier results may include misattributed or double-counted grabs." Fresh installs see neither.
+
+  * Searches still pending at upgrade time stop being tracked. They show "Legacy — tracking discontinued" in history and are left out of the grab rate from then on.
+
+  * Radarr and Lidarr counting is unchanged; the season problem was Sonarr-only. Stats now follow the instance, not its name, so renaming an instance keeps its stats.
+
 * Upgrade notes:
 
   * Tag-scoped queues no longer fall back to searching your whole library. If a queue's configured tag can't be found in Radarr, Sonarr, or Lidarr (for example a stale or mistyped tag name), or the tag list can't be loaded, Triggarr now skips that queue instead. The dashboard card names the skipped queue and the reason. A skipped queue that is turned on makes the cycle grade Failed, or Partial when the other queue got at least one search accepted. Only Failed cycles count toward the consecutive-failure alert; a Partial cycle resets it, so an instance that keeps skipping one queue while the other's searches are accepted will not raise that alert. After upgrading, check each instance's tags and fix or clear any tag that no longer exists. A tag you create in the *arr app is picked up on the next cycle.
