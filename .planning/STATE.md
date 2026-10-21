@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- v2.13 roadmap created (5 phases, 31 requirements); Phase 82 ready to plan"
-stopped_at: "v2.13 roadmap created (Phases 82-86) and amended with the docs/planning review-classification policy (REVIEW-07/08, ACCEPT-03); PR #33 in review; Phase 82 (CI Tests What We Ship) ready to plan next"
-last_updated: "2026-10-21T19:41:30Z"
-last_activity: "2026-10-21 -- v2.13 roadmap amended: docs/planning review-classification policy added (31 requirements, 100% coverage)"
+status: "planning -- Phase 82 context gathered; ready to plan"
+stopped_at: "Phase 82 (CI Tests What We Ship) context gathered (82-CONTEXT.md, 30 decisions); PR #33 in review; Phase 82 ready to plan next"
+last_updated: "2026-10-21T19:57:37Z"
+last_activity: "2026-10-21 -- Phase 82 discuss-phase: context captured (evidence standard, run policy, release tag rules, browser scope)"
 progress:
   total_phases: 5
   completed_phases: 0
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 Phase: 82 (ci-tests-what-we-ship) — Not started
 Plan: —
-Status: Ready to plan
+Status: Ready to plan (context gathered)
 Last activity: 2026-10-21 -- v2.13 roadmap amended with the review-classification policy (5 phases, 31 requirements)
 
 ### v2.13 milestone shape
@@ -241,13 +241,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-21T19:13:23Z
-Stopped at: v2.13 roadmap created (Phases 82-86); Phase 82 ready to plan
-Resume file: None (roadmap just written; next step is planning Phase 82, not resuming execution)
+Last session: 2026-10-21T19:57:37Z
+Stopped at: Phase 82 context gathered
+Resume file: .planning/phases/82-ci-tests-what-we-ship/82-CONTEXT.md
 
 ## Operator Next Steps
 
-- `/bm:discuss-phase 82` or `/bm:plan-phase 82` -- start Phase 82 (CI Tests What We Ship)
+- `/bm:plan-phase 82` -- plan Phase 82 (CI Tests What We Ship) from 82-CONTEXT.md
 - Phase 83 begins with REVIEW-01's gate: record the BM baseline, assess the target version's native review/fixer behavior, and get explicit owner approval of the exact version + bounded settings list before any BM update runs
 - Phase 84 (PLANCHK) is separately gated: nothing from it is activated in the repo without owner approval, and it blocks no other phase. Routine vibe-check stays on code and control changes until the owner explicitly retires it (PILOT-03); ordinary docs/planning-only changes follow the classification policy once Phase 83 defines it
 - Follow-up kept out of PR #28 (carried from v2.12, still open): "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (per-item screening remains deferred; the shared release-date fix also benefits refresh). Decide whether to align it.
