@@ -31,6 +31,12 @@ pytestmark = pytest.mark.credential_pages
 def probe_setup_fails_before_registration(
     page: Page, triggarr_container: TriggarrContainer, credentials: Credentials
 ) -> None:
+    # This process mints its own password (session-scoped ``credentials`` fixture), so hand it to
+    # the parent test the same way as the API key -- the parent's own password was never seen here.
+    password_file = os.environ.get("PROBE_PASSWORD_FILE")
+    if password_file:
+        Path(password_file).write_text(credentials.password)
+
     page.goto(f"{triggarr_container.url}/")
     page.fill("#username", credentials.username)
     page.fill("#password", credentials.password)

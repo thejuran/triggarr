@@ -74,12 +74,14 @@ def test_setup_failure_before_registration_leaves_no_capture(
     parent_app_url = admin_container.url
 
     secret_file = tmp_path / "key.txt"
+    password_file = tmp_path / "password.txt"
     session_record = tmp_path / "probe-session.json"
     out_dir = tmp_path / "out"
 
     env = {
         **os.environ,
         "PROBE_SECRET_FILE": str(secret_file),
+        "PROBE_PASSWORD_FILE": str(password_file),
         "E2E_SESSION_RECORD": str(session_record),
     }
     cmd = _probe_cmd(out_dir, *CREDENTIAL_RUN_FLAGS)
@@ -91,10 +93,14 @@ def test_setup_failure_before_registration_leaves_no_capture(
     assert secret_file.exists(), "probe did not write the generated API key before failing"
     api_key = secret_file.read_text()
     assert api_key  # non-empty
+    # The probe mints its own password in its own session; check for that one, not this process's.
+    assert password_file.exists(), "probe did not write the admin password it used"
+    probe_password = password_file.read_text()
+    assert probe_password  # non-empty
 
     # Check subprocess output for the secrets before using either in any assertion message.
     api_key_leaked = api_key in combined_output
-    password_leaked = credentials.password in combined_output
+    password_leaked = probe_password in combined_output or credentials.password in combined_output
     assert not api_key_leaked, "subprocess output must never echo the generated API key"
     assert not password_leaked, "subprocess output must never echo the admin password"
 
