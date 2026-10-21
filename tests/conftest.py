@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
 from triggarr.state import TriggarrState, _default_state
 from triggarr.web.middleware import AuthMiddleware
 from triggarr.web.routes import _reset_rate_limiter
+
+# The browser suite under tests/e2e runs only in the browser-e2e CI job,
+# against a live container of the exact shipped image (TRIGGARR_E2E_IMAGE).
+# When that env var is unset -- the default unit-test run -- tests/e2e is
+# excluded from collection entirely rather than silently skipped, so a
+# run of `pytest tests/e2e` without it collects nothing and pytest exits
+# non-zero (D-12: no silent skip).
+collect_ignore: list[str] = [] if os.environ.get("TRIGGARR_E2E_IMAGE") else ["e2e"]
 
 
 @pytest.fixture(autouse=True)
