@@ -91,12 +91,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| CISHIP-01 | Phase 82 | Pending |
+| CISHIP-02 | Phase 82 | Pending |
+| CISHIP-03 | Phase 82 | Pending |
+| CISHIP-04 | Phase 82 | Pending |
+| REVIEW-01 | Phase 83 | Pending |
+| REVIEW-02 | Phase 83 | Pending |
+| REVIEW-03 | Phase 83 | Pending |
+| REVIEW-04 | Phase 83 | Pending |
+| REVIEW-05 | Phase 83 | Pending |
+| REVIEW-06 | Phase 83 | Pending |
+| RISK-01 | Phase 83 | Pending |
+| RISK-02 | Phase 83 | Pending |
+| PLANCHK-01 | Phase 84 | Pending |
+| PLANCHK-02 | Phase 84 | Pending |
+| PLANCHK-03 | Phase 84 | Pending |
+| CIMAINT-01 | Phase 85 | Pending |
+| CIMAINT-02 | Phase 85 | Pending |
+| CIMAINT-03 | Phase 85 | Pending |
+| CIMAINT-04 | Phase 85 | Pending |
+| CIMAINT-05 | Phase 85 | Pending |
+| CIMAINT-06 | Phase 85 | Pending |
+| CIMAINT-07 | Phase 85 | Pending |
+| ACCEPT-01 | Phase 85 | Pending |
+| ACCEPT-02 | Phase 85 | Pending |
+| PILOT-01 | Phase 86 | Pending |
+| PILOT-02 | Phase 86 | Pending |
+| PILOT-03 | Phase 86 | Pending |
+| PILOT-04 | Phase 86 | Pending |
 
 **Coverage:**
 - v2.13 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28 ⚠️
+- Mapped to phases: 28
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-21*
-*Last updated: 2026-10-21 after initial definition*
+*Last updated: 2026-10-21 after roadmap creation (5 phases, 82-86, 100% coverage)*
