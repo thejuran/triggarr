@@ -4,7 +4,7 @@ milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: "Awaiting next milestone -- v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 as v2.12.0 (5 phases, 33 plans, 28/28 requirements); production runs v2.12.0"
 stopped_at: "v2.12 milestone closed 2026-10-21; post-v2.12 review blueprint and CI plan confirmed by the owner as written. Next: /bm:new-milestone for CI & Review Workflow (start in a fresh session)"
-last_updated: "2026-10-21T18:34:44Z"
+last_updated: "2026-10-21T18:48:44Z"
 last_activity: "2026-10-21 -- v2.12 milestone closed; v2.12.0 released and deployed"
 progress:
   total_phases: 5
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-08)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Between milestones -- v2.12 shipped 2026-10-21 (v2.12.0); next: confirm post-v2.12 review-workflow and CI proposals, then plan the next milestone
+**Current focus:** Between milestones -- v2.12 shipped 2026-10-21 (v2.12.0); post-v2.12 review-workflow and CI proposals confirmed by the owner as written; next: plan the CI & Review Workflow milestone (/bm:new-milestone)
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. The version string still reads v2.11.0 until the v2.12 release bump.
 

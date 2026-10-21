@@ -59,7 +59,7 @@ v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 (released as 
 
 Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
 
-- **CI & Review Workflow:** shipped-artifact CI checks (image startup, browser regressions, release-version consistency), paired BM/Codex review, risk-based vibe-check recommendations. Proposals to confirm first: `docs/bm-greptile-codex-blueprint.md` and `docs/ci-reference-baseline-plan.md`.
+- **CI & Review Workflow:** shipped-artifact CI checks (image startup, browser regressions, release-version consistency), paired BM/Codex review, risk-based vibe-check recommendations. Scope confirmed by the owner 2026-10-21, as written: `docs/bm-greptile-codex-blueprint.md` and `docs/ci-reference-baseline-plan.md`; next step is planning this milestone.
 - **Reliability:** state/config consistency (999.9), narrowed startup/shutdown resource lifecycle (999.13), ambiguous POST delivery/retry semantics.
 - **Authentication Safety & Responsiveness:** bcrypt off the event loop (999.4), evidence-backed auth-boundary review (999.10).
 
