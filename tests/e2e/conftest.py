@@ -78,7 +78,8 @@ class Credentials:
     """The suite's one disposable admin account (D-27: never a real credential)."""
 
     username: str
-    password: str
+    # repr=False: pytest prints fixture arguments in failure tracebacks, which would leak it into CI logs.
+    password: str = field(repr=False)
 
 
 @dataclass(frozen=True)
