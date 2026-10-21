@@ -178,10 +178,145 @@ jobs:
       - name: Audit dependencies (scanner errors also fail)
         run: uvx --from pip-audit==2.10.1 pip-audit --strict --no-deps --disable-pip -r requirements-audit.txt
 
+  image-smoke:
+    needs: [docker]
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: audited-image
+          path: image
+
+      - name: Verify and load audited image
+        working-directory: image
+        run: |
+          sha256sum -c image.tar.sha256
+          docker load -i image.tar
+          test "$(docker image inspect triggarr:ci-test --format '{{.Id}}')" = "$(cat image-id.txt)"
+
+      - name: Run shipped-image smoke test
+        run: uv run --no-sync python -m tests.harness.image_smoke run --image triggarr:ci-test --expected-image-id-file image/image-id.txt
+
+      - name: Rehearse release identity against audited image
+        run: |
+          test "$(docker image inspect triggarr:ci-test --format '{{.Id}}')" = "$(cat image/image-id.txt)"
+          export IMAGE_ID="$(cat image/image-id.txt)"
+          export IMAGE_VERSION="$(docker image inspect triggarr:ci-test --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          export REHEARSAL_SHA="$(git rev-parse HEAD)"
+          node .github/scripts/release-identity-rehearsal.cjs
+
+  browser-e2e:
+    needs: [docker]
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Install Chromium for Playwright
+        run: uv run --no-sync playwright install --with-deps chromium
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: audited-image
+          path: image
+
+      - name: Verify and load audited image
+        working-directory: image
+        run: |
+          sha256sum -c image.tar.sha256
+          docker load -i image.tar
+          test "$(docker image inspect triggarr:ci-test --format '{{.Id}}')" = "$(cat image-id.txt)"
+
+      - name: Run browser regression suite
+        env:
+          TRIGGARR_E2E_IMAGE: triggarr:ci-test
+        run: |
+          export EXPECTED_IMAGE_ID="$(cat image/image-id.txt)"
+          set +e
+          uv run --no-sync pytest tests/e2e -q -p no:cacheprovider -m credential_pages --browser chromium --tracing off --screenshot off --video off --output e2e-artifacts/credential --junitxml e2e-credential.xml
+          credential_status=$?
+          uv run --no-sync pytest tests/e2e -q -p no:cacheprovider -m "not credential_pages" --browser chromium --tracing retain-on-failure --screenshot only-on-failure --output e2e-artifacts/pages --junitxml e2e-pages.xml
+          pages_status=$?
+          set -e
+          if [ "$credential_status" -ne 0 ] || [ "$pages_status" -ne 0 ]; then
+            echo "Browser regression suite failed: credential_pages exit=$credential_status, pages exit=$pages_status" >&2
+            exit 1
+          fi
+
+      - name: Require a complete browser-suite result
+        run: |
+          python3 - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          def load(path):
+              root = ET.parse(path).getroot()
+              suite = root.find("testsuite") if root.tag == "testsuites" else root
+              return {
+                  "tests": int(suite.get("tests", 0)),
+                  "skipped": int(suite.get("skipped", 0)),
+                  "failures": int(suite.get("failures", 0)),
+                  "errors": int(suite.get("errors", 0)),
+              }
+
+          checks = [("e2e-credential.xml", 6), ("e2e-pages.xml", 1)]
+          bad = []
+          for path, minimum in checks:
+              try:
+                  result = load(path)
+              except Exception as exc:
+                  bad.append(f"{path}: could not be parsed ({exc})")
+                  continue
+              if result["tests"] < minimum:
+                  bad.append(f"{path}: expected at least {minimum} tests, saw {result['tests']}")
+              if result["skipped"] != 0:
+                  bad.append(f"{path}: expected 0 skipped, saw {result['skipped']}")
+              if result["failures"] != 0:
+                  bad.append(f"{path}: expected 0 failures, saw {result['failures']}")
+              if result["errors"] != 0:
+                  bad.append(f"{path}: expected 0 errors, saw {result['errors']}")
+          if bad:
+              sys.exit("Browser suite result incomplete: " + "; ".join(bad))
+          print("Browser suite result complete: credential and pages junit files both report success with no skips")
+          PY
+
+      - name: Upload browser failure evidence
+        if: >-
+          failure() &&
+          hashFiles('e2e-artifacts/credential/scan-complete.json') != '' &&
+          hashFiles('e2e-artifacts/pages/scan-complete.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-e2e-failure
+          path: e2e-artifacts
+          retention-days: 14
+          if-no-files-found: warn
+
   ci-ready:
     name: CI ready
     if: always()
-    needs: [test, lint, docker, secrets, dependencies]
+    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -191,7 +326,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os, sys
-          required = {"test", "lint", "docker", "secrets", "dependencies"}
+          required = {"test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e"}
           results = json.loads(os.environ["RESULTS"])
           if set(results) != required:
               sys.exit("Missing or unexpected mandatory CI jobs")
