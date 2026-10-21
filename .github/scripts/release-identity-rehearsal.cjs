@@ -136,6 +136,14 @@ async function rehearseReleaseIdentity({pyprojectText, sha, imageVersion, imageI
     // A dev/pre-release package version is not releasable: no tag can ever match it, so the
     // matching, mismatched and missing cases have nothing to rehearse. Skip them (visibly) rather
     // than failing CI for a commit that is not a release candidate; the malformed case still runs.
+    // The image still gets published for main/dev builds, so its version label must still be present
+    // and agree with the package version -- skipping the tag cases never skips the image identity.
+    if (typeof imageVersion !== 'string' || imageVersion === '') {
+      throw new Error(`Release identity rehearsal refused: image version label is missing for development package version ${JSON.stringify(packageVersion)}`);
+    }
+    if (imageVersion !== packageVersion) {
+      throw new Error(`Release identity rehearsal refused: image version ${JSON.stringify(imageVersion)} disagrees with package version ${JSON.stringify(packageVersion)}`);
+    }
     const reason = `skipped (package version ${JSON.stringify(packageVersion)} is not a releasable X.Y.Z version)`;
     lines.push(`matching: ${reason}`);
     lines.push(`mismatched: ${reason}`);

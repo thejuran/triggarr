@@ -86,6 +86,24 @@ test('a dev/pre-release package version skips the matching, mismatched and missi
   }
 });
 
+test('a dev/pre-release package version still rejects a missing or mismatched image version label', async () => {
+  for (const devVersion of ['2.13.0.dev0', '2.6.1-dev']) {
+    const pyprojectText = `[project]\nname = "demo"\nversion = "${devVersion}"\n`;
+    for (const badImageVersion of [undefined, '']) {
+      await assert.rejects(
+        rehearseReleaseIdentity({pyprojectText, sha: SHA, imageVersion: badImageVersion, imageId: IMAGE_ID}),
+        /image version label is missing/
+      );
+    }
+    for (const badImageVersion of ['9.9.9', '2.13.0', `${devVersion}x`]) {
+      await assert.rejects(
+        rehearseReleaseIdentity({pyprojectText, sha: SHA, imageVersion: badImageVersion, imageId: IMAGE_ID}),
+        /disagrees with package version/
+      );
+    }
+  }
+});
+
 test('an image label drifted from the package version rejects matching as "matching tag was not accepted"', async () => {
   await assert.rejects(
     rehearseReleaseIdentity({pyprojectText: PYPROJECT_212, sha: SHA, imageVersion: '2.12.1', imageId: IMAGE_ID}),
