@@ -1,8 +1,8 @@
 ---
 phase: 82
 slug: ci-tests-what-we-ship
-status: draft
-nyquist_compliant: false
+status: ready
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-10-21
 ---
@@ -36,17 +36,23 @@ created: 2026-10-21
 
 ## Per-Task Verification Map
 
-| Req ID | Behavior | Test Type | Automated Command | File Exists | Status |
-|--------|----------|-----------|-------------------|-------------|--------|
-| CISHIP-01 | Health/setup/login/static/writable-config/persistence via real entrypoint | smoke (CI job script) | `image-smoke` CI job | ❌ W0 | ⬜ pending |
-| CISHIP-01 | Missing static asset fails the check | smoke negative (permanent) | `image-smoke` CI job step | ❌ W0 | ⬜ pending |
-| CISHIP-01 | Broken entrypoint fails the check | recorded demonstration | documented recipe + isolated-branch CI run | ❌ W0 | ⬜ pending |
-| CISHIP-02 | Pill polls on bounded schedule, updates between polls | browser | `uv run pytest tests/e2e/test_pill_polling.py --browser chromium` | ❌ W0 | ⬜ pending |
-| CISHIP-02 | Setup/login/logout browser flows | browser | `uv run pytest tests/e2e/test_setup_login_logout.py --browser chromium` | ❌ W0 | ⬜ pending |
-| CISHIP-02 | Reintroduced polling bug fails suite; no secrets in artifacts | recorded demonstration | documented recipe + isolated-branch CI run | ❌ W0 | ⬜ pending |
-| CISHIP-03 | Tag/version mismatch rejected, match accepted | unit | `node --test .github/scripts/release-policy.test.cjs` | ✅ (extend) | ⬜ pending |
-| CISHIP-03 | Rejection before login/push/release-create | static wiring | `node --test .github/scripts/artifact-promotion.test.cjs` | ✅ (extend) | ⬜ pending |
-| CISHIP-04 | New jobs in `ci-ready`; missing/skipped job fails gate | static consistency | `node --test .github/scripts/ci-job-consistency.test.cjs` | ✅ | ⬜ pending |
+| Task ID | Req ID | Behavior | Test Type | Automated Command | File Exists | Status |
+|---------|--------|----------|-----------|-------------------|-------------|--------|
+| 82-01-T1, 82-01-T2 | CISHIP-03 | Tag/version mismatch rejected, match accepted | unit (TDD) | `node --test .github/scripts/release-policy.test.cjs` | ✅ (extend) | ⬜ pending |
+| 82-02-T1, 82-02-T2 | CISHIP-01 | Stub *arr service + reason-coded HTTP checks | unit (TDD) | `uv run --no-sync pytest tests/test_ci_harness.py -q` | ❌ W0 | ⬜ pending |
+| 82-03-T1 | CISHIP-03 | Release identity rehearsal (match passes, mismatch/malformed rejected) | unit + script | `node --test .github/scripts/release-identity-rehearsal.test.cjs` | ❌ W0 | ⬜ pending |
+| 82-03-T2, 82-03-T3 | CISHIP-03 | Rejection before login/push/release-create | static wiring | `node --test .github/scripts/*.test.cjs && uv run --no-sync pytest tests/test_github_workflows.py -q` | ✅ (extend) | ⬜ pending |
+| 82-04-T1 | CISHIP-01 | Container argv builders and lifecycle helpers | unit | `uv run --no-sync pytest tests/test_ci_harness_stack.py -q` | ❌ W0 | ⬜ pending |
+| 82-04-T2 | CISHIP-01 | Health/setup/login/static/writable-config/persistence via real entrypoint; missing static asset fails (permanent negative) | smoke (Docker) | `uv run --no-sync python -m tests.harness.image_smoke run --image triggarr:local --expected-image-id-file ...` | ❌ W0 | ⬜ pending |
+| 82-05-T1 | CISHIP-02 | Playwright deps installed; tests/e2e excluded from default run | config | `uv lock --check && uv run --no-sync pytest tests/ -q -x` | ✅ (extend) | ⬜ pending |
+| 82-05-T2 | CISHIP-02 | No secrets in uploaded artifacts | unit | `uv run --no-sync pytest tests/test_artifact_scan.py -q` | ❌ W0 | ⬜ pending |
+| 82-05-T3 | CISHIP-02 | Setup/login/logout browser flows | browser | `uv run --no-sync pytest tests/e2e -q --browser chromium` (live container) | ❌ W0 | ⬜ pending |
+| 82-06-T1 | CISHIP-02 | Pill polls on bounded schedule, updates between polls | browser | `uv run --no-sync pytest tests/e2e/test_pill_polling.py --browser chromium` | ❌ W0 | ⬜ pending |
+| 82-06-T2 | CISHIP-02 | Reintroduced loop / disabled polling fail the suite (local evidence) | browser (local sensitivity) | `uv run --no-sync pytest tests/e2e/test_pill_polling.py --browser chromium` | ❌ W0 | ⬜ pending |
+| 82-07-T1 | CISHIP-01, CISHIP-02 | image-smoke and browser-e2e CI jobs | CI wiring | `node --test .github/scripts/*.test.cjs` + YAML job presence check | ✅ (extend) | ⬜ pending |
+| 82-07-T2, 82-07-T3 | CISHIP-04 | New jobs in `ci-ready`; missing/skipped job fails gate; all actions SHA-pinned | static consistency | `node --test .github/scripts/ci-job-consistency.test.cjs && uv run --no-sync pytest tests/test_ci_gate.py tests/test_github_workflows.py -q` | ✅ / ❌ W0 | ⬜ pending |
+| 82-08-T1..T3 | CISHIP-01..04 | Recipes documented; first real CI run and time budget recorded | real CI run + owner vibe-check | phase PR CI run (`image-smoke`, `browser-e2e`, `ci-ready`) | n/a | ⬜ pending |
+| 82-09-T1..T3 | CISHIP-01, CISHIP-02 | Broken entrypoint / pill bug fail CI on isolated draft PRs (owner go-ahead, D-10) | recorded demonstration | isolated-branch CI runs per `docs/ci-negative-demonstrations.md` | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -76,11 +82,11 @@ created: 2026-10-21
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [ ] Feedback latency < 60s — not met by design for Docker/E2E tasks (82-04-T2, 82-05-T3, 82-06-T1/T2, 82-08/09 CI runs): image builds, container lifecycles and real CI runs exceed 60s by nature. Node/unit task verifies stay under 60s.
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** plan-checker confirmed 8a-8d (2026-10-21); Wave 0 files not yet created (`wave_0_complete: false`)

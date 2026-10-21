@@ -486,22 +486,25 @@ This test should be run twice in CI's sense only once (D-02): once against the r
 
 **If this table is empty:** N/A — assumptions listed above need planner/executor confirmation, particularly A3.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does Playwright's `page.clock` virtualization reliably advance htmx's internal polling timer across a real network round-trip to a real (non-mocked) backend, inside a CI container?**
    - What we know: htmx 2.0.8 (vendored in this repo) uses `setInterval` somewhere in its trigger-processing code (confirmed via grep); Playwright's Clock API is documented to override global timer functions once `page.clock.install()` is called, before `page.goto()`.
    - What's unclear: Whether `fast_forward()`'s "fire pending timers at most once" semantics correctly fire htmx's specific internal scheduling mechanism (htmx may re-schedule via a recursive `setTimeout` rather than a single long-lived `setInterval`, which could require `run_for()` instead of `fast_forward()` to get each tick) — this needs a short spike against the real `connection_pill.html`/`base.html` markup before the planner commits to exact API calls in the implementation plan.
    - Recommendation: Treat Pattern/Code-Example's `fast_forward()` calls as a starting point, not gospel; the first implementation task for CISHIP-02 should include a quick manual/spike verification of clock-vs-htmx-interval interaction before writing the full assertion suite, and fall back to `run_for()` if `fast_forward()` doesn't fire the expected number of requests.
+   - RESOLVED: Plan 06 Task 1 opens with a spike comparing `fast_forward("00:31")` vs `run_for(31000)` against triggarr:local and uses whichever fires exactly one htmx tick; if neither works, the executor stops and reports (no runtime interval setting added without owner approval).
 
 2. **Exact current SHA pins for any new GitHub Actions used (e.g., `actions/cache` if browser caching is added).**
    - What we know: this repo enforces full-SHA pinning for every action (confirmed convention across `ci.yml`/`release.yml`).
    - What's unclear: This research did not fetch and verify a specific SHA for `actions/cache` (official Playwright guidance recommends skipping browser caching anyway, since restore time ≈ download time — see State of the Art/Standard Stack), so no new action may even be needed.
    - Recommendation: If the planner decides caching is worth it despite official guidance, look up the current `actions/cache` release SHA at implementation time — do not reuse a SHA from training data or copy one from an unrelated public example without verifying it against the actual `actions/cache` repository tags.
+   - RESOLVED: No new action is introduced. Plan 07 reuses only the already SHA-pinned actions listed in its context (checkout, setup-uv, setup-python, download-artifact, upload-artifact), skips browser caching per Playwright guidance, and Plan 07 Task 3 asserts every `uses:` in ci.yml is a 40-hex SHA.
 
 3. **Should the missing-static-asset negative test target `tests/e2e` (Playwright) or `image-smoke`'s plain-HTTP checks?**
    - What we know: D-01 classifies "a missing static asset" as a cheap, permanent negative test (not an expensive one-off demonstration); CISHIP-01's own listed assertions include "static assets."
    - What's unclear: Whether this negative belongs inside the `image-smoke` job (mutating a running container's writable layer via `docker exec ... rm ...` before a `curl` check, per the technique documented in this research's Architecture section) or as a Playwright-level network-404 assertion in `browser-e2e`.
    - Recommendation: Put it in `image-smoke` — it's a container/HTTP-layer concern (does `/static/css/output.css` 404 when absent), not a browser-behavior concern, and keeps `browser-e2e` scoped to D-25/D-28 only.
+   - RESOLVED: Placed in `image-smoke`. Plan 04 Task 2 step D removes `css/output.css` from the running container and expects `check_static_assets` to fail with reason `static-asset-missing` (permanent negative, D-01/D-03).
 
 ## Environment Availability
 
