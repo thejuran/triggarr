@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- Phase 82 context gathered; ready to plan"
-stopped_at: "Phase 82 (CI Tests What We Ship) context gathered (82-CONTEXT.md, 30 decisions); PR #33 in review; Phase 82 ready to plan next"
-last_updated: "2026-10-21T19:57:37Z"
-last_activity: "2026-10-21 -- Phase 82 discuss-phase: context captured (evidence standard, run policy, release tag rules, browser scope)"
+status: "planning -- Phase 82 planned (9 plans, 7 waves); ready to execute"
+stopped_at: "Phase 82 (CI Tests What We Ship) planned: 9 plans in 7 waves, plan-checker passed after owner review rounds (decisions D-31..D-35 added); PR #33 in review; next is /bm:execute-phase 82"
+last_updated: "2026-10-21T21:08:10Z"
+last_activity: "2026-10-21 -- Phase 82 plan-phase: research, pattern map, 9 plans, plan-checker passed"
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 9
   completed_plans: 0
   percent: 0
 ---
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.13 CI & Review Workflow -- roadmap created (Phases 82-86); Phase 82 (CI Tests What We Ship) ready to plan
+**Current focus:** v2.13 CI & Review Workflow -- roadmap created (Phases 82-86); Phase 82 (CI Tests What We Ship) planned, ready to execute
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. v2.12 shipped 2026-10-21 as v2.12.0 (tag on `dbb38fa`).
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 82 (ci-tests-what-we-ship) — Not started
-Plan: —
-Status: Ready to plan (context gathered)
-Last activity: 2026-10-21 -- v2.13 roadmap amended with the review-classification policy (5 phases, 31 requirements)
+Plan: 0 of 9
+Status: Ready to execute (planned; plan-checker passed)
+Last activity: 2026-10-21 -- Phase 82 planned (9 plans, 7 waves)
 
 ### v2.13 milestone shape
 
