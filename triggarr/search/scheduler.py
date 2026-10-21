@@ -507,19 +507,23 @@ def create_lifespan(
             if cfg.id
         }
         await init_db(db, db_path, instance_stable_ids=instance_stable_ids)
-        # Phase 81: record the attribution cutover exactly once, immediately
-        # after the migration that creates its schema. Deliberately not
-        # caught -- a failed cutover must stop startup the same way a failed
-        # migration does, so pre-cutover pending rows are never tracked
-        # under the new ownership rules.
-        await ensure_cutover_recorded(db, {name: cfg.id for name, cfg in settings.sonarr.items()})
-
-        # Migrate existing search_log from state.json to SQLite (one-time)
+        # Migrate existing search_log from state.json to SQLite (one-time).
+        # Runs before the cutover so imported pre-fix rows fall at or below
+        # the cutover's high-water mark (legacy, and disclosed).
         if state.get("search_log"):
             migrated = await migrate_from_state(db, state["search_log"])
             if migrated > 0:
                 state["search_log"] = []
                 await asyncio.get_running_loop().run_in_executor(None, save_state, state, state_path)
+
+        # Phase 81: record the attribution cutover exactly once, after the
+        # migration that creates its schema and after the one-time import
+        # above, so every pre-fix row is at or below its high-water mark.
+        # Deliberately not
+        # caught -- a failed cutover must stop startup the same way a failed
+        # migration does, so pre-cutover pending rows are never tracked
+        # under the new ownership rules.
+        await ensure_cutover_recorded(db, {name: cfg.id for name, cfg in settings.sonarr.items()})
 
         # --- Create long-lived clients for enabled instances ---
         client_classes: dict[str, type[ArrClient]] = {

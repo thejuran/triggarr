@@ -352,7 +352,17 @@ def backfill_instance_ids(config_path: Path, settings: Settings) -> Settings:
 
     try:
         _atomic_text_write(config_path, new_text)
-    except OSError:
+    except OSError as exc:
+        # Persisting stable instance IDs is required: never start without
+        # them, but never exit silently either. strerror carries no config
+        # content, so this line cannot leak a key.
+        logger.error(
+            "Could not save instance ids to {path} ({exc_type}: {reason}); the config directory must be "
+            "writable on the first start after upgrading -- not starting",
+            path=config_path,
+            exc_type=type(exc).__name__,
+            reason=exc.strerror or "unknown error",
+        )
         sys.exit(1)
 
     logger.info(

@@ -190,7 +190,11 @@ async def run_tracking_check(
                 app=app_name,
                 queue_type=entry["queue_type"],
                 instance_id=instance_id,
-                instance_stable_id=instance_stable_id or None,
+                # Credit the instance that ran this search, not whichever
+                # server now holds its display name. A row stored without a
+                # stable ID (written before v10 association) falls back to
+                # the current instance's ID, as before Phase 81.
+                instance_stable_id=entry["instance_stable_id"] or instance_stable_id or None,
                 stat_increments=stat_increments,
             )
             counts[outcome] = counts.get(outcome, 0) + 1
@@ -518,7 +522,7 @@ async def _run_sonarr_tracking_check(
     instance_id: str,
     tracking_window_minutes: int,
     *,
-    instance_stable_id,
+    instance_stable_id: str | None,
     counts: dict[str, int],
 ) -> dict[str, int]:
     """Ownership-aware Sonarr tracking (ATTR-01, ATTR-02, ATTR-04, R1, R2, R6).
