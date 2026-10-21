@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
 status: "executing -- Phase 82 (9 plans, 7 waves)"
-stopped_at: "Phase 82 wave 1 complete (82-01, 82-02 merged; 2066 tests pass); wave 2 (82-03, 82-04) next"
-last_updated: "2026-10-21T21:21:49Z"
-last_activity: "2026-10-21 -- Phase 82 wave 1 complete (82-01, 82-02)"
+stopped_at: "Phase 82 wave 2 complete (82-03, 82-04 merged; 2122 tests pass); wave 3 (82-05) next"
+last_updated: "2026-10-21T21:52:32Z"
+last_activity: "2026-10-21 -- Phase 82 wave 2 complete (82-03, 82-04)"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 9
-  completed_plans: 2
-  percent: 22
+  completed_plans: 4
+  percent: 44
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 82 (ci-tests-what-we-ship) — Executing
-Plan: 2 of 9
-Status: Executing (wave 2 of 7)
-Last activity: 2026-10-21 -- Phase 82 wave 1 complete (82-01, 82-02)
+Plan: 4 of 9
+Status: Executing (wave 3 of 7)
+Last activity: 2026-10-21 -- Phase 82 wave 2 complete (82-03, 82-04)
 
 ### v2.13 milestone shape
 
