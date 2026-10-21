@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import copy
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import aiosqlite
 import httpx
@@ -40,6 +41,22 @@ from triggarr.tracking import run_tracking_check
 # the search timestamp and the window end; a fully-resolved outcome
 # ("grabbed") never consults window_expired at all.
 _WIDE_WINDOW = 999_999
+
+
+def _pin_tracking_clock(at: datetime):
+    """Return a patcher that pins tracking's wall clock to ``at``.
+
+    A fixed-date test that expects a row to stay pending would otherwise fail
+    once the real date passes ``base + _WIDE_WINDOW``. Start it before the
+    first tracking check and stop it in the test's ``finally``.
+    """
+
+    class _Pinned(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return at if tz is None else at.astimezone(tz)
+
+    return patch.object(tracking_module, "datetime", _Pinned)
 
 
 class _SonarrHistoryFake:
@@ -210,6 +227,8 @@ async def test_client_path_season_pack_credits_season_once(tmp_path):
     row_s1 = await _seed(db, item_id=202, season_number=1, missing_count=6, timestamp=base)
     row_s2 = await _seed(db, item_id=202, season_number=2, missing_count=1, timestamp=base)
 
+    clock = _pin_tracking_clock(base + timedelta(days=30))
+    clock.start()
     try:
         await run_tracking_check(
             db, client, "Sonarr", "Main", tracking_window_minutes=_WIDE_WINDOW, instance_stable_id="sid-main",
@@ -231,6 +250,7 @@ async def test_client_path_season_pack_credits_season_once(tmp_path):
         owned_after = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=202)
         assert len(owned_after) == 7
     finally:
+        clock.stop()
         await client.close()
         await db.close()
 
@@ -343,11 +363,14 @@ async def test_client_path_missing_episode_id_not_counted(tmp_path):
     base = datetime(2026, 1, 9, tzinfo=UTC)
     row_id = await _seed(db, item_id=101, season_number=1, missing_count=2, timestamp=base)
 
+    clock = _pin_tracking_clock(base + timedelta(days=30))
+    clock.start()
     try:
         counts = await run_tracking_check(
             db, client, "Sonarr", "Main", tracking_window_minutes=_WIDE_WINDOW, instance_stable_id="sid-main",
         )
     finally:
+        clock.stop()
         await client.close()
 
     assert await _outcome(db, row_id) == "searched"
@@ -1538,11 +1561,14 @@ async def test_client_path_conflicting_identity_not_counted(tmp_path):
     base = datetime(2026, 1, 9, tzinfo=UTC)
     row_id = await _seed(db, item_id=101, season_number=1, missing_count=1, timestamp=base)
 
+    clock = _pin_tracking_clock(base + timedelta(days=30))
+    clock.start()
     try:
         counts = await run_tracking_check(
             db, client, "Sonarr", "Main", tracking_window_minutes=_WIDE_WINDOW, instance_stable_id="sid-main",
         )
     finally:
+        clock.stop()
         await client.close()
         logger.remove(sink_id)
 
