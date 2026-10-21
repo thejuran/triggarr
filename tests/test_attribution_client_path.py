@@ -26,6 +26,7 @@ from unittest.mock import patch
 
 import aiosqlite
 import httpx
+import pytest
 from loguru import logger
 from pydantic import SecretStr
 
@@ -1103,6 +1104,67 @@ async def test_client_path_v5_held_expired_row_records_progress_without_terminal
     owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=62)
     assert {o.episode_id for o in owned} == {1100}
     await db.close()
+
+
+@pytest.mark.parametrize("missing_count", [1, None])
+async def test_client_path_v5_held_row_never_terminal_even_when_count_reached(tmp_path, missing_count):
+    """A held row whose verified grabs already reach its expected count (or that has
+    no expected count) must stay non-terminal while another grab's lookup is
+    transient: it records partial progress with no stat change, and the next healthy
+    check credits every episode. Resolving it 'grabbed' early would drop the
+    unverified episode's credit for good (resolved rows are never tracked again)."""
+    db = await _init_db(tmp_path)
+    when = datetime.now(UTC) - timedelta(minutes=10)
+    records = [
+        {
+            "id": 71200 + n, "episodeId": 1200 + n, "seriesId": 63,
+            "sourceTitle": "HeldComplete.S01.1080p-GRP", "date": when.isoformat().replace("+00:00", "Z"),
+            "eventType": "grabbed", "downloadId": "DL-HELDCOMPLETE", "data": {},
+        }
+        for n in range(2)
+    ]
+    fake = _SonarrHistoryFake(
+        {63: records},
+        series_episode_lists={63: []},  # both ids need the per-id fallback
+        episodes={
+            1200 + n: {"id": 1200 + n, "seriesId": 63, "seasonNumber": 1, "episodeNumber": n + 1}
+            for n in range(2)
+        },
+    )
+    fake.episode_status[1201] = 500  # second lookup is transient this check
+
+    search_time = datetime.now(UTC) - timedelta(minutes=15)
+    try:
+        row = await _seed(db, item_id=63, season_number=1, missing_count=missing_count, timestamp=search_time)
+
+        client = _client(fake)
+        try:
+            await run_tracking_check(
+                db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+            )
+        finally:
+            await client.close()
+
+        assert await _outcome(db, row) == "partial"  # never terminal while an identity is unverified
+        assert await _stat(db, "episodes_found") == 0
+        owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=63)
+        assert {o.episode_id for o in owned} == {1200}
+
+        del fake.episode_status[1201]  # Sonarr healthy again
+        client = _client(fake)
+        try:
+            await run_tracking_check(
+                db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+            )
+        finally:
+            await client.close()
+
+        assert await _outcome(db, row) == "grabbed"
+        assert await _stat(db, "episodes_found") == 2
+        owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=63)
+        assert {o.episode_id for o in owned} == {1200, 1201}
+    finally:
+        await db.close()
 
 
 async def test_client_path_v5_row_escalation_old_row_resolves_recent_held(tmp_path):
