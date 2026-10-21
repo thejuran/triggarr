@@ -677,15 +677,15 @@ async def _run_sonarr_tracking_check(
             window_end = _parse_timestamp(entry["timestamp"]) + timedelta(minutes=tracking_window_minutes)
             window_expired = now > window_end
 
-            if entry["id"] in held_ids:
+            held = entry["id"] in held_ids
+            if held:
                 # A grab in this group has an unverified identity and this row
-                # is not yet 24h past its own window end: it must not resolve
-                # as unresolved or partial_expired this check. Treat it as
-                # still in-window so verified grabs only record non-terminal
-                # progress (ownership + partial), mirroring a fetch failure
-                # for everything else.
+                # is not yet 24h past its own window end: it gets no outcome
+                # this check -- not even 'grabbed', since the unverified grab
+                # may still belong to it and a resolved row is never tracked
+                # again. Verified grabs only record non-terminal progress
+                # (ownership + partial, no stat change) below.
                 counts["errors"] += 1
-                window_expired = False
 
             previous = [o for o in owned if o.history_id == entry["id"]]
             new_grabs = result.matched_grabs
@@ -729,16 +729,21 @@ async def _run_sonarr_tracking_check(
                 for grab in new_grabs
             ]
 
+            if held:
+                outcome = None
+
             if outcome is None:
-                # Still within window and not yet fully resolved. When new
-                # grabs were matched this check, persist their ownership and
+                # Still within window and not yet fully resolved (or held). When
+                # new grabs were matched this check, persist their ownership and
                 # the updated progress detail now (in the same kind of
                 # transaction as a resolution) so no other search can claim
                 # them before the next check -- but never rewrite a row when
                 # nothing new was found.
-                if owned_grabs and entry["outcome"] == "partial" and not window_expired:
-                    expected = entry["missing_count"] if entry["missing_count"] is not None else 0
-                    progress_detail = f"partial: {grab_count}/{expected} episodes"
+                if owned_grabs and (held or (entry["outcome"] == "partial" and not window_expired)):
+                    if entry["missing_count"] is not None:
+                        progress_detail = f"partial: {grab_count}/{entry['missing_count']} episodes"
+                    else:
+                        progress_detail = f"partial: {grab_count} episodes"
                     try:
                         await update_outcome_and_stats(
                             db,
