@@ -8,7 +8,9 @@
 Every requirement whose acceptance claims a gate needs **positive and negative evidence** (the correct case passes, a deliberately broken case fails). Each requirement records whether it is **GitHub-enforced** or **instruction-enforced** (BM/Claude follows written rules; nothing on GitHub blocks a violation).
 
 **Standing rules for the whole milestone:**
-- The current review process — Greptile, routine manually requested vibe-check, and exact-commit owner acceptance — stays in force on every PR until the owner explicitly retires a part of it (PILOT-03). No pilot comparison, new control or recommendation waives it earlier.
+- The current review process — Greptile, routine manually requested vibe-check, and exact-commit owner acceptance — stays in force for code and control changes until the owner explicitly retires a part of it (PILOT-03). No pilot comparison, new control or recommendation waives it earlier.
+- Ordinary documentation and planning-only changes follow the content-based classification policy (REVIEW-07, REVIEW-08) once Phase 83 defines it. Until Phase 85's GitHub mechanism (ACCEPT-03) is implemented and verified, existing GitHub protections stay exactly as they are, and any review that still runs automatically on a docs-only PR (currently Greptile, through the required check) is disclosed in that PR rather than described as unnecessary.
+- Exact-commit owner acceptance applies to every PR, whatever its classification.
 - The BM update is planned work with a recorded baseline and an owner-approved target (REVIEW-01), not something implied by this requirements discussion.
 - Codex plan-checker routing (PLANCHK) is a separately gated investigation; nothing from it is activated in this repository without owner approval.
 
@@ -35,15 +37,18 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 
 - [ ] **ACCEPT-01**: Before final owner approval is requested, the PR is marked ready and the machine-checkable prerequisites are visible, so avoidable repeat approvals are not needed. SHA binding is unchanged.
 - [ ] **ACCEPT-02**: The acceptance register is shown to handle concurrent PRs without one PR's update erasing another's evidence or satisfying another PR's gate; until that is shown, final acceptance updates are serialized and the rule is documented.
+- [ ] **ACCEPT-03**: GitHub's required checks honor the REVIEW-07 classification without weakening protection for code or control changes. The mechanism is designed and then verified with four cases: an ordinary-docs PR, a sensitive-docs PR (e.g. agent instructions or a workflow file), a mixed docs-and-code PR, and a misclassified PR that claims ordinary docs but contains a consequential change and must still get the full checks. Required checks are never disabled ad hoc; exact-commit owner acceptance stays required for every PR. Until this is verified, existing protections are preserved and remaining automatic docs reviews are disclosed (see standing rules).
 
 ### Paired BM + Codex review
 
 - [ ] **REVIEW-01**: Before any BM change, a baseline is recorded (current configuration saved, plugin and runtime versions) and the proposed target BM version's native review and fixer behavior is assessed: which review paths run review automatically, depth handling, fix loop, and whether it can invoke or request an external pass. The owner approves an exact target version and a bounded list of settings changes. BM is then updated through its supported procedure, the loaded version is confirmed with `/bm:version`, and only the approved settings change (expected: `workflow.code_review` on at `standard` depth); all other settings are preserved.
-- [ ] **REVIEW-02**: Every BM code review — phase execution, quick task, explicit review command, and review after fixes — is followed by an independent Codex adversarial pass on the same checkpoint commit, controlled by `CLAUDE.md` and supported BM configuration/instructions (no BM fork, no new orchestrator). Repository instructions fill only the gaps REVIEW-01 found in BM's native behavior; they do not duplicate it. Each path is demonstrated in practice.
+- [ ] **REVIEW-02**: Every BM code-review run — phase execution, quick task, explicit review command, and review after fixes — is followed by an independent Codex adversarial pass on the same checkpoint commit (this pairs Codex with each code-review run; it does not force code-review runs for ordinary planning edits, per REVIEW-07), controlled by `CLAUDE.md` and supported BM configuration/instructions (no BM fork, no new orchestrator). Repository instructions fill only the gaps REVIEW-01 found in BM's native behavior; they do not duplicate it. Each path is demonstrated in practice.
 - [ ] **REVIEW-03**: If BM cannot invoke Codex, it requests the exact-SHA review explicitly and tracks it as pending. Missing, failed, skipped, wrong-commit or stale Codex evidence is reported as incomplete, never as a clean review — demonstrated with a negative case.
 - [ ] **REVIEW-04**: Each Codex report states the inspected full head and base SHAs, coverage, exclusions, commands run, findings (source/run-qualified ID, severity, location, trigger, path, consequence, evidence, suggested fix; reproduced vs hypothesis) and limitations. Finding dispositions survive bot thread resolution.
 - [ ] **REVIEW-05**: Each review records requested versus actual depth and the instruction/configuration files responsible; any BM effective-depth reduction (e.g. deep → standard above 50 files) is reported rather than labelled deep.
 - [ ] **REVIEW-06**: Checkpoint evidence is bound to one pushed head: Greptile reviews the same head as Codex, the head stays frozen while independent reviews run, and after any fix the affected tests, finding dispositions and every applicable review are refreshed for the new head, with the original findings preserved for comparison. Evidence from an earlier head never counts for a later one.
+- [ ] **REVIEW-07**: A written review-classification policy exists. Ordinary documentation and planning-only changes receive a focused consistency review; Greptile, independent Codex code review and vibe-check are not routinely required for them. Classification depends on content, not file extension: changes to agent instructions, executable workflows, hooks, permissions, acceptance or release policy, or operational procedures are sensitive and require a risk assessment (RISK-01) and the applicable technical review, even when they live in Markdown. A mixed PR follows the requirements of its most consequential change.
+- [ ] **REVIEW-08**: Each PR records its classification and the rationale against its exact head SHA, and is reclassified when the head changes. Blanket "every PR" review wording is removed from `CLAUDE.md` and the BM/repository instructions and replaced by the REVIEW-07 policy, while REVIEW-02's pairing of Codex with every BM code-review run is kept. Demonstrated on an ordinary-docs PR and a sensitive-docs PR.
 
 ### Risk-based review depth
 
@@ -58,8 +63,8 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 
 ### Pilot and reference record
 
-- [ ] **PILOT-01**: 3–5 representative PRs run under the paired workflow, drawn from suitable authorized work (this milestone's own PRs and owner-authorized maintenance or backlog work). Aim to include a small fix, state/error-path logic, a UI or security-sensitive change and at least one larger change; no product change is invented to fill a category, and any category without suitable work is recorded as a gap. Each PR records, recording per reviewer: confirmed consequential defects, false positives, later-found misses, revision rounds, review time, observable usage/cost and owner effort.
-- [ ] **PILOT-02**: At least one substantial pilot PR gets a recorded side-by-side comparison of vibe-check against the paired workflow. This is in addition to routine vibe-check, which continues on every pilot PR until the owner retires it.
+- [ ] **PILOT-01**: 3–5 representative PRs run under the paired workflow, drawn from suitable authorized work (this milestone's own PRs and owner-authorized maintenance or backlog work). Aim to include a small fix, state/error-path logic, a UI or security-sensitive change and at least one larger change; no product change is invented to fill a category, and any category without suitable work is recorded as a gap. Each PR records, per reviewer: confirmed consequential defects, false positives, later-found misses, revision rounds, review time, observable usage/cost and owner effort.
+- [ ] **PILOT-02**: At least one substantial pilot PR gets a recorded side-by-side comparison of vibe-check against the paired workflow. This is in addition to routine vibe-check, which continues on every pilot PR that the current process requires it for until the owner retires it.
 - [ ] **PILOT-03**: The owner's decisions are recorded: whether to retire routine vibe-check, and whether BM/Codex completion stays a manual owner check or the existing acceptance gate is extended to require those reports. Recording the decisions completes this requirement. If extension is chosen, it is scheduled as its own later reviewed change (FUT-03) and is not required before this milestone closes, unless the owner explicitly pulls it in.
 - [ ] **PILOT-04**: Reusable adoption guidance for other repositories is written, distinguishing instruction-enforced from GitHub-enforced requirements and listing what not to copy blindly.
 
@@ -101,6 +106,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REVIEW-04 | Phase 83 | Pending |
 | REVIEW-05 | Phase 83 | Pending |
 | REVIEW-06 | Phase 83 | Pending |
+| REVIEW-07 | Phase 83 | Pending |
+| REVIEW-08 | Phase 83 | Pending |
 | RISK-01 | Phase 83 | Pending |
 | RISK-02 | Phase 83 | Pending |
 | PLANCHK-01 | Phase 84 | Pending |
@@ -115,16 +122,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CIMAINT-07 | Phase 85 | Pending |
 | ACCEPT-01 | Phase 85 | Pending |
 | ACCEPT-02 | Phase 85 | Pending |
+| ACCEPT-03 | Phase 85 | Pending |
 | PILOT-01 | Phase 86 | Pending |
 | PILOT-02 | Phase 86 | Pending |
 | PILOT-03 | Phase 86 | Pending |
 | PILOT-04 | Phase 86 | Pending |
 
 **Coverage:**
-- v2.13 requirements: 28 total
-- Mapped to phases: 28
+- v2.13 requirements: 31 total
+- Mapped to phases: 31
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-21*
-*Last updated: 2026-10-21 after roadmap creation (5 phases, 82-86, 100% coverage)*
+*Last updated: 2026-10-21 after adding the docs/planning review-classification policy (REVIEW-07, REVIEW-08, ACCEPT-03; 31 requirements, 100% coverage)*

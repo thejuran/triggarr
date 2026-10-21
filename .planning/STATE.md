@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- v2.13 roadmap created (5 phases, 28 requirements); Phase 82 ready to plan"
-stopped_at: "v2.13 roadmap created (Phases 82-86, continuing from v2.12's Phase 81); Phase 82 (CI Tests What We Ship) ready to plan next"
-last_updated: "2026-10-21T19:23:06Z"
-last_activity: "2026-10-21 -- v2.13 roadmap created (5 phases, 28 requirements, 100% coverage)"
+status: "planning -- v2.13 roadmap created (5 phases, 31 requirements); Phase 82 ready to plan"
+stopped_at: "v2.13 roadmap created (Phases 82-86) and amended with the docs/planning review-classification policy (REVIEW-07/08, ACCEPT-03); PR #33 in review; Phase 82 (CI Tests What We Ship) ready to plan next"
+last_updated: "2026-10-21T19:41:30Z"
+last_activity: "2026-10-21 -- v2.13 roadmap amended: docs/planning review-classification policy added (31 requirements, 100% coverage)"
 progress:
   total_phases: 5
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 Phase: 82 (ci-tests-what-we-ship) — Not started
 Plan: —
 Status: Ready to plan
-Last activity: 2026-10-21 -- v2.13 roadmap created (5 phases, 28 requirements)
+Last activity: 2026-10-21 -- v2.13 roadmap amended with the review-classification policy (5 phases, 31 requirements)
 
 ### v2.13 milestone shape
 
@@ -41,9 +41,9 @@ Five phases derived from this milestone's 28 requirements (CISHIP, CIMAINT, ACCE
 | Phase | Goal | Requirements | Depends on |
 |-------|------|--------------|------------|
 | 82 — CI Tests What We Ship | Shipped-image startup, browser regression, and release-version checks join the required gate, each proven by a deliberately broken case that fails | CISHIP-01..04 | — (first phase) |
-| 83 — Paired BM + Codex Review & Risk-Based Depth | A recorded, owner-approved BM baseline and update gates the start; then every BM review path gets an independent exact-commit Codex pass, and BM explicitly recommends depth and vibe-check at high-risk checkpoints | REVIEW-01..06, RISK-01..02 | Phase 82 (sequenced immediately after per owner instruction; no technical coupling) |
+| 83 — Paired BM + Codex Review & Risk-Based Depth | A recorded, owner-approved BM baseline and update gates the start; then every BM review path gets an independent exact-commit Codex pass, and BM explicitly recommends depth and vibe-check at high-risk checkpoints; defines the content-based review classification for docs/planning changes | REVIEW-01..08, RISK-01..02 | Phase 82 (sequenced immediately after per owner instruction; no technical coupling) |
 | 84 — Codex Plan-Checker Investigation | Record whether a narrowly scoped `agent.spawn` hook can route only the plan checker through model-gateway, and how it compares against manual Codex review on the original Phase 81 plans | PLANCHK-01..03 | — (independent; separately gated; requires the preserved Phase 81 phase directories) |
-| 85 — Follow-on CI Improvements & Acceptance Usability | Lockfile-matched Docker deps, grouped dependency updates, OS-image audit, workflow lint, exact-commit coverage evidence, least-privilege publish permissions, and an acceptance register usable under concurrent PRs | CIMAINT-01..07, ACCEPT-01..02 | Phase 82 (extends the CI baseline); relates to Phase 83 (CIMAINT-06's coverage feeds the vibe-check test-sufficiency lane) |
+| 85 — Follow-on CI Improvements & Acceptance Usability | Lockfile-matched Docker deps, grouped dependency updates, OS-image audit, workflow lint, exact-commit coverage evidence, least-privilege publish permissions, and an acceptance register usable under concurrent PRs; GitHub checks that honor the review classification without weakening code/control protection | CIMAINT-01..07, ACCEPT-01..03 | Phase 82 (extends the CI baseline); Phase 83 for ACCEPT-03 (the classification policy); CIMAINT-06's coverage feeds the vibe-check test-sufficiency lane |
 | 86 — Pilot & Reference Record | 3-5 representative PRs run under the paired workflow; the owner records the routine-vibe-check retirement decision and reusable adoption guidance is written | PILOT-01..04 | Phases 82, 83 and 85 (needs the paired workflow in place; pilot evidence collected from PRs after Phase 83 while later authorized work proceeds). Not Phase 84 |
 
 ### Key v2.13 Phasing Rationale
@@ -54,7 +54,7 @@ Five phases derived from this milestone's 28 requirements (CISHIP, CIMAINT, ACCE
 - **85 groups CIMAINT + ACCEPT because they're both "extend the baseline" work:** neither follow-on CI hardening nor acceptance-register usability is independently a full milestone phase on its own (would be thin), and CIMAINT-06 (coverage artifact) is explicit cross-phase plumbing for Phase 83's RISK-based vibe-check test-sufficiency lane — grouping keeps that dependency visible instead of splitting it across two phases.
 - **Pilot is last, but starts collecting after Phase 83:** PILOT-01 draws its PRs from "this milestone's own PRs" plus owner-authorized maintenance/backlog work, and needs the paired BM+Codex workflow (Phase 83) actually operating, not just specified. Pilot evidence is collected from PRs after Phase 83 (e.g. Phase 85's PRs) while later authorized work proceeds; the phase closes after 82, 83 and 85. It does not depend on Phase 84, which is separately gated.
 - **Phase 84 closeout:** the phase record separates investigated results (with evidence) from deferred or not-run work (with the reason).
-- **Standing rule carried into every phase:** per REQUIREMENTS.md, the current review process (Greptile, routine vibe-check, exact-commit owner acceptance) stays in force on every PR in every phase of this milestone until the owner explicitly retires a part of it in Phase 86 (PILOT-03). No phase here waives or substitutes any part of that process early.
+- **Standing rules carried into every phase:** per REQUIREMENTS.md, the current review process (Greptile, routine vibe-check, exact-commit owner acceptance) stays in force for code and control changes until the owner explicitly retires a part of it in Phase 86 (PILOT-03); no phase waives or substitutes any part of it early. Ordinary docs/planning-only changes follow the content-based classification policy once Phase 83 defines it (REVIEW-07/08). Until Phase 85's GitHub mechanism (ACCEPT-03) is verified, existing GitHub protections are preserved and any review still running automatically on docs-only PRs (currently Greptile) is disclosed. Exact-commit owner acceptance applies to every PR.
 
 ### v2.12 milestone shape
 
@@ -153,6 +153,7 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 ### Decisions
 
+- 2026-10-21 (v2.13 roadmap amendment, owner-authorized for planning only): added the docs/planning review-classification policy. REVIEW-07/08 (Phase 83) define content-based classification (ordinary docs/planning gets a focused consistency review; agent instructions, workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and technical review; mixed PRs follow their consequential changes; classification recorded against the exact head) and replace blanket "every PR" wording, keeping Codex paired with every BM code-review run. ACCEPT-03 (Phase 85) designs and verifies GitHub-check handling across ordinary-docs, sensitive-docs, mixed and misclassification cases without ad hoc check disabling. Existing protections stay until then; exact-commit owner acceptance stays for every PR. No live settings changed. Now 31 requirements.
 - 2026-10-21 (v2.13 roadmap): 28 requirements mapped to 5 phases (82-86) with 100% coverage, no orphans. REVIEW-01 (BM update) folded into the start of Phase 83 rather than a standalone phase, per the granularity rule against single-requirement phases, while keeping its owner-approval gate as that phase's first explicit success criterion. PLANCHK (84) kept fully independent per owner instruction. CIMAINT + ACCEPT grouped into Phase 85 since both extend the Phase 82 CI baseline and CIMAINT-06 feeds Phase 83's risk-based review.
 - 2026-10-21 (v2.12 closeout): the owner confirmed the review blueprint and the CI reference-baseline plan as written; they form the CI & Review Workflow milestone. No BM settings, CLAUDE.md, CI or acceptance changes until that milestone implements them.
 
@@ -248,6 +249,6 @@ Resume file: None (roadmap just written; next step is planning Phase 82, not res
 
 - `/bm:discuss-phase 82` or `/bm:plan-phase 82` -- start Phase 82 (CI Tests What We Ship)
 - Phase 83 begins with REVIEW-01's gate: record the BM baseline, assess the target version's native review/fixer behavior, and get explicit owner approval of the exact version + bounded settings list before any BM update runs
-- Phase 84 (PLANCHK) is separately gated: nothing from it is activated in the repo without owner approval, and it blocks no other phase. Routine vibe-check stays on every PR until the owner explicitly retires it (PILOT-03)
+- Phase 84 (PLANCHK) is separately gated: nothing from it is activated in the repo without owner approval, and it blocks no other phase. Routine vibe-check stays on code and control changes until the owner explicitly retires it (PILOT-03); ordinary docs/planning-only changes follow the classification policy once Phase 83 defines it
 - Follow-up kept out of PR #28 (carried from v2.12, still open): "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (per-item screening remains deferred; the shared release-date fix also benefits refresh). Decide whether to align it.
 - Phase 81 checkout handoff (carried from v2.12): `.planning/` is excluded locally (`.git/info/exclude`). Already-tracked planning files (STATE.md, ROADMAP.md and others) are carried by Git; new or untracked ones are not. The Phase 81 phase directory (`.planning/phases/81-correct-sonarr-grab-attribution/`) is explicitly kept, not cleared, because Phase 84 (PLANCHK-03) needs its original plan inputs for the blind comparison.
