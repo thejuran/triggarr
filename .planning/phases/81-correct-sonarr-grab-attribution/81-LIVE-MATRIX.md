@@ -816,7 +816,7 @@ Summary for SONARRV5-02 and Phase 81 (D-13), read from the `## Matrix` table abo
 
 These satisfy D-12 through representative sanitized fixtures and real-client-path regressions (4 passed at `363060e`), remain explicitly unverified-live, and waive no mandatory live criterion.
 
-**Conclusion:** every D-11 live criterion is met. **SONARRV5-02 is closed** (owner decision, 2026-10-21, after reviewing the 81-14 results). Full v5 support is not claimed beyond the scenarios above. Phase 81 is in review: closing the requirement is not owner acceptance, push, merge or release approval. If `triggarr/clients/`, `triggarr/models/arr.py` or `triggarr/search/engine.py` change before merge, rerun the 81-14 probe.
+**Conclusion:** every D-11 live criterion is met. **SONARRV5-02 is closed** (owner decision, 2026-10-21, after reviewing the 81-14 results). Full v5 support is not claimed beyond the scenarios above. Phase 81 is in review: closing the requirement is not owner acceptance, push, merge or release approval. If `triggarr/clients/`, `triggarr/models/arr.py` or `triggarr/search/engine.py` change before merge, rerun the 81-14 probe. **Post-81-14 PR-review fixes (2026-10-21, PR #29):** only `triggarr/tracking.py` (per-id budget progress, held rows never terminal) and `triggarr/db.py` (pending partial rows kept through pruning and counted in the pending cap) changed, each covered by real-client-path or DB regression tests. The probe-covered files are unchanged since `b35470b`, so the 81-14 pagination and Refresh-counts evidence still applies. The held-row and pruning behaviour is fixture-verified only, not re-run live.
 
 ---
 
