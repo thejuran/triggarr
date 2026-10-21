@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,9 @@ import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
 RELEASE_WORKFLOW = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text()
+CI_WORKFLOW = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+RELEASE_POLICY_TEXT = (REPO_ROOT / ".github" / "scripts" / "release-policy.cjs").read_text()
+CONFTEST_E2E = (REPO_ROOT / "tests" / "e2e" / "conftest.py").read_text()
 
 TAG_ONLY_IF = "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
 
@@ -308,3 +312,247 @@ def test_publication_bypass_violations_detects_bypass(name: str, mutate) -> None
 def test_publication_bypass_violations_real_workflow_is_clean() -> None:
     """The real, unmutated release.yml must report no publication bypasses."""
     assert publication_bypass_violations(_workflow()) == []
+
+
+# ---------------------------------------------------------------------------
+# CI workflow wiring tests (D-05, D-11..D-13, D-15, D-18, D-30) -- Plan 82-07
+# ---------------------------------------------------------------------------
+
+USES_SHA_RE = re.compile(r"^[^@]+@[0-9a-f]{40}$")
+IMAGE_VERSION_FORMAT_RE = re.compile(r"docker image inspect triggarr:ci-test --format\s+'([^']+)'")
+
+
+def _ci_workflow() -> dict:
+    return yaml.safe_load(CI_WORKFLOW)
+
+
+def _step_text(step: dict) -> str:
+    """Concatenate every scalar field on a step so a substring search covers run/uses/name/env."""
+    return " ".join(str(step.get(key, "")) for key in ("run", "uses", "name", "env"))
+
+
+def _step_run_text_by_name(steps: list[dict], name: str) -> str:
+    for step in steps:
+        if step.get("name") == name:
+            return str(step.get("run", ""))
+    raise AssertionError(f"step not found: {name}")
+
+
+def _credential_run_flags() -> list[str]:
+    """Read CREDENTIAL_RUN_FLAGS straight out of tests/e2e/conftest.py -- one source of truth."""
+    match = re.search(r"CREDENTIAL_RUN_FLAGS[^=]*=\s*\((.*?)\)\n", CONFTEST_E2E, re.DOTALL)
+    assert match, "CREDENTIAL_RUN_FLAGS not found in tests/e2e/conftest.py"
+    flags = re.findall(r'"([^"]+)"', match.group(1))
+    assert flags, "no flags parsed from CREDENTIAL_RUN_FLAGS"
+    return flags
+
+
+def _browser_suite_run_text(job: dict) -> str:
+    return _step_run_text_by_name(job["steps"], "Run browser regression suite")
+
+
+def _pytest_invocation_line(run_text: str, marker: str) -> str:
+    lines = [line for line in run_text.splitlines() if "pytest tests/e2e" in line and marker in line]
+    assert len(lines) == 1, f"expected exactly one pytest invocation containing {marker!r}, found {len(lines)}"
+    return lines[0]
+
+
+def _image_version_format_strings(text: str) -> list[str]:
+    return [m.group(1) for m in IMAGE_VERSION_FORMAT_RE.finditer(text) if "image.version" in m.group(1)]
+
+
+def image_version_format_matches(ci_run_text: str, release_run_text: str) -> bool:
+    """True iff the IMAGE_VERSION docker-inspect --format string matches release.yml's (D-31a).
+
+    A pure comparison function (not a reimplementation of the inspect call
+    itself) so a mutated copy of either run block can be fed in directly to
+    prove this actually detects drift, not just incidentally agrees.
+    """
+    ci_formats = _image_version_format_strings(ci_run_text)
+    release_formats = _image_version_format_strings(release_run_text)
+    return bool(ci_formats) and bool(release_formats) and ci_formats[0] == release_formats[0]
+
+
+@pytest.mark.parametrize("job_id", ["image-smoke", "browser-e2e"])
+def test_new_ci_jobs_depend_only_on_docker_with_no_if(job_id: str) -> None:
+    """image-smoke/browser-e2e: needs == ['docker'], no if:, timeout-minutes present and <= 20."""
+    job = _ci_workflow()["jobs"][job_id]
+    assert job["needs"] == ["docker"]
+    assert "if" not in job
+    assert "timeout-minutes" in job
+    assert job["timeout-minutes"] <= 20
+
+
+@pytest.mark.parametrize("job_id", ["image-smoke", "browser-e2e"])
+def test_new_ci_jobs_verify_audited_image_before_first_use(job_id: str) -> None:
+    """Each new job downloads + identity-verifies the audited image before its first real use, never rebuilds it."""
+    job = _ci_workflow()["jobs"][job_id]
+    steps = job["steps"]
+
+    download_idx = next(
+        i
+        for i, step in enumerate(steps)
+        if str(step.get("uses", "")).startswith("actions/download-artifact")
+        and step.get("with", {}).get("name") == "audited-image"
+    )
+    verify_idx = next(
+        i
+        for i, step in enumerate(steps)
+        if "sha256sum -c image.tar.sha256" in str(step.get("run", "")) and "image-id.txt" in str(step.get("run", ""))
+    )
+    first_use_idx = next(
+        i for i, step in enumerate(steps) if i > verify_idx and "triggarr:ci-test" in _step_text(step)
+    )
+    assert download_idx < verify_idx < first_use_idx
+
+    for step in steps:
+        uses = str(step.get("uses", ""))
+        run = str(step.get("run", ""))
+        assert not uses.startswith("docker/build-push-action"), job_id
+        assert not uses.startswith("docker/setup-buildx-action"), job_id
+        assert "docker build" not in run, job_id
+
+
+def test_every_uses_in_ci_workflow_is_sha_pinned() -> None:
+    """Every uses: across every ci.yml job is pinned to a 40-hex commit SHA, not a tag or branch."""
+    workflow = _ci_workflow()
+    for job_id, job in workflow["jobs"].items():
+        for step in job.get("steps", []):
+            uses = step.get("uses")
+            if uses is None:
+                continue
+            assert USES_SHA_RE.match(uses), f"{job_id}: {uses!r} is not pinned to a 40-hex sha"
+
+
+def test_browser_e2e_credential_invocation_has_capture_off() -> None:
+    """The credential_pages invocation uses every CREDENTIAL_RUN_FLAGS flag and no failure-only capture flags."""
+    job = _ci_workflow()["jobs"]["browser-e2e"]
+    run_text = _browser_suite_run_text(job)
+    credential_line = _pytest_invocation_line(run_text, "-m credential_pages")
+    for flag in _credential_run_flags():
+        assert flag in credential_line
+    assert "retain-on-failure" not in credential_line
+    assert "only-on-failure" not in credential_line
+
+
+def test_browser_e2e_pages_invocation_has_failure_only_capture() -> None:
+    """The non-credential invocation uses failure-only tracing/screenshot capture (D-33)."""
+    job = _ci_workflow()["jobs"]["browser-e2e"]
+    run_text = _browser_suite_run_text(job)
+    pages_line = _pytest_invocation_line(run_text, '-m "not credential_pages"')
+    assert "--tracing retain-on-failure" in pages_line
+    assert "--screenshot only-on-failure" in pages_line
+
+
+def test_browser_e2e_no_retries_or_reruns() -> None:
+    """D-15: browser tests get no automatic retries that turn a failure into a pass."""
+    job = _ci_workflow()["jobs"]["browser-e2e"]
+    run_text = _browser_suite_run_text(job)
+    assert "reruns" not in run_text
+    assert "retries" not in run_text
+
+
+def test_browser_e2e_upload_step_gated_on_failure_and_scan_markers() -> None:
+    """Failure evidence only uploads on failure() and only once both scan-complete.json markers exist."""
+    job = _ci_workflow()["jobs"]["browser-e2e"]
+    steps = {step.get("name"): step for step in job["steps"] if "name" in step}
+    upload_step = steps["Upload browser failure evidence"]
+    if_expr = str(upload_step.get("if", ""))
+    assert "failure()" in if_expr
+    assert "e2e-artifacts/credential/scan-complete.json" in if_expr
+    assert "e2e-artifacts/pages/scan-complete.json" in if_expr
+
+
+def test_browser_e2e_junit_gate_checks_skipped_in_both_files() -> None:
+    """An unexplained skip never counts as success (D-12): the junit gate checks skipped in both files."""
+    job = _ci_workflow()["jobs"]["browser-e2e"]
+    steps = {step.get("name"): step for step in job["steps"] if "name" in step}
+    gate_step = steps["Require a complete browser-suite result"]
+    run_text = str(gate_step.get("run", ""))
+    assert "e2e-credential.xml" in run_text
+    assert "e2e-pages.xml" in run_text
+    assert "skipped" in run_text
+
+
+def test_image_smoke_runs_harness_and_rehearsal() -> None:
+    """image-smoke runs the real shipped-image smoke driver and the release-identity rehearsal script."""
+    job = _ci_workflow()["jobs"]["image-smoke"]
+    combined = "\n".join(str(step.get("run", "")) for step in job["steps"])
+    assert "tests.harness.image_smoke run --image triggarr:ci-test" in combined
+    assert "release-identity-rehearsal.cjs" in combined
+
+
+def test_image_smoke_rehearsal_step_fidelity() -> None:
+    """D-31a: the rehearsal step runs after image verification, with no if/continue-on-error, re-checking identity."""
+    job = _ci_workflow()["jobs"]["image-smoke"]
+    steps = job["steps"]
+    step_names = [step.get("name") for step in steps]
+    verify_idx = step_names.index("Verify and load audited image")
+    rehearsal_idx = step_names.index("Rehearse release identity against audited image")
+    assert rehearsal_idx > verify_idx
+
+    rehearsal_step = steps[rehearsal_idx]
+    assert "if" not in rehearsal_step
+    assert "continue-on-error" not in rehearsal_step
+
+    run_text = str(rehearsal_step.get("run", ""))
+    assert "image/image-id.txt" in run_text
+    assert "IMAGE_ID" in run_text
+    assert "IMAGE_VERSION" in run_text
+    assert "REHEARSAL_SHA" in run_text
+
+
+def test_image_version_format_matches_real_files() -> None:
+    """The rehearsal step's docker-inspect --format string for IMAGE_VERSION matches release.yml's byte-for-byte.
+
+    Both are extracted with the same regex and compared via the pure
+    image_version_format_matches() helper -- see
+    release.yml's "Read audited image version label" step, which this
+    compares against (D-31a).
+    """
+    job = _ci_workflow()["jobs"]["image-smoke"]
+    run_text = _step_run_text_by_name(job["steps"], "Rehearse release identity against audited image")
+    release_run_text = _step_run_text_by_name(
+        _workflow()["jobs"]["release"]["steps"], "Read audited image version label"
+    )
+    assert image_version_format_matches(run_text, release_run_text)
+
+
+def test_image_version_format_mismatch_detected() -> None:
+    """A mutated copy with a different format string makes the comparison helper report a mismatch."""
+    mutated_run_text = (
+        "docker image inspect triggarr:ci-test --format "
+        "'{{ index .Config.Labels \"org.opencontainers.image.version.MUTATED\" }}'"
+    )
+    release_run_text = _step_run_text_by_name(
+        _workflow()["jobs"]["release"]["steps"], "Read audited image version label"
+    )
+    assert not image_version_format_matches(mutated_run_text, release_run_text)
+
+
+def test_ci_workflow_on_triggers_have_no_path_filters() -> None:
+    """D-12: ci.yml runs on push/pull_request to main with no paths/paths-ignore filter."""
+    workflow = _ci_workflow()
+    on_triggers = workflow.get(True, workflow.get("on"))
+    assert on_triggers == {"push": {"branches": ["main"]}, "pull_request": {"branches": ["main"]}}
+
+
+def test_test_job_runs_full_suite_with_no_filters_and_version_test_exists() -> None:
+    """D-18: the test job runs the full suite unfiltered; test_version.py exists; REQUIRED_JOBS requires 'test'."""
+    job = _ci_workflow()["jobs"]["test"]
+    run_texts = [str(step.get("run", "")) for step in job["steps"]]
+    test_run = next(text for text in run_texts if "pytest tests/" in text)
+    assert "--ignore" not in test_run
+    assert " -k " not in test_run
+    assert " -m " not in test_run
+    assert (REPO_ROOT / "tests" / "test_version.py").exists()
+
+    required_jobs_match = re.search(r"REQUIRED_JOBS\s*=\s*\[(.*?)\]", RELEASE_POLICY_TEXT)
+    assert required_jobs_match, "REQUIRED_JOBS not found in release-policy.cjs"
+    assert "'test'" in required_jobs_match.group(1)
+
+
+def test_ci_ready_if_is_always() -> None:
+    """ci-ready keeps its if: always() so the aggregate gate still evaluates even if an upstream job fails."""
+    job = _ci_workflow()["jobs"]["ci-ready"]
+    assert job["if"] == "always()"
