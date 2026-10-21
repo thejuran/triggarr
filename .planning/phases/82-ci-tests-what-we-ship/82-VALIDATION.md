@@ -40,8 +40,8 @@ created: 2026-10-21
 |---------|--------|----------|-----------|-------------------|-------------|--------|
 | 82-01-T1, 82-01-T2 | CISHIP-03 | Tag/version mismatch rejected, match accepted | unit (TDD) | `node --test .github/scripts/release-policy.test.cjs` | ✅ (extend) | ⬜ pending |
 | 82-02-T1, 82-02-T2 | CISHIP-01 | Stub *arr service + reason-coded HTTP checks | unit (TDD) | `uv run --no-sync pytest tests/test_ci_harness.py -q` | ❌ W0 | ⬜ pending |
-| 82-03-T1 | CISHIP-03 | Release identity rehearsal (match passes, mismatch/malformed rejected) | unit + script | `node --test .github/scripts/release-identity-rehearsal.test.cjs` | ❌ W0 | ⬜ pending |
-| 82-03-T2, 82-03-T3 | CISHIP-03 | Rejection before login/push/release-create | static wiring | `node --test .github/scripts/*.test.cjs && uv run --no-sync pytest tests/test_github_workflows.py -q` | ✅ (extend) | ⬜ pending |
+| 82-03-T1 | CISHIP-03 | Release identity rehearsal via the release job's own entry points: matching accepted; mismatched/malformed/missing rejected for their specific reasons (D-31a) | unit + script | `node --test .github/scripts/release-identity-rehearsal.test.cjs` | ❌ W0 | ⬜ pending |
+| 82-03-T2, 82-03-T3 | CISHIP-03 | Rejection blocks login/push/release-create; any bypass fails the test (D-31b) | static wiring + bypass negatives | `node --test .github/scripts/*.test.cjs && uv run --no-sync pytest tests/test_github_workflows.py -q` | ✅ (extend) | ⬜ pending |
 | 82-04-T1 | CISHIP-01 | Container argv builders and lifecycle helpers | unit | `uv run --no-sync pytest tests/test_ci_harness_stack.py -q` | ❌ W0 | ⬜ pending |
 | 82-04-T2 | CISHIP-01 | Health/setup/login/static/writable-config/persistence via real entrypoint; missing static asset fails (permanent negative) | smoke (Docker) | `uv run --no-sync python -m tests.harness.image_smoke run --image triggarr:local --expected-image-id-file ...` | ❌ W0 | ⬜ pending |
 | 82-05-T1 | CISHIP-02 | Playwright deps installed; tests/e2e excluded from default run | config | `uv lock --check && uv run --no-sync pytest tests/ -q -x` | ✅ (extend) | ⬜ pending |
@@ -68,6 +68,14 @@ created: 2026-10-21
 - [ ] `release-policy.cjs` tag/version validation functions + tests
 - [ ] `artifact-promotion.test.cjs` ordering assertion
 - [ ] Framework install: playwright + pytest-playwright in dev extras, `playwright install --with-deps chromium` CI step
+
+---
+
+## Verification Expectations (D-31, owner decision 2026-10-21)
+
+- CISHIP-03 evidence is bounded: permanent negatives (four rehearsal cases on the exact audited image, structural bypass tests) pass inside green CI runs. A deliberately red tag-triggered run is not required.
+- Evidence records commit SHA, image ID and image.tar sha256, run URL, run ID and attempt, and expected vs observed reason per negative case.
+- Phase verification records this sentence verbatim: "Version validation and release wiring verified; actual tag-triggered publication remains unverified until the next authorized release."
 
 ---
 
