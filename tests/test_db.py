@@ -2493,3 +2493,78 @@ async def test_get_owned_grabs_scoped(tmp_path):
     owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-a", series_id=10)
     assert set(owned) == {OwnedGrabRecord(501, 1, 9001), OwnedGrabRecord(502, 1, 9002)}
     await db.close()
+
+
+async def _set_outcome(db, row_ids, outcome: str) -> None:
+    """Move existing rows to ``outcome`` without an insert (and so without a prune)."""
+    for row_id in row_ids:
+        await db.execute("UPDATE search_history SET outcome = ? WHERE id = ?", (outcome, row_id))
+    await db.commit()
+
+
+async def _ids(db, where: str = "1 = 1", params: tuple = ()) -> list[int]:
+    async with db.execute(f"SELECT id FROM search_history WHERE {where} ORDER BY id", params) as cursor:  # noqa: S608
+        return [r[0] for r in await cursor.fetchall()]
+
+
+async def test_pruning_preserves_partial_rows_and_trims_terminal(tmp_path):
+    """Pending rows -- 'searched' AND non-terminal 'partial' (a held or in-window search
+    still being tracked) -- survive insertion-time pruning; terminal outcomes, including
+    'partial_expired', stay prunable down to max_rows."""
+    db, db_path = await _init_test_db(tmp_path)
+    for i in range(4):
+        await insert_search_entry(db, "Sonarr", "missing", f"Pending {i}", item_id=i, max_rows=3)
+    pending_ids = await _ids(db)
+    await _set_outcome(db, pending_ids[:2], "partial")
+
+    for i, outcome in enumerate(["partial_expired", "unresolved", "grabbed", "partial_expired", "grabbed", "failed"]):
+        await insert_search_entry(db, "Sonarr", "missing", f"Done {i}", outcome=outcome, max_rows=3)
+
+    assert await _ids(db, "outcome = 'partial'") == pending_ids[:2]
+    assert await _ids(db, "outcome = 'searched'") == pending_ids[2:]
+    terminal = await _ids(db, "outcome NOT IN ('searched', 'partial')")
+    assert len(terminal) == 3  # trimmed to max_rows, oldest first
+    async with db.execute(
+        "SELECT outcome FROM search_history WHERE outcome NOT IN ('searched', 'partial') ORDER BY id"
+    ) as cursor:
+        assert [r[0] for r in await cursor.fetchall()] == ["partial_expired", "grabbed", "failed"]
+    await db.close()
+
+
+async def test_pending_cap_counts_active_partial_rows(tmp_path):
+    """Active 'partial' rows count toward the pending cap with 'searched' rows, scoped by
+    app and stable instance ID; legacy pre-cutover rows stay excluded; the rejection
+    behaviour (PendingCapExceeded, no write) is unchanged."""
+    db, db_path = await _init_test_db(tmp_path)
+    max_rows = 2  # cap = PENDING_CAP_MULTIPLIER * 2 = 4
+
+    # Two legacy pending rows (one partial) -- frozen, never counted.
+    for i in range(2):
+        await insert_search_entry(
+            db, "Sonarr", "missing", f"Legacy {i}", instance_id="Main", instance_stable_id="sid-a", max_rows=max_rows,
+        )
+    legacy_ids = await _ids(db)
+    await _set_outcome(db, legacy_ids[:1], "partial")
+    await _insert_cutover(db, legacy_ids[-1])
+
+    # Four post-cutover pending rows for sid-a, two of them now partial.
+    for i in range(4):
+        await insert_search_entry(
+            db, "Sonarr", "missing", f"Post {i}", instance_id="Main", instance_stable_id="sid-a", max_rows=max_rows,
+        )
+    post_ids = await _ids(db, "id > ?", (legacy_ids[-1],))
+    await _set_outcome(db, post_ids[:2], "partial")
+
+    # Another stable instance is isolated: its own cap, unaffected by sid-a.
+    await insert_search_entry(
+        db, "Sonarr", "missing", "Other server", instance_id="Main", instance_stable_id="sid-b", max_rows=max_rows,
+    )
+
+    before = await _ids(db)
+    with pytest.raises(PendingCapExceeded):
+        await insert_search_entry(
+            db, "Sonarr", "missing", "One Too Many", instance_id="Main", instance_stable_id="sid-a",
+            max_rows=max_rows,
+        )
+    assert await _ids(db) == before  # rejected with no write
+    await db.close()

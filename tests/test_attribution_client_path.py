@@ -1167,6 +1167,70 @@ async def test_client_path_v5_held_row_never_terminal_even_when_count_reached(tm
         await db.close()
 
 
+async def test_client_path_v5_held_partial_survives_pruning_then_credits_once(tmp_path):
+    """A held search with owned grabs ('partial', lookup still transient) survives the
+    insertion-time pruning of resolved history; once lookups recover it is credited
+    with every episode exactly once, and a repeat check adds nothing."""
+    db = await _init_db(tmp_path)
+    when = datetime.now(UTC) - timedelta(minutes=10)
+    records = [
+        {
+            "id": 71300 + n, "episodeId": 1300 + n, "seriesId": 64,
+            "sourceTitle": "HeldPrune.S01.1080p-GRP", "date": when.isoformat().replace("+00:00", "Z"),
+            "eventType": "grabbed", "downloadId": "DL-HELDPRUNE", "data": {},
+        }
+        for n in range(2)
+    ]
+    fake = _SonarrHistoryFake(
+        {64: records},
+        series_episode_lists={64: []},
+        episodes={
+            1300 + n: {"id": 1300 + n, "seriesId": 64, "seasonNumber": 1, "episodeNumber": n + 1}
+            for n in range(2)
+        },
+    )
+    fake.episode_status[1301] = 500
+
+    async def _check() -> None:
+        client = _client(fake)
+        try:
+            await run_tracking_check(
+                db, client, "Sonarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-main",
+            )
+        finally:
+            await client.close()
+
+    try:
+        row = await _seed(
+            db, item_id=64, season_number=1, missing_count=2, timestamp=datetime.now(UTC) - timedelta(minutes=15),
+        )
+        await _check()
+        assert await _outcome(db, row) == "partial"
+
+        # Newer finished searches push resolved history past max_rows.
+        for i in range(3):
+            await insert_search_entry(
+                db, "Sonarr", "missing", f"Finished {i}", outcome="grabbed",
+                instance_id="Main", instance_stable_id="sid-main", max_rows=1,
+            )
+        async with db.execute("SELECT COUNT(*) FROM search_history WHERE id = ?", (row,)) as cursor:
+            assert (await cursor.fetchone())[0] == 1  # the held search was not pruned
+        assert await _outcome(db, row) == "partial"
+
+        del fake.episode_status[1301]
+        await _check()
+        assert await _outcome(db, row) == "grabbed"
+        assert "2/2" in await _detail(db, row)
+        assert await _stat(db, "episodes_found") == 2
+
+        await _check()  # repeat check: no additional credit
+        assert await _stat(db, "episodes_found") == 2
+        owned = await get_owned_grabs(db, app="Sonarr", instance_stable_id="sid-main", series_id=64)
+        assert sorted(o.episode_id for o in owned) == [1300, 1301]
+    finally:
+        await db.close()
+
+
 async def test_client_path_v5_row_escalation_old_row_resolves_recent_held(tmp_path):
     """One series with an old row (26h past its window end) and a recently-expired
     row (2h past), list returning 503: the old row escalates to 'unresolved' with
