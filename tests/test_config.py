@@ -1575,3 +1575,27 @@ def test_backfill_preserves_api_key_and_mode(tmp_path: Path) -> None:
     assert data["sonarr"]["4K"]["api_key"] == "sonarr4k-key"
     assert data["radarr"]["Default"]["api_key"] == "radarr-key"
     assert config_file.stat().st_mode & 0o777 == 0o600
+
+
+def test_backfill_write_failure_logs_reason_before_exit(tmp_path: Path) -> None:
+    """A failed instance-id backfill write logs why before exiting (never a silent exit 1)."""
+    config_file = _write(tmp_path, THREE_INSTANCES_TOML)
+    sink, handler_id = _capture("ERROR")
+
+    def _fail(path: Path, text: str) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    try:
+        with patch("triggarr.config._atomic_text_write", side_effect=_fail), pytest.raises(SystemExit) as exc:
+            ensure_config(config_file)
+    finally:
+        logger.remove(handler_id)
+
+    assert exc.value.code == 1
+    out = sink.getvalue()
+    assert "ERROR" in out
+    assert str(config_file) in out
+    assert "writable" in out
+    assert "PermissionError" in out
+    assert "sonarr-key" not in out
+    assert config_file.read_bytes() == THREE_INSTANCES_TOML

@@ -2193,3 +2193,77 @@ async def test_tracking_summary_logs_identity_skipped(tmp_path):
     finally:
         logger.remove(sink_id)
         await db.close()
+
+
+
+_LEGACY_SEARCH_LOG = [
+    {"name": "Old Show S01", "timestamp": "2024-01-01T00:00:00Z", "app": "Sonarr", "queue_type": "missing"},
+    {"name": "Old Show S02", "timestamp": "2024-01-02T00:00:00Z", "app": "Sonarr", "queue_type": "missing"},
+    {"name": "Old Movie", "timestamp": "2024-01-03T00:00:00Z", "app": "Radarr", "queue_type": "missing"},
+]
+
+
+async def _lifespan_snapshot_with_legacy_search_log(tmp_path) -> dict:
+    """Start the real lifespan with a legacy state.json search_log and snapshot what startup recorded."""
+    import json
+
+    from triggarr.attribution import get_attribution_disclosure
+    from triggarr.db import get_search_history
+    from triggarr.search.scheduler import create_lifespan
+
+    settings = Settings(
+        sonarr={"Main": InstanceConfig(url="http://sonarr:8989", api_key="sonarr-test-key", enabled=True,
+                                       id="sid-sonarr-main")},
+    )
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps({"radarr": {}, "sonarr": {}, "lidarr": {}, "search_log": _LEGACY_SEARCH_LOG}))
+    config_path = tmp_path / "triggarr.toml"
+    with patch("triggarr.search.scheduler.AsyncIOScheduler", return_value=_FakeScheduler()):
+        lifespan_fn = create_lifespan(settings, state_path, config_path)
+        app = FastAPI(lifespan=lifespan_fn)
+        async with lifespan_fn(app):
+            db = app.state.db
+            async with db.execute(
+                "SELECT legacy_max_history_id, any_pre_fix_sonarr_data FROM attribution_cutover"
+            ) as cursor:
+                cutover = dict(await cursor.fetchone())
+            async with db.execute(
+                "SELECT id, outcome, instance_id, instance_stable_id FROM search_history ORDER BY id"
+            ) as cursor:
+                rows = [dict(r) for r in await cursor.fetchall()]
+            history = await get_search_history(db)
+            all_view = await get_attribution_disclosure(db)
+            main_view = await get_attribution_disclosure(db, view_app="sonarr", sonarr_stable_id="sid-sonarr-main")
+    return {
+        "cutover": cutover,
+        "rows": rows,
+        "legacy_by_name": {e["name"]: e["is_legacy"] for e in history["entries"]},
+        "all_view": all_view,
+        "main_view": main_view,
+        "search_log_after": json.loads(state_path.read_text())["search_log"],
+    }
+
+
+async def test_lifespan_imports_legacy_search_log_before_cutover(tmp_path):
+    """The one-time state.json import runs before the cutover, so the cutover covers the imported rows."""
+    snap = await _lifespan_snapshot_with_legacy_search_log(tmp_path)
+    assert max(r["id"] for r in snap["rows"]) == 3
+    assert snap["cutover"]["legacy_max_history_id"] == 3
+    assert snap["cutover"]["any_pre_fix_sonarr_data"] == 1
+
+
+async def test_lifespan_imported_sonarr_rows_are_legacy_and_disclosed(tmp_path):
+    """Imported pre-fix Sonarr rows read as Legacy; the all-instances view shows the cutover note."""
+    snap = await _lifespan_snapshot_with_legacy_search_log(tmp_path)
+    assert snap["legacy_by_name"] == {"Old Show S01": True, "Old Show S02": True, "Old Movie": False}
+    assert snap["all_view"]["show_cutover_note"] is True
+
+
+async def test_lifespan_imported_rows_keep_outcomes_and_stay_unassociated(tmp_path):
+    """Imported rows keep their stored outcomes and are never associated with a configured instance's stable ID."""
+    snap = await _lifespan_snapshot_with_legacy_search_log(tmp_path)
+    assert [r["outcome"] for r in snap["rows"]] == ["searched", "searched", "searched"]
+    assert all(r["instance_stable_id"] is None for r in snap["rows"])
+    assert all(r["instance_id"] == "Default" for r in snap["rows"])
+    assert snap["main_view"]["show_cutover_note"] is False
+    assert snap["search_log_after"] == []

@@ -1294,3 +1294,100 @@ async def test_lidarr_tracking_integration(tmp_path):
     assert row[0] == "grabbed"
 
     await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Radarr/Lidarr lifetime credit follows the search row's own stable ID
+# ---------------------------------------------------------------------------
+
+
+async def test_radarr_name_reuse_credits_the_search_rows_own_stable_id(tmp_path):
+    """A different server reusing a removed Radarr name never takes lifetime credit for the old server's search."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    row_id = await _insert_entry(
+        db, app="Radarr", item_id=101, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
+    )
+    radarr = AsyncMock()
+    radarr.get_grab_history.return_value = [_grab(9001, searched_at + timedelta(minutes=5))]
+
+    await run_tracking_check(db, radarr, "Radarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new")
+
+    assert await _get_outcome(db, row_id) == "grabbed"
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-old") == 1
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-new") == 0
+    await db.close()
+
+
+async def test_lidarr_name_reuse_credits_the_search_rows_own_stable_id(tmp_path):
+    """Lidarr follows the same rule as Radarr: credit lands on the searching instance's stable ID."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    await _insert_entry(
+        db, app="Lidarr", item_id=999, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
+    )
+    client = AsyncMock()
+    client.get_grab_history = AsyncMock(return_value=[
+        GrabEvent(id=1, sourceTitle="Artist - Album [FLAC]", date=(searched_at + timedelta(minutes=5)).isoformat(),
+                  eventType="grabbed"),
+    ])
+
+    await run_tracking_check(db, client, "Lidarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new")
+
+    assert await _get_stat(db, "Lidarr", "albums_found", instance_id="Main", instance_stable_id="sid-old") == 1
+    assert await _get_stat(db, "Lidarr", "albums_found", instance_id="Main", instance_stable_id="sid-new") == 0
+    await db.close()
+
+
+async def test_radarr_row_without_stable_id_falls_back_to_current_instance(tmp_path):
+    """Explicit legacy fallback: a pending row stored without a stable ID credits the current instance's ID."""
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    row_id = await _insert_entry(
+        db, app="Radarr", item_id=55, instance_id="Main", instance_stable_id=None, timestamp=searched_at,
+    )
+    radarr = AsyncMock()
+    radarr.get_grab_history.return_value = [_grab(9002, searched_at + timedelta(minutes=5))]
+
+    await run_tracking_check(db, radarr, "Radarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-cur")
+
+    assert await _get_outcome(db, row_id) == "grabbed"
+    assert await _get_stat(db, "Radarr", "movies_found", instance_id="Main", instance_stable_id="sid-cur") == 1
+    await db.close()
+
+
+async def test_radarr_name_reuse_through_real_client_keeps_card_consistent(tmp_path):
+    """Real RadarrClient path: the new server's per-instance card shows neither the old search nor its credit."""
+    from pydantic import SecretStr
+
+    from triggarr.clients.radarr import RadarrClient
+    from triggarr.db import get_dashboard_stats
+
+    db, _ = await _init_db(tmp_path)
+    searched_at = datetime.now(UTC) - timedelta(minutes=10)
+    await _insert_entry(
+        db, app="Radarr", item_id=101, instance_id="Main", instance_stable_id="sid-old", timestamp=searched_at,
+    )
+    grab = {"id": 9001, "movieId": 101, "sourceTitle": "Movie.101.2024.1080p-GRP",
+            "date": (searched_at + timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
+            "eventType": "grabbed", "downloadId": "DL-9001", "data": {}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v3/history/movie":
+            return httpx.Response(200, json=[grab])
+        return httpx.Response(404, json={})
+
+    client = RadarrClient("http://new-radarr.test", SecretStr("k" * 32))
+    client._client = httpx.AsyncClient(base_url="http://new-radarr.test", transport=httpx.MockTransport(handler))
+    try:
+        await run_tracking_check(db, client, "Radarr", "Main", tracking_window_minutes=60, instance_stable_id="sid-new")
+    finally:
+        await client.close()
+
+    new_card = await get_dashboard_stats(db, app="Radarr", instance_stable_id="sid-new")
+    old_card = await get_dashboard_stats(db, app="Radarr", instance_stable_id="sid-old")
+    assert new_card["movies_found"] == 0
+    assert new_card["radarr_rate"] is None
+    assert old_card["movies_found"] == 1
+    assert old_card["radarr_rate"] == 100.0
+    await db.close()
