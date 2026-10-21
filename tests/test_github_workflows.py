@@ -106,12 +106,108 @@ def test_release_job_permissions_unchanged() -> None:
     assert release_job["permissions"] == {"packages": "write", "contents": "write", "actions": "read"}
 
 
+def _is_publication_step(step: dict) -> bool:
+    uses = str(step.get("uses") or "")
+    if any(uses.startswith(prefix) for prefix in PUBLICATION_USES_PREFIXES):
+        return True
+    run = str(step.get("run") or "")
+    return any(substring in run for substring in PUBLICATION_RUN_SUBSTRINGS)
+
+
+def _has_status_bypass(if_expr: object) -> bool:
+    if not if_expr:
+        return False
+    normalized = _normalize_expression(str(if_expr))
+    return any(substring in normalized for substring in STATUS_BYPASS_SUBSTRINGS)
+
+
+def _job_needs_release(jobs: dict, job_name: str, visited: set[str] | None = None) -> bool:
+    if visited is None:
+        visited = set()
+    if job_name in visited:
+        return False
+    visited.add(job_name)
+    needs = jobs.get(job_name, {}).get("needs")
+    if not needs:
+        return False
+    needs_list = [needs] if isinstance(needs, str) else list(needs)
+    if "release" in needs_list:
+        return True
+    return any(_job_needs_release(jobs, dep, visited) for dep in needs_list)
+
+
 def publication_bypass_violations(workflow: dict) -> list[str]:
     """Return every way a publication step could run without the release-identity gate.
 
-    Not yet implemented (TDD RED) -- see the following commit (D-31b).
+    A rejection must block every publication path (registry login, image push,
+    GitHub Release creation) -- not merely appear earlier in the file (D-31b).
     """
-    return []
+    violations: list[str] = []
+    jobs = workflow.get("jobs", {})
+    release_job = jobs.get("release", {})
+    release_steps = release_job.get("steps", [])
+
+    step_index_by_name = {step.get("name"): idx for idx, step in enumerate(release_steps) if "name" in step}
+    gate_index = step_index_by_name.get("Verify release version identity")
+
+    for idx, step in enumerate(release_steps):
+        label = step.get("name") or step.get("uses") or step.get("run") or f"step {idx}"
+        if _is_publication_step(step):
+            if gate_index is None or idx < gate_index:
+                violations.append(f"release.{label}: publication step runs before the version identity gate")
+            if _has_status_bypass(step.get("if")):
+                violations.append(f"release.{label}: publication step if-condition has a status-function bypass")
+        if step.get("continue-on-error"):
+            violations.append(f"release.{label}: continue-on-error set on a release-job step")
+
+    if release_job.get("continue-on-error"):
+        violations.append("release: continue-on-error set on the release job")
+
+    for gate_name in GATE_STEP_NAMES:
+        idx = step_index_by_name.get(gate_name)
+        if idx is None:
+            violations.append(f"release.{gate_name}: gate step is missing")
+            continue
+        gate_if = _normalize_expression(str(release_steps[idx].get("if", "")))
+        if gate_if != _normalize_expression(TAG_ONLY_IF):
+            violations.append(f"release.{gate_name}: gate step if-condition is not tag-only")
+
+    for job_name, job in jobs.items():
+        if job_name == "release":
+            continue
+        for step in job.get("steps", []):
+            if not _is_publication_step(step):
+                continue
+            label = step.get("name") or step.get("uses") or step.get("run") or "step"
+            needs_release = _job_needs_release(jobs, job_name)
+            job_bypass = _has_status_bypass(job.get("if"))
+            if not needs_release or job_bypass:
+                violations.append(f"{job_name}.{label}: publication step reachable without the release gate")
+
+    on_triggers = workflow.get(True, workflow.get("on"))
+    expected_on = {
+        "workflow_run": {"workflows": ["CI"], "types": ["completed"], "branches": ["main"]},
+        "push": {"tags": ["v*"]},
+    }
+    if on_triggers != expected_on:
+        violations.append("on: workflow triggers differ from the expected workflow_run/push set")
+
+    create_release_idx = step_index_by_name.get("Create GitHub Release")
+    if create_release_idx is not None:
+        create_release_if = _normalize_expression(str(release_steps[create_release_idx].get("if", "")))
+        if create_release_if != _normalize_expression(TAG_ONLY_IF):
+            violations.append("release.Create GitHub Release: if-condition is not tag-only")
+
+    meta_idx = step_index_by_name.get("Extract metadata")
+    if meta_idx is not None:
+        tags_value = release_steps[meta_idx].get("with", {}).get("tags", "")
+        latest_lines = [line for line in tags_value.splitlines() if "value=latest" in line]
+        if not latest_lines or not all(
+            "enable=${{ startsWith(github.ref, 'refs/tags/v') }}" in line for line in latest_lines
+        ):
+            violations.append("release.Extract metadata: latest tag is not restricted to refs/tags/v")
+
+    return violations
 
 
 def _step_by_name(steps: list[dict], name: str) -> dict:
