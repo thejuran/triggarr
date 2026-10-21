@@ -239,7 +239,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] 82-02-PLAN.md — CI harness: stub *arr service and reason-coded HTTP checks (TDD)
 - [x] 82-03-PLAN.md — release.yml identity gate before publication, CI rehearsal script, wiring tests
 - [x] 82-04-PLAN.md — shipped-image startup smoke driver with isolated config and missing-asset negative
-- [ ] 82-05-PLAN.md — Playwright dev deps, browser setup/login/logout flows, artifact secret scan
+- [x] 82-05-PLAN.md — Playwright dev deps, browser setup/login/logout flows, artifact secret scan
 - [ ] 82-06-PLAN.md — connection-pill polling regression test and local sensitivity check
 - [ ] 82-07-PLAN.md — image-smoke and browser-e2e CI jobs joined to CI ready and REQUIRED_JOBS
 - [ ] 82-08-PLAN.md — reproduction recipes, pre-push deep-review decision, first real PR run with reconciled commit identities, time-budget measurement
@@ -313,7 +313,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
 | 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Complete (scheduled-cycle check passed 2026-10-21: 24 consecutive 180-min cycles, 0 failed, no duplicate season dispatch) | 2026-10-18 |
 | 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Complete (multi-season pack and alternate series order unverified-live under D-12) | 2026-10-21 |
-| 82. CI Tests What We Ship | 4/9 | In Progress | - |
+| 82. CI Tests What We Ship | 5/9 | In Progress | - |
 | 83. Paired BM + Codex Review & Risk-Based Depth | 0/TBD | Not started | - |
 | 84. Codex Plan-Checker Investigation | 0/TBD | Not started | - |
 | 85. Follow-on CI Improvements & Acceptance Usability | 0/TBD | Not started | - |
