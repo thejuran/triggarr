@@ -76,6 +76,14 @@ jobs:
           script: |
             const {preflight} = require('./.github/scripts/release-policy.cjs');
             await preflight({github, context, core});
+      - name: Validate release tag format
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const {parseReleaseTag} = require('./.github/scripts/release-policy.cjs');
+            const version = parseReleaseTag(context.ref);
+            core.info(`Release tag format accepted: ${version}`);
       - name: Download exact successful CI image
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -89,6 +97,26 @@ jobs:
           sha256sum -c image.tar.sha256
           docker load -i image.tar
           test "$(docker image inspect triggarr:ci-test --format '{{.Id}}')" = "$(cat image-id.txt)"
+      - name: Read audited image version label
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        id: image-version
+        run: |
+          version="$(docker image inspect triggarr:ci-test --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          if ! [[ "$version" =~ ^[A-Za-z0-9.+_-]*$ ]]; then
+            echo "Release rejected: image version label contains unexpected characters" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Verify release version identity
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          IMAGE_VERSION: ${{ steps.image-version.outputs.version }}
+          RELEASE_SHA: ${{ steps.recheck.outputs.sha }}
+        with:
+          script: |
+            const {releaseIdentityGate} = require('./.github/scripts/release-policy.cjs');
+            await releaseIdentityGate({github, context, core, sha: process.env.RELEASE_SHA, imageVersion: process.env.IMAGE_VERSION});
 
       - name: Download exact successful CI Python distributions
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
