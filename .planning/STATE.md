@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
-status: "Phase 81 executing — 7/9 plans; live v5 run (81-07) found a v5 grab-identity gap (attribution FAIL, SONARRV5-02 open); gap-closure fix being planned (Phase 80 scheduled-cycle check pending separately)"
-stopped_at: "Phase 81 81-07 complete with live FAIL on v5 season-pack attribution (owner-approved record 2026-10-19); next: owner disposition of the 81-13 upgradeAllowed deviation, then 81-09 closeout (81-13 executed 2026-10-20: tag filtering pass, multi-page retrieval inferred, client-returned ID-set completeness unverified-live); 81-08 v4 owner-approved with corrections 2026-10-20, v4 sandbox parked disabled; SONARRV5-02 open"
-last_updated: "2026-10-21T00:10:00Z"
-last_activity: "2026-10-19 -- Phase 81 Wave 2 executed and merged on branch phase-81-sonarr-attribution (81-04 ownership-aware tracking + scheduler wiring, 81-05 stats disclosure); 1,957 tests pass, ruff clean"
+status: "Phase 81 executed -- 13/13 plans; incomplete per D-13 (SONARRV5-02 open: client-returned ID-set completeness/uniqueness on missing/cutoff pagination v5+v4, multi-season pack and alternate series order fixture-only, v4 library counts unverified-live); disclosure reviewed and owner-approved on screen (two bounded scope additions: stats-card retitle, selector/poll hx-sync race fix); awaiting review/merge (Phase 80 scheduled-cycle check pending separately)"
+stopped_at: "81-09 closeout complete: Task 1 built two local scratch instances; Task 2 owner on-screen review (two /walkthrough runs) approved the disclosure plus two bounded scope additions (commits e996322, 09421ab; full suite 1999 passed, ruff clean) -- owner response \"Accepted\"; Task 3 reconciled REQUIREMENTS/ROADMAP/STATE per D-13. SONARRV5-02 stays open with each unverified-live scenario listed in REQUIREMENTS.md and 81-LIVE-MATRIX.md \"## Status\". Next: owner review/merge decision for Phase 81; a v2.12 release while SONARRV5-02 is open needs an explicit owner scope exception (D-14)"
+last_updated: "2026-10-21T01:30:00Z"
+last_activity: "2026-10-20/21 -- Phase 81 closeout (Plan 81-09): local disclosure check, owner-approved two bounded scope additions (card retitle, hx-sync race fix), D-13 reconciliation of REQUIREMENTS/ROADMAP/STATE; SONARRV5-02 stays open"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 32
-  completed_plans: 31
+  completed_plans: 32
   percent: 80
 ---
 
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-10-08)
 
 ## Current Position
 
-Phase: 81 (correct-sonarr-grab-attribution) — EXECUTING; Waves 1-4 complete; gap closure pending
-Plan: 12 of 13 complete (81-01..81-08, 81-10..81-13 executed; 81-09 closeout remaining; plans in in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
-Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). 81-06 built the live acceptance matrix; the owner authorized both the v5 deploy of the Phase 81 build and v4 sandbox provisioning (option-a, 2026-10-19). 81-07 ran the Phase 81 build on the isolated v5 sandbox (owner ran the sudo isolation gates; both passed): the controlled Hacks S02 SeasonSearch was dispatched, grabbed and imported, but season-pack attribution and repeated-tracking checks FAIL because Sonarr v5 (5.0.0.2701) grab history omits season identity, so the identity gate credits nothing. Tag/missing/cutoff were reachable only (empty sandbox). The owner approved this as an accurate record of a failed compatibility test (not v5 support) and scoped a targeted fix inside Phase 81 (episode-ID fallback with series validation, per-check caching, no credit on missing/conflicting identity, real v5 fixtures), then a live v5 rerun; 81-08 v4 still runs. v4 behavior is unverified until 81-08. Sandbox restored to disabled baseline; production untouched. Phase 81 remains incomplete. Live sandbox work waits for the owner authorization checkpoint in 81-06.
+Phase: 81 (correct-sonarr-grab-attribution) — EXECUTED (13/13 plans); incomplete per D-13 (SONARRV5-02 open); awaiting review/merge
+Plan: 13 of 13 complete (81-01..81-13 executed; plans in `.planning/phases/81-correct-sonarr-grab-attribution/`); decisions in 81-CONTEXT.md
+Status: Phase 81 Wave 1 executed 2026-10-18 on branch `phase-81-sonarr-attribution` (not pushed); paused by the owner before Wave 2; resumed 2026-10-19; Wave 2 (81-04 tracking wiring, 81-05 stats disclosure) executed in worktrees and merged, 1,957 tests pass, ruff clean (not pushed or reviewed). 81-06 built the live acceptance matrix; the owner authorized both the v5 deploy of the Phase 81 build and v4 sandbox provisioning (option-a, 2026-10-19). 81-07 ran the Phase 81 build on the isolated v5 sandbox (owner ran the sudo isolation gates; both passed): the controlled Hacks S02 SeasonSearch was dispatched, grabbed and imported, but season-pack attribution and repeated-tracking checks FAIL because Sonarr v5 (5.0.0.2701) grab history omits season identity, so the identity gate credits nothing. Tag/missing/cutoff were reachable only (empty sandbox). The owner approved this as an accurate record of a failed compatibility test (not v5 support) and scoped a targeted fix inside Phase 81 (episode-ID fallback with series validation, per-check caching, no credit on missing/conflicting identity, real v5 fixtures), then a live v5 rerun; 81-10/81-11/81-12 closed that gap (fixtures, fallback fix, live v5 rerun owner-approved). 81-08 ran the same matrix on an isolated v4 sandbox, owner-approved with corrections. 81-13 ran zero-search live tag/pagination checks on both sandboxes (tag filtering pass; pagination multi-page retrieval inferred, client-returned ID-set completeness/uniqueness unverified-live) and the owner dispositioned an unauthorized quality-profile `upgradeAllowed` change as an accepted bounded deviation (restored exactly). 81-09 closed the phase out: Task 1 built two local scratch disclosure-check instances; Task 2's owner on-screen review (two `/walkthrough` runs) approved the disclosure plus two bounded scope additions (stats-card retitle, selector/poll `hx-sync` race fix — commits `e996322`/`09421ab`, full suite 1999 passed, ruff clean); Task 3 reconciled REQUIREMENTS.md (ATTR-01..06, SONARRV5-01, SONARRV5-03 complete; SONARRV5-02 stays open with every unverified scenario listed) and this file. Sandboxes restored to disabled baseline; production untouched throughout. **Phase 81 remains incomplete per D-13** (SONARRV5-02 open) pending review and merge.
 
 Phase 80 operational check (separate): Phase 80 merged via PR #28 at dee25df5cedd28f8016f556129f20a0d5537b635 (2026-10-18). Reviewed head ef01a3e757a060132640aed72b9cff5e21ad11b3: 1,735 tests passed, ruff clean, Greptile 5/5, vibe-check pass 6 and Codex clear (reported verification). Owner acceptance passed on run 39156038379 before merge. Main CI (run 39157110156) and Release (run 39157384992) passed; deployed to production 2026-10-18 (container running `dee25df5cedd28f8016f556129f20a0d5537b635`, image digest `sha256:4bb6e50be909c8fbec39a1416a79b85833b5a26128ed27ffa2ba57e70fd0c034`, started 19:11:47Z; health OK; startup Radarr and Sonarr cycles graded Success). The previous image is tagged `ghcr.io/thejuran/triggarr:rollback-d41b484` on the NAS and config/state were backed up to `~/triggarr-backup-pre-pr28-20261018T191121Z` before the restart. Not yet operationally verified: the first recurring scheduled cycles (every 180 min, next about 22:12Z) and an owner check of the dashboard cards.
-Last activity: 2026-10-19 -- Phase 81 Wave 2 complete (5/9 plans: 81-04, 81-05 merged); 81-07 complete (live v5 attribution FAIL recorded, owner-approved); gap-closure fix being planned
+Last activity: 2026-10-20/21 -- Phase 81 closeout (81-09): disclosure review owner-approved with two bounded scope additions; D-13 reconciliation complete; SONARRV5-02 stays open; Phase 81 awaits review/merge
 
 ### v2.12 milestone shape
 
@@ -210,13 +210,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-18T21:15:05Z
-Stopped at: Phase 81 paused after Wave 1 (3/9 plans) on branch phase-81-sonarr-attribution; resume with /bm:execute-phase 81 (Wave 2: 81-04, 81-05)
-Resume file: .planning/phases/81-correct-sonarr-grab-attribution/81-04-PLAN.md
+Last session: 2026-10-21T01:30:00Z
+Stopped at: Phase 81 fully executed (13/13 plans) on branch phase-81-sonarr-attribution; incomplete per D-13 (SONARRV5-02 open); awaiting owner review/merge decision
+Resume file: None (phase executed; next step is review/merge, not further plan execution)
 
 ## Operator Next Steps
 
 - Confirm Phase 80 in operation: after the next scheduled cycles (every 180 min, next about 22:12Z) check the production logs and dashboard cards for the expected grades and per-queue malformed rows. The deployment itself is verified (running `dee25df`, digest `sha256:4bb6e50b…`); do not repeat approval, merge or deploy.
 - Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (per-item screening remains deferred; the shared release-date fix also benefits refresh). Decide whether to align it.
-- Phase 81: planned (81-01..81-09); next `/bm:execute-phase 81`. Plans 81-06..81-08 pause for owner authorization and review of live sandbox work.
+- Phase 81: executed (81-01..81-13, 13/13 plans; 81-09 closeout 2026-10-20/21). Incomplete per D-13 -- SONARRV5-02 open (see REQUIREMENTS.md and `81-LIVE-MATRIX.md` "## Status" for every unverified scenario). Next: owner review/merge decision; a v2.12 release while SONARRV5-02 is open needs an explicit owner scope exception (D-14).
 - Phase 81 checkout handoff: `.planning/` is excluded locally (`.git/info/exclude`). Already-tracked planning files (STATE.md, ROADMAP.md and others) are carried by Git; new or untracked ones (REQUIREMENTS.md and the Phase 81 phase directory) are not. If Phase 81 work moves to a new worktree/checkout, copy the ignored files explicitly — at minimum `.planning/REQUIREMENTS.md` (ATTR-06 refined locally) and `.planning/phases/81-correct-sonarr-grab-attribution/` (81-CONTEXT.md, 81-DISCUSSION-LOG.md). Branch from `cycle-robustness` HEAD so the three docs commits (2ff03a9, 480c291, 98e01b6) are preserved, and carry the uncommitted ROADMAP.md/STATE.md edits rather than discarding them.
