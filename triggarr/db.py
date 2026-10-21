@@ -693,12 +693,12 @@ async def insert_search_entry(
     """Insert a search log entry, enforcing bounded growth on both row classes.
 
     Bounds:
-        * Resolved rows (outcome != 'searched') are trimmed inline after
+        * Resolved rows (any outcome but 'searched'/'partial') are trimmed inline after
           every insert to keep their count <= max_rows. The trim runs in
           the same transaction as the insert (single ``db.commit()`` at
           the end), so the cap holds immediately on the next read. Closes
           SAFETY-01.
-        * Pending rows (outcome == 'searched') are bounded separately at
+        * Pending rows ('searched' and non-terminal 'partial') are bounded separately at
           ``PENDING_CAP_MULTIPLIER * max_rows`` (default 2x). If the
           pending count is already at or above this cap, a new pending
           insert is REJECTED with ``PendingCapExceeded`` and a WARNING
@@ -749,13 +749,15 @@ async def insert_search_entry(
         if instance_stable_id:
             cap_query = (
                 "SELECT COUNT(*) FROM search_history "
-                "WHERE outcome = 'searched' AND app = ? AND instance_stable_id = ? AND NOT " + _LEGACY_PENDING_SQL
+                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_stable_id = ? "
+                "AND NOT " + _LEGACY_PENDING_SQL
             )
             cap_params: tuple[str, str] = (app, instance_stable_id)
         else:
             cap_query = (
                 "SELECT COUNT(*) FROM search_history "
-                "WHERE outcome = 'searched' AND app = ? AND instance_id = ? AND NOT " + _LEGACY_PENDING_SQL
+                "WHERE outcome IN ('searched', 'partial') AND app = ? AND instance_id = ? "
+                "AND NOT " + _LEGACY_PENDING_SQL
             )
             cap_params = (app, instance_id)
         async with db.execute(cap_query, cap_params) as cursor:
@@ -792,14 +794,17 @@ async def insert_search_entry(
                 item_id, season_number, missing_count, instance_id, instance_stable_id or None,
             ),
         )
-        # Tracking-aware pruning (DEBT-03): only prune resolved rows, preserve pending (outcome='searched')
+        # Tracking-aware pruning (DEBT-03): only prune resolved rows. Pending
+        # rows -- 'searched' and the non-terminal 'partial' a tracked search
+        # holds while it is still being credited -- are never pruned; their
+        # owned grabs would otherwise be stranded uncredited.
         await db.execute(
             """
             DELETE FROM search_history
-            WHERE COALESCE(outcome, 'searched') != 'searched'
+            WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
             AND id NOT IN (
                 SELECT id FROM search_history
-                WHERE COALESCE(outcome, 'searched') != 'searched'
+                WHERE COALESCE(outcome, 'searched') NOT IN ('searched', 'partial')
                 ORDER BY id DESC LIMIT ?
             )
             """,
