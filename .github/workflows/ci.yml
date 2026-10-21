@@ -212,9 +212,12 @@ jobs:
       - name: Rehearse release identity against audited image
         run: |
           test "$(docker image inspect triggarr:ci-test --format '{{.Id}}')" = "$(cat image/image-id.txt)"
-          export IMAGE_ID="$(cat image/image-id.txt)"
-          export IMAGE_VERSION="$(docker image inspect triggarr:ci-test --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
-          export REHEARSAL_SHA="$(git rev-parse HEAD)"
+          IMAGE_ID="$(cat image/image-id.txt)"
+          export IMAGE_ID
+          IMAGE_VERSION="$(docker image inspect triggarr:ci-test --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          export IMAGE_VERSION
+          REHEARSAL_SHA="$(git rev-parse HEAD)"
+          export REHEARSAL_SHA
           node .github/scripts/release-identity-rehearsal.cjs
 
   browser-e2e:
@@ -252,7 +255,8 @@ jobs:
         env:
           TRIGGARR_E2E_IMAGE: triggarr:ci-test
         run: |
-          export EXPECTED_IMAGE_ID="$(cat image/image-id.txt)"
+          EXPECTED_IMAGE_ID="$(cat image/image-id.txt)"
+          export EXPECTED_IMAGE_ID
           set +e
           uv run --no-sync pytest tests/e2e -q -p no:cacheprovider -m credential_pages --browser chromium --tracing off --screenshot off --video off --output e2e-artifacts/credential --junitxml e2e-credential.xml
           credential_status=$?
