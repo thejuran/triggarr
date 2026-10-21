@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: Search Correctness & Trustworthy Feedback
 status: "Awaiting next milestone -- v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 as v2.12.0 (5 phases, 33 plans, 28/28 requirements); production runs v2.12.0"
-stopped_at: "v2.12 milestone closed 2026-10-21: archived to milestones/v2.12-ROADMAP.md and v2.12-REQUIREMENTS.md; Phase 80 scheduled-cycle check passed; Phase 77-79 verification/UAT reconciled with the 2026-10-18 live walkthrough. Next: owner confirms the post-v2.12 review-workflow and CI proposals, then /bm:new-milestone"
-last_updated: "2026-10-21T18:33:12Z"
+stopped_at: "v2.12 milestone closed 2026-10-21; post-v2.12 review blueprint and CI plan confirmed by the owner as written. Next: /bm:new-milestone for CI & Review Workflow (start in a fresh session)"
+last_updated: "2026-10-21T18:34:44Z"
 last_activity: "2026-10-21 -- v2.12 milestone closed; v2.12.0 released and deployed"
 progress:
   total_phases: 5
@@ -133,6 +133,8 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 
 ### Decisions
 
+- 2026-10-21 (v2.12 closeout): the owner confirmed the review blueprint and the CI reference-baseline plan as written; they form the CI & Review Workflow milestone. No BM settings, CLAUDE.md, CI or acceptance changes until that milestone implements them.
+
 Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
 
 - [Phase 77]: 77-01: create_buffer_sink reads a bound extra['viewer_message'] before falling back to record['message'], structurally excluding a value from log_buffer (D-03) rather than scrubbing it after insertion — Enables Plan 04 to bind the exact D-01 viewer wording at the reset-token mint call site with no further sink-side changes
@@ -218,7 +220,7 @@ Resume file: None (phase executed; next step is review/merge, not further plan e
 
 ## Operator Next Steps
 
-- Review and confirm the post-v2.12 proposals (CLAUDE.md): [the BM + Greptile + Codex review blueprint](../docs/bm-greptile-codex-blueprint.md) and [the CI reference-baseline plan](../docs/ci-reference-baseline-plan.md)
+- Post-v2.12 proposals CONFIRMED by the owner 2026-10-21, as written: [the BM + Greptile + Codex review blueprint](../docs/bm-greptile-codex-blueprint.md) and [the CI reference-baseline plan](../docs/ci-reference-baseline-plan.md). They define the next milestone, CI & Review Workflow; activation happens through that milestone's plans, not now
 - Follow-up kept out of PR #28: "Refresh counts" still marks an instance disconnected on one malformed record while scheduled cycles skip the record per item (per-item screening remains deferred; the shared release-date fix also benefits refresh). Decide whether to align it.
 - Then start the next milestone with `/bm:new-milestone` (agreed order in ROADMAP.md: CI & Review Workflow, Reliability, Authentication Safety & Responsiveness)
 - Phase 81 checkout handoff: `.planning/` is excluded locally (`.git/info/exclude`). Already-tracked planning files (STATE.md, ROADMAP.md and others) are carried by Git; new or untracked ones (REQUIREMENTS.md and the Phase 81 phase directory) are not. If Phase 81 work moves to a new worktree/checkout, copy the ignored files explicitly — at minimum `.planning/REQUIREMENTS.md` (ATTR-06 refined locally) and `.planning/phases/81-correct-sonarr-grab-attribution/` (81-CONTEXT.md, 81-DISCUSSION-LOG.md). Branch from `cycle-robustness` HEAD so the three docs commits (2ff03a9, 480c291, 98e01b6) are preserved, and carry the uncommitted ROADMAP.md/STATE.md edits rather than discarding them.
