@@ -42,18 +42,25 @@ def _wait_for_startup_connected(page: Page, base_url: str, *, timeout_seconds: f
     pytest.fail(f"stub never reported connected within {timeout_seconds}s; last pill body: {last_body!r}")
 
 
-def _wait_for_request_count(pill_requests: list[str], minimum: int, *, timeout_seconds: float) -> None:
+def _wait_for_request_count(page: Page, pill_requests: list[str], minimum: int, *, timeout_seconds: float) -> None:
     """Poll the recorded request list (real time) until it reaches ``minimum`` entries.
 
     A "request" event fires once the browser sends the request, not once the
     response has been processed into the DOM -- this only proves a scheduled
     tick actually fired a new fetch, not that the swap has happened yet.
+
+    Waits with ``page.wait_for_timeout`` (a real, server-side timer -- not the
+    installed page clock), never ``time.sleep``: the sync API only dispatches
+    queued "request" events, and so only appends to ``pill_requests``, while
+    control is inside a Playwright call.
     """
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if len(pill_requests) >= minimum:
             return
-        time.sleep(0.25)
+        page.wait_for_timeout(250)
+    if len(pill_requests) >= minimum:
+        return
     pytest.fail(
         f"connection pill did not refresh after a scheduled interval: "
         f"expected at least {minimum} requests, saw {len(pill_requests)}"
@@ -105,9 +112,10 @@ def test_connection_pill_polls_on_schedule_without_loop_and_shows_new_state(
 
     # 4. Loop guard: a small clock advance, well under the 30s interval, flushes any
     # swap-triggered re-processing a regression would cause; then real time only --
-    # no scheduled tick is due at this point either way.
+    # no scheduled tick is due at this point either way. page.wait_for_timeout (not
+    # time.sleep) keeps Playwright dispatching "request" events during the window.
     page.clock.fast_forward(3000)
-    time.sleep(3)
+    page.wait_for_timeout(3000)
     looped_count = len(pill_requests)
     assert 1 <= looped_count <= 2, f"connection pill request loop: {looped_count} requests without any scheduled tick"
 
@@ -118,12 +126,12 @@ def test_connection_pill_polls_on_schedule_without_loop_and_shows_new_state(
 
     # 6. First scheduled tick: advance the browser clock past the 30s interval.
     page.clock.fast_forward("00:31")
-    _wait_for_request_count(pill_requests, looped_count + 1, timeout_seconds=10)
+    _wait_for_request_count(page, pill_requests, looped_count + 1, timeout_seconds=10)
     _wait_for_pill_text(page, "Connection Issue", timeout_seconds=10)
 
     # 7. Second scheduled tick: polling continues on schedule, not just once.
     page.clock.fast_forward("00:31")
-    _wait_for_request_count(pill_requests, looped_count + 2, timeout_seconds=10)
+    _wait_for_request_count(page, pill_requests, looped_count + 2, timeout_seconds=10)
 
     # 8. Bounded total: a range with tolerance, never an exact count at a fragile deadline (D-28).
     final_count = len(pill_requests)
