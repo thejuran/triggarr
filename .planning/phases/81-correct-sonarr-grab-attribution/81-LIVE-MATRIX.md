@@ -770,6 +770,8 @@ Plans 07 and 08 act only within this authorized scope. Any row not produced live
 
 ## Evidence locations
 
+**Published-history note (2026-10-21):** before the first push, this unpushed branch's history was rewritten to remove private infrastructure and credential details from planning text and commit messages. Code, tests and config are byte-identical in every commit (checked commit by commit). Planning docs still cite pre-rewrite hashes; map them as follows: `b35470b` (sandbox build, revision label on `triggarr:phase81-b35470b66f`) → `69f5733`; `a2b8c1c` (full deep review) → `1915a7d`; `d14b71e` → `06519aa`; `9a1d423` (frozen deep-review commit) → `3e19e48`; `363060e` → `c2fb07a`; `b498475` → `91b7992`. The review and live evidence apply unchanged, because the code trees are identical.
+
 Sanitized result files only -- no API keys, no production URLs, no raw Sonarr/Triggarr config dumps.
 
 - NAS: `/volume1/docker/v5test/results/`
