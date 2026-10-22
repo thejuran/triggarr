@@ -27,7 +27,7 @@
 {% endfor %}
 {% set no_failure = app.last_cycle.failed == 0 and not app.last_cycle.fetch_failed and ns.other == 0 %}
 <details data-cycle-detail class="mb-2 text-[11px] text-triggarr-muted">
-  {% if no_failure and ns.unevaluated > 0 %}
+  {% if no_failure and ns.unevaluated > 0 and app.last_cycle.grade != 'failed' %}
   <summary class="cursor-pointer select-none">Show {{ app.last_cycle.reason_count }} detail{% if app.last_cycle.reason_count != 1 %}s{% endif %}</summary>
   {% elif no_failure and ns.malformed > 0 and app.last_cycle.malformed_skipped > 0 %}
   <summary class="cursor-pointer select-none">Show {{ app.last_cycle.malformed_skipped }} skipped record{% if app.last_cycle.malformed_skipped != 1 %}s{% endif %}</summary>
