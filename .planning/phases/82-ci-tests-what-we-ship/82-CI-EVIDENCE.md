@@ -222,4 +222,16 @@ Verified via `gh api repos/thejuran/triggarr/code-scanning/alerts/15`: `state: d
 
 CodeQL's `py/clear-text-storage-sensitive-data` taint analysis treats any value derived from the tracked sensitive source (here, the API key) as itself sensitive, regardless of whether the derivation is reversible -- it does not recognize `hashlib.scrypt` (or hashing in general) as a sanitizer for this query, so a one-way digest of a secret still trips the rule. That is a static-analysis limitation, not a report of an actual recoverable-secret-on-disk condition, which is the basis for the owner's dismissal.
 
+### Final head checks
+
+Docs-only commit `3f8f5f7` (recording the alert #15 disposition above) was pushed on top of `6c8354e` (fast-forward `6c8354e..3f8f5f7`), carrying `9df705b`, `f41c065` and `3f8f5f7`. This head makes no code changes versus `6c8354e` -- the Second GitHub run section above is the full CI evidence record for the code; only a confirmation run is needed here.
+
+- **New PR head SHA:** `3f8f5f7532d2f26266e947a0aca7a8d563c76b67` (confirmed equal to `git log origin/ci-review-workflow -1 --format=%H` and to `gh pr view 33 --json headRefOid`).
+- **CI run:** https://github.com/thejuran/triggarr/actions/runs/39700561470, run ID `39700561470`, attempt `1`.
+- **Per-job conclusions (all `success`):** `test`, `lint`, `secrets`, `dependencies`, `docker`, `image-smoke`, `browser-e2e`, `CI ready`.
+- **CodeQL:** `pass` (check run https://github.com/thejuran/triggarr/runs/119568626183, 3s) -- the alert-count gate is now green, consistent with 0 open code-scanning alerts on this ref.
+- **Greptile Review:** `pending` at time of this record. **Review acceptance:** `pending` at time of this record. Neither paused on; neither touched; no approval requested or submitted.
+
+All branch-ruleset required checks this plan can observe synchronously (`CI ready`, `CodeQL`) are green at this head.
+
 This record is not owner acceptance (D-35 stop 3 happens later, on the final phase head). Main was not pushed; no review-acceptance approval was requested or submitted; no `review-acceptance` environment was touched.
