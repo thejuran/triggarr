@@ -168,6 +168,11 @@ def _self_declared_incomplete(report: dict) -> list[str]:
     return reasons
 
 
+def _non_blank(value: object) -> bool:
+    """True if *value* is a string with non-whitespace content (IN-05)."""
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _finding_consistency_and_ids(
     report: dict,
     inspected_head: str | None,
@@ -203,7 +208,7 @@ def _finding_consistency_and_ids(
         reproduced = finding.get("reproduced")
         if reproduced is True and not finding.get("reproduction_command"):
             reasons.append(f"{fid} marked reproduced without a reproduction command")
-        if reproduced is False and not finding.get("hypothesis"):
+        if reproduced is False and not _non_blank(finding.get("hypothesis")):
             reasons.append(f"{fid} unreproduced without a hypothesis")
 
         qualified_ids.append(f"{source}:{head_fragment}:a{attempt}:{fid}")
