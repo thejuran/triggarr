@@ -4,7 +4,7 @@ Status: active from Phase 83 (v2.13). Instruction-enforced: GitHub does not yet 
 
 ## Principle
 
-A written review-classification policy exists. Ordinary documentation and planning-only changes receive a focused consistency review; Greptile, independent Codex code review and vibe-check are not routinely required for them. Classification depends on content, not file extension: changes to agent instructions, executable workflows, hooks, permissions, acceptance or release policy, or operational procedures are sensitive and require a risk assessment (RISK-01) and the applicable technical review, even when they live in Markdown. A mixed PR follows the requirements of its most consequential change.
+A written review-classification policy exists. Ordinary documentation and planning-only changes receive a focused consistency review; Greptile, independent Codex code review and vibe-check are not routinely required for them. Classification depends on content, not file extension: changes to agent instructions, executable workflows, hooks, permissions, acceptance or release policy, or operational procedures are sensitive and require a risk assessment (RISK-01) and the applicable technical review, even when they live in Markdown. A mixed PR follows the requirements of its most consequential change; a PR that contains both application code and sensitive content gets every review either class requires (see Mixed changes).
 
 ## Classes
 
@@ -17,6 +17,8 @@ A written review-classification policy exists. Ordinary documentation and planni
 ## Mixed changes
 
 A PR records every class present among its changes (`classes_present`) and follows the required-review requirements of its most consequential class present. Sensitive and code both carry the full technical review described above; ordinary-docs is the least consequential of the three, so a PR that mixes ordinary-docs with either sensitive or code content is classified and reviewed as the more consequential class, never diluted toward ordinary-docs.
+
+Sensitive and code are not ranked against each other. A PR that contains both application code and sensitive content (for example agent instructions, a schema under `.claude/**`, or acceptance policy) gets every review either class requires: the full code-review path from the code row (BM code review with paired Codex, Greptile when it runs, CI, and routine vibe-check while the owner still requires it), plus the sensitive-content risk assessment (RISK-01, with a vibe-check recommendation when risk is high per RISK-02) covering the sensitive changes specifically. Neither class's requirements are dropped because the other is present. Record such a PR with `classification` set to `code` and both `code` and `sensitive` in `classes_present`, and name the sensitive files in `rationale` so the risk assessment covers them.
 
 ## Ground rules
 
@@ -37,7 +39,7 @@ The per-head record lives in the PR checkpoint comment (D-10), not in a GitHub r
 ```
 
 - `head`: the exact head SHA this record applies to.
-- `classification`: the single most consequential class governing required review for this head.
+- `classification`: the single most consequential class governing required review for this head. For a PR with both code and sensitive content this is `code`, and the PR still also gets the sensitive-content risk assessment (see Mixed changes).
 - `classes_present`: every class actually present among the changes at this head.
 - `rationale`: why this head got this classification — which files or content drove it.
 - `supersedes_head`: the prior head's SHA this record replaces, or `null` for the first record on a PR.
