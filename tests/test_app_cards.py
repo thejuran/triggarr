@@ -585,8 +585,10 @@ def test_card_skip_only_plural_counts_records_not_rows(client, test_app):
     assert "Show 2 details" not in text
 
 
-def test_card_skip_only_failed_grade_says_skipped_record(client, test_app):
-    """D-01: a Failed skip-only cycle (0 accepted, 0 failed) also says 'skipped record'."""
+def test_card_skip_only_failed_grade_says_failure_reason(client, test_app):
+    """Owner ruling on bm:dbe1b7f56bdd:SA-01 (2026-10-22, supersedes D-01 for red cards):
+    a Failed skip-only cycle (0 accepted, 0 failed) says 'failure reason', never the softer
+    'skipped record'. The row text stays unchanged."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
     test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
         grade="failed",
@@ -598,10 +600,37 @@ def test_card_skip_only_failed_grade_says_skipped_record(client, test_app):
     response = client.get("/partials/app-card/radarr/Default")
     assert response.status_code == 200
     text = response.text
-    assert "Show 1 skipped record" in text
-    assert "Show 1 skipped records" not in text
-    assert "failure reason" not in text
+    assert "Show 1 failure reason" in text
+    assert "Show 1 failure reasons" not in text
+    assert "skipped record" not in text
+    assert "1 missing-queue record skipped — malformed data" in text
     assert "text-triggarr-danger" in text
+
+
+@pytest.mark.parametrize(
+    ("malformed_skipped", "malformed_by_queue", "label"),
+    [
+        (3, {"missing": 2, "cutoff": 1}, "Show 2 failure reasons"),
+        (1, None, "Show 1 failure reason"),
+    ],
+)
+def test_card_failed_grade_never_says_skipped_record(
+    client, test_app, malformed_skipped, malformed_by_queue, label
+):
+    """Owner ruling on bm:dbe1b7f56bdd:SA-01: red Failed-grade cards always say
+    'Show N failure reason(s)', also when every row is a skipped record (per-queue
+    rows or the legacy aggregate row)."""
+    record = {"grade": "failed", "accepted": 0, "failed": 0, "malformed_skipped": malformed_skipped}
+    if malformed_by_queue is not None:
+        record["malformed_by_queue"] = malformed_by_queue
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(**record)
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert label in text
+    assert "skipped record" not in text
+    assert "detail" not in text.split("<summary", 1)[1].split("</summary>", 1)[0]
 
 
 def test_card_skip_only_legacy_aggregate_says_skipped_record(client, test_app):
