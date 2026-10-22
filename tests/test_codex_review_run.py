@@ -8,6 +8,7 @@ command runner. Codex itself is never called.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -66,7 +67,9 @@ def _values(**overrides) -> dict[str, str]:
 # --- Template and rendering -------------------------------------------------
 
 
-def test_template_is_the_contract_version_four_prompt() -> None:
+def test_template_is_the_contract_version_five_prompt() -> None:
+    assert runner.TEMPLATE_HEADING == "## Fixed prompt (version 5)"
+    assert runner.template_version() == "5"
     template = load_template()
     assert template.startswith("Independently review {{PR_URL}}")
     assert "{{TEST_EVIDENCE}}" in template
@@ -130,11 +133,31 @@ def _git(repo: Path, *args: str) -> str:
     ).stdout
 
 
-def test_exclude_pathspecs_cover_all_of_planning() -> None:
-    assert EXCLUDE_PATHSPECS == (":(exclude,glob).planning/**",)
+# bm:dbe1b7f56bdd:WR-01 (owner-approved round 3, template version 5): planning
+# markdown, raw transcripts and generated review artifacts stay out of the
+# review diff, but .planning/config.json and any other non-markdown,
+# non-codex file under .planning/ stays in it.
 
 
-def test_pathspecs_exclude_everything_under_planning(tmp_path: Path) -> None:
+def test_exclude_pathspecs_are_narrow() -> None:
+    assert EXCLUDE_PATHSPECS == (
+        ":(exclude,glob).planning/**/codex/**",
+        ":(exclude,glob).planning/**/*.jsonl",
+        ":(exclude,glob).planning/**/*.md",
+    )
+
+
+def _policy_sensitive_planning_paths() -> list[str]:
+    policy = (REPO_ROOT / "docs" / "review-classification-policy.md").read_text(encoding="utf-8")
+    row = next(line for line in policy.splitlines() if line.startswith("| sensitive |"))
+    return sorted(set(re.findall(r"`(\.planning/[^`*]+)`", row)))
+
+
+def test_policy_names_planning_config_as_sensitive() -> None:
+    assert ".planning/config.json" in _policy_sensitive_planning_paths()
+
+
+def test_pathspecs_keep_planning_config_and_drop_planning_docs(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
@@ -143,25 +166,33 @@ def test_pathspecs_exclude_everything_under_planning(tmp_path: Path) -> None:
     _git(repo, "commit", "-q", "-m", "base")
     base = _git(repo, "rev-parse", "HEAD").strip()
 
-    files = {
-        "triggarr/app.py": "x = 1\n",
-        ".planning/phases/83-x/83-REVIEW.md": "notes\n",
-        ".planning/phases/83-x/codex/abc-explicit-a1.last.json": "{}\n",
-        ".planning/phases/83-x/codex/abc-explicit-a1.pytest.txt": "ok\n",
-        ".planning/codex/top-level.json": "{}\n",
-        ".planning/quick/run.jsonl": "{}\n",
+    kept = {
+        "triggarr/app.py",
+        ".planning/config.json",
+        ".planning/phases/83-x/83-config-before.json",
+        *_policy_sensitive_planning_paths(),
     }
-    for name, content in files.items():
+    dropped = {
+        ".planning/STATE.md",
+        ".planning/phases/83-x/83-REVIEW.md",
+        ".planning/quick/261022-x/261022-x-PLAN.md",
+        ".planning/phases/83-x/codex/abc-explicit-a1.last.json",
+        ".planning/phases/83-x/codex/abc-explicit-a1.pytest.txt",
+        ".planning/phases/83-x/codex/abc-explicit-a1.meta.json",
+        ".planning/codex/top-level.json",
+        ".planning/quick/run.jsonl",
+    }
+    for name in kept | dropped:
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        path.write_text("{}\n")
         _git(repo, "add", "-f", name)
     _git(repo, "commit", "-q", "-m", "change")
     head = _git(repo, "rev-parse", "HEAD").strip()
 
     argv = diff_argv(base, head)
     changed = set(_git(repo, argv[1], "--name-only", *argv[2:]).split())
-    assert changed == {"triggarr/app.py"}
+    assert changed == kept
 
 
 # --- Output naming -----------------------------------------------------------
@@ -604,7 +635,7 @@ def test_execute_records_provenance(tmp_path, monkeypatch) -> None:
     execute(run, command_runner=FakeRunner())
 
     meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
-    assert meta["template_version"] == "4"
+    assert meta["template_version"] == "5"
     assert meta["head"] == H and meta["base"] == B
     assert meta["harness_head"] == H
     assert meta["trusted"] is True

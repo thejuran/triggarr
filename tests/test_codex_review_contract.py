@@ -50,9 +50,9 @@ def _load_schema() -> dict:
 
 
 def _extract_fixed_prompt() -> str:
-    """Return the first fenced block after the '## Fixed prompt (version 4)' heading."""
+    """Return the first fenced block after the '## Fixed prompt (version 5)' heading."""
     text = CONTRACT.read_text(encoding="utf-8")
-    heading = "## Fixed prompt (version 4)"
+    heading = "## Fixed prompt (version 5)"
     idx = text.index(heading)
     after = text[idx + len(heading) :]
     match = re.search(r"```(?:[^\n]*)\n(.*?)```", after, re.DOTALL)
@@ -145,10 +145,10 @@ def test_contract_references_schema_path() -> None:
 _HEX32_RE = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 
 
-def test_contract_template_version_four() -> None:
+def test_contract_template_version_five() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
-    assert "Template version: 4." in text
-    for old in (1, 2, 3):
+    assert "Template version: 5." in text
+    for old in (1, 2, 3, 4):
         assert f"## Fixed prompt (version {old})" not in text
 
 
@@ -200,9 +200,15 @@ def test_failure_rule_states_later_attempts_need_owner_choice() -> None:
 # Durable Codex completeness (owner 2026-10-22): template version 3 scopes the
 # diff by rule, hands Codex harness-produced test evidence, and asks for
 # completeness in the structured fields.
-# Owner-approved round 2: everything under .planning/ is out of review scope;
-# planning markdown is background Codex may read on demand.
-EXCLUDE_PATHSPECS = ("':(exclude,glob).planning/**'",)
+# Owner-approved round 3 (bm:dbe1b7f56bdd:WR-01, template version 5): planning
+# markdown, raw transcripts and generated review artifacts are out of review
+# scope; .planning/config.json and other non-markdown, non-codex planning
+# files stay in it. Planning markdown is background Codex may read on demand.
+EXCLUDE_PATHSPECS = (
+    "':(exclude,glob).planning/**/codex/**'",
+    "':(exclude,glob).planning/**/*.jsonl'",
+    "':(exclude,glob).planning/**/*.md'",
+)
 
 
 def test_prompt_diff_command_excludes_review_transcripts() -> None:
@@ -216,7 +222,11 @@ def test_contract_documents_review_scope_exclusions() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     start = text.index("## Review scope")
     section = text[start : text.index("\n## ", start + 1)]
-    assert ".planning/**" in section
+    assert ".planning/**/*.md" in section
+    assert ".planning/**/codex/**" in section
+    assert ".planning/**/*.jsonl" in section
+    assert "`.planning/config.json`" in section
+    assert "stays in the review diff" in section
     assert "background" in section.lower()
     assert "not review scope" in section.lower()
     assert "Planning markdown is not excluded" not in section
@@ -226,6 +236,8 @@ def test_prompt_makes_planning_docs_background_not_scope() -> None:
     prompt = _extract_fixed_prompt()
     assert "Planning markdown stays in scope" not in prompt
     assert "planning markdown on demand as background" in prompt
+    assert ".planning/config.json" in prompt
+    assert "':(exclude,glob).planning/**'" not in prompt
     assert "it is not review scope" in prompt
 
 
