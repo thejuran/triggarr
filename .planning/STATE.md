@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "executing -- Phase 83, 6/10 plans done; plan 07 next (branch paired-review)"
-stopped_at: "Phase 83 plan 07 Task 1 (owner picks quick-task item)"
-last_updated: "2026-10-22T19:42:45.000Z"
-last_activity: "2026-10-22 - Completed quick task 261022-l7h: Fix card reasons label for skip-only rows"
+status: "executing -- Phase 83, 8/10 plans done; plan 09 (fix batch + re-review) next (branch paired-review)"
+stopped_at: "Phase 83 plan 09 (one batched fix, snapshot, fresh BM + Codex on new head)"
+last_updated: "2026-10-22T20:19:42.000Z"
+last_activity: "2026-10-22 -- Phase 83 plans 07-08 done (quick + explicit review paths, 6 negative demos)"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 19
-  completed_plans: 15
+  completed_plans: 17
   percent: 20
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 83 (paired BM + Codex review) — Executing; Phase 82 merged
-Plan: 6 of 10 (01-06 done; 07 next)
+Plan: 8 of 10 (01-08 done; 09 next)
 Status: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
-Last activity: 2026-10-22 -- Plans 01-06 done. BM v5.0.3 loaded (/bm:version: 5.0.3); workflow.code_review=true, code_review_depth=standard applied (663fff3). CLAUDE.md review workflow wired (719359a). Next: plan 07 quick-task demo (owner picks item).
+Last activity: 2026-10-22 -- Plans 01-08 done. Quick path (261022-l7h, head a7995ba) and explicit /bm:code-review path (head d501a68) recorded in 83-REVIEW-EVIDENCE.md with paired Codex; 6 negative demos in 83-DEMONSTRATIONS.md. Owner rulings 2026-10-22: red Failed cards keep "failure reason(s)"; mixed code+sensitive PRs get both review classes. Craft-skill code-reviewer: owner accepted sticky but not inserted (no checkout; needs separate approval as a settings change beyond REVIEW-01). Next: plan 09 batched fix.
 
 ### v2.13 milestone shape
 
