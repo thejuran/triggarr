@@ -10,8 +10,9 @@ const releasePath = path.join(__dirname, '../workflows/release.yml');
 const ciText = fs.readFileSync(ciPath, 'utf8');
 const releaseText = fs.readFileSync(releasePath, 'utf8');
 
-const NEEDS_LINE = '    needs: [test, lint, docker, secrets, dependencies]';
-const PYTHON_REQUIRED_LINE = '          required = {"test", "lint", "docker", "secrets", "dependencies"}\n';
+const NEEDS_LINE = '    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e]';
+const PYTHON_REQUIRED_LINE =
+  '          required = {"test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e"}\n';
 
 // Asserts the replacement actually changed the text so a negative test
 // cannot pass vacuously if ci.yml/release.yml formatting changes underneath it.
@@ -34,7 +35,8 @@ test('renamed job id breaks consistency', () => {
 });
 
 test('extra job only in ci-ready needs breaks consistency', () => {
-  let mutated = mutate(ciText, NEEDS_LINE, '    needs: [test, lint, docker, secrets, dependencies, extra]');
+  let mutated = mutate(ciText, NEEDS_LINE,
+    '    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e, extra]');
   mutated = mutate(mutated, '  ci-ready:\n', '  extra:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo noop\n  ci-ready:\n');
   const problems = checkJobListConsistency({workflowText: mutated, requiredJobs: REQUIRED_JOBS});
   assert.ok(problems.length > 0);
@@ -47,15 +49,30 @@ test('extra job only in REQUIRED_JOBS breaks consistency', () => {
 
 test('extra job only in the Python required set breaks consistency', () => {
   const mutated = mutate(ciText, PYTHON_REQUIRED_LINE,
-    '          required = {"test", "lint", "docker", "secrets", "dependencies", "extra"}\n');
+    '          required = {"test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e", "extra"}\n');
   const problems = checkJobListConsistency({workflowText: mutated, requiredJobs: REQUIRED_JOBS});
   assert.ok(problems.length > 0);
 });
 
 test('job removed from needs and Python set (REQUIRED_JOBS unchanged) breaks consistency', () => {
-  let mutated = mutate(ciText, NEEDS_LINE, '    needs: [test, lint, docker, secrets]');
-  mutated = mutate(mutated, PYTHON_REQUIRED_LINE, '          required = {"test", "lint", "docker", "secrets"}\n');
+  let mutated = mutate(ciText, NEEDS_LINE, '    needs: [test, lint, docker, secrets, image-smoke, browser-e2e]');
+  mutated = mutate(mutated, PYTHON_REQUIRED_LINE,
+    '          required = {"test", "lint", "docker", "secrets", "image-smoke", "browser-e2e"}\n');
   const problems = checkJobListConsistency({workflowText: mutated, requiredJobs: REQUIRED_JOBS});
+  assert.ok(problems.length > 0);
+});
+
+test('removing image-smoke from needs and the Python set (REQUIRED_JOBS unchanged) breaks consistency', () => {
+  let mutated = mutate(ciText, NEEDS_LINE, '    needs: [test, lint, docker, secrets, dependencies, browser-e2e]');
+  mutated = mutate(mutated, PYTHON_REQUIRED_LINE,
+    '          required = {"test", "lint", "docker", "secrets", "dependencies", "browser-e2e"}\n');
+  const problems = checkJobListConsistency({workflowText: mutated, requiredJobs: REQUIRED_JOBS});
+  assert.ok(problems.length > 0);
+});
+
+test('removing browser-e2e from REQUIRED_JOBS only breaks consistency', () => {
+  const requiredJobs = REQUIRED_JOBS.filter(name => name !== 'browser-e2e');
+  const problems = checkJobListConsistency({workflowText: ciText, requiredJobs});
   assert.ok(problems.length > 0);
 });
 
@@ -77,14 +94,15 @@ test('duplicate entry in REQUIRED_JOBS breaks consistency', () => {
 });
 
 test('duplicate entry in ci-ready needs breaks consistency', () => {
-  const mutated = mutate(ciText, NEEDS_LINE, '    needs: [test, lint, docker, secrets, dependencies, test]');
+  const mutated = mutate(ciText, NEEDS_LINE,
+    '    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e, test]');
   const problems = checkJobListConsistency({workflowText: mutated, requiredJobs: REQUIRED_JOBS});
   assert.ok(problems.length > 0);
 });
 
 test('duplicate entry in the Python required set breaks consistency', () => {
   const mutated = mutate(ciText, PYTHON_REQUIRED_LINE,
-    '          required = {"test", "lint", "docker", "secrets", "dependencies", "test"}\n');
+    '          required = {"test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e", "test"}\n');
   const problems = checkJobListConsistency({workflowText: mutated, requiredJobs: REQUIRED_JOBS});
   assert.ok(problems.length > 0);
 });
@@ -113,16 +131,20 @@ test('duplicated Python required line throws (fail closed)', () => {
 });
 
 test('a job with a block-form needs: throws rather than mis-parsing', () => {
-  const mutated = mutate(ciText, NEEDS_LINE, '    needs:\n      - test\n      - lint\n      - docker\n      - secrets\n      - dependencies');
+  const mutated = mutate(ciText, NEEDS_LINE,
+    '    needs:\n      - test\n      - lint\n      - docker\n      - secrets\n      - dependencies\n      - image-smoke\n      - browser-e2e');
   assert.throws(() => parseJobs(mutated));
 });
 
 test('parseJobs returns the real ci.yml job graph', () => {
   const jobs = parseJobs(ciText);
   const ids = jobs.map(j => j.id);
-  assert.deepEqual(new Set(ids), new Set(['test', 'lint', 'docker', 'secrets', 'dependencies', 'ci-ready']));
+  assert.deepEqual(new Set(ids),
+    new Set(['test', 'lint', 'docker', 'secrets', 'dependencies', 'image-smoke', 'browser-e2e', 'ci-ready']));
   assert.equal(jobs.find(j => j.id === 'ci-ready').name, 'CI ready');
   assert.deepEqual(jobs.find(j => j.id === 'docker').needs, ['test', 'lint']);
+  assert.deepEqual(jobs.find(j => j.id === 'image-smoke').needs, ['docker']);
+  assert.deepEqual(jobs.find(j => j.id === 'browser-e2e').needs, ['docker']);
 });
 
 // preflight must filter triggers exactly like release, so a failed or

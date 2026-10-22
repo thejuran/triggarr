@@ -66,7 +66,7 @@ At v2.12 closeout or before starting the next milestone, read
 [the BM + Greptile + Codex blueprint](docs/bm-greptile-codex-blueprint.md)
 and present the rollout for owner confirmation. It is a proposal for the next
 workflow, not an active instruction to change this milestone. Continue the
-current BM + Greptile + manual vibe-check process and protected owner acceptance.
+current BM + Greptile + manual vibe-check process and protected owner acceptance. Greptile is optional since 2026-10-22 (owner decision): it runs while free credits last, paid credits are not bought, and it is not a required check.
 Do not update BM, enable new review settings, or retire vibe-check for this
 proposal during v2.12. See `.planning/backlog/MAINTENANCE.md` → Operator planning follow-up.
 

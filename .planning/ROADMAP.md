@@ -22,6 +22,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - ✅ v2.10 Recovery, Counts & Config Parity -- Phases 72-75 (shipped 2026-06-04) -- [archive](milestones/v2.10-ROADMAP.md)
 - ✅ v2.11 Never-Searched-First Search Queue Priority -- Phase 76 (shipped 2026-06-04) -- [archive](milestones/v2.11-ROADMAP.md)
 - ✅ v2.12 Search Correctness & Trustworthy Feedback -- Phases 77-81 (shipped 2026-10-21) -- [archive](milestones/v2.12-ROADMAP.md)
+- 🔨 v2.13 CI & Review Workflow -- Phases 82-86 (in progress)
 
 ## Phases
 
@@ -214,6 +215,90 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 
 </details>
 
+### 🔨 v2.13 CI & Review Workflow (Phases 82-86, in progress)
+
+- [ ] **Phase 82: CI Tests What We Ship** - Shipped-image startup, browser regression, and release-version checks join the required gate
+- [ ] **Phase 83: Paired BM + Codex Review & Risk-Based Depth** - A gated BM update, then every BM review gets an independent Codex pass plus a high-risk vibe-check recommendation
+- [ ] **Phase 84: Codex Plan-Checker Investigation** - Record whether a narrowly scoped hook can route only the plan checker, and how it compares on the original Phase 81 plans — separately gated, nothing activated without approval
+- [ ] **Phase 85: Follow-on CI Improvements & Acceptance Usability** - Dependency/image/lint/coverage/permissions hardening plus an acceptance register usable under real PR traffic
+- [ ] **Phase 86: Pilot & Reference Record** - 3-5 real PRs run the paired workflow; the owner records a retirement decision and reusable guidance is written
+
+### Phase 82: CI Tests What We Ship
+
+**Goal**: CI proves the exact artifact it will publish actually works — image startup, critical browser flows, and release-version identity are all tested before publication, and a broken instance of each check fails.
+**Depends on**: Nothing (first phase)
+**Requirements**: CISHIP-01, CISHIP-02, CISHIP-03, CISHIP-04
+**Success Criteria** (what must be TRUE):
+  1. CI starts the exact publish-candidate image through its normal entrypoint with isolated test config and mocked/test services, and verifies health, setup/login, static assets, writable config, and persistence across a restart; a deliberately broken entrypoint and a deliberately missing static asset each make the check fail. (GitHub-enforced: required status check)
+  2. A small browser regression suite asserts the connection-pill request-loop behavior and critical setup/login behavior as observable behavior, not screenshots; reintroducing the polling bug makes the suite fail, and failure logs/screenshots are uploaded as artifacts with no secrets present. (GitHub-enforced)
+  3. Before any version-tag publication, CI rejects a tag that disagrees with package metadata or image version, and accepts one that matches — both proven without publishing a production tag, with exact-commit CI and artifact-identity checks preserved. (GitHub-enforced)
+  4. The CISHIP jobs join the existing required aggregate gate and consistency checks together; a missing or skipped mandatory job cannot let the gate pass, and the artifact published afterward is the same tested/audited image, never rebuilt. (GitHub-enforced)
+**Plans**: 9 plans
+
+- [x] 82-01-PLAN.md — release tag/package/image identity rules in release-policy.cjs (TDD)
+- [x] 82-02-PLAN.md — CI harness: stub *arr service and reason-coded HTTP checks (TDD)
+- [x] 82-03-PLAN.md — release.yml identity gate before publication, CI rehearsal script, wiring tests
+- [x] 82-04-PLAN.md — shipped-image startup smoke driver with isolated config and missing-asset negative
+- [x] 82-05-PLAN.md — Playwright dev deps, browser setup/login/logout flows, artifact secret scan
+- [x] 82-06-PLAN.md — connection-pill polling regression test and local sensitivity check
+- [x] 82-07-PLAN.md — image-smoke and browser-e2e CI jobs joined to CI ready and REQUIRED_JOBS
+- [x] 82-08-PLAN.md — reproduction recipes, pre-push deep-review decision, first real PR run with reconciled commit identities, time-budget measurement
+- [x] 82-09-PLAN.md — browser sensitivity on the audited image (local) and gate-enforcement demonstrations on draft PRs after owner go-ahead
+
+### Phase 83: Paired BM + Codex Review & Risk-Based Depth
+
+**Goal**: Every BM code review is paired with an independent, exact-commit Codex pass, preceded by a recorded, owner-approved BM baseline and update, with BM explicitly recommending review depth and vibe-check at high-risk checkpoints.
+**Depends on**: Phase 82 (sequenced immediately after per owner instruction; no technical coupling)
+**Requirements**: REVIEW-01, REVIEW-02, REVIEW-03, REVIEW-04, REVIEW-05, REVIEW-06, REVIEW-07, REVIEW-08, RISK-01, RISK-02
+**Success Criteria** (what must be TRUE):
+  1. (Gate) Before any BM update, a baseline is recorded (current configuration, plugin and runtime versions) and the proposed target version's native review/fixer behavior is assessed and documented; the owner explicitly approves an exact target version and a bounded settings list (expected: `workflow.code_review` on at `standard` depth) — passing case: the update proceeds only after that recorded approval, `/bm:version` confirms the loaded version, and only the approved settings changed; broken case: an attempted update or settings change without a recorded owner approval does not happen. (Instruction-enforced)
+  2. Every BM code review path used in practice — phase execution, quick task, explicit review command, and review after fixes — is followed by an independent Codex adversarial pass on the same checkpoint commit, demonstrated once per path; if BM cannot invoke Codex directly it explicitly requests the exact-SHA review and tracks it pending, demonstrated with a deliberate case where the report is missing, stale, or on the wrong commit and is reported as incomplete rather than clean. (Instruction-enforced)
+  3. Each Codex report records the inspected full head and base SHAs, coverage, exclusions, commands actually run, and findings with source/run-qualified IDs, severity, location, trigger, path, consequence, evidence, and suggested fix, distinguishing reproduced defects from hypotheses; finding dispositions survive bot thread resolution. (Instruction-enforced)
+  4. Each review records requested versus actual depth and the instruction/configuration file responsible; a BM effective-depth reduction (e.g. deep → standard above 50 files) is reported rather than silently labelled deep. (Instruction-enforced)
+  5. Checkpoint evidence is bound to one pushed, frozen head: Greptile reviews the same head as Codex, and after any fix the affected tests, finding dispositions, and every applicable review are refreshed for the new head with the original findings preserved for comparison — evidence from an earlier head never counts for a later one. (Instruction-enforced)
+  6. At a high-risk checkpoint, BM's report records scope (full head/base SHAs, affected behavior, full-PR vs. follow-up), concrete risk rationale, recommended depth and specialist focus, required evidence, and an explicit vibe-check recommendation with the owner's recorded decision — demonstrated on a real high-risk checkpoint, without ever substituting vibe-check for Codex or Greptile, waiving findings, or reducing mandatory coverage. (Instruction-enforced)
+  7. A written review-classification policy replaces blanket "every PR" wording in `CLAUDE.md` and the BM/repository instructions. Ordinary docs/planning-only changes get a focused consistency review, without routine Greptile, Codex code review or vibe-check. Classification is by content, not file extension: agent instructions, executable workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and the applicable technical review, and a mixed PR follows its most consequential change. Each PR records its classification and rationale against the exact head. Codex stays paired with every BM code-review run, but ordinary planning edits don't force a code-review run. Demonstrated on an ordinary-docs PR and a sensitive-docs PR; exact-commit owner acceptance is unchanged. (Instruction-enforced; GitHub-side handling is Phase 85's ACCEPT-03)
+**Plans**: TBD
+
+### Phase 84: Codex Plan-Checker Investigation
+
+**Goal**: Record whether a narrowly scoped `agent.spawn` hook can route only `bm:bm-plan-checker` through model-gateway, and how a Codex-backed checker compares against manual Codex review on the original Phase 81 plans — an investigation only, with nothing activated in the repo without separate owner approval.
+**Depends on**: Nothing (independent investigation, separately gated so it cannot block or bundle into the review-pairing or CI phases; requires the preserved Phase 81 phase directories)
+**Requirements**: PLANCHK-01, PLANCHK-02, PLANCHK-03
+**Success Criteria** (what must be TRUE):
+  1. Whether the installed Claude Code runtime supports an `agent.spawn` hook that changes only `bm:bm-plan-checker`'s model through model-gateway is verified and recorded (fields, model selection, permissions, resume); a passing case records clear support, a negative case records it as unsupported/unavailable rather than assumed, and any needed runtime update is proposed separately, never applied silently. (Instruction-enforced)
+  2. If supported, a scratch-project pilot routes only the plan checker — proven from gateway metadata, with every other agent staying on its own model — and exercises initial check, a known-defective plan, revision/recheck, and post-bounce checks; an unavailable gateway/model or incomplete output leaves the check explicitly incomplete with an error rather than silently passing, and nothing from this pilot is activated in the Triggarr repo without separate owner approval. (Instruction-enforced)
+  3. The blind comparison on the original Phase 81 plans runs per the blueprint — recovered and hashed inputs, matched sessions, a withheld answer key, a separate revision round, adoption criteria set before the runs — or is explicitly recorded as unavailable if the exact originals cannot be recovered. (Instruction-enforced)
+  4. At closeout, the phase record separates what was actually investigated (with its evidence and result) from work that was deferred or not run (with the reason), so a deferred or unavailable item is never reported as an investigated outcome. (Instruction-enforced)
+**Plans**: TBD
+
+### Phase 85: Follow-on CI Improvements & Acceptance Usability
+
+**Goal**: Close the remaining CI gaps (locked dependencies, grouped updates, OS-package audit, workflow lint, coverage evidence, least-privilege publish permissions) and make acceptance usable under real PR traffic (ready-state visibility, concurrent-PR safety).
+**Depends on**: Phase 82 (extends the CI baseline) and, for ACCEPT-03, Phase 83 (the review-classification policy that the GitHub checks implement); also relates to Phase 83 through CIMAINT-06 (the coverage artifact feeds the vibe-check test-sufficiency lane)
+**Requirements**: CIMAINT-01, CIMAINT-02, CIMAINT-03, CIMAINT-04, CIMAINT-05, CIMAINT-06, CIMAINT-07, ACCEPT-01, ACCEPT-02, ACCEPT-03
+**Success Criteria** (what must be TRUE):
+  1. The Docker image installs runtime dependencies from the same locked set CI tests (`uv.lock`), with compiled frontend assets and runtime behavior unchanged; a passing build matches the lockfile and a deliberately mismatched lockfile/image fails the consistency check. (GitHub-enforced)
+  2. Grouped, bounded automated update PRs exist for uv dependencies, SHA-pinned Actions, and the Docker base image with no auto-merge (manual acceptance stays), and publishing `:main`/`:dev` images no longer requires repository contents-write permission — only tagged GitHub release creation holds it — demonstrated by a successful publish under the narrower permission. (GitHub-enforced)
+  3. The shipped image's OS packages are scanned under a written policy for severity, fix availability, scanner errors, and time-limited documented exceptions defined before the gate is enforced with no duplicate equivalent scanner, and workflow changes are linted with actionlint such that skipping the lint when workflows are unchanged cannot let the required gate pass when mandatory validation was omitted — a passing lint and a deliberately bad workflow failing it both demonstrated. (GitHub-enforced)
+  4. The built wheel's metadata validates and it installs in a clean environment and starts via the supported interface with packaged templates/assets present (or the owner's explicit decision to drop Python distributions is recorded instead), demonstrated with a passing clean-install smoke test and a deliberately broken package failing it. (GitHub-enforced)
+  5. The CI pytest run produces a branch-coverage `coverage.xml` bound to the exact tested full commit SHA and run (PR head distinguished from the synthetic merge commit) without a percentage gate or masked test failures, discoverable by vibe-check's test-sufficiency lane; a wrong-commit or missing report is rejected as evidence, and test-runtime overhead is recorded. (Instruction-enforced discovery; GitHub-enforced artifact generation)
+  6. Before final owner approval is requested, the PR is marked ready with visible machine-checkable prerequisites (SHA binding unchanged) so avoidable repeat approvals aren't needed; and the acceptance register is shown to handle concurrent PRs without one PR's update erasing another's evidence or satisfying another PR's gate, or — until that is shown — final acceptance updates are serialized with the rule documented. (Instruction-enforced)
+  7. GitHub's required checks honor Phase 83's review classification without weakening protection for code or control changes. The mechanism is designed and verified with an ordinary-docs PR, a sensitive-docs PR, a mixed docs-and-code PR, and a misclassified PR (claims ordinary docs but contains a consequential change) that still gets the full checks. Required checks are never disabled ad hoc, and exact-commit owner acceptance stays required for every PR. Until this is verified, existing protections are preserved and any review still running automatically on docs-only PRs is disclosed. (GitHub-enforced)
+**Plans**: TBD
+
+### Phase 86: Pilot & Reference Record
+
+**Goal**: Prove the paired workflow on real PRs, record the owner's retirement/extension decisions, and leave reusable guidance for other repositories.
+**Depends on**: Phases 82, 83 and 85 (needs the paired review workflow in place; draws pilot PRs from this milestone's own authorized work). Pilot evidence is collected from PRs after Phase 83 while later authorized work proceeds. Not Phase 84: the plan-checker investigation is separately gated and does not block the pilot.
+**Requirements**: PILOT-01, PILOT-02, PILOT-03, PILOT-04
+**Success Criteria** (what must be TRUE):
+  1. 3-5 representative PRs run under the paired workflow, drawn from this milestone's own PRs and owner-authorized maintenance/backlog work (no invented product changes), aiming to cover a small fix, state/error-path logic, a UI or security-sensitive change, and at least one larger change; any category without suitable work is recorded as a gap, and each PR records per reviewer: confirmed consequential defects, false positives, later-found misses, revision rounds, review time, observable usage/cost, and owner effort.
+  2. At least one substantial pilot PR gets a recorded side-by-side comparison of vibe-check against the paired workflow, in addition to routine vibe-check, which continues on every pilot PR until the owner retires it.
+  3. The owner's decisions are recorded: whether to retire routine vibe-check, and whether BM/Codex completion stays a manual owner check or the existing acceptance gate is extended to require those reports — recording the decisions completes this, and if extension is chosen it is scheduled as its own later reviewed change (FUT-03), not required before this milestone closes.
+  4. Reusable adoption guidance for other repositories is written, distinguishing instruction-enforced from GitHub-enforced requirements and listing what not to copy blindly.
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -228,22 +313,11 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
 | 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Complete (scheduled-cycle check passed 2026-10-21: 24 consecutive 180-min cycles, 0 failed, no duplicate season dispatch) | 2026-10-18 |
 | 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Complete (multi-season pack and alternate series order unverified-live under D-12) | 2026-10-21 |
-
-## Next milestone after v2.12: CI & Review Workflow
-
-**Goal:** Make Triggarr the reference for meaningful CI, publication of the tested artifact, and BM-led review with an independent Codex pass and risk-based vibe-check recommendations.
-
-**Scope confirmed by the owner 2026-10-21 at v2.12 closeout:** the BM + Greptile + Codex review blueprint and the CI reference-baseline plan, both as written. Nothing is activated until this milestone's plans implement and verify it.
-
-- [ ] **CI reference baseline:** implement and verify the bounded shipped-image startup, browser regression, and release-version checks in [the CI plan](../docs/ci-reference-baseline-plan.md). Plan the remaining dependency, audit, maintenance, and permissions improvements from that plan with explicit scope and acceptance criteria.
-- [ ] **BM + Codex review pairing:** implement [the review blueprint](../docs/bm-greptile-codex-blueprint.md), updating `CLAUDE.md` and supported BM configuration/instructions so every BM code review has an independent Codex pass on the review checkpoint. Demonstrate normal, quick-task, and revision paths; missing or stale review evidence remains incomplete.
-- [ ] **Codex plan-checker routing (investigation):** evaluate the owner-preferred, narrowly scoped `agent.spawn` mod hook for `bm:bm-plan-checker` through model-gateway, retaining BM's original agent and checking loop. Runtime support on inspected Claude Code 2.1.281 and end-to-end routing are unverified. Follow [the recorded investigation and pilot checks](../docs/bm-greptile-codex-blueprint.md#deferred-investigation-codex-plan-checker-through-model-gateway); include the [blind original-Phase-81 comparison](../docs/bm-greptile-codex-blueprint.md#blind-comparison-original-phase-81-plans) with matched context, reproduction checks and a separate revision round. Recover and hash the original ignored plans first; no activation during v2.12.
-- [ ] **Risk-based review depth:** BM recommends depth at each checkpoint and explicitly suggests vibe-check when risk is high, recording the owner's choice. Keep Greptile and exact-commit owner acceptance; do not build another orchestrator.
-- [ ] **Reference verification:** demonstrate claimed CI failure gates and review handoffs, preserve exact-artifact publication, and record pilot results and reusable guidance for other repositories. Distinguish instruction-based review requirements from GitHub-enforced checks.
-
-**Done when:** the selected CI baseline checks have positive and negative verification evidence; the actual BM controls demonstrate paired Codex review and high-risk vibe-check recommendations; review evidence matches the final commit; existing safeguards remain intact; publication and deployment evidence are recorded separately when applicable.
-
-**Sequence:** immediately follows v2.12 closeout, before Reliability. Read both linked plans during milestone planning; assign release version and phase numbers then. This entry does not activate workflow changes during v2.12.
+| 82. CI Tests What We Ship | 9/9 | Verified, in review (PR #33) | - |
+| 83. Paired BM + Codex Review & Risk-Based Depth | 0/TBD | Not started | - |
+| 84. Codex Plan-Checker Investigation | 0/TBD | Not started | - |
+| 85. Follow-on CI Improvements & Acceptance Usability | 0/TBD | Not started | - |
+| 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
 ## Following milestone: Reliability
 

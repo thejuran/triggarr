@@ -78,3 +78,186 @@ test('preflight recheck rejects main that advanced while queued',async()=>{
   const f=fixture();await preflight(f);f.output.length=0;f.e.mainSha='c'.repeat(40);
   await assert.rejects(preflight(f),/Superseded/);assert.deepEqual(f.output,[]);
 });
+
+// --- Release tag / package / image identity rules (CISHIP-03) ---
+const {parseReleaseTag, parseProjectVersion, validateReleaseIdentity, releaseIdentityGate} = require('./release-policy.cjs');
+
+for (const [ref, version] of [
+  ['refs/tags/v2.13.0', '2.13.0'],
+  ['refs/tags/v0.0.0', '0.0.0'],
+  ['refs/tags/v10.20.30', '10.20.30'],
+]) {
+  test(`parseReleaseTag accepts ${ref}`, () => assert.equal(parseReleaseTag(ref), version));
+}
+
+for (const ref of [
+  'refs/tags/v2.13',
+  'refs/tags/v2.13.0.1',
+  'refs/tags/2.13.0',
+  'refs/tags/v2.13.0-rc1',
+  'refs/tags/v2.13.0+build5',
+  'refs/tags/v02.13.0',
+  'refs/tags/v2.013.0',
+  'refs/tags/v2.13.00',
+  'refs/heads/main',
+  '',
+  undefined,
+  'refs/tags/v2.13.0\n',
+  'refs/tags/V2.13.0',
+  'refs/tags/v-1.0.0',
+]) {
+  test(`parseReleaseTag rejects malformed ref ${JSON.stringify(ref)}`, () => {
+    assert.throws(() => parseReleaseTag(ref), /malformed/);
+  });
+}
+
+test('parseReleaseTag rejection names the raw ref and reports package/image as not inspected', () => {
+  assert.throws(() => parseReleaseTag('refs/tags/v2.13'), err => {
+    assert.match(err.message, /malformed/);
+    assert.match(err.message, /refs\/tags\/v2\.13/);
+    assert.match(err.message, /package: not inspected/);
+    assert.match(err.message, /image: not inspected/);
+    return true;
+  });
+});
+
+test('parseProjectVersion reads the version from the [project] table only', () => {
+  const text = [
+    '[project]',
+    'name = "demo"',
+    'version = "1.2.3"',
+    '[project.optional-dependencies]',
+    'version = "9.9.9"',
+  ].join('\n');
+  assert.equal(parseProjectVersion(text), '1.2.3');
+});
+
+test('parseProjectVersion matches the real pyproject.toml version', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.join(__dirname, '../../pyproject.toml'), 'utf8');
+  const expected = /^\[project\][\s\S]*?^version = "([^"]+)"/m.exec(text);
+  assert.ok(expected, 'expected a version line under [project] in the real pyproject.toml');
+  assert.equal(parseProjectVersion(text), expected[1]);
+});
+
+for (const [label, text] of [
+  ['no [project] table', 'name = "demo"\nversion = "1.2.3"\n'],
+  ['[project] without version', '[project]\nname = "demo"\n'],
+  ['two version lines in [project]', '[project]\nversion = "1.2.3"\nversion = "1.2.4"\n'],
+  ['version = ""', '[project]\nversion = ""\n'],
+  ['version not a double-quoted string', '[project]\nversion = 1.2.3\n'],
+]) {
+  test(`parseProjectVersion rejects ${label}`, () => {
+    assert.throws(() => parseProjectVersion(text), /package version/);
+  });
+}
+
+test('validateReleaseIdentity accepts a tag, package and image that all agree', () => {
+  assert.equal(validateReleaseIdentity({ref: 'refs/tags/v1.2.3', packageVersion: '1.2.3', imageVersion: '1.2.3'}), '1.2.3');
+});
+
+test('validateReleaseIdentity rejects a package version mismatch', () => {
+  assert.throws(() => validateReleaseIdentity({ref: 'refs/tags/v1.2.3', packageVersion: '1.2.4', imageVersion: '1.2.3'}), err => {
+    assert.match(err.message, /disagree/);
+    assert.match(err.message, /tag: 1\.2\.3/);
+    assert.match(err.message, /package: 1\.2\.4/);
+    assert.match(err.message, /image: 1\.2\.3/);
+    return true;
+  });
+});
+
+test('validateReleaseIdentity rejects an image version mismatch', () => {
+  assert.throws(() => validateReleaseIdentity({ref: 'refs/tags/v1.2.3', packageVersion: '1.2.3', imageVersion: '1.2.2'}), err => {
+    assert.match(err.message, /disagree/);
+    assert.match(err.message, /tag: 1\.2\.3/);
+    assert.match(err.message, /package: 1\.2\.3/);
+    assert.match(err.message, /image: 1\.2\.2/);
+    return true;
+  });
+});
+
+test('validateReleaseIdentity reports an unread image as not inspected', () => {
+  assert.throws(() => validateReleaseIdentity({ref: 'refs/tags/v1.2.3', packageVersion: '1.2.3', imageVersion: undefined}), err => {
+    assert.match(err.message, /image: not inspected/);
+    return true;
+  });
+});
+
+test('validateReleaseIdentity rejects an inspected but missing image label', () => {
+  assert.throws(() => validateReleaseIdentity({ref: 'refs/tags/v1.2.3', packageVersion: '1.2.3', imageVersion: ''}), err => {
+    assert.match(err.message, /missing/);
+    assert.match(err.message, /image: missing/);
+    return true;
+  });
+});
+
+test('validateReleaseIdentity reports an unread package version as not inspected', () => {
+  assert.throws(() => validateReleaseIdentity({ref: 'refs/tags/v1.2.3', packageVersion: undefined, imageVersion: '1.2.3'}), err => {
+    assert.match(err.message, /package: not inspected/);
+    return true;
+  });
+});
+
+test('validateReleaseIdentity rejects an inspected but missing package version', () => {
+  assert.throws(() => validateReleaseIdentity({ref: 'refs/tags/v1.2.3', packageVersion: '', imageVersion: '1.2.3'}), err => {
+    assert.match(err.message, /missing/);
+    assert.match(err.message, /package: missing/);
+    return true;
+  });
+});
+
+test('validateReleaseIdentity rejects a malformed tag before comparing versions', () => {
+  assert.throws(() => validateReleaseIdentity({ref: 'refs/tags/v1.2', packageVersion: '1.2.0', imageVersion: '1.2.0'}), /malformed/);
+});
+
+function gateFixture({ref = 'refs/tags/v1.2.3', pyprojectText = '[project]\nversion = "1.2.3"\n', sha = 'f'.repeat(40), getContentImpl} = {}) {
+  const calls = [];
+  const info = [];
+  const context = {repo: {owner: 'owner', repo: 'repo'}, ref};
+  const github = {rest: {repos: {getContent: getContentImpl || (async args => {
+    calls.push(['getContent', args]);
+    return {data: {content: Buffer.from(pyprojectText, 'utf8').toString('base64'), encoding: 'base64'}};
+  })}}};
+  const core = {info: (...args) => info.push(args), setOutput: () => {}};
+  return {github, context, core, calls, info, sha};
+}
+
+test('releaseIdentityGate resolves the version from a matching tag, package and image', async () => {
+  const f = gateFixture();
+  const result = await releaseIdentityGate({github: f.github, context: f.context, core: f.core, sha: f.sha, imageVersion: '1.2.3'});
+  assert.equal(result, '1.2.3');
+  assert.deepEqual(f.calls, [['getContent', {owner: 'owner', repo: 'repo', path: 'pyproject.toml', ref: f.sha}]]);
+  assert.equal(f.info.length, 1);
+});
+
+test('releaseIdentityGate rejects an invalid sha before any API call', async () => {
+  const f = gateFixture();
+  await assert.rejects(releaseIdentityGate({github: f.github, context: f.context, core: f.core, sha: 'not-a-sha', imageVersion: '1.2.3'}), /Invalid release commit/);
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.info.length, 0);
+});
+
+test('releaseIdentityGate fails closed when getContent throws', async () => {
+  const f = gateFixture({getContentImpl: async () => { throw new Error('API unavailable'); }});
+  await assert.rejects(releaseIdentityGate({github: f.github, context: f.context, core: f.core, sha: f.sha, imageVersion: '1.2.3'}), /API unavailable/);
+  assert.equal(f.info.length, 0);
+});
+
+test('releaseIdentityGate rejects non-base64 content', async () => {
+  const f = gateFixture({getContentImpl: async () => ({data: {content: 'plain text', encoding: 'utf-8'}})});
+  await assert.rejects(releaseIdentityGate({github: f.github, context: f.context, core: f.core, sha: f.sha, imageVersion: '1.2.3'}), /package version/);
+  assert.equal(f.info.length, 0);
+});
+
+test('releaseIdentityGate rejects a directory listing instead of file content', async () => {
+  const f = gateFixture({getContentImpl: async () => ({data: [{name: 'pyproject.toml'}]})});
+  await assert.rejects(releaseIdentityGate({github: f.github, context: f.context, core: f.core, sha: f.sha, imageVersion: '1.2.3'}), /package version/);
+  assert.equal(f.info.length, 0);
+});
+
+test('releaseIdentityGate rejects an image label mismatch', async () => {
+  const f = gateFixture();
+  await assert.rejects(releaseIdentityGate({github: f.github, context: f.context, core: f.core, sha: f.sha, imageVersion: '9.9.9'}), /disagree/);
+  assert.equal(f.info.length, 0);
+});
