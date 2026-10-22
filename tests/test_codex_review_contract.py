@@ -161,3 +161,22 @@ def test_contract_requires_hex_key_scan_before_commit() -> None:
 def test_contract_embeds_no_hex_key() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     assert not _HEX32_RE.search(text)
+
+
+def _failure_rule_section() -> str:
+    text = CONTRACT.read_text(encoding="utf-8")
+    start = text.index("## Failure rule")
+    return text[start:]
+
+
+# IN-06: attempt 2 is the last *automatic* retry; any attempt beyond 2 only
+# happens on the owner's explicit choice, and is recorded with its own number.
+def test_failure_rule_states_attempt_two_is_last_automatic_retry() -> None:
+    section = _failure_rule_section()
+    assert "attempt 2 is the last automatic retry" in section.lower()
+
+
+def test_failure_rule_states_later_attempts_need_owner_choice() -> None:
+    section = _failure_rule_section()
+    assert "owner" in section.lower()
+    assert "recorded" in section.lower() and "attempt number" in section.lower()
