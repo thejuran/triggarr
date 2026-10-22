@@ -42,15 +42,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRACT_PATH = REPO_ROOT / "docs" / "codex-adversarial-review-contract.md"
 SCHEMA_PATH = REPO_ROOT / ".claude" / "schemas" / "codex-review-findings.schema.json"
 
-TEMPLATE_HEADING = "## Fixed prompt (version 3)"
+TEMPLATE_HEADING = "## Fixed prompt (version 4)"
 PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDENCE"})
 
-# Raw review transcripts and generated review artifacts are out of scope for
-# the review diff (owner decision 2026-10-22). Must match the fixed prompt.
-EXCLUDE_PATHSPECS = (
-    ":(exclude,glob).planning/**/codex/**",
-    ":(exclude,glob).planning/**/*.jsonl",
-)
+# Everything under .planning/ -- planning records, raw review transcripts and
+# generated review artifacts -- is out of scope for the review diff; planning
+# markdown is background Codex may read on demand. Must match the fixed prompt.
+EXCLUDE_PATHSPECS = (":(exclude,glob).planning/**",)
 
 OUTPUT_SUFFIXES = (".jsonl", ".last.json", ".status.json", ".pytest.txt")
 CODEX_TIMEOUT_SECONDS = 1800
@@ -101,7 +99,7 @@ class ReviewRun:
 
 
 def load_template(contract_text: str | None = None) -> str:
-    """Return the fixed prompt: the first fenced block after the version 3 heading."""
+    """Return the fixed prompt: the first fenced block after the template heading."""
     text = contract_text if contract_text is not None else CONTRACT_PATH.read_text(encoding="utf-8")
     after = text[text.index(TEMPLATE_HEADING) + len(TEMPLATE_HEADING) :]
     match = re.search(r"```[^\n]*\n(.*?)```", after, re.DOTALL)

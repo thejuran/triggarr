@@ -1,6 +1,6 @@
 # Codex adversarial review contract
 
-Template version: 3. Adopted in Phase 83 (v2.13). Version 2 (2026-10-22) adds the working-copy read restriction to the prompt and a second secret check before raw output is committed (83-REVIEW.md WR-05). Version 3 (2026-10-22, owner decision on durable Codex completeness) scopes the review diff by rule, gives Codex harness-produced test evidence, and has Codex state completeness in the report schema v2 fields `review_complete` and `incomplete_reasons` instead of in free text.
+Template version: 4. Adopted in Phase 83 (v2.13). Version 2 (2026-10-22) adds the working-copy read restriction to the prompt and a second secret check before raw output is committed (83-REVIEW.md WR-05). Version 3 (2026-10-22, owner decision on durable Codex completeness) scopes the review diff by rule, gives Codex harness-produced test evidence, and has Codex state completeness in the report schema v2 fields `review_complete` and `incomplete_reasons` instead of in free text. Version 4 (2026-10-22, owner-approved second fix round) takes everything under `.planning/` out of review scope, leaving planning markdown as background Codex may read on demand.
 
 This is the only prompt and invocation used for the independent Codex code-review pass paired with every BM code-review run in this repository: phase execution, quick task, explicit `/bm:code-review`, and review after fixes (D-06).
 
@@ -14,19 +14,18 @@ The template must never contain a credential, token, or `.env` value.
 
 ## Review scope
 
-The review diff excludes raw review transcripts and generated review artifacts by git pathspec, not by request:
+The review diff excludes everything under `.planning/` by git pathspec, not by request:
 
-- `.planning/**/codex/**` -- raw Codex outputs (`.jsonl`, `.last.json`, `.status.json`, `.pytest.txt`)
-- `.planning/**/*.jsonl` -- any other raw event stream under `.planning/`
+- `.planning/**` -- planning records (plans, summaries, state, evidence records), raw review transcripts and generated review artifacts (the `codex/` outputs)
 
-The fixed prompt's diff command carries these as `':(exclude,glob)...'` pathspecs, and `tests/codex_review_run.py` uses the same list. The excluded files are out of scope and are not reviewed. Planning markdown is not excluded: it stays in the diff and readable as background on intent.
+The fixed prompt's diff command carries this as the `':(exclude,glob).planning/**'` pathspec, and `tests/codex_review_run.py` uses the same list. Planning docs are background context Codex may read on demand to understand intent; they are not review scope, and not having read them never makes a review incomplete. Planning-only changes get the focused consistency review in `docs/review-classification-policy.md` instead.
 
-## Fixed prompt (version 3)
+## Fixed prompt (version 4)
 
 ```
 Independently review {{PR_URL}} at head {{HEAD_SHA}} against base {{BASE_SHA}}. Scope: {{SCOPE}}.
 
-Review the full in-scope diff git diff {{BASE_SHA}}..{{HEAD_SHA}} -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl', including tests and relevant surrounding code. The excluded paths are raw review transcripts and generated review artifacts; they are out of scope. Planning markdown stays in scope as background on intent.
+Review the full in-scope diff git diff {{BASE_SHA}}..{{HEAD_SHA}} -- . ':(exclude,glob).planning/**', including tests and relevant surrounding code. Everything under .planning/ (planning records, raw review transcripts and generated review artifacts) is excluded from the review scope. You may read planning markdown on demand as background on intent; it is not review scope, and not reading it never makes the review incomplete.
 
 First run git rev-parse HEAD and report it as inspected_head_sha. Report {{BASE_SHA}} as inspected_base_sha only after confirming git cat-file -e {{BASE_SHA}} succeeds.
 
