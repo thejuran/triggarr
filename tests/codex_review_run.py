@@ -373,7 +373,9 @@ def audit_inputs(command_runner: CommandRunner) -> dict[str, dict[str, object]]:
     }
 
 
-def run_meta(run: ReviewRun, *, harness_head: str, inputs: dict[str, dict[str, object]]) -> dict[str, object]:
+def run_meta(
+    run: ReviewRun, *, harness_head: str, inputs: dict[str, dict[str, object]], allow_stale_head: bool
+) -> dict[str, object]:
     return {
         "meta_version": 1,
         "head": run.head,
@@ -383,6 +385,7 @@ def run_meta(run: ReviewRun, *, harness_head: str, inputs: dict[str, dict[str, o
         "trusted": run.trusted,
         "template_version": template_version(),
         "harness_head": harness_head,
+        "allow_stale_head": allow_stale_head,
         "inputs": inputs,
         "codex_timeout_seconds": CODEX_TIMEOUT_SECONDS,
     }
@@ -423,8 +426,15 @@ def _add_worktree(run: ReviewRun, worktree: Path, command_runner: CommandRunner)
         raise RunnerError(f"git worktree add exited {added.returncode} for head {run.head[:12]}")
 
 
-def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -> int:
-    """Run the full review pass. Returns the checker's exit code (0 = complete)."""
+def execute(
+    run: ReviewRun, *, command_runner: CommandRunner = subprocess.run, allow_stale_head: bool = False
+) -> int:
+    """Run the full review pass. Returns the checker's exit code (0 = complete).
+
+    A head that is not the checkout's HEAD can only be assessed stale, so it
+    is refused unless *allow_stale_head* is set (for example, finishing an
+    earlier head's automatic retry).
+    """
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
     if existing:
         # Raw outputs are never edited after being written; use a new attempt number.
@@ -432,9 +442,14 @@ def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -
 
     inputs = audit_inputs(command_runner)
     harness_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
+    if harness_head != run.head and not allow_stale_head:
+        raise RunnerError(
+            f"--head {run.head[:12]} is not the checkout's HEAD {harness_head[:12]}, so the result can only be"
+            " assessed stale; pass --allow-stale-head to run it anyway"
+        )
     template = load_template()
     prompt = render_prompt(template, prompt_values(run))
-    meta = run_meta(run, harness_head=harness_head, inputs=inputs)
+    meta = run_meta(run, harness_head=harness_head, inputs=inputs, allow_stale_head=allow_stale_head)
 
     run.out_base.parent.mkdir(parents=True, exist_ok=True)
     # The reservation is the first write; nothing else is touched if it fails.
@@ -551,6 +566,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Dependabot or outside-contributor head: run no tests, rely on CI results",
     )
+    parser.add_argument(
+        "--allow-stale-head",
+        action="store_true",
+        help="Run even though --head is not the checkout's HEAD (the result will be assessed stale)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the prompt and commands only")
     return parser
 
@@ -569,7 +589,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return dry_run(run)
     try:
-        return execute(run)
+        return execute(run, allow_stale_head=args.allow_stale_head)
     except FileExistsError as exc:
         print(f"error: {exc}; use the next attempt number")
         return 2
