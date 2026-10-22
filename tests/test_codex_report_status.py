@@ -497,6 +497,36 @@ def test_empty_coverage_incomplete() -> None:
     assert any("no coverage stated" in r for r in result.reasons)
 
 
+# A report that shows no sign Codex ran anything never counts as complete
+# (bm:322afc50367d:WR-03, owner-approved round 2).
+@pytest.mark.parametrize("report_factory", [_valid_report, _valid_v1_report])
+def test_no_commands_run_incomplete(report_factory) -> None:
+    report = report_factory()
+    report["commands_run"] = []
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert "no commands run: the report gives no evidence the diff was inspected" in result.reasons
+
+
+@pytest.mark.parametrize("coverage", [[""], ["   "], ["full diff reviewed", " "], ["\n\t"]])
+def test_blank_coverage_entry_incomplete(coverage: list) -> None:
+    report = _valid_report()
+    report["coverage"] = coverage
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert "blank coverage entry" in result.reasons
+
+
+@pytest.mark.parametrize("command", ["", "   ", "\n"])
+def test_reproduced_with_blank_command_incomplete(command: str) -> None:
+    """IN-05 remainder (bm:322afc50367d:IN-02): a blank command is no reproduction."""
+    report = _valid_report()
+    report["findings"][0]["reproduction_command"] = command
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert "F001 marked reproduced without a reproduction command" in result.reasons
+
+
 # CR-02: a finding without a usable string id can never be dispositioned, so
 # it must make the report incomplete rather than silently drop out of the IDs.
 @pytest.mark.parametrize("bad_id", [7, None, "", "   "])
