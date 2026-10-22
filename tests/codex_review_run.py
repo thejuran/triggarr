@@ -38,6 +38,7 @@ production code under the loguru-only convention documented in CLAUDE.md
 from __future__ import annotations
 
 import argparse
+import getpass
 import hashlib
 import json
 import os
@@ -262,13 +263,28 @@ def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
     """Replace local absolute paths in harness-written text with neutral markers.
 
     The evidence is committed to a public repository, so the temp worktree,
-    the temp dir, the main checkout and the home directory never appear in it.
+    the temp dir, the system temp dir, the main checkout and the home
+    directory never appear in it, and neither does the username in pytest's
+    ``pytest-of-<user>`` temp directory (it shows up in failure output).
     """
     replacements: list[tuple[str, str]] = []
-    for path, marker in ((worktree, "<worktree>"), (scratch, "<scratch>"), (REPO_ROOT, "<repo>"), (Path.home(), "~")):
+    paths = (
+        (worktree, "<worktree>"),
+        (scratch, "<scratch>"),
+        (REPO_ROOT, "<repo>"),
+        (Path(tempfile.gettempdir()), "<tmp>"),
+        (Path.home(), "~"),
+    )
+    for path, marker in paths:
         for variant in {str(path), str(path.resolve())}:
             if len(variant) > 1:
                 replacements.append((variant, marker))
+    try:
+        user = getpass.getuser()
+    except (KeyError, OSError):
+        user = ""
+    if user:
+        replacements.append((f"pytest-of-{user}", "pytest-of-<user>"))
     for variant, marker in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
         text = text.replace(variant, marker)
     return text
@@ -477,7 +493,12 @@ def execute(
     reserve_outputs(run, prompt)
     run.output(".meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
-    scratch = Path(tempfile.mkdtemp(prefix="codex-review-"))
+    try:
+        scratch = Path(tempfile.mkdtemp(prefix="codex-review-"))
+    except OSError as exc:
+        reason = f"harness could not create its temp directory: {type(exc).__name__}"
+        _write_status_stub(run, reason)
+        raise RunnerError(reason) from exc
     worktree = scratch / "wt"
     codex_exit: int | None = None
     try:
@@ -487,6 +508,12 @@ def execute(
     except RunnerError as exc:
         _write_status_stub(run, f"harness failed before codex finished: {exc}")
         raise
+    except OSError as exc:
+        # The output name is already reserved, so record why this attempt
+        # stopped instead of leaving a reservation with no status.
+        reason = f"harness failed before codex finished: {type(exc).__name__}"
+        _write_status_stub(run, reason)
+        raise RunnerError(reason) from exc
     finally:
         try:
             removed = command_runner(worktree_remove_argv(worktree), cwd=REPO_ROOT, check=False)
@@ -500,6 +527,18 @@ def execute(
         current_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
     except RunnerError as exc:
         _write_status_stub(run, f"could not determine the current head after the run: {exc}")
+        return 1
+    # The checker and schema are read from disk now, up to the Codex time
+    # limit after .meta.json recorded their hashes; only run them if they
+    # still match.
+    try:
+        inputs_after = audit_inputs(command_runner)
+    except RunnerError as exc:
+        _write_status_stub(run, f"audited inputs changed during the run: {exc}")
+        return 1
+    if inputs_after != meta["inputs"]:
+        changed = sorted(path for path in AUDITED_INPUTS if inputs_after.get(path) != inputs[path])
+        _write_status_stub(run, f"audited inputs changed during the run: {changed}")
         return 1
     try:
         checker = command_runner(

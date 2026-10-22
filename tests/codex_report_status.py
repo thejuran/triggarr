@@ -329,6 +329,11 @@ def assess_report(
     except json.JSONDecodeError:
         reasons.append("unparseable: report is not valid JSON")
         return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+    except ValueError:
+        # After the two ValueError subclasses above: for example an integer
+        # longer than Python's int-string conversion limit.
+        reasons.append("unparseable: report is not valid JSON")
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
 
     if not isinstance(report, dict):
         reasons.append("unparseable: report is not a JSON object")
