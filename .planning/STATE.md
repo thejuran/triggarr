@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "executing -- Phase 83 plan 05 (BM update), 4/10 plans done (branch paired-review)"
-stopped_at: "Phase 83 plan 05 Task 1 (BM v5.0.3 update; reload checkpoint next)"
-last_updated: "2026-10-22T18:50:48.000Z"
-last_activity: "2026-10-22 -- Phase 83 plans 01-04 done; REVIEW-01 owner approval recorded"
+status: "executing -- Phase 83, 6/10 plans done; plan 07 next (branch paired-review)"
+stopped_at: "Phase 83 plan 07 Task 1 (owner picks quick-task item)"
+last_updated: "2026-10-22T19:12:26.000Z"
+last_activity: "2026-10-22 -- Phase 83 plans 05-06 done; BM v5.0.3 loaded, code review on (standard)"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 19
-  completed_plans: 13
+  completed_plans: 15
   percent: 20
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 83 (paired BM + Codex review) — Executing; Phase 82 merged
-Plan: 4 of 10 (01, 02, 03, 04 done; 05 in progress)
+Plan: 6 of 10 (01-06 done; 07 next)
 Status: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
-Last activity: 2026-10-22 -- Plans 01-04 done; owner approved BM v5.0.3 + code_review=true, code_review_depth=standard ("A", 14:37 EDT). Plan 05 updating BM; after /reload-plugins resume with /bm:execute-phase 83 (plan 05 Task 2: run /bm:version).
+Last activity: 2026-10-22 -- Plans 01-06 done. BM v5.0.3 loaded (/bm:version: 5.0.3); workflow.code_review=true, code_review_depth=standard applied (663fff3). CLAUDE.md review workflow wired (719359a). Next: plan 07 quick-task demo (owner picks item).
 
 ### v2.13 milestone shape
 
