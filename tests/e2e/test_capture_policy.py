@@ -117,7 +117,7 @@ def test_setup_failure_before_registration_leaves_no_capture(
     )
 
     combined_output = result.stdout + result.stderr
-    assert digest_file.exists(), "probe did not hand over the generated API key's fingerprint before failing"
+    assert digest_file.exists(), "probe did not hand over a fingerprint of a real-shaped API key before failing"
     key_digest = digest_file.read_text()
     assert key_digest  # non-empty
 
@@ -167,10 +167,8 @@ def test_setup_failure_before_registration_leaves_no_capture(
     assert network_inspect.returncode == 0
     stub_inspect = stack.run_docker(["docker", "inspect", parent_stub_name], check=False)
     assert stub_inspect.returncode == 0
-    health = stack.run_docker(
-        ["docker", "inspect", parent_app_name, "--format", "{{.State.Health.Status}}"], check=False
-    )
-    assert health.stdout.strip() == "healthy"
+    # Docker's own HEALTHCHECK only reports after its start period, so wait for it rather than sampling once.
+    stack.wait_for_docker_health(parent_app_name, timeout=90)
     checks.check_health(parent_app_url)
 
 

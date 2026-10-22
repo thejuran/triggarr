@@ -24,6 +24,7 @@ import hashlib
 import itertools
 import json
 import os
+import re
 import secrets
 import time
 import urllib.error
@@ -54,9 +55,24 @@ PROBE_KEY_SALT_ENV = "E2E_PROBE_KEY_SALT"
 PROBE_KEY_DIGEST_FILE_ENV = "E2E_PROBE_KEY_DIGEST_FILE"
 
 
+# triggarr API keys are secrets.token_hex(16): 32 lowercase hex characters.
+API_KEY_SHAPE = re.compile(r"[0-9a-f]{32}")
+
+
 def secret_fingerprint(value: str, salt_hex: str) -> str:
     """Salted scrypt fingerprint, so a secret can be recognised later without being stored."""
     return hashlib.scrypt(value.encode(), salt=bytes.fromhex(salt_hex), n=2**12, r=8, p=1).hex()
+
+
+def api_key_handoff(api_key: str, salt_hex: str) -> str | None:
+    """The fingerprint the probe hands its parent, or None when the displayed value is not a real API key.
+
+    Fingerprinting a blank or malformed value would still yield a digest, letting the leak check pass
+    without ever examining a key -- so only a key of the real shape is handed over.
+    """
+    if not API_KEY_SHAPE.fullmatch(api_key):
+        return None
+    return secret_fingerprint(api_key, salt_hex)
 
 _STUB_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "harness" / "arr_stub.py"
 _CI_FIXTURE_PATH = Path(__file__).resolve().parent.parent / "harness" / "fixtures" / "triggarr-ci.toml"
@@ -70,7 +86,8 @@ class SensitiveRegistry:
     sees it, and :meth:`redact` only ever emits ``***`` in its place.
     """
 
-    values: list[str] = field(default_factory=list)
+    # repr=False: pytest prints fixture arguments in failure tracebacks, which would leak every registered value.
+    values: list[str] = field(default_factory=list, repr=False)
 
     def register(self, value: str | None) -> None:
         """Record a sensitive value, ignoring an empty/missing one. Idempotent."""
@@ -324,6 +341,16 @@ def stub_control(e2e_stack: E2EStack) -> Iterator[StubControl]:
 _container_counter = itertools.count(1)
 
 
+def _save_container_logs(request: pytest.FixtureRequest, container_name: str, registry: SensitiveRegistry) -> None:
+    """Write the container's redacted logs next to the run's other artifacts, when an --output dir is set."""
+    output_dir = request.config.getoption("--output", default=None)
+    if not output_dir:
+        return
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    (out_path / f"{container_name}-logs.txt").write_text(registry.redact(stack.container_logs(container_name)))
+
+
 @pytest.fixture
 def triggarr_container(
     e2e_image: str,
@@ -350,19 +377,18 @@ def triggarr_container(
     )
     _record_session(session, e2e_stack.network)
     base_url = f"http://127.0.0.1:{port}"
-    stack.wait_for_http_health(base_url, timeout=30)
+    try:
+        stack.wait_for_http_health(base_url, timeout=30)
+    except BaseException:
+        # The container never became healthy: keep its logs before the session teardown removes it.
+        _save_container_logs(request, container_name, sensitive_registry)
+        raise
 
     yield TriggarrContainer(url=base_url, name=container_name)
 
-    rep_call = getattr(request.node, "rep_call", None)
-    if rep_call is not None and rep_call.failed:
-        output_dir = request.config.getoption("--output", default=None)
-        if output_dir:
-            logs = stack.container_logs(container_name)
-            redacted = sensitive_registry.redact(logs)
-            out_path = Path(output_dir)
-            out_path.mkdir(parents=True, exist_ok=True)
-            (out_path / f"{container_name}-logs.txt").write_text(redacted)
+    # A failure in a dependent fixture (e.g. admin_container) is a setup failure, not a call failure.
+    if any(getattr(getattr(request.node, f"rep_{when}", None), "failed", False) for when in ("setup", "call")):
+        _save_container_logs(request, container_name, sensitive_registry)
 
     stack.stop_and_remove(container_name)
     result = stack.run_docker(["docker", "volume", "rm", "-f", volume_name], check=False)
