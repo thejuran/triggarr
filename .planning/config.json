@@ -7,9 +7,10 @@
     "research": true,
     "plan_check": true,
     "verifier": true,
-    "code_review": false,
+    "code_review": true,
     "_auto_chain_active": false,
-    "tdd_mode": true
+    "tdd_mode": true,
+    "code_review_depth": "standard"
   },
   "granularity": "standard",
   "resolve_model_ids": true

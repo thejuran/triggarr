@@ -1,6 +1,6 @@
 # BM review baseline — REVIEW-01 gate
 
-Recorded: 2026-10-22. Status: approved by owner on 2026-10-22; not yet applied.
+Recorded: 2026-10-22. Status: approved and applied on 2026-10-22; loaded version confirmed.
 
 No plugin installation, update, or settings change is performed by this document.
 
@@ -192,3 +192,90 @@ The owner ran `/reload-plugins` (CLI output: `Reloaded: 10 plugins · 132 skills
     GSD plugin: 5.0.3  (latest: 5.0.3)
 
 The loaded version equals the approved version (v5.0.3). `bm-sdk` on PATH now resolves to `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/bin/bm-sdk` (`bm-sdk v1.50.0-canary.0`).
+
+### Settings diff
+
+Before the change, `.planning/config.json` was confirmed byte-identical to `83-config-before.json` (`cmp` exit 0) — no migration happened on update or reload. The two approved keys were then applied with `bm-sdk query config-set`, one per approved line:
+
+```
+$ bm-sdk query config-set workflow.code_review true
+{"updated":true,"key":"workflow.code_review","value":true,"previousValue":false}
+
+$ bm-sdk query config-set workflow.code_review_depth standard
+{"updated":true,"key":"workflow.code_review_depth","value":"standard"}
+```
+
+Sorted before/after diff against the saved baseline copy:
+
+```
+$ diff <(jq -S . .planning/phases/83-paired-bm-codex-review-risk-based-depth/83-config-before.json) <(jq -S . .planning/config.json)
+10c10,11
+<     "code_review": false,
+---
+>     "code_review": true,
+>     "code_review_depth": "standard",
+```
+
+All other settings are unchanged — the diff proves it: the only two lines it reports are the two approved keys (`code_review` flipped, `code_review_depth` added), nothing else differs.
+
+### Installed behavior re-check
+
+Re-read directly from the files actually installed at `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/` (not the tag-fetched scratchpad copies used for the "Target assessment" above, and not `83-RESEARCH.md`). This repeats Plan 01 Task 2 items (a)-(e) against the real, loaded files.
+
+**(a) Auto-run review per path**
+
+- **Phase execution:** `workflows/execute-phase.md`, step `code_review_gate` (line 1241): "**This step is REQUIRED and must not be skipped.** Auto-invoke code review on the phase's source changes. Advisory only — never blocks execution flow." Config gate (line 1246): `` CODE_REVIEW_ENABLED=$(bm-sdk query config-get workflow.code_review 2>/dev/null || echo "true") ``; (line 1249): `If CODE_REVIEW_ENABLED is "false": display "Code review skipped (workflow.code_review=false)" and proceed to next step.` The step sits after `execute_waves` (step at line 432) → `aggregate_results` (line 1109) → `handle_partial_wave_execution` (line 1210, the partial-wave completeness check) → `code_review_gate` (line 1241), so it fires once, only after all plans in the phase have finished — not per wave, not per plan.
+- **Quick task:** `workflows/quick.md`, Step 6.25 "Code review (auto)" (line 890): `Skip this step entirely if $FULL_MODE is false.` (line 892). `$FULL_MODE` is set only by `--full`, or by `--discuss --research --validate` together (lines 33, 39). Same config gate as phase execution.
+- **Explicit `/bm:code-review`:** `workflows/code-review.md` — user-invoked directly, not gated behind `$FULL_MODE`; runs step `resolve_depth` (lines 102-116) and the file-scope/large-scope-warning logic (lines 313-321, quoted verbatim below).
+- **Review after fixes:** `workflows/code-review-fix.md`, step `auto_iteration_loop` (line 232): `MAX_ITERATIONS=3` (line 241); loop uses `-lt` (line 260) — "Total fix passes = MAX_ITERATIONS" (line 239); each iteration backs up `REVIEW.md`/`REVIEW-FIX.md` to `*.iterN.md` before overwriting (lines 270-275); `REVIEW-FIX.md` is committed once, after all iterations (line 364: "REVIEW-FIX.md is NOT committed until step 7 (after ALL iterations complete). Only ONE docs commit for REVIEW-FIX.md.").
+
+**(b) Depth handling (REVIEW-05)**
+
+`workflow.code_review_depth` resolves inside `workflows/code-review.md` step `resolve_depth` (lines 102-116): priority `--depth` flag > config value > default `"standard"` (line 114: `` REVIEW_DEPTH="${CONFIG_DEPTH:-standard}" ``). With the setting now applied, explicit `/bm:code-review` and the review-after-fixes loop resolve to `standard` depth. **Quick-task depth stays hardcoded**, unchanged: `workflows/quick.md` line 929 writes `Depth: quick` literally into the reviewer agent's prompt; it never calls `resolve_depth` and never reads `workflow.code_review_depth`. So with `workflow.code_review_depth=standard` now applied, the quick-task path's actual review depth is still `quick` — the requested-vs-actual mismatch disclosed in Plan 01 (Surprise 2) reproduces unchanged in the installed files.
+
+**(c) Fix loop**
+
+Confirmed identical to (a)'s "review after fixes" row above: `MAX_ITERATIONS=3` (`code-review-fix.md` line 241), `.iterN.md` backup-before-overwrite (lines 270-275), one `REVIEW-FIX.md` commit at the end (lines 364, 369). Unchanged from the tag assessment.
+
+**(d) External reviewer invocation from code review — confirmed no**
+
+`workflows/review.md` pipes `.planning/PROJECT.md`, the phase's `ROADMAP.md` section, the phase's plans, and `REQUIREMENTS.md` to `codex exec --skip-git-repo-check -` (line 208; a `$CODEX_MODEL` variant at line 206) to produce `{phase}-REVIEWS.md` (line 329), consumed only by `/bm:plan-phase --reviews`. This reviews phase **plans**, never committed code. D-05 holds at the installed 5.0.3: `workflows/code-review.md` has no `codex exec` call, no Codex/Gemini adversarial-review option, and no path that pairs an external CLI as a code reviewer.
+
+One textual nuance found during this re-check and disclosed for completeness: the literal string "CODEX" does appear once in `workflows/code-review.md` (line 493): `> **ORCHESTRATOR RULE — CODEX RUNTIME**: After calling Agent() above, stop working on this task immediately...`. This is generic cross-runtime orchestrator boilerplate — the same sentence appears verbatim in 24 other workflow files (`grep -rl "ORCHESTRATOR RULE — CODEX RUNTIME" workflows/ | wc -l` → 24), including `code-review-fix.md`. It instructs BM's own orchestrator not to do extra work while a subagent is active when BM itself is being run under the Codex CLI as an alternative orchestrator runtime — it does not invoke `codex exec`, does not pair Codex as a reviewer, and has nothing to do with REVIEW-02/03's Codex-pairing design. The tag assessment's sentence ("`code-review.md` has no Codex... option anywhere in its text") was imprecise on a literal string match; its substance — no adversarial Codex-review capability inside `code-review.md` — still holds exactly. Carried into "Differences from the tag assessment" below.
+
+**(e) Specialist/craft-skill lanes — exact supported surface, and the gap**
+
+`sdk/shared/craft-skill-catalog.json` holds 13 entries (`jq '.skills | length'` → `13`). The one entry targeting `bm-code-reviewer` is `code-reviewer` (line 385, `"target_agents": ["bm-code-reviewer"]`; domain `code-quality`, trust tier `A`, license MIT, source `https://github.com/Jeffallan/claude-skills` pinned at commit `1be15d8064f88fc25216442406d40add8fd23b53`).
+
+The supported CLI surface is exactly five `bm-sdk query craft-skill.*` subcommands, confirmed in `sdk/dist/query/craft-skill.js`: `craftSkillList` (line 468), `craftSkillAssess` (line 472), `craftSkillMatch` (line 488), `craftSkillInsert` (line 496), `craftSkillRelease` (line 509). There is no sixth "enable all" command. `bin/lib/craft-skill-insert.cjs` usage string (line 189): `Usage: craft-skill insert <id> --agent <type> --location <where> [--sticky] [--approved]` — one catalog id × one agent × one local checkout per call, never bulk. It refuses on a `block` verdict (line 200), requires a prior `approved_at` record the first time a given id/pinned-commit pair is inserted (lines 179, 205), and refuses on a pin mismatch between the checkout's `HEAD` and `pinned_commit` (line 234).
+
+`workflows/code-review.md` step `spawn_reviewer` (lines 407-495) runs `craft-skill.match` against the review scope (line 459) before every reviewer spawn, reads `references/craft-skill-propose-on-fit.md` to decide accept/insert (line 465, substituting `bm-code-reviewer` for `bm-executor`), and releases the inserted skill after the reviewer returns on both the success and failure paths (line 495). This confirms Plan 01's finding: v5.0.3 has no supported key, flag, or command that means "every specialist/craft-skill lane, turned on" — the real surface is per-skill, per-agent, checkout-gated, and approval-gated — and confirms that the per-task propose-on-fit mechanism now fires automatically on every code review, since `workflow.code_review` is applied as `true`.
+
+**Path / depth / responsibility table**
+
+| Path | Review runs automatically? | Condition | Depth used | Responsible file/step |
+|---|---|---|---|---|
+| Phase execution | Yes | Fires once, after all plans/waves of the phase have completed; gated on `workflow.code_review` (now `true`) | `standard` (resolved by `resolve_depth` inside the invoked `gsd-code-review` skill) | `workflows/execute-phase.md`, step `code_review_gate` (line 1241) |
+| Quick task | Only in full mode | Requires `--full` (or `--discuss --research --validate` together); same `workflow.code_review` gate | `quick` (hardcoded, line 929 — ignores `workflow.code_review_depth`; disclosed mismatch, REVIEW-05) | `workflows/quick.md`, Step 6.25 (line 890) |
+| Explicit `/bm:code-review` | Yes, on invocation | User-invoked; not gated behind `$FULL_MODE` | `standard` (config, overridable with `--depth`) | `workflows/code-review.md`, step `resolve_depth` (lines 102-116) |
+| Review after fixes | Yes, via `/bm:code-review <N> --fix --auto` | Re-invokes at the same depth recorded in the original `REVIEW.md`; capped at `MAX_ITERATIONS=3` | Same depth as the original review that produced `REVIEW.md` (`standard` unless overridden) | `workflows/code-review-fix.md`, step `auto_iteration_loop` (line 232) |
+
+**Verbatim large-scope downgrade warning** (`workflows/code-review.md`, lines 314-320; threshold `-gt 50` files):
+
+```
+Warning: ${#REVIEW_FILES[@]} files is a large review scope.
+Consider using --files to narrow scope, or --depth=quick for a faster pass.
+Switching from deep to standard depth for large file count.
+```
+
+(The third line only prints when `REVIEW_DEPTH` was `deep`.)
+
+### Differences from the tag assessment
+
+One disclosed nuance, not a substantive difference: the tag assessment's sentence "`code-review.md` has no Codex... option anywhere in its text" (item (d) above) is imprecise on a literal string match — the word "CODEX" appears once, in generic 24-file cross-runtime orchestrator boilerplate at line 493 (`ORCHESTRATOR RULE — CODEX RUNTIME`), unrelated to reviewer pairing. The substance of D-05 — `code-review.md` has no `codex exec` call and no adversarial Codex/Gemini review option — is re-confirmed exactly from the installed files. This does not change what the owner approved: no setting, behavior, or depth handling is affected, and REVIEW-02/03's Codex-pairing design is still entirely a `CLAUDE.md`-level instruction layered on top of BM, not a native BM feature.
+
+No other differences. Every other quote, line number, step order, catalog count (13 entries), subcommand count (5), and warning text re-checked above against the installed `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/` files matches the "Target assessment" section verbatim.
+
+### Test run
+
+`uv run pytest tests/ -x -q` → `2201 passed, 38 warnings in 94.11s` (pre-existing `StarletteDeprecationWarning`/cookie-deprecation warnings only; no failures).
