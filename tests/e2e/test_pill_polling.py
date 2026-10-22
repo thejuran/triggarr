@@ -129,7 +129,10 @@ def test_connection_pill_polls_on_schedule_without_loop_and_shows_new_state(
     _wait_for_request_count(page, pill_requests, looped_count + 1, timeout_seconds=10)
     _wait_for_pill_text(page, "Connection Issue", timeout_seconds=10)
 
-    # 7. Second scheduled tick: polling continues on schedule, not just once.
+    # 7. Second scheduled tick: polling continues on schedule, not just once. htmx registers the swapped-in
+    # pill's "every 30s" timer in its settle step, a short timer on this same fake clock; advance 1s first
+    # so that timer exists before the 31s jump (otherwise it is created after the jump and never fires).
+    page.clock.fast_forward(1000)
     page.clock.fast_forward("00:31")
     _wait_for_request_count(page, pill_requests, looped_count + 2, timeout_seconds=10)
 
