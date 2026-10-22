@@ -1,6 +1,6 @@
 # BM review baseline — REVIEW-01 gate
 
-Recorded: 2026-10-22. Status: gate pending owner approval.
+Recorded: 2026-10-22. Status: approved by owner on 2026-10-22; not yet applied.
 
 No plugin installation, update, or settings change is performed by this document.
 
@@ -144,3 +144,32 @@ Sources: `dist/bm/workflows/code-review.md`, `dist/bm/workflows/execute-phase.md
 > **Proposed adjustment:** Not a gap to fix — a scoping fact to carry into REVIEW-02's demonstration plan: the "phase execution" path can only be observed by letting a phase run to its last plan, not an intermediate one.
 
 None of these three findings is D-04's own example surprise ("review doesn't run automatically on quick tasks") — that example does not reproduce at either version; quick-task review does auto-run, gated on `--full`. The depth-handling difference that *does* reproduce is narrower (Surprise 2) and is disclosed above rather than assumed away.
+
+## Owner approval
+
+**Date/time:** 2026-10-22 14:37 EDT (owner answered in the Claude Code CLI session).
+
+**Clarification exchange, before the answer:** The checkpoint's context presented two bullets describing the auto-run triggers — "BM reviews code automatically when a phase finishes all its plans" and "`/bm:code-review` runs on demand, as it does today." The owner asked: "which one is it -- automatically or on demand?" The orchestrator answered: both are separate triggers enabled by the same setting (`workflow.code_review`), and corrected one point in the process — with `workflow.code_review=false` (today's setting), `/bm:code-review` currently exits with "Code review skipped" (BM 4.9.1 `workflows/code-review.md`, lines 90-95), so **today neither trigger runs**; turning the setting on enables both. The owner then answered the checkpoint.
+
+**Owner's verbatim words:** "A"
+
+This selected option `approve-as-proposed`, whose full text as presented was: "Approve as proposed: BM v5.0.3, `workflow.code_review=true`, `workflow.code_review_depth=standard`, nothing else changed, craft-skill lanes left as 'offered automatically' (not pre-installed). Trade-off: the Sonnet/Haiku/Opus model change rides along and must be noted in later comparisons."
+
+**Approved exact version:** BM v5.0.3 (tag commit `e499a62e67748294fb3ab091ce7f7ef773bb4a3c`), per the Target assessment above. No newer release exists as of this assessment.
+
+**Approved settings list (exact key = value lines, exactly two keys changed; every other `.planning/config.json` key is unchanged):**
+
+```
+workflow.code_review: false -> true
+workflow.code_review_depth: unset -> "standard"
+```
+
+No other key in `.planning/config.json` changes. The craft-skill/specialist lane row from the Proposed settings table above is **not approved as a settings change** — consistent with the Surprises section's finding that v5.0.3 has no supported "every lane on" key, flag, or command (D-03(b), D-04). Craft-skill lanes are left as "offered automatically": the `code-review` workflow's existing `craft-skill.match` step already proposes the `code-reviewer` catalog entry per-task once `workflow.code_review=true`, with no durable pre-install and no settings-table line item.
+
+**Adjustments to the proposal:** None beyond the craft-skill-lane scoping already reflected in the Proposed settings table (no fabricated key proposed; Option A approves the table exactly as written, including that row's "not proposed" disposition).
+
+**Model-tier note (D-02):** The bundled v5.0.1 Sonnet/Haiku 5.5 (and v5.0.0 Opus 5.5) model-tier change rides along with this approval, as disclosed in "Model change bundled with the version" above. It is accepted as part of the version change, not pinned, and must be noted in later pilot comparisons (Phase 86) alongside the review-settings change.
+
+**Approval transport: Claude CLI conversation; not inferred.**
+
+This approval covers only the BM version and the two settings keys listed above. **It does not approve any pull request.** `.planning/config.json` is not modified by this record — the change is applied by Plan 05, which also runs `/bm:version` afterward to confirm the loaded version.
