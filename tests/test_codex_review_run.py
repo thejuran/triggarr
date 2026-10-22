@@ -483,3 +483,50 @@ def test_contract_documents_untrusted_sources() -> None:
 
 def test_prompt_covers_untrusted_evidence() -> None:
     assert "untrusted source" in load_template()
+
+
+# --- Privacy (bm:322afc50367d:IN-07, owner-approved round 2) ------------------
+# No prompt or harness evidence path or text contains the operator's home
+# directory: the evidence is copied into the temp worktree and referenced by
+# a working-copy-relative path.
+
+
+def test_prompt_evidence_path_is_relative_to_the_working_copy() -> None:
+    value = runner.prompt_values(_run())["TEST_EVIDENCE"]
+    assert value == runner.EVIDENCE_RELPATH
+    assert not Path(value).is_absolute()
+    assert str(Path.home()) not in value
+
+
+def test_prompt_reads_stay_inside_the_working_copy() -> None:
+    template = load_template()
+    assert "Read only files inside this working copy; do not read any file outside it." in template
+    assert "plus {{TEST_EVIDENCE}}" not in template
+
+
+def test_execute_copies_evidence_into_worktree_and_strips_home(tmp_path, monkeypatch) -> None:
+    home = "/Users/someone-private"
+    monkeypatch.setenv("HOME", home)
+    run = _tmp_run(tmp_path, monkeypatch)
+    worktree = tmp_path / "scratch" / "wt"
+    seen: dict[str, str] = {}
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if argv[0] == "uv":
+            out = f"{worktree}/tests/test_x.py:1: warning\n{home}/.cache/uv/thing\n2 passed\n"
+            return subprocess.CompletedProcess(argv, 0, stdout=out)
+        if "codex" in argv and "exec" in argv:
+            seen["prompt"] = kwargs["input"]
+            seen["copy"] = (worktree / runner.EVIDENCE_RELPATH).read_text()
+        return fake(argv, **kwargs)
+
+    execute(run, command_runner=_spy)
+
+    evidence = run.output(".pytest.txt").read_text()
+    assert seen["copy"] == evidence
+    for text in (evidence, seen["prompt"]):
+        assert home not in text
+        assert str(tmp_path) not in text
+    assert "~/.cache/uv/thing" in evidence
+    assert "<worktree>/tests/test_x.py" in evidence

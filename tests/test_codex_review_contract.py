@@ -238,9 +238,11 @@ def test_prompt_states_test_evidence_terms() -> None:
     assert "not by itself a reason to set review_complete to false" in prompt
 
 
-def test_prompt_keeps_read_limit_with_only_the_evidence_exception() -> None:
+def test_prompt_keeps_read_limit_to_the_working_copy() -> None:
+    """The harness evidence now sits inside the working copy, so no exception is needed."""
     prompt = _extract_fixed_prompt()
-    assert "Read only files inside this working copy, plus {{TEST_EVIDENCE}}" in prompt
+    assert "Read only files inside this working copy; do not read any file outside it." in prompt
+    assert "plus {{TEST_EVIDENCE}}" not in prompt
 
 
 def test_prompt_asks_for_structured_completeness() -> None:
