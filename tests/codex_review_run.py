@@ -7,12 +7,11 @@ Implements docs/codex-adversarial-review-contract.md, Invocation:
    ``<OUT>.prompt.txt`` and a provenance record (template version, sha256
    of those files, harness HEAD) as ``<OUT>.meta.json``.
 1. Creates a detached worktree of the exact head SHA in a fresh temp dir.
-2. With ``--trusted`` (this repository's own branches), runs
-   ``uv run --extra dev pytest tests/ -q`` inside that worktree, outside
-   the Codex sandbox, and saves the combined output and exit code as
-   ``<OUT>.pytest.txt`` next to the raw Codex outputs. With ``--untrusted``
-   (Dependabot or outside-contributor heads) it runs no tests and the
-   evidence file says "tests not run (untrusted source)".
+2. Runs ``uv run --extra dev pytest tests/ -q`` inside that worktree,
+   outside the Codex sandbox, and saves the combined output and exit code
+   as ``<OUT>.pytest.txt`` next to the raw Codex outputs. A copy goes into
+   the worktree, created exclusively and without following links; the run
+   is refused if the reviewed tree already has anything at that path.
 3. Renders the contract's fixed prompt, substituting only its documented
    placeholders.
 4. Runs ``codex exec`` read-only against the worktree with the report
@@ -20,6 +19,11 @@ Implements docs/codex-adversarial-review-contract.md, Invocation:
 5. Always removes the worktree, on success and on failure.
 6. Runs tests/codex_report_status.py and saves its JSON as
    ``<OUT>.status.json``.
+
+Only ``--trusted`` heads (this repository's own branches) are reviewed.
+``--untrusted`` (Dependabot or outside-contributor heads) is refused before
+anything runs or is written: Codex stays PENDING for those heads and their
+CI results are used instead.
 
 Every command is an argument list run without a shell; free-text inputs
 (PR URL, scope) only ever reach Codex through the prompt on stdin.
@@ -102,9 +106,9 @@ class ReviewRun:
     pr_url: str
     scope: str
     phase_dir: Path
-    # Owner decision 2026-10-22: harness pytest runs only for this
-    # repository's own branches. Dependabot and outside-contributor heads are
-    # untrusted: their tests never run on the operator's machine.
+    # Owner decisions 2026-10-22: only this repository's own branches are
+    # trusted. Dependabot and outside-contributor heads are untrusted, and the
+    # harness refuses to run Codex or their tests for them.
     trusted: bool
 
     def __post_init__(self) -> None:
@@ -241,18 +245,11 @@ def _pytest_env() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if key != "VIRTUAL_ENV"}
 
 
-UNTRUSTED_EVIDENCE = "tests not run (untrusted source)"
-
-
-def _untrusted_evidence(run: ReviewRun) -> str:
-    return (
-        "Test evidence produced by the harness (tests/codex_review_run.py), not by Codex.\n"
-        f"head: {run.head}\n"
-        "source: untrusted (--untrusted)\n"
-        f"{UNTRUSTED_EVIDENCE}\n"
-        "Dependabot and outside-contributor heads are never executed by the harness;\n"
-        "rely on the PR's CI results for test evidence.\n"
-    )
+UNTRUSTED_REFUSAL = (
+    "Codex is not run for untrusted heads (Dependabot or outside-contributor PRs) until the harness is"
+    " hardened. Record 'Codex: PENDING — untrusted source' and use the PR's CI results for test evidence;"
+    " the owner chooses: wait, retry later, or approve a fallback."
+)
 
 
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
@@ -275,16 +272,32 @@ def _publish_evidence(run: ReviewRun, worktree: Path, scratch: Path, text: str) 
     """Write the evidence next to the raw outputs and copy it into the worktree."""
     text = redact_local_paths(text, worktree=worktree, scratch=scratch)
     run.output(".pytest.txt").write_text(text, encoding="utf-8")
-    copy = worktree / EVIDENCE_RELPATH
-    copy.parent.mkdir(parents=True, exist_ok=True)
-    copy.write_text(text, encoding="utf-8")
+    _write_evidence_copy(worktree, text)
+
+
+def _write_evidence_copy(worktree: Path, text: str) -> None:
+    """Create the evidence copy inside the worktree without following any link.
+
+    The worktree is a checkout of the reviewed head, so the head decides what
+    already exists there. Anything already at the evidence directory (a
+    directory, a file, or a symlink, dangling or not) is refused rather than
+    written through; the directory is created fresh and the file with
+    O_CREAT|O_EXCL|O_NOFOLLOW.
+    """
+    relative_dir = Path(EVIDENCE_RELPATH).parent
+    directory = worktree / relative_dir
+    if os.path.lexists(directory):
+        raise RunnerError(f"the reviewed tree already contains {relative_dir}; refusing to write evidence into it")
+    try:
+        directory.mkdir()
+        fd = os.open(worktree / EVIDENCE_RELPATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    except OSError as exc:
+        raise RunnerError(f"could not create the evidence copy in the worktree: {type(exc).__name__}") from exc
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)
 
 
 def _run_pytest(run: ReviewRun, worktree: Path, scratch: Path, command_runner: CommandRunner) -> None:
-    if not run.trusted:
-        _publish_evidence(run, worktree, scratch, _untrusted_evidence(run))
-        print(f"pytest evidence: {run.output('.pytest.txt')} ({UNTRUSTED_EVIDENCE})")
-        return
     exit_code: str
     output: str
     try:
@@ -435,6 +448,8 @@ def execute(
     is refused unless *allow_stale_head* is set (for example, finishing an
     earlier head's automatic retry).
     """
+    if not run.trusted:
+        raise RunnerError(UNTRUSTED_REFUSAL)
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
     if existing:
         # Raw outputs are never edited after being written; use a new attempt number.
@@ -510,12 +525,12 @@ def dry_run(run: ReviewRun) -> int:
     print(f"# save the prompt to {shlex.quote(str(run.output('.prompt.txt')))}")
     print(f"# save provenance to {shlex.quote(str(run.output('.meta.json')))}")
     print(shlex.join(worktree_add_argv(worktree, run.head)))
-    if run.trusted:
-        print(f"(cd {worktree} && {shlex.join(pytest_argv())}) > {shlex.quote(str(run.output('.pytest.txt')))}")
-    else:
-        print(f"# --untrusted: no pytest; {shlex.quote(str(run.output('.pytest.txt')))} records '{UNTRUSTED_EVIDENCE}'")
+    print(f"(cd {worktree} && {shlex.join(pytest_argv())}) > {shlex.quote(str(run.output('.pytest.txt')))}")
     evidence = shlex.quote(str(run.output(".pytest.txt")))
-    print(f"# copy {evidence} to {worktree / EVIDENCE_RELPATH} (local paths redacted)")
+    print(
+        f"# copy {evidence} to {worktree / EVIDENCE_RELPATH} (local paths redacted; refused if the"
+        " reviewed tree already has that path; created with O_CREAT|O_EXCL|O_NOFOLLOW)"
+    )
     print(
         f"{shlex.join(codex_argv(worktree, run.output('.last.json')))} < prompt"
         f" > {shlex.quote(str(run.output('.jsonl')))}  # timeout {CODEX_TIMEOUT_SECONDS}s in-process, exit 124"
@@ -558,13 +573,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--trusted",
         dest="trusted",
         action="store_true",
-        help="Head is from this repository's own branch: run the harness pytest",
+        help="Head is from this repository's own branch: run the harness pytest and Codex",
     )
     trust.add_argument(
         "--untrusted",
         dest="trusted",
         action="store_false",
-        help="Dependabot or outside-contributor head: run no tests, rely on CI results",
+        help="Dependabot or outside-contributor head: refused (Codex PENDING, rely on CI results)",
     )
     parser.add_argument(
         "--allow-stale-head",
@@ -584,6 +599,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ValueError as exc:
         parser.error(str(exc))
+    if not run.trusted:
+        print(f"error: {UNTRUSTED_REFUSAL}")
+        return 2
     if not (REPO_ROOT / run.phase_dir).is_dir():
         parser.error(f"phase-dir does not exist: {run.phase_dir}")
     if args.dry_run:
