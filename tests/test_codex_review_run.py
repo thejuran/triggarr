@@ -220,8 +220,6 @@ def test_codex_argv_is_read_only_and_schema_bound() -> None:
     wt = Path("/tmp/codex-review-x/wt")
     last = Path("/repo/out.last.json")
     assert codex_argv(wt, last) == [
-        "timeout",
-        "1800",
         "codex",
         "exec",
         "--sandbox",
@@ -383,8 +381,8 @@ def test_execute_writes_all_outputs_and_removes_worktree(tmp_path, monkeypatch) 
 
     order = [" ".join(call[:3]) for call in fake.calls]
     assert order.index("git worktree add") < order.index("uv run --extra")
-    assert order.index("uv run --extra") < order.index("timeout 1800 codex")
-    assert order.index("timeout 1800 codex") < order.index("git worktree remove")
+    assert order.index("uv run --extra") < order.index("codex exec --sandbox")
+    assert order.index("codex exec --sandbox") < order.index("git worktree remove")
 
 
 def test_execute_runs_pytest_in_the_worktree(tmp_path, monkeypatch) -> None:
@@ -664,3 +662,91 @@ def test_main_reports_lost_reservation_as_error(monkeypatch, capsys) -> None:
     monkeypatch.setattr(runner, "execute", _taken)
     assert main(_cli(PHASE_DIR, "--trusted")) == 2
     assert "use the next attempt number" in capsys.readouterr().out
+
+
+# --- Robustness (bm:322afc50367d:IN-05, IN-08, IN-04 runner part; round 2) ---
+
+
+def test_codex_timeout_is_enforced_in_process(tmp_path, monkeypatch) -> None:
+    """No external `timeout` binary: subprocess's own timeout, recorded as exit 124."""
+    run = _tmp_run(tmp_path, monkeypatch)
+    seen: dict[str, object] = {}
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if argv[:2] == ["codex", "exec"]:
+            seen["timeout"] = kwargs.get("timeout")
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return fake(argv, **kwargs)
+
+    execute(run, command_runner=_spy)
+    assert seen["timeout"] == runner.CODEX_TIMEOUT_SECONDS
+    checker = next(call for call in fake.calls if "codex_report_status.py" in " ".join(call))
+    assert checker[checker.index("--exit-code") + 1] == "124"
+
+
+def test_worktree_add_failure_is_a_clean_error_and_cleans_up(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if argv[:3] == ["git", "worktree", "add"]:
+            fake.calls.append(list(argv))
+            if kwargs.get("check"):
+                raise subprocess.CalledProcessError(128, argv)
+            return subprocess.CompletedProcess(argv, 128)
+        return fake(argv, **kwargs)
+
+    with pytest.raises(runner.RunnerError, match="git worktree add"):
+        execute(run, command_runner=_spy)
+    assert _removed(fake)
+    assert not (tmp_path / "scratch").exists()
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "git worktree add" in status
+    assert not any(call[:2] == ["codex", "exec"] for call in fake.calls)
+
+
+def test_current_head_failure_after_codex_writes_status_stub(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    rev_parses = {"n": 0}
+
+    def _spy(argv, **kwargs):
+        if argv[:2] == ["git", "rev-parse"]:
+            rev_parses["n"] += 1
+            if rev_parses["n"] > 1:
+                if kwargs.get("check"):
+                    raise subprocess.CalledProcessError(128, argv)
+                return subprocess.CompletedProcess(argv, 128, stdout="")
+        return fake(argv, **kwargs)
+
+    assert execute(run, command_runner=_spy) == 1
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "current head" in status
+
+
+def test_empty_checker_output_writes_status_stub(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if "codex_report_status.py" in " ".join(argv):
+            fake.calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 1, stdout="")
+        return fake(argv, **kwargs)
+
+    assert execute(run, command_runner=_spy) == 1
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "checker produced no output (exit 1)" in status
+
+
+def test_main_reports_git_failure_without_traceback(monkeypatch, capsys) -> None:
+    def _fails(_run, **_kwargs):
+        raise subprocess.CalledProcessError(128, ["git", "worktree", "add"])
+
+    monkeypatch.setattr(runner, "execute", _fails)
+    assert main(_cli(PHASE_DIR, "--trusted")) == 2
+    assert "error:" in capsys.readouterr().out
