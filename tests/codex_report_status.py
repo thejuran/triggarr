@@ -282,6 +282,14 @@ def assess_report(
     )
     reasons.extend(finding_reasons)
 
+    findings = report.get("findings")
+    verdict = report.get("verdict")
+    if isinstance(findings, list):
+        if verdict == "no-findings" and findings:
+            reasons.append("verdict says no-findings but findings are listed")
+        elif verdict == "findings" and not findings:
+            reasons.append("verdict says findings but none are listed")
+
     coverage = report.get("coverage")
     if isinstance(coverage, list) and len(coverage) == 0:
         reasons.append("no coverage stated")

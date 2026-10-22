@@ -378,6 +378,22 @@ def test_complete_results_qualify_every_finding() -> None:
         assert result.finding_count == len(result.qualified_ids)
 
 
+def test_no_findings_verdict_with_findings_incomplete() -> None:
+    report = _valid_report()
+    report["verdict"] = "no-findings"
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert any(r == "verdict says no-findings but findings are listed" for r in result.reasons)
+
+
+def test_findings_verdict_without_findings_incomplete() -> None:
+    report = _valid_report()
+    report["findings"] = []
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert any(r == "verdict says findings but none are listed" for r in result.reasons)
+
+
 def test_duplicate_finding_id_incomplete() -> None:
     report = _valid_report()
     report["findings"][1]["id"] = "F001"
