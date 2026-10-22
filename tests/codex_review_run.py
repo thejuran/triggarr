@@ -514,12 +514,12 @@ def dry_run(run: ReviewRun) -> int:
         print(f"(cd {worktree} && {shlex.join(pytest_argv())}) > {shlex.quote(str(run.output('.pytest.txt')))}")
     else:
         print(f"# --untrusted: no pytest; {shlex.quote(str(run.output('.pytest.txt')))} records '{UNTRUSTED_EVIDENCE}'")
+    evidence = shlex.quote(str(run.output(".pytest.txt")))
+    print(f"# copy {evidence} to {worktree / EVIDENCE_RELPATH} (local paths redacted)")
     print(
         f"{shlex.join(codex_argv(worktree, run.output('.last.json')))} < prompt"
         f" > {shlex.quote(str(run.output('.jsonl')))}  # timeout {CODEX_TIMEOUT_SECONDS}s in-process, exit 124"
     )
-    evidence = shlex.quote(str(run.output(".pytest.txt")))
-    print(f"# copy {evidence} to {worktree / EVIDENCE_RELPATH} (local paths redacted)")
     print(shlex.join(worktree_remove_argv(worktree)) + "  # always, including on failure")
     checker = checker_argv(run, exit_code=0, current_head="<git rev-parse HEAD>")
     checker[0] = "uv run python"
