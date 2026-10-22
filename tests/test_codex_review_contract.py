@@ -50,9 +50,9 @@ def _load_schema() -> dict:
 
 
 def _extract_fixed_prompt() -> str:
-    """Return the first fenced block after the '## Fixed prompt (version 2)' heading."""
+    """Return the first fenced block after the '## Fixed prompt (version 3)' heading."""
     text = CONTRACT.read_text(encoding="utf-8")
-    heading = "## Fixed prompt (version 2)"
+    heading = "## Fixed prompt (version 3)"
     idx = text.index(heading)
     after = text[idx + len(heading) :]
     match = re.search(r"```(?:[^\n]*)\n(.*?)```", after, re.DOTALL)
@@ -123,7 +123,7 @@ def test_nullable_fields() -> None:
 def test_contract_placeholders() -> None:
     prompt = _extract_fixed_prompt()
     placeholders = set(re.findall(r"\{\{(\w+)\}\}", prompt))
-    assert placeholders == {"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE"}
+    assert placeholders == {"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDENCE"}
 
 
 def test_contract_read_only() -> None:
@@ -145,10 +145,11 @@ def test_contract_references_schema_path() -> None:
 _HEX32_RE = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 
 
-def test_contract_template_version_two() -> None:
+def test_contract_template_version_three() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
-    assert "Template version: 2." in text
+    assert "Template version: 3." in text
     assert "## Fixed prompt (version 1)" not in text
+    assert "## Fixed prompt (version 2)" not in text
 
 
 def test_contract_prompt_confines_reads_to_working_copy() -> None:
@@ -194,3 +195,69 @@ def test_failure_rule_states_later_attempts_need_owner_choice() -> None:
     section = _failure_rule_section()
     assert "owner" in section.lower()
     assert "recorded" in section.lower() and "attempt number" in section.lower()
+
+
+# Durable Codex completeness (owner 2026-10-22): template version 3 scopes the
+# diff by rule, hands Codex harness-produced test evidence, and asks for
+# completeness in the structured fields.
+EXCLUDE_PATHSPECS = (
+    "':(exclude,glob).planning/**/codex/**'",
+    "':(exclude,glob).planning/**/*.jsonl'",
+)
+
+
+def test_prompt_diff_command_excludes_review_transcripts() -> None:
+    prompt = _extract_fixed_prompt()
+    assert "git diff {{BASE_SHA}}..{{HEAD_SHA}} -- . " in prompt
+    for pathspec in EXCLUDE_PATHSPECS:
+        assert pathspec in prompt
+
+
+def test_contract_documents_review_scope_exclusions() -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    start = text.index("## Review scope")
+    section = text[start : text.index("\n## ", start + 1)]
+    assert ".planning/**/codex/**" in section
+    assert ".planning/**/*.jsonl" in section
+    assert "planning markdown" in section.lower()
+
+
+def test_prompt_states_test_evidence_terms() -> None:
+    prompt = _extract_fixed_prompt()
+    assert "{{TEST_EVIDENCE}}" in prompt
+    assert "produced by the harness" in prompt
+    assert "{{HEAD_SHA}}" in prompt.split("{{TEST_EVIDENCE}}")[0]
+    assert "evidence, not approval" in prompt
+    assert "not by itself a reason to set review_complete to false" in prompt
+
+
+def test_prompt_keeps_read_limit_with_only_the_evidence_exception() -> None:
+    prompt = _extract_fixed_prompt()
+    assert "Read only files inside this working copy, plus {{TEST_EVIDENCE}}" in prompt
+
+
+def test_prompt_asks_for_structured_completeness() -> None:
+    prompt = _extract_fixed_prompt()
+    assert "review_complete" in prompt
+    assert "incomplete_reasons" in prompt
+    assert "limitations" in prompt
+
+
+def _invocation_section() -> str:
+    text = CONTRACT.read_text(encoding="utf-8")
+    start = text.index("## Invocation")
+    end = text.index("## Raw output storage", start)
+    return text[start:end]
+
+
+def test_invocation_uses_runner_and_checker() -> None:
+    section = _invocation_section()
+    assert "uv run python tests/codex_review_run.py" in section
+    assert "--dry-run" in section
+    assert "uv run python tests/codex_report_status.py" in section
+    assert "uv run --extra dev pytest tests/ -q" in section
+    assert "git worktree remove --force" in section
+
+
+def test_storage_lists_pytest_evidence_file() -> None:
+    assert "`.pytest.txt`" in _storage_section()

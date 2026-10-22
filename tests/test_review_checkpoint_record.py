@@ -34,3 +34,18 @@ def test_attempts_row_allows_owner_approved_retry() -> None:
     assert "| Attempts |" in text
     attempts_line = next(line for line in text.splitlines() if line.strip().startswith("| Attempts |"))
     assert "owner-approved" in attempts_line, f"Attempts row must mention an owner-approved retry: {attempts_line!r}"
+
+
+# Durable Codex completeness (owner 2026-10-22): the record carries the v2
+# completeness fields and the harness test-evidence file.
+def _codex_table_line(label: str) -> str:
+    return next(line for line in _read().splitlines() if line.strip().startswith(f"| {label} |"))
+
+
+def test_raw_output_paths_include_pytest_evidence() -> None:
+    assert "`.pytest.txt`" in _codex_table_line("Raw output paths")
+
+
+def test_codex_table_records_structured_completeness() -> None:
+    line = _codex_table_line("Review complete")
+    assert "review_complete" in line and "incomplete_reasons" in line
