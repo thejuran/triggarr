@@ -305,6 +305,8 @@ def test_dry_run_prints_prompt_and_commands_without_running(monkeypatch, capsys)
     assert "codex exec --sandbox read-only --ephemeral" in out
     assert "git worktree remove --force" in out
     assert "tests/codex_report_status.py" in out
+    # The evidence copy lands in the worktree before Codex starts.
+    assert out.index("# copy ") < out.index("codex exec --sandbox")
     assert {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES} == before
 
 
