@@ -366,17 +366,31 @@ def test_v2_review_complete_true_with_reasons_incomplete() -> None:
     assert "review_complete is true but incomplete_reasons are listed" in result.reasons
 
 
+# Owner decision 2026-10-22 (bm:322afc50367d:SA-02, owner-approved round 2):
+# a v2 report is incomplete if review_complete is false OR its summary or
+# limitations describe the review as incomplete. The structured fields stay
+# required; the phrase check is an additional signal.
 @pytest.mark.parametrize(("field", "text"), _SELF_DECLARED_TEXTS)
-def test_v2_does_not_text_match_completeness(field: str, text: str) -> None:
-    """v2 decides completeness from review_complete, never from phrasing."""
+def test_v2_self_described_incomplete_text_is_incomplete(field: str, text: str) -> None:
     report = _valid_report()
+    assert report["review_complete"] is True
     if field == "limitations":
         report["limitations"].append(text)
     else:
         report[field] = text
     result = _assess(report)
-    assert result.status == "complete"
-    assert result.reasons == ()
+    assert result.status == "incomplete"
+    assert any(r.startswith(f"self-declared incomplete: {field} states") for r in result.reasons)
+
+
+def test_v2_text_check_does_not_replace_structured_fields() -> None:
+    """Without the structured fields a v2 report stays a schema violation."""
+    report = _valid_report()
+    del report["review_complete"]
+    report["summary"] = "Full review of the diff."
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert "schema: missing review_complete" in result.reasons
 
 
 def test_v2_limitation_alone_does_not_make_incomplete() -> None:
@@ -416,6 +430,18 @@ def test_recorded_quick_v1_report_still_complete() -> None:
     result = _assess_recorded("a7995baf187e-quick-a1.last.json")
     assert result.status == "complete"
     assert result.reasons == ()
+
+
+@pytest.mark.parametrize(
+    ("name", "status"),
+    [
+        ("d501a68316b2-explicit-a2.last.json", "complete"),
+        ("322afc50367d-postfix-a1.last.json", "incomplete"),
+        ("322afc50367d-postfix-a2.last.json", "complete"),
+    ],
+)
+def test_recorded_v2_reports_keep_their_assessment(name: str, status: str) -> None:
+    assert _assess_recorded(name).status == status
 
 
 def test_recorded_explicit_v1_report_still_incomplete() -> None:
