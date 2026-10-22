@@ -621,6 +621,43 @@ def test_card_skip_only_legacy_aggregate_says_skipped_record(client, test_app):
     assert "failure reason" not in text
 
 
+def test_card_skip_only_mismatched_count_falls_back_to_failure_label(client, test_app):
+    """IN-02/WR-02: malformed_skipped disagreeing with the actual malformed rows (a
+    tampered/hand-edited state.json) falls back to the safe 'failure reason' label
+    instead of displaying an untrustworthy skipped-record count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=5,
+        malformed_by_queue={"missing": 2},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "Show 5 skipped records" not in text
+    assert "2 missing-queue records skipped — malformed data" in text
+
+
+def test_card_skip_only_zero_malformed_skipped_falls_back_to_failure_label(client, test_app):
+    """IN-02/WR-02: the originally reproduced mismatch (malformed_by_queue has rows but
+    malformed_skipped is 0) stays on the safe 'failure reason' label, never a
+    'Show 0 skipped records' count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=0,
+        malformed_by_queue={"missing": 2},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "skipped record" not in text
+
+
 def test_card_details_label_unevaluated_only_singular(client, test_app):
     """D-04: a single unevaluated-queue row with 0 failures says 'Show 1 detail'."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
