@@ -80,19 +80,41 @@ No demonstration can publish anything. PR events never trigger `release.yml`, wh
 
 ### Owner go-ahead
 
-_Pending (D-10). No demonstration branch has been pushed._
+Owner decision, 2026-10-22 (verbatim):
+
+> Push only the broken-entrypoint demonstration as a draft PR. Record its intended failure and CI ready failure, then close it and delete its demonstration branch. Retain the local pill sensitivity evidence; explicitly record that the pill mutations were not demonstrated on GitHub. Treat those two remote demonstrations as waived, not passed. No merge, release, or production tag is authorized.
+
+- **Approved for push:** `demo/82-broken-entrypoint` only.
+- **Waived, not passed:** the pill-loop and pill-disabled gate-enforcement demonstrations (Recipes 2 (ii) and 3 (ii)). They are not demonstrated on GitHub. The local browser sensitivity evidence (i) above is retained.
+- **Not authorized:** no merge, no release, no production tag.
 
 ### Recipe 1 (ii): broken entrypoint
 
-The following fields are filled in after an approved push:
-- PR head SHA, PR base SHA, tested SHA
-- Image revision label, image ID and image.tar sha256
-- Run URL, run ID and attempt
-- Expected outcome: `image-smoke` fails with a `SMOKE FAILED` line from the first-run or seeded step, and `CI ready` fails
-- Observed log line and per-job conclusions
-- Reconciliation and cleanup
+Run on GitHub with owner approval: draft PR [#34](https://github.com/thejuran/triggarr/pull/34), "DO NOT MERGE - Phase 82 negative demonstration: broken entrypoint".
+
+| Field | Value |
+|---|---|
+| PR head SHA (demo commit) | `f21acd0c4187b4eecef204d12ef307c2d74e0255` |
+| PR base SHA | `81eb55001b0118c026a8276150d852c89e71ff50` |
+| Tested SHA (`github.sha`) | `311ff59cdda09d178b39dbe4ca8142b7bc5e1d8a` |
+| Image revision label | `311ff59cdda09d178b39dbe4ca8142b7bc5e1d8a` (read from the artifact's image config) |
+| Image ID | `sha256:69c75f3ae1d9b7a4de9a2904369bc409e4dc4a19892a308491c27b0d4520ea9d` |
+| image.tar sha256 | `58379d0381932be8c9c70a9636780c4935c7befd55ff89ef07430863b45bcf77` (`sha256sum -c` OK) |
+| Run | [39790931780](https://github.com/thejuran/triggarr/actions/runs/39790931780), attempt 1, conclusion `failure` |
+
+Reconciliation: tested SHA `311ff59cdda09d178b39dbe4ca8142b7bc5e1d8a` is GitHub's merge of demo head `f21acd0c4187b4eecef204d12ef307c2d74e0255` into base `81eb55001b0118c026a8276150d852c89e71ff50`. `git rev-list --parents -n 1` lists exactly that base and head, and the job log shows `HEAD is now at 311ff59 Merge f21acd0… into 81eb550…`.
+
+- **Expected:** `image-smoke` fails with a `SMOKE FAILED` line from the first-run or seeded step, and `CI ready` fails.
+- **Observed (`image-smoke`):** `SMOKE FAILED [first-run] expected exit 1 with a default-config log line, got exit=1`. The container exited 1 because the module was missing, but the "Default config written to" line never appeared, so the first-run check rejected it for the intended reason. The wording "expected exit 1 … got exit=1" is ambiguous, because the check's message names the exit code but not the missing log line. That is a cosmetic follow-up, not a gate defect.
+- **Observed (`browser-e2e`, also red, as expected for an app that cannot start):** `SmokeCheckError: [health-timeout] did not become healthy within 30s: <urlopen error [Errno 111] Connection refused>`. The uploaded `browser-e2e-failure` artifact contains each container's redacted logs, saved on setup failure (the Greptile #4 fix, `4aa74cc`, now exercised on a real failure). Each log shows the root cause `/usr/local/bin/python: No module named triggarr_missing_module`. No stub key and no session cookie appear in the artifact, and the byte scan withheld nothing.
+- **Observed (`CI ready`):** `Mandatory jobs did not succeed: {'image-smoke': 'failure', 'browser-e2e': 'failure'}`, exit code 1.
+- **Per-job conclusions:** test success, lint success, secrets success, dependencies success, docker success, image-smoke **failure**, browser-e2e **failure**, CI ready **failure**.
+- **Publication:** impossible. This was a `pull_request` run, and `release.yml` runs only after push CI on main or on `v*` tags.
+- **Cleanup:** PR #34 closed (not merged) with the comment "Negative demonstration recorded in Phase 82 evidence". `demo/82-broken-entrypoint` deleted on origin and locally. No `demo/82-*` branch remains on origin. The remote tag count is still **58**, unchanged. The waived pill branches were never pushed and were deleted locally.
 
 ### Recipe 2 (ii): pill loop
+
+**Status: WAIVED by owner decision 2026-10-22, not passed. Not demonstrated on GitHub. The gate claim for this mutation is unproven on GitHub.** The intended evidence is kept below for reference.
 
 This is gate enforcement evidence through the existing header unit tests. It is **not browser evidence** (see section (i)).
 
@@ -105,6 +127,8 @@ Expected outcome:
 The following fields are filled in after an approved push: PR head SHA, PR base SHA, tested SHA, run URL, run ID and attempt, observed log lines, per-job conclusions, Reconciliation and cleanup.
 
 ### Recipe 3 (ii): pill polling disabled
+
+**Status: WAIVED by owner decision 2026-10-22, not passed. Not demonstrated on GitHub. The gate claim for this mutation is unproven on GitHub.** The intended evidence is kept below for reference.
 
 This is gate enforcement evidence through the existing header unit tests. It is **not browser evidence**.
 
@@ -123,7 +147,7 @@ The phase PR head on origin is `0f08523252a41c4ad541dbf594dd50ac13e6af2e`, with 
 - `Greptile Review` passed.
 - `CodeQL` failed on alert #16, the same scrypt-digest false positive as #15. The owner decided to dismiss #16 for the same reason (2026-10-21), and there are 0 open alerts. CodeQL is re-evaluated on the next push of the phase branch.
 
-Local docs commits held for that push: `f659e29`, `75955d4`, `44d4f7f`, `0898dd7` and this record. Final-head checks are re-confirmed after the demonstrations and that push.
+PR #33's head on origin was still `0f08523252a41c4ad541dbf594dd50ac13e6af2e` after the demonstration, so no demonstration touched it. Local docs commits held for that push: `f659e29`, `75955d4`, `44d4f7f`, `0898dd7` and this record. Final-head checks are re-confirmed after the demonstrations and that push.
 
 ## Release identity (CISHIP-03) evidence
 
