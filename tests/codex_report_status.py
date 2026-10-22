@@ -269,6 +269,22 @@ def _finding_consistency_and_ids(
     return reasons, qualified_ids, len(findings)
 
 
+class _DuplicateKeyError(ValueError):
+    def __init__(self, key: str) -> None:
+        super().__init__(f"duplicate key {key}")
+        self.key = key
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    """json object hook: a repeated key would otherwise silently keep the last value."""
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateKeyError(key)
+        result[key] = value
+    return result
+
+
 def assess_report(
     report_text: str | None,
     *,
@@ -303,7 +319,13 @@ def assess_report(
         return Assessment("incomplete", tuple(reasons), (), 0, None, None)
 
     try:
-        report = json.loads(report_text)
+        report = json.loads(report_text, object_pairs_hook=_reject_duplicate_keys)
+    except _DuplicateKeyError as exc:
+        reasons.append(f"unparseable: duplicate key {exc.key}")
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+    except RecursionError:
+        reasons.append("unparseable: report is nested too deeply")
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
     except json.JSONDecodeError:
         reasons.append("unparseable: report is not valid JSON")
         return Assessment("incomplete", tuple(reasons), (), 0, None, None)
