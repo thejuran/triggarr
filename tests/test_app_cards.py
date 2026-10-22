@@ -661,6 +661,24 @@ def test_card_details_label_unevaluated_plural_success_grade(client, test_app):
     assert "text-triggarr-green" in text
 
 
+def test_card_details_label_failed_grade_unevaluated_only_says_failure_reason(client, test_app):
+    """SA-01 owner ruling: a Failed-grade card with only unevaluated rows says 'failure
+    reason', never the neutral 'detail' label -- that label is for Partial/Success only."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed",
+        accepted=0,
+        failed=0,
+        unevaluated=[{"queue": "missing", "reason": "tag 'x' not found"}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "Show 1 detail" not in text
+    assert "text-triggarr-danger" in text
+
+
 def test_card_details_label_malformed_plus_unevaluated(client, test_app):
     """D-04: malformed-skip row mixed with an unevaluated-queue row says 'Show 2 details' (rows, not records)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
