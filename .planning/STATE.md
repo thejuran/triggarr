@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "executing -- Phase 82 (9 plans, 7 waves)"
-stopped_at: "Phase 82 all 9 plans executed (82-09: pill browser sensitivity local; broken-entrypoint gate demo on draft PR #34; pill gate demos waived by owner); phase verification next, then one push of the held commits to PR #33"
-last_updated: "2026-10-22T14:04:29Z"
-last_activity: "2026-10-22 -- Phase 82 wave 7 complete (82-09)"
+status: "executing -- Phase 82 verified (4/4); PR #33 in review"
+stopped_at: "Phase 82 verified 4/4 (82-VERIFICATION.md passed; pill GitHub gate demos and tag-triggered publication recorded as owner-waived/not run). Final head pushed to PR #33 for CI, CodeQL and Greptile; next is the owner exact-commit acceptance and merge, then Phase 83"
+last_updated: "2026-10-22T14:13:32Z"
+last_activity: "2026-10-22 -- Phase 82 verification passed; final head pushed to PR #33"
 progress:
   total_phases: 5
   completed_phases: 0
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 Phase: 82 (ci-tests-what-we-ship) — Executing
 Plan: 9 of 9
-Status: Executing (verification)
-Last activity: 2026-10-22 -- Phase 82 wave 7 complete (82-09)
+Status: Verified; PR #33 in review (owner exact-commit acceptance pending)
+Last activity: 2026-10-22 -- Phase 82 verification passed; final head pushed to PR #33
 
 ### v2.13 milestone shape
 
