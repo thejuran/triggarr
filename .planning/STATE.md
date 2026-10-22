@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- Phase 82 merged (PR #33); Phase 83 next"
-stopped_at: "Phase 82 (CI Tests What We Ship) merged via PR #33 (merge 6f3841a, head 181a900, owner acceptance attempt 2 passed). Greptile made optional by owner decision. Next: Phase 83 (Paired BM + Codex Review & Risk-Based Depth) starts with the REVIEW-01 BM baseline gate"
-last_updated: "2026-10-22T17:26:33Z"
-last_activity: "2026-10-22 -- Phase 82 merged (PR #33)"
+status: "planning -- Phase 83 context gathered (branch paired-review)"
+stopped_at: Phase 83 context gathered
+last_updated: "2026-10-22T17:38:03.127Z"
+last_activity: "2026-10-22 -- Phase 83 context gathered"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 9
   completed_plans: 9
-  percent: 100
+  percent: 20
 ---
 
 # Project State
@@ -241,9 +241,9 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-21T19:57:37Z
-Stopped at: Phase 82 context gathered
-Resume file: .planning/phases/82-ci-tests-what-we-ship/82-CONTEXT.md
+Last session: 2026-10-22T17:38:03.118Z
+Stopped at: Phase 83 context gathered
+Resume file: .planning/phases/83-paired-bm-codex-review-risk-based-depth/83-CONTEXT.md
 
 ## Operator Next Steps
 
