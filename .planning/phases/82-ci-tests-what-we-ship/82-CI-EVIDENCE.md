@@ -278,3 +278,13 @@ Per the failure policy (D-15/D-16), the test was fixed rather than rerun. The fi
 - the loop variant still fails ("connection pill request loop: 133 requests …");
 - the polling-disabled variant still fails ("did not refresh … saw 1");
 - the unit suite passes.
+
+## Final head `42a5e0b`
+
+Run [39798454025](https://github.com/thejuran/triggarr/actions/runs/39798454025):
+- test, lint, secrets, dependencies, docker, image-smoke, browser-e2e and `CI ready` passed.
+- CodeQL passed, with 0 open code-scanning alerts on the PR ref.
+- Greptile Review passed, with no new comments on this head.
+- Review acceptance is pending: owner exact-commit acceptance (D-35 stop 3).
+
+**CI time note (D-14 follow-up, not a regression in this phase's code):** browser-e2e took 11m21s on this run and 11m58s on run 39793866205, against about 1m21s–1m35s on earlier runs. Almost all of the extra time is the `Install Chromium for Playwright` step, which runs `playwright install --with-deps chromium`. It took 630s and 659s in these two runs, against 21s in run 39701686221 the day before. The suite step itself took 34–45s. This looks like GitHub-runner download time for Chromium and its system packages. Caching the Playwright browser or using a pre-installed one would bound it. That is a CI change for Phase 85 (CI follow-ups), not this phase, so it is recorded here and not acted on.
