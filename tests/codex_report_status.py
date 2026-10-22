@@ -12,6 +12,17 @@ else (D-09). Required field names are loaded from
 .claude/schemas/codex-review-findings.schema.json at runtime rather than
 duplicated here, so the checker cannot silently drift from the schema.
 
+Completeness by schema version (owner decision 2026-10-22):
+
+- schema_version "2" (current): the report states completeness itself in
+  the required ``review_complete`` boolean and ``incomplete_reasons``
+  list. The checker reads those fields and does not search free text.
+- schema_version "1" (recorded history): assessed under the v1 rules,
+  including the phrase check for a self-declared incomplete review, so an
+  already recorded report keeps the assessment it had. The v1 schema is
+  derived from the current schema by removing the two v2 fields, so it
+  cannot drift into a second hand-maintained copy.
+
 Run as `uv run python tests/codex_report_status.py ...` (invoked by
 docs/codex-adversarial-review-contract.md, Invocation step 6). This
 module uses plain `print()` in main() because it is audit tooling run
@@ -23,6 +34,7 @@ documents for itself.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 from dataclasses import dataclass
@@ -47,6 +59,25 @@ class Assessment:
 
 def _load_schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+# Top-level fields that schema v2 added to v1 (durable Codex completeness).
+_V2_ONLY_FIELDS = ("review_complete", "incomplete_reasons")
+
+
+def _v1_schema(current: dict) -> dict:
+    """Return the v1 report schema derived from the current (v2) schema."""
+    schema = copy.deepcopy(current)
+    for field in _V2_ONLY_FIELDS:
+        schema["properties"].pop(field, None)
+    schema["required"] = [field for field in schema["required"] if field not in _V2_ONLY_FIELDS]
+    schema["properties"]["schema_version"]["enum"] = ["1"]
+    return schema
+
+
+def _schema_for(report: dict, current: dict) -> dict:
+    """Pick the schema a report is judged against; unknown versions use the current one."""
+    return _v1_schema(current) if report.get("schema_version") == "1" else current
 
 
 # JSON Schema type names used by the report schema, mapped to Python types.
@@ -144,8 +175,9 @@ def _check_schema(report: dict, schema: dict) -> list[str]:
     return reasons
 
 
-# Phrases by which a report declares its own review incomplete (owner
-# decision 2026-10-22). Such a report is never counted as complete.
+# Schema v1 only: phrases by which a report declares its own review
+# incomplete (owner decision 2026-10-22). Such a report is never counted as
+# complete. Schema v2 reports state completeness structurally instead.
 _SELF_DECLARED_INCOMPLETE_RE = re.compile(
     r"\bincomplete review\b|\breview (?:is|was) incomplete\b|\bnot a clean approval\b",
     re.IGNORECASE,
@@ -171,6 +203,24 @@ def _self_declared_incomplete(report: dict) -> list[str]:
 def _non_blank(value: object) -> bool:
     """True if *value* is a string with non-whitespace content (IN-05)."""
     return isinstance(value, str) and bool(value.strip())
+
+
+def _structural_completeness(report: dict) -> list[str]:
+    """Schema v2: decide completeness from review_complete and incomplete_reasons.
+
+    Wrong types are already reported by the schema walk, so only
+    well-typed values are judged here.
+    """
+    complete = report.get("review_complete")
+    stated = report.get("incomplete_reasons")
+    if not isinstance(complete, bool) or not isinstance(stated, list):
+        return []
+    given = [reason.strip() for reason in stated if _non_blank(reason)]
+    if complete:
+        return ["review_complete is true but incomplete_reasons are listed"] if stated else []
+    if not given:
+        return ["review_complete is false but no incomplete_reasons are given"]
+    return [f"self-declared incomplete: {reason}" for reason in given]
 
 
 def _finding_consistency_and_ids(
@@ -259,9 +309,11 @@ def assess_report(
         reasons.append("unparseable: report is not a JSON object")
         return Assessment("incomplete", tuple(reasons), (), 0, None, None)
 
-    schema = _load_schema()
-    reasons.extend(_check_schema(report, schema))
-    reasons.extend(_self_declared_incomplete(report))
+    reasons.extend(_check_schema(report, _schema_for(report, _load_schema())))
+    if report.get("schema_version") == "1":
+        reasons.extend(_self_declared_incomplete(report))
+    else:
+        reasons.extend(_structural_completeness(report))
 
     inspected_head = report.get("inspected_head_sha")
     if not isinstance(inspected_head, str):

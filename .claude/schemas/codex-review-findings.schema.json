@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Triggarr Codex adversarial review report v1",
+  "title": "Triggarr Codex adversarial review report v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,12 +15,14 @@
     "exclusions",
     "commands_run",
     "findings",
-    "limitations"
+    "limitations",
+    "review_complete",
+    "incomplete_reasons"
   ],
   "properties": {
     "schema_version": {
       "type": "string",
-      "enum": ["1"]
+      "enum": ["2"]
     },
     "inspected_head_sha": {
       "type": "string"
@@ -141,6 +143,15 @@
       }
     },
     "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review_complete": {
+      "type": "boolean"
+    },
+    "incomplete_reasons": {
       "type": "array",
       "items": {
         "type": "string"
