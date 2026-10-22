@@ -53,6 +53,27 @@ Method (Recipes 2 and 3, part i):
 - **Expected:** the test fails with "did not refresh after a scheduled interval".
 - **Observed:** `Failed: connection pill did not refresh after a scheduled interval: expected at least 2 requests, saw 1`. junit: tests 1, failures 1, skipped 0.
 
+### Re-run with recorded image IDs (2026-10-22, prompted by Greptile's review of `6c577d4`)
+
+The first run did not capture the variant image IDs, the exact commands or the config comparison before its images were removed. The variants were rebuilt from the same verified audited tarball (`image.tar` sha256 `7902c6f4…3e9d`, `sha256sum -c` OK, loaded ID equal to `image-id.txt`) using the same two Dockerfiles (COPY only), and re-run with the fixed pill test from `42a5e0b`.
+
+| Image | Image ID | Result |
+|---|---|---|
+| `triggarr-demo:base` | `sha256:66bbe15a99739806ced5f9aa42b9ce4257b7e1b3ed793bc5f6d6dc041a7017e8` | passed (control): `1 passed, 6 deselected` |
+| `triggarr-demo:pill-loop` | `sha256:d6ff42c13626b3d6ec95b356e956be154a819dc8454dd66f5b4b6c10cac0e231` | failed: `AssertionError: connection pill request loop: 114 requests without any scheduled tick` |
+| `triggarr-demo:pill-disabled` | `sha256:33dc23e364035e1d4010664bf83812ddb3142e27f05c25f3629a4e8d408cc815` | failed: `Failed: connection pill did not refresh after a scheduled interval: expected at least 2 requests, saw 1` |
+
+Config comparison: `.Config.Entrypoint`, `.Cmd`, `.Env` and `.Labels` are byte-identical between base and each variant. The file manifest diff is as recorded above.
+
+Exact commands (each with the CI non-credential flags):
+```
+base CMD: TRIGGARR_E2E_IMAGE=triggarr-demo:base EXPECTED_IMAGE_ID=sha256:66bbe15a99739806ced5f9aa42b9ce4257b7e1b3ed793bc5f6d6dc041a7017e8 uv run --no-sync pytest tests/e2e -q -p no:cacheprovider -m "not credential_pages" --browser chromium --tracing retain-on-failure --screenshot only-on-failure --output <scratch>/p09/rerun/base/pages --junitxml <scratch>/p09/rerun/base/e2e-pages.xml
+pill-loop CMD: TRIGGARR_E2E_IMAGE=triggarr-demo:pill-loop EXPECTED_IMAGE_ID=sha256:d6ff42c13626b3d6ec95b356e956be154a819dc8454dd66f5b4b6c10cac0e231 uv run --no-sync pytest tests/e2e -q -p no:cacheprovider -m "not credential_pages" --browser chromium --tracing retain-on-failure --screenshot only-on-failure --output <scratch>/p09/rerun/pill-loop/pages --junitxml <scratch>/p09/rerun/pill-loop/e2e-pages.xml
+pill-disabled CMD: TRIGGARR_E2E_IMAGE=triggarr-demo:pill-disabled EXPECTED_IMAGE_ID=sha256:33dc23e364035e1d4010664bf83812ddb3142e27f05c25f3629a4e8d408cc815 uv run --no-sync pytest tests/e2e -q -p no:cacheprovider -m "not credential_pages" --browser chromium --tracing retain-on-failure --screenshot only-on-failure --output <scratch>/p09/rerun/pill-disabled/pages --junitxml <scratch>/p09/rerun/pill-disabled/e2e-pages.xml
+```
+
+All three images were removed afterwards; no `triggarr-demo:*` image and no labelled container, volume or network remains.
+
 ### Artifact check (D-33)
 
 Both failing output directories were checked as CI would upload them:
