@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
 status: "executing -- Phase 82 (9 plans, 7 waves)"
-stopped_at: "Phase 82 wave 5 complete (82-07 merged + SC2155 fix; 2160 tests, actionlint clean); wave 6 (82-08: docs, deep-review offer, push to PR #33) next -- awaiting owner at pre-push checkpoint"
-last_updated: "2026-10-21T23:13:02Z"
-last_activity: "2026-10-21 -- Phase 82 wave 5 complete (82-07)"
+stopped_at: "Phase 82 wave 6 complete (82-08: deep-review APPROVED, PR #33 head 3f8f5f7 all ci.yml jobs + CodeQL green, Greptile pending; evidence commit held locally); wave 7 (82-09 negative demonstrations) next -- needs owner go-ahead per broken push"
+last_updated: "2026-10-22T00:41:51Z"
+last_activity: "2026-10-21 -- Phase 82 wave 6 complete (82-08)"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 9
-  completed_plans: 7
-  percent: 78
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 82 (ci-tests-what-we-ship) — Executing
-Plan: 7 of 9
-Status: Executing (wave 6 of 7)
-Last activity: 2026-10-21 -- Phase 82 wave 5 complete (82-07)
+Plan: 8 of 9
+Status: Executing (wave 7 of 7)
+Last activity: 2026-10-21 -- Phase 82 wave 6 complete (82-08)
 
 ### v2.13 milestone shape
 
