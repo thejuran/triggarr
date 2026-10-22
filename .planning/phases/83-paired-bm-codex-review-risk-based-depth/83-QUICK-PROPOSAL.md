@@ -110,4 +110,14 @@ automatic code-review step entirely unless `$FULL_MODE` is true, and
 
 ## Owner decision
 
-(empty — to be filled in Task 2)
+**Owner's verbatim words:** "Run the card reasons label fix as the quick task"
+
+**Date/time:** 2026-10-22 15:15 EDT (owner answered in the Claude Code CLI session; not inferred).
+
+**Selected item:** Candidate 1, the dashboard card's "Show N failure reason(s)" label for skip-only rows.
+
+**Final /bm:quick description (run with `--full`, the flag the installed BM v5.0.3 requires for review to run):**
+
+    Fix the dashboard card's expandable detail label: when a Partial or Failed cycle's only detail rows are skip-only (malformed-record skip or unevaluated-queue) rows and there are zero actual failures, the summary text must not say 'failure reason(s)'. Write the failing regression test first (in tests/test_app_cards.py, using the Phase 80-style skip-only Partial cycle fixture), then change only the label wording in triggarr/templates/partials/cycle_grade.html so skip-only rows are never called failures. Keep the existing row text (e.g. '1 missing-queue record skipped — malformed data') and the existing grade colors (success/partial/failed) unchanged.
+
+This approval authorizes only this quick task. It does not approve any pull request.
