@@ -45,6 +45,7 @@ def _run(**overrides) -> ReviewRun:
         "pr_url": "none (local checkpoint, not pushed)",
         "scope": "Phase 83 changes",
         "phase_dir": PHASE_DIR,
+        "trusted": True,
     }
     values.update(overrides)
     return ReviewRun(**values)
@@ -290,10 +291,10 @@ def test_dry_run_prints_prompt_and_commands_without_running(monkeypatch, capsys)
     monkeypatch.setattr(runner.subprocess, "run", _forbidden)
     monkeypatch.setattr(runner.tempfile, "mkdtemp", _forbidden)
 
-    run = ReviewRun(H, B, "explicit", 1, "none (local checkpoint, not pushed)", "Phase 83 changes", PHASE_DIR)
+    run = ReviewRun(H, B, "explicit", 1, "none (local checkpoint, not pushed)", "Phase 83 changes", PHASE_DIR, True)
     before = {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES}
 
-    assert main(_cli(PHASE_DIR, "--dry-run")) == 0
+    assert main(_cli(PHASE_DIR, "--dry-run", "--trusted")) == 0
     out = capsys.readouterr().out
 
     assert "Independently review none (local checkpoint, not pushed)" in out
@@ -308,7 +309,7 @@ def test_dry_run_prints_prompt_and_commands_without_running(monkeypatch, capsys)
 
 
 def test_cli_rejects_short_sha() -> None:
-    argv = _cli(PHASE_DIR, "--dry-run")
+    argv = _cli(PHASE_DIR, "--dry-run", "--trusted")
     argv[1] = "abc"
     with pytest.raises(SystemExit) as exc_info:
         main(argv)
@@ -428,3 +429,57 @@ def test_execute_refuses_to_overwrite_recorded_output(tmp_path, monkeypatch) -> 
         execute(run, command_runner=fake)
     assert fake.calls == []
     assert run.output(".last.json").read_text() == "recorded"
+
+
+# --- Source trust (owner decision 2026-10-22, owner-approved round 2) --------
+# Harness pytest runs only for this repository's own branches. Dependabot and
+# outside-contributor heads use --untrusted: no tests run, CI results count.
+
+
+def test_review_run_requires_explicit_trust() -> None:
+    with pytest.raises(TypeError):
+        ReviewRun(H, B, "explicit", 1, "none", "scope", PHASE_DIR)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("flags", [(), ("--trusted", "--untrusted")])
+def test_cli_requires_exactly_one_trust_flag(flags: tuple) -> None:
+    argv = _cli(PHASE_DIR, "--dry-run", *flags)
+    with pytest.raises(SystemExit) as exc_info:
+        main(argv)
+    assert exc_info.value.code == 2
+
+
+def test_execute_untrusted_skips_pytest_and_records_why(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    (tmp_path / PHASE_DIR).mkdir(parents=True)
+    monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(tmp_path / "scratch"))
+    (tmp_path / "scratch").mkdir()
+    run = _run(attempt=1, trusted=False)
+    fake = FakeRunner()
+
+    execute(run, command_runner=fake)
+
+    assert not any(call[0] == "uv" for call in fake.calls)
+    evidence = run.output(".pytest.txt").read_text()
+    assert "tests not run (untrusted source)" in evidence
+    assert "exit_code:" not in evidence
+    assert any("codex" in call for call in fake.calls)
+
+
+def test_dry_run_untrusted_prints_no_pytest_command(capsys) -> None:
+    assert main(_cli(PHASE_DIR, "--dry-run", "--untrusted")) == 0
+    out = capsys.readouterr().out
+    assert "pytest tests/ -q) >" not in out
+    assert "tests not run (untrusted source)" in out
+
+
+def test_contract_documents_untrusted_sources() -> None:
+    text = runner.CONTRACT_PATH.read_text(encoding="utf-8")
+    assert "--untrusted" in text and "--trusted" in text
+    assert "Dependabot" in text
+    assert "tests not run (untrusted source)" in text
+    assert "CI results" in text
+
+
+def test_prompt_covers_untrusted_evidence() -> None:
+    assert "untrusted source" in load_template()
