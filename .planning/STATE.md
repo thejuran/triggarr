@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "executing -- Phase 82 verified (4/4); PR #33 in review"
-stopped_at: "Phase 82 verified 4/4 (82-VERIFICATION.md passed; pill GitHub gate demos and tag-triggered publication recorded as owner-waived/not run). Final head pushed to PR #33 for CI, CodeQL and Greptile; next is the owner exact-commit acceptance and merge, then Phase 83"
-last_updated: "2026-10-22T14:13:32Z"
-last_activity: "2026-10-22 -- Phase 82 verification passed; final head pushed to PR #33"
+status: "planning -- Phase 82 merged (PR #33); Phase 83 next"
+stopped_at: "Phase 82 (CI Tests What We Ship) merged via PR #33 (merge 6f3841a, head 181a900, owner acceptance attempt 2 passed). Greptile made optional by owner decision. Next: Phase 83 (Paired BM + Codex Review & Risk-Based Depth) starts with the REVIEW-01 BM baseline gate"
+last_updated: "2026-10-22T17:26:33Z"
+last_activity: "2026-10-22 -- Phase 82 merged (PR #33)"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 9
   completed_plans: 9
   percent: 100
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 82 (ci-tests-what-we-ship) — Executing
+Phase: 83 (paired BM + Codex review) — Not started; Phase 82 complete
 Plan: 9 of 9
-Status: Verified; PR #33 in review (owner exact-commit acceptance pending)
-Last activity: 2026-10-22 -- Phase 82 verification passed; final head pushed to PR #33
+Status: Phase 82 merged (PR #33, 2026-10-22); Phase 83 next
+Last activity: 2026-10-22 -- Phase 82 merged via PR #33
 
 ### v2.13 milestone shape
 

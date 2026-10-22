@@ -20,10 +20,10 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 
 ### CI tests what we ship
 
-- [ ] **CISHIP-01**: CI starts the exact image it will publish, through its normal entrypoint, with isolated test config and mocked/test services, and verifies health, setup/login, static assets, writable config and persistence across a restart. A broken entrypoint and a missing static asset each make the check fail.
-- [ ] **CISHIP-02**: A small browser regression suite covers the connection-pill request-loop regression and critical setup/login behavior, asserting observable behavior (not screenshots). Reintroducing the polling bug makes it fail; failure logs/screenshots are uploaded as artifacts without secrets.
-- [ ] **CISHIP-03**: Before any version-tag publication, CI rejects a tag that disagrees with the package metadata or image version. Mismatch and match cases are tested without publishing a production tag; exact-commit CI and artifact identity checks are preserved.
-- [ ] **CISHIP-04**: The new mandatory jobs join the existing required aggregate gate and consistency checks together. A missing or skipped mandatory job cannot let the gate pass, and the published image is still the tested, audited artifact (not rebuilt).
+- [x] **CISHIP-01**: CI starts the exact image it will publish, through its normal entrypoint, with isolated test config and mocked/test services, and verifies health, setup/login, static assets, writable config and persistence across a restart. A broken entrypoint and a missing static asset each make the check fail.
+- [x] **CISHIP-02**: A small browser regression suite covers the connection-pill request-loop regression and critical setup/login behavior, asserting observable behavior (not screenshots). Reintroducing the polling bug makes it fail; failure logs/screenshots are uploaded as artifacts without secrets.
+- [x] **CISHIP-03**: Before any version-tag publication, CI rejects a tag that disagrees with the package metadata or image version. Mismatch and match cases are tested without publishing a production tag; exact-commit CI and artifact identity checks are preserved.
+- [x] **CISHIP-04**: The new mandatory jobs join the existing required aggregate gate and consistency checks together. A missing or skipped mandatory job cannot let the gate pass, and the published image is still the tested, audited artifact (not rebuilt).
 
 ### Follow-on CI improvements
 
@@ -98,10 +98,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CISHIP-01 | Phase 82 | Pending |
-| CISHIP-02 | Phase 82 | Pending |
-| CISHIP-03 | Phase 82 | Pending |
-| CISHIP-04 | Phase 82 | Pending |
+| CISHIP-01 | Phase 82 | Complete |
+| CISHIP-02 | Phase 82 | Complete |
+| CISHIP-03 | Phase 82 | Complete |
+| CISHIP-04 | Phase 82 | Complete |
 | REVIEW-01 | Phase 83 | Pending |
 | REVIEW-02 | Phase 83 | Pending |
 | REVIEW-03 | Phase 83 | Pending |
