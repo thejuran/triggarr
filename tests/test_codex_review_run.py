@@ -172,7 +172,9 @@ def test_output_base_naming() -> None:
     assert run.out_base == REPO_ROOT / PHASE_DIR / "codex" / f"{H[:12]}-explicit-a2"
 
 
-@pytest.mark.parametrize("suffix", [".jsonl", ".last.json", ".status.json", ".pytest.txt"])
+@pytest.mark.parametrize(
+    "suffix", [".jsonl", ".last.json", ".status.json", ".pytest.txt", ".prompt.txt", ".meta.json"]
+)
 def test_output_paths_sit_next_to_each_other(suffix: str) -> None:
     run = _run()
     assert run.output(suffix) == run.out_base.parent / f"{run.out_base.name}{suffix}"
@@ -322,10 +324,11 @@ def test_cli_rejects_short_sha() -> None:
 class FakeRunner:
     """Records every command; fails the one whose program matches *fail_on*."""
 
-    def __init__(self, fail_on: str | None = None, codex_exit: int = 0) -> None:
+    def __init__(self, fail_on: str | None = None, codex_exit: int = 0, dirty: str = "") -> None:
         self.calls: list[list[str]] = []
         self.fail_on = fail_on
         self.codex_exit = codex_exit
+        self.dirty = dirty
 
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
@@ -335,6 +338,8 @@ class FakeRunner:
         if argv[:3] == ["git", "worktree", "add"]:
             Path(argv[4]).mkdir(parents=True)
             return subprocess.CompletedProcess(argv, 0)
+        if argv[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=self.dirty)
         if argv[:2] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(argv, 0, stdout=H + "\n")
         if argv[0] == "uv":
@@ -530,3 +535,87 @@ def test_execute_copies_evidence_into_worktree_and_strips_home(tmp_path, monkeyp
         assert str(tmp_path) not in text
     assert "~/.cache/uv/thing" in evidence
     assert "<worktree>/tests/test_x.py" in evidence
+
+
+# --- Audit trail (bm:322afc50367d:WR-02, owner-approved round 2) --------------
+# Each run saves the exact prompt and a provenance record, and refuses to run
+# when the contract, schema, checker or runner has uncommitted changes.
+
+
+def test_output_suffixes_include_prompt_and_meta() -> None:
+    assert ".prompt.txt" in runner.OUTPUT_SUFFIXES
+    assert ".meta.json" in runner.OUTPUT_SUFFIXES
+
+
+def test_execute_saves_the_exact_prompt(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    sent: dict[str, str] = {}
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if "codex" in argv and "exec" in argv:
+            sent["prompt"] = kwargs["input"]
+        return fake(argv, **kwargs)
+
+    execute(run, command_runner=_spy)
+    assert run.output(".prompt.txt").read_text(encoding="utf-8") == sent["prompt"]
+
+
+def test_execute_records_provenance(tmp_path, monkeypatch) -> None:
+    import hashlib
+    import json as _json
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    execute(run, command_runner=FakeRunner())
+
+    meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
+    assert meta["template_version"] == "4"
+    assert meta["head"] == H and meta["base"] == B
+    assert meta["harness_head"] == H
+    assert meta["trusted"] is True
+    assert set(meta["inputs"]) == {
+        "docs/codex-adversarial-review-contract.md",
+        ".claude/schemas/codex-review-findings.schema.json",
+        "tests/codex_report_status.py",
+        "tests/codex_review_run.py",
+    }
+    for relpath, entry in meta["inputs"].items():
+        digest = hashlib.sha256((runner.HARNESS_ROOT / relpath).read_bytes()).hexdigest()
+        assert entry == {"sha256": digest, "committed_unchanged": True}
+
+
+def test_execute_refuses_when_inputs_have_uncommitted_changes(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner(dirty=" M docs/codex-adversarial-review-contract.md\n")
+
+    with pytest.raises(runner.RunnerError, match="uncommitted changes"):
+        execute(run, command_runner=fake)
+    assert not any(call[:3] == ["git", "worktree", "add"] for call in fake.calls)
+    assert not any(run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES)
+
+
+def test_dirty_check_covers_every_audited_input(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    execute(run, command_runner=fake)
+    status = next(call for call in fake.calls if call[:2] == ["git", "status"])
+    for relpath in runner.AUDITED_INPUTS:
+        assert relpath in status
+
+
+def test_main_reports_dirty_inputs_as_error(monkeypatch, capsys) -> None:
+    def _dirty(_run, **_kwargs):
+        raise runner.RunnerError("audited inputs have uncommitted changes: x")
+
+    monkeypatch.setattr(runner, "execute", _dirty)
+    assert main(_cli(PHASE_DIR, "--trusted")) == 2
+    assert "error: audited inputs have uncommitted changes" in capsys.readouterr().out
+
+
+def test_contract_and_record_list_prompt_and_meta_outputs() -> None:
+    contract = runner.CONTRACT_PATH.read_text(encoding="utf-8")
+    start = contract.index("## Raw output storage")
+    storage = contract[start : contract.index("## Failure rule", start)]
+    assert "`.prompt.txt`" in storage and "`.meta.json`" in storage
+    record = (REPO_ROOT / "docs" / "review-checkpoint-record.md").read_text(encoding="utf-8")
+    assert "`.prompt.txt`" in record and "`.meta.json`" in record
