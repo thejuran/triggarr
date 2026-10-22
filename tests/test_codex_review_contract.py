@@ -48,9 +48,9 @@ def _load_schema() -> dict:
 
 
 def _extract_fixed_prompt() -> str:
-    """Return the first fenced block after the '## Fixed prompt (version 1)' heading."""
+    """Return the first fenced block after the '## Fixed prompt (version 2)' heading."""
     text = CONTRACT.read_text(encoding="utf-8")
-    heading = "## Fixed prompt (version 1)"
+    heading = "## Fixed prompt (version 2)"
     idx = text.index(heading)
     after = text[idx + len(heading) :]
     match = re.search(r"```(?:[^\n]*)\n(.*?)```", after, re.DOTALL)
@@ -123,3 +123,41 @@ def test_contract_references_schema_path() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
     assert ".claude/schemas/codex-review-findings.schema.json" in text
     assert SCHEMA.exists()
+
+
+# WR-05: template version 2 confines Codex's reads and adds a second secret
+# check (32-character lowercase hex, the Radarr/Sonarr API-key shape) before
+# raw output is committed.
+_HEX32_RE = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
+
+
+def test_contract_template_version_two() -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    assert "Template version: 2." in text
+    assert "## Fixed prompt (version 1)" not in text
+
+
+def test_contract_prompt_confines_reads_to_working_copy() -> None:
+    prompt = _extract_fixed_prompt()
+    assert "Read only files inside this working copy" in prompt
+
+
+def _storage_section() -> str:
+    text = CONTRACT.read_text(encoding="utf-8")
+    start = text.index("## Raw output storage")
+    end = text.index("## Failure rule", start)
+    return text[start:end]
+
+
+def test_contract_requires_hex_key_scan_before_commit() -> None:
+    section = _storage_section()
+    assert "gitleaks detect --no-git --source" in section
+    assert "[0-9a-f]{32}" in section
+    assert "blocks the commit" in section
+    # The scan lists file names only, so a hit never prints the key itself.
+    assert "grep -rlE" in section
+
+
+def test_contract_embeds_no_hex_key() -> None:
+    text = CONTRACT.read_text(encoding="utf-8")
+    assert not _HEX32_RE.search(text)
