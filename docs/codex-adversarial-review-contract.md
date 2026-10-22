@@ -64,6 +64,6 @@ None of these files are ever edited after being written. Earlier heads' files ar
 
 ## Failure rule
 
-On a non-zero exit code, a timeout, or an incomplete checker result, retry once automatically on the same SHA (attempt 2). If attempt 2 is also incomplete, record Codex as INCOMPLETE/PENDING with the reasons in plain words and ask the owner to choose: wait, retry later, or approve a fallback such as vibe-check (D-09). Never describe a missing, failed, skipped, stale, or wrong-commit report as clean or as reviewed.
+On a non-zero exit code, a timeout, or an incomplete checker result, retry once automatically on the same SHA (attempt 2) -- attempt 2 is the last automatic retry. If attempt 2 is also incomplete, record Codex as INCOMPLETE/PENDING with the reasons in plain words and ask the owner to choose: wait, retry later, or approve a fallback such as vibe-check (D-09). An owner-approved "retry later" produces attempt 3 (or higher); it never runs automatically, and is recorded in the checkpoint record with its own attempt number (`--attempt 3`, qualified IDs `a3`). Never describe a missing, failed, skipped, stale, or wrong-commit report as clean or as reviewed.
 
 Placeholders above are template slots, not executable approval or publication instructions.

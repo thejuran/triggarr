@@ -83,7 +83,7 @@ Vibe-check never substitutes for Codex or Greptile, never waives a finding and n
 | Field | Value |
 |---|---|
 | Status | complete \| INCOMPLETE/PENDING, with reasons |
-| Attempts | 1 \| 2 |
+| Attempts | 1 \| 2 \| N (owner-approved retry beyond 2, recorded with its own attempt number) |
 | Raw output paths | `.jsonl`, `.last.json`, `.status.json` under `.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>` |
 | Coverage | <as reported> |
 | Exclusions | <as reported> |
