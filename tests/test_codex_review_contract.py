@@ -23,6 +23,8 @@ TOP_LEVEL_FIELDS = [
     "commands_run",
     "findings",
     "limitations",
+    "review_complete",
+    "incomplete_reasons",
 ]
 
 FINDING_FIELDS = [
@@ -74,6 +76,18 @@ def test_schema_top_level_fields() -> None:
     schema = _load_schema()
     assert sorted(schema["required"]) == sorted(TOP_LEVEL_FIELDS)
     assert schema["additionalProperties"] is False
+
+
+# Durable Codex completeness (owner 2026-10-22): schema v2 states
+# completeness structurally instead of in free text.
+def test_schema_version_two_completeness_fields() -> None:
+    schema = _load_schema()
+    props = schema["properties"]
+    assert props["schema_version"]["enum"] == ["2"]
+    assert props["review_complete"]["type"] == "boolean"
+    assert props["incomplete_reasons"]["type"] == "array"
+    assert props["incomplete_reasons"]["items"]["type"] == "string"
+    assert props["limitations"]["type"] == "array"
 
 
 def test_schema_finding_fields() -> None:

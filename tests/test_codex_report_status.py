@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -60,9 +61,9 @@ def _finding_f002() -> dict:
 
 
 def _valid_report() -> dict:
-    """A report dict with every schema field populated, head=H, base=B."""
+    """A schema v2 report with every field populated, head=H, base=B."""
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "inspected_head_sha": H,
         "inspected_base_sha": B,
         "pr_url": "none (local checkpoint, not pushed)",
@@ -76,7 +77,18 @@ def _valid_report() -> dict:
         ],
         "findings": [_finding_f001(), _finding_f002()],
         "limitations": ["No access to production data"],
+        "review_complete": True,
+        "incomplete_reasons": [],
     }
+
+
+def _valid_v1_report() -> dict:
+    """A schema v1 report: no review_complete / incomplete_reasons fields."""
+    report = _valid_report()
+    report["schema_version"] = "1"
+    del report["review_complete"]
+    del report["incomplete_reasons"]
+    return report
 
 
 def _assess(report: dict, **overrides) -> object:
@@ -236,8 +248,13 @@ def _set_path(report: dict, path: tuple, value) -> None:
         (("exclusions",), None),
         (("limitations",), "none"),
         (("commands_run",), None),
-        (("schema_version",), "2"),
+        (("schema_version",), "3"),
         (("schema_version",), 1),
+        (("review_complete",), None),
+        (("review_complete",), "true"),
+        (("review_complete",), 1),
+        (("incomplete_reasons",), None),
+        (("incomplete_reasons",), "none"),
         (("summary",), 5),
         (("scope",), None),
         (("pr_url",), None),
@@ -270,19 +287,20 @@ def test_all_required_fields_null_incomplete() -> None:
     assert len(result.reasons) > 1
 
 
-# Owner decision 2026-10-22: a report that itself says the review is
-# incomplete is never counted as complete.
-@pytest.mark.parametrize(
-    ("field", "text"),
-    [
-        ("limitations", "This is an incomplete review, not a clean approval: output was truncated."),
-        ("limitations", "Not a clean approval."),
-        ("summary", "The review is incomplete because the diff was truncated."),
-        ("summary", "INCOMPLETE REVIEW: tests could not run."),
-    ],
-)
-def test_self_declared_incomplete(field: str, text: str) -> None:
-    report = _valid_report()
+# Owner decision 2026-10-22 (v1 rule, kept so recorded history does not
+# change): a schema v1 report whose text says the review is incomplete is
+# never counted as complete.
+_SELF_DECLARED_TEXTS = [
+    ("limitations", "This is an incomplete review, not a clean approval: output was truncated."),
+    ("limitations", "Not a clean approval."),
+    ("summary", "The review is incomplete because the diff was truncated."),
+    ("summary", "INCOMPLETE REVIEW: tests could not run."),
+]
+
+
+@pytest.mark.parametrize(("field", "text"), _SELF_DECLARED_TEXTS)
+def test_v1_self_declared_incomplete(field: str, text: str) -> None:
+    report = _valid_v1_report()
     if field == "limitations":
         report["limitations"].append(text)
     else:
@@ -290,6 +308,120 @@ def test_self_declared_incomplete(field: str, text: str) -> None:
     result = _assess(report)
     assert result.status == "incomplete"
     assert any(r.startswith("self-declared incomplete:") for r in result.reasons)
+
+
+# --- Durable Codex completeness (owner 2026-10-22): schema v2 -------------
+
+
+def test_v1_report_still_complete_under_v1_rules() -> None:
+    result = _assess(_valid_v1_report())
+    assert result.status == "complete"
+    assert result.reasons == ()
+
+
+def test_v1_report_rejects_v2_fields() -> None:
+    """v1 stays strict: the v2 completeness fields are not part of v1."""
+    report = _valid_v1_report()
+    report["review_complete"] = True
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert any(r == "schema: unexpected field review_complete" for r in result.reasons)
+
+
+@pytest.mark.parametrize("field", ["review_complete", "incomplete_reasons"])
+def test_v2_missing_completeness_field_incomplete(field: str) -> None:
+    report = _valid_report()
+    del report[field]
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert any(r == f"schema: missing {field}" for r in result.reasons)
+
+
+def test_v2_review_complete_false_with_reasons_incomplete() -> None:
+    report = _valid_report()
+    report["review_complete"] = False
+    report["incomplete_reasons"] = ["Diff output was truncated; tests/ was not inspected."]
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert (
+        "self-declared incomplete: Diff output was truncated; tests/ was not inspected." in result.reasons
+    )
+
+
+@pytest.mark.parametrize("reasons", [[], ["   "], [""]])
+def test_v2_review_complete_false_without_reasons_incomplete(reasons: list) -> None:
+    report = _valid_report()
+    report["review_complete"] = False
+    report["incomplete_reasons"] = reasons
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert "review_complete is false but no incomplete_reasons are given" in result.reasons
+
+
+def test_v2_review_complete_true_with_reasons_incomplete() -> None:
+    report = _valid_report()
+    report["incomplete_reasons"] = ["Part of the diff was not inspected."]
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert "review_complete is true but incomplete_reasons are listed" in result.reasons
+
+
+@pytest.mark.parametrize(("field", "text"), _SELF_DECLARED_TEXTS)
+def test_v2_does_not_text_match_completeness(field: str, text: str) -> None:
+    """v2 decides completeness from review_complete, never from phrasing."""
+    report = _valid_report()
+    if field == "limitations":
+        report["limitations"].append(text)
+    else:
+        report[field] = text
+    result = _assess(report)
+    assert result.status == "complete"
+    assert result.reasons == ()
+
+
+def test_v2_limitation_alone_does_not_make_incomplete() -> None:
+    """Being unable to run pytest inside the sandbox is a limitation, not incompleteness."""
+    report = _valid_report()
+    report["limitations"] = ["pytest could not run in the read-only sandbox; used the harness evidence file."]
+    result = _assess(report)
+    assert result.status == "complete"
+
+
+# --- Recorded history keeps its v1 assessment ------------------------------
+
+_CODEX_DIR = (
+    Path(__file__).resolve().parent.parent
+    / ".planning"
+    / "phases"
+    / "83-paired-bm-codex-review-risk-based-depth"
+    / "codex"
+)
+
+
+def _assess_recorded(name: str) -> object:
+    text = (_CODEX_DIR / name).read_text(encoding="utf-8")
+    report = json.loads(text)
+    head = report["inspected_head_sha"]
+    return assess_report(
+        text,
+        exit_code=0,
+        expected_head=head,
+        expected_base=report["inspected_base_sha"],
+        current_head=head,
+        attempt=1,
+    )
+
+
+def test_recorded_quick_v1_report_still_complete() -> None:
+    result = _assess_recorded("a7995baf187e-quick-a1.last.json")
+    assert result.status == "complete"
+    assert result.reasons == ()
+
+
+def test_recorded_explicit_v1_report_still_incomplete() -> None:
+    result = _assess_recorded("d501a68316b2-explicit-a1.last.json")
+    assert result.status == "incomplete"
+    assert result.reasons == ("self-declared incomplete: limitations states 'incomplete review'",)
 
 
 # --- Head/base binding and staleness ---------------------------------------
