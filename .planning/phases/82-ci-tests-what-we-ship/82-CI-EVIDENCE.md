@@ -116,5 +116,100 @@ Browser suite result complete: credential and pages junit files both report succ
   (Alert numbers 13 and 14, both `state: open`, both flagging `Path(...).write_text(...)` calls that hand the probe's test-only password/API-key to the parent test process via a file -- a mechanism this phase's D-33 amendment introduced, pre-dating this plan's Task 3.)
 - **Disposition:** per this plan's authorization boundary, a failing required check stops the plan here without changing tests/assertions or pushing a fix. This finding predates Task 3 (Task 3 made no code changes; it only pushed the already-committed head and recorded evidence) and is out of this task's scope to resolve. Recorded for the owner/next plan to triage (test-only probe using disposable, session-scoped credentials; CodeQL cannot see that distinction from the write-to-file pattern alone).
 - **Reconciliation note:** this is the first failure recorded against this push; no second push was attempted.
+- **Resolved (partially):** owner chose to **fix** (not dismiss) the finding, commit `6c8354e` (`fix(82): stop the capture-policy probe writing credentials to disk`), pushed on top of this plan's two local evidence commits. Alerts #13 and #14 are both confirmed `fixed` at the new head (see the Second GitHub run section below for the `most_recent_instance.state` check). `CodeQL` still fails at the new head on a new alert (#15), so this is a partial resolution, not a closed stop -- see below.
 
 This record is not owner acceptance (D-35 stop 3 happens later, on the final phase head). Main was not pushed; no review-acceptance approval was requested or submitted.
+
+## Second GitHub run (after CodeQL fix 6c8354e)
+
+- **Pushed:** `git push origin ci-review-workflow` (fast-forward `3315a88..6c8354e`), updating PR #33. No force push, main untouched. This push carried the two prior local-only evidence commits (`1a0fdae`, `399e6ec`) plus the owner's CodeQL fix (`6c8354e`).
+- **CI run:** [run 39699460532, attempt 1](https://github.com/thejuran/triggarr/actions/runs/39699460532) (workflow `CI`, event `pull_request`).
+
+### Commit identities (D-34)
+
+| Field | Value |
+|---|---|
+| PR head SHA | `6c8354e932292bc5fdb6609388d32a673ba6070f` |
+| PR base SHA | `81eb55001b0118c026a8276150d852c89e71ff50` |
+| Tested SHA (`github.sha` / checkout HEAD) | `03c94f2e4519e16e3596e38c9d244d8bc8cd9f19` |
+| Image revision label (`org.opencontainers.image.revision`) | `03c94f2e4519e16e3596e38c9d244d8bc8cd9f19` |
+| Image ID | `sha256:f0a89c53d491eea27668f4117e13165ee6546f242ca75da52b63e50419f0a194` |
+| image.tar sha256 | `4959fa4067f1715e38def31c16d44d8e555480b2444d38023ac03e89a3467cf6` |
+
+PR head SHA confirmed equal to `git log origin/ci-review-workflow -1 --format=%H` (`6c8354e932292bc5fdb6609388d32a673ba6070f`). Image revision label confirmed equal to the tested SHA by downloading the `audited-image` artifact from run 39699460532 into the same scratch directory (prior run's artifact files removed first), verifying `sha256sum -c image.tar.sha256`, `docker load`-ing it, confirming `docker image inspect --format '{{.Id}}'` equals `image-id.txt`, then reading the `org.opencontainers.image.revision` and `.version` labels (version label: `2.12.0`, unchanged). The loaded image tag was removed from the local Docker daemon afterward.
+
+**Reconciliation:** `git fetch origin 03c94f2e4519e16e3596e38c9d244d8bc8cd9f19` then `git rev-list --parents -n 1 03c94f2e4519e16e3596e38c9d244d8bc8cd9f19` returned parents `81eb55001b0118c026a8276150d852c89e71ff50 6c8354e932292bc5fdb6609388d32a673ba6070f` (base, then head) -- confirmed via the job logs' own `HEAD is now at 03c94f2 Merge 6c8354e932292bc5fdb6609388d32a673ba6070f into 81eb55001b0118c026a8276150d852c89e71ff50`. Reconciliation: tested SHA `03c94f2e4519e16e3596e38c9d244d8bc8cd9f19` is GitHub's merge of PR head `6c8354e932292bc5fdb6609388d32a673ba6070f` into base `81eb55001b0118c026a8276150d852c89e71ff50`; CI evidence below applies to `03c94f2e4519e16e3596e38c9d244d8bc8cd9f19`, review evidence to `6c8354e932292bc5fdb6609388d32a673ba6070f`.
+
+### CI evidence (tested SHA)
+
+Run: https://github.com/thejuran/triggarr/actions/runs/39699460532, run ID `39699460532`, attempt `1`.
+
+| Job | Conclusion | Duration |
+|---|---|---|
+| test | success | 2m8s |
+| lint | success | 8s |
+| secrets | success | 9s |
+| dependencies | success | 12s |
+| docker | success | 35s |
+| image-smoke | success | 38s |
+| browser-e2e | success | 1m22s |
+| CI ready | success | 3s |
+
+`image-smoke` log (`Run shipped-image smoke test` / `Rehearse release identity against audited image` steps):
+```
+[smoke] negative static-asset-missing: rejected as expected
+SMOKE PASSED
+Rehearsing release identity for image sha256:f0a89c53d491eea27668f4117e13165ee6546f242ca75da52b63e50419f0a194 at commit 03c94f2e4519e16e3596e38c9d244d8bc8cd9f19
+matching: accepted 2.12.0
+mismatched: rejected as expected (disagree)
+malformed: rejected as expected (malformed)
+missing: rejected as expected (missing)
+```
+
+**CISHIP-03 rehearsal evidence (D-31a, D-31c)**
+
+| Case | Input | Expected outcome | Observed log line |
+|---|---|---|---|
+| matching | tag/package/image label all `2.12.0` | accepted | `matching: accepted 2.12.0` |
+| mismatched | tag/package disagree with image label | rejected /disagree/ | `mismatched: rejected as expected (disagree)` |
+| malformed | malformed tag | rejected /malformed/ | `malformed: rejected as expected (malformed)` |
+| missing | missing version input | rejected /missing/, "image: missing" | `missing: rejected as expected (missing)` |
+
+`browser-e2e` log (`Run browser regression suite` / `Require a complete browser-suite result` steps):
+```
+6 passed, 1 deselected in 32.63s
+1 passed, 6 deselected in 11.01s
+Browser suite result complete: credential and pages junit files both report success with no skips
+```
+`e2e-credential.xml`: 6 tests, 0 skipped/failures/errors (`credential_pages`). `e2e-pages.xml`: 1 test, 0 skipped/failures/errors (other pages). Matches the junit-count gate's required minimums (6 and 1) with zero skips. This also exercises the fixed probe path (the credential-pages run includes `test_capture_policy.py`, which now hands the admin password through the environment and checks for leaks via the salted-fingerprint window scan instead of a plaintext file).
+
+### Review evidence (PR head)
+
+- **Pre-push technical review:** unchanged -- see "Pre-push technical review" above. The CodeQL fix (`6c8354e`) was supplied directly by the owner after the first run's checkpoint, with local verification reported by the owner (2160 unit tests, ruff clean, capture-guard unit tests 5/5, browser suite credential_pages 6 passed / pages 1 passed against a fresh local image) -- not a second `/deep-review` pass.
+- **Greptile Review:** `pending` at the time of this record (`gh pr checks 33`, checked immediately after the CI run above completed). Not paused on -- per D-35(2) this is recorded against the head SHA whenever it completes, not a stop in this plan.
+- **Review acceptance:** `pending` at the time of this record. Not requested, not submitted, not inferred -- D-35(3) owner acceptance happens later, outside Plan 08, and is explicitly out of scope here.
+- **Vibe-check:** owner-run, in parallel on `6c8354e932292bc5fdb6609388d32a673ba6070f` if the owner supplies one; no result recorded yet.
+
+### Budget (D-14)
+
+- **Baseline:** same baseline as the first run -- [run 39660507361](https://github.com/thejuran/triggarr/actions/runs/39660507361), head `81eb55001b0118c026a8276150d852c89e71ff50`, workflow wall-clock **1m57s**.
+- **New run:** workflow wall-clock (run created `2026-10-22T00:24:06Z` -> `CI ready` completed `2026-10-22T00:28:26Z`): **4m20s**.
+- **Added critical-path time:** 2m23s (4m20s new wall-clock minus 1m57s baseline wall-clock; baseline run https://github.com/thejuran/triggarr/actions/runs/39660507361). The new jobs' own critical-path contribution (`docker` completed `00:26:56Z` -> `CI ready` started `00:28:23Z`, gated by `browser-e2e` completing at `00:28:20Z`) is 1m27s. Both figures are well under the ~5 minute D-14 target; no budget-exceeded stop applies.
+
+### CodeQL at the new head -- still failing (new finding, not yet resolved)
+
+`gh pr checks 33` at head `6c8354e932292bc5fdb6609388d32a673ba6070f` shows: `CI ready` success, `browser-e2e` success, `dependencies` success, `docker` success, `image-smoke` success, `lint` success, `secrets` success, `test` success, `Greptile Review` pending, `Review acceptance` pending, **`CodeQL` failure** (check run https://github.com/thejuran/triggarr/runs/119565047641, completed in 2s, conclusion `failure`; the underlying analysis run [39699457242](https://github.com/thejuran/triggarr/actions/runs/39699457242) itself concluded `success` -- same pattern as the first run, the scan ran cleanly and it is the alert-count gate that failed).
+
+- **Alerts #13 and #14 (the original two): confirmed fixed.** `gh api repos/thejuran/triggarr/code-scanning/alerts/13` and `.../14`, read via `.most_recent_instance`, both show `"state":"fixed"` at `commit_sha: 3315a882e2e98d2a3a81752708bb0ec8269e3f88` (fixed at the commit immediately before `6c8354e` took effect, i.e. by `6c8354e`'s removal of the plaintext password-file and raw-API-key-file writes).
+- **New alert (#15): one new high-severity finding**, same rule, same file, different line. `gh api "repos/thejuran/triggarr/code-scanning/alerts?ref=refs/pull/33/head"` lists alert `15` as `state: open` at `tests/e2e/probes/probe_setup_fails_before_registration.py:53`, `commit_sha: 6c8354e932292bc5fdb6609388d32a673ba6070f`. Check-run output: *"1 new alert including 1 high severity security vulnerability"*.
+- **Key log lines (annotation):**
+  ```
+  tests/e2e/probes/probe_setup_fails_before_registration.py:53:38-53:75
+    Clear-text storage of sensitive information
+    This expression stores [sensitive data (secret)] as clear text.
+  ```
+  The flagged line is `Path(digest_file).write_text(secret_fingerprint(api_key, salt_hex))` -- the fix's own replacement write. CodeQL's `py/clear-text-storage-sensitive-data` query still treats the value written to disk as tainted by the sensitive `api_key` source: its taint tracking does not recognize `hashlib.scrypt`-derived output as a sanitizer that clears the "sensitive data" flow, even though the digest is a one-way salted fingerprint rather than the recoverable secret.
+- **Disposition:** per this plan's authorization boundary and the coordinator's explicit instruction, a still-failing required check stops the plan here again, without a further fix attempt or a second push. Alerts #13/#14 are a genuine, confirmed improvement; alert #15 is a new, not-yet-resolved required-check failure on a one-way-hash write pattern, which needs either a CodeQL-recognized sanitizer annotation/suppression (with rationale) or a further structural change (e.g. not persisting the digest to a file at all, using an in-memory IPC channel instead) -- an owner/architectural call outside this task's authorized scope.
+- **Reconciliation note:** this is the first failure recorded against the second push (`6c8354e`); no third push was attempted.
+
+This record is not owner acceptance (D-35 stop 3 happens later, on the final phase head). Main was not pushed; no review-acceptance approval was requested or submitted; no `review-acceptance` environment was touched.
