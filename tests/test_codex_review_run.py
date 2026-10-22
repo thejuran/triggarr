@@ -65,7 +65,7 @@ def _values(**overrides) -> dict[str, str]:
 # --- Template and rendering -------------------------------------------------
 
 
-def test_template_is_the_contract_version_three_prompt() -> None:
+def test_template_is_the_contract_version_four_prompt() -> None:
     template = load_template()
     assert template.startswith("Independently review {{PR_URL}}")
     assert "{{TEST_EVIDENCE}}" in template
@@ -129,7 +129,11 @@ def _git(repo: Path, *args: str) -> str:
     ).stdout
 
 
-def test_pathspecs_exclude_transcripts_but_keep_planning_markdown(tmp_path: Path) -> None:
+def test_exclude_pathspecs_cover_all_of_planning() -> None:
+    assert EXCLUDE_PATHSPECS == (":(exclude,glob).planning/**",)
+
+
+def test_pathspecs_exclude_everything_under_planning(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
@@ -156,7 +160,7 @@ def test_pathspecs_exclude_transcripts_but_keep_planning_markdown(tmp_path: Path
 
     argv = diff_argv(base, head)
     changed = set(_git(repo, argv[1], "--name-only", *argv[2:]).split())
-    assert changed == {"triggarr/app.py", ".planning/phases/83-x/83-REVIEW.md"}
+    assert changed == {"triggarr/app.py"}
 
 
 # --- Output naming -----------------------------------------------------------
