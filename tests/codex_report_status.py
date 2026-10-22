@@ -325,6 +325,17 @@ def _sha_type(name: str):
     return _validate
 
 
+def _positive_int(value: str) -> int:
+    """--attempt must be >= 1 (IN-04): a1/a2/... qualified IDs never use a0 or negative attempts."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"--attempt must be an integer >= 1, got {value!r}") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(f"--attempt must be an integer >= 1, got {value!r}")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Assess whether a Codex adversarial review report is a complete, current review."
@@ -334,7 +345,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-head", required=True, type=_sha_type("--expected-head"))
     parser.add_argument("--expected-base", required=True, type=_sha_type("--expected-base"))
     parser.add_argument("--current-head", required=True, type=_sha_type("--current-head"))
-    parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--attempt", type=_positive_int, required=True)
     parser.add_argument("--source", default="codex")
     return parser
 
