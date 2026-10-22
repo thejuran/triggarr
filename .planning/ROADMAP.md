@@ -243,7 +243,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] 82-06-PLAN.md — connection-pill polling regression test and local sensitivity check
 - [x] 82-07-PLAN.md — image-smoke and browser-e2e CI jobs joined to CI ready and REQUIRED_JOBS
 - [x] 82-08-PLAN.md — reproduction recipes, pre-push deep-review decision, first real PR run with reconciled commit identities, time-budget measurement
-- [ ] 82-09-PLAN.md — browser sensitivity on the audited image (local) and gate-enforcement demonstrations on draft PRs after owner go-ahead
+- [x] 82-09-PLAN.md — browser sensitivity on the audited image (local) and gate-enforcement demonstrations on draft PRs after owner go-ahead
 
 ### Phase 83: Paired BM + Codex Review & Risk-Based Depth
 
@@ -313,7 +313,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 79. Tag-Scoped Searches Stay in Scope | 4/4 | Complete (79-3 automated only) | 2026-10-18 |
 | 80. Cycle Robustness & Sonarr Season Dedup | 5/5 | Complete (scheduled-cycle check passed 2026-10-21: 24 consecutive 180-min cycles, 0 failed, no duplicate season dispatch) | 2026-10-18 |
 | 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Complete (multi-season pack and alternate series order unverified-live under D-12) | 2026-10-21 |
-| 82. CI Tests What We Ship | 8/9 | In Progress | - |
+| 82. CI Tests What We Ship | 9/9 | In Progress | - |
 | 83. Paired BM + Codex Review & Risk-Based Depth | 0/TBD | Not started | - |
 | 84. Codex Plan-Checker Investigation | 0/TBD | Not started | - |
 | 85. Follow-on CI Improvements & Acceptance Usability | 0/TBD | Not started | - |
