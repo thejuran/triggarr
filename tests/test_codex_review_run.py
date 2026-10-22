@@ -154,7 +154,8 @@ def test_pathspecs_exclude_transcripts_but_keep_planning_markdown(tmp_path: Path
     _git(repo, "commit", "-q", "-m", "change")
     head = _git(repo, "rev-parse", "HEAD").strip()
 
-    changed = set(_git(repo, *diff_argv(base, head)[1:], "--name-only").split())
+    argv = diff_argv(base, head)
+    changed = set(_git(repo, argv[1], "--name-only", *argv[2:]).split())
     assert changed == {"triggarr/app.py", ".planning/phases/83-x/83-REVIEW.md"}
 
 
