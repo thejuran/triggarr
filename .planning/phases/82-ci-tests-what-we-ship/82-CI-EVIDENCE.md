@@ -212,4 +212,14 @@ Browser suite result complete: credential and pages junit files both report succ
 - **Disposition:** per this plan's authorization boundary and the coordinator's explicit instruction, a still-failing required check stops the plan here again, without a further fix attempt or a second push. Alerts #13/#14 are a genuine, confirmed improvement; alert #15 is a new, not-yet-resolved required-check failure on a one-way-hash write pattern, which needs either a CodeQL-recognized sanitizer annotation/suppression (with rationale) or a further structural change (e.g. not persisting the digest to a file at all, using an in-memory IPC channel instead) -- an owner/architectural call outside this task's authorized scope.
 - **Reconciliation note:** this is the first failure recorded against the second push (`6c8354e`); no third push was attempted.
 
+#### Alert #15 disposition
+
+Alerts #13 and #14 (`py/clear-text-storage-sensitive-data`, the plaintext password-file and raw-API-key-file writes) were fixed in `6c8354e`. Alert #15 (same rule, `tests/e2e/probes/probe_setup_fails_before_registration.py:53`, the salted scrypt digest write) was **dismissed by the owner as a false positive**, 2026-10-21, via the GitHub code-scanning API (`dismissed_by: thejuran`, `dismissed_reason: "false positive"`), with this comment:
+
+> Owner decision 2026-10-21: one-way salted scrypt digest of a disposable per-run e2e API key (D-27); no recoverable secret is stored. The real plaintext writes (#13, #14) were fixed in 6c8354e.
+
+Verified via `gh api repos/thejuran/triggarr/code-scanning/alerts/15`: `state: dismissed`, `dismissed_at: 2026-10-22T00:34:18Z`, `dismissed_by: thejuran`, `dismissed_reason: "false positive"`, `dismissed_comment` matching the text above. Open code-scanning alerts on `refs/pull/33/head` are now 0.
+
+CodeQL's `py/clear-text-storage-sensitive-data` taint analysis treats any value derived from the tracked sensitive source (here, the API key) as itself sensitive, regardless of whether the derivation is reversible -- it does not recognize `hashlib.scrypt` (or hashing in general) as a sanitizer for this query, so a one-way digest of a secret still trips the rule. That is a static-analysis limitation, not a report of an actual recoverable-secret-on-disk condition, which is the basis for the owner's dismissal.
+
 This record is not owner acceptance (D-35 stop 3 happens later, on the final phase head). Main was not pushed; no review-acceptance approval was requested or submitted; no `review-acceptance` environment was touched.
