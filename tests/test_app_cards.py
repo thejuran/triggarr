@@ -736,6 +736,29 @@ def test_card_details_label_malformed_plus_unevaluated(client, test_app):
     assert "1 missing-queue record skipped — malformed data" in text
 
 
+def test_card_failed_grade_malformed_plus_unevaluated_says_failure_reasons(client, test_app):
+    """A Failed card with a malformed row and an unevaluated row lists 2 rows, so its label
+    says 'Show 2 failure reasons' -- never 'Show 1 skipped record', which would hide the
+    unevaluated queue that actually caused the failure."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed",
+        accepted=0,
+        failed=0,
+        malformed_skipped=1,
+        malformed_by_queue={"cutoff": 1},
+        unevaluated=[{"queue": "missing", "reason": "tag 'x' not found"}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 2 failure reasons" in text
+    assert "skipped record" not in text
+    assert "Show 2 details" not in text
+    assert "Missing queue not evaluated" in text
+    assert "1 upgrade-queue record skipped — malformed data" in text
+
+
 def test_card_mixed_failure_and_skip_keeps_failure_label(client, test_app):
     """D-02: any real failure keeps 'Show N failure reason(s)' even with a skip row present."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
