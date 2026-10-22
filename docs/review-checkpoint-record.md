@@ -84,7 +84,7 @@ Vibe-check never substitutes for Codex or Greptile, never waives a finding and n
 |---|---|
 | Status | complete \| INCOMPLETE/PENDING, with reasons |
 | Attempts | 1 \| 2 \| N (owner-approved retry beyond 2, recorded with its own attempt number) |
-| Raw output paths | `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt` under `.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>` |
+| Raw output paths | `.prompt.txt`, `.meta.json`, `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt` under `.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>` |
 | Review complete | `review_complete` and `incomplete_reasons` as reported (report schema v2; a v1 report records "v1 report, assessed under v1 rules") |
 | Coverage | <as reported> |
 | Exclusions | <as reported> |

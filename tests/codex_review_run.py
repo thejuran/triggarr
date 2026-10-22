@@ -2,6 +2,10 @@
 
 Implements docs/codex-adversarial-review-contract.md, Invocation:
 
+0. Refuses to start if the contract, schema, checker or runner has
+   uncommitted changes, then saves the exact rendered prompt as
+   ``<OUT>.prompt.txt`` and a provenance record (template version, sha256
+   of those files, harness HEAD) as ``<OUT>.meta.json``.
 1. Creates a detached worktree of the exact head SHA in a fresh temp dir.
 2. With ``--trusted`` (this repository's own branches), runs
    ``uv run --extra dev pytest tests/ -q`` inside that worktree, outside
@@ -30,6 +34,8 @@ production code under the loguru-only convention documented in CLAUDE.md
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import shlex
@@ -41,9 +47,22 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-CONTRACT_PATH = REPO_ROOT / "docs" / "codex-adversarial-review-contract.md"
-SCHEMA_PATH = REPO_ROOT / ".claude" / "schemas" / "codex-review-findings.schema.json"
+# The checkout this harness runs from. REPO_ROOT is where outputs are written
+# and git commands run; both are the same checkout in normal use.
+HARNESS_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = HARNESS_ROOT
+CONTRACT_PATH = HARNESS_ROOT / "docs" / "codex-adversarial-review-contract.md"
+SCHEMA_PATH = HARNESS_ROOT / ".claude" / "schemas" / "codex-review-findings.schema.json"
+
+# Files that decide what Codex is told and how its report is judged. Each run
+# records their hashes and refuses to start if any has uncommitted changes,
+# so the evidence shows exactly which committed versions produced it.
+AUDITED_INPUTS = (
+    "docs/codex-adversarial-review-contract.md",
+    ".claude/schemas/codex-review-findings.schema.json",
+    "tests/codex_report_status.py",
+    "tests/codex_review_run.py",
+)
 
 TEMPLATE_HEADING = "## Fixed prompt (version 4)"
 PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDENCE"})
@@ -53,7 +72,7 @@ PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDE
 # markdown is background Codex may read on demand. Must match the fixed prompt.
 EXCLUDE_PATHSPECS = (":(exclude,glob).planning/**",)
 
-OUTPUT_SUFFIXES = (".jsonl", ".last.json", ".status.json", ".pytest.txt")
+OUTPUT_SUFFIXES = (".prompt.txt", ".meta.json", ".jsonl", ".last.json", ".status.json", ".pytest.txt")
 
 # Where the harness evidence is copied inside the temp worktree (untracked),
 # so the prompt names a working-copy-relative path and never the operator's
@@ -67,6 +86,10 @@ _LABEL_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
 
 CommandRunner = Callable[..., subprocess.CompletedProcess]
+
+
+class RunnerError(RuntimeError):
+    """A failure the CLI reports in plain words, without a traceback."""
 
 
 @dataclass(frozen=True)
@@ -117,6 +140,15 @@ def load_template(contract_text: str | None = None) -> str:
     match = re.search(r"```[^\n]*\n(.*?)```", after, re.DOTALL)
     if match is None:
         raise ValueError(f"no fenced prompt block after {TEMPLATE_HEADING!r}")
+    return match.group(1)
+
+
+def template_version(contract_text: str | None = None) -> str:
+    """Return the contract's "Template version: N." number."""
+    text = contract_text if contract_text is not None else CONTRACT_PATH.read_text(encoding="utf-8")
+    match = re.search(r"^Template version: (\d+)\.", text, re.MULTILINE)
+    if match is None:
+        raise ValueError("contract has no 'Template version: N.' line")
     return match.group(1)
 
 
@@ -306,16 +338,67 @@ def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: Comm
     return proc.returncode
 
 
+def _git_stdout(argv: list[str], command_runner: CommandRunner) -> str:
+    """Run a read-only git command in the harness checkout; any failure is a RunnerError."""
+    try:
+        proc = command_runner(argv, cwd=HARNESS_ROOT, stdout=subprocess.PIPE, text=True, check=False)
+    except OSError as exc:
+        raise RunnerError(f"{shlex.join(argv[:3])} could not run: {type(exc).__name__}") from exc
+    if proc.returncode != 0:
+        raise RunnerError(f"{shlex.join(argv[:3])} exited {proc.returncode}")
+    return proc.stdout or ""
+
+
+def audit_inputs(command_runner: CommandRunner) -> dict[str, dict[str, object]]:
+    """Return sha256 and committed state for each audited input; refuse if any is dirty."""
+    status = _git_stdout(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", *AUDITED_INPUTS], command_runner
+    )
+    dirty = sorted(line[3:].strip() for line in status.splitlines() if line.strip())
+    if dirty:
+        raise RunnerError(
+            f"audited inputs have uncommitted changes: {dirty}; commit them first so the run is reproducible"
+        )
+    return {
+        relpath: {
+            "sha256": hashlib.sha256((HARNESS_ROOT / relpath).read_bytes()).hexdigest(),
+            "committed_unchanged": True,
+        }
+        for relpath in AUDITED_INPUTS
+    }
+
+
+def run_meta(run: ReviewRun, *, harness_head: str, inputs: dict[str, dict[str, object]]) -> dict[str, object]:
+    return {
+        "meta_version": 1,
+        "head": run.head,
+        "base": run.base,
+        "label": run.label,
+        "attempt": run.attempt,
+        "trusted": run.trusted,
+        "template_version": template_version(),
+        "harness_head": harness_head,
+        "inputs": inputs,
+        "codex_timeout_seconds": CODEX_TIMEOUT_SECONDS,
+    }
+
+
 def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -> int:
     """Run the full review pass. Returns the checker's exit code (0 = complete)."""
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
     if existing:
         # Raw outputs are never edited after being written; use a new attempt number.
         raise FileExistsError(f"review outputs already exist: {existing}")
-    run.out_base.parent.mkdir(parents=True, exist_ok=True)
 
+    inputs = audit_inputs(command_runner)
+    harness_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
     template = load_template()
     prompt = render_prompt(template, prompt_values(run))
+    meta = run_meta(run, harness_head=harness_head, inputs=inputs)
+
+    run.out_base.parent.mkdir(parents=True, exist_ok=True)
+    run.output(".prompt.txt").write_text(prompt, encoding="utf-8")
+    run.output(".meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
     scratch = Path(tempfile.mkdtemp(prefix="codex-review-"))
     worktree = scratch / "wt"
@@ -355,6 +438,9 @@ def dry_run(run: ReviewRun) -> int:
     print("# Rendered prompt (sent on stdin to codex exec)")
     print(prompt)
     print("# Commands")
+    print(f"git status --porcelain --untracked-files=all -- {' '.join(AUDITED_INPUTS)}  # must be empty")
+    print(f"# save the prompt to {shlex.quote(str(run.output('.prompt.txt')))}")
+    print(f"# save provenance to {shlex.quote(str(run.output('.meta.json')))}")
     print(shlex.join(worktree_add_argv(worktree, run.head)))
     if run.trusted:
         print(f"(cd {worktree} && {shlex.join(pytest_argv())}) > {shlex.quote(str(run.output('.pytest.txt')))}")
@@ -433,6 +519,9 @@ def main(argv: list[str] | None = None) -> int:
         return execute(run)
     except FileExistsError as exc:
         print(f"error: {exc}; use the next attempt number")
+        return 2
+    except RunnerError as exc:
+        print(f"error: {exc}")
         return 2
 
 
