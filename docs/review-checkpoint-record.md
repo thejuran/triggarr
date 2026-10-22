@@ -128,7 +128,7 @@ Findings:
 
 ## Before any re-review
 
-BM's re-review step (`/bm:code-review <N> --fix --auto`) overwrites `REVIEW.md` in place with the post-fix state; it has no built-in history (REVIEW-06, RESEARCH.md Pattern 3). Before triggering any re-review, first snapshot the current review and the earlier Codex files:
+BM's re-review loop (`/bm:code-review <N> --fix --auto`) does keep history: before each iteration overwrites `REVIEW.md` and `REVIEW-FIX.md`, it copies them to `*.iterN.md` backups (BM 5.0.3, `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/workflows/code-review-fix.md`, step `auto_iteration_loop`, lines 270-275; see also `docs/bm-review-baseline-2026-10-22.md`). Those backups are named by iteration number, not by head SHA, and BM does not commit them, so they cannot show which head a review covered. The snapshot below is therefore still required (D-08, REVIEW-06): before triggering any re-review, first snapshot the current review by head SHA:
 
 ```bash
 cp "${PHASE_DIR}/${PADDED_PHASE}-REVIEW.md" \
