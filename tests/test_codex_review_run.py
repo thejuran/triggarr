@@ -459,36 +459,66 @@ def test_cli_requires_exactly_one_trust_flag(flags: tuple) -> None:
     assert exc_info.value.code == 2
 
 
-def test_execute_untrusted_skips_pytest_and_records_why(tmp_path, monkeypatch) -> None:
+# Owner decision 2026-10-22 (owner-approved round 3, resolves
+# bm:dbe1b7f56bdd:CR-01 = codex:dbe1b7f56bdd:a1:F001 and bm:dbe1b7f56bdd:WR-02):
+# Codex is not run for untrusted heads at all until the harness is hardened.
+# The record shows "Codex: PENDING — untrusted source" and CI results are used.
+
+
+def _forbid_everything(monkeypatch) -> None:
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("an untrusted run must not run any command or create any directory")
+
+    monkeypatch.setattr(runner.subprocess, "run", _forbidden)
+    monkeypatch.setattr(runner.tempfile, "mkdtemp", _forbidden)
+
+
+@pytest.mark.parametrize("extra", [(), ("--dry-run",)])
+def test_main_refuses_untrusted_and_writes_nothing(monkeypatch, capsys, extra: tuple) -> None:
+    _forbid_everything(monkeypatch)
+    run = _run(attempt=1, trusted=False)
+    before = {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES}
+
+    assert main([*_cli(PHASE_DIR, "--untrusted"), *extra]) == 2
+
+    out = capsys.readouterr().out
+    assert "Codex: PENDING — untrusted source" in out
+    assert "CI results" in out
+    for choice in ("wait", "retry later", "fallback"):
+        assert choice in out
+    assert {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES} == before
+
+
+def test_execute_refuses_untrusted_before_any_work(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
     (tmp_path / PHASE_DIR).mkdir(parents=True)
-    monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(tmp_path / "scratch"))
-    (tmp_path / "scratch").mkdir()
     run = _run(attempt=1, trusted=False)
     fake = FakeRunner()
 
-    execute(run, command_runner=fake)
-
-    assert not any(call[0] == "uv" for call in fake.calls)
-    evidence = run.output(".pytest.txt").read_text()
-    assert "tests not run (untrusted source)" in evidence
-    assert "exit_code:" not in evidence
-    assert any("codex" in call for call in fake.calls)
+    with pytest.raises(runner.RunnerError, match="PENDING"):
+        execute(run, command_runner=fake)
+    assert fake.calls == []
+    assert not (tmp_path / PHASE_DIR / "codex").exists()
 
 
-def test_dry_run_untrusted_prints_no_pytest_command(capsys) -> None:
-    assert main(_cli(PHASE_DIR, "--dry-run", "--untrusted")) == 0
-    out = capsys.readouterr().out
-    assert "pytest tests/ -q) >" not in out
-    assert "tests not run (untrusted source)" in out
+def test_cli_still_requires_an_explicit_trusted_flag() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(_cli(PHASE_DIR, "--dry-run"))
+    assert exc_info.value.code == 2
 
 
 def test_contract_documents_untrusted_sources() -> None:
     text = runner.CONTRACT_PATH.read_text(encoding="utf-8")
     assert "--untrusted" in text and "--trusted" in text
     assert "Dependabot" in text
-    assert "tests not run (untrusted source)" in text
+    assert "Codex: PENDING — untrusted source" in text
+    assert "Phase 85" in text
     assert "CI results" in text
+
+
+def test_record_documents_untrusted_pending() -> None:
+    record = (REPO_ROOT / "docs" / "review-checkpoint-record.md").read_text(encoding="utf-8")
+    assert "Codex: PENDING — untrusted source" in record
 
 
 def test_prompt_covers_untrusted_evidence() -> None:
@@ -811,3 +841,70 @@ def test_main_passes_allow_stale_head(monkeypatch) -> None:
     assert seen["allow_stale_head"] is True
     assert main(_cli(PHASE_DIR, "--trusted")) == 0
     assert seen["allow_stale_head"] is False
+
+
+# --- Evidence copy never follows links (bm:dbe1b7f56bdd:CR-01 =
+# codex:dbe1b7f56bdd:a1:F001, owner-approved round 3, defence in depth for
+# trusted runs). The reviewed tree decides what exists in the worktree, so the
+# harness refuses when the evidence path or its directory already exists, and
+# creates the file with O_CREAT|O_EXCL|O_NOFOLLOW.
+
+
+def _hostile_worktree(kind: str, outside: Path, fake: FakeRunner):
+    def _spy(argv, **kwargs):
+        result = fake(argv, **kwargs)
+        if argv[:3] == ["git", "worktree", "add"]:
+            evidence_dir = Path(argv[4]) / ".codex-review-evidence"
+            if kind == "symlinked-directory":
+                evidence_dir.symlink_to(outside, target_is_directory=True)
+            elif kind == "symlinked-file":
+                evidence_dir.mkdir()
+                (evidence_dir / "pytest.txt").symlink_to(outside / "sentinel.txt")
+            elif kind == "dangling-symlinked-file":
+                evidence_dir.mkdir()
+                (evidence_dir / "pytest.txt").symlink_to(outside / "does-not-exist.txt")
+            elif kind == "regular-file":
+                evidence_dir.write_text("tracked by the head\n")
+        return result
+
+    return _spy
+
+
+@pytest.mark.parametrize(
+    "kind", ["symlinked-directory", "symlinked-file", "dangling-symlinked-file", "regular-file"]
+)
+def test_evidence_copy_refuses_pre_existing_paths(tmp_path, monkeypatch, kind: str) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "sentinel.txt").write_text("precious\n")
+    fake = FakeRunner()
+
+    with pytest.raises(runner.RunnerError, match="evidence"):
+        execute(run, command_runner=_hostile_worktree(kind, outside, fake))
+
+    assert sorted(p.name for p in outside.iterdir()) == ["sentinel.txt"]
+    assert (outside / "sentinel.txt").read_text() == "precious\n"
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "evidence" in status
+    assert not any(call[:2] == ["codex", "exec"] for call in fake.calls)
+    assert _removed(fake)
+    assert not (tmp_path / "scratch").exists()
+
+
+def test_evidence_copy_is_created_exclusively_without_following_links(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    seen: dict[str, int] = {}
+    real_open = runner.os.open
+
+    def _spy_open(path, flags, *args):
+        if str(path).endswith(runner.EVIDENCE_RELPATH):
+            seen["flags"] = flags
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr(runner.os, "open", _spy_open)
+    execute(run, command_runner=FakeRunner())
+
+    required = runner.os.O_CREAT | runner.os.O_EXCL | runner.os.O_NOFOLLOW
+    assert seen["flags"] & required == required
