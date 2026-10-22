@@ -619,3 +619,48 @@ def test_contract_and_record_list_prompt_and_meta_outputs() -> None:
     assert "`.prompt.txt`" in storage and "`.meta.json`" in storage
     record = (REPO_ROOT / "docs" / "review-checkpoint-record.md").read_text(encoding="utf-8")
     assert "`.prompt.txt`" in record and "`.meta.json`" in record
+
+
+# --- Atomic output reservation (codex:322afc50367d:a1:F002, owner-approved round 2)
+# Two runs with the same head/label/attempt can both pass the "outputs exist"
+# check; only one may win. The reservation creates the first output with
+# O_CREAT|O_EXCL before any other work.
+
+
+def test_second_reservation_fails_without_touching_the_first(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    run.out_base.parent.mkdir(parents=True)
+
+    runner.reserve_outputs(run, "first prompt")
+    with pytest.raises(FileExistsError):
+        runner.reserve_outputs(run, "second prompt")
+    assert run.output(".prompt.txt").read_text(encoding="utf-8") == "first prompt"
+
+
+def test_execute_loses_a_race_without_touching_files(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    real_audit = runner.audit_inputs
+
+    def _audit_then_other_run_reserves(command_runner):
+        result = real_audit(command_runner)
+        run.out_base.parent.mkdir(parents=True, exist_ok=True)
+        run.output(".prompt.txt").write_text("other run", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(runner, "audit_inputs", _audit_then_other_run_reserves)
+    fake = FakeRunner()
+
+    with pytest.raises(FileExistsError):
+        execute(run, command_runner=fake)
+    assert run.output(".prompt.txt").read_text(encoding="utf-8") == "other run"
+    assert not run.output(".meta.json").exists()
+    assert not any(call[:3] == ["git", "worktree", "add"] for call in fake.calls)
+
+
+def test_main_reports_lost_reservation_as_error(monkeypatch, capsys) -> None:
+    def _taken(_run, **_kwargs):
+        raise FileExistsError("review output already reserved: x.prompt.txt")
+
+    monkeypatch.setattr(runner, "execute", _taken)
+    assert main(_cli(PHASE_DIR, "--trusted")) == 2
+    assert "use the next attempt number" in capsys.readouterr().out
