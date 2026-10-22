@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Triggarr Codex adversarial review report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "inspected_head_sha",
+    "inspected_base_sha",
+    "pr_url",
+    "scope",
+    "verdict",
+    "summary",
+    "coverage",
+    "exclusions",
+    "commands_run",
+    "findings",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1"]
+    },
+    "inspected_head_sha": {
+      "type": "string"
+    },
+    "inspected_base_sha": {
+      "type": "string"
+    },
+    "pr_url": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["no-findings", "findings"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "exit_code", "purpose"],
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": ["integer", "null"]
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "severity",
+          "title",
+          "file",
+          "line_start",
+          "line_end",
+          "trigger",
+          "execution_path",
+          "consequence",
+          "evidence",
+          "suggested_fix",
+          "reproduced",
+          "reproduction_command",
+          "hypothesis"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "line_start": {
+            "type": ["integer", "null"]
+          },
+          "line_end": {
+            "type": ["integer", "null"]
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "execution_path": {
+            "type": "string"
+          },
+          "consequence": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "suggested_fix": {
+            "type": "string"
+          },
+          "reproduced": {
+            "type": "boolean"
+          },
+          "reproduction_command": {
+            "type": ["string", "null"]
+          },
+          "hypothesis": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
