@@ -257,7 +257,7 @@ def _finding_consistency_and_ids(
             seen_ids.add(fid)
 
         reproduced = finding.get("reproduced")
-        if reproduced is True and not finding.get("reproduction_command"):
+        if reproduced is True and not _non_blank(finding.get("reproduction_command")):
             reasons.append(f"{fid} marked reproduced without a reproduction command")
         if reproduced is False and not _non_blank(finding.get("hypothesis")):
             reasons.append(f"{fid} unreproduced without a hypothesis")
@@ -354,9 +354,17 @@ def assess_report(
         elif verdict == "findings" and not findings:
             reasons.append("verdict says findings but none are listed")
 
+    # Cheap evidence that Codex actually did the work: a report with no
+    # commands or blank coverage is hollow, whatever it says about itself.
     coverage = report.get("coverage")
-    if isinstance(coverage, list) and len(coverage) == 0:
-        reasons.append("no coverage stated")
+    if isinstance(coverage, list):
+        if len(coverage) == 0:
+            reasons.append("no coverage stated")
+        elif not all(_non_blank(entry) for entry in coverage if isinstance(entry, str)):
+            reasons.append("blank coverage entry")
+    commands = report.get("commands_run")
+    if isinstance(commands, list) and not commands:
+        reasons.append("no commands run: the report gives no evidence the diff was inspected")
 
     status: Literal["complete", "incomplete"] = "incomplete" if reasons else "complete"
     return Assessment(
