@@ -13,7 +13,7 @@ gh pr comment N --body-file FILE
 A new head always gets a **new** comment. Earlier heads' comments are never edited or deleted — the per-head audit trail is the point. Additional evidence arriving for a head that already has a comment (for example, a Codex retry completing, or a Greptile check finishing after the comment was first posted) edits **that head's own comment** by its comment id, never a different head's comment and never with `gh pr comment --edit-last`:
 
 ```bash
-gh api --method PATCH repos/thejuran/triggarr/issues/comments/ID --field body@FILE
+gh api --method PATCH repos/thejuran/triggarr/issues/comments/ID -F body=@FILE
 ```
 
 Before a PR exists (a local checkpoint not yet pushed, or the negative-case demonstration in D-17), the same record is kept in the phase folder's `NN-REVIEW-EVIDENCE.md` under one heading per head SHA, using the same template below.
