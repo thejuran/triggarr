@@ -348,6 +348,15 @@ def test_unreproduced_without_hypothesis_incomplete() -> None:
     assert any("F002 unreproduced without a hypothesis" in r for r in result.reasons)
 
 
+# IN-05: a whitespace-only hypothesis is not a usable hypothesis.
+def test_unreproduced_with_whitespace_only_hypothesis_incomplete() -> None:
+    report = _valid_report()
+    report["findings"][1]["hypothesis"] = "   "
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert any("F002 unreproduced without a hypothesis" in r for r in result.reasons)
+
+
 def test_empty_coverage_incomplete() -> None:
     report = _valid_report()
     report["coverage"] = []
