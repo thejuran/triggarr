@@ -173,3 +173,22 @@ No other key in `.planning/config.json` changes. The craft-skill/specialist lane
 **Approval transport: Claude CLI conversation; not inferred.**
 
 This approval covers only the BM version and the two settings keys listed above. **It does not approve any pull request.** `.planning/config.json` is not modified by this record — the change is applied by Plan 05, which also runs `/bm:version` afterward to confirm the loaded version.
+
+## Post-update verification
+
+### Update
+
+- **Date/time:** 2026-10-22, between 14:51 and 14:53 EDT.
+- **Procedure used:** BM's supported procedure for a Claude Code marketplace-plugin install. `/bm:update` (BM 4.9.1 `workflows/update.md`, step `detect_distribution`) detected `DISTRIBUTION=plugin`, installed `4.9.1`, latest `v5.0.3` (`gh release view --repo buildomator/buildomator`), and per that workflow did not run any installer. The owner then ran `/plugin` → Marketplace → refresh Buildomator in the Claude Code CLI.
+- **Result:** the CLI printed `✔ Updated Buildomator.`
+- **Pre-update release check:** `gh release list -R buildomator/buildomator -L 3` listed `v5.0.3` (Latest, 2026-10-22T15:59:02Z), `v5.0.2`, `v5.0.1`. No release newer than the approved v5.0.3 existed.
+- **Newly present directory:** `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/` (alongside the previous `4.9.1/`); its `.claude-plugin/plugin.json` has `"version": "5.0.3"`.
+- **Config after update, before any settings change:** `.planning/config.json` is byte-identical to `83-config-before.json` (`cmp` exit 0). No config migration happened.
+
+### Loaded version
+
+The owner ran `/reload-plugins` (CLI output: `Reloaded: 10 plugins · 132 skills · 64 agents · 25 hooks · 17 plugin MCP servers · 0 plugin LSP servers`). `/bm:version`, now loaded from `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/skills/version`, printed verbatim:
+
+    GSD plugin: 5.0.3  (latest: 5.0.3)
+
+The loaded version equals the approved version (v5.0.3). `bm-sdk` on PATH now resolves to `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/bin/bm-sdk` (`bm-sdk v1.50.0-canary.0`).
