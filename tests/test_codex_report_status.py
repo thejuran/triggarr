@@ -558,6 +558,50 @@ def test_cli_directory_report_prints_incomplete(tmp_path, capsys) -> None:
     assert any(r.startswith("unreadable report:") for r in payload["reasons"])
 
 
+# IN-04: --attempt must be a positive integer, so qualified IDs always use
+# the a1/a2 convention the checkpoint record expects.
+def test_cli_attempt_zero_exits_two() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--report",
+                "/nonexistent",
+                "--exit-code",
+                "0",
+                "--expected-head",
+                H,
+                "--expected-base",
+                B,
+                "--current-head",
+                H,
+                "--attempt",
+                "0",
+            ]
+        )
+    assert exc_info.value.code == 2
+
+
+def test_cli_attempt_negative_exits_two() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--report",
+                "/nonexistent",
+                "--exit-code",
+                "0",
+                "--expected-head",
+                H,
+                "--expected-base",
+                B,
+                "--current-head",
+                H,
+                "--attempt",
+                "-3",
+            ]
+        )
+    assert exc_info.value.code == 2
+
+
 def test_cli_invalid_expected_head_exits_two() -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(
