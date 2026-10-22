@@ -1,0 +1,1 @@
+{"status": "incomplete", "reasons": ["stale: report is for d501a68316b2, current head is 322afc50367d"], "qualified_ids": ["codex:d501a68316b2:a2:F001", "codex:d501a68316b2:a2:F002"], "finding_count": 2, "inspected_head": "d501a68316b2c3a032634741f8c73d373870e9f2", "inspected_base": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90"}

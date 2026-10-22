@@ -1,222 +1,217 @@
 ---
 phase: 83-paired-bm-codex-review-risk-based-depth
-reviewed: 2026-10-22T19:59:57Z
+reviewed: 2026-10-22T20:56:03Z
+head: 322afc50367d4cf7e2610eb6f8852bb8c9302457
+base: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90
+review_kind: post-fix re-review (prior review preserved as 83-REVIEW-dcfb5a5081ea.md)
 depth: standard
-files_reviewed: 12
+files_reviewed: 17
 files_reviewed_list:
   - .claude/schemas/codex-review-findings.schema.json
+  - CLAUDE.md
   - docs/bm-review-baseline-2026-10-22.md
   - docs/buildomator-greptile-pilot.md
   - docs/codex-adversarial-review-contract.md
+  - docs/owner-cli-acceptance.md
   - docs/review-checkpoint-record.md
   - docs/review-classification-policy.md
   - tests/codex_report_status.py
+  - tests/codex_review_run.py
   - tests/test_app_cards.py
   - tests/test_codex_report_status.py
   - tests/test_codex_review_contract.py
+  - tests/test_codex_review_run.py
+  - tests/test_review_checkpoint_record.py
   - tests/test_review_instructions.py
   - triggarr/templates/partials/cycle_grade.html
+prior_findings:
+  fixed_verified: 11
+  still_present: 3
+  not_applicable: 0
 findings:
-  critical: 2
-  warning: 5
-  info: 6
-  total: 13
+  critical: 0
+  warning: 3
+  info: 8
+  total: 11
 status: issues_found
 ---
 
-# Phase 83: Code Review Report
+# Phase 83: Code Review Report (post-fix re-review)
 
-**Reviewed:** 2026-10-22T19:59:57Z
+**Reviewed:** 2026-10-22T20:56:03Z
+**Head:** `322afc50367d4cf7e2610eb6f8852bb8c9302457`
 **Depth:** standard
-**Files Reviewed:** 12
+**Files Reviewed:** 17
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the Codex report completeness checker (`tests/codex_report_status.py`) and its tests, the output schema, the four review-process docs, the CLAUDE.md/contract drift-guard tests, and the quick-task card-label change (`cycle_grade.html` plus 10 new card tests).
+This re-review covers the fixes for the prior review at `dcfb5a5081ea`, plus the code added since then: the Codex runner (`tests/codex_review_run.py`), report schema v2 with the `review_complete`/`incomplete_reasons` fields, contract template v3, and the two files that were in scope but missed last time (`CLAUDE.md`, `docs/owner-cli-acceptance.md`; prior SA-02).
 
-All 125 tests in the four reviewed test modules pass. Ruff is clean, and the conventions tool reported no findings.
+**Prior findings.** Both critical findings and all five warnings are fixed, and I re-checked each one by running it, not by reading the fix report. Each wrong-type case from the prior table now returns `incomplete` with a clear reason: `findings: null`/`"none"`, `coverage: null`/`"all"`, an unknown `schema_version`, `summary: 5`, `id: 7`, a blank id, `line_start: true`, `exit_code: true`, and a verdict that contradicts the findings. A non-UTF-8 or directory report path now prints a JSON `incomplete` result and exits 1. `--attempt 0` is rejected. The v1 schema that the checker derives at runtime matches the v1 schema committed at `402ba42^` exactly. Re-checking the two recorded reports gives `a7995baf187e-quick-a1` complete and `d501a68316b2-explicit-a1` incomplete (it calls itself incomplete), as the fix report says. Three Info items are still open (IN-01, IN-03, and part of IN-05).
 
-The main concern is the checker. Its only job is to make sure a malformed, partial or wrong Codex report is never counted as a complete review. Its schema check covers required and unexpected keys, a few enums and some integer fields. It does **not** check the types of most fields. I ran edge cases against `assess_report()`, and each of these returned `status: complete` with no reasons:
+**New issues.** No critical issues. Three warnings:
 
-| Input mutation on the valid fixture | Result |
-|---|---|
-| `findings: null` or `findings: "none"` | complete, 0 findings |
-| `coverage: null` or `coverage: "all"` | complete |
-| `schema_version: "2"` (enum is `["1"]`) | complete |
-| `summary: 5` (schema type is string) | complete |
-| `verdict: "no-findings"` with 2 findings present | complete |
-| `verdict: "findings"` with `findings: []` | complete |
-| finding `id: 7` (int) | complete, `finding_count=2`, only 1 qualified ID |
-| `line_start: true` | complete |
-| `hypothesis: "   "` | complete |
+1. **The SA-01 fix caused a regression on red cards.** A Failed card with one unevaluated row and one malformed row now says "Show 1 skipped record" but lists 2 rows. Before the fix it said "Show 2 details", and the owner's ruling says red cards should say "failure reason". I confirmed this by rendering the card.
+2. **Codex runs don't record their own inputs.** The runner never saves the exact prompt it sent to Codex, and it doesn't record which contract or template version it used. It also reads the contract, schema and checker from the working tree as they are on disk, including uncommitted edits. So the evidence can't show that the fixed template was used, which is the point of D-07.
+3. **A hollow report can still count as complete.** With schema v2, the checker accepts a report with `commands_run: []` and `coverage: [""]` as complete. Such a report shows no sign that Codex ran anything. Codex now marks its own report as complete, and these are the only cheap checks that could catch a run that didn't really happen.
 
-The template change does what was decided (D-01 to D-04), and the new tests cover it. It classifies rows by matching the exact wording `outcome.py` produces, which is a fragile coupling, though when the wording drifts it falls back to the safer "failure reason" label.
+Tests: the 244 tests in the six reviewed test modules pass. `ruff check triggarr/ tests/` is clean. The conventions tool found nothing.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
+### Status of prior findings (83-REVIEW-dcfb5a5081ea.md)
 
-### CR-01: Checker marks reports with wrong-typed or missing-value fields (including `findings: null`) as a complete review
+| Prior ID | Title | Status at 322afc5 | Verification |
+|---|---|---|---|
+| CR-01 | Wrong-typed or missing fields treated as complete | **Fixed and verified** | Recursive schema walk (`codex_report_status.py:134-176`). I reproduced every case in the prior table, and each now returns `incomplete` with a `schema:` reason. |
+| CR-02 | Non-string `id` dropped from the qualified IDs | **Fixed and verified** | `:247-252`. `id` set to `7`, `None`, `""` or `"   "` gives `incomplete` with "finding at index 0 has no valid id". The invariant test is at `test_codex_report_status.py:511`. |
+| WR-01 | Verdict contradicts the findings | **Fixed and verified** | `:349-355`. Both directions reproduced as `incomplete`. |
+| WR-02 | CLI crash on a non-UTF-8 or directory path | **Fixed and verified** | `:424-428`. Ran the CLI on `\xff\xfe` bytes and on a directory. Both print JSON `incomplete` and exit 1. |
+| WR-03 | Record said BM keeps no re-review history | **Fixed and verified** | `review-checkpoint-record.md:132`. The citation matches `bm/5.0.3/workflows/code-review-fix.md:269-275` on disk. |
+| WR-04 | `sensitive` and `code` not ranked against each other | **Fixed and verified** | `review-classification-policy.md:7, 21, 42` now require both classes' reviews, recorded as `code`. |
+| WR-05 | Raw Codex streams committed to a public repo | **Fixed and verified** | Prompt line 37 limits reads to the working copy. The hex-key scan is at `:76-82`. The regex matches 32-hex values and not 40-hex SHAs. |
+| IN-01 | Template classifies rows by matching wording | **Still present** | Not addressed. Carried forward as IN-01 below. |
+| IN-02 | Skipped-record label count not cross-checked against the rows | **Fixed and verified** | `cycle_grade.html:33` now requires `malformed_skipped == ns.malformed_total`. |
+| IN-03 | `test_never_reports_clean` is tautological | **Still present (substance addressed)** | Parametrized wrong-type tests (`:241-278`) and the `finding_count == len(qualified_ids)` invariant were added. The tautological test is unchanged at `:573-593`. Carried forward as IN-03 below. |
+| IN-04 | `--attempt` accepts 0 or negative values | **Fixed and verified** | `_positive_int` in both the checker (`:381-389`) and the runner (`:322-329`). Also checked in `ReviewRun.__post_init__`. |
+| IN-05 | Whitespace-only text and booleans counted as integers | **Partly fixed, still present** | The booleans and `hypothesis` are fixed. A whitespace-only `reproduction_command` still passes (`:260`). Carried forward as IN-02 below. |
+| IN-06 | Attempt 3 not covered by the record template | **Fixed and verified** | Contract `:86` and record `:86` now agree. Guarded by `test_review_checkpoint_record.py:32`. |
+| SA-01 | Red card with only unevaluated rows says "detail" | **Resolved by owner ruling and implemented, but the fix caused a regression** | The unevaluated-only case now says "failure reason" (`cycle_grade.html:31`). The mixed case regressed. See WR-01 below. |
+| SA-02 | `CLAUDE.md` and `owner-cli-acceptance.md` not in scope | **Resolved** | Both are in scope and were reviewed this pass. No defects found. One related point is in SA-01 below. |
 
-**File:** `tests/codex_report_status.py:52-123, 133-135, 235-237`
-**Issue:** `_check_schema` only validates nested items `if isinstance(findings, list)` / `if isinstance(commands_run, list)`. It never reports that `findings`, `commands_run`, `coverage`, `exclusions` or `limitations` are not arrays. It also never checks `schema_version` against its enum or the type of any string field. `_finding_consistency_and_ids` then returns `([], [], 0)` for a non-list `findings`. So a report with `"findings": null` and `"verdict": "findings"` gets `status: complete, finding_count: 0`. The owner checklist would then show "No findings" for a Codex run that produced none in a usable form. This is the false-clean outcome the module docstring and D-09 say can never happen ("a schema violation ... reported as a distinct reason"). Codex's `--output-schema` makes this unlikely in normal runs. But this checker is the gate that exists for when that constraint fails or the file is hand-edited or truncated into valid JSON, and right now it fails open.
-
-Reproduced: `assess_report(json.dumps({**valid, "findings": None}), exit_code=0, ...)` returns `Assessment(status='complete', reasons=(), finding_count=0, ...)`.
-
-`tests/test_codex_report_status.py` has no wrong-type case at all, so the suite passes despite this gap.
-
-**Fix:** Do generic type and enum validation driven by the schema, without adding a dependency (`jsonschema` is not installed):
-```python
-_JSON_TYPES = {"string": str, "array": list, "object": dict, "boolean": bool, "integer": int, "null": type(None)}
-
-def _type_ok(value, spec) -> bool:
-    types = spec.get("type")
-    if types is None:
-        return True
-    types = types if isinstance(types, list) else [types]
-    for t in types:
-        py = _JSON_TYPES[t]
-        if t == "integer" and isinstance(value, bool):
-            continue
-        if isinstance(value, py):
-            return True
-    return False
-
-def _validate(value, spec, path, reasons):
-    if not _type_ok(value, spec):
-        reasons.append(f"schema: {path} has wrong type"); return
-    if "enum" in spec and value not in spec["enum"]:
-        reasons.append(f"schema: {path} {value!r} not in {spec['enum']}")
-    if isinstance(value, dict) and spec.get("type") == "object":
-        props = spec.get("properties", {})
-        for f in spec.get("required", []):
-            if f not in value: reasons.append(f"schema: {path} missing {f}")
-        for k, v in value.items():
-            if k not in props: reasons.append(f"schema: {path} unexpected field {k}")
-            else: _validate(v, props[k], f"{path}.{k}", reasons)
-    if isinstance(value, list) and "items" in spec:
-        for i, item in enumerate(value):
-            _validate(item, spec["items"], f"{path}[{i}]", reasons)
-```
-Replace `_check_schema` with a recursive walk of this kind. Add tests for `findings: null`, `findings: "x"`, `coverage: null`, `schema_version: "2"`, `summary: 5` and `line_start: True`, each expecting `incomplete`.
-
-### CR-02: A finding with a non-string `id` is counted but dropped from the qualified IDs, so it cannot be dispositioned
-
-**File:** `tests/codex_report_status.py:145-147, 162`
-**Issue:** `_finding_consistency_and_ids` runs `continue` when `fid` is not a `str`. That skips the duplicate check, the reproduced/hypothesis check and the qualified-ID creation. Nothing in `_check_schema` flags the wrong type of `id`, so the report stays `complete`. Reproduced: with `findings[0]["id"] = 7`, the result is `status=complete, finding_count=2, qualified_ids=1`. The checkpoint-record disposition table and the owner checklist are keyed on qualified IDs. A real Codex finding (possibly a critical one) disappears from the disposition flow while the report still reads "complete". Its reproduced/hypothesis consistency is also never checked.
-**Fix:** Treat a missing or non-string `id` as a schema violation that makes the report incomplete, and never skip a finding silently:
-```python
-fid = finding.get("id")
-if not isinstance(fid, str) or not fid.strip():
-    reasons.append(f"finding at index {idx} has no valid id")
-    continue
-```
-CR-01's recursive validation would also catch this. Add a test where `id=7` expects `incomplete` and checks that `finding_count == len(qualified_ids)` on every complete result.
+Codex F002 (wrong `gh api` field syntax) was fixed outside this review. I checked it: `review-checkpoint-record.md:16` uses `-F body=@FILE`, which is valid `gh api` syntax, and `test_review_checkpoint_record.py:21` guards it.
 
 ## Warnings
 
-### WR-01: Contradictory `verdict` and `findings` are accepted as complete
+### WR-01: SA-01 fix mislabels a Failed card that has both an unevaluated row and a malformed row
 
-**File:** `tests/codex_report_status.py:69-72, 230-239`
-**Issue:** `verdict: "no-findings"` with two findings, and `verdict: "findings"` with `findings: []`, both come back `complete`. A summary built from `verdict` would say "no findings" while findings exist, or the other way round.
-**Fix:** After schema validation, add:
-```python
-if isinstance(findings, list):
-    if verdict == "no-findings" and findings:
-        reasons.append("verdict says no-findings but findings are listed")
-    if verdict == "findings" and not findings:
-        reasons.append("verdict says findings but none are listed")
+**File:** `triggarr/templates/partials/cycle_grade.html:31-34`
+**Issue:** The SA-01 fix added `app.last_cycle.grade != 'failed'` to the unevaluated ("detail") branch only. On a Failed card that has an unevaluated row and a malformed row, that branch is now skipped. The next branch (`no_failure and ns.malformed > 0 and malformed_skipped == ns.malformed_total`) still matches, because it never checks for unevaluated rows. This case is common: a cycle with 0 accepted and any malformed records is graded Failed (`outcome.py:76-79`). I rendered the card at this head:
+
+```
+grade=failed, accepted=0, failed=0, malformed_by_queue={"cutoff":1}, unevaluated=[missing]
+  summary: "Show 1 skipped record"
+  rows:    "Missing queue not evaluated: tag 'x' not found", "1 upgrade-queue record skipped — malformed data"
+grade=partial (same rows)
+  summary: "Show 2 details"
 ```
 
-### WR-02: CLI crashes with a traceback (no JSON assessment) on a non-UTF-8 or directory report path
+The red card says "1 skipped record", but the list has 2 rows. The row it leaves out, "Missing queue not evaluated", is the real cause of the failure. Before the SA-01 fix this card said "Show 2 details". The owner's ruling says red cards should say "failure reason". The current label matches neither. `test_card_details_label_malformed_plus_unevaluated` (`test_app_cards.py:719`) covers only the Partial grade, so the suite misses this.
+**Fix:** Allow the skipped-record branch only when there are no unevaluated rows, and add a Failed-grade version of the mixed test that expects "Show 2 failure reasons":
+```jinja
+{% elif no_failure and ns.unevaluated == 0 and ns.malformed > 0 and app.last_cycle.malformed_skipped > 0 and app.last_cycle.malformed_skipped == ns.malformed_total %}
+```
 
-**File:** `tests/codex_report_status.py:288-289`
-**Issue:** `report_path.read_text(encoding="utf-8") if report_path.exists()` raises `UnicodeDecodeError` on invalid bytes (reproduced with `\xff\xfe`) and `IsADirectoryError` if the path is a directory. The contract (step 6) expects this command to produce the `.status.json` assessment. Instead it produces a Python traceback and no `status`/`reasons` payload. That breaks the promise that every failure gets a plain-language reason. The docstring of `assess_report` says it "never raises on malformed input", but the CLI wrapper does.
+### WR-02: Codex runs do not record the exact prompt or which harness and template produced them
+
+**File:** `tests/codex_review_run.py:42-43, 103-110, 253-292`
+**Issue:**
+- **The prompt is not saved.** The runner renders the prompt and sends it to Codex on stdin, but never writes it to disk. The Codex `--json` event stream doesn't include the user prompt either. I checked the in-progress `d501a68316b2-explicit-a2.jsonl`: it starts with `thread.started` and then shows hook-parse errors and agent items. So the stored outputs (`.jsonl`, `.last.json`, `.status.json`, `.pytest.txt`) cannot show what Codex was told. D-07 ("Claude adds no risk notes … or framing of its own") can't be checked from them.
+- **Inputs are read from disk as-is.** `CONTRACT_PATH`, `SCHEMA_PATH` and the checker are read from the main checkout as they are on disk, including uncommitted edits. The output doesn't record the commit or the template version that was used.
+- **Example.** The current `d501a68316b2-explicit-a2` retry uses the v3 template and the v2 schema. Attempt `a1` on the same head used the earlier template and the v1 schema. Only `schema_version` in `.last.json` hints at the change, and the template version isn't recorded anywhere.
+
+This is an evidence-integrity gap in tooling whose only job is evidence. The docstring calls it a "Reproducible runner", but given only its outputs, the run can't be reproduced.
+**Fix:**
+- Write the rendered prompt to `<OUT>.prompt.txt`, before Codex starts, and add it to `OUTPUT_SUFFIXES`, the contract's "Raw output storage" list and the record's "Raw output paths" row.
+- Put a provenance header in `.pytest.txt`, or a small `<OUT>.run.json`. It should hold `git rev-parse HEAD` of the harness checkout, the template version line, and the sha256 of the contract, schema and checker.
+- Refuse to run, or at least warn, when `git status --porcelain -- docs/codex-adversarial-review-contract.md .claude/schemas tests/codex_report_status.py tests/codex_review_run.py` is non-empty.
+
+### WR-03: A v2 report showing no sign that Codex did any work is accepted as complete
+
+**File:** `tests/codex_report_status.py:357-359` (no check on `commands_run`); schema `codex-review-findings.schema.json:46-76`
+**Issue:**
+- **No other cross-check.** With schema v2, the checker now relies on Codex's own `review_complete: true`, with no free-text check as a backstop. That makes the cross-checks the checker *can* do the only defense against a hollow or fabricated report.
+- **Both gaps reproduced.** The valid fixture with `commands_run: []` returns `complete`. So does `coverage: [""]` or `["   "]`, because `:358` only rejects an empty list.
+- **Why it matters.** The fixed prompt requires "First run git rev-parse HEAD and report it as inspected_head_sha" and "every command actually run". A report with no commands means the inspected SHA was never checked and the diff was never read. Yet it would show in the owner checklist as "Codex: complete, No findings". That is the false-clean outcome D-09 forbids.
+- **Likelihood.** `--output-schema` makes a fully empty report unlikely, but the schema can't enforce `minItems` here. This checker is the backstop for exactly this case.
+
 **Fix:**
 ```python
-try:
-    report_text = report_path.read_text(encoding="utf-8") if report_path.is_file() else None
-except (OSError, UnicodeDecodeError) as exc:
-    report_text = None
-    read_error = f"unreadable report: {type(exc).__name__}"
+commands = report.get("commands_run")
+if isinstance(commands, list) and not commands:
+    reasons.append("no commands run: the report gives no evidence the diff was inspected")
+if isinstance(coverage, list) and not any(_non_blank(c) for c in coverage):
+    reasons.append("no coverage stated")
 ```
-Prepend `read_error` to the reasons, so the run still prints JSON and exits 1.
-
-### WR-03: The checkpoint record says BM re-review keeps no history, which contradicts the verified baseline and BM's own workflow
-
-**File:** `docs/review-checkpoint-record.md:131`
-**Issue:** The record says `/bm:code-review <N> --fix --auto` "overwrites `REVIEW.md` in place ... it has no built-in history". `docs/bm-review-baseline-2026-10-22.md:53, 68, 86, 230, 238` documents (with line citations) that each iteration backs up `REVIEW.md`/`REVIEW-FIX.md` to `*.iterN.md` before overwriting. The installed `bm/5.0.3/workflows/code-review-fix.md:270-272` confirms this (`cp "${REVIEW_PATH}" "${REVIEW_PATH%.md}.iter${ITERATION}.md"`). This is a sensitive operational procedure doc. A false claim about how evidence is kept will confuse whoever reconciles `.iterN.md` files against the `REVIEW-<head12>.md` snapshots, and it undercuts trust in the baseline.
-**Fix:** Change the wording to: "BM's `--auto` loop keeps per-iteration `*.iterN.md` backups, but they are named by iteration rather than head SHA and are not committed. Before any re-review, also snapshot by head SHA:" and keep the `cp` step.
-
-### WR-04: The classification policy does not rank `sensitive` against `code`, but the record requires a single "most consequential" class
-
-**File:** `docs/review-classification-policy.md:15-19, 41`
-**Issue:** "Mixed changes" says a PR follows "its most consequential class" and `classification` is "the single most consequential class". It only says ordinary-docs is the least consequential. `sensitive` and `code` require different things: sensitive asks for vibe-check only when risk is high, while code requires routine vibe-check and CI. This phase's own PR is mixed sensitive + code (it touches `.claude/schemas/**` and policy docs plus `triggarr/templates/partials/cycle_grade.html` and tests). Classifying it `sensitive` would, read literally, drop the routine vibe-check the owner still requires for application code.
-**Fix:** Add: "When both `sensitive` and `code` are present, the PR must meet the union of both rows' requirements (routine vibe-check and CI from `code`, plus RISK-01/RISK-02 from `sensitive`). Record `classification` as `code` and list both in `classes_present`." Alternatively, define an explicit order.
-
-### WR-05: Raw Codex event streams are committed to a public repo, with pattern-based gitleaks as the only safeguard
-
-**File:** `docs/codex-adversarial-review-contract.md:46-52`
-**Issue:** The full, unedited `.jsonl` stream (every command Codex ran and its output) is force-added (`git add -f`) to the public repository. `--sandbox read-only` restricts writes, not reads. Codex can still `cat` files outside the detached worktree, such as a dev `config.toml` or shell environment, and those outputs land in the stream. gitleaks only catches known secret shapes. Radarr/Sonarr API keys are 32-character hex strings with no prefix and are commonly missed. CLAUDE.md's security rule says "No API keys in logs". The fixed prompt never tells Codex to stay inside the worktree or avoid reading credentials.
-**Fix:** Add this sentence to the fixed prompt: "Do not read files outside the working directory or any credential/config file." Bump the template version. Before committing, also grep the raw files for the configured instance API keys (for example `rg -F -f <(local key list)`, kept out of the repo), or commit only `.last.json`/`.status.json` and keep `.jsonl` local or as a CI artifact.
+Also consider requiring a `commands_run` entry whose command contains `git rev-parse HEAD` with `exit_code == 0`. Add tests for `commands_run: []` and `coverage: [""]` that expect `incomplete`. These checks are also safe for the recorded v1 reports, since both have non-empty `commands_run`. Re-run the two recorded-report tests to confirm.
 
 ## Info
 
-### IN-01: Template classifies reason rows by matching the wording `outcome.py` generates
+### IN-01 (carried from prior IN-01): Template classifies reason rows by matching the wording `outcome.py` produces
 
-**File:** `triggarr/templates/partials/cycle_grade.html:18-28`
-**Issue:** The `startswith('Missing queue not evaluated: ')` / `endswith('— malformed data')` / `endswith('skipped')` checks duplicate the strings built in `triggarr/search/outcome.py:291, 303-313`. The view layer is re-deriving domain categories that `cycle_view` already knows. A wording change in `outcome.py` silently changes the label. The fallback goes to "failure reason" (the safe direction), and `test_app_cards.py` would catch it, so this is a maintainability issue rather than a live defect.
-**Fix:** Have `cycle_view` emit `"kind": "failure" | "unevaluated" | "malformed" | "eligible"` on each reason row, or emit precomputed `detail_label` fields, and branch on those in the template.
+**File:** `triggarr/templates/partials/cycle_grade.html:19-28`
+**Issue:** Unchanged since the prior review. WR-01 shows how fragile this branching is: each new label condition has to account for every row category by hand.
+**Fix:** Have `cycle_view` emit a `kind` per row (`failure`/`unevaluated`/`malformed`), or a precomputed `detail_label`, and branch on that.
 
-### IN-02: "Skipped records" label count comes from a different field than the rows
+### IN-02 (carried from prior IN-05, partly fixed): A whitespace-only `reproduction_command` passes on a reproduced finding
 
-**File:** `triggarr/templates/partials/cycle_grade.html:32-33`
-**Issue:** The rows come from `malformed_by_queue`, but the label count and the gate use `malformed_skipped`. They agree for engine-written state (`outcome.py:176`). For a tampered or hand-edited `state.json` (which `cycle_view` explicitly guards against), `malformed_by_queue={"missing": 2}` with `malformed_skipped=0` falls through to "Show 1 failure reason". Mismatched values would show a count that disagrees with the rows.
-**Fix:** Compute the label count in `cycle_view` from the rows actually rendered (sum of per-queue counts, or the legacy aggregate).
+**File:** `tests/codex_report_status.py:260`
+**Issue:** `hypothesis` now uses `_non_blank()`, but `reproduction_command` still uses `not finding.get(...)`. Setting `reproduced: true, reproduction_command: "   "` returns `complete` (reproduced). A finding can then be labelled "reproduced" in the disposition table with no command to re-run.
+**Fix:** `if reproduced is True and not _non_blank(finding.get("reproduction_command")):`, plus a test.
 
-### IN-03: `test_never_reports_clean` is tautological
+### IN-03 (carried from prior IN-03): `test_never_reports_clean` is still tautological
 
-**File:** `tests/test_codex_report_status.py:319-339`
-**Issue:** It only asserts that the word "clean" never appears. The implementation has no code path that could emit it, so the test cannot fail on a real regression. A meaningful guard would be "every malformed scenario yields `incomplete`", which is what CR-01 shows is false.
-**Fix:** Replace it with a parametrized list of malformed and type-violating reports, each asserting `status == "incomplete"`, plus an invariant check that `finding_count == len(qualified_ids)` whenever the status is `complete`.
+**File:** `tests/test_codex_report_status.py:573-593`
+**Issue:** It checks only that the word "clean" never appears, and no code path could produce it. The real guard is now the parametrized wrong-type tests, so this test only adds runtime.
+**Fix:** Delete it, or turn it into an assertion that every listed scenario returns `status == "incomplete"`.
 
-### IN-04: `--attempt` accepts zero or negative values
+### IN-04: The checker can still raise, or leave an empty status file, on pathological input
 
-**File:** `tests/codex_report_status.py:268`
-**Issue:** `--attempt 0` or `--attempt -3` produces qualified IDs such as `codex:<head>:a-3:F001`, which do not match the `a1`/`a2` convention used in the checkpoint record.
-**Fix:** Use a `type=` validator that requires `>= 1`.
+**File:** `tests/codex_report_status.py:303-307`; `tests/codex_review_run.py:289`
+**Issue:**
+- **Deep nesting crashes the checker.** `json.loads` on deeply nested input (`"["*100000 + "]"*100000`) raises `RecursionError`, which `except json.JSONDecodeError` doesn't catch. The docstring says the checker "never raises on malformed input", so this breaks that promise. I reproduced it.
+- **Duplicate keys resolve silently.** A report with duplicate keys (`"review_complete": false … "review_complete": true`) silently takes the last value and returns `complete`.
+- **A crash leaves an empty status file.** When the checker subprocess crashes, the runner writes an empty `.status.json`. That file then blocks re-running the same attempt, and it records no reason.
 
-### IN-05: Whitespace-only `reproduction_command`/`hypothesis` and `bool` integers pass
+All three are contrived for schema-constrained Codex output.
+**Fix:**
+- Catch `(json.JSONDecodeError, RecursionError)`.
+- Use `json.loads(text, object_pairs_hook=...)` to reject duplicate keys, with the reason "unparseable: duplicate key".
+- In the runner, when `checker.stdout` is empty, write a JSON stub: `{"status":"incomplete","reasons":["checker produced no output (exit N)"]}`.
 
-**File:** `tests/codex_report_status.py:98-101, 155-158`
-**Issue:** `not finding.get("hypothesis")` treats `"   "` as present, and `isinstance(True, int)` lets `line_start: true` and `exit_code: true` pass the integer checks (both reproduced).
-**Fix:** Use `not (value or "").strip()` and `isinstance(v, int) and not isinstance(v, bool)`.
+### IN-05: `execute()` lets `CalledProcessError` from `git worktree add` / `git rev-parse` escape as a traceback
 
-### IN-06: Failure rule allows a third attempt, but the record template only allows 1 or 2
+**File:** `tests/codex_review_run.py:268, 280-282, 356-360`
+**Issue:** Both calls use `check=True`, but `main()` catches only `FileExistsError`. If the head isn't present locally, or a stale worktree is registered, the operator gets a traceback and no status record. If `rev-parse` fails after Codex has finished, `.jsonl` and `.last.json` exist but `.status.json` is never written, so that attempt can only be assessed by hand.
+**Fix:** Catch `subprocess.CalledProcessError` in `main()`, and print one plain-language error. If Codex outputs already exist, write a `.status.json` stub with the reason.
 
-**File:** `docs/codex-adversarial-review-contract.md:56`, `docs/review-checkpoint-record.md:86`
-**Issue:** After attempt 2 the owner may choose "retry later", which would be attempt 3. The checkpoint template's `Attempts | 1 | 2` and the storage naming give no guidance for it.
-**Fix:** Change the template to `Attempts | N (1, 2, or owner-approved retry)` and say that owner-approved retries keep incrementing `a<attempt>`.
+### IN-06: A retry on a head that is no longer current spends a full Codex run before reporting "stale"
+
+**File:** `tests/codex_review_run.py:253-288`
+**Issue:** The checker compares the report head with `git rev-parse HEAD` taken *after* the run. When `--head` is already behind the checkout's HEAD at launch, the result is certain to be `stale` and `incomplete`, after up to 30 minutes of Codex time. The `d501a68316b2-explicit-a2` retry running now is in this position: its head is `d501a683` and the checkout is at `322afc50`.
+**Fix:** In `execute()` and `dry_run()`, compare `run.head` with the current HEAD first. If they differ, print a warning that the result will be assessed as stale, and require an explicit `--allow-stale-head` flag to continue.
+
+### IN-07: Committed raw outputs contain local absolute paths, including the macOS username
+
+**File:** `tests/codex_review_run.py:136, 226`; `docs/codex-adversarial-review-contract.md:55`
+**Issue:** `TEST_EVIDENCE` is the absolute path `/Users/<user>/triggarr/.planning/...`, and Codex echoes it into the committed `.jsonl`. The stream also records Codex config errors that name `~/.codex/hooks.json` by absolute path. pytest output can include the `/var/folders/...` temp worktree path. These go into a public repository. The leak is low-sensitivity (a username and directory layout), but the two secret scans won't flag it.
+**Fix:** Pass a repo-relative `TEST_EVIDENCE` path. Codex runs with `-C` set to the worktree, so you can either copy the evidence file into a known relative location, or keep it absolute but document that the path is published.
+
+### IN-08: The runner depends on GNU `timeout`, which macOS does not ship
+
+**File:** `tests/codex_review_run.py:158-175`
+**Issue:** `timeout` is present here only through Homebrew coreutils (`/opt/homebrew/bin/timeout`). On a machine without it, every attempt fails with "codex exit status unknown". That is incomplete, not a false-clean result, but both automatic attempts would be wasted without explanation.
+**Fix:** Drop the external binary and use `subprocess.run(..., timeout=CODEX_TIMEOUT_SECONDS)` for Codex, as the pytest step already does, recording a timeout as exit 124. Otherwise, check `shutil.which("timeout")` up front and print a clear error.
 
 ## Set aside (needs ruling)
 
-### SA-01: Red "Failed" cycle whose only rows are unevaluated queues is labelled "Show N detail(s)"
+### SA-01: The runner executes the PR head's test suite outside any sandbox, with the operator's full environment
 
-**Where:** `triggarr/templates/partials/cycle_grade.html:28-31`
-**Why excluded:** This follows decision D-04 ("unevaluated is not a failure"), and no test covers the Failed-grade version of it. That makes it a product-wording call rather than a code defect.
-**Effect if left as is:** A user sees a red "Failed · 0 accepted, 0 failed" headline above a neutral "Show 1 detail" disclosure. The row inside may be "Missing queue not evaluated: malformed data (KeyError)", which is the actual cause of the failure. The neutral label may make the user less likely to open it.
-**Needs:** Owner ruling on whether a Failed-grade card with only unevaluated rows should still say "detail(s)", or should use a failure label.
+**Where:** `tests/codex_review_run.py:196-221`; `CLAUDE.md` ("This standing instruction authorizes only running the read-only Codex review")
+**Why excluded:** This follows the owner's 2026-10-22 decision to give Codex harness-produced test evidence. The new `CLAUDE.md` wording describes the standing authorization as covering "only running the read-only Codex review". The runner also runs `uv run --extra dev pytest` on the head, without a sandbox, passing every environment variable except `VIRTUAL_ENV` (for example `GH_TOKEN` and SSH agent sockets). Its output goes into a file that gets committed publicly.
+**Effect if left as is:** On the owner's own PRs this is the same as running the tests locally. On a Dependabot or outside-contributor PR, it automatically runs new dependency code, or contributor test code, on the owner's machine with the owner's credentials. That happens as a side effect of a step described as read-only.
+**Needs:** A ruling on whether the standing Codex authorization should name the pytest step explicitly. Also: should it be limited to owner-authored heads, or run with a minimal environment (`PATH`, `HOME`, `UV_*`)?
 
-### SA-02: Changed files in the diff range that were not in the review scope
+### SA-02: Schema v2 does not search the report text, by design
 
-**Where:** `CLAUDE.md` (commit 719359a), `docs/owner-cli-acceptance.md:15`
-**Why excluded:** Both changed in `6f3841aa..HEAD` but were not in the provided file list. Both are sensitive under the new classification policy (agent instructions and acceptance policy).
-**Effect if left as is:** The acceptance-procedure change (write dispositions before presenting the run, Greptile optional) and the CLAUDE.md review wiring have not had this BM pass. `tests/test_review_instructions.py` only checks that strings are present in CLAUDE.md.
-**Needs:** A ruling on whether to add them to this review's scope or cover them in the paired Codex pass.
+**Where:** `tests/codex_report_status.py:209-224, 314-317`
+**Why excluded:** This is an owner decision (2026-10-22). A v2 report with `review_complete: true` whose summary says "This is an incomplete review" is assessed `complete`, and `test_v2_does_not_text_match_completeness` pins that behavior.
+**Effect if left as is:** If Codex gets the structured flag wrong while saying the review is incomplete in its prose, the run counts as complete. The owner sees the prose only by reading `.last.json`.
+**Needs:** Confirmation that this is accepted. One option is to surface the summary and limitations verbatim in the owner checklist, which the record template already does for limitations.
 
 ---
 
-_Reviewed: 2026-10-22T19:59:57Z_
+_Reviewed: 2026-10-22T20:56:03Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_

@@ -427,3 +427,298 @@ edited.
 findings remain open (plus the duplicates and set-aside items above),
 Codex discloses its own verification as incomplete, and this record is
 not owner acceptance.
+
+## Review after fixes — head 322afc50367d
+
+<!-- review-checkpoint head=322afc50367d4cf7e2610eb6f8852bb8c9302457 -->
+
+Demonstrates REVIEW-02's review-after-fixes path and REVIEW-06's per-head
+refresh: after the batched fixes for the two earlier checkpoints, BM and
+Codex each reviewed the new head independently. Nothing recorded for
+`a7995baf187e` or `d501a68316b2` is cited as satisfying this head.
+
+Fix commits between the earlier head and this one:
+
+- `3163144`..`9290303` — `/bm:code-review-fix 83`, one pass without
+  `--auto` (report `83-REVIEW-FIX.md`, commit `5197a7f`): CR-01, CR-02,
+  WR-01..WR-05 of `bm:d501a68316b2`.
+- `37eafd4`..`392e6ec` — direct test-first fixes: `bm:d501a68316b2`
+  IN-04, IN-05, IN-06, SA-01; `bm:a7995baf187e:WR-02` (≙
+  `bm:d501a68316b2:IN-02`); `codex:d501a68316b2:a1:F002`.
+- `2cf5a74`..`987dcc5` — owner-approved durable Codex completeness
+  (2026-10-22): report schema v2 (`review_complete`,
+  `incomplete_reasons`), transcript exclusion from the review diff,
+  harness-produced pytest evidence, contract template v3, and the runner
+  `tests/codex_review_run.py`.
+- `322afc5` — snapshot of the pre-fix review as
+  `83-REVIEW-dcfb5a5081ea.md` (the review produced for head
+  `d501a68316b2`), taken before BM re-reviewed.
+
+Excluded from the fix round by owner decision, as nonblocking debt: the
+card-template refactor (`bm:a7995baf187e:WR-01` / `bm:d501a68316b2:IN-01`)
+and `bm:d501a68316b2:IN-03`.
+
+### Closure of the d501a68316b2 Codex retry (D-09)
+
+The earlier head's attempt 1 is incomplete under the fixed checker (it
+calls itself "an incomplete review"). The automatic attempt 2 on the same
+head, `codex/d501a68316b2-explicit-a2`, is a schema v2 report with
+`review_complete: true`, `incomplete_reasons: []` and "Inspected all 49
+in-scope files". Assessed against its own head, the checker returns
+complete:
+
+```text
+uv run python tests/codex_report_status.py --report .../codex/d501a68316b2-explicit-a2.last.json --exit-code 0 \
+  --expected-head d501a68316b2c3a032634741f8c73d373870e9f2 --expected-base 6f3841aaae4f2511efe6796f7f5c7ad50b423f90 \
+  --current-head d501a68316b2c3a032634741f8c73d373870e9f2 --attempt 2
+{"status": "complete", "reasons": [], "qualified_ids": ["codex:d501a68316b2:a2:F001", "codex:d501a68316b2:a2:F002"], ...}
+exit 0
+```
+
+This closes the `d501a68316b2` checkpoint's D-09 retry: attempt 2 was the
+last automatic attempt, and it completed. Its stored `.status.json` says
+`stale`, because the runner assessed it after the checkout had moved on to
+`322afc5`. That stored result is the REVIEW-06 stale demonstration below,
+not a failure of the retry.
+
+### Stale checks (REVIEW-06)
+
+Earlier-head evidence assessed with `--current-head` set to this head:
+
+| Report | Command (abbreviated) | Result | Exit code |
+|---|---|---|---|
+| `codex/d501a68316b2-explicit-a1.last.json` | `--expected-head d501a683… --current-head 322afc50367d… --attempt 1 --exit-code 0` | incomplete: `self-declared incomplete: limitations states 'incomplete review'`; `stale: report is for d501a68316b2, current head is 322afc50367d` | 1 |
+| `codex/d501a68316b2-explicit-a2.last.json` | `--expected-head d501a683… --current-head 322afc50367d… --attempt 2 --exit-code 0` | incomplete: `stale: report is for d501a68316b2, current head is 322afc50367d` (matches its stored `.status.json`) | 1 |
+
+Neither earlier report counts for this head.
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `322afc50367d4cf7e2610eb6f8852bb8c9302457` |
+| PR base SHA | `6f3841aaae4f2511efe6796f7f5c7ad50b423f90` |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `322afc50367d4cf7e2610eb6f8852bb8c9302457` |
+| Codex inspected base (`inspected_base_sha`) | `6f3841aaae4f2511efe6796f7f5c7ad50b423f90` |
+
+Reconciliation: no PR exists yet, so Codex's `PR_URL` was the literal text
+`none (local checkpoint, not pushed)`. The head is `git rev-parse HEAD` at
+the checkpoint; the base is `git merge-base origin/main HEAD` (phase
+scope). Both Codex attempts on this head reported exactly these SHAs. This
+head differs from the earlier sections' heads (`a7995baf187e…`,
+`d501a68316b2…`). All fields match; no reconciliation needed.
+
+### Classification
+
+```json
+{"schema":1,"head":"322afc50367d4cf7e2610eb6f8852bb8c9302457","classification":"code","classes_present":["code","sensitive","ordinary-docs"],"rationale":"git diff 6f3841aa..322afc50 (full phase scope) touches application code and tests (triggarr/templates/partials/cycle_grade.html, tests/codex_report_status.py, tests/codex_review_run.py and six test modules) and sensitive content: agent instructions (CLAUDE.md, .claude/schemas/codex-review-findings.schema.json), acceptance policy (docs/owner-cli-acceptance.md, docs/buildomator-greptile-pilot.md) and review procedures (docs/codex-adversarial-review-contract.md, docs/review-checkpoint-record.md, docs/review-classification-policy.md, docs/bm-review-baseline-2026-10-22.md), plus .planning/** planning records. Per docs/review-classification-policy.md Mixed changes (the owner's WR-04 'Apply both' ruling, now in the policy), a PR with both code and sensitive content is recorded as code with both classes present and gets every review either class requires, including the RISK-01 assessment of the sensitive files named here. Supersedes the d501a68316b2 record, which used the pre-fix policy wording (sensitive).","supersedes_head":"d501a68316b2c3a032634741f8c73d373870e9f2"}
+```
+
+### Risk note (RISK-01)
+
+Refreshed for this head; the fixes changed both the code and the risk.
+
+- **Scope:** local checkpoint only; the code rides in the Phase 83 PR
+  prepared in Plan 10. Covers the full phase diff
+  `6f3841aaae4f2511efe6796f7f5c7ad50b423f90..322afc50367d4cf7e2610eb6f8852bb8c9302457`
+  (17 files outside `.planning/`), not only the fix commits. Affected
+  behavior: the Codex report checker and schema v2, the new Codex runner,
+  the contract (template v3), the checkpoint record and classification
+  policy, `CLAUDE.md`'s review wiring, and the dashboard card's
+  detail-label wording.
+- **Risk:** moderate. The earlier fail-open checker gaps are fixed and
+  verified, but this head adds new tooling with its own gaps: a Failed
+  card with mixed malformed and unevaluated rows says "Show 1 skipped
+  record" while listing 2 rows, hiding the real cause (reproduced by both
+  reviewers); the runner records neither the prompt it sent nor the
+  versions of the files it used, and reads them from the working tree
+  including uncommitted edits; a v2 report with no commands and blank
+  coverage counts as complete; the runner runs the head's test suite with
+  the operator's full environment, which matters for Dependabot or
+  outside-contributor heads; concurrent identical runs could overwrite
+  evidence (unverified). No production search or scheduling logic is
+  touched; the card issue is presentation-only.
+- **Recommended review:** `standard` depth (what ran) was adequate to
+  surface these. The owner-approved round 2 touches the runner, the
+  checker, the contract and the card, so it needs another full-scope
+  `standard` BM review and a fresh paired Codex pass on its own new head,
+  not a targeted follow-up.
+- **Required evidence:** for round 2: a failing regression test first for
+  each item (Failed-grade mixed card; runner prompt/meta audit trail and
+  dirty-file refusal; empty `commands_run`, blank coverage and blank
+  `reproduction_command`; v2 self-described incomplete text; `--trusted`/
+  `--untrusted`; planning-docs exclusion; atomic output reservation; no
+  home path in prompt or evidence; git-failure cleanup and in-process
+  timeout); full suite and ruff green; fresh BM and Codex reviews on the
+  new head.
+- **What this recommendation cannot establish:** that a real Codex run
+  will honestly set `review_complete`; that the checker's cross-checks
+  catch every hollow report; behavior of the runner under genuinely
+  concurrent processes; live browser/htmx rendering of the card; that
+  the committed raw outputs contain nothing sensitive beyond what the two
+  secret scans look for (see Incomplete items for the home-directory
+  path).
+
+### Vibe-check (RISK-02)
+
+Risk below high: no additional vibe-check recommended.
+
+- **Routine vibe-check status:** not run. This is a local, unpushed
+  checkpoint; the owner's standing vibe-check rule is keyed to
+  pushing/tagging, and this code rides in the Phase 83 PR prepared in
+  Plan 10, where vibe-check is offered before that push.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | review after fixes (`/bm:code-review 83`, post-fix re-review) |
+| Requested depth | `standard` (`.planning/config.json` key `workflow.code_review_depth`) |
+| Actual depth | `standard` (matches requested) |
+| Large-scope warning | not printed (17 files reviewed; below the `-gt 50` downgrade threshold) |
+| Responsible files | `.planning/config.json` key `workflow.code_review_depth`; `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/workflows/code-review.md` steps `resolve_depth` and `compute_file_scope` |
+| Report location | `.planning/phases/83-paired-bm-codex-review-risk-based-depth/83-REVIEW.md` (pre-fix review preserved as `83-REVIEW-dcfb5a5081ea.md`) |
+| Status | `issues_found` (complete run, findings reported) |
+
+**Scope override:** BM's SUMMARY-derived file list missed the plan-09
+files and `CLAUDE.md` again (the scoping quirk recorded for
+`d501a68316b2`). The review was run with BM's documented `--files`
+override listing all 17 files from `git diff --name-only BASE..HEAD`
+outside `.planning/`, so this head's BM review covers every non-planning
+file in the phase diff, including `CLAUDE.md` and
+`docs/owner-cli-acceptance.md`.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (attempt 2; checker exit 0) |
+| Attempts | 2 — attempt 1 incomplete (self-declared), automatic retry attempt 2 complete |
+| Raw output paths | `.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a1` and `322afc50367d-postfix-a2`, each `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt` |
+| Review complete | a1: `review_complete: false`, 3 `incomplete_reasons` (full diff output truncated; planning markdown under the phase folder and the quick-task folder not fully inspected). a2: `review_complete: true`, `incomplete_reasons: []` |
+| Coverage | a2: 8 entries — all 57 in-scope changed files including tests and planning markdown (truncated output recovered by later reads); cycle classification traced through queue screening, tag resolution, `CycleTally`, `cycle_view`, route context and template; regression coverage of malformed-only, unevaluated-only, mixed, Partial and Failed states; schemas, validation, checkpoint records, runner behavior, identity checks, failure handling and output preservation; classification, acceptance, audit and publication policy; 109 focused tests passed and the Failed mixed-state defect reproduced; harness evidence read (2,334 passed, exit 0); diff whitespace check and clean tree |
+| Exclusions | a2: `.planning/**/codex/**` (except the authorized harness evidence file) and `.planning/**/*.jsonl` |
+| Commands run | a1: 25 (22 exit 0, 3 exit 1). a2: 48 (45 exit 0, 3 exit 1: a `cat` of a non-existent `tests/run_codex_review.py` and two in-memory template probes, one of them the defect reproduction asserting the wrong label) |
+| Limitations | a2 (verbatim): "Did not independently rerun the full pytest suite because the read-only sandbox prevents writable test fixtures. Read the authorized harness evidence for the exact inspected head and independently ran 109 read-only-compatible focused tests." / "Nine focused-test cases were deselected to avoid historical review-artifact reads and CLI tests requiring writable fixtures." / "The defect was reproduced through production tally, view, and template code; no live browser or external *arr service was exercised." / "External Buildomator installation behavior, hosted CI, Docker deployment, and publication workflows were inspected through repository code and documentation rather than executed." |
+
+Harness test evidence (`.pytest.txt`, produced outside Codex's sandbox on
+exactly this head): `uv run --extra dev pytest tests/ -q` exit 0, 2334
+passed, 38 warnings (both attempts).
+
+Findings:
+
+| Qualified ID | Severity | Location | Reproduced / hypothesis | Title |
+|---|---|---|---|---|
+| `codex:322afc50367d:a1:F001` | low | `triggarr/templates/partials/cycle_grade.html:31` | reproduced | Failed cycles with mixed reasons fall through to the skip-only label |
+| `codex:322afc50367d:a1:F002` | medium | `tests/codex_review_run.py:255` | hypothesis | Concurrent identical review runs can overwrite immutable evidence |
+| `codex:322afc50367d:a2:F001` | low | `triggarr/templates/partials/cycle_grade.html:33` | reproduced | Failed mixed-reason cards incorrectly use the skipped-record label |
+
+Secret checks before commit (contract, Raw output storage):
+`gitleaks detect --no-git --source .planning/phases/83-paired-bm-codex-review-risk-based-depth/codex`
+(gitleaks 8.30.1) → "no leaks found", exit 0; the 32-hex scan
+`grep -rlE '(^|[^0-9a-f])[0-9a-f]{32}([^0-9a-f]|$)' <codex dir>` → no
+files listed, exit 1 (pass).
+
+### Greptile
+
+not run (local checkpoint)
+
+### CI
+
+not run (local checkpoint)
+
+### Dispositions
+
+New findings on this head. Reproduction: the red-card case was rendered
+on this head with production `CycleTally` → `cycle_view` → template code
+(grade `failed`, summary "Show 1 skipped record" with 2 rows); the other
+items were confirmed by direct code read of `tests/codex_review_run.py`
+and `tests/codex_report_status.py` at this head, matching the BM report's
+own reproductions.
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:322afc50367d:WR-01` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect (regression from the SA-01 fix) — carried to owner-approved round 2 | Rendered on this head: Failed grade, 1 malformed + 1 unevaluated row → "Show 1 skipped record" with 2 rows listed; Partial with the same rows → "Show 2 details". Cross-confirmed by `codex:322afc50367d:a1:F001` and `codex:322afc50367d:a2:F001`. `test_card_details_label_malformed_plus_unevaluated` covers only Partial. | N/A (not fixed on this head) |
+| `bm:322afc50367d:WR-02` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect (evidence-integrity gap) — carried to owner-approved round 2 | Code read: `execute()` renders the prompt but never writes it; outputs carry no template version or file hashes; `CONTRACT_PATH`, `SCHEMA_PATH` and the checker are read from disk with no check for uncommitted edits. | N/A |
+| `bm:322afc50367d:WR-03` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect — carried to owner-approved round 2 | Code read: no check on `commands_run`; coverage check rejects only an empty list, so `commands_run: []` with `coverage: [""]` assesses complete. | N/A |
+| `bm:322afc50367d:IN-01` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | nonblocking_debt (carried from `bm:d501a68316b2:IN-01` ≙ `bm:a7995baf187e:WR-01`; excluded from fixing by owner decision) | Template still classifies rows by text; unchanged in substance. | N/A |
+| `bm:322afc50367d:IN-02` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect (remainder of `bm:d501a68316b2:IN-05`) — carried to owner-approved round 2 | Code read: `reproduction_command` still checked with `not finding.get(...)`, so `"   "` passes on a reproduced finding. | N/A |
+| `bm:322afc50367d:IN-03` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | nonblocking_debt (carried from `bm:d501a68316b2:IN-03`; excluded from fixing by owner decision) | Test unchanged; the real guard is now the parametrized wrong-type tests. | N/A |
+| `bm:322afc50367d:IN-04` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect (contrived input) — carried to owner-approved round 2 under the owner's "fix all new findings" decision | Code read: `except json.JSONDecodeError` does not catch `RecursionError`; duplicate keys take the last value; an empty checker stdout produces an empty `.status.json`. | N/A |
+| `bm:322afc50367d:IN-05` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect — carried to owner-approved round 2 | Code read: `check=True` git calls raise `CalledProcessError`, which `main()` does not catch. | N/A |
+| `bm:322afc50367d:IN-06` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect — carried to owner-approved round 2 under the owner's "fix all new findings" decision | The `d501a68316b2-explicit-a2` run itself shows it: launched with the checkout already at `322afc5`, it could only ever be assessed stale. | N/A |
+| `bm:322afc50367d:IN-07` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect (privacy, low sensitivity) — carried to owner-approved round 2 | `grep` finds the absolute home-directory path in every `.jsonl` and `.last.json` under `codex/`, including files already committed for earlier heads (see Incomplete items). | N/A |
+| `bm:322afc50367d:IN-08` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect — carried to owner-approved round 2 | Code read: `codex_argv()` starts with the external `timeout` binary. | N/A |
+| `bm:322afc50367d:SA-01` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | **owner ruling received (2026-10-22):** harness pytest runs only for this repository's own branches; for Dependabot or outside-contributor PRs the runner skips tests and the evidence file records "tests not run (untrusted source)". Carried to owner-approved round 2. | Code read: `_run_pytest` runs the head's tests with the operator's environment minus `VIRTUAL_ENV`. | N/A |
+| `bm:322afc50367d:SA-02` | bm | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | **owner ruling received (2026-10-22):** a report is incomplete if `review_complete` is false OR its summary/limitations describe the review as incomplete; the phrase check is restored for v2 as an additional signal and the structured fields stay required. Carried to owner-approved round 2. | `test_v2_does_not_text_match_completeness` pins the current behavior. | N/A |
+| `codex:322afc50367d:a1:F001` | codex | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect — same as `bm:322afc50367d:WR-01`; carried to owner-approved round 2 | Codex's reproduction asserts grade `failed`, 2 reasons and "Show 1 skipped record"; reproduced the same result on this head. | N/A |
+| `codex:322afc50367d:a1:F002` | codex | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | hypothesis, plausible by code read — carried to owner-approved round 2 | `execute()` checks for existing outputs and only later creates them, so two runs with the same head/label/attempt can both pass the check. Not exercised with live concurrent processes. | N/A |
+| `codex:322afc50367d:a2:F001` | codex | `322afc50367d4cf7e2610eb6f8852bb8c9302457` | confirmed_defect — same as `bm:322afc50367d:WR-01`; carried to owner-approved round 2 | As above; attempt 2 reproduced the same defect independently. | N/A |
+
+Not raised by either reviewer, added to round 2 by the orchestrator:
+attempt 1's incompleteness came from planning markdown being in the
+review diff (truncated output). Round 2 excludes `.planning/**` from the
+reviewed diff and makes planning docs background context Codex may read
+on demand.
+
+### Original vs refreshed findings
+
+Every finding recorded for the two earlier heads (sections "Quick-task
+path — head a7995baf187e" and "Explicit /bm:code-review path — head
+d501a68316b2"), plus the two findings of the `d501a68316b2` attempt 2
+retry that closed that checkpoint. The BM originals for `d501a68316b2`
+are preserved in `83-REVIEW-dcfb5a5081ea.md`; the quick task's in
+`.planning/quick/261022-l7h-fix-card-reasons-label-for-skip-only-row/261022-l7h-REVIEW.md`.
+"Fixed and verified" means re-checked on this head by BM's re-review
+(which ran each case) and, where noted, by this record's own run.
+
+| Qualified ID | Source | Original head | Original severity | Disposition | Status on new head |
+|---|---|---|---|---|---|
+| `bm:a7995baf187e:WR-01` | bm | `a7995baf187e` | warning | confirmed_defect, later reclassified nonblocking_debt by owner (card refactor excluded) | still present (≙ `bm:322afc50367d:IN-01`) |
+| `bm:a7995baf187e:WR-02` | bm | `a7995baf187e` | warning | confirmed_defect, fixed in `37eafd4`..`392e6ec` | fixed and verified (`test_card_skip_only_mismatched_count_falls_back_to_failure_label` and `test_card_skip_only_zero_malformed_skipped_falls_back_to_failure_label` pass on this head) |
+| `bm:a7995baf187e:IN-01` | bm | `a7995baf187e` | info | nonblocking_debt, no fix required | still present (harmless redundant condition; no action) |
+| `bm:d501a68316b2:CR-01` | bm | `d501a68316b2` | critical | confirmed_defect, fixed `3163144` | fixed and verified |
+| `bm:d501a68316b2:CR-02` | bm | `d501a68316b2` | critical | confirmed_defect, fixed `d5d774e` | fixed and verified |
+| `bm:d501a68316b2:WR-01` | bm | `d501a68316b2` | warning | confirmed_defect, fixed `7c2a3da` | fixed and verified |
+| `bm:d501a68316b2:WR-02` | bm | `d501a68316b2` | warning | confirmed_defect, fixed `ae4e282` | fixed and verified |
+| `bm:d501a68316b2:WR-03` | bm | `d501a68316b2` | warning | confirmed_defect (docs), fixed `1adb17d` | fixed and verified |
+| `bm:d501a68316b2:WR-04` | bm | `d501a68316b2` | warning | owner ruling "Apply both", fixed `7a854c5` | fixed and verified |
+| `bm:d501a68316b2:WR-05` | bm | `d501a68316b2` | warning | confirmed_defect (process), fixed `9290303` | fixed and verified |
+| `bm:d501a68316b2:IN-01` | bm | `d501a68316b2` | info | duplicate of `bm:a7995baf187e:WR-01`; nonblocking_debt by owner | still present (≙ `bm:322afc50367d:IN-01`) |
+| `bm:d501a68316b2:IN-02` | bm | `d501a68316b2` | info | duplicate of `bm:a7995baf187e:WR-02`; fixed | fixed and verified |
+| `bm:d501a68316b2:IN-03` | bm | `d501a68316b2` | info | nonblocking_debt; excluded by owner | still present (≙ `bm:322afc50367d:IN-03`) |
+| `bm:d501a68316b2:IN-04` | bm | `d501a68316b2` | info | confirmed_defect, fixed | fixed and verified |
+| `bm:d501a68316b2:IN-05` | bm | `d501a68316b2` | info | confirmed_defect, partly fixed | still present in part: blank `reproduction_command` passes (≙ `bm:322afc50367d:IN-02`); booleans and blank `hypothesis` fixed |
+| `bm:d501a68316b2:IN-06` | bm | `d501a68316b2` | info | confirmed_defect (docs), fixed | fixed and verified |
+| `bm:d501a68316b2:SA-01` | bm | `d501a68316b2` | set aside | owner ruling "Failure wording on red cards", fixed | fixed and verified for unevaluated-only rows; the fix caused a regression on mixed rows, recorded as new `bm:322afc50367d:WR-01` |
+| `bm:d501a68316b2:SA-02` | bm | `d501a68316b2` | set aside | nonblocking_debt (BM scoping) | fixed and verified for this head: both files reviewed via the `--files` override; BM's own SUMMARY-tier scoping quirk remains |
+| `codex:d501a68316b2:a1:F001` | codex | `d501a68316b2` | high | confirmed_defect (≙ CR-01), fixed `3163144` | fixed and verified (Codex's all-null reproduction is now a test and assesses incomplete) |
+| `codex:d501a68316b2:a1:F002` | codex | `d501a68316b2` | medium | confirmed_defect, fixed `37eafd4`..`392e6ec` | fixed and verified (`-F body=@FILE`, guarded by `test_review_checkpoint_record.py`) |
+| `codex:d501a68316b2:a2:F001` | codex | `d501a68316b2` | medium | confirmed_defect (≙ CR-01 family; found by the retry on the pre-fix checker) | fixed and verified: Codex's exact reproduction (`schema_version "999"`, null coverage/findings/commands_run) returns incomplete with 4 reasons on this head |
+| `codex:d501a68316b2:a2:F002` | codex | `d501a68316b2` | high | confirmed_defect, addressed by the owner-approved durable completeness fix (schema v2) | still present in part: a report that sets `review_complete: false` is now incomplete, but Codex's exact reproduction (v2 fixture with `review_complete: true`, summary "Review stopped early") still assesses complete on this head. Round 2 adds the owner's text backstop (decision 3) and the empty-evidence checks (`bm:322afc50367d:WR-03`); a report that claims completeness in the structured field and uses none of the recognised phrases stays a residual limit |
+| `bm:322afc50367d:WR-01` | bm | `322afc50367d` | warning | see Dispositions | new |
+| `bm:322afc50367d:WR-02` | bm | `322afc50367d` | warning | see Dispositions | new |
+| `bm:322afc50367d:WR-03` | bm | `322afc50367d` | warning | see Dispositions | new |
+| `bm:322afc50367d:IN-04`..`IN-08` | bm | `322afc50367d` | info | see Dispositions | new |
+| `bm:322afc50367d:SA-01`, `SA-02` | bm | `322afc50367d` | set aside | owner rulings, see Dispositions | new |
+| `codex:322afc50367d:a1:F001`, `a2:F001` | codex | `322afc50367d` | low | see Dispositions | new (≙ `bm:322afc50367d:WR-01`) |
+| `codex:322afc50367d:a1:F002` | codex | `322afc50367d` | medium | see Dispositions | new |
+
+### Incomplete items
+
+- Every `.jsonl` and `.last.json` under `codex/` contains the absolute
+  home-directory path (a local username and directory layout), including
+  the files already committed for `a7995baf187e` and `d501a68316b2`.
+  Neither secret scan flags it. Raw files are never edited, so these
+  stay as written; round 2 stops new runs from producing the path in the
+  prompt and evidence, but cannot change what Codex echoes from its own
+  environment. The owner should decide before any push whether that is
+  acceptable in a public repository.
+- Codex attempt 1 on this head was incomplete (self-declared: planning
+  markdown truncated). Attempt 2, the automatic retry, completed. No
+  further attempt is needed for this head.
+- Round 2 (owner-approved, overriding D-08's single round) will move the
+  head again; this head's reviews do not count for that head.
+
+This record is not owner acceptance.
