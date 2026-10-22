@@ -16,10 +16,12 @@ Completeness by schema version (owner decision 2026-10-22):
 
 - schema_version "2" (current): the report states completeness itself in
   the required ``review_complete`` boolean and ``incomplete_reasons``
-  list. The checker reads those fields and does not search free text.
+  list. It is incomplete if ``review_complete`` is false OR its summary
+  or limitations describe the review as incomplete (the phrase check is
+  an additional signal; the structured fields stay required).
 - schema_version "1" (recorded history): assessed under the v1 rules,
-  including the phrase check for a self-declared incomplete review, so an
-  already recorded report keeps the assessment it had. The v1 schema is
+  which use the same phrase check, so an already recorded report keeps
+  the assessment it had. The v1 schema is
   derived from the current schema by removing the two v2 fields, so it
   cannot drift into a second hand-maintained copy.
 
@@ -176,9 +178,9 @@ def _check_schema(report: dict, schema: dict) -> list[str]:
     return reasons
 
 
-# Schema v1 only: phrases by which a report declares its own review
-# incomplete (owner decision 2026-10-22). Such a report is never counted as
-# complete. Schema v2 reports state completeness structurally instead.
+# Phrases by which a report declares its own review incomplete (owner
+# decisions 2026-10-22). Such a report is never counted as complete, in any
+# schema version; v2 reports also state completeness structurally.
 _SELF_DECLARED_INCOMPLETE_RE = re.compile(
     r"\bincomplete review\b|\breview (?:is|was) incomplete\b|\bnot a clean approval\b",
     re.IGNORECASE,
@@ -311,9 +313,10 @@ def assess_report(
         return Assessment("incomplete", tuple(reasons), (), 0, None, None)
 
     reasons.extend(_check_schema(report, _schema_for(report, _load_schema())))
-    if report.get("schema_version") == "1":
-        reasons.extend(_self_declared_incomplete(report))
-    else:
+    # Every schema version: self-described incompleteness in the text is an
+    # incomplete review. Version 2 additionally states it structurally.
+    reasons.extend(_self_declared_incomplete(report))
+    if report.get("schema_version") != "1":
         reasons.extend(_structural_completeness(report))
 
     inspected_head = report.get("inspected_head_sha")

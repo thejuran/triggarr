@@ -59,7 +59,7 @@ When the checkpoint has no PR yet (a local checkpoint, not pushed), fill `{{PR_U
 
    The runner refuses to overwrite an existing output for the same head, label and attempt; use the next attempt number.
 
-The report schema is version 2. The checker decides a version 2 report's completeness from `review_complete` and `incomplete_reasons` only: `review_complete: false` needs at least one reason, and `review_complete: true` must list none. A schema version 1 report, already recorded before version 2, keeps being assessed under the version 1 rules, including the check for a self-declared incomplete review in its summary or limitations, so recorded history does not change. The drift guards are `tests/test_codex_review_contract.py`, `tests/test_codex_report_status.py` and `tests/test_codex_review_run.py`.
+The report schema is version 2. A version 2 report is incomplete if `review_complete` is false OR its summary or limitations describe the review as incomplete (owner decision, 2026-10-22). The structured fields stay required: `review_complete: false` needs at least one reason, and `review_complete: true` must list none. The text check is an additional signal, not a replacement. A schema version 1 report, already recorded before version 2, keeps being assessed under the version 1 rules, which use the same text check, so recorded history does not change. The drift guards are `tests/test_codex_review_contract.py`, `tests/test_codex_report_status.py` and `tests/test_codex_review_run.py`.
 
 ## Raw output storage
 
