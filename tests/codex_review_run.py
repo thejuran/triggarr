@@ -68,13 +68,19 @@ AUDITED_INPUTS = (
     "tests/codex_review_run.py",
 )
 
-TEMPLATE_HEADING = "## Fixed prompt (version 4)"
+TEMPLATE_HEADING = "## Fixed prompt (version 5)"
 PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDENCE"})
 
-# Everything under .planning/ -- planning records, raw review transcripts and
-# generated review artifacts -- is out of scope for the review diff; planning
-# markdown is background Codex may read on demand. Must match the fixed prompt.
-EXCLUDE_PATHSPECS = (":(exclude,glob).planning/**",)
+# Planning markdown, raw review transcripts and generated review artifacts are
+# out of scope for the review diff; planning markdown is background Codex may
+# read on demand. Every other file under .planning/ -- notably the sensitive
+# BM configuration .planning/config.json -- stays in scope. Must match the
+# fixed prompt.
+EXCLUDE_PATHSPECS = (
+    ":(exclude,glob).planning/**/codex/**",
+    ":(exclude,glob).planning/**/*.jsonl",
+    ":(exclude,glob).planning/**/*.md",
+)
 
 OUTPUT_SUFFIXES = (".prompt.txt", ".meta.json", ".jsonl", ".last.json", ".status.json", ".pytest.txt")
 
