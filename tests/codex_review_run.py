@@ -54,6 +54,11 @@ PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDE
 EXCLUDE_PATHSPECS = (":(exclude,glob).planning/**",)
 
 OUTPUT_SUFFIXES = (".jsonl", ".last.json", ".status.json", ".pytest.txt")
+
+# Where the harness evidence is copied inside the temp worktree (untracked),
+# so the prompt names a working-copy-relative path and never the operator's
+# home directory.
+EVIDENCE_RELPATH = ".codex-review-evidence/pytest.txt"
 CODEX_TIMEOUT_SECONDS = 1800
 PYTEST_TIMEOUT_SECONDS = 1800
 
@@ -138,7 +143,7 @@ def prompt_values(run: ReviewRun) -> dict[str, str]:
         "HEAD_SHA": run.head,
         "BASE_SHA": run.base,
         "SCOPE": run.scope,
-        "TEST_EVIDENCE": str(run.output(".pytest.txt")),
+        "TEST_EVIDENCE": EVIDENCE_RELPATH,
     }
 
 
@@ -206,22 +211,46 @@ def _pytest_env() -> dict[str, str]:
 UNTRUSTED_EVIDENCE = "tests not run (untrusted source)"
 
 
-def _write_untrusted_evidence(run: ReviewRun) -> None:
-    run.output(".pytest.txt").write_text(
+def _untrusted_evidence(run: ReviewRun) -> str:
+    return (
         "Test evidence produced by the harness (tests/codex_review_run.py), not by Codex.\n"
         f"head: {run.head}\n"
         "source: untrusted (--untrusted)\n"
         f"{UNTRUSTED_EVIDENCE}\n"
         "Dependabot and outside-contributor heads are never executed by the harness;\n"
-        "rely on the PR's CI results for test evidence.\n",
-        encoding="utf-8",
+        "rely on the PR's CI results for test evidence.\n"
     )
-    print(f"pytest evidence: {run.output('.pytest.txt')} ({UNTRUSTED_EVIDENCE})")
 
 
-def _run_pytest(run: ReviewRun, worktree: Path, command_runner: CommandRunner) -> None:
+def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
+    """Replace local absolute paths in harness-written text with neutral markers.
+
+    The evidence is committed to a public repository, so the temp worktree,
+    the temp dir, the main checkout and the home directory never appear in it.
+    """
+    replacements: list[tuple[str, str]] = []
+    for path, marker in ((worktree, "<worktree>"), (scratch, "<scratch>"), (REPO_ROOT, "<repo>"), (Path.home(), "~")):
+        for variant in {str(path), str(path.resolve())}:
+            if len(variant) > 1:
+                replacements.append((variant, marker))
+    for variant, marker in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
+        text = text.replace(variant, marker)
+    return text
+
+
+def _publish_evidence(run: ReviewRun, worktree: Path, scratch: Path, text: str) -> None:
+    """Write the evidence next to the raw outputs and copy it into the worktree."""
+    text = redact_local_paths(text, worktree=worktree, scratch=scratch)
+    run.output(".pytest.txt").write_text(text, encoding="utf-8")
+    copy = worktree / EVIDENCE_RELPATH
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    copy.write_text(text, encoding="utf-8")
+
+
+def _run_pytest(run: ReviewRun, worktree: Path, scratch: Path, command_runner: CommandRunner) -> None:
     if not run.trusted:
-        _write_untrusted_evidence(run)
+        _publish_evidence(run, worktree, scratch, _untrusted_evidence(run))
+        print(f"pytest evidence: {run.output('.pytest.txt')} ({UNTRUSTED_EVIDENCE})")
         return
     exit_code: str
     output: str
@@ -244,7 +273,10 @@ def _run_pytest(run: ReviewRun, worktree: Path, command_runner: CommandRunner) -
     except OSError as exc:
         exit_code, output = "unknown", f"pytest could not start: {type(exc).__name__}\n"
 
-    run.output(".pytest.txt").write_text(
+    _publish_evidence(
+        run,
+        worktree,
+        scratch,
         "Test evidence produced by the harness (tests/codex_review_run.py), not by Codex.\n"
         f"head: {run.head}\n"
         "source: trusted (--trusted)\n"
@@ -253,7 +285,6 @@ def _run_pytest(run: ReviewRun, worktree: Path, command_runner: CommandRunner) -
         f"exit_code: {exit_code}\n"
         "--- combined stdout and stderr ---\n"
         f"{output}",
-        encoding="utf-8",
     )
     print(f"pytest evidence: {run.output('.pytest.txt')} (exit_code: {exit_code})")
 
@@ -291,7 +322,7 @@ def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -
     codex_exit: int | None = None
     try:
         command_runner(worktree_add_argv(worktree, run.head), cwd=REPO_ROOT, check=True)
-        _run_pytest(run, worktree, command_runner)
+        _run_pytest(run, worktree, scratch, command_runner)
         codex_exit = _run_codex(run, worktree, prompt, command_runner)
     finally:
         try:
@@ -333,6 +364,8 @@ def dry_run(run: ReviewRun) -> int:
         f"{shlex.join(codex_argv(worktree, run.output('.last.json')))} < prompt"
         f" > {shlex.quote(str(run.output('.jsonl')))}"
     )
+    evidence = shlex.quote(str(run.output(".pytest.txt")))
+    print(f"# copy {evidence} to {worktree / EVIDENCE_RELPATH} (local paths redacted)")
     print(shlex.join(worktree_remove_argv(worktree)) + "  # always, including on failure")
     checker = checker_argv(run, exit_code=0, current_head="<git rev-parse HEAD>")
     checker[0] = "uv run python"
