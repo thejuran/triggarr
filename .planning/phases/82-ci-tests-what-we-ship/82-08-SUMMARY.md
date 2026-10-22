@@ -71,7 +71,7 @@ Tasks 1 and 2 were already complete when this execution started (Task 1 commit `
 3. **Task 3, round 1: Push to PR #33, record the first real run, measure the budget** - `1a0fdae` (docs; this session)
 4. **Task 3, round 1 continued: plan summary** - `399e6ec` (docs; this session, superseded by this file's current content)
 5. **CodeQL fix (owner-authored, not part of this execution's task scope)** - `6c8354e` (fix)
-6. **Task 3, round 2: record the second real run, CodeQL resolution status, and this summary** - *(pending commit, this message)*
+6. **Task 3, round 2: record the second real run, CodeQL resolution status, and this summary** - `9df705b` (docs)
 
 ## Files Created/Modified
 - `docs/ci-negative-demonstrations.md` - Reproduction recipes and failure policy (Task 1, prior session; unchanged this session)
@@ -129,3 +129,4 @@ None beyond this plan's own `<threat_model>` (T-82-36 through T-82-39, T-82-45),
 - FOUND commit: 1a0fdae (docs(82-08): record first GitHub CI run and CodeQL required-check stop)
 - FOUND commit: 399e6ec (docs(82-08): add plan summary (partial, CodeQL required-check stop))
 - FOUND commit: 6c8354e (fix(82): stop the capture-policy probe writing credentials to disk)
+- FOUND commit: 9df705b (docs(82-08): record second GitHub run; CodeQL fix resolves 2, opens 1)
