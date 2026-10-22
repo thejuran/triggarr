@@ -3,9 +3,12 @@
 Implements docs/codex-adversarial-review-contract.md, Invocation:
 
 1. Creates a detached worktree of the exact head SHA in a fresh temp dir.
-2. Runs ``uv run --extra dev pytest tests/ -q`` inside that worktree,
-   outside the Codex sandbox, and saves the combined output and exit code
-   as ``<OUT>.pytest.txt`` next to the raw Codex outputs.
+2. With ``--trusted`` (this repository's own branches), runs
+   ``uv run --extra dev pytest tests/ -q`` inside that worktree, outside
+   the Codex sandbox, and saves the combined output and exit code as
+   ``<OUT>.pytest.txt`` next to the raw Codex outputs. With ``--untrusted``
+   (Dependabot or outside-contributor heads) it runs no tests and the
+   evidence file says "tests not run (untrusted source)".
 3. Renders the contract's fixed prompt, substituting only its documented
    placeholders.
 4. Runs ``codex exec`` read-only against the worktree with the report
@@ -70,6 +73,10 @@ class ReviewRun:
     pr_url: str
     scope: str
     phase_dir: Path
+    # Owner decision 2026-10-22: harness pytest runs only for this
+    # repository's own branches. Dependabot and outside-contributor heads are
+    # untrusted: their tests never run on the operator's machine.
+    trusted: bool
 
     def __post_init__(self) -> None:
         for name in ("head", "base"):
@@ -196,7 +203,26 @@ def _pytest_env() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if key != "VIRTUAL_ENV"}
 
 
+UNTRUSTED_EVIDENCE = "tests not run (untrusted source)"
+
+
+def _write_untrusted_evidence(run: ReviewRun) -> None:
+    run.output(".pytest.txt").write_text(
+        "Test evidence produced by the harness (tests/codex_review_run.py), not by Codex.\n"
+        f"head: {run.head}\n"
+        "source: untrusted (--untrusted)\n"
+        f"{UNTRUSTED_EVIDENCE}\n"
+        "Dependabot and outside-contributor heads are never executed by the harness;\n"
+        "rely on the PR's CI results for test evidence.\n",
+        encoding="utf-8",
+    )
+    print(f"pytest evidence: {run.output('.pytest.txt')} ({UNTRUSTED_EVIDENCE})")
+
+
 def _run_pytest(run: ReviewRun, worktree: Path, command_runner: CommandRunner) -> None:
+    if not run.trusted:
+        _write_untrusted_evidence(run)
+        return
     exit_code: str
     output: str
     try:
@@ -221,6 +247,7 @@ def _run_pytest(run: ReviewRun, worktree: Path, command_runner: CommandRunner) -
     run.output(".pytest.txt").write_text(
         "Test evidence produced by the harness (tests/codex_review_run.py), not by Codex.\n"
         f"head: {run.head}\n"
+        "source: trusted (--trusted)\n"
         f"working copy: detached worktree at {run.head}\n"
         f"command: {shlex.join(pytest_argv())}\n"
         f"exit_code: {exit_code}\n"
@@ -298,7 +325,10 @@ def dry_run(run: ReviewRun) -> int:
     print(prompt)
     print("# Commands")
     print(shlex.join(worktree_add_argv(worktree, run.head)))
-    print(f"(cd {worktree} && {shlex.join(pytest_argv())}) > {shlex.quote(str(run.output('.pytest.txt')))}")
+    if run.trusted:
+        print(f"(cd {worktree} && {shlex.join(pytest_argv())}) > {shlex.quote(str(run.output('.pytest.txt')))}")
+    else:
+        print(f"# --untrusted: no pytest; {shlex.quote(str(run.output('.pytest.txt')))} records '{UNTRUSTED_EVIDENCE}'")
     print(
         f"{shlex.join(codex_argv(worktree, run.output('.last.json')))} < prompt"
         f" > {shlex.quote(str(run.output('.jsonl')))}"
@@ -336,6 +366,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pr-url", required=True, help="PR URL, or 'none (local checkpoint, not pushed)'")
     parser.add_argument("--scope", required=True)
     parser.add_argument("--phase-dir", required=True, type=Path, help="e.g. .planning/phases/83-...")
+    trust = parser.add_mutually_exclusive_group(required=True)
+    trust.add_argument(
+        "--trusted",
+        dest="trusted",
+        action="store_true",
+        help="Head is from this repository's own branch: run the harness pytest",
+    )
+    trust.add_argument(
+        "--untrusted",
+        dest="trusted",
+        action="store_false",
+        help="Dependabot or outside-contributor head: run no tests, rely on CI results",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the prompt and commands only")
     return parser
 
@@ -344,7 +387,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
-        run = ReviewRun(args.head, args.base, args.label, args.attempt, args.pr_url, args.scope, args.phase_dir)
+        run = ReviewRun(
+            args.head, args.base, args.label, args.attempt, args.pr_url, args.scope, args.phase_dir, args.trusted
+        )
     except ValueError as exc:
         parser.error(str(exc))
     if not (REPO_ROOT / run.phase_dir).is_dir():

@@ -26,7 +26,7 @@ Completeness by schema version (owner decision 2026-10-22):
   cannot drift into a second hand-maintained copy.
 
 Run as `uv run python tests/codex_report_status.py ...` (invoked by
-docs/codex-adversarial-review-contract.md, Invocation step 3.6, via
+docs/codex-adversarial-review-contract.md, Invocation step 4.6, via
 tests/codex_review_run.py). This
 module uses plain `print()` in main() because it is audit tooling run
 from the CLI, not production code under the loguru-only convention
