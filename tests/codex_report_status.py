@@ -220,12 +220,14 @@ def assess_report(
     current_head: str,
     attempt: int,
     source: str = "codex",
+    read_error: str | None = None,
 ) -> Assessment:
     """Decide whether *report_text* is a complete, current Codex review.
 
     Collects every applicable reason rather than stopping at the first;
     never raises on malformed input -- malformed input always yields
-    "incomplete" with a reason explaining why.
+    "incomplete" with a reason explaining why. *read_error* is set by the
+    CLI when the report file exists but could not be read.
     """
     reasons: list[str] = []
 
@@ -233,6 +235,10 @@ def assess_report(
         reasons.append("codex exit status unknown")
     elif exit_code != 0:
         reasons.append(f"codex exited {exit_code}")
+
+    if read_error is not None:
+        reasons.append(f"unreadable report: {read_error}")
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
 
     if report_text is None or not report_text.strip():
         reasons.append("missing report")
@@ -344,7 +350,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     report_path: Path = args.report
-    report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else None
+    report_text: str | None = None
+    read_error: str | None = None
+    if report_path.exists():
+        try:
+            report_text = report_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            read_error = type(exc).__name__
 
     assessment = assess_report(
         report_text,
@@ -354,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         current_head=args.current_head,
         attempt=args.attempt,
         source=args.source,
+        read_error=read_error,
     )
 
     print(json.dumps(_assessment_to_dict(assessment)))

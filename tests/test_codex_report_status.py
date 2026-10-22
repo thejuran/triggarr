@@ -507,6 +507,48 @@ def test_cli_missing_report_exits_one(tmp_path, capsys) -> None:
     assert "missing report" in captured.out
 
 
+def _cli_args(report_path) -> list[str]:
+    return [
+        "--report",
+        str(report_path),
+        "--exit-code",
+        "0",
+        "--expected-head",
+        H,
+        "--expected-base",
+        B,
+        "--current-head",
+        H,
+        "--attempt",
+        "1",
+    ]
+
+
+# WR-02: an unreadable report must still produce the JSON assessment.
+def test_cli_non_utf8_report_prints_incomplete(tmp_path, capsys) -> None:
+    report_path = tmp_path / "report.json"
+    report_path.write_bytes(b"\xff\xfe not utf-8")
+
+    exit_code = main(_cli_args(report_path))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "incomplete"
+    assert any(r.startswith("unreadable report:") for r in payload["reasons"])
+
+
+def test_cli_directory_report_prints_incomplete(tmp_path, capsys) -> None:
+    report_dir = tmp_path / "report.json"
+    report_dir.mkdir()
+
+    exit_code = main(_cli_args(report_dir))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "incomplete"
+    assert any(r.startswith("unreadable report:") for r in payload["reasons"])
+
+
 def test_cli_invalid_expected_head_exits_two() -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(
