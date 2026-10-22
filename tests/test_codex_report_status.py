@@ -194,6 +194,30 @@ def test_truncated_json_incomplete() -> None:
     assert any("unparseable" in r for r in result.reasons)
 
 
+# bm:322afc50367d:IN-04 (owner-approved round 2): pathological JSON never
+# raises and never resolves silently.
+def test_deeply_nested_json_incomplete_without_raising() -> None:
+    text = "[" * 100_000 + "]" * 100_000
+    result = assess_report(text, exit_code=0, expected_head=H, expected_base=B, current_head=H, attempt=1)
+    assert result.status == "incomplete"
+    assert "unparseable: report is nested too deeply" in result.reasons
+
+
+def test_duplicate_key_json_incomplete() -> None:
+    text = json.dumps(_valid_report())
+    text = text[:-1] + ', "review_complete": false}'
+    result = assess_report(text, exit_code=0, expected_head=H, expected_base=B, current_head=H, attempt=1)
+    assert result.status == "incomplete"
+    assert "unparseable: duplicate key review_complete" in result.reasons
+
+
+def test_nested_duplicate_key_json_incomplete() -> None:
+    text = json.dumps(_valid_report()).replace('"id": "F001"', '"id": "F001", "id": "F009"', 1)
+    result = assess_report(text, exit_code=0, expected_head=H, expected_base=B, current_head=H, attempt=1)
+    assert result.status == "incomplete"
+    assert "unparseable: duplicate key id" in result.reasons
+
+
 # --- Schema violations -----------------------------------------------------
 
 
