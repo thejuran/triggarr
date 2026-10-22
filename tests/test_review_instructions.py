@@ -1,0 +1,64 @@
+"""Guard tests for the repository instructions that wire the paired BM +
+Codex review and content-based classification into CLAUDE.md (REVIEW-02,
+REVIEW-08).
+
+These tests pin two things against silent regression: that CLAUDE.md keeps
+pointing at the three review docs (and that those docs actually exist), and
+that none of the hard constraints already in CLAUDE.md -- the /deep-review
+offer, "Do not weaken CI", the review-acceptance environment, Greptile's
+optional status, and Codex's read-only sandbox -- are lost when the review
+sections are restructured.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
+PILOT_DOC = REPO_ROOT / "docs" / "buildomator-greptile-pilot.md"
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def test_claude_md_links_review_docs() -> None:
+    """CLAUDE.md links the classification policy, Codex contract and checkpoint record docs."""
+    text = _read(CLAUDE_MD)
+    linked_docs = (
+        "docs/review-classification-policy.md",
+        "docs/codex-adversarial-review-contract.md",
+        "docs/review-checkpoint-record.md",
+    )
+    for doc in linked_docs:
+        assert doc in text, f"CLAUDE.md must link {doc}"
+        assert (REPO_ROOT / doc).is_file(), f"{doc} is linked from CLAUDE.md but does not exist"
+
+
+def test_claude_md_keeps_hard_constraints() -> None:
+    """Restructuring CLAUDE.md's review sections must not drop any existing safeguard."""
+    text = _read(CLAUDE_MD)
+    hard_constraints = (
+        "/deep-review",
+        "Do not weaken CI",
+        "review-acceptance",
+        "Greptile is optional",
+        "--sandbox read-only",
+    )
+    for constraint in hard_constraints:
+        assert constraint in text, f"CLAUDE.md must still contain the hard constraint: {constraint!r}"
+
+
+def test_claude_md_codex_pairing_paths() -> None:
+    """The Codex pairing instruction names all four BM code-review entry paths."""
+    text = _read(CLAUDE_MD)
+    paths = ("phase execution", "quick task", "/bm:code-review", "review after fixes")
+    for path in paths:
+        assert path in text, f"CLAUDE.md's Codex pairing instruction must name {path!r}"
+
+
+def test_pilot_doc_points_to_policy() -> None:
+    """The pilot doc's routine workflow links the review-classification policy."""
+    text = _read(PILOT_DOC)
+    assert "review-classification-policy.md" in text

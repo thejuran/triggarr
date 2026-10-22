@@ -75,6 +75,8 @@ The native `Greptile Review` success status is review-completion evidence only. 
 
 ### Routine BM workflow
 
+See [the review-classification policy](review-classification-policy.md) for which reviews a checkpoint needs, and [the review checkpoint record](review-checkpoint-record.md) for the paired Codex pass and the per-head evidence record.
+
 Every push to a PR uses one of Greptile's limited free reviews (paid credits are not bought), so push only when the head needs a new review. When Greptile is unavailable, its review is skipped; safeguard changes still get independent inspection from another reviewer. Batch fixes into one checkpoint push. Hold docs-only, evidence and tracking commits locally until the next substantive push. Keep deliberately broken demonstration pushes to the minimum the plan requires.
 
 1. BM plans and verifies on a feature branch, pushes a checkpoint, and records its full SHA. Keep internal quick-task notes local unless separately requested.
