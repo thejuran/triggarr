@@ -12,13 +12,24 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import secrets
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from tests.e2e.conftest import CREDENTIAL_RUN_FLAGS, Credentials, E2EStack, TriggarrContainer
+from tests.e2e.conftest import (
+    CREDENTIAL_RUN_FLAGS,
+    PROBE_ADMIN_PASSWORD_ENV,
+    PROBE_KEY_DIGEST_FILE_ENV,
+    PROBE_KEY_SALT_ENV,
+    Credentials,
+    E2EStack,
+    TriggarrContainer,
+    secret_fingerprint,
+)
 from tests.harness import checks, stack
 
 pytestmark = pytest.mark.credential_pages
@@ -27,6 +38,19 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _PROBE_PATH = Path(__file__).resolve().parent / "probes" / "probe_setup_fails_before_registration.py"
 _CAPTURE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webm", ".zip")
 _PROBE_SUBPROCESS_TIMEOUT = 180.0
+# triggarr API keys are secrets.token_hex(16): 32 lowercase hex characters.
+_KEY_LEN = 32
+_HEX_RUN = re.compile(r"[0-9a-f]{32,}")
+
+
+def _contains_key(text: str, key_digest: str, salt_hex: str) -> bool:
+    """True when any 32-character window of any hex run in ``text`` has the fingerprint the probe handed over.
+
+    Every window is tried, so a key embedded in a longer hex string is still found -- the same reach as a
+    plain substring check, without the parent ever holding the key.
+    """
+    windows = {run[i : i + _KEY_LEN] for run in _HEX_RUN.findall(text) for i in range(len(run) - _KEY_LEN + 1)}
+    return any(secret_fingerprint(window, salt_hex) == key_digest for window in windows)
 
 
 def _probe_cmd(out_dir: Path, *capture_flags: str, sentinel_plugin: bool = False) -> list[str]:
@@ -73,15 +97,18 @@ def test_setup_failure_before_registration_leaves_no_capture(
     parent_app_name = admin_container.name
     parent_app_url = admin_container.url
 
-    secret_file = tmp_path / "key.txt"
-    password_file = tmp_path / "password.txt"
+    digest_file = tmp_path / "key.digest"
     session_record = tmp_path / "probe-session.json"
     out_dir = tmp_path / "out"
+    salt_hex = secrets.token_hex(16)
 
+    # The probe uses this process's password (no credential crosses on disk) and returns only a salted
+    # fingerprint of the API key it generated; leaks are found by fingerprinting every key-shaped token.
     env = {
         **os.environ,
-        "PROBE_SECRET_FILE": str(secret_file),
-        "PROBE_PASSWORD_FILE": str(password_file),
+        PROBE_ADMIN_PASSWORD_ENV: credentials.password,
+        PROBE_KEY_SALT_ENV: salt_hex,
+        PROBE_KEY_DIGEST_FILE_ENV: str(digest_file),
         "E2E_SESSION_RECORD": str(session_record),
     }
     cmd = _probe_cmd(out_dir, *CREDENTIAL_RUN_FLAGS)
@@ -90,17 +117,13 @@ def test_setup_failure_before_registration_leaves_no_capture(
     )
 
     combined_output = result.stdout + result.stderr
-    assert secret_file.exists(), "probe did not write the generated API key before failing"
-    api_key = secret_file.read_text()
-    assert api_key  # non-empty
-    # The probe mints its own password in its own session; check for that one, not this process's.
-    assert password_file.exists(), "probe did not write the admin password it used"
-    probe_password = password_file.read_text()
-    assert probe_password  # non-empty
+    assert digest_file.exists(), "probe did not hand over the generated API key's fingerprint before failing"
+    key_digest = digest_file.read_text()
+    assert key_digest  # non-empty
 
     # Check subprocess output for the secrets before using either in any assertion message.
-    api_key_leaked = api_key in combined_output
-    password_leaked = probe_password in combined_output or credentials.password in combined_output
+    api_key_leaked = _contains_key(combined_output, key_digest, salt_hex)
+    password_leaked = credentials.password in combined_output
     assert not api_key_leaked, "subprocess output must never echo the generated API key"
     assert not password_leaked, "subprocess output must never echo the admin password"
 
@@ -111,7 +134,8 @@ def test_setup_failure_before_registration_leaves_no_capture(
     capture_files = [p for p in out_files if p.suffix in _CAPTURE_EXTENSIONS]
     assert capture_files == [], f"no capture files should exist, found: {[p.name for p in capture_files]}"
     for path in out_files:
-        assert api_key.encode() not in path.read_bytes(), f"{path.name} must not contain the API key bytes"
+        text = path.read_bytes().decode("latin-1")
+        assert not _contains_key(text, key_digest, salt_hex), f"{path.name} must not contain the API key bytes"
     assert (out_dir / "scan-complete.json").exists()
 
     # --- Isolation (D-33 amendment B) ---

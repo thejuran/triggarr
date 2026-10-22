@@ -20,6 +20,7 @@ test with any capture flag enabled.
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import os
@@ -45,6 +46,17 @@ CREDENTIAL_PAGES_MARKER = "credential_pages"
 # (Plan 07's CI wiring, this plan's own subprocess probes) so there is one
 # source of truth for "capture fully off."
 CREDENTIAL_RUN_FLAGS: tuple[str, ...] = ("--tracing", "off", "--screenshot", "off", "--video", "off")
+
+# Probe handoff (test_capture_policy): the parent passes its admin password in, and the probe hands back only a
+# salted scrypt fingerprint of the generated API key -- no credential is ever written to disk in clear text.
+PROBE_ADMIN_PASSWORD_ENV = "E2E_PROBE_ADMIN_PASSWORD"
+PROBE_KEY_SALT_ENV = "E2E_PROBE_KEY_SALT"
+PROBE_KEY_DIGEST_FILE_ENV = "E2E_PROBE_KEY_DIGEST_FILE"
+
+
+def secret_fingerprint(value: str, salt_hex: str) -> str:
+    """Salted scrypt fingerprint, so a secret can be recognised later without being stored."""
+    return hashlib.scrypt(value.encode(), salt=bytes.fromhex(salt_hex), n=2**12, r=8, p=1).hex()
 
 _STUB_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "harness" / "arr_stub.py"
 _CI_FIXTURE_PATH = Path(__file__).resolve().parent.parent / "harness" / "fixtures" / "triggarr-ci.toml"
@@ -293,7 +305,9 @@ def e2e_stack(e2e_image: str) -> Iterator[E2EStack]:
 @pytest.fixture(scope="session")
 def credentials(sensitive_registry: SensitiveRegistry) -> Credentials:
     """This suite's one disposable admin account; its password and the stub's API key are pre-registered."""
-    password = secrets.token_urlsafe(18)
+    # A probe subprocess (test_capture_policy) is handed its parent's password through the environment, so
+    # neither process has to write a credential to disk for the other to check its output against.
+    password = os.environ.get(PROBE_ADMIN_PASSWORD_ENV) or secrets.token_urlsafe(18)
     sensitive_registry.register(password)
     sensitive_registry.register(stack.STUB_API_KEY)
     return Credentials(username="e2e-admin", password=password)

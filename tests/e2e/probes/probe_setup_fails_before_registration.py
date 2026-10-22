@@ -23,7 +23,13 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page
 
-from tests.e2e.conftest import Credentials, TriggarrContainer
+from tests.e2e.conftest import (
+    PROBE_KEY_DIGEST_FILE_ENV,
+    PROBE_KEY_SALT_ENV,
+    Credentials,
+    TriggarrContainer,
+    secret_fingerprint,
+)
 
 pytestmark = pytest.mark.credential_pages
 
@@ -31,12 +37,6 @@ pytestmark = pytest.mark.credential_pages
 def probe_setup_fails_before_registration(
     page: Page, triggarr_container: TriggarrContainer, credentials: Credentials
 ) -> None:
-    # This process mints its own password (session-scoped ``credentials`` fixture), so hand it to
-    # the parent test the same way as the API key -- the parent's own password was never seen here.
-    password_file = os.environ.get("PROBE_PASSWORD_FILE")
-    if password_file:
-        Path(password_file).write_text(credentials.password)
-
     page.goto(f"{triggarr_container.url}/")
     page.fill("#username", credentials.username)
     page.fill("#password", credentials.password)
@@ -46,8 +46,10 @@ def probe_setup_fails_before_registration(
 
     api_key = page.locator("#api-key-display").inner_text()
 
-    secret_file = os.environ.get("PROBE_SECRET_FILE")
-    if secret_file:
-        Path(secret_file).write_text(api_key)
+    # Hand the parent only a salted fingerprint of the key, never the key itself.
+    digest_file = os.environ.get(PROBE_KEY_DIGEST_FILE_ENV)
+    salt_hex = os.environ.get(PROBE_KEY_SALT_ENV)
+    if digest_file and salt_hex:
+        Path(digest_file).write_text(secret_fingerprint(api_key, salt_hex))
 
     assert False, "probe: deliberate failure before registration"  # noqa: B011
