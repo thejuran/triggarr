@@ -58,7 +58,7 @@ When the checkpoint has no PR yet (a local checkpoint, not pushed), fill `{{PR_U
    5. Always removes the worktree afterwards with `git worktree remove --force "$WT"`, including on failure.
    6. Assesses the report with the checker and saves its JSON as `$OUT.status.json`: `uv run python tests/codex_report_status.py --report "$OUT.last.json" --exit-code N --expected-head HEAD_SHA --expected-base BASE_SHA --current-head "$(git rev-parse HEAD)" --attempt N`. When Codex could not start, `--exit-code` is omitted and the checker reports the exit status as unknown.
 
-   The runner refuses to overwrite an existing output for the same head, label and attempt; use the next attempt number.
+   The runner refuses to overwrite an existing output for the same head, label and attempt; use the next attempt number. It claims the output name atomically by creating `$OUT.prompt.txt` with `O_CREAT|O_EXCL` before any other work, so of two runs started at once with the same head, label and attempt, only one proceeds and the other exits non-zero without touching any file.
 
 The report schema is version 2. A version 2 report is incomplete if `review_complete` is false OR its summary or limitations describe the review as incomplete (owner decision, 2026-10-22). The structured fields stay required: `review_complete: false` needs at least one reason, and `review_complete: true` must list none. The text check is an additional signal, not a replacement. A schema version 1 report, already recorded before version 2, keeps being assessed under the version 1 rules, which use the same text check, so recorded history does not change. The drift guards are `tests/test_codex_review_contract.py`, `tests/test_codex_report_status.py` and `tests/test_codex_review_run.py`.
 

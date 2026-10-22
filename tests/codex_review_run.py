@@ -383,6 +383,17 @@ def run_meta(run: ReviewRun, *, harness_head: str, inputs: dict[str, dict[str, o
     }
 
 
+def reserve_outputs(run: ReviewRun, prompt: str) -> None:
+    """Atomically claim this head/label/attempt by creating ``<OUT>.prompt.txt``.
+
+    O_CREAT|O_EXCL makes the claim atomic: if another run already created
+    the file, this raises FileExistsError and leaves that file untouched.
+    """
+    fd = os.open(run.output(".prompt.txt"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(prompt)
+
+
 def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -> int:
     """Run the full review pass. Returns the checker's exit code (0 = complete)."""
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
@@ -397,7 +408,8 @@ def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -
     meta = run_meta(run, harness_head=harness_head, inputs=inputs)
 
     run.out_base.parent.mkdir(parents=True, exist_ok=True)
-    run.output(".prompt.txt").write_text(prompt, encoding="utf-8")
+    # The reservation is the first write; nothing else is touched if it fails.
+    reserve_outputs(run, prompt)
     run.output(".meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
     scratch = Path(tempfile.mkdtemp(prefix="codex-review-"))
