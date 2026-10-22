@@ -288,3 +288,20 @@ Run [39798454025](https://github.com/thejuran/triggarr/actions/runs/39798454025)
 - Review acceptance is pending: owner exact-commit acceptance (D-35 stop 3).
 
 **CI time note (D-14 follow-up, not a regression in this phase's code):** browser-e2e took 11m21s on this run and 11m58s on run 39793866205, against about 1m21s–1m35s on earlier runs. Almost all of the extra time is the `Install Chromium for Playwright` step, which runs `playwright install --with-deps chromium`. It took 630s and 659s in these two runs, against 21s in run 39701686221 the day before. The suite step itself took 34–45s. This looks like GitHub-runner download time for Chromium and its system packages. Caching the Playwright browser or using a pre-installed one would bound it. That is a CI change for Phase 85 (CI follow-ups), not this phase, so it is recorded here and not acted on.
+
+## Greptile made optional (owner decision 2026-10-22)
+
+Greptile paused on head `17f87c1`. Its comment said: "used its 300 free open-source review credits for this billing period. Reviews resume automatically on November 17." No `Greptile Review` check was posted, so the required check sat at "Expected — Waiting for status to be reported".
+
+Owner decision: change the requirement. Greptile is not mandatory, and paid credits are not bought.
+
+- **Acceptance policy:** `.github/scripts/review-acceptance.cjs` (`25f1ecd`; failing tests first in `bd18d52`).
+  - A head with no Greptile check may be accepted.
+  - A Greptile check that exists for the head must have completed successfully; a running or failed review still blocks.
+  - Every Greptile inline finding still needs current-head evidence.
+  - The head-staleness, blocker-register and disposition checks are unchanged.
+  - JS tests: 119 pass, 0 fail.
+- **Pin:** the review-acceptance workflow now checks out policy commit `25f1ecdea87db0596d316f1a275be938e14f7f2c`, replacing `40fe2671301245e45af1b4af9f6014b3548db6bc` (`770a0b3`). The summary now states whether Greptile reviewed the head.
+- **Independent inspection of the safeguard change:** a Codex adversarial review of `17f87c1..83df994` returned **approve**: "No concrete blocking defects found. The change permits absent Greptile reviews while preserving failure/running checks, all inline-finding dispositions, head-staleness checks, and blocker validation. The workflow executes the pinned policy, whose script exactly matches the reviewed version. All 16 acceptance tests pass."
+- **Ruleset 14805779 ("Main Branch Rules"):** `Greptile Review` was removed from the required status checks via the GitHub API (updated 2026-10-22T13:09:09-04:00). The required checks are now `CI ready`, `Review acceptance` and `CodeQL`, with strict mode still on. The deletion, non-fast-forward, pull-request and required-deployments rules are unchanged, and there are no bypass actors.
+- **Docs:** the v2.13 standing rules in REQUIREMENTS.md, `docs/buildomator-greptile-pilot.md` and `CLAUDE.md` (`83df994`).
