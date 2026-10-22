@@ -755,3 +755,57 @@ def test_main_reports_git_failure_without_traceback(monkeypatch, capsys) -> None
     monkeypatch.setattr(runner, "execute", _fails)
     assert main(_cli(PHASE_DIR, "--trusted")) == 2
     assert "error:" in capsys.readouterr().out
+
+
+# --- Head already stale at launch (bm:322afc50367d:IN-06, round 2) ------------
+# A run whose --head is not the checkout's HEAD can only ever be assessed
+# stale, so it needs an explicit --allow-stale-head (e.g. finishing an
+# earlier head's D-09 retry) instead of silently spending a Codex run.
+
+OTHER = "e" * 40
+
+
+def _head_is(sha: str, fake: FakeRunner):
+    def _spy(argv, **kwargs):
+        if argv[:2] == ["git", "rev-parse"]:
+            fake.calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, stdout=sha + "\n")
+        return fake(argv, **kwargs)
+
+    return _spy
+
+
+def test_execute_refuses_stale_head_without_flag(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+
+    with pytest.raises(runner.RunnerError, match="--allow-stale-head"):
+        execute(run, command_runner=_head_is(OTHER, fake))
+    assert not any(run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES)
+    assert not any(call[:3] == ["git", "worktree", "add"] for call in fake.calls)
+
+
+def test_execute_allows_stale_head_with_flag_and_records_it(tmp_path, monkeypatch) -> None:
+    import json as _json
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+
+    execute(run, command_runner=_head_is(OTHER, fake), allow_stale_head=True)
+    meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
+    assert meta["allow_stale_head"] is True
+    assert meta["harness_head"] == OTHER
+
+
+def test_main_passes_allow_stale_head(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def _capture(_run, **kwargs):
+        seen.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(runner, "execute", _capture)
+    assert main(_cli(PHASE_DIR, "--trusted", "--allow-stale-head")) == 0
+    assert seen["allow_stale_head"] is True
+    assert main(_cli(PHASE_DIR, "--trusted")) == 0
+    assert seen["allow_stale_head"] is False
