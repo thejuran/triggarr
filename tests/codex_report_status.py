@@ -184,11 +184,15 @@ def _finding_consistency_and_ids(
     seen_ids: set[str] = set()
     head_fragment = inspected_head[:12] if inspected_head else "unknown"
 
-    for finding in findings:
+    for index, finding in enumerate(findings):
         if not isinstance(finding, dict):
+            # Already reported by the schema walk ("must be object").
             continue
         fid = finding.get("id")
-        if not isinstance(fid, str):
+        if not isinstance(fid, str) or not fid.strip():
+            # Without a usable id the finding cannot be dispositioned, so it
+            # must never silently drop out of the qualified IDs (CR-02).
+            reasons.append(f"finding at index {index} has no valid id")
             continue
 
         if fid in seen_ids:

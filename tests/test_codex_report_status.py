@@ -356,6 +356,28 @@ def test_empty_coverage_incomplete() -> None:
     assert any("no coverage stated" in r for r in result.reasons)
 
 
+# CR-02: a finding without a usable string id can never be dispositioned, so
+# it must make the report incomplete rather than silently drop out of the IDs.
+@pytest.mark.parametrize("bad_id", [7, None, "", "   "])
+def test_finding_without_valid_id_incomplete(bad_id) -> None:
+    report = _valid_report()
+    report["findings"][0]["id"] = bad_id
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert any(r == "finding at index 0 has no valid id" for r in result.reasons)
+
+
+def test_complete_results_qualify_every_finding() -> None:
+    """Invariant: a complete result has exactly one qualified ID per finding."""
+    no_findings = _valid_report()
+    no_findings["findings"] = []
+    no_findings["verdict"] = "no-findings"
+    for report in (_valid_report(), no_findings):
+        result = _assess(report)
+        assert result.status == "complete"
+        assert result.finding_count == len(result.qualified_ids)
+
+
 def test_duplicate_finding_id_incomplete() -> None:
     report = _valid_report()
     report["findings"][1]["id"] = "F001"
