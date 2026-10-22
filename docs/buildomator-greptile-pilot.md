@@ -75,6 +75,8 @@ The native `Greptile Review` success status is review-completion evidence only. 
 
 ### Routine BM workflow
 
+Every push to a PR starts a paid Greptile review, so push only when the head needs a new review. Batch fixes into one checkpoint push. Hold docs-only, evidence and tracking commits locally until the next substantive push. Keep deliberately broken demonstration pushes to the minimum the plan requires.
+
 1. BM plans and verifies on a feature branch, pushes a checkpoint, and records its full SHA. Keep internal quick-task notes local unless separately requested.
 2. Confirm CI and Greptile run on that checkpoint. For application-code pilot work, the owner runs vibe-check independently on the same SHA, in parallel with Greptile. No vibe-check is required for the remaining infrastructure setup.
 3. Investigate findings, add regression evidence, and batch fixes into a new checkpoint. Never use bot thread resolution as proof of remediation. After the final tests and reviews, a reviewer prepares the repository-variable dispositions with concrete evidence for the current SHA. Plan and product/UAT acceptance remain explicit tasks; check passes cannot establish them.
