@@ -266,3 +266,15 @@ Local gate at `0f08523`: 2164 unit tests, ruff clean, JS tests 0 failures, actio
 **CI on `0f08523`:** all `ci.yml` jobs and `Greptile Review` passed (run https://github.com/thejuran/triggarr/actions/runs/39701686221). **CodeQL failed** with alert #16: the same rule on the same scrypt digest write, now at line 56, because `4aa74cc` moved the line. The owner decided (2026-10-21) to dismiss #16 for the same reason as #15. It was dismissed via the code-scanning API (`dismissed_reason: "false positive"`, `dismissed_by: thejuran`) with this comment: "Owner decision 2026-10-21 (same as #15): one-way salted scrypt digest of a disposable per-run e2e API key (D-27); no recoverable secret is stored. Reopened as #16 only because 4aa74cc moved the line (key-shape guard added)." Open alerts on `refs/pull/33/head`: 0. CodeQL is re-evaluated on the next push. Because a dismissal is tied to the flagged code, any further edit to that line will reopen it.
 
 Greptile's review of `0f08523` raised one more P2: the third run's image identity fields were missing. They are now added to "Final head checks" above. This docs-only change is held locally and goes out with the next substantive push (owner rule: no pushes made only for docs).
+
+## Final-head browser-e2e flake and fix
+
+On head `6c577d4` (docs-only on top of `0f08523`), run [39793866205](https://github.com/thejuran/triggarr/actions/runs/39793866205) passed CodeQL, Greptile Review, test, lint, docker and image-smoke. **browser-e2e failed:** credential_pages passed 6/6, but `test_connection_pill_polls_on_schedule_without_loop_and_shows_new_state` failed with "connection pill did not refresh after a scheduled interval: expected at least 3 requests, saw 2". The same code passed on four earlier CI runs and on every local run.
+
+Root cause: a race in the test, not the app. After the first tick's swap, htmx registers the new pill's `every 30s` timer in its settle step, which is a short timer on the installed fake clock. If the second `fast_forward("00:31")` ran before that step, the timer was created after the jump and never fired.
+
+Per the failure policy (D-15/D-16), the test was fixed rather than rerun. The fix (`fix(82): flush htmx settle …`) advances the clock 1s before the jump, matching step 4's existing flush. Verification on a fresh local image:
+- the fixed test passed 10/10;
+- the loop variant still fails ("connection pill request loop: 133 requests …");
+- the polling-disabled variant still fails ("did not refresh … saw 1");
+- the unit suite passes.
