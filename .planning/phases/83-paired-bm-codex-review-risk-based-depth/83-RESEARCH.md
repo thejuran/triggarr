@@ -372,16 +372,19 @@ node ~/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mj
 1. **Does the installed v5.0.3 expose a single "enable every craft-skill lane" operation, or must each of the (currently 8+) catalog entries be pinned individually?**
    - What we know: v4.9.2/v4.9.3 introduced per-skill, per-agent-type insertion (`gsd-tools craft-skill`), not a catalog-wide switch.
    - What's unclear: whether v5.0.0–v5.0.3 added a bulk/"enable all" operation; the CHANGELOG is silent on this.
+   - RESOLVED: 83-01 Task 2 checks the installed/tagged v5.0.3 craft-skill surface directly and names the exact command(s), reporting any gap to the owner (D-04).
    - Recommendation: the REVIEW-01 baseline task must check `gsd-tools craft-skill --help` (or equivalent) against the installed v5.0.3 directly and name the exact command(s); if none exists, report the gap to the owner per D-04 rather than approximating "every lane on" as `agent_skills.<type>` containing every known skill name.
 
 2. **Should the Codex pass use raw `codex exec` or the installed codex plugin's app-server client?**
    - What we know: raw `codex exec --output-schema` gives full schema control and a verbatim fixed prompt (favoring D-07); the plugin gives job persistence/background tracking across Claude sessions (useful for D-09's retry/pending semantics) but wraps the prompt and narrows the schema.
    - What's unclear: whether the plugin's `codex app-server` backend can be driven directly (bypassing the slash-command wrapper) to get both the job tracking and a custom schema — this would require reading `lib/codex.mjs`'s exported functions rather than only the commands, which this research did not fully trace.
+   - RESOLVED: raw `codex exec --sandbox read-only --output-schema` is used (Claude's discretion; 83-02 contract and schema).
    - Recommendation: default to raw `codex exec` for the first implementation; revisit the app-server client only if retry/background tracking proves to be a recurring pain point during the pilot (Phase 86).
 
 3. **What exactly must change in `CLAUDE.md` to satisfy REVIEW-08, given no literal "every PR" string exists today?**
    - What we know: the "blanket" framing is conceptual (unconditional review/check language in the "Buildomator + Greptile pilot" and "Deep Code Review Convention" sections), not a specific string.
    - What's unclear: whether the owner wants those two sections merged, one retired in favor of the new classification-policy reference, or both kept with added conditionals.
+   - RESOLVED: 83-06 restructures the named CLAUDE.md review sections to point at the 83-04 classification policy; the owner reviews the result at PR acceptance.
    - Recommendation: surface this explicitly in planning/discussion rather than silently picking one; D-14 already shows the owner actively adjusts phase scope here, so this is a live decision point, not a research gap.
 
 ## Environment Availability

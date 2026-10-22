@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- Phase 83 context gathered (branch paired-review)"
-stopped_at: Phase 83 context gathered
-last_updated: "2026-10-22T17:38:03.127Z"
-last_activity: "2026-10-22 -- Phase 83 context gathered"
+status: "ready to execute -- Phase 83 planned, 10 plans (branch paired-review)"
+stopped_at: Phase 83 planned (10 plans in 7 waves)
+last_updated: "2026-10-22T18:22:30.000Z"
+last_activity: "2026-10-22 -- Phase 83 planned"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 9
+  total_plans: 19
   completed_plans: 9
   percent: 20
 ---
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 83 (paired BM + Codex review) — Not started; Phase 82 complete
-Plan: 9 of 9
-Status: Phase 82 merged (PR #33, 2026-10-22); Phase 83 next
-Last activity: 2026-10-22 -- Phase 82 merged via PR #33
+Phase: 83 (paired BM + Codex review) — Planned, ready to execute; Phase 82 merged
+Plan: 0 of 10
+Status: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
+Last activity: 2026-10-22 -- Phase 83 planned
 
 ### v2.13 milestone shape
 
