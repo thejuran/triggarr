@@ -4,8 +4,8 @@ milestone: v2.13
 milestone_name: CI & Review Workflow
 status: "executing -- Phase 83, 6/10 plans done; plan 07 next (branch paired-review)"
 stopped_at: "Phase 83 plan 07 Task 1 (owner picks quick-task item)"
-last_updated: "2026-10-22T19:12:26.000Z"
-last_activity: "2026-10-22 -- Phase 83 plans 05-06 done; BM v5.0.3 loaded, code review on (standard)"
+last_updated: "2026-10-22T19:42:45.000Z"
+last_activity: "2026-10-22 - Completed quick task 261022-l7h: Fix card reasons label for skip-only rows"
 progress:
   total_phases: 5
   completed_phases: 1
@@ -226,6 +226,7 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 | Date | Task | Outcome |
 |------|------|---------|
 | 2026-05-19 | Address Dependabot alerts and PR | Merged PR #19 (idna 3.11→3.15, squash cc61133). Closes alert #12 (CVE-2026-45409, IDNA encoding bypass, medium). |
+| 2026-10-22 | 261022-l7h: Fix card reasons label for skip-only rows (Phase 83 quick-task review demo, `--full`) | Verified. Test `7da265f`, fix `e0e72ba`; skip-only → "Show N skipped record(s)", 0-failure with unevaluated queue → "Show N detail(s)", real failures unchanged. BM quick review: 0 blockers, 2 warnings. Paired Codex pass recorded in 83-REVIEW-EVIDENCE.md. [261022-l7h](./quick/261022-l7h-fix-card-reasons-label-for-skip-only-row/) |
 
 ### Reference Artifacts
 
