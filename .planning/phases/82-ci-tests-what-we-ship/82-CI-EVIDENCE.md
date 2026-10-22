@@ -229,9 +229,40 @@ Docs-only commit `3f8f5f7` (recording the alert #15 disposition above) was pushe
 - **New PR head SHA:** `3f8f5f7532d2f26266e947a0aca7a8d563c76b67` (confirmed equal to `git log origin/ci-review-workflow -1 --format=%H` and to `gh pr view 33 --json headRefOid`).
 - **CI run:** https://github.com/thejuran/triggarr/actions/runs/39700561470, run ID `39700561470`, attempt `1`.
 - **Per-job conclusions (all `success`):** `test`, `lint`, `secrets`, `dependencies`, `docker`, `image-smoke`, `browser-e2e`, `CI ready`.
+- **This run's own identities (D-34; a docs-only head still builds a new image labelled with its own `github.sha`):**
+
+| Field | Value |
+|---|---|
+| PR head SHA | `3f8f5f7532d2f26266e947a0aca7a8d563c76b67` |
+| PR base SHA | `81eb55001b0118c026a8276150d852c89e71ff50` |
+| Tested SHA (`github.sha` / checkout HEAD) | `97a244a04ce9c44e2231d568e4dd961671499e6a` |
+| Image revision label | `97a244a04ce9c44e2231d568e4dd961671499e6a` |
+| Image ID | `sha256:13dcaa52ddc67ed3b3bcc2f14f80618d5c9aa44779a0581361c643acd04e37d0` |
+| image.tar sha256 | `354c89b1c2bc63dfcd6099add5353331544a7171f57c08bb73891d63d0cd8758` |
+
+  Reconciliation: tested SHA `97a244a04ce9c44e2231d568e4dd961671499e6a` is GitHub's merge of PR head `3f8f5f7532d2f26266e947a0aca7a8d563c76b67` into base `81eb55001b0118c026a8276150d852c89e71ff50` (job log: `HEAD is now at 97a244a Merge 3f8f5f7… into 81eb550…`); CI evidence for this run applies to `97a244a…`, review evidence to `3f8f5f7…`. Verified from the run's `audited-image` artifact: `sha256sum -c image.tar.sha256` OK, loaded image ID equals `image-id.txt` and the rehearsal's printed image ID, revision label equals the tested SHA, version label `2.12.0`; the loaded tag was removed afterwards. (Recorded after the fact, prompted by Greptile's review of `0f08523`.)
 - **CodeQL:** `pass` (check run https://github.com/thejuran/triggarr/runs/119568626183, 3s) -- the alert-count gate is now green, consistent with 0 open code-scanning alerts on this ref.
 - **Greptile Review:** `pending` at time of this record. **Review acceptance:** `pending` at time of this record. Neither paused on; neither touched; no approval requested or submitted.
 
 All branch-ruleset required checks this plan can observe synchronously (`CI ready`, `CodeQL`) are green at this head.
 
 This record is not owner acceptance (D-35 stop 3 happens later, on the final phase head). Main was not pushed; no review-acceptance approval was requested or submitted; no `review-acceptance` environment was touched.
+
+## Greptile findings on PR #33 and the fix push (`0f08523`)
+
+Greptile's reviews of `3315a88`, `6c8354e` and `3f8f5f7` raised six findings. Each was checked against the code. Five were real (one a regression from `6c8354e`) and one was already fixed in the held commit `f659e29`. The owner chose to fix all of them in one batch and one push.
+
+| Finding | Disposition | Evidence |
+|---|---|---|
+| P1 `tests/e2e/test_capture_policy.py:173`: a single Docker-health sample can fail a healthy build | Fixed `4aa74cc`: `stack.wait_for_docker_health(parent_app_name, timeout=90)` | Browser suite green locally (6 + 1) and in CI on `0f08523` |
+| P2 `tests/e2e/conftest.py:73`: `SensitiveRegistry` repr prints registered secrets | Fixed `4aa74cc`: `values` uses `field(..., repr=False)` | Regression test `tests/test_e2e_secret_hygiene.py::test_sensitive_registry_repr_hides_registered_values` failed before the fix (`1b44915`) and passes after |
+| P2 `tests/e2e/test_capture_policy.py:122`: a blank API key passes the fingerprint check (regression from `6c8354e`) | Fixed `4aa74cc`: `api_key_handoff` only fingerprints a 32-hex key; otherwise no file is written and the parent's check fails | Regression tests `test_api_key_handoff_*` failed before the fix (`1b44915`) and pass after |
+| P2 `tests/e2e/conftest.py:358`: container logs are lost on setup failures | Fixed `4aa74cc`: logs are saved when `wait_for_http_health` raises and when the setup or call report failed | Code review only; a real startup failure was not triggered |
+| P2 `82-VALIDATION.md:23`: the documented full-suite command is refused by the capture guard | Fixed `0f08523`: replaced with the two CI invocations | Doc |
+| P2 `82-08-SUMMARY.md:114`: handoff says alert #15 is open | Already fixed in `f659e29`; `0f08523` also corrects the summary's attribution (the CodeQL fix and the #15 dismissal were made by the orchestrating session on the owner's decision) | Doc |
+
+Local gate at `0f08523`: 2164 unit tests, ruff clean, JS tests 0 failures, actionlint clean, and the browser suite against a fresh local image (6 + 1 passed).
+
+**CI on `0f08523`:** all `ci.yml` jobs and `Greptile Review` passed (run https://github.com/thejuran/triggarr/actions/runs/39701686221). **CodeQL failed** with alert #16: the same rule on the same scrypt digest write, now at line 56, because `4aa74cc` moved the line. The owner decided (2026-10-21) to dismiss #16 for the same reason as #15. It was dismissed via the code-scanning API (`dismissed_reason: "false positive"`, `dismissed_by: thejuran`) with this comment: "Owner decision 2026-10-21 (same as #15): one-way salted scrypt digest of a disposable per-run e2e API key (D-27); no recoverable secret is stored. Reopened as #16 only because 4aa74cc moved the line (key-shape guard added)." Open alerts on `refs/pull/33/head`: 0. CodeQL is re-evaluated on the next push. Because a dismissal is tied to the flagged code, any further edit to that line will reopen it.
+
+Greptile's review of `0f08523` raised one more P2: the third run's image identity fields were missing. They are now added to "Final head checks" above. This docs-only change is held locally and goes out with the next substantive push (owner rule: no pushes made only for docs).
