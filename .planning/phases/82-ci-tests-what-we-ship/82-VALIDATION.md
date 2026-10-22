@@ -20,7 +20,7 @@ created: 2026-10-21
 | **Framework** | pytest >=9.0.3 (existing) + pytest-playwright (new, browser suite); Node.js `node --test` (existing, release-policy/CI-consistency scripts) |
 | **Config file** | `pyproject.toml` `[tool.pytest.ini_options]` (existing); `tests/e2e/` must stay excluded from the default unit run |
 | **Quick run command** | `node --test .github/scripts/*.test.cjs && uv run --no-sync pytest tests/ -q -x` |
-| **Full suite command** | Quick run + `uv run --no-sync pytest tests/e2e -q --browser chromium --tracing=retain-on-failure` against a live container (CI `browser-e2e` job) + CI `image-smoke` job |
+| **Full suite command** | Quick run + the two CI `browser-e2e` invocations (with `TRIGGARR_E2E_IMAGE`/`EXPECTED_IMAGE_ID` set): `uv run --no-sync pytest tests/e2e -q -m credential_pages --browser chromium --tracing off --screenshot off --video off --output e2e-artifacts/credential`, then `uv run --no-sync pytest tests/e2e -q -m "not credential_pages" --browser chromium --tracing retain-on-failure --screenshot only-on-failure --output e2e-artifacts/pages` (the capture guard refuses credential pages with capture on, exit 4) + CI `image-smoke` job |
 | **Estimated runtime** | ~60 seconds local quick run; image-smoke/browser-e2e only meaningful in CI |
 
 ---
