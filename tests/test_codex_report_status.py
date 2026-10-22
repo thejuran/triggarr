@@ -218,6 +218,15 @@ def test_nested_duplicate_key_json_incomplete() -> None:
     assert "unparseable: duplicate key id" in result.reasons
 
 
+
+# bm:dbe1b7f56bdd:IN-04 (owner-approved round 3): an integer longer than
+# Python's int-string conversion limit raises a plain ValueError in json.loads.
+def test_over_long_integer_json_incomplete_without_raising() -> None:
+    text = '{"a": 1' + "0" * 5000 + "}"
+    result = assess_report(text, exit_code=0, expected_head=H, expected_base=B, current_head=H, attempt=1)
+    assert result.status == "incomplete"
+    assert "unparseable: report is not valid JSON" in result.reasons
+
 # --- Schema violations -----------------------------------------------------
 
 

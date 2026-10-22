@@ -939,3 +939,103 @@ def test_evidence_copy_is_created_exclusively_without_following_links(tmp_path, 
 
     required = runner.os.O_CREAT | runner.os.O_EXCL | runner.os.O_NOFOLLOW
     assert seen["flags"] & required == required
+
+
+
+# --- Remaining round-2 gaps (owner-approved round 3, decision 4) ------------
+
+
+def test_oserror_after_reservation_writes_status_stub(tmp_path, monkeypatch) -> None:
+    """bm:dbe1b7f56bdd:IN-03: an OSError mid-run leaves an incomplete status, not a bare reservation."""
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+
+    def _codex_cannot_open_events(*_args, **_kwargs):
+        raise PermissionError("simulated: cannot open the event stream")
+
+    monkeypatch.setattr(runner, "_run_codex", _codex_cannot_open_events)
+
+    with pytest.raises(runner.RunnerError, match="PermissionError"):
+        execute(run, command_runner=fake)
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "PermissionError" in status
+    assert _removed(fake)
+    assert not (tmp_path / "scratch").exists()
+
+
+def test_main_reports_oserror_without_next_attempt_advice(monkeypatch, capsys) -> None:
+    def _fails(_run, **_kwargs):
+        raise runner.RunnerError("harness failed before codex finished: PermissionError")
+
+    monkeypatch.setattr(runner, "execute", _fails)
+    assert main(_cli(PHASE_DIR, "--trusted")) == 2
+    out = capsys.readouterr().out
+    assert "error: harness failed" in out
+    assert "next attempt number" not in out
+
+
+def test_evidence_redacts_pytest_temp_paths_and_username(tmp_path, monkeypatch) -> None:
+    """bm:dbe1b7f56bdd:IN-05: pytest's $TMPDIR/pytest-of-<user>/ paths never reach the evidence."""
+    run = _tmp_run(tmp_path, monkeypatch)
+    system_tmp = tmp_path / "system-tmp"
+    system_tmp.mkdir()
+    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(system_tmp))
+    monkeypatch.setattr(runner.getpass, "getuser", lambda: "someone-private")
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if argv[0] == "uv":
+            out = f"E   AssertionError: {system_tmp}/pytest-of-someone-private/pytest-3/test_x0/out.txt\n1 failed\n"
+            return subprocess.CompletedProcess(argv, 1, stdout=out)
+        return fake(argv, **kwargs)
+
+    execute(run, command_runner=_spy)
+    evidence = run.output(".pytest.txt").read_text(encoding="utf-8")
+    assert "someone-private" not in evidence
+    assert str(system_tmp) not in evidence
+    assert "<tmp>/pytest-of-<user>/pytest-3/test_x0/out.txt" in evidence
+
+
+def test_inputs_changed_during_run_writes_stub_instead_of_checking(tmp_path, monkeypatch) -> None:
+    """bm:dbe1b7f56bdd:IN-06: the checker only runs if the audited inputs still match .meta.json."""
+    run = _tmp_run(tmp_path, monkeypatch)
+    real_audit = runner.audit_inputs
+    calls = {"n": 0}
+
+    def _audit(command_runner):
+        calls["n"] += 1
+        result = real_audit(command_runner)
+        if calls["n"] > 1:
+            result = dict(result)
+            result["tests/codex_report_status.py"] = {"sha256": "0" * 64, "committed_unchanged": True}
+        return result
+
+    monkeypatch.setattr(runner, "audit_inputs", _audit)
+    fake = FakeRunner()
+
+    assert execute(run, command_runner=fake) == 1
+    assert calls["n"] == 2
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "audited inputs changed during the run" in status
+    assert not any(_is_checker(call) for call in fake.calls)
+
+
+def test_inputs_dirty_after_run_writes_stub_instead_of_checking(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    statuses = {"n": 0}
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if argv[:2] == ["git", "status"]:
+            statuses["n"] += 1
+            fake.calls.append(list(argv))
+            dirty = " M tests/codex_report_status.py\n" if statuses["n"] > 1 else ""
+            return subprocess.CompletedProcess(argv, 0, stdout=dirty)
+        return fake(argv, **kwargs)
+
+    assert execute(run, command_runner=_spy) == 1
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert "audited inputs changed during the run" in status
+    assert not any(_is_checker(call) for call in fake.calls)
