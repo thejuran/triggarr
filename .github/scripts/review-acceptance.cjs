@@ -6,9 +6,13 @@ function assess({head, currentHead, checks, comments, dispositions, blockers}) {
   if (!dispositions || dispositions.schema !== 1 || typeof dispositions.items !== 'object' || dispositions.items === null) {
     throw Error('Missing finding dispositions');
   }
+  // Greptile is optional (owner decision 2026-10-22): a head with no Greptile review may be accepted, but a
+  // review that exists for this head must have completed successfully -- a running or failed one blocks.
   const latest = checks.filter(c => c.head_sha === head && c.name === 'Greptile Review' && c.app?.id === 867647)
     .sort((a,b) => b.id-a.id)[0];
-  if (!latest || latest.status !== 'completed' || latest.conclusion !== 'success') throw Error('Current Greptile review missing or unsuccessful');
+  if (latest && (latest.status !== 'completed' || latest.conclusion !== 'success')) {
+    throw Error('Current Greptile review is still running or unsuccessful');
+  }
   const findings = comments.filter(c => c.user?.login === 'greptile-apps[bot]');
   for (const comment of findings) {
     const d = dispositions.items[String(comment.id)];
@@ -17,6 +21,6 @@ function assess({head, currentHead, checks, comments, dispositions, blockers}) {
       throw Error(`Finding ${comment.id} needs current-commit verification evidence; thread resolution is not sufficient`);
     }
   }
-  return findings.length;
+  return {findings: findings.length, greptile: latest ? 'success' : 'none'};
 }
 module.exports = {assess};
