@@ -722,3 +722,247 @@ are preserved in `83-REVIEW-dcfb5a5081ea.md`; the quick task's in
   head again; this head's reviews do not count for that head.
 
 This record is not owner acceptance.
+
+## Review after fixes, round 2 — head dbe1b7f56bdd
+
+<!-- review-checkpoint head=dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952 -->
+
+Owner-approved round 2 (2026-10-22, overriding D-08's single batched
+round) fixed the findings recorded for `322afc50367d`; BM and Codex then
+reviewed the new head independently. Nothing recorded for
+`a7995baf187e`, `d501a68316b2` or `322afc50367d` is cited as satisfying
+this head.
+
+Fix commits between the earlier head and this one:
+
+- `9b113ed` — the `322afc50367d` checkpoint record (Part A of the
+  previous round).
+- `981c315`..`5a7ac53` — owner-approved round 2, test-first (a failing
+  test commit, then a fix commit, per item): `bm:322afc50367d` WR-01,
+  WR-02, WR-03, IN-02, IN-04, IN-05, IN-06, IN-07, IN-08, SA-01 (trust
+  flag), SA-02 (v2 text backstop); `codex:322afc50367d:a1:F002`
+  (atomic output reservation); planning docs out of Codex review scope
+  (template version 4).
+- `dbe1b7f` — snapshot of the round-1 post-fix review as
+  `83-REVIEW-322afc50367d.md`, taken before BM re-reviewed.
+
+Still excluded from fixing by owner decision, as nonblocking debt: the
+card-template refactor (`bm:322afc50367d:IN-01`) and the tautological
+test (`bm:322afc50367d:IN-03`).
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` |
+| PR base SHA | `6f3841aaae4f2511efe6796f7f5c7ad50b423f90` |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` |
+| Codex inspected base (`inspected_base_sha`) | `6f3841aaae4f2511efe6796f7f5c7ad50b423f90` |
+
+Reconciliation: no PR exists yet, so Codex's `PR_URL` was the literal text
+`none (local checkpoint, not pushed)`. The head is `git rev-parse HEAD` at
+the checkpoint; the base is `git merge-base origin/main HEAD` (phase
+scope), unchanged from the earlier sections. The run's `.meta.json`
+records `harness_head` equal to the reviewed head and
+`allow_stale_head: false`. All fields match; no reconciliation needed.
+
+### Classification
+
+```json
+{"schema":1,"head":"dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952","classification":"code","classes_present":["code","sensitive","ordinary-docs"],"rationale":"git diff 6f3841aa..dbe1b7f5 (full phase scope) touches application code and tests (triggarr/templates/partials/cycle_grade.html, tests/codex_report_status.py, tests/codex_review_run.py and six test modules) and sensitive content: agent instructions (CLAUDE.md, .claude/schemas/codex-review-findings.schema.json), BM configuration (.planning/config.json), acceptance policy (docs/owner-cli-acceptance.md, docs/buildomator-greptile-pilot.md) and review procedures (docs/codex-adversarial-review-contract.md, docs/review-checkpoint-record.md, docs/review-classification-policy.md, docs/bm-review-baseline-2026-10-22.md), plus .planning/** planning records. Mixed code and sensitive content is recorded as code with both classes present per docs/review-classification-policy.md Mixed changes. Names .planning/config.json explicitly because template v4 removed it from Codex's review diff (bm:dbe1b7f56bdd:WR-01).","supersedes_head":"322afc50367d4cf7e2610eb6f8852bb8c9302457"}
+```
+
+### Risk note (RISK-01)
+
+Refreshed for this head; round 2 changed both the code and the risk.
+
+- **Scope:** local checkpoint only; the code rides in the Phase 83 PR
+  prepared in Plan 10. Covers the full phase diff
+  `6f3841aaae4f2511efe6796f7f5c7ad50b423f90..dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952`
+  (17 files outside `.planning/`, plus `.planning/config.json`), not only
+  the round-2 commits. Affected behavior: the Codex runner (trust flag,
+  evidence copy into the worktree, prompt/meta audit trail, atomic
+  reservation, stale-head refusal, in-process timeout), the report
+  checker, the contract (template v4), the checkpoint record, and the
+  dashboard card's detail-label wording.
+- **Risk:** moderate for this repository's own branches, high for the
+  `--untrusted` path. On the `--untrusted` path a hostile head can make
+  the harness overwrite any file the operator can write, through a
+  symlink at `.codex-review-evidence/pytest.txt`, before Codex starts
+  (reproduced by BM and by this record in a scratch directory); the same
+  head could steer Codex through an `AGENTS.md` file (unverified). No
+  untrusted head has been run, and none will be before round 3 lands.
+  Template v4 also drops `.planning/config.json` (BM's review settings,
+  sensitive under the policy and changed in this phase by `663fff3`) from
+  Codex's review diff, so a weakening of BM settings would get no Codex
+  review. The remaining items are narrow robustness and privacy gaps in
+  the runner and checker. No production search or scheduling logic is
+  touched; the card change is presentation-only.
+- **Recommended review:** `standard` depth (what ran) was adequate to
+  surface these. The owner-approved round 3 touches the runner, the
+  contract template (version 5), the checkpoint record and the card, so
+  it needs another full-scope `standard` BM review and a fresh paired
+  Codex pass on its own new head.
+- **Required evidence:** for round 3: a failing regression test first for
+  each item (untrusted runs refused with exit 2 and no files written;
+  evidence copy refused for a symlinked directory, a symlinked file and
+  a pre-existing path, with the outside target unchanged; template v5
+  keeps `.planning/config.json` and other non-markdown, non-codex
+  planning files in the review diff while still excluding planning
+  markdown, transcripts and `.jsonl`; red Failed cards always say
+  "failure reason(s)"; any IN item fixed); full suite and ruff green;
+  fresh BM and Codex reviews on the new head.
+- **What this recommendation cannot establish:** that a real Codex run
+  honours `review_complete` honestly; that Codex ignores repository
+  instructions such as `AGENTS.md` (not tested; the round-3 decision
+  removes untrusted runs instead); behavior under genuinely concurrent
+  processes; live browser/htmx rendering of the card; that committed raw
+  outputs contain nothing sensitive beyond what the two secret scans
+  look for (see Incomplete items for the home-directory path).
+
+### Vibe-check (RISK-02)
+
+Risk below high for the trusted path this checkpoint actually exercised;
+the high-risk `--untrusted` path is not used and is removed in round 3
+rather than accepted. No additional vibe-check recommended for this
+local checkpoint.
+
+- **Routine vibe-check status:** not run. This is a local, unpushed
+  checkpoint; the owner's standing vibe-check rule is keyed to
+  pushing/tagging, and this code rides in the Phase 83 PR prepared in
+  Plan 10, where vibe-check is offered before that push.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | review after fixes (`/bm:code-review 83`, round-2 post-fix re-review) |
+| Requested depth | `standard` (`.planning/config.json` key `workflow.code_review_depth`) |
+| Actual depth | `standard` (matches requested; report front matter `depth: standard`) |
+| Large-scope warning | not printed (17 files reviewed; below the `-gt 50` downgrade threshold) |
+| Responsible files | `.planning/config.json` key `workflow.code_review_depth`; `~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/workflows/code-review.md` steps `resolve_depth` and `compute_file_scope` |
+| Report location | `.planning/phases/83-paired-bm-codex-review-risk-based-depth/83-REVIEW.md` (round-1 post-fix review preserved as `83-REVIEW-322afc50367d.md`, the one before as `83-REVIEW-dcfb5a5081ea.md`) |
+| Status | `issues_found` (complete run: 1 critical, 2 warning, 7 info, plus 1 set-aside item) |
+
+The report's `files_reviewed_list` names the same 17 files as
+`git diff --name-only 6f3841aa..dbe1b7f5 -- . ':(exclude,glob).planning/**'`,
+including `CLAUDE.md` and `docs/owner-cli-acceptance.md`. BM read
+`.planning/config.json` for WR-01 but did not list it as a reviewed file.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (attempt 1; checker exit 0, `.status.json` `"status": "complete"`) |
+| Attempts | 1 |
+| Raw output paths | `.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/dbe1b7f56bdd-round2-a1` `.prompt.txt`, `.meta.json`, `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt` — the first run with the round-2 prompt and provenance records |
+| Review complete | `review_complete: true`, `incomplete_reasons: []` (schema v2) |
+| Coverage | 5 entries: full in-scope diff including all added tests (truncated output recovered through individual file reads); runner trust selection, subprocess arguments, timeouts, cleanup, output reservation, provenance and stale-head handling; report schema, recursive validation, completeness checks, historical-version compatibility and finding identifiers; review classification, checkpoint records, owner acceptance and publication safeguards; cycle-detail labels traced through `cycle_view`, dashboard callers and regression tests |
+| Exclusions | "Everything under .planning/** is outside review scope." |
+| Commands run | 22 (21 exit 0, 1 exit 1: the first focused pytest attempt, which failed creating temporary files under the read-only sandbox) |
+| Limitations | (verbatim) "Did not independently rerun the full pytest suite because it requires filesystem writes. Harness evidence reports 2,383 passed and 38 warnings on the exact head." / "The first focused pytest invocation failed during temporary-file capture setup. Retrying with capture and plugin autoload disabled passed 30 tests; another 93 pure checker tests passed." / "Did not execute the symlink overwrite reproduction, live Codex orchestration, browser checks or hosted acceptance flows." / "External BM installation and historical approval claims were reviewed as repository documentation, not independently verified outside this working copy." |
+
+Harness test evidence (`.pytest.txt`, `--trusted`, produced outside
+Codex's sandbox on exactly this head): `uv run --extra dev pytest tests/ -q`
+exit 0, 2383 passed, 38 warnings. `.meta.json`: template version 4,
+`harness_head` = reviewed head, all four audited inputs
+`committed_unchanged: true`.
+
+Findings:
+
+| Qualified ID | Severity | Location | Reproduced / hypothesis | Title |
+|---|---|---|---|---|
+| `codex:dbe1b7f56bdd:a1:F001` | high | `tests/codex_review_run.py:278-280` | hypothesis | Reject symlinks before writing evidence into an untrusted worktree |
+
+Secret checks before commit (contract, Raw output storage):
+`gitleaks detect --no-git --source .planning/phases/83-paired-bm-codex-review-risk-based-depth/codex`
+(gitleaks 8.30.1) → "no leaks found", exit 0; the 32-hex scan
+`grep -rlE '(^|[^0-9a-f])[0-9a-f]{32}([^0-9a-f]|$)' <codex dir>` → no
+files listed, exit 1 (pass).
+
+### Greptile
+
+not run (local checkpoint)
+
+### CI
+
+not run (local checkpoint)
+
+### Dispositions
+
+New findings on this head. Reproduction by this record: CR-01 was
+reproduced in a scratch directory with this head's `_publish_evidence`
+(a symlink at `wt/.codex-review-evidence/pytest.txt` to a sentinel file;
+the sentinel's content changed from `precious` to the evidence text).
+IN-04 was reproduced by running this head's checker on a report holding a
+5001-digit integer (it raises `ValueError: Exceeds the limit (4300
+digits)`). The other items were confirmed by code read of this head,
+matching the BM report.
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:dbe1b7f56bdd:CR-01` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | confirmed_defect (security, `--untrusted` path) — carried to owner-approved round 3 (decision 1: untrusted Codex runs blocked; trusted runs create the evidence file without following links) | Reproduced by BM and by this record (above). Cross-confirmed by `codex:dbe1b7f56bdd:a1:F001` (same file, same lines, same trigger; Codex traced it statically). | N/A (not fixed on this head) |
+| `bm:dbe1b7f56bdd:WR-01` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | confirmed_defect (review-scope regression from template v4) — carried to owner-approved round 3 (decision 2: narrow exclusion, template v5) | `git diff --name-only 6f3841aa..dbe1b7f5 -- . ':(exclude,glob).planning/**'` lists no `.planning/` path, while `git diff --name-only 6f3841aa..dbe1b7f5 -- .planning` includes `.planning/config.json`; the policy's sensitive row names that file. | N/A |
+| `bm:dbe1b7f56bdd:WR-02` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | hypothesis (not reproduced; Codex not run on a hostile head) — carried to owner-approved round 3 (decision 1 removes the attack surface: Codex is not run on untrusted heads until hardened in Phase 85) | Code read: `codex_argv` sets no option disabling project-doc loading; the prompt invites Codex to run pytest itself. | N/A |
+| `bm:dbe1b7f56bdd:IN-01` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | nonblocking_debt (carried from `bm:322afc50367d:IN-01`; card-template refactor excluded from fixing by owner decision) | Template still classifies rows by text. | N/A |
+| `bm:dbe1b7f56bdd:IN-02` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | nonblocking_debt (carried from `bm:322afc50367d:IN-03`; excluded from fixing by owner decision) | `test_never_reports_clean` unchanged. | N/A |
+| `bm:dbe1b7f56bdd:IN-03` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | carried to owner-approved round 3 under decision 4 (fixed if a concrete defect left by round-2 fixes, otherwise nonblocking debt) | Code read: `execute()` sends only `RunnerError` to the status stub; an `OSError` from the evidence copy (a head tracking `.codex-review-evidence` as a regular file) leaves `.prompt.txt`/`.meta.json` without `.status.json`. | N/A |
+| `bm:dbe1b7f56bdd:IN-04` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | carried to owner-approved round 3 under decision 4 | Reproduced (above). | N/A |
+| `bm:dbe1b7f56bdd:IN-05` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | carried to owner-approved round 3 under decision 4 | Code read: `redact_local_paths` masks the scratch dir but not `$TMPDIR`, where pytest's `pytest-of-<user>` temp paths live. This head's `.pytest.txt` (a passing run) contains none. | N/A |
+| `bm:dbe1b7f56bdd:IN-06` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | carried to owner-approved round 3 under decision 4 | Code read: `audit_inputs` runs once before Codex; the checker and schema are read from disk after the run. | N/A |
+| `bm:dbe1b7f56bdd:IN-07` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | carried to owner-approved round 3 under decision 4 | Code read: `dry_run()` prints the dirty-input check but runs no git command and does not compare `--head` with HEAD. | N/A |
+| `bm:dbe1b7f56bdd:SA-01` | bm | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | **owner ruling received (2026-10-22):** red Failed-grade cards always say "Show N failure reason(s)", including when every row is a skipped record; "skipped record(s)" and "detail(s)" only on Partial/Success. Carried to owner-approved round 3 (decision 3). | `test_card_skip_only_failed_grade_says_skipped_record` pins the old wording. | N/A |
+| `codex:dbe1b7f56bdd:a1:F001` | codex | `dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952` | confirmed_defect — same as `bm:dbe1b7f56bdd:CR-01` (Codex reported it as a hypothesis; BM and this record reproduced it); carried to owner-approved round 3 | Codex's suggested fix (fresh evidence directory or reject pre-existing paths and symlink components; exclusive no-follow creation; symlinked-directory and symlinked-file regressions) is the round-3 decision 1 defence in depth. | N/A |
+
+### Original vs refreshed findings
+
+Every finding recorded for `322afc50367d` (section "Review after fixes —
+head 322afc50367d", Dispositions). The BM originals are preserved in
+`83-REVIEW-322afc50367d.md`. "Fixed and verified" means re-checked on
+this head by BM's round-2 re-review, which ran or rendered each case, and
+by the passing harness suite (2383 passed). Findings from the two earlier
+heads that were still open at `322afc50367d` appear here under their
+`322afc50367d` IDs.
+
+| Qualified ID | Source | Original head | Original severity | Disposition | Status on new head |
+|---|---|---|---|---|---|
+| `bm:322afc50367d:WR-01` | bm | `322afc50367d` | warning | confirmed_defect, fixed `981c315`/`2773d75` | fixed and verified (`test_card_failed_grade_malformed_plus_unevaluated_says_failure_reasons` renders "Show 2 failure reasons") |
+| `bm:322afc50367d:WR-02` | bm | `322afc50367d` | warning | confirmed_defect, fixed `d4f0418`/`31578da` | fixed and verified (this head's run wrote `.prompt.txt` and `.meta.json`); residual timing gap recorded as new `bm:dbe1b7f56bdd:IN-06` |
+| `bm:322afc50367d:WR-03` | bm | `322afc50367d` | warning | confirmed_defect, fixed `620e87b`/`e073a08` | fixed and verified (empty `commands_run` and blank coverage assess incomplete) |
+| `bm:322afc50367d:IN-01` | bm | `322afc50367d` | info | nonblocking_debt (owner-excluded card refactor) | still present (≙ `bm:dbe1b7f56bdd:IN-01`) |
+| `bm:322afc50367d:IN-02` | bm | `322afc50367d` | info | confirmed_defect, fixed `620e87b`/`e073a08` | fixed and verified (blank `reproduction_command` rejected) |
+| `bm:322afc50367d:IN-03` | bm | `322afc50367d` | info | nonblocking_debt (owner-excluded) | still present (≙ `bm:dbe1b7f56bdd:IN-02`) |
+| `bm:322afc50367d:IN-04` | bm | `322afc50367d` | info | confirmed_defect, fixed `b782946`/`fbf4307` and `0c7a4e2`/`7356c78` | fixed and verified for `RecursionError`, duplicate keys and empty checker output; one remaining input (over-long integer) recorded as new `bm:dbe1b7f56bdd:IN-04` |
+| `bm:322afc50367d:IN-05` | bm | `322afc50367d` | info | confirmed_defect, fixed `0c7a4e2`/`7356c78` | fixed and verified (git failures are one-line errors with a status stub); an uncaught `OSError` path recorded as new `bm:dbe1b7f56bdd:IN-03` |
+| `bm:322afc50367d:IN-06` | bm | `322afc50367d` | info | confirmed_defect, fixed `8e5deb3`/`64d1993` | fixed and verified in `execute()`; `dry_run()` gap recorded as new `bm:dbe1b7f56bdd:IN-07` |
+| `bm:322afc50367d:IN-07` | bm | `322afc50367d` | info | confirmed_defect, fixed `9f194e9`/`3fc0b64` and `ee94877`/`5a7ac53` | fixed and verified for the prompt and harness evidence: this head's `.prompt.txt`, `.pytest.txt`, `.meta.json`, `.last.json` and `.status.json` contain no home-directory path; the `.jsonl` still does (Codex's own environment; see Incomplete items); pytest temp-path leak recorded as new `bm:dbe1b7f56bdd:IN-05` |
+| `bm:322afc50367d:IN-08` | bm | `322afc50367d` | info | confirmed_defect, fixed `0c7a4e2`/`7356c78` | fixed and verified (in-process timeout, exit 124) |
+| `bm:322afc50367d:SA-01` | bm | `322afc50367d` | set aside | owner ruling (trusted/untrusted), implemented `4e65c56`/`4d5056f` | implemented as ruled; the `--untrusted` path it added introduced new `bm:dbe1b7f56bdd:CR-01` and `WR-02` |
+| `bm:322afc50367d:SA-02` | bm | `322afc50367d` | set aside | owner ruling (v2 text backstop), implemented `9e95bde`/`49318db` | implemented as ruled and verified |
+| `codex:322afc50367d:a1:F001` | codex | `322afc50367d` | low | confirmed_defect (≙ `bm:322afc50367d:WR-01`), fixed | fixed and verified |
+| `codex:322afc50367d:a1:F002` | codex | `322afc50367d` | medium | hypothesis, fixed `a36e97e`/`21c5be2` | fixed and verified (`O_CREAT|O_EXCL` reservation; lost-race test passes; BM checked it separately) |
+| `codex:322afc50367d:a2:F001` | codex | `322afc50367d` | low | confirmed_defect (≙ `bm:322afc50367d:WR-01`), fixed | fixed and verified |
+| Orchestrator item (planning docs in review diff) | orchestrator | `322afc50367d` | n/a | owner-approved round 2, fixed `c76f3bf`/`5299eb7` (template v4) | fixed (this head's Codex run completed on attempt 1 with no truncation-driven incompleteness), but the exclusion is too broad: new `bm:dbe1b7f56bdd:WR-01` |
+| `bm:dbe1b7f56bdd:CR-01` | bm | `dbe1b7f56bdd` | critical | see Dispositions | new (≙ `codex:dbe1b7f56bdd:a1:F001`) |
+| `bm:dbe1b7f56bdd:WR-01`, `WR-02` | bm | `dbe1b7f56bdd` | warning | see Dispositions | new |
+| `bm:dbe1b7f56bdd:IN-03`..`IN-07` | bm | `dbe1b7f56bdd` | info | see Dispositions | new |
+| `bm:dbe1b7f56bdd:SA-01` | bm | `dbe1b7f56bdd` | set aside | owner ruling, see Dispositions | new |
+| `codex:dbe1b7f56bdd:a1:F001` | codex | `dbe1b7f56bdd` | high | see Dispositions | new (≙ `bm:dbe1b7f56bdd:CR-01`) |
+
+### Incomplete items
+
+- `dbe1b7f56bdd-round2-a1.jsonl` contains the absolute home-directory
+  path on two lines: a Codex hook-configuration error message about the
+  operator's own Codex settings, and a Python traceback from a command
+  Codex ran. Both come from Codex's environment, not from the prompt or
+  harness evidence. Neither secret scan flags it. Raw files are never
+  edited, so it stays as written, like the earlier heads' `.jsonl` and
+  `.last.json` files. The owner should decide before any push whether
+  that is acceptable in a public repository.
+- `--untrusted` is unsafe at this head (CR-01) and must not be used until
+  round 3 lands; round 3 blocks it.
+- Owner-approved round 3 will move the head again; this head's reviews do
+  not count for that head.
+
+This record is not owner acceptance.
