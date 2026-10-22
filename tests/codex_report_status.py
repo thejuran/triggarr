@@ -49,77 +49,122 @@ def _load_schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
+# JSON Schema type names used by the report schema, mapped to Python types.
+# A type name not listed here makes the value fail validation (fail closed).
+_JSON_TYPES: dict[str, type] = {
+    "string": str,
+    "array": list,
+    "object": dict,
+    "boolean": bool,
+    "integer": int,
+    "null": type(None),
+}
+
+_JSON_TYPE_NAMES: dict[type, str] = {
+    str: "string",
+    list: "array",
+    dict: "object",
+    bool: "boolean",
+    int: "integer",
+    float: "number",
+    type(None): "null",
+}
+
+
+def _declared_types(spec: dict) -> list[str] | None:
+    declared = spec.get("type")
+    if declared is None:
+        return None
+    return declared if isinstance(declared, list) else [declared]
+
+
+def _type_matches(value: object, spec: dict) -> bool:
+    names = _declared_types(spec)
+    if names is None:
+        return True
+    for name in names:
+        # bool is a subclass of int in Python; JSON true/false is never an integer.
+        if name == "integer" and isinstance(value, bool):
+            continue
+        py_type = _JSON_TYPES.get(name)
+        if py_type is not None and isinstance(value, py_type):
+            return True
+    return False
+
+
+def _item_label(parent_label: str, index: int, item: object) -> str:
+    if parent_label == "findings":
+        fid = item.get("id") if isinstance(item, dict) else None
+        return f"finding {fid}" if isinstance(fid, str) and fid.strip() else f"finding at index {index}"
+    return f"{parent_label}[{index}]"
+
+
+def _validate_node(value: object, spec: dict, label: str, reasons: list[str]) -> None:
+    """Recursively check *value* against schema node *spec*.
+
+    Checks type (nullable unions included), enum, required and unexpected
+    object fields, and every array item. *label* is "" for the report
+    itself so top-level reasons read "schema: missing <field>".
+    """
+    subject = f"{label} " if label else ""
+    if not _type_matches(value, spec):
+        expected = " or ".join(_declared_types(spec) or [])
+        actual = _JSON_TYPE_NAMES.get(type(value), type(value).__name__)
+        reasons.append(f"schema: {subject}must be {expected}, got {actual}")
+        return
+
+    enum = spec.get("enum")
+    if enum is not None and value not in enum:
+        reasons.append(f"schema: {subject}{value!r} not in {enum}")
+
+    if isinstance(value, dict):
+        properties = spec.get("properties", {})
+        for field in spec.get("required", []):
+            if field not in value:
+                reasons.append(f"schema: {subject}missing {field}")
+        for key, child in value.items():
+            if key not in properties:
+                reasons.append(f"schema: {subject}unexpected field {key}")
+                continue
+            child_label = f"{label} {key}" if label else key
+            _validate_node(child, properties[key], child_label, reasons)
+    elif isinstance(value, list) and "items" in spec:
+        for index, item in enumerate(value):
+            _validate_node(item, spec["items"], _item_label(label, index, item), reasons)
+
+
 def _check_schema(report: dict, schema: dict) -> list[str]:
     """Return one reason per required/unexpected/enum/type violation.
 
-    Every list is read from *schema* at call time -- nothing here is a
-    second, hand-maintained copy of the schema's field names.
+    Walks *schema* recursively at call time -- nothing here is a second,
+    hand-maintained copy of the schema's field names, types or enums.
     """
     reasons: list[str] = []
-    top_properties = schema.get("properties", {})
+    _validate_node(report, schema, "", reasons)
+    return reasons
 
-    for field in schema.get("required", []):
-        if field not in report:
-            reasons.append(f"schema: missing {field}")
 
-    for key in report:
-        if key not in top_properties:
-            reasons.append(f"schema: unexpected field {key}")
+# Phrases by which a report declares its own review incomplete (owner
+# decision 2026-10-22). Such a report is never counted as complete.
+_SELF_DECLARED_INCOMPLETE_RE = re.compile(
+    r"\bincomplete review\b|\breview (?:is|was) incomplete\b|\bnot a clean approval\b",
+    re.IGNORECASE,
+)
 
-    verdict_enum = top_properties.get("verdict", {}).get("enum", [])
-    verdict = report.get("verdict")
-    if verdict is not None and verdict_enum and verdict not in verdict_enum:
-        reasons.append(f"schema: verdict {verdict!r} not in {verdict_enum}")
 
-    findings_item_schema = top_properties.get("findings", {}).get("items", {})
-    finding_required = findings_item_schema.get("required", [])
-    finding_properties = findings_item_schema.get("properties", {})
-    severity_enum = finding_properties.get("severity", {}).get("enum", [])
+def _self_declared_incomplete(report: dict) -> list[str]:
+    texts: list[tuple[str, object]] = [("summary", report.get("summary"))]
+    limitations = report.get("limitations")
+    if isinstance(limitations, list):
+        texts.extend(("limitations", item) for item in limitations)
 
-    findings = report.get("findings")
-    if isinstance(findings, list):
-        for finding in findings:
-            if not isinstance(finding, dict):
-                reasons.append("schema: finding is not an object")
-                continue
-            fid = finding.get("id", "?")
-            for field in finding_required:
-                if field not in finding:
-                    reasons.append(f"schema: finding {fid} missing {field}")
-            for key in finding:
-                if key not in finding_properties:
-                    reasons.append(f"schema: finding {fid} unexpected field {key}")
-            severity = finding.get("severity")
-            if severity is not None and severity_enum and severity not in severity_enum:
-                reasons.append(f"schema: finding {fid} severity {severity!r} not in {severity_enum}")
-            reproduced = finding.get("reproduced")
-            if reproduced is not None and not isinstance(reproduced, bool):
-                reasons.append(f"schema: finding {fid} reproduced must be a boolean")
-            for int_field in ("line_start", "line_end"):
-                value = finding.get(int_field)
-                if value is not None and not isinstance(value, int):
-                    reasons.append(f"schema: finding {fid} {int_field} must be an integer or null")
-
-    commands_item_schema = top_properties.get("commands_run", {}).get("items", {})
-    cmd_required = commands_item_schema.get("required", [])
-    cmd_properties = commands_item_schema.get("properties", {})
-
-    commands_run = report.get("commands_run")
-    if isinstance(commands_run, list):
-        for cmd in commands_run:
-            if not isinstance(cmd, dict):
-                reasons.append("schema: commands_run entry is not an object")
-                continue
-            for field in cmd_required:
-                if field not in cmd:
-                    reasons.append(f"schema: commands_run entry missing {field}")
-            for key in cmd:
-                if key not in cmd_properties:
-                    reasons.append(f"schema: commands_run entry unexpected field {key}")
-            exit_code_value = cmd.get("exit_code")
-            if exit_code_value is not None and not isinstance(exit_code_value, int):
-                reasons.append("schema: commands_run entry exit_code must be an integer or null")
-
+    reasons: list[str] = []
+    for field, text in texts:
+        if not isinstance(text, str):
+            continue
+        match = _SELF_DECLARED_INCOMPLETE_RE.search(text)
+        if match:
+            reasons.append(f"self-declared incomplete: {field} states '{match.group(0)}'")
     return reasons
 
 
@@ -201,6 +246,7 @@ def assess_report(
 
     schema = _load_schema()
     reasons.extend(_check_schema(report, schema))
+    reasons.extend(_self_declared_incomplete(report))
 
     inspected_head = report.get("inspected_head_sha")
     if not isinstance(inspected_head, str):

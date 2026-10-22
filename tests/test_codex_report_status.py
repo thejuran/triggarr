@@ -217,6 +217,81 @@ def test_invalid_severity_incomplete() -> None:
     assert any("schema: finding F001 severity" in r for r in result.reasons)
 
 
+def _set_path(report: dict, path: tuple, value) -> None:
+    node = report
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+
+
+# CR-01 / Codex F001: every wrong-typed or wrong-enum value must make the
+# report incomplete -- a type violation is never a complete review.
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("findings",), None),
+        (("findings",), "none"),
+        (("coverage",), None),
+        (("coverage",), "all"),
+        (("exclusions",), None),
+        (("limitations",), "none"),
+        (("commands_run",), None),
+        (("schema_version",), "2"),
+        (("schema_version",), 1),
+        (("summary",), 5),
+        (("scope",), None),
+        (("pr_url",), None),
+        (("verdict",), None),
+        (("coverage", 0), 3),
+        (("findings", 0, "line_start"), True),
+        (("findings", 0, "title"), None),
+        (("findings", 0, "reproduced"), None),
+        (("findings", 0, "severity"), None),
+        (("findings", 0, "reproduction_command"), 7),
+        (("commands_run", 0, "exit_code"), True),
+        (("commands_run", 0, "command"), None),
+    ],
+)
+def test_wrong_type_or_enum_incomplete(path: tuple, value) -> None:
+    report = _valid_report()
+    _set_path(report, path, value)
+    result = _assess(report)
+    assert result.status == "incomplete", f"{path}={value!r} was accepted as complete"
+    assert any(r.startswith("schema:") for r in result.reasons)
+
+
+def test_all_required_fields_null_incomplete() -> None:
+    """Codex F001 reproduction: every required key present, all non-SHA values null."""
+    report = {field: None for field in _valid_report()}
+    report["inspected_head_sha"] = H
+    report["inspected_base_sha"] = B
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert len(result.reasons) > 1
+
+
+# Owner decision 2026-10-22: a report that itself says the review is
+# incomplete is never counted as complete.
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [
+        ("limitations", "This is an incomplete review, not a clean approval: output was truncated."),
+        ("limitations", "Not a clean approval."),
+        ("summary", "The review is incomplete because the diff was truncated."),
+        ("summary", "INCOMPLETE REVIEW: tests could not run."),
+    ],
+)
+def test_self_declared_incomplete(field: str, text: str) -> None:
+    report = _valid_report()
+    if field == "limitations":
+        report["limitations"].append(text)
+    else:
+        report[field] = text
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert any(r.startswith("self-declared incomplete:") for r in result.reasons)
+
+
 # --- Head/base binding and staleness ---------------------------------------
 
 
