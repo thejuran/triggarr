@@ -42,4 +42,4 @@ else
     echo "WARNING: setpriv --no-new-privileges not supported, skipping"
     NO_NEW_PRIVS=""
 fi
-exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups $NO_NEW_PRIVS python -m triggarr
+exec setpriv --reuid="$PUID" --regid="$PGID" --init-groups $NO_NEW_PRIVS python -m triggarr_missing_module
