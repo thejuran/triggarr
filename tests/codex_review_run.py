@@ -79,6 +79,7 @@ OUTPUT_SUFFIXES = (".prompt.txt", ".meta.json", ".jsonl", ".last.json", ".status
 # home directory.
 EVIDENCE_RELPATH = ".codex-review-evidence/pytest.txt"
 CODEX_TIMEOUT_SECONDS = 1800
+CODEX_TIMEOUT_EXIT = 124  # the exit code GNU timeout uses, so records stay comparable
 PYTEST_TIMEOUT_SECONDS = 1800
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -198,9 +199,9 @@ def pytest_argv() -> list[str]:
 
 
 def codex_argv(worktree: Path, last_json: Path) -> list[str]:
+    # The time limit is enforced in-process (subprocess timeout), not by an
+    # external `timeout` binary, which macOS does not ship.
     return [
-        "timeout",
-        str(CODEX_TIMEOUT_SECONDS),
         "codex",
         "exec",
         "--sandbox",
@@ -330,7 +331,11 @@ def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: Comm
                 input=prompt,
                 stdout=events,
                 text=True,
+                timeout=CODEX_TIMEOUT_SECONDS,
             )
+        except subprocess.TimeoutExpired:
+            print(f"codex timed out after {CODEX_TIMEOUT_SECONDS}s")
+            return CODEX_TIMEOUT_EXIT
         except OSError as exc:
             print(f"codex could not start: {type(exc).__name__}")
             return None
@@ -394,6 +399,30 @@ def reserve_outputs(run: ReviewRun, prompt: str) -> None:
         handle.write(prompt)
 
 
+def _write_status_stub(run: ReviewRun, reason: str) -> None:
+    """Record an incomplete status when the checker's own result is unavailable."""
+    stub = {
+        "status": "incomplete",
+        "reasons": [reason],
+        "qualified_ids": [],
+        "finding_count": 0,
+        "inspected_head": None,
+        "inspected_base": None,
+    }
+    run.output(".status.json").write_text(json.dumps(stub) + "\n", encoding="utf-8")
+    print(f"status: {run.output('.status.json')}")
+    print(json.dumps(stub))
+
+
+def _add_worktree(run: ReviewRun, worktree: Path, command_runner: CommandRunner) -> None:
+    try:
+        added = command_runner(worktree_add_argv(worktree, run.head), cwd=REPO_ROOT, check=False)
+    except OSError as exc:
+        raise RunnerError(f"git worktree add could not run: {type(exc).__name__}") from exc
+    if added.returncode != 0:
+        raise RunnerError(f"git worktree add exited {added.returncode} for head {run.head[:12]}")
+
+
 def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -> int:
     """Run the full review pass. Returns the checker's exit code (0 = complete)."""
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
@@ -416,9 +445,12 @@ def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -
     worktree = scratch / "wt"
     codex_exit: int | None = None
     try:
-        command_runner(worktree_add_argv(worktree, run.head), cwd=REPO_ROOT, check=True)
+        _add_worktree(run, worktree, command_runner)
         _run_pytest(run, worktree, scratch, command_runner)
         codex_exit = _run_codex(run, worktree, prompt, command_runner)
+    except RunnerError as exc:
+        _write_status_stub(run, f"harness failed before codex finished: {exc}")
+        raise
     finally:
         try:
             removed = command_runner(worktree_remove_argv(worktree), cwd=REPO_ROOT, check=False)
@@ -428,18 +460,27 @@ def execute(run: ReviewRun, *, command_runner: CommandRunner = subprocess.run) -
             print(f"warning: git worktree remove could not run: {type(exc).__name__}")
         shutil.rmtree(scratch, ignore_errors=True)
 
-    current = command_runner(
-        ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, check=True, stdout=subprocess.PIPE, text=True
-    )
-    checker = command_runner(
-        checker_argv(run, exit_code=codex_exit, current_head=current.stdout.strip()),
-        cwd=REPO_ROOT,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    run.output(".status.json").write_text(checker.stdout or "", encoding="utf-8")
+    try:
+        current_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
+    except RunnerError as exc:
+        _write_status_stub(run, f"could not determine the current head after the run: {exc}")
+        return 1
+    try:
+        checker = command_runner(
+            checker_argv(run, exit_code=codex_exit, current_head=current_head),
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        _write_status_stub(run, f"checker could not run: {type(exc).__name__}")
+        return 1
+    if not (checker.stdout or "").strip():
+        _write_status_stub(run, f"checker produced no output (exit {checker.returncode})")
+        return 1
+    run.output(".status.json").write_text(checker.stdout, encoding="utf-8")
     print(f"status: {run.output('.status.json')}")
-    print(checker.stdout or "", end="")
+    print(checker.stdout, end="")
     return checker.returncode
 
 
@@ -460,7 +501,7 @@ def dry_run(run: ReviewRun) -> int:
         print(f"# --untrusted: no pytest; {shlex.quote(str(run.output('.pytest.txt')))} records '{UNTRUSTED_EVIDENCE}'")
     print(
         f"{shlex.join(codex_argv(worktree, run.output('.last.json')))} < prompt"
-        f" > {shlex.quote(str(run.output('.jsonl')))}"
+        f" > {shlex.quote(str(run.output('.jsonl')))}  # timeout {CODEX_TIMEOUT_SECONDS}s in-process, exit 124"
     )
     evidence = shlex.quote(str(run.output(".pytest.txt")))
     print(f"# copy {evidence} to {worktree / EVIDENCE_RELPATH} (local paths redacted)")
@@ -534,6 +575,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except RunnerError as exc:
         print(f"error: {exc}")
+        return 2
+    except subprocess.CalledProcessError as exc:
+        print(f"error: {shlex.join(str(part) for part in exc.cmd[:3])} exited {exc.returncode}")
         return 2
 
 

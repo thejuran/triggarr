@@ -319,6 +319,11 @@ def test_cli_rejects_short_sha() -> None:
 # --- Orchestration with a fake command runner -------------------------------
 
 
+def _is_checker(argv) -> bool:
+    """The checker invocation (not the audited-input `git status`, which also names the file)."""
+    return any(str(part).endswith("codex_report_status.py") for part in argv) and "--report" in argv
+
+
 class FakeRunner:
     """Records every command; fails the one whose program matches *fail_on*."""
 
@@ -346,7 +351,7 @@ class FakeRunner:
             assert kwargs["input"].startswith("Independently review")
             kwargs["stdout"].write('{"type":"done"}\n')
             return subprocess.CompletedProcess(argv, self.codex_exit)
-        if "codex_report_status.py" in " ".join(argv):
+        if _is_checker(argv):
             return subprocess.CompletedProcess(argv, 1, stdout='{"status": "incomplete"}\n')
         return subprocess.CompletedProcess(argv, 0)
 
@@ -409,7 +414,7 @@ def test_execute_removes_worktree_when_codex_fails(tmp_path, monkeypatch) -> Non
     assert execute(run, command_runner=fake) == 1
     assert _removed(fake)
     assert not (tmp_path / "scratch").exists()
-    checker = next(call for call in fake.calls if "codex_report_status.py" in " ".join(call))
+    checker = next(call for call in fake.calls if _is_checker(call))
     assert "--exit-code" not in checker
 
 
@@ -681,7 +686,7 @@ def test_codex_timeout_is_enforced_in_process(tmp_path, monkeypatch) -> None:
 
     execute(run, command_runner=_spy)
     assert seen["timeout"] == runner.CODEX_TIMEOUT_SECONDS
-    checker = next(call for call in fake.calls if "codex_report_status.py" in " ".join(call))
+    checker = next(call for call in fake.calls if _is_checker(call))
     assert checker[checker.index("--exit-code") + 1] == "124"
 
 
@@ -732,7 +737,7 @@ def test_empty_checker_output_writes_status_stub(tmp_path, monkeypatch) -> None:
     fake = FakeRunner()
 
     def _spy(argv, **kwargs):
-        if "codex_report_status.py" in " ".join(argv):
+        if _is_checker(argv):
             fake.calls.append(list(argv))
             return subprocess.CompletedProcess(argv, 1, stdout="")
         return fake(argv, **kwargs)
