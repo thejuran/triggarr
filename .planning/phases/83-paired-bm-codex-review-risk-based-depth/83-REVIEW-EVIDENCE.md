@@ -1656,7 +1656,9 @@ assessment below covers the sensitive files specifically.
   `.claude/schemas/codex-review-findings.schema.json`,
   `tests/codex_review_run.py` and `tests/codex_report_status.py`, and
   failure scenarios 1 through 6 above.
-- **Owner's decision:** pending. Plan 10 Task 2 records it verbatim.
+- **Owner's decision (2026-10-23 13:21 EDT, Claude Code CLI, not inferred):**
+  question A answered with the option "Yes, on the pushed head (Recommended)".
+  The additional vibe-check runs on the exact pushed head after the push.
 - **Routine vibe-check status:** not yet run on this code. Under the
   "Apply both" ruling (WR-04), the code content still needs the routine
   vibe-check while the owner keeps that standing rule. The pre-push
@@ -1667,6 +1669,26 @@ assessment below covers the sensitive files specifically.
 
 Vibe-check never substitutes for Codex or Greptile, never waives a finding
 and never reduces required coverage.
+
+### Pre-push /deep-review
+
+- **Owner's decision (2026-10-23 13:21 EDT, Claude Code CLI, not inferred):**
+  question B answered with the option "Push now; vibe-check on pushed head
+  (Recommended)". No `/deep-review` before the push. The single vibe-check
+  run on the pushed head (question A) also serves as the routine vibe-check
+  for the code content, so the routine slot is satisfied on the head that
+  will be accepted, not on this pre-push head.
+
+### Publication of raw Codex evidence
+
+- **Owner's decision (2026-10-23 13:21 EDT, Claude Code CLI, not inferred):**
+  question C answered with the option "Publish as-is (Recommended)". The
+  committed `.jsonl`/`.last.json` files containing the home-directory path
+  are published unchanged (raw files are never edited; D-11 unchanged).
+  Follow-up for the backlog: redact the home-directory path in future
+  harness runs.
+
+These decisions are not PR acceptance.
 
 ### BM review
 
