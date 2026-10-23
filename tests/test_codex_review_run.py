@@ -1070,3 +1070,89 @@ def test_inputs_dirty_after_run_writes_stub_instead_of_checking(tmp_path, monkey
     status = run.output(".status.json").read_text(encoding="utf-8")
     assert "audited inputs changed during the run" in status
     assert not any(_is_checker(call) for call in fake.calls)
+
+
+# --- bm:49ded1e86444:WR-02 (owner-approved round 5) ---------------------------
+
+_NON_UTF8_SCRIPT = "import sys; sys.stdout.buffer.write(b'1 passed \\xff\\xfe not utf-8\\n')"
+
+
+def _real_bytes_for(predicate, fake: FakeRunner, script: str = _NON_UTF8_SCRIPT):
+    """Run a real child that prints non-UTF-8 bytes, with the runner's own subprocess kwargs."""
+    import sys
+
+    def _spy(argv, **kwargs):
+        if predicate(argv):
+            fake.calls.append(list(argv))
+            kwargs.pop("cwd", None)
+            return subprocess.run([sys.executable, "-c", script], check=False, **kwargs)
+        return fake(argv, **kwargs)
+
+    return _spy
+
+
+def test_non_utf8_pytest_output_does_not_crash_the_runner(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+
+    assert execute(run, command_runner=_real_bytes_for(lambda argv: argv[0] == "uv", fake)) == 1
+
+    evidence = run.output(".pytest.txt").read_text(encoding="utf-8")
+    assert "exit_code: 0" in evidence
+    assert "1 passed \ufffd\ufffd not utf-8" in evidence
+    assert run.output(".status.json").read_text() == '{"status": "incomplete"}\n'
+    assert _removed(fake)
+
+
+def test_non_utf8_checker_output_still_writes_a_status(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    script = "import sys; sys.stdout.buffer.write(b'{\"status\": \"incomplete\", \"note\": \"\\xff\"}\\n'); sys.exit(1)"
+
+    assert execute(run, command_runner=_real_bytes_for(_is_checker, fake, script)) == 1
+
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert status.startswith('{"status": "incomplete"')
+    assert "\ufffd" in status
+
+
+def test_unexpected_exception_after_reservation_writes_status_stub(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+
+    def _pytest_raises(*_args, **_kwargs):
+        raise ValueError("simulated: unexpected failure")
+
+    monkeypatch.setattr(runner, "_run_pytest", _pytest_raises)
+
+    with pytest.raises(runner.RunnerError, match="ValueError"):
+        execute(run, command_runner=fake)
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "harness failed before codex finished: ValueError" in status
+    assert "simulated" not in status
+    assert _removed(fake)
+    assert not (tmp_path / "scratch").exists()
+
+
+@pytest.mark.parametrize("exc", [OSError("simulated: disk full"), TypeError("simulated: not serializable")])
+def test_meta_write_failure_after_reservation_writes_status_stub(tmp_path, monkeypatch, exc) -> None:
+    """The .meta.json write runs after the reservation, so its failure must leave a status too."""
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    real_dumps = runner.json.dumps
+
+    def _dumps(obj, *args, **kwargs):
+        if isinstance(obj, dict) and obj.get("meta_version") == 1:
+            raise exc
+        return real_dumps(obj, *args, **kwargs)
+
+    monkeypatch.setattr(runner.json, "dumps", _dumps)
+
+    with pytest.raises(runner.RunnerError, match=type(exc).__name__):
+        execute(run, command_runner=fake)
+    assert run.output(".prompt.txt").exists()
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert type(exc).__name__ in status
+    assert not any(call[:3] == ["git", "worktree", "add"] for call in fake.calls)
