@@ -1,0 +1,137 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/35",
+  "scope": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90..b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e, with the requested planning-artifact exclusions",
+  "verdict": "no-findings",
+  "summary": "Inspected all 19 in-scope changed files. No actionable defects confirmed. Independently executed 78 fixture-free regression checks successfully; harness evidence records 2,412 passing tests on the requested head.",
+  "coverage": [
+    "Full scoped diff, including schema, both planning JSON files, documentation, implementation and regression tests; truncated initial output was recovered through smaller reads.",
+    "Report validation: malformed JSON, duplicate keys, schema types, legacy-version restrictions, structured completeness, finding consistency and stale head/base checks.",
+    "Runner: trust restrictions, argument construction, atomic output reservation, evidence copying, provenance, changed inputs, decoding failures, timeouts, cleanup and error-status handling.",
+    "Cycle-detail labels and regression assertions, traced through cycle_view and the app-card route, including legacy state, mismatched counts, unevaluated queues and mixed failures.",
+    "Classification, paired-review requirements, retry policy, audit records, secret checks and exact-commit owner acceptance."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff; output required subsequent smaller reads."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect harness test evidence."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Review report checker."
+    },
+    {
+      "command": "cat tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Review harness."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/review-classification-policy.md docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Review policy and operating contract."
+    },
+    {
+      "command": "sed -n '470,720p' tests/codex_review_run.py; cat docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Recover runner and contract output omitted by truncation."
+    },
+    {
+      "command": "cat tests/test_codex_review_contract.py; git diff 6f3841a..HEAD -- tests/test_app_cards.py; rg -n 'malformed data|not evaluated:|malformed_skipped|has_detail|reason_count' triggarr",
+      "exit_code": 0,
+      "purpose": "Review contract guards, app-card regressions and related implementation."
+    },
+    {
+      "command": "sed -n '1,450p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Review checker regression tests."
+    },
+    {
+      "command": "sed -n '450,940p' tests/test_codex_report_status.py; sed -n '720,850p' tests/test_app_cards.py; rg -n 'def .*cycle|reason_count|malformed data|not evaluated:' triggarr/web",
+      "exit_code": 1,
+      "purpose": "Read remaining checker and card tests; final search had no matches."
+    },
+    {
+      "command": "sed -n '1,400p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Review runner argument, scope and rendering tests."
+    },
+    {
+      "command": "sed -n '400,800p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Review orchestration, trust, provenance and concurrency tests."
+    },
+    {
+      "command": "sed -n '800,1180p' tests/test_codex_review_run.py; rg -n 'reason_count|not evaluated:|malformed data' triggarr --glob '*.py'",
+      "exit_code": 0,
+      "purpose": "Review remaining failure-path tests and locate cycle presentation logic."
+    },
+    {
+      "command": "cat docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Review baseline and configuration-change rationale."
+    },
+    {
+      "command": "git diff 6f3841a..HEAD -- CLAUDE.md docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md; sed -n '210,365p' triggarr/search/outcome.py; cat triggarr/templates/partials/cycle_grade.html; rg -n 'build_cycle|cycle_view|last_cycle' triggarr/web/helpers.py; cat pyproject.toml; ls -d .venv",
+      "exit_code": 0,
+      "purpose": "Review remaining policy diff and template context; helpers.py lookup failed because that file does not exist, then the actual caller was located separately."
+    },
+    {
+      "command": "cat tests/test_review_checkpoint_record.py tests/test_review_instructions.py; sed -n '1,160p' docs/owner-cli-acceptance.md; sed -n '1,130p' docs/buildomator-greptile-pilot.md; rg -n 'cycle_view\\(' triggarr; git status --short",
+      "exit_code": 0,
+      "purpose": "Review policy guards and acceptance context, locate caller and check working-copy status."
+    },
+    {
+      "command": ".venv/bin/python -B - <<'PY'\nimport inspect\nfrom tests import test_codex_report_status as status\nfrom tests import test_codex_review_contract as contract\nfrom tests import test_review_checkpoint_record as record\nfrom tests import test_review_instructions as instructions\ncount = 0\nfor module in (status, contract, record, instructions):\n    for name, fn in vars(module).items():\n        if name.startswith('test_') and callable(fn) and not inspect.signature(fn).parameters and 'recorded' not in name:\n            fn()\n            count += 1\nprint(f'{count} fixture-free regression checks passed')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt fixture-free checks; shell heredoc temporary-file creation was blocked, so retried with -c."
+    },
+    {
+      "command": "sed -n '380,408p' triggarr/web/routes.py; sed -n '690,725p' tests/test_app_cards.py; git diff --name-status 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Finish caller/test inspection and reconcile coverage against all changed files."
+    },
+    {
+      "command": ".venv/bin/python -B -c 'import inspect; from tests import test_codex_report_status as status, test_codex_review_contract as contract, test_review_checkpoint_record as record, test_review_instructions as instructions; checks = [fn for module in (status, contract, record, instructions) for name, fn in vars(module).items() if name.startswith(\"test_\") and callable(fn) and not inspect.signature(fn).parameters and \"recorded\" not in name]; [fn() for fn in checks]; print(f\"{len(checks)} fixture-free regression checks passed\")'",
+      "exit_code": 0,
+      "purpose": "Successfully execute 78 fixture-free regression checks without writing files."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently rerun the full pytest suite in the read-only sandbox. Full-suite evidence is the harness-provided result for the exact inspected head.",
+    "No live Codex subprocess, GitHub acceptance operation or browser session was exercised.",
+    "External BM installation/version claims and hosted repository protections were not independently verified; inspection was confined to this working copy.",
+    "Documentation guard tests establish textual invariants, not actual compliance by an orchestrating agent."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

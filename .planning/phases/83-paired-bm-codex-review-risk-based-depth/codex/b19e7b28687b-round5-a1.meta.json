@@ -1,0 +1,30 @@
+{
+  "meta_version": 1,
+  "head": "b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e",
+  "base": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "label": "round5",
+  "attempt": 1,
+  "trusted": true,
+  "template_version": "5",
+  "harness_head": "b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e",
+  "allow_stale_head": false,
+  "inputs": {
+    "docs/codex-adversarial-review-contract.md": {
+      "sha256": "7ee1dbbaccd118a09e55a67ff79bd3d6c8f7297ce5d2f01234bfe47c128d00f9",
+      "committed_unchanged": true
+    },
+    ".claude/schemas/codex-review-findings.schema.json": {
+      "sha256": "24e387cdc778c93c12f8dc6b8ad6bc36c5c1fe158e21dfe09227120ab872302b",
+      "committed_unchanged": true
+    },
+    "tests/codex_report_status.py": {
+      "sha256": "8f08b197ccace5f5ff43eea7a13c3bd5cc1e593ae3643ba5627e9b691e2d88df",
+      "committed_unchanged": true
+    },
+    "tests/codex_review_run.py": {
+      "sha256": "49982190b943fe6965b58a734c13142ab907c371b9d81d01dca03c128f08cc42",
+      "committed_unchanged": true
+    }
+  },
+  "codex_timeout_seconds": 1800
+}

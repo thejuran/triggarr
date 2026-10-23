@@ -1,15 +1,19 @@
 ---
 phase: 83-paired-bm-codex-review-risk-based-depth
-reviewed: 2026-10-23T17:34:20Z
+reviewed: 2026-10-23T17:47:31Z
 depth: standard
-review_head: 49ded1e86444bc7122b7f0dda6e557312057a7a7
+review_head: b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e
 diff_base: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90
-files_reviewed: 13
+previous_review: 83-REVIEW-49ded1e86444.md
+files_reviewed: 18
 files_reviewed_list:
+  - .planning/config.json
   - .claude/schemas/codex-review-findings.schema.json
+  - CLAUDE.md
   - docs/bm-review-baseline-2026-10-22.md
   - docs/buildomator-greptile-pilot.md
   - docs/codex-adversarial-review-contract.md
+  - docs/owner-cli-acceptance.md
   - docs/review-checkpoint-record.md
   - docs/review-classification-policy.md
   - tests/codex_report_status.py
@@ -17,166 +21,93 @@ files_reviewed_list:
   - tests/test_app_cards.py
   - tests/test_codex_report_status.py
   - tests/test_codex_review_contract.py
+  - tests/test_codex_review_run.py
+  - tests/test_review_checkpoint_record.py
   - tests/test_review_instructions.py
   - triggarr/templates/partials/cycle_grade.html
 findings:
   critical: 0
-  warning: 4
-  info: 4
-  total: 8
+  warning: 0
+  info: 3
+  total: 3
+carried_from_previous:
+  fixed_verified: 2
+  still_present_carried_phase_85: 6
+  set_aside_ruled: 3
 status: issues_found
 ---
 
-# Phase 83: Code Review Report
+# Phase 83: Code Review Report (round 5 re-review)
 
-**Reviewed:** 2026-10-23T17:34:20Z
+**Reviewed:** 2026-10-23T17:47:31Z
 **Depth:** standard
-**Files Reviewed:** 13
-**Status:** issues_found
+**Files Reviewed:** 18
+**Status:** issues_found (new Info items only; no new blockers or warnings)
 
 ## Summary
 
-This is the phase-execution review for PR #35 at pushed head `49ded1e86444bc7122b7f0dda6e557312057a7a7`. The local HEAD `04a424e` differs from the pushed head only by three planning markdown files (`83-10-SUMMARY.md`, `83-REVIEW-36eaa67c2976.md`, `83-REVIEW-EVIDENCE.md`), so every source file in scope is identical at both commits.
+This round re-reviews local head `b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e` against the previous review, `83-REVIEW-49ded1e86444.md`. Since the previous review's source state (`04a424e`, the same source as `49ded1e8`), five source files changed: `tests/codex_report_status.py`, `tests/codex_review_run.py`, their two test files, and step 5 and the schema paragraph of `docs/codex-adversarial-review-contract.md`. This time the full 18-file scope was used, so `CLAUDE.md`, `docs/owner-cli-acceptance.md`, `.planning/config.json` and `tests/test_review_checkpoint_record.py` were also read. None of those four has a new defect.
 
-Checks run: the targeted suites (`test_codex_report_status`, `test_codex_review_contract`, `test_review_instructions`, `test_app_cards`, `test_codex_review_run`) pass with 306 tests, ruff is clean on the changed Python, and the BM convention check returned no findings. I spot-checked the BM line citations in `docs/bm-review-baseline-2026-10-22.md` against the installed 5.0.3 files: `quick.md:929`, `code-review-fix.md:270-275`, `execute-phase.md:1241-1249` and `code-review.md:312-321` all match.
+Checks run on this head:
+- Targeted suites (`test_codex_report_status`, `test_codex_review_contract`, `test_review_instructions`, `test_app_cards`, `test_codex_review_run`, `test_review_checkpoint_record`): 322 passed.
+- `ruff check triggarr/ tests/`: clean.
 
-No blockers. There are four warnings, and they all concern the review harness, the tool that decides whether a Codex review counts as "complete":
-- A report that labels itself schema version 1 skips the structured completeness check. I reproduced this: a self-labelled v1 report that admits it is unfinished is accepted as "complete".
-- Pytest output that is not valid UTF-8 crashes the runner and leaves an attempt with no status file.
-- The checker that judges a PR's Codex review is the PR's own version of the checker.
-- The committed raw Codex output exposes the operator's home path and username, even though the harness promises its public evidence never does.
+Both owner-approved round-5 fixes (WR-01, WR-02) are fixed, and their tests confirm it. WR-01's regression test runs the exact reproduction from the previous review through the runner's own checker invocation. WR-02's tests use a real child process that prints bytes that are not valid UTF-8, not a mock. The six items the owner moved to Phase 85 are unchanged and still present. That is expected.
 
-The dashboard template change (`cycle_grade.html`) is correct for every row type that `outcome.py` produces today. It gets one INFO for matching on display text.
+There are three new Info items, all edge cases in the round-5 failure handling. None of them can make an incomplete review look complete: a missing `.status.json` is still never reported as clean.
 
-## Warnings
+## Previous findings status (83-REVIEW-49ded1e86444.md)
 
-### WR-01: A report labelled schema version 1 skips the structured completeness check, so an unfinished review can be assessed "complete"
+| ID | Status | Evidence |
+|----|--------|----------|
+| WR-01 (v1 label skips structured completeness) | **Fixed and verified** | `codex_report_status.py:85-100, 362-370`: v1 rules apply only when `legacy_v1` is set and the report says `"1"`. Otherwise a v1 label adds `V1_NOT_LEGACY_REASON` and is judged by the current schema plus `_structural_completeness`. CLI `--legacy-v1` is at `:464-468`. Tests: `test_v1_label_cannot_hide_an_unfinished_review` (the previous review's exact reproduction), `test_cli_v1_report_needs_legacy_flag`, and `test_checker_argv_never_requests_the_legacy_v1_path` (runner argv has no flag, and the checker returns 1 on the reproduction). The two recorded v1 reports (`a7995baf187e-quick-a1`, `d501a68316b2-explicit-a1`) still assess complete with the flag and incomplete without it. The contract text at line 67 matches the code. |
+| WR-02 (non-UTF-8 output crash; reserved attempt with no status) | **Fixed and verified** | `errors="replace"` is now on the pytest (`:334`), git (`:386`) and checker (`:576`) calls. The codex call writes to a file, so nothing is decoded. `execute` wraps everything after the reservation in `_execute_reserved` (`:497-508`), which covers the `.meta.json` write. The inner handler widened from `OSError` to `Exception` (`:537`). The real-subprocess tests `test_non_utf8_pytest_output_does_not_crash_the_runner` and `test_non_utf8_checker_output_still_writes_a_status` pass, and so does the `.meta.json` failure test. See IN-01 and IN-02 for the remaining edges. |
+| WR-03 (PR judged by its own checker) | Still present, carried to Phase 85 per owner | No base-checker run or `audited_inputs_changed_in_diff` record. This round again modifies the checker that judges it. |
+| WR-04 (raw `.jsonl` exposes home path; docstring overclaims) | Still present, carried to Phase 85 per owner | The `redact_local_paths` docstring (`codex_review_run.py:262-270`) still says local paths "never appear" in the evidence. |
+| IN-01 (template matches display text) | Still present, carried to Phase 85 per owner | `cycle_grade.html:20-22` is unchanged. |
+| IN-02 (no `pr_url` / `scope` comparison) | Still present, carried to Phase 85 per owner | The checker has no `--expected-pr-url` or `--expected-scope`. |
+| IN-03 (stale untrusted clause in prompt) | Still present, carried to Phase 85 per owner | The contract prompt at line 36 is unchanged. |
+| IN-04 (`diff_argv` used only by tests; substring guards) | Still present, carried to Phase 85 per owner | `codex_review_run.py:194` is unchanged. |
+| SA-01 (`--trusted` self-declared) | Not applicable this round: ruled, carried to Phase 85 | Owner disposition 2026-10-23. |
+| SA-02 (committed `.jsonl` contains home path) | Not applicable this round: owner ruled publish as-is | Owner disposition 2026-10-23. |
+| SA-03 (PLAN.md outside Codex diff) | Not applicable this round: ruling deferred to Phase 85 | Owner disposition 2026-10-23. |
 
-**File:** `tests/codex_report_status.py:81-83, 342-347`
-**Issue:** `_schema_for` picks the v1 schema whenever the report itself says `"schema_version": "1"`. `assess_report` then skips `_structural_completeness`. Nothing ties the v1 path to "already recorded history". The checker accepts a v1 label on any report, including one produced today. Under v1 the only completeness signal is the narrow phrase regex (`incomplete review`, `review is/was incomplete`, `not a clean approval`).
+## Narrative Findings (AI reviewer)
 
-Reproduced: a v1-labelled report with summary `"Only read two files; could not finish."` and limitation `"ran out of time before covering most files"` returns `Assessment(status='complete', reasons=())`. The same report as v2 with `review_complete: false` is correctly `incomplete`.
+### Info
 
-Today's protection is only that `codex exec --output-schema` constrains Codex to `enum ["2"]`. The checker is meant to be the gate that does not trust its input. The contract (line 67) and the module docstring both say v1 exists only so recorded history keeps its assessment.
-**Fix:** Make the v1 path opt-in, so a new run can never use it:
-```python
-parser.add_argument("--allow-legacy-v1", action="store_true",
-                    help="Re-assess an already recorded schema v1 report")
-...
-if report.get("schema_version") == "1" and not allow_legacy_v1:
-    reasons.append("schema: schema_version 1 is only accepted when re-assessing recorded history")
-```
-`codex_review_run.checker_argv` never passes the flag. A test should lock in that a v1 report through the runner's checker invocation is `incomplete`.
+#### IN-01: An interrupt (Ctrl-C) during the 30-minute Codex wait still leaves a reserved attempt with no `.status.json`
 
-### WR-02: Pytest output that is not valid UTF-8 crashes the runner and leaves a reserved attempt with no `.status.json`
+**File:** `tests/codex_review_run.py:497-508, 528-548, 681-692`
+**Issue:** Both new handlers catch `Exception`. `KeyboardInterrupt` derives from `BaseException`, so it gets past both handlers and past `main`.
+- The most likely interrupt is an operator pressing Ctrl-C while `_run_codex` waits up to 1800 seconds.
+- In that case `subprocess.run` kills the child, and the `finally` removes the worktree.
+- But `.prompt.txt`, `.meta.json` and a partial `.jsonl` remain with no status stub, and the operator gets a traceback.
 
-**File:** `tests/codex_review_run.py:326-342` (also `544-549` for the checker call)
-**Issue:** `_run_pytest` calls `subprocess.run(..., stdout=PIPE, stderr=STDOUT, text=True)` with the default strict decoding. If the reviewed head's test output contains bytes that are not valid UTF-8 (a test printing binary data, or a library warning in another encoding), `subprocess.run` raises `UnicodeDecodeError`. That is a `ValueError`, not an `OSError`, which I confirmed locally.
+Contract step 5 now says a stub is written when any step after the reservation "fails with any error (... or anything unexpected)". An interrupt is arguably not an error, so this is an edge, not a contradiction. Fail-safe still holds, because a missing status is never clean.
+**Fix:** In `execute`, catch `KeyboardInterrupt` next to `Exception`. Write the stub (`"harness interrupted after reserving the output"`) only if `.status.json` does not exist, then re-raise. Alternatively, change the contract wording to "any exception other than an interrupt".
 
-`execute` only catches `RunnerError` and `OSError` (lines 508-516), and `main` does not catch it either. The result:
-- `.prompt.txt` and `.meta.json` are already written, so the attempt number is used up.
-- No `.status.json` stub is written. This contradicts the contract's promise (Invocation step 4.5) that any failure after the reservation leaves an `incomplete` stub.
-- The operator gets a Python traceback.
+#### IN-02: The "every RunnerError has already written its status" invariant relies on a comment, and the reservation itself can half-succeed
 
-The same gap applies to an `OSError` from the `.meta.json` write at line 494, which runs before the `try`.
-**Fix:** Decode tolerantly, and stub every non-`RunnerError` failure after the reservation:
-```python
-proc = command_runner(pytest_argv(), ..., text=True, errors="replace", timeout=PYTEST_TIMEOUT_SECONDS)
-...
-except RunnerError as exc:
-    _write_status_stub(run, f"harness failed before codex finished: {exc}"); raise
-except Exception as exc:  # reservation exists: never leave it without a status
-    reason = f"harness failed before codex finished: {type(exc).__name__}"
-    _write_status_stub(run, reason)
-    raise RunnerError(reason) from exc
-```
-Move the `.meta.json` write inside the same guarded block. Use `errors="replace"` on the checker call too. Add a runner test with a fake command runner whose stdout raises `UnicodeDecodeError`.
-
-### WR-03: The checker that judges a PR's Codex review is the PR's own version of the checker
-
-**File:** `tests/codex_review_run.py:480-486, 534-546`; `tests/codex_report_status.py` (whole module)
-**Issue:** By default `execute` refuses unless the harness checkout's HEAD equals `--head`. So the contract, schema, checker and runner that produce and judge the Codex result are always the reviewed head's own copies. `audit_inputs` only proves those files are committed. It does not prove they are the trusted (base) versions.
-
-A PR that weakens `codex_report_status.py` (for example, one that drops a reason or widens the v1 path in WR-01) is judged "complete" by the weakened checker. The evidence record does not say so. This PR is itself such a change: it rewrites the checker, the runner and the prompt that judge it.
-
-The owner has said they cannot judge code by reading it. So the checker's `complete` verdict is effectively what goes on the acceptance checklist, and CLAUDE.md says "Do not weaken CI, suppress findings ... to make a task appear complete".
-**Fix:** Pick one (in order of preference):
-1. When `git diff --name-only base..head -- <AUDITED_INPUTS>` is non-empty, also run the checker from the base commit (`git show {base}:tests/codex_report_status.py` into the scratch dir) and record both verdicts in `.status.json` / `.meta.json`. Treat a disagreement as `incomplete`.
-2. At minimum, record `"audited_inputs_changed_in_diff": [...]` in `.meta.json`, and require the checkpoint record's Codex row to state "assessed by a harness this PR modifies".
-
-### WR-04: Committed raw Codex output exposes the operator's home path and username, contrary to the harness's own publication guarantee
-
-**File:** `tests/codex_review_run.py:262-297, 360-370`; `docs/codex-adversarial-review-contract.md:80-89`
-**Issue:** `redact_local_paths` says "The evidence is committed to a public repository, so the temp worktree, the temp dir, the system temp dir, the main checkout and the home directory never appear in it". That redaction only covers `.pytest.txt`. The `.jsonl` event stream is committed unedited (D-11).
-
-The `.jsonl` files already committed under `.planning/phases/83-.../codex/` (for example `36eaa67c2976-final-a1.jsonl` and `49ded1e86444-phase-a1.jsonl`) contain `failed to parse hooks config /Users/julianamacbook/.codex/hooks.json: unknown field SessionStart ...`. That line exposes the operator's username, home path and local Codex hook configuration. The files also contain `/private/var/folders/xq/.../T/codex-review-*/wt/...` temp paths.
-
-The two pre-commit checks in the contract (gitleaks, 32-hex scan) do not detect either. The content is low-sensitivity (no credential). But the published evidence breaks a privacy guarantee stated in the code. Future Codex startup messages could carry more (config paths, profile names).
-**Fix:** Do not edit the raw stream, which keeps D-11. Instead:
-- Run Codex with an isolated `CODEX_HOME` (a scratch copy holding only the auth and config files Codex needs), so the operator's hooks and home paths never reach the stream.
-- Add a third pre-commit check to the contract that blocks the commit when the codex directory contains `$HOME`, `getpass.getuser()` or `tempfile.gettempdir()`. The check should list file names only, like the hex scan.
-- Correct the `redact_local_paths` docstring so it claims redaction only for the harness-written files.
-
-Whether to purge the already-committed lines from history is an owner decision (see SA-02).
-
-## Info
-
-### IN-01: The template classifies detail rows by matching their display text, not a row kind
-
-**File:** `triggarr/templates/partials/cycle_grade.html:18-28`
-**Issue:** The label logic infers row type from wording: `startswith('Missing queue not evaluated: ')`, `endswith('— malformed data') or endswith('skipped')`, and `split(' ')[0] | int(0)` for the record count. This is correct for every row `triggarr/search/outcome.py:256-335` builds today. Failure and fetch rows end in `)`, and the eligible row is counted as `other`.
-
-The risk is maintenance. Any future row whose text ends in "skipped", or a rewording of the unevaluated or malformed rows in `outcome.py`, silently changes which label a red or amber card shows. `outcome.py` already knows each row's kind.
-**Fix:** Have `outcome.py` emit `{"text": ..., "count": ..., "kind": "fetch|failure|unevaluated|malformed|eligible"}` plus a precomputed `malformed_rows_total`. Then branch on `r.kind` in the template.
-
-### IN-02: The checker never compares the report's `pr_url` / `scope` with what was requested
-
-**File:** `tests/codex_report_status.py:288-407`
-**Issue:** The head and base SHAs are compared with the expected values, but `pr_url` and `scope` are only type-checked. A report copied from another PR at the same head and base (for example a local-checkpoint run reused as PR evidence) is assessed `complete` without any note.
-**Fix:** Pass `--expected-pr-url` / `--expected-scope` from `checker_argv`, and add a `wrong request:` reason when they differ.
-
-### IN-03: The fixed prompt still describes untrusted heads running Codex with no tests
-
-**File:** `docs/codex-adversarial-review-contract.md:36`; `tests/codex_review_run.py:350`
-**Issue:** The prompt says the harness "either ran ... pytest ... or, for an untrusted source such as a Dependabot or outside-contributor PR, ran no tests". The runner refuses untrusted heads outright (`execute` line 473, `main` line 647), and the evidence header hardcodes `source: trusted (--trusted)`. The untrusted branch of that sentence can never happen. It is stale prompt text that tells Codex about a mode which does not exist.
-**Fix:** Drop the untrusted clause in the next template version (version 6), or keep it only once Phase 85 re-enables untrusted runs.
-
-### IN-04: `diff_argv` is only used by tests, and the CLAUDE.md guard tests only check substrings
-
-**File:** `tests/codex_review_run.py:194-195`; `tests/test_review_instructions.py:53-58`
+**File:** `tests/codex_review_run.py:432-440, 496-500`
 **Issue:**
-- `diff_argv` is never called by the runner. Codex gets the diff command from the prompt text, and `test_codex_review_contract.py:207` keeps its own quoted copy of the pathspecs. So the "runner uses the same list" claim in the contract (line 25) is enforced by two separate constant lists, not by shared code.
-- `test_claude_md_codex_pairing_paths` passes if "phase execution" etc. appear anywhere in CLAUDE.md, not necessarily in the Codex pairing instruction.
+- The outer `except RunnerError: raise` (`:500-502`) rests on a comment saying every `RunnerError` after the reservation has already written its stub. That is true today. But a future `raise RunnerError(...)` added to `_execute_reserved` without a stub would bring back the WR-02 symptom silently. The outer `except Exception` branch already checks `.status.json` exists, but the `RunnerError` branch does not.
+- `reserve_outputs` creates `.prompt.txt` with `O_EXCL` and then writes the prompt outside any guard. If that write fails (for example, disk full), the name is reserved with an empty or truncated prompt, no stub, and an `OSError` traceback (`main` does not catch `OSError`). The comment at `:495` says "nothing else is touched if it fails", but the reservation file itself is.
 
-**Fix:**
-- Derive the prompt's pathspec string from `EXCLUDE_PATHSPECS` in a test (`shlex.join`-style quoting). Or remove `diff_argv` and state that the constant is test-only.
-- Scope the CLAUDE.md assertion to the pairing section's text.
+**Fix:** In the outer `except RunnerError` branch, apply the same check: write a stub if `.status.json` does not exist. Move the prompt write inside the guarded region, for example by calling `reserve_outputs` inside the `try` and writing a stub when the `O_EXCL` open succeeded but the write raised.
+
+#### IN-03: The contract says output is "decoded as UTF-8", but the code decodes with the locale encoding
+
+**File:** `docs/codex-adversarial-review-contract.md:62` (step 5); `tests/codex_review_run.py:334, 386, 576`
+**Issue:** The calls pass `text=True, errors="replace"` without `encoding=`, so Python decodes with the locale's preferred encoding. On this macOS host, and under Python 3.11's C-locale coercion, that is UTF-8, so behavior is correct today. But the contract's claim ("decoded as UTF-8 with replacement characters") is a property of the environment, not of the code. Under a non-UTF-8 locale, the decoded evidence would differ from what Codex sees in the worktree copy, which is written with `encoding="utf-8"`.
+**Fix:** Add `encoding="utf-8"` to the three calls so the code matches the contract.
 
 ## Set aside (needs ruling)
 
-### SA-01: `--trusted` is self-declared and never checked
-
-**Where:** `tests/codex_review_run.py:116-119, 473-474, 616-628`
-**Why excluded:** The owner decided on 2026-10-22 that trust is an operator flag, and Phase 85 is scheduled to harden the harness. Changing that is out of scope for this phase.
-**Effect if left as is:** The harness runs the head's full test suite unsandboxed on the operator's machine. Nothing checks the flag against the head's author or origin. Dependabot branches also live in this repository's origin (`dependabot/*`), so "this repository's own branches" does not separate them. If one is mislabelled `--trusted`, third-party code runs locally.
-**Needs:** Ruling on whether a cheap guard should land now: refuse when `git log -1 --format=%ae HEAD` is a bot address, or when the head is reachable only from `origin/dependabot/*`. The alternative is to defer to Phase 85.
-
-### SA-02: Already-committed `.jsonl` files contain the operator's home path
-
-**Where:** `.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/*.jsonl` (not modified; the review was told not to touch this directory)
-**Why excluded:** D-11 requires the raw output to stay unedited, and the directory is outside this review's write scope.
-**Effect if left as is:** The username `julianamacbook`, the `~/.codex/hooks.json` path and macOS temp paths become public when PR #35 merges. There is no credential.
-**Needs:** Owner ruling: accept as is, or regenerate the evidence under an isolated `CODEX_HOME` before merge (see WR-04).
-
-### SA-03: Planning markdown that is executable agent instructions is outside the Codex diff
-
-**Where:** `docs/codex-adversarial-review-contract.md:17-25`; `docs/review-classification-policy.md:13-14`
-**Why excluded:** The owner approved the `.planning/**/*.md` exclusion in round 3 (template version 5).
-**Effect if left as is:** `*-PLAN.md` files are instructions that BM executor agents follow. Under the policy's own content-based rule ("agent instructions ... even when they live in Markdown") they are arguably sensitive. Yet the paired Codex pass never sees them as scope.
-**Needs:** Ruling on whether PLAN.md files stay ordinary-docs. If they do, record that explicitly in the policy.
+None. The previous round's SA-01 to SA-03 were all ruled by the owner on 2026-10-23 (see the status table).
 
 ---
 
-_Reviewed: 2026-10-23T17:34:20Z_
+_Reviewed: 2026-10-23T17:47:31Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
