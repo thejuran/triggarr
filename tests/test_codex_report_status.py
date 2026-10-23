@@ -338,7 +338,7 @@ def test_v1_self_declared_incomplete(field: str, text: str) -> None:
         report["limitations"].append(text)
     else:
         report[field] = text
-    result = _assess(report)
+    result = _assess(report, legacy_v1=True)
     assert result.status == "incomplete"
     assert any(r.startswith("self-declared incomplete:") for r in result.reasons)
 
@@ -347,7 +347,7 @@ def test_v1_self_declared_incomplete(field: str, text: str) -> None:
 
 
 def test_v1_report_still_complete_under_v1_rules() -> None:
-    result = _assess(_valid_v1_report())
+    result = _assess(_valid_v1_report(), legacy_v1=True)
     assert result.status == "complete"
     assert result.reasons == ()
 
@@ -356,9 +356,53 @@ def test_v1_report_rejects_v2_fields() -> None:
     """v1 stays strict: the v2 completeness fields are not part of v1."""
     report = _valid_v1_report()
     report["review_complete"] = True
-    result = _assess(report)
+    result = _assess(report, legacy_v1=True)
     assert result.status == "incomplete"
     assert any(r == "schema: unexpected field review_complete" for r in result.reasons)
+
+
+# bm:49ded1e86444:WR-01 (owner-approved round 5): schema v1 exists only so
+# recorded history keeps its assessment. A v1 label on a new report never
+# skips the structured completeness check; the legacy path is opt-in.
+V1_NOT_LEGACY = "schema: schema_version 1 is accepted only when re-assessing a recorded report (--legacy-v1)"
+
+
+def test_v1_report_without_legacy_flag_incomplete() -> None:
+    result = _assess(_valid_v1_report())
+    assert result.status == "incomplete"
+    assert V1_NOT_LEGACY in result.reasons
+    assert "schema: missing review_complete" in result.reasons
+
+
+def test_v1_label_cannot_hide_an_unfinished_review() -> None:
+    """The reviewer's reproduction: a self-labelled v1 report that admits it is unfinished."""
+    report = _valid_v1_report()
+    report["summary"] = "Only read two files; could not finish."
+    report["limitations"] = ["ran out of time before covering most files"]
+    result = _assess(report)
+    assert result.status == "incomplete"
+    assert V1_NOT_LEGACY in result.reasons
+
+
+def test_legacy_flag_does_not_change_v2_assessment() -> None:
+    assert _assess(_valid_report(), legacy_v1=True).status == "complete"
+    report = _valid_report()
+    report["review_complete"] = False
+    report["incomplete_reasons"] = ["tests/ was not inspected"]
+    assert _assess(report, legacy_v1=True).status == "incomplete"
+
+
+def test_cli_v1_report_needs_legacy_flag(tmp_path, capsys) -> None:
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(_valid_v1_report()), encoding="utf-8")
+
+    assert main(_cli_args(report_path)) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "incomplete"
+    assert V1_NOT_LEGACY in payload["reasons"]
+
+    assert main([*_cli_args(report_path), "--legacy-v1"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "complete"
 
 
 @pytest.mark.parametrize("field", ["review_complete", "incomplete_reasons"])
@@ -445,7 +489,7 @@ _CODEX_DIR = (
 )
 
 
-def _assess_recorded(name: str) -> object:
+def _assess_recorded(name: str, *, legacy_v1: bool = False) -> object:
     text = (_CODEX_DIR / name).read_text(encoding="utf-8")
     report = json.loads(text)
     head = report["inspected_head_sha"]
@@ -456,11 +500,12 @@ def _assess_recorded(name: str) -> object:
         expected_base=report["inspected_base_sha"],
         current_head=head,
         attempt=1,
+        legacy_v1=legacy_v1,
     )
 
 
 def test_recorded_quick_v1_report_still_complete() -> None:
-    result = _assess_recorded("a7995baf187e-quick-a1.last.json")
+    result = _assess_recorded("a7995baf187e-quick-a1.last.json", legacy_v1=True)
     assert result.status == "complete"
     assert result.reasons == ()
 
@@ -478,9 +523,16 @@ def test_recorded_v2_reports_keep_their_assessment(name: str, status: str) -> No
 
 
 def test_recorded_explicit_v1_report_still_incomplete() -> None:
-    result = _assess_recorded("d501a68316b2-explicit-a1.last.json")
+    result = _assess_recorded("d501a68316b2-explicit-a1.last.json", legacy_v1=True)
     assert result.status == "incomplete"
     assert result.reasons == ("self-declared incomplete: limitations states 'incomplete review'",)
+
+
+@pytest.mark.parametrize("name", ["a7995baf187e-quick-a1.last.json", "d501a68316b2-explicit-a1.last.json"])
+def test_recorded_v1_reports_need_the_legacy_path(name: str) -> None:
+    result = _assess_recorded(name)
+    assert result.status == "incomplete"
+    assert V1_NOT_LEGACY in result.reasons
 
 
 # --- Head/base binding and staleness ---------------------------------------
@@ -562,7 +614,7 @@ def test_empty_coverage_incomplete() -> None:
 def test_no_commands_run_incomplete(report_factory) -> None:
     report = report_factory()
     report["commands_run"] = []
-    result = _assess(report)
+    result = _assess(report, legacy_v1=report["schema_version"] == "1")
     assert result.status == "incomplete"
     assert "no commands run: the report gives no evidence the diff was inspected" in result.reasons
 

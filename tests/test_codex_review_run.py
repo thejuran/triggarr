@@ -287,6 +287,37 @@ def test_checker_argv() -> None:
     ]
 
 
+def test_checker_argv_never_requests_the_legacy_v1_path(tmp_path, monkeypatch) -> None:
+    """bm:49ded1e86444:WR-01: a new run's v1-labelled report is assessed incomplete."""
+    import json
+
+    from tests import codex_report_status
+
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    (tmp_path / PHASE_DIR).mkdir(parents=True)
+    run = _run(attempt=1)
+    report = {
+        "schema_version": "1",
+        "inspected_head_sha": H,
+        "inspected_base_sha": B,
+        "pr_url": "none (local checkpoint, not pushed)",
+        "scope": "Phase 83 changes",
+        "verdict": "no-findings",
+        "summary": "Only read two files; could not finish.",
+        "coverage": ["two files"],
+        "exclusions": [],
+        "commands_run": [{"command": "git diff", "exit_code": 0, "purpose": "read diff"}],
+        "findings": [],
+        "limitations": ["ran out of time before covering most files"],
+    }
+    run.out_base.parent.mkdir(parents=True)
+    run.output(".last.json").write_text(json.dumps(report), encoding="utf-8")
+
+    argv = checker_argv(run, exit_code=0, current_head=H)
+    assert "--legacy-v1" not in argv
+    assert codex_report_status.main(argv[2:]) == 1
+
+
 def test_checker_argv_omits_unknown_exit_code() -> None:
     argv = checker_argv(_run(), exit_code=None, current_head=H)
     assert "--exit-code" not in argv
