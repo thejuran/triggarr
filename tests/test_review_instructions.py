@@ -104,7 +104,7 @@ def test_acceptance_prerequisites_include_the_paired_codex_review() -> None:
 
 
 def test_acceptance_codex_exception_is_an_approved_fallback_only() -> None:
-    """Only an owner-approved fallback stands in for an incomplete Codex pass (vibe-check pass 2 #5, owner 2026-10-23)."""
+    """Only an owner-approved fallback stands in for an incomplete Codex pass (vibe-check pass 2 #5)."""
     step = _acceptance_step(1)
     assert "owner-approved fallback review recorded for this exact head" in step
     assert "a wait or retry-later choice blocks acceptance" in step
