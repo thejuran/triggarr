@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- Phase 83 merged (PR #35, decd5f1); Phase 84 next"
-stopped_at: "Phase 83 merged via PR #35; next: /bm:discuss-phase 84"
-last_updated: "2026-10-23T22:43:49.000Z"
-last_activity: "2026-10-23 -- Phase 83 merged via PR #35 (owner exact-commit acceptance at b07e532, run 40033787485)"
+status: "planning -- Phase 84 context gathered; ready to plan"
+stopped_at: "Phase 84 context gathered; next: /bm:plan-phase 84"
+last_updated: "2026-10-23T22:57:00.000Z"
+last_activity: "2026-10-23 -- Phase 84 context gathered (84-CONTEXT.md, 18 decisions) on local branch codex-plan-checker"
 progress:
   total_phases: 5
   completed_phases: 2
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 84 (Codex plan-checker investigation) — Not started; Phase 83 merged
+Phase: 84 (Codex plan-checker investigation) — Context gathered; Phase 83 merged
 Plan: 0 of TBD (Phase 84 not planned)
 Status: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
 Last activity: 2026-10-22 -- Plans 01-08 done. Quick path (261022-l7h, head a7995ba) and explicit /bm:code-review path (head d501a68) recorded in 83-REVIEW-EVIDENCE.md with paired Codex; 6 negative demos in 83-DEMONSTRATIONS.md. Owner rulings 2026-10-22: red Failed cards keep "failure reason(s)"; mixed code+sensitive PRs get both review classes. Craft-skill code-reviewer: owner accepted sticky but not inserted (no checkout; needs separate approval as a settings change beyond REVIEW-01). Next: plan 09 batched fix. 2026-10-23 -- Plan 09 done: 4 owner-approved fix rounds (D-08 overridden by owner), durable Codex completeness (schema v2, harness pytest evidence, runner, template v5, untrusted heads blocked until Phase 85); final head 36eaa67c2976 BM standard 0 blockers/6 info, Codex final complete 0 findings, 2400 tests on clean checkout. OPEN before push: owner decision on home-directory path inside committed codex .jsonl/.last.json files; disclosed deviations (gitleaks order slip; hook-block tool switch in bf4fb5f). 2026-10-23 -- Plan 10 done (PR #35 draft pushed at 49ded1e by owner choice); BM phase-execution review + paired Codex on 49ded1e; owner-approved local fix rounds 5-7 each with fresh BM + paired Codex (final heads 385baa7, d90c1c1: Codex complete, 0 findings); vibe-check passes at b19e7b2 and 385baa7. Verification 17/17 must-haves, human_needed: end-of-phase push + PR ready, Greptile/CI on final head, owner acceptance. Phase 85 carry-forward in .planning/backlog/MAINTENANCE.md. 2026-10-23 -- Owner accepted PR #35 at b07e532 (Review acceptance run 40033787485 success) and it merged as decd5f1.
@@ -242,9 +242,9 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-22T17:38:03.118Z
-Stopped at: Phase 83 context gathered
-Resume file: .planning/phases/83-paired-bm-codex-review-risk-based-depth/83-CONTEXT.md
+Last session: 2026-10-23T22:57:04.000Z
+Stopped at: Phase 84 context gathered
+Resume file: .planning/phases/84-codex-plan-checker-investigation/84-CONTEXT.md
 
 ## Operator Next Steps
 
