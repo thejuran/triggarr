@@ -65,6 +65,7 @@ def test_pilot_doc_points_to_policy() -> None:
 
 
 POLICY_DOC = REPO_ROOT / "docs" / "review-classification-policy.md"
+ACCEPTANCE_DOC = REPO_ROOT / "docs" / "owner-cli-acceptance.md"
 
 # The review machinery itself is sensitive content (vibe-check #1, owner-approved round 6).
 REVIEW_MACHINERY = (
@@ -87,3 +88,22 @@ def test_policy_sensitive_row_names_the_review_machinery() -> None:
         assert f"`{path}`" in covers, f"the sensitive row's 'What it covers' must name {path}"
         assert (REPO_ROOT / path).is_file(), f"{path} is named as sensitive but does not exist"
 
+
+def _acceptance_step(number: int) -> str:
+    prefix = f"{number}. "
+    return next(line for line in _read(ACCEPTANCE_DOC).splitlines() if line.startswith(prefix))
+
+
+def test_acceptance_prerequisites_include_the_paired_codex_review() -> None:
+    """Step 1 lists the current head's Codex pass (vibe-check #7, owner-approved round 6)."""
+    step = _acceptance_step(1)
+    assert "Codex" in step
+    assert "docs/codex-adversarial-review-contract.md" in step
+    assert "INCOMPLETE" in step
+    assert "PENDING" in step
+
+
+def test_acceptance_prerequisites_keep_the_existing_items() -> None:
+    step = _acceptance_step(1)
+    for item in ("CI", "Greptile is optional since 2026-10-22", "vibe-check/UAT", "finding dispositions"):
+        assert item in step, f"step 1 must still list {item!r}"
