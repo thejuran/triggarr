@@ -1156,3 +1156,106 @@ def test_meta_write_failure_after_reservation_writes_status_stub(tmp_path, monke
     assert '"status": "incomplete"' in status
     assert type(exc).__name__ in status
     assert not any(call[:3] == ["git", "worktree", "add"] for call in fake.calls)
+
+
+# --- vibe-check #6 (owner-approved round 6): kill the whole process group -----
+#
+# `uv run` starts pytest as its own child, so a timeout that kills only the
+# direct child leaves pytest running. The long-running children start in their
+# own session and the timeout kills that whole group.
+
+
+@pytest.mark.parametrize("program", ["uv", "codex"])
+def test_long_running_children_start_in_their_own_session(tmp_path, monkeypatch, program: str) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    seen: dict[str, object] = {}
+
+    def _spy(argv, **kwargs):
+        if argv[0] == program:
+            seen.update(kwargs)
+        return fake(argv, **kwargs)
+
+    execute(run, command_runner=_spy)
+    assert seen["start_new_session"] is True
+
+
+def test_execute_defaults_to_the_process_group_runner() -> None:
+    import inspect
+
+    assert inspect.signature(execute).parameters["command_runner"].default is runner.run_command
+
+
+_SPAWNS_GRANDCHILD = """
+import subprocess, sys, time
+grandchild = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+with open(sys.argv[1], "w") as handle:
+    handle.write(str(grandchild.pid))
+print("started", flush=True)
+time.sleep(60)
+"""
+
+
+def _alive(pid: int) -> bool:
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def test_timeout_kills_the_grandchild_too(tmp_path) -> None:
+    import os
+    import signal
+    import sys
+    import time
+
+    pid_file = tmp_path / "grandchild.pid"
+    argv = [sys.executable, "-c", _SPAWNS_GRANDCHILD, str(pid_file)]
+    grandchild: int | None = None
+    try:
+        with pytest.raises(subprocess.TimeoutExpired) as exc_info:
+            runner.run_command(
+                argv,
+                start_new_session=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=2,
+            )
+        assert "started" in (exc_info.value.stdout or "")
+        grandchild = int(pid_file.read_text(encoding="utf-8"))
+        # The orphaned grandchild is reaped by init; give it a moment.
+        for _ in range(50):
+            if not _alive(grandchild):
+                break
+            time.sleep(0.05)
+        assert not _alive(grandchild)
+    finally:
+        if grandchild is not None and _alive(grandchild):
+            os.kill(grandchild, signal.SIGKILL)
+
+
+def test_run_command_without_a_session_is_plain_subprocess_run() -> None:
+    import sys
+
+    proc = runner.run_command([sys.executable, "-c", "print('ok')"], stdout=subprocess.PIPE, text=True, check=False)
+    assert proc.returncode == 0
+    assert proc.stdout == "ok\n"
+
+
+def test_run_command_passes_input_to_a_session_child() -> None:
+    import sys
+
+    proc = runner.run_command(
+        [sys.executable, "-c", "import sys; print(sys.stdin.read().upper())"],
+        start_new_session=True,
+        input="prompt",
+        stdout=subprocess.PIPE,
+        text=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0
+    assert proc.stdout == "PROMPT\n"
