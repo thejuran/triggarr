@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "executing -- Phase 83, 9/10 plans done; plan 10 (classify, risk note, push, draft PR) next (branch paired-review)"
-stopped_at: "Phase 83 plan 10 Task 1 (PR classification + RISK-01 note)"
-last_updated: "2026-10-23T17:17:16.000Z"
-last_activity: "2026-10-23 -- Phase 83 plan 09 done (review after fixes, 4 owner-approved rounds; final head 36eaa67: BM 0 blockers, Codex complete 0 findings)"
+status: "in review -- Phase 83 executed (10/10 plans, verification human_needed); owner decision pending on PR #35 (branch paired-review)"
+stopped_at: "Phase 83 end-of-phase push + PR #35 ready for review; Greptile/CI then owner exact-commit acceptance"
+last_updated: "2026-10-23T22:25:30.000Z"
+last_activity: "2026-10-23 -- Phase 83 executed; rounds 5-7 + vibe-check passes; verification 17/17 must-haves (human_needed)"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 20
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 83 (paired BM + Codex review) — Executing; Phase 82 merged
-Plan: 9 of 10 (01-09 done; 10 next)
+Phase: 83 (paired BM + Codex review) — In review, owner decision pending; Phase 82 merged
+Plan: 10 of 10 (all done; phase in review)
 Status: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
-Last activity: 2026-10-22 -- Plans 01-08 done. Quick path (261022-l7h, head a7995ba) and explicit /bm:code-review path (head d501a68) recorded in 83-REVIEW-EVIDENCE.md with paired Codex; 6 negative demos in 83-DEMONSTRATIONS.md. Owner rulings 2026-10-22: red Failed cards keep "failure reason(s)"; mixed code+sensitive PRs get both review classes. Craft-skill code-reviewer: owner accepted sticky but not inserted (no checkout; needs separate approval as a settings change beyond REVIEW-01). Next: plan 09 batched fix. 2026-10-23 -- Plan 09 done: 4 owner-approved fix rounds (D-08 overridden by owner), durable Codex completeness (schema v2, harness pytest evidence, runner, template v5, untrusted heads blocked until Phase 85); final head 36eaa67c2976 BM standard 0 blockers/6 info, Codex final complete 0 findings, 2400 tests on clean checkout. OPEN before push: owner decision on home-directory path inside committed codex .jsonl/.last.json files; disclosed deviations (gitleaks order slip; hook-block tool switch in bf4fb5f).
+Last activity: 2026-10-22 -- Plans 01-08 done. Quick path (261022-l7h, head a7995ba) and explicit /bm:code-review path (head d501a68) recorded in 83-REVIEW-EVIDENCE.md with paired Codex; 6 negative demos in 83-DEMONSTRATIONS.md. Owner rulings 2026-10-22: red Failed cards keep "failure reason(s)"; mixed code+sensitive PRs get both review classes. Craft-skill code-reviewer: owner accepted sticky but not inserted (no checkout; needs separate approval as a settings change beyond REVIEW-01). Next: plan 09 batched fix. 2026-10-23 -- Plan 09 done: 4 owner-approved fix rounds (D-08 overridden by owner), durable Codex completeness (schema v2, harness pytest evidence, runner, template v5, untrusted heads blocked until Phase 85); final head 36eaa67c2976 BM standard 0 blockers/6 info, Codex final complete 0 findings, 2400 tests on clean checkout. OPEN before push: owner decision on home-directory path inside committed codex .jsonl/.last.json files; disclosed deviations (gitleaks order slip; hook-block tool switch in bf4fb5f). 2026-10-23 -- Plan 10 done (PR #35 draft pushed at 49ded1e by owner choice); BM phase-execution review + paired Codex on 49ded1e; owner-approved local fix rounds 5-7 each with fresh BM + paired Codex (final heads 385baa7, d90c1c1: Codex complete, 0 findings); vibe-check passes at b19e7b2 and 385baa7. Verification 17/17 must-haves, human_needed: end-of-phase push + PR ready, Greptile/CI on final head, owner acceptance. Phase 85 carry-forward in .planning/backlog/MAINTENANCE.md.
 
 ### v2.13 milestone shape
 
