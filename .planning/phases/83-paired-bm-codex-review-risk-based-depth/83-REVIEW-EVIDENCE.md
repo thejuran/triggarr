@@ -1740,3 +1740,293 @@ and `IN-06`, all nonblocking_debt. No confirmed defect is unfixed.
   pushed head: all pending.
 
 This record is not owner acceptance.
+
+## Phase PR checkpoint — pushed head 49ded1e86444
+
+<!-- review-checkpoint head=49ded1e86444bc7122b7f0dda6e557312057a7a7 -->
+
+Written 2026-10-23, after the push, for the single Phase 83 PR. Branch
+`paired-review` → `main`, pushed once with `git push -u origin
+paired-review` (new branch, no force). `uv run pytest tests/ -x -q` and
+`uv run ruff check triggarr/ tests/` both passed on this head before the
+push (2400 passed, ruff clean). PR_HEAD = `49ded1e86444bc7122b7f0dda6e557312057a7a7`.
+
+**PR URL:** https://github.com/thejuran/triggarr/pull/35
+
+**PR metadata:** `gh pr view 35 --json isDraft,baseRefName,headRefOid,baseRefOid`
+confirmed `isDraft: true`, `baseRefName: "main"`,
+`headRefOid: "49ded1e86444bc7122b7f0dda6e557312057a7a7"` (equals PUSH_HEAD),
+`baseRefOid: "6f3841aaae4f2511efe6796f7f5c7ad50b423f90"` (equals `git
+merge-base origin/main HEAD`). The PR body ends with the Claude Code
+attribution line.
+
+**Checkpoint comment:** posted with `gh pr comment 35 --body-file`.
+
+- Comment URL: https://github.com/thejuran/triggarr/pull/35#issuecomment-6370768885
+- Comment id: `6370768885`
+- Verified exactly one comment exists on PR #35, containing
+  `review-checkpoint head=49ded1e86444bc7122b7f0dda6e557312057a7a7`, and
+  it shows Codex as `PENDING` (both the BM-review-status line and the
+  Codex-status line).
+
+### Durable copy of the posted comment
+
+<!-- review-checkpoint head=49ded1e86444bc7122b7f0dda6e557312057a7a7 -->
+
+Phase PR checkpoint for PR #35 (`paired-review` → `main`, draft), the
+pushed head. This comment restates the classification and risk note
+written against the pre-push head
+(`e32da5d066833f24f6add08d778bd420770c4ecc`, see linked section below) for
+this exact pushed head, per `docs/review-checkpoint-record.md`. The two
+commits between that head and this one (`c6001ff`, `49ded1e`) touch only
+`.planning/phases/83-paired-bm-codex-review-risk-based-depth/83-REVIEW-EVIDENCE.md`;
+they add this plan's own records and change nothing else, so the
+classification and risk are unchanged in substance. `git diff --name-only
+49ded1e86444bc7122b7f0dda6e557312057a7a7..HEAD -- . ':!.planning'` is
+empty, confirming no non-planning content has moved since this head.
+
+#### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `49ded1e86444bc7122b7f0dda6e557312057a7a7` |
+| PR base SHA | `6f3841aaae4f2511efe6796f7f5c7ad50b423f90` |
+| Tested SHA (if different from PR head) | `36eaa67c29764e008cdafe5babbd55a69f70b834`, the last head with code changes (2400 passed, ruff clean). Re-run immediately before this push on the pushed head's working tree: 2400 passed, ruff clean (no code changed since `36eaa67c2976`). |
+| Codex inspected head (`inspected_head_sha`) | pending — the last completed Codex pass is `codex:36eaa67c2976:a1` (no findings), which counts only for `36eaa67c2976`. The paired Codex pass for this exact pushed head is requested, not yet run (see Codex below). |
+| Codex inspected base (`inspected_base_sha`) | pending (see above) |
+
+Reconciliation: the PR head differs from the tested head and the last
+completed Codex pass only by planning-only commits (empty non-code diff
+confirmed above and before the push). Under REVIEW-06, the `36eaa67c2976`
+evidence still counts only for that head. This pushed head gets its own
+BM phase-execution review and its own paired Codex pass; both are pending
+(see Hand-off below).
+
+#### Classification
+
+```json
+{"schema":1,"head":"49ded1e86444bc7122b7f0dda6e557312057a7a7","classification":"code","classes_present":["code","sensitive","ordinary-docs"],"rationale":"Restates the classification recorded for e32da5d066833f24f6add08d778bd420770c4ecc at the exact pushed head. git diff --name-only e32da5d066833f24f6add08d778bd420770c4ecc..49ded1e86444bc7122b7f0dda6e557312057a7a7 touches only .planning/phases/83-paired-bm-codex-review-risk-based-depth/83-REVIEW-EVIDENCE.md (ordinary-docs: this plan's Task 1 and Task 2 records), and git diff --name-only 49ded1e86444bc7122b7f0dda6e557312057a7a7..HEAD -- . ':!.planning' is empty, so no non-planning file has changed since. The full PR diff 6f3841aa..49ded1e86444 therefore still touches: code - triggarr/templates/partials/cycle_grade.html (the quick-task card-label change) and tests/*.py (test_app_cards.py, test_codex_report_status.py, test_codex_review_contract.py, test_codex_review_run.py, test_review_checkpoint_record.py, test_review_instructions.py, plus the executable review tools tests/codex_review_run.py and tests/codex_report_status.py); sensitive - CLAUDE.md, .planning/config.json, .claude/schemas/codex-review-findings.schema.json, docs/review-classification-policy.md, docs/review-checkpoint-record.md, docs/codex-adversarial-review-contract.md, docs/owner-cli-acceptance.md, docs/buildomator-greptile-pilot.md, docs/bm-review-baseline-2026-10-22.md; ordinary-docs - .planning/** apart from config.json. Upward reasoning (D-18) unchanged: this PR has both code and sensitive content, so it is recorded as code with both classes present and gets every review either class requires; the large share of planning files never dilutes it toward ordinary-docs.","supersedes_head":"e32da5d066833f24f6add08d778bd420770c4ecc"}
+```
+
+#### Risk note (RISK-01)
+
+Unchanged in substance from the pre-push head; restated here for the
+pushed head now that PR #35 is open.
+
+- **Scope:** thejuran/triggarr, PR #35 (`paired-review` → `main`, draft).
+  Head `49ded1e86444bc7122b7f0dda6e557312057a7a7`, base
+  `6f3841aaae4f2511efe6796f7f5c7ad50b423f90`. Affected behavior: the agent
+  review instructions (`CLAUDE.md`); BM's review configuration
+  (`.planning/config.json`); the review-classification policy; the
+  checkpoint-record and Codex-contract procedures; owner-acceptance step
+  1; the executable Codex runner and completeness checker; and the
+  quick-task dashboard card-label change (`cycle_grade.html`). Publication
+  is also in scope: the push makes every committed raw Codex output
+  public. This assessment covers the whole PR, not a follow-up diff.
+- **Risk: high.** This is BM's honest level, not a level raised or
+  lowered to suit D-15. The blueprint's risk table rates "changes to
+  safeguards/publication" as high. This PR's main content is exactly
+  that: it changes the instructions and tooling that decide whether later
+  changes get reviewed, and it publishes review evidence. The residual
+  risk in the reviewed code is low (see "Final review" above in this
+  file). The high rating comes from what happens if these safeguards are
+  wrong. Concrete failure scenarios:
+  1. **Instruction gap skips the paired Codex pass.** `CLAUDE.md` says
+     quick tasks only get BM review, and therefore Codex, when
+     `/bm:quick --full` is used. If an agent omits `--full`, or a BM
+     entry path the instructions don't name runs review, a code change
+     can merge with no independent Codex review. Enforcement is
+     instruction-only until Phase 85.
+  2. **Policy misclassifies sensitive content as ordinary.** The
+     sensitive list is enumerated by path. A future safeguard change in a
+     file it doesn't name could be classified ordinary-docs and get only
+     a consistency review, with no BM, Codex or vibe-check.
+  3. **A hollow or stale report is accepted as complete.** If the checker
+     (`tests/codex_report_status.py`) misses a report shape that four
+     rounds didn't exercise, it could mark a Codex report "complete" when
+     the review was partial or covered another commit, and the owner
+     would accept on false evidence. No later gate re-examines the
+     report.
+  4. **Trust-boundary misuse.** The runner refuses `--untrusted` heads,
+     but the operator chooses between `--trusted` and `--untrusted`; the
+     runner does not detect it. A mis-flagged outside-contributor or
+     Dependabot head would run untrusted code on the owner's machine.
+  5. **Acceptance wording loosened.** Owner-acceptance step 1 now reads
+     "the current Greptile review when one ran," matching the
+     2026-10-22 owner decision that Greptile is optional. It could be
+     misread as allowing acceptance with no independent review at all,
+     when Codex and BM are still required.
+  6. **Publication of raw evidence.** Raw Codex output is never edited
+     and is published on push. The two secret scans are pattern-based; a
+     credential in a shape they don't match would become permanently
+     public. The home-directory path in the `.jsonl` files and 5 of 8
+     `.last.json` files is a known, non-credential instance (owner
+     decided to publish as-is; see Publication below). The same username
+     already appears in 88 files on public `main`.
+  7. **Card regression.** The `cycle_grade.html` label change could show
+     the wrong wording on some dashboard card shape. Low consequence
+     (presentation only), covered by `tests/test_app_cards.py`.
+- **Recommended review:** BM `deep` for the phase-execution review on
+  this pushed head, focused on security and safeguards: the runner's
+  trust boundary, subprocess and filesystem/symlink handling, the
+  checker's completeness logic, whether `CLAUDE.md` and the policy cover
+  every BM entry path and file location, and the acceptance-doc wording.
+  This recommends more coverage, not less; the configured `standard`
+  depth stays if deep is not selected. Non-planning scope is 17 files,
+  below BM's 50-file deep-to-standard downgrade. Codex covers the full PR
+  on this same pushed head. Greptile stays unchanged (one free review on
+  push, if credits remain).
+- **Required evidence:** `uv run pytest tests/ -x -q` and `uv run ruff
+  check triggarr/ tests/` on the pushed head (already run before this
+  push: 2400 passed, ruff clean); CI on the pushed head; the
+  phase-execution BM report and its paired Codex report, both bound to
+  this pushed head and base; gitleaks and the 32-hex scan over `codex/`
+  (already run before the push); for scenario 1, a check that `CLAUDE.md`
+  names each BM entry path; for scenario 3, the checker's existing
+  negative probes passing on this pushed head; for scenario 7, the
+  existing card tests.
+- **What this recommendation cannot establish:** that agents will follow
+  the instructions in practice (enforcement is instruction-only until
+  Phase 85); that the enumerated sensitive list covers every future
+  safeguard location; that the checker catches report shapes never
+  demonstrated; that operators always pick the right trust flag; that raw
+  outputs contain no credential in a form the scans miss; and how the
+  card looks live in a browser. These are named open limits, not a claim
+  that the uncertain behavior is safe.
+
+#### Vibe-check (RISK-02)
+
+- **Recommendation:** risk is high, so BM explicitly recommends an
+  additional vibe-check, run after the push on this exact pushed head
+  (the same head Greptile and the phase-execution BM + Codex pass
+  review).
+- **Owner's decision (2026-10-23 13:21 EDT, Claude Code CLI, not
+  inferred):** "Yes, on the pushed head (Recommended)." The additional
+  vibe-check runs on this pushed head; it has not run yet (see Incomplete
+  items below — the owner runs it).
+- **Routine vibe-check status:** not yet run on this code. The single
+  vibe-check the owner selected above, once run on this pushed head, also
+  serves as the routine vibe-check for the code content (per the "Apply
+  both" ruling, WR-04).
+
+Vibe-check never substitutes for Codex or Greptile, never waives a
+finding and never reduces required coverage.
+
+#### Pre-push /deep-review
+
+- **Owner's decision (2026-10-23 13:21 EDT, Claude Code CLI, not
+  inferred):** "Push now; vibe-check on pushed head (Recommended)." No
+  `/deep-review` ran before this push. The vibe-check selected above,
+  once it runs on this pushed head, covers the routine slot on the head
+  that will be accepted, not on the pre-push head.
+
+#### Publication of raw Codex evidence
+
+- **Owner's decision (2026-10-23 13:21 EDT, Claude Code CLI, not
+  inferred):** "Publish as-is (Recommended)." The committed
+  `.jsonl`/`.last.json` files containing the home-directory path are
+  published unchanged with this push (raw files are never edited).
+  Backlog follow-up: redact the home-directory path in future harness
+  runs.
+
+None of these three decisions is PR acceptance.
+
+#### BM review
+
+| Field | Value |
+|---|---|
+| Path | phase execution (pending — runs in execute-phase's `code_review_gate` after this plan) |
+| Requested depth | `standard` configured (`workflow.code_review_depth`); `deep` recommended above |
+| Actual depth | pending |
+| Large-scope warning | pending |
+| Responsible files | `.planning/config.json` key `workflow.code_review_depth`; BM `workflows/code-review.md` steps `resolve_depth` and `compute_file_scope` |
+| Report location | pending (`83-REVIEW.md`, snapshotted by head before it is overwritten) |
+| Status | **Phase-execution path: PENDING — runs in execute-phase's `code_review_gate` after this plan.** |
+
+#### Codex
+
+| Field | Value |
+|---|---|
+| Status | **PENDING, requested for `49ded1e86444bc7122b7f0dda6e557312057a7a7` (paired with the phase-execution BM review).** |
+| Attempts | none yet on this head |
+| Raw output paths | not yet produced for this head |
+| Review complete | pending |
+| Coverage | pending |
+| Exclusions | pending |
+| Commands run | pending |
+| Limitations | pending |
+
+Findings: none yet reported for this head.
+
+#### Greptile
+
+pending on `49ded1e86444bc7122b7f0dda6e557312057a7a7` (one free review on
+push, if credits remain — Greptile is optional since 2026-10-22, owner
+decision)
+
+#### CI
+
+pending on `49ded1e86444bc7122b7f0dda6e557312057a7a7`
+
+#### Dispositions
+
+Carried with their original heads; see "Final review — head 36eaa67c2976"
+above for the full evidence. No confirmed defect is unfixed. Remaining
+Info items, all `nonblocking_debt`:
+
+| Qualified ID | Decision | Summary |
+|---|---|---|
+| `bm:36eaa67c2976:IN-01` | nonblocking_debt | Card-template refactor, excluded from fixing by owner decision. |
+| `bm:36eaa67c2976:IN-02` | nonblocking_debt | Tautological test, excluded from fixing by owner decision. |
+| `bm:36eaa67c2976:IN-03` | nonblocking_debt | Dry-run preview gap (carried from `bm:dbe1b7f56bdd:IN-07`); `dry_run()` still only prints the git-status command. |
+| `bm:36eaa67c2976:IN-04` | nonblocking_debt | Doc-wording mismatch only: `docs/codex-adversarial-review-contract.md` Invocation step 3 still describes `--dry-run` previewing an `--untrusted` run; the runtime already refuses every `--untrusted` call first. |
+| `bm:36eaa67c2976:IN-05` | nonblocking_debt | `reserve_outputs()`'s `.meta.json` write runs outside a `try`; an `OSError` there could leave `.prompt.txt` with no `.status.json`. |
+| `bm:36eaa67c2976:IN-06` | nonblocking_debt | `audit_inputs()`'s post-run re-check mislabels a `git status` failure the same way as a real input change. |
+
+#### Incomplete items
+
+In plain words, what is still open on this pushed head:
+
+- The BM phase-execution review has not run yet; it runs in
+  execute-phase's `code_review_gate` after this plan.
+- The paired Codex pass for this pushed head has not run yet; it pairs
+  with the BM review above.
+- Greptile has not reported on this pushed head yet.
+- CI has not reported on this pushed head yet.
+- The owner selected the additional vibe-check for this pushed head; the
+  owner has not run it yet.
+- The home-directory path in committed Codex evidence is a known,
+  disclosed condition, not an open question: the owner decided to publish
+  as-is, with a backlog follow-up to redact it in future runs.
+- The six Info-severity items above remain as nonblocking debt for a
+  future phase; none is a confirmed defect.
+
+This record is not owner acceptance. See "Final review — head
+36eaa67c2976" and "Phase PR checkpoint — head e32da5d06683 (pre-push)"
+above for the earlier-head evidence this record restates; those sections
+are not evidence for this pushed head on their own, which is why this
+comment and this matching evidence-file section exist.
+
+### Hand-off after this plan
+
+1. execute-phase's `code_review_gate` runs BM review (phase-execution
+   path) on this pushed head.
+2. Per `CLAUDE.md`, Claude then runs the paired Codex pass with
+   `HEAD_SHA = 49ded1e86444bc7122b7f0dda6e557312057a7a7` (the PR head,
+   which Greptile also reviews), after confirming `git diff --name-only
+   49ded1e86444bc7122b7f0dda6e557312057a7a7..HEAD -- . ':!.planning'` is
+   empty (confirmed above: empty), so later local commits are
+   planning-only.
+3. Claude edits this head's comment (same comment id `6370768885`) with
+   the BM and Codex results and Greptile/CI status, and records the copy
+   here.
+4. The owner selected vibe-check; the owner runs it on
+   `49ded1e86444bc7122b7f0dda6e557312057a7a7` and its result is added.
+5. Any confirmed defect means one batched fix, a new push, a new head
+   and a new comment.
+6. When every review on the final head is complete, Claude presents the
+   D-12 acceptance checklist and follows `docs/owner-cli-acceptance.md`
+   (mark ready first, never infer approval, never merge).
+
+This local evidence commit is planning-only. It is not pushed now; it
+rides with the next push or the phase closeout.
