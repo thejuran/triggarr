@@ -260,16 +260,16 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   7. A written review-classification policy replaces blanket "every PR" wording in `CLAUDE.md` and the BM/repository instructions. Ordinary docs/planning-only changes get a focused consistency review, without routine Greptile, Codex code review or vibe-check. Classification is by content, not file extension: agent instructions, executable workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and the applicable technical review, and a mixed PR follows its most consequential change. Each PR records its classification and rationale against the exact head. Codex stays paired with every BM code-review run, but ordinary planning edits don't force a code-review run. Demonstrated on Phase 83's own sensitive-docs/mixed PR (owner decision 2026-10-22, D-14: no docs-only PRs are opened); exact-commit owner acceptance is unchanged. (Instruction-enforced; GitHub-side handling is Phase 85's ACCEPT-03)
 **Plans**: 10 plans
 
-- [ ] 83-01-PLAN.md — REVIEW-01 baseline, BM v5.0.3 assessment from the tag's own files, owner gate on exact version and settings
-- [ ] 83-02-PLAN.md — Fixed Codex adversarial review contract (read-only, exact-commit) and strict output schema
-- [ ] 83-03-PLAN.md — TDD: Codex report checker (complete only on the expected, current head; every failure incomplete)
-- [ ] 83-04-PLAN.md — Content-based review classification policy; D-14 amendment of REVIEW-08 and criterion 7
-- [ ] 83-05-PLAN.md — Apply the owner-approved BM update and settings; confirm with /bm:version; re-verify installed behavior
-- [ ] 83-06-PLAN.md — Checkpoint-record procedure; CLAUDE.md and pilot-doc review instructions; guard test
-- [ ] 83-07-PLAN.md — Quick-task path on an owner-approved maintenance item, with paired Codex
-- [ ] 83-08-PLAN.md — Explicit /bm:code-review path with paired Codex; local negative demonstrations
-- [ ] 83-09-PLAN.md — Review after fixes: one batched revision, snapshot, fresh BM and Codex on the new head
-- [ ] 83-10-PLAN.md — Classify the phase PR, RISK-01/RISK-02 decision, single push, draft PR, per-head checkpoint comment
+- [x] 83-01-PLAN.md — REVIEW-01 baseline, BM v5.0.3 assessment from the tag's own files, owner gate on exact version and settings
+- [x] 83-02-PLAN.md — Fixed Codex adversarial review contract (read-only, exact-commit) and strict output schema
+- [x] 83-03-PLAN.md — TDD: Codex report checker (complete only on the expected, current head; every failure incomplete)
+- [x] 83-04-PLAN.md — Content-based review classification policy; D-14 amendment of REVIEW-08 and criterion 7
+- [x] 83-05-PLAN.md — Apply the owner-approved BM update and settings; confirm with /bm:version; re-verify installed behavior
+- [x] 83-06-PLAN.md — Checkpoint-record procedure; CLAUDE.md and pilot-doc review instructions; guard test
+- [x] 83-07-PLAN.md — Quick-task path on an owner-approved maintenance item, with paired Codex
+- [x] 83-08-PLAN.md — Explicit /bm:code-review path with paired Codex; local negative demonstrations
+- [x] 83-09-PLAN.md — Review after fixes: one batched revision, snapshot, fresh BM and Codex on the new head
+- [x] 83-10-PLAN.md — Classify the phase PR, RISK-01/RISK-02 decision, single push, draft PR, per-head checkpoint comment
 
 ### Phase 84: Codex Plan-Checker Investigation
 
