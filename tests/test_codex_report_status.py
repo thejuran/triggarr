@@ -619,6 +619,65 @@ def test_no_commands_run_incomplete(report_factory) -> None:
     assert "no commands run: the report gives no evidence the diff was inspected" in result.reasons
 
 
+# A commands_run list whose every command is blank is no more evidence than an
+# empty list (vibe-check #2, owner-approved round 6).
+_BLANK_COMMAND_LISTS = [
+    [{"command": "", "exit_code": None, "purpose": ""}],
+    [{"command": "   ", "exit_code": None, "purpose": ""}],
+    [{"command": "\n\t", "exit_code": 0, "purpose": "run tests"}],
+    [{"command": " ", "exit_code": None, "purpose": ""}, {"command": "", "exit_code": None, "purpose": ""}],
+]
+
+
+@pytest.mark.parametrize("report_factory", [_valid_report, _valid_v1_report])
+@pytest.mark.parametrize("commands", _BLANK_COMMAND_LISTS)
+def test_only_blank_commands_run_incomplete(report_factory, commands: list) -> None:
+    report = report_factory()
+    report["commands_run"] = commands
+    result = _assess(report, legacy_v1=report["schema_version"] == "1")
+    assert result.status == "incomplete"
+    assert "no commands run: the report gives no evidence the diff was inspected" in result.reasons
+
+
+def test_blank_commands_mixed_with_a_real_command_stay_complete() -> None:
+    report = _valid_report()
+    report["commands_run"] = [
+        {"command": "   ", "exit_code": None, "purpose": ""},
+        {"command": "uv run pytest tests/ -x -q", "exit_code": 0, "purpose": "run full test suite"},
+    ]
+    result = _assess(report)
+    assert result.status == "complete"
+    assert result.reasons == ()
+
+
+def test_cli_whitespace_only_commands_run_exits_one(tmp_path, capsys) -> None:
+    report = _valid_report()
+    report["commands_run"] = [{"command": "   ", "exit_code": None, "purpose": ""}]
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    exit_code = main(
+        [
+            "--report",
+            str(report_path),
+            "--exit-code",
+            "0",
+            "--expected-head",
+            H,
+            "--expected-base",
+            B,
+            "--current-head",
+            H,
+            "--attempt",
+            "1",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "incomplete"
+
+
 @pytest.mark.parametrize("coverage", [[""], ["   "], ["full diff reviewed", " "], ["\n\t"]])
 def test_blank_coverage_entry_incomplete(coverage: list) -> None:
     report = _valid_report()
