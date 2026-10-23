@@ -1,0 +1,179 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "b07e532dfd16a701b7631c6d7a3da6382960557d",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/35",
+  "scope": "Phase 83: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..b07e532dfd16a701b7631c6d7a3da6382960557d, with the requested planning-artifact exclusions.",
+  "verdict": "no-findings",
+  "summary": "Inspected all 19 in-scope changed files and relevant surrounding code. No actionable defects identified. Harness evidence records 2,432 passing tests on the requested head; 22 additional validator smoke checks passed.",
+  "coverage": [
+    "Full scoped diff, including the report schema, both planning JSON files, instructions, documentation, implementation, and tests. Truncated bulk output was supplemented with smaller file reads.",
+    "Review runner: explicit trust selection, prompt construction, detached checkout, evidence handling, output reservation races, provenance checks, stale heads, subprocess failures, timeouts, cleanup, and checker invocation.",
+    "Report checker: schema validation, malformed JSON, duplicate keys, version compatibility, commit binding, completeness, verdict consistency, finding identifiers, and reproduction evidence.",
+    "Acceptance and publication boundaries: classification, fallback reviews, per-head records, owner authorization, raw-output secret checks, and surrounding CI requirements.",
+    "Cycle-detail labels: legacy and per-queue malformed records, unequal counts, unevaluated queues, actual failures, failed grades, and surrounding state-to-template rendering.",
+    "Regression assertions and fixtures, including the distinction between mocked orchestration checks and actual subprocess tests.",
+    "Direct validator smoke checks covering a valid report, removal of each required field, stale head, wrong base, timeout, incomplete review, absent commands, and contradictory verdict."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm the inspected checkout identity."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm the requested base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..b07e532dfd16a701b7631c6d7a3da6382960557d -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read the full scoped diff; output truncation required subsequent smaller reads."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect harness test evidence and its commit identity."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory all 19 changed files."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect report validation."
+    },
+    {
+      "command": "cat tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner implementation; supplement truncated output below."
+    },
+    {
+      "command": "sed -n '1,310p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect subprocess management, input validation, and command construction."
+    },
+    {
+      "command": "sed -n '430,530p' tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect checker CLI and report-read errors."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/review-classification-policy.md docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Inspect review scope, trust, retry, classification, and acceptance-record policies."
+    },
+    {
+      "command": "cat docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect documented baseline, configuration intent, and upgrade constraints."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- CLAUDE.md docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Inspect instruction and acceptance changes and all added card regressions."
+    },
+    {
+      "command": "sed -n '165,300p' docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Complete baseline-document coverage after bulk-output truncation."
+    },
+    {
+      "command": "cat tests/test_codex_review_contract.py",
+      "exit_code": 0,
+      "purpose": "Inspect schema and contract regression assertions."
+    },
+    {
+      "command": "sed -n '1,330p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect valid fixtures, malformed JSON tests, and schema violations."
+    },
+    {
+      "command": "sed -n '140,165p' docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect the remaining baseline approval and configuration section."
+    },
+    {
+      "command": "sed -n '331,670p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect compatibility, completeness, staleness, and evidence tests."
+    },
+    {
+      "command": "sed -n '671,1000p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect finding consistency and checker CLI regressions."
+    },
+    {
+      "command": "sed -n '1,420p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect prompt, pathspec, argument, dry-run, and fake-runner tests."
+    },
+    {
+      "command": "sed -n '421,850p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect orchestration, trust, privacy, provenance, concurrency, and failure tests."
+    },
+    {
+      "command": "sed -n '851,1300p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect stale-head, symlink, changed-input, decoding, and process-group tests."
+    },
+    {
+      "command": "rg -n 'def .*cycle|malformed data|queue not evaluated|reason_count|eligible item' triggarr/web tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Locate cycle-label callers and regressions."
+    },
+    {
+      "command": "rg -n 'malformed data|queue not evaluated|reason_count|def .*cycle' triggarr",
+      "exit_code": 0,
+      "purpose": "Locate cycle-state producers and presentation helpers."
+    },
+    {
+      "command": "cat triggarr/templates/partials/cycle_grade.html docs/owner-cli-acceptance.md; sed -n '1,145p' CLAUDE.md; sed -n '1,150p' docs/buildomator-greptile-pilot.md",
+      "exit_code": 0,
+      "purpose": "Inspect complete template and surrounding authorization policies."
+    },
+    {
+      "command": "sed -n '1,370p' triggarr/search/outcome.py; sed -n '450,550p' tests/test_app_cards.py; rg -n 'cycle_view|cycle_grade.html' triggarr/web triggarr/templates; cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Trace cycle data validation and rendering, inspect fixtures and test configuration."
+    },
+    {
+      "command": "sed -n '310,650p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Complete runner coverage and revisit evidence, reservation, and cleanup paths."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport ast\nimport json\nfrom pathlib import Path\nfrom tests.codex_report_status import assess_report\nsource = ast.parse(Path('tests/test_codex_report_status.py').read_text())\nselected = [n for n in source.body if isinstance(n, ast.FunctionDef) and n.name in {'_finding_f001', '_finding_f002', '_valid_report'}]\nns = {'H': 'a' * 40, 'B': 'b' * 40}\nexec(compile(ast.Module(body=selected, type_ignores=[]), '<fixtures>', 'exec'), ns)\nbase = ns['_valid_report']()\ndef check(report, expected, **overrides):\n    args = dict(exit_code=0, expected_head=ns['H'], expected_base=ns['B'], current_head=ns['H'], attempt=1)\n    args.update(overrides)\n    result = assess_report(json.dumps(report), **args)\n    assert result.status == expected, result\ncheck(base, 'complete')\nfor key in base:\n    report = dict(base)\n    del report[key]\n    check(report, 'incomplete')\ncheck(base, 'incomplete', current_head='c' * 40)\ncheck(base, 'incomplete', expected_base='c' * 40)\ncheck(base, 'incomplete', exit_code=124)\ncheck(dict(base, review_complete=False, incomplete_reasons=['unfinished']), 'incomplete')\ncheck(dict(base, commands_run=[]), 'incomplete')\ncheck(dict(base, verdict='no-findings'), 'incomplete')\nprint('Validator smoke checks passed: valid report, all missing required fields, stale head, wrong base, timeout, incomplete review, absent commands, contradictory verdict.')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt validator smoke checks; shell could not create a here-document temporary file. Retried successfully with -c."
+    },
+    {
+      "command": "git status --short; sed -n '330,410p' triggarr/web/routes.py; sed -n '1,65p' triggarr/templates/partials/app_card.html; cat .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Confirm working-copy state and inspect template callers and CI boundaries."
+    },
+    {
+      "command": "python3 -B -c 'import ast, json\nfrom pathlib import Path\nfrom tests.codex_report_status import assess_report\nsource = ast.parse(Path(\"tests/test_codex_report_status.py\").read_text())\nselected = [n for n in source.body if isinstance(n, ast.FunctionDef) and n.name in {\"_finding_f001\", \"_finding_f002\", \"_valid_report\"}]\nns = {\"H\": \"a\" * 40, \"B\": \"b\" * 40}\nexec(compile(ast.Module(body=selected, type_ignores=[]), \"<fixtures>\", \"exec\"), ns)\nbase = ns[\"_valid_report\"]()\ndef check(report, expected, **overrides):\n    args = dict(exit_code=0, expected_head=ns[\"H\"], expected_base=ns[\"B\"], current_head=ns[\"H\"], attempt=1)\n    args.update(overrides)\n    result = assess_report(json.dumps(report), **args)\n    assert result.status == expected, result\ncheck(base, \"complete\")\nfor key in base:\n    report = dict(base)\n    del report[key]\n    check(report, \"incomplete\")\ncheck(base, \"incomplete\", current_head=\"c\" * 40)\ncheck(base, \"incomplete\", expected_base=\"c\" * 40)\ncheck(base, \"incomplete\", exit_code=124)\ncheck(dict(base, review_complete=False, incomplete_reasons=[\"unfinished\"]), \"incomplete\")\ncheck(dict(base, commands_run=[]), \"incomplete\")\ncheck(dict(base, verdict=\"no-findings\"), \"incomplete\")\nprint(\"22 validator smoke checks passed.\")\n'",
+      "exit_code": 0,
+      "purpose": "Run 22 validator smoke checks without writing files."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox. Used the harness evidence recording 2,432 passed, 38 warnings, exit 0 on the exact requested head.",
+    "Did not execute a nested Codex review, create worktrees, or perform browser/container verification.",
+    "Review was confined to this working copy; live GitHub protections and externally installed BM behavior were not independently verified.",
+    "The first smoke-check invocation was blocked by shell temporary-file creation; the equivalent -c invocation passed."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
