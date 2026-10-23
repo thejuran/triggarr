@@ -416,7 +416,10 @@ def assess_report(
         elif not all(_non_blank(entry) for entry in coverage if isinstance(entry, str)):
             reasons.append("blank coverage entry")
     commands = report.get("commands_run")
-    if isinstance(commands, list) and not commands:
+    # Entries with a blank command are no evidence, so a list of only those counts as empty.
+    if isinstance(commands, list) and not any(
+        isinstance(entry, dict) and _non_blank(entry.get("command")) for entry in commands
+    ):
         reasons.append("no commands run: the report gives no evidence the diff was inspected")
 
     status: Literal["complete", "incomplete"] = "incomplete" if reasons else "complete"
