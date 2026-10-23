@@ -1,0 +1,212 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "49ded1e86444bc7122b7f0dda6e557312057a7a7",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/35",
+  "scope": "Phase 83 PR #35: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..49ded1e86444bc7122b7f0dda6e557312057a7a7, with the requested planning exclusions.",
+  "verdict": "no-findings",
+  "summary": "Inspected all 19 in-scope changed files and relevant surrounding code. No actionable defects identified. Seven independent report-checker probes passed; harness evidence records 2,400 passing tests on the requested head.",
+  "coverage": [
+    "Full scoped diff, including the report schema, both planning JSON files, instructions, operational documentation, review tooling, tests, and cycle-grade template. Truncated aggregate output was supplemented with targeted reads.",
+    "Runner: trust refusal, argument construction, prompt substitution, exact-head binding, output reservation races, evidence-path symlinks, provenance, timeout/error handling, cleanup, and checker invocation.",
+    "Checker: schema/type validation, duplicate keys, malformed JSON, version compatibility, structural completeness, findings consistency, command evidence, and stale or wrong commit identities.",
+    "Cycle details: legacy malformed counts, per-queue counts, mismatches, unevaluated queues, mixed failures, failed-grade behavior, and route-to-view-to-template integration.",
+    "Review classification, checkpoint records, retry policy, audit/publication safeguards, and preservation of exact-commit human acceptance.",
+    "Regression assertions and mocked orchestration tests; seven independent in-memory checker probes; supplied exact-head pytest evidence."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout identity."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm the requested base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..49ded1e86444bc7122b7f0dda6e557312057a7a7 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect scoped changes; output truncation required subsequent targeted reads."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory all 19 changed files."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect harness-produced exact-head test evidence."
+    },
+    {
+      "command": "cat scripts/run-codex-review.py",
+      "exit_code": 1,
+      "purpose": "Attempt to locate runner; this guessed path does not exist."
+    },
+    {
+      "command": "cat tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner implementation; supplement truncated output below."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect report assessment implementation."
+    },
+    {
+      "command": "sed -n '480,668p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining orchestration, cleanup, and CLI implementation."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Inspect review contract and content-based classification requirements."
+    },
+    {
+      "command": "cat docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Inspect checkpoint, disposition, retry, and acceptance records."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- tests/test_app_cards.py docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md CLAUDE.md",
+      "exit_code": 0,
+      "purpose": "Inspect application regressions and all modified instruction/acceptance hunks."
+    },
+    {
+      "command": "cat tests/test_codex_review_contract.py",
+      "exit_code": 0,
+      "purpose": "Inspect contract and schema drift guards."
+    },
+    {
+      "command": "sed -n '1,300p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect rendering, pathspec, naming, and argument tests."
+    },
+    {
+      "command": "sed -n '301,700p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect orchestration, trust, privacy, and provenance tests."
+    },
+    {
+      "command": "sed -n '701,1041p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect concurrency, error, stale-head, symlink, and mutation tests."
+    },
+    {
+      "command": "sed -n '1,430p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect schema, malformed-input, and completeness tests."
+    },
+    {
+      "command": "sed -n '431,900p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect historical compatibility, identity, finding-consistency, and CLI tests."
+    },
+    {
+      "command": "cat docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect baseline, upgrade, settings, and behavior documentation; supplement truncation below."
+    },
+    {
+      "command": "rg -n 'malformed data|not evaluated:|eligible item|malformed record|def .*cycle|cycle_grade' triggarr/web triggarr/templates tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Locate cycle-template callers and related assertions."
+    },
+    {
+      "command": "sed -n '450,485p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect worktree creation and preflight boundaries."
+    },
+    {
+      "command": "rg -n 'malformed data|not evaluated:|eligible item|malformed record|def .*cycle' triggarr --glob '*.py'",
+      "exit_code": 0,
+      "purpose": "Locate cycle reason producers and grading logic."
+    },
+    {
+      "command": "sed -n '145,200p' docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Supplement baseline documentation read."
+    },
+    {
+      "command": "cat triggarr/templates/partials/cycle_grade.html triggarr/templates/partials/app_card.html",
+      "exit_code": 0,
+      "purpose": "Inspect complete template and both card rendering branches."
+    },
+    {
+      "command": "cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Check dependencies and test configuration."
+    },
+    {
+      "command": "sed -n '1,120p' triggarr/search/outcome.py",
+      "exit_code": 0,
+      "purpose": "Inspect cycle grading and tally behavior."
+    },
+    {
+      "command": "sed -n '200,380p' triggarr/search/outcome.py",
+      "exit_code": 0,
+      "purpose": "Inspect normalization and all detail-row producers."
+    },
+    {
+      "command": "sed -n '1,115p' tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Inspect application test fixtures and route setup."
+    },
+    {
+      "command": "rg -n 'cycle_view|review-acceptance|REVIEW_DISPOSITIONS' triggarr/web/routes.py .github/workflows/review-acceptance.yml docs/owner-cli-acceptance.md docs/buildomator-greptile-pilot.md",
+      "exit_code": 0,
+      "purpose": "Trace view integration and existing acceptance safeguards."
+    },
+    {
+      "command": "sed -n '135,150p' docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Complete the previously truncated baseline passage."
+    },
+    {
+      "command": "cat docs/owner-cli-acceptance.md .github/workflows/review-acceptance.yml",
+      "exit_code": 0,
+      "purpose": "Cross-check changed acceptance prose against surrounding policy and workflow."
+    },
+    {
+      "command": "sed -n '65,105p' docs/buildomator-greptile-pilot.md",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding review and publication safeguards."
+    },
+    {
+      "command": "sed -n '360,410p' triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Trace persisted cycle state into rendered card data."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport json\nfrom tests.codex_report_status import assess_report\nh = 'a' * 40\nb = 'b' * 40\nr = dict(schema_version='2', inspected_head_sha=h, inspected_base_sha=b, pr_url='local', scope='all', verdict='no-findings', summary='Reviewed.', coverage=['Full diff'], exclusions=[], commands_run=[dict(command='git diff', exit_code=0, purpose='Inspect diff')], findings=[], limitations=[], review_complete=True, incomplete_reasons=[])\ndef check(report, expected, **kw):\n    args = dict(exit_code=0, expected_head=h, expected_base=b, current_head=h, attempt=1)\n    args.update(kw)\n    result = assess_report(json.dumps(report), **args)\n    assert result.status == expected, result\ncheck(r, 'complete')\ncheck(r, 'incomplete', exit_code=124)\ncheck(r, 'incomplete', current_head='c' * 40)\ncheck(dict(r, review_complete=False, incomplete_reasons=['Uninspected file']), 'incomplete')\ncheck(dict(r, commands_run=[]), 'incomplete')\ncheck(dict(r, findings=None), 'incomplete')\ncheck(dict(r, incomplete_reasons=['Uninspected file']), 'incomplete')\nprint('7 checker probes passed')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt in-memory checker probes; shell could not create its heredoc temporary file."
+    },
+    {
+      "command": "python3 -B -c 'import json; from tests.codex_report_status import assess_report; h=\"a\"*40; b=\"b\"*40; r=dict(schema_version=\"2\",inspected_head_sha=h,inspected_base_sha=b,pr_url=\"local\",scope=\"all\",verdict=\"no-findings\",summary=\"Reviewed.\",coverage=[\"Full diff\"],exclusions=[],commands_run=[dict(command=\"git diff\",exit_code=0,purpose=\"Inspect diff\")],findings=[],limitations=[],review_complete=True,incomplete_reasons=[]); cases=[(r,{},\"complete\"),(r,dict(exit_code=124),\"incomplete\"),(r,dict(current_head=\"c\"*40),\"incomplete\"),(dict(r,review_complete=False,incomplete_reasons=[\"Uninspected file\"]),{},\"incomplete\"),(dict(r,commands_run=[]),{},\"incomplete\"),(dict(r,findings=None),{},\"incomplete\"),(dict(r,incomplete_reasons=[\"Uninspected file\"]),{},\"incomplete\")]; defaults=dict(exit_code=0,expected_head=h,expected_base=b,current_head=h,attempt=1); results=[assess_report(json.dumps(report),**(defaults|kw)).status==expected for report,kw,expected in cases]; assert all(results),results; print(\"7 checker probes passed\")'",
+      "exit_code": 0,
+      "purpose": "Successfully run seven checker probes without filesystem writes."
+    },
+    {
+      "command": "git status --short",
+      "exit_code": 0,
+      "purpose": "Confirm no tracked changes; only supplied evidence remains untracked."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox. Supplied harness evidence records exit 0, 2,400 passed, and 38 warnings on the exact requested head.",
+    "Did not invoke nested Codex sessions, create worktrees, or exercise the runner's filesystem orchestration dynamically; assessed those paths through code and regression tests.",
+    "External BM installation/version claims, live GitHub protections, and browser presentation were not independently verified. Reads remained within this working copy."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
