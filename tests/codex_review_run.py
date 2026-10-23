@@ -8,7 +8,8 @@ Implements docs/codex-adversarial-review-contract.md, Invocation:
    of those files, harness HEAD) as ``<OUT>.meta.json``.
 1. Creates a detached worktree of the exact head SHA in a fresh temp dir.
 2. Runs ``uv run --extra dev pytest tests/ -q`` inside that worktree,
-   outside the Codex sandbox, and saves the combined output and exit code
+   outside the Codex sandbox, in its own process group so a timeout kills
+   pytest and not just ``uv``, and saves the combined output and exit code
    as ``<OUT>.pytest.txt`` next to the raw Codex outputs. A copy goes into
    the worktree, created exclusively and without following links; the run
    is refused if the reviewed tree already has anything at that path.
@@ -38,6 +39,7 @@ production code under the loguru-only convention documented in CLAUDE.md
 from __future__ import annotations
 
 import argparse
+import contextlib
 import getpass
 import hashlib
 import json
@@ -45,6 +47,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -98,6 +101,49 @@ _LABEL_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
 
 CommandRunner = Callable[..., subprocess.CompletedProcess]
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    # ProcessLookupError: the whole group has already exited.
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(proc.pid, signal.SIGKILL)
+
+
+def run_command(
+    argv: list[str],
+    *,
+    start_new_session: bool = False,
+    input: str | None = None,
+    timeout: float | None = None,
+    check: bool = False,
+    **kwargs,
+) -> subprocess.CompletedProcess:
+    """subprocess.run, except a child started in its own session is killed as a whole group.
+
+    `uv run` starts pytest as a child of its own, so killing only the direct
+    child on a timeout would leave pytest running. With *start_new_session*
+    the child leads a new process group, and a timeout (or any other
+    interruption) kills that group before re-raising.
+    """
+    if not start_new_session:
+        return subprocess.run(argv, input=input, timeout=timeout, check=check, **kwargs)
+    if input is not None:
+        kwargs["stdin"] = subprocess.PIPE
+    with subprocess.Popen(argv, start_new_session=True, **kwargs) as proc:
+        try:
+            stdout, stderr = proc.communicate(input, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            _kill_group(proc)
+            exc.stdout, exc.stderr = proc.communicate()
+            raise
+        except BaseException:
+            _kill_group(proc)
+            proc.wait()
+            raise
+    completed = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+    if check:
+        completed.check_returncode()
+    return completed
 
 
 class RunnerError(RuntimeError):
@@ -210,8 +256,9 @@ def pytest_argv() -> list[str]:
 
 
 def codex_argv(worktree: Path, last_json: Path) -> list[str]:
-    # The time limit is enforced in-process (subprocess timeout), not by an
-    # external `timeout` binary, which macOS does not ship.
+    # The time limit is enforced in-process (run_command's timeout, which
+    # kills the whole process group), not by an external `timeout` binary,
+    # which macOS does not ship.
     return [
         "codex",
         "exec",
@@ -333,6 +380,7 @@ def _run_pytest(run: ReviewRun, worktree: Path, scratch: Path, command_runner: C
             text=True,
             errors="replace",
             timeout=PYTEST_TIMEOUT_SECONDS,
+            start_new_session=True,
         )
         exit_code, output = str(proc.returncode), proc.stdout or ""
     except subprocess.TimeoutExpired as exc:
@@ -368,6 +416,7 @@ def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: Comm
                 stdout=events,
                 text=True,
                 timeout=CODEX_TIMEOUT_SECONDS,
+                start_new_session=True,
             )
         except subprocess.TimeoutExpired:
             print(f"codex timed out after {CODEX_TIMEOUT_SECONDS}s")
@@ -465,7 +514,7 @@ def _add_worktree(run: ReviewRun, worktree: Path, command_runner: CommandRunner)
 
 
 def execute(
-    run: ReviewRun, *, command_runner: CommandRunner = subprocess.run, allow_stale_head: bool = False
+    run: ReviewRun, *, command_runner: CommandRunner = run_command, allow_stale_head: bool = False
 ) -> int:
     """Run the full review pass. Returns the checker's exit code (0 = complete).
 
