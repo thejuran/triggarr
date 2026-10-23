@@ -1,0 +1,164 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "d90c1c135dacec904c7df183a2d3ff7071699f24",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/35",
+  "scope": "Full requested 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..d90c1c135dacec904c7df183a2d3ff7071699f24 diff, with the specified planning exclusions.",
+  "verdict": "no-findings",
+  "summary": "Inspected all 19 in-scope files. No actionable defects found. Harness evidence reports 2,432 passing tests on the requested head. Independent validation passed Ruff, eight report-status checks, and two dashboard rendering checks.",
+  "coverage": [
+    "Review schema, configuration changes, and saved configuration baseline.",
+    "CLAUDE.md and all changed review, classification, checkpoint, baseline, and acceptance documents.",
+    "Runner trust boundary, prompt construction, output reservation, timeout/process-group handling, cleanup, evidence redaction, provenance, and stale-input checks.",
+    "Report checker schema validation, malformed JSON, legacy-version handling, completeness, commit binding, and finding consistency.",
+    "All changed regression tests, including assertions and fake-runner limitations.",
+    "Dashboard summary wording and surrounding cycle_view behavior for malformed records, legacy state, unevaluated queues, and failed grades.",
+    "Acceptance fallback wording, exact-head authorization, and relevant existing CI and publication safeguards."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout identity."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm requested base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..d90c1c135dacec904c7df183a2d3ff7071699f24 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff; truncated sections were subsequently inspected separately."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory all 19 scoped files."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "git status --short; rg --files tests | rg 'codex|review|cycle'",
+      "exit_code": 0,
+      "purpose": "Inspect checkout state and locate relevant tests."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect report checker."
+    },
+    {
+      "command": "cat tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect review runner."
+    },
+    {
+      "command": "sed -n '1,290p' tests/codex_review_run.py; sed -n '470,530p' tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Recover truncated source sections."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Inspect review contract and classification requirements."
+    },
+    {
+      "command": "cat docs/review-checkpoint-record.md; git diff 6f3841a..HEAD -- CLAUDE.md docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md tests/test_app_cards.py triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Inspect checkpoint policy and policy/UI changes."
+    },
+    {
+      "command": "cat docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect baseline and upgrade record."
+    },
+    {
+      "command": "sed -n '85,160p' docs/bm-review-baseline-2026-10-22.md; git diff 6f3841a..HEAD -- tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Inspect baseline details and dashboard regressions."
+    },
+    {
+      "command": "sed -n '1,480p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect checker regression tests, first half."
+    },
+    {
+      "command": "sed -n '481,1000p' tests/test_codex_report_status.py; cat tests/test_codex_review_contract.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining checker tests and contract drift guards."
+    },
+    {
+      "command": "sed -n '1,440p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner tests, first section."
+    },
+    {
+      "command": "sed -n '441,880p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner orchestration, privacy, concurrency, and error tests."
+    },
+    {
+      "command": "sed -n '881,1265p' tests/test_codex_review_run.py; sed -n '285,310p' tests/codex_review_run.py; rg -n 'malformed_by_queue|def .*cycle|not evaluated|eligible item' triggarr/web",
+      "exit_code": 1,
+      "purpose": "Inspect remaining runner tests and source; final search returned no matches."
+    },
+    {
+      "command": "rg -n 'malformed_by_queue|not evaluated|eligible item|def .*cycle' triggarr | head -80; cat docs/owner-cli-acceptance.md; sed -n '1,125p' docs/buildomator-greptile-pilot.md; cat .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Locate cycle presentation logic and inspect surrounding acceptance and CI safeguards."
+    },
+    {
+      "command": "sed -n '219,370p' triggarr/search/outcome.py; cat triggarr/templates/partials/cycle_grade.html; git diff 6f3841a..HEAD -- tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Trace dashboard data preparation and inspect full UI regression diff."
+    },
+    {
+      "command": "sed -n '1,85p' docs/bm-review-baseline-2026-10-22.md; cat tests/test_review_checkpoint_record.py tests/test_review_instructions.py",
+      "exit_code": 0,
+      "purpose": "Complete baseline and policy-test inspection."
+    },
+    {
+      "command": ".venv/bin/ruff check --no-cache tests/codex_report_status.py tests/codex_review_run.py tests/test_app_cards.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_codex_review_run.py tests/test_review_checkpoint_record.py tests/test_review_instructions.py",
+      "exit_code": 0,
+      "purpose": "Lint all changed Python files without writing cache."
+    },
+    {
+      "command": ".venv/bin/python -B - <<'PY'\nimport json\nfrom tests.codex_report_status import assess_report\nfrom jinja2 import Environment, FileSystemLoader\nfrom triggarr.search.outcome import cycle_view\nh, b = 'a'*40, 'b'*40\nreport = dict(schema_version='2', inspected_head_sha=h, inspected_base_sha=b, pr_url='local', scope='full diff', verdict='no-findings', summary='Reviewed full diff.', coverage=['full diff'], exclusions=[], commands_run=[dict(command='git diff',exit_code=0,purpose='inspect')], findings=[], limitations=[], review_complete=True, incomplete_reasons=[])\ncases = [({},0,h,'complete'), ({},124,h,'incomplete'), ({},0,b,'incomplete'), ({'review_complete':False,'incomplete_reasons':['unfinished']},0,h,'incomplete'), ({'schema_version':'1'},0,h,'incomplete'), ({'commands_run':[]},0,h,'incomplete')]\nfor changes, code, current, expected in cases:\n    actual=assess_report(json.dumps(report | changes),exit_code=code,expected_head=h,expected_base=b,current_head=current,attempt=1)\n    assert actual.status == expected, actual\nprint('6 report-status cases passed')\nenv=Environment(loader=FileSystemLoader('triggarr/templates'),autoescape=True)\nenv.filters['exact_time']=env.filters['relative_time']=lambda x: ''\ntemplate=env.get_template('partials/cycle_grade.html')\nfor grade in ['partial','failed']:\n    record=dict(grade=grade,accepted=1,failed=0,malformed_skipped=3,malformed_by_queue={'missing':2,'cutoff':1})\n    view=cycle_view(record,'Radarr')\n    html=template.render(app=dict(last_cycle=view,app_label='Radarr'))\n    expected='Show 3 skipped records' if grade=='partial' else 'Show 2 failure reasons'\n    assert expected in html\nprint('2 dashboard render cases passed')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt targeted validation; shell could not create heredoc temporary file. Replaced with successful -c commands."
+    },
+    {
+      "command": "sed -n '150,215p' docs/bm-review-baseline-2026-10-22.md; sed -n '1,85p' triggarr/search/outcome.py; rg -n 'cycle_view|cycle_grade.html|def _last_cycle_record' triggarr tests/test_app_cards.py; git status --short; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Complete surrounding-code inspection and reconfirm unchanged checkout."
+    },
+    {
+      "command": ".venv/bin/python -B -c 'from tests import test_codex_report_status as t; checks = [t.test_valid_report_is_complete, t.test_exit_code_timeout_incomplete, t.test_wrong_head_incomplete, t.test_wrong_base_incomplete, t.test_stale_report_incomplete, t.test_v2_review_complete_false_with_reasons_incomplete, t.test_v1_report_without_legacy_flag_incomplete, t.test_duplicate_key_json_incomplete]; [check() for check in checks]; print(\"8 report-status checks passed\")'",
+      "exit_code": 0,
+      "purpose": "Independently execute eight checker regression checks without file writes."
+    },
+    {
+      "command": ".venv/bin/python -B -c 'from jinja2 import Environment, FileSystemLoader; from triggarr.search.outcome import cycle_view; env=Environment(loader=FileSystemLoader(\"triggarr/templates\"),autoescape=True); env.filters[\"exact_time\"]=env.filters[\"relative_time\"]=lambda x: \"\"; template=env.get_template(\"partials/cycle_grade.html\"); cases=[(\"partial\",\"Show 3 skipped records\"),(\"failed\",\"Show 2 failure reasons\")]; results=[template.render(app=dict(last_cycle=cycle_view(dict(grade=grade,accepted=1,failed=0,malformed_skipped=3,malformed_by_queue={\"missing\":2,\"cutoff\":1}),\"Radarr\"),app_label=\"Radarr\")) for grade,expected in cases]; assert all(expected in html for (_,expected),html in zip(cases,results)); print(\"2 dashboard render checks passed\")'",
+      "exit_code": 0,
+      "purpose": "Independently verify partial and failed dashboard summaries."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Full pytest was not rerun in the read-only sandbox; relied on the supplied exact-head harness evidence and independent write-free checks.",
+    "Live GitHub protections, external BM installation behavior, and publication were not exercised; review was confined to this working copy.",
+    "Runner orchestration tests primarily use fake subprocess results; a fresh end-to-end Codex invocation was not performed.",
+    "Large initial outputs were truncated; relevant sections were subsequently read in smaller commands."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

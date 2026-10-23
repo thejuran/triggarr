@@ -1,0 +1,168 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "36eaa67c29764e008cdafe5babbd55a69f70b834",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 83 changes: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..36eaa67c29764e008cdafe5babbd55a69f70b834, with the requested planning-artifact exclusions.",
+  "verdict": "no-findings",
+  "summary": "Inspected all 19 in-scope files and relevant surrounding code. No actionable defects found. Harness evidence records 2,400 passing tests on the requested head; eight independent checker probes also passed.",
+  "coverage": [
+    "Full scoped diff, including all added tests, schema, configuration, instructions, and operational documentation.",
+    "Review runner: trust refusal, exact-head binding, input provenance, output reservation, subprocess failures, cleanup, evidence redaction, symlink refusal, and post-run input changes.",
+    "Report checker: schema validation, malformed JSON, completeness, stale and wrong commits, finding consistency, and historical schema compatibility.",
+    "Regression assertions and fake-runner behavior, including the fourth-round test changes.",
+    "Cycle-detail labels traced through cycle_view and CycleTally, covering legacy records, mismatched counts, unevaluated queues, mixed failures, and failed grades.",
+    "Classification, checkpoint records, retry rules, owner acceptance, and existing acceptance workflow boundaries.",
+    "Eight independent in-memory checker probes: valid report, timeout, stale head, wrong base, declared incompleteness, absent commands, blank coverage, and invalid findings."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..36eaa67c29764e008cdafe5babbd55a69f70b834 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff; truncated portions were subsequently inspected through individual file reads."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..36eaa67c29764e008cdafe5babbd55a69f70b834 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory all 19 scoped files."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "cat scripts/run_codex_review.py",
+      "exit_code": 1,
+      "purpose": "Attempt to locate runner; corrected to tests/codex_review_run.py."
+    },
+    {
+      "command": "cat tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner implementation."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect report checker."
+    },
+    {
+      "command": "sed -n '480,700p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Read runner orchestration and CLI omitted from truncated output."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Inspect review scope, invocation, trust, retry, and classification requirements."
+    },
+    {
+      "command": "cat docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Inspect evidence retention and acceptance procedure."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Inspect policy edits and all added card-label tests."
+    },
+    {
+      "command": "cat docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect baseline documentation and configuration-change rationale."
+    },
+    {
+      "command": "sed -n '1,420p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect rendering, scope, CLI, and orchestration tests."
+    },
+    {
+      "command": "sed -n '421,790p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect trust, privacy, provenance, reservation, and failure tests."
+    },
+    {
+      "command": "sed -n '1,440p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect schema and completeness regression tests."
+    },
+    {
+      "command": "sed -n '441,900p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect historical compatibility, commit binding, consistency, and CLI tests."
+    },
+    {
+      "command": "cat tests/test_codex_review_contract.py",
+      "exit_code": 0,
+      "purpose": "Inspect contract and schema drift guards."
+    },
+    {
+      "command": "rg -n 'def .*cycle|malformed data|not evaluated:|eligible item|failure_reasons|fetch_failed' triggarr/web tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Locate surrounding card behavior and tests."
+    },
+    {
+      "command": "cat CLAUDE.md docs/owner-cli-acceptance.md",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding instruction and owner-authorization boundaries."
+    },
+    {
+      "command": "rg -n 'malformed data|not evaluated:|eligible item|def .*cycle' triggarr",
+      "exit_code": 0,
+      "purpose": "Locate cycle-view producers and callers."
+    },
+    {
+      "command": "cat docs/buildomator-greptile-pilot.md .github/workflows/review-acceptance.yml",
+      "exit_code": 0,
+      "purpose": "Compare policy changes with existing acceptance protections."
+    },
+    {
+      "command": "sed -n '1,380p' triggarr/search/outcome.py",
+      "exit_code": 0,
+      "purpose": "Trace persisted cycle records into template data."
+    },
+    {
+      "command": "sed -n '465,485p' tests/codex_review_run.py\nsed -n '790,1045p' tests/test_codex_review_run.py\ncat triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Finish runner and regression-test inspection; inspect complete changed template."
+    },
+    {
+      "command": ".venv/bin/python -B - <<'PY'\nimport json\nfrom tests.codex_report_status import assess_report\nfrom tests.codex_review_run import load_template, render_prompt, prompt_values, ReviewRun, EXCLUDE_PATHSPECS\nfrom pathlib import Path\nh='36eaa67c29764e008cdafe5babbd55a69f70b834'\nb='6f3841aaae4f2511efe6796f7f5c7ad50b423f90'\nr=dict(schema_version='2', inspected_head_sha=h, inspected_base_sha=b, pr_url='none', scope='full diff', verdict='no-findings', summary='Reviewed.', coverage=['Full diff'], exclusions=[], commands_run=[dict(command='git diff',exit_code=0,purpose='Inspect')], findings=[], limitations=[], review_complete=True, incomplete_reasons=[])\ndef check(report, expected, **overrides):\n    kw=dict(exit_code=0,expected_head=h,expected_base=b,current_head=h,attempt=1)\n    kw.update(overrides)\n    result=assess_report(json.dumps(report),**kw)\n    assert result.status == expected, result\ncheck(r,'complete')\ncheck(r,'incomplete',exit_code=124)\ncheck(r,'incomplete',current_head='e'*40)\ncheck(r,'incomplete',expected_base='e'*40)\ncheck(dict(r,review_complete=False,incomplete_reasons=['Uninspected file']),'incomplete')\ncheck(dict(r,commands_run=[]),'incomplete')\ncheck(dict(r,coverage=[' ']),'incomplete')\ncheck(dict(r,findings=None),'incomplete')\nrun=ReviewRun(h,b,'explicit',1,'none','full diff',Path('.planning/phases/83-paired-bm-codex-review-risk-based-depth'),True)\nprompt=render_prompt(load_template(),prompt_values(run))\nassert '{{' not in prompt\nassert all(p in prompt for p in EXCLUDE_PATHSPECS)\nprint('8 checker cases and fixed-prompt rendering passed; no files written')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt independent probes; shell could not create a heredoc temporary file in the read-only sandbox."
+    },
+    {
+      "command": "git status --short",
+      "exit_code": 0,
+      "purpose": "Confirm only harness evidence is untracked."
+    },
+    {
+      "command": ".venv/bin/python -B -c 'import json; from tests.codex_report_status import assess_report; h=\"36eaa67c29764e008cdafe5babbd55a69f70b834\"; b=\"6f3841aaae4f2511efe6796f7f5c7ad50b423f90\"; r=dict(schema_version=\"2\", inspected_head_sha=h, inspected_base_sha=b, pr_url=\"none\", scope=\"full diff\", verdict=\"no-findings\", summary=\"Reviewed.\", coverage=[\"Full diff\"], exclusions=[], commands_run=[dict(command=\"git diff\",exit_code=0,purpose=\"Inspect\")], findings=[], limitations=[], review_complete=True, incomplete_reasons=[]); cases=[(r,{},\"complete\"),(r,dict(exit_code=124),\"incomplete\"),(r,dict(current_head=\"e\"*40),\"incomplete\"),(r,dict(expected_base=\"e\"*40),\"incomplete\"),(dict(r,review_complete=False,incomplete_reasons=[\"Uninspected file\"]),{},\"incomplete\"),(dict(r,commands_run=[]),{},\"incomplete\"),(dict(r,coverage=[\" \"]),{},\"incomplete\"),(dict(r,findings=None),{},\"incomplete\")]; results=[assess_report(json.dumps(report), **(dict(exit_code=0,expected_head=h,expected_base=b,current_head=h,attempt=1)|overrides)).status for report,overrides,expected in cases]; assert results == [expected for report,overrides,expected in cases], results; print(\"8 checker cases passed; no files written\")'",
+      "exit_code": 0,
+      "purpose": "Successfully run eight independent checker probes without writing files."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently rerun pytest: the sandbox is read-only and the suite requires filesystem writes. Used the harness's exact-head evidence: 2,400 passed, 38 warnings.",
+    "No live Codex subprocess, GitHub acceptance, installed BM plugin, or browser integration exercise was performed. External installation and hosted-policy claims were assessed only against repository material.",
+    "Initial large outputs were truncated; subsequent individual and ranged reads covered all omitted in-scope content."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

@@ -1,0 +1,157 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90..dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952, excluding .planning/**",
+  "verdict": "findings",
+  "summary": "Inspected all 17 changed files. Found one security issue in evidence publication to untrusted worktrees. Locally ran 123 passing tests; harness evidence reports 2,383 passing tests on the requested head.",
+  "coverage": [
+    "Full in-scope diff, including all added tests; initially truncated output was recovered through individual file reads.",
+    "Runner trust selection, subprocess arguments, timeouts, cleanup, output reservation, provenance and stale-head handling.",
+    "Report schema, recursive validation, completeness checks, historical-version compatibility and finding identifiers.",
+    "Review classification, checkpoint records, owner acceptance and publication safeguards.",
+    "Cycle-detail labels traced through cycle_view, dashboard callers and regression tests."
+  ],
+  "exclusions": [
+    "Everything under .planning/** is outside review scope."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..dbe1b7f56bdd0dd20f70f8a07691a7b2c3684952 -- . ':(exclude,glob).planning/**'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff; output truncated and subsequently recovered."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- . ':(exclude,glob).planning/**'",
+      "exit_code": 0,
+      "purpose": "Inventory changed files."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect harness test evidence."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect report checker."
+    },
+    {
+      "command": "cat tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner; recover truncated portions in later reads."
+    },
+    {
+      "command": "sed -n '1,145p' tests/codex_review_run.py; sed -n '340,479p' tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Recover runner definitions and checker completion logic."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Review contract and classification policy."
+    },
+    {
+      "command": "cat docs/review-checkpoint-record.md; git diff 6f3841aa..HEAD -- CLAUDE.md docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md tests/test_app_cards.py triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Review checkpoint policy, instruction changes and UI regressions."
+    },
+    {
+      "command": "cat docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect baseline documentation and stated behavior."
+    },
+    {
+      "command": "cat tests/test_codex_review_contract.py; sed -n '1,420p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Review contract and checker tests."
+    },
+    {
+      "command": "sed -n '421,880p' tests/test_codex_report_status.py; sed -n '1,410p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Review remaining checker tests and runner tests."
+    },
+    {
+      "command": "sed -n '411,850p' tests/test_codex_review_run.py; rg -n 'def .*cycle|malformed data|not evaluated:|malformed record|reason_count' triggarr/web tests/test_app_cards.py; cat triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Review remaining runner tests and template context."
+    },
+    {
+      "command": "rg -n 'malformed data|not evaluated:|reason_count|def .*cycle' triggarr; cat docs/owner-cli-acceptance.md; sed -n '1,145p' docs/buildomator-greptile-pilot.md; cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Locate cycle producers and inspect acceptance and test configuration."
+    },
+    {
+      "command": "sed -n '1,370p' triggarr/search/outcome.py; sed -n '1,110p' tests/conftest.py; sed -n '450,545p' tests/test_app_cards.py; rg -n 'cycle_view|cycle_grade.html' triggarr; git status --short; git ls-files .codex-review-evidence .planning/phases/83-paired-bm-codex-review-risk-based-depth/codex",
+      "exit_code": 0,
+      "purpose": "Trace template inputs, inspect fixtures and check evidence tracking."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider tests/test_codex_review_contract.py tests/test_review_checkpoint_record.py tests/test_review_instructions.py -q",
+      "exit_code": 1,
+      "purpose": "Attempt focused tests; pytest capture could not create temporary files."
+    },
+    {
+      "command": "nl -ba tests/codex_review_run.py | sed -n '250,290p'; sed -n '360,410p' triggarr/web/routes.py; cat .gitignore; cat .github/workflows/review-acceptance.yml",
+      "exit_code": 0,
+      "purpose": "Locate vulnerable write and inspect surrounding application and acceptance boundaries."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -s -p no:cacheprovider tests/test_codex_review_contract.py tests/test_review_checkpoint_record.py tests/test_review_instructions.py -q",
+      "exit_code": 0,
+      "purpose": "Run filesystem-write-free policy checks: 30 passed."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -s -p no:cacheprovider tests/test_codex_report_status.py -k 'not cli and not recorded' -q",
+      "exit_code": 0,
+      "purpose": "Run pure checker tests: 93 passed, 12 deselected."
+    },
+    {
+      "command": "sed -n '145,250p' tests/codex_review_run.py; sed -n '290,525p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Complete runner inspection and verify execution paths."
+    },
+    {
+      "command": "git rev-parse HEAD; git status --short",
+      "exit_code": 0,
+      "purpose": "Confirm unchanged head and working-copy status."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "high",
+      "title": "Reject symlinks before writing evidence into an untrusted worktree",
+      "file": "tests/codex_review_run.py",
+      "line_start": 278,
+      "line_end": 280,
+      "trigger": "An outside-contributor head contains .codex-review-evidence/pytest.txt as a symlink to an existing writable file outside the checkout, and the operator reviews it with --untrusted.",
+      "execution_path": "execute creates the detached worktree, then _run_pytest takes the untrusted branch and calls _publish_evidence. Path.write_text follows the checked-out symlink and truncates its target before Codex starts.",
+      "consequence": "An untrusted contribution can overwrite an operator-accessible file with the evidence text despite tests being disabled and Codex using a read-only sandbox. The host-side write occurs outside that sandbox.",
+      "evidence": "_publish_evidence creates the parent with exist_ok=True and writes to the fixed path without checking either the parent or destination for symlinks. _run_pytest explicitly calls it for untrusted heads at lines 284–285. Existing untrusted-source tests use an empty fake worktree and only verify that uv was not called, so they do not protect this boundary.",
+      "suggested_fix": "Reserve a fresh evidence directory that cannot be supplied by the reviewed tree, or reject pre-existing evidence paths and symlink components before writing. Use exclusive, no-follow file creation and add regressions for both a symlinked directory and a symlinked pytest.txt, asserting that external sentinel files remain unchanged.",
+      "reproduced": false,
+      "reproduction_command": null,
+      "hypothesis": "On a filesystem preserving Git symlinks, a committed pytest.txt symlink to a writable external sentinel will cause _publish_evidence to overwrite that sentinel. The execution path was traced statically; an overwrite reproduction was not attempted under the read-only restriction."
+    }
+  ],
+  "limitations": [
+    "Did not independently rerun the full pytest suite because it requires filesystem writes. Harness evidence reports 2,383 passed and 38 warnings on the exact head.",
+    "The first focused pytest invocation failed during temporary-file capture setup. Retrying with capture and plugin autoload disabled passed 30 tests; another 93 pure checker tests passed.",
+    "Did not execute the symlink overwrite reproduction, live Codex orchestration, browser checks or hosted acceptance flows.",
+    "External BM installation and historical approval claims were reviewed as repository documentation, not independently verified outside this working copy."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

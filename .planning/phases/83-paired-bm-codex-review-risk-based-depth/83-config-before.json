@@ -1,0 +1,16 @@
+{
+  "mode": "yolo",
+  "parallelization": true,
+  "commit_docs": true,
+  "model_profile": "balanced",
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "code_review": false,
+    "_auto_chain_active": false,
+    "tdd_mode": true
+  },
+  "granularity": "standard",
+  "resolve_model_ids": true
+}

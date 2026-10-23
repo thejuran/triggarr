@@ -20,10 +20,10 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 
 ### CI tests what we ship
 
-- [ ] **CISHIP-01**: CI starts the exact image it will publish, through its normal entrypoint, with isolated test config and mocked/test services, and verifies health, setup/login, static assets, writable config and persistence across a restart. A broken entrypoint and a missing static asset each make the check fail.
-- [ ] **CISHIP-02**: A small browser regression suite covers the connection-pill request-loop regression and critical setup/login behavior, asserting observable behavior (not screenshots). Reintroducing the polling bug makes it fail; failure logs/screenshots are uploaded as artifacts without secrets.
-- [ ] **CISHIP-03**: Before any version-tag publication, CI rejects a tag that disagrees with the package metadata or image version. Mismatch and match cases are tested without publishing a production tag; exact-commit CI and artifact identity checks are preserved.
-- [ ] **CISHIP-04**: The new mandatory jobs join the existing required aggregate gate and consistency checks together. A missing or skipped mandatory job cannot let the gate pass, and the published image is still the tested, audited artifact (not rebuilt).
+- [x] **CISHIP-01**: CI starts the exact image it will publish, through its normal entrypoint, with isolated test config and mocked/test services, and verifies health, setup/login, static assets, writable config and persistence across a restart. A broken entrypoint and a missing static asset each make the check fail.
+- [x] **CISHIP-02**: A small browser regression suite covers the connection-pill request-loop regression and critical setup/login behavior, asserting observable behavior (not screenshots). Reintroducing the polling bug makes it fail; failure logs/screenshots are uploaded as artifacts without secrets.
+- [x] **CISHIP-03**: Before any version-tag publication, CI rejects a tag that disagrees with the package metadata or image version. Mismatch and match cases are tested without publishing a production tag; exact-commit CI and artifact identity checks are preserved.
+- [x] **CISHIP-04**: The new mandatory jobs join the existing required aggregate gate and consistency checks together. A missing or skipped mandatory job cannot let the gate pass, and the published image is still the tested, audited artifact (not rebuilt).
 
 ### Follow-on CI improvements
 
@@ -50,7 +50,7 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 - [ ] **REVIEW-05**: Each review records requested versus actual depth and the instruction/configuration files responsible; any BM effective-depth reduction (e.g. deep → standard above 50 files) is reported rather than labelled deep.
 - [ ] **REVIEW-06**: Checkpoint evidence is bound to one pushed head: Greptile reviews the same head as Codex, the head stays frozen while independent reviews run, and after any fix the affected tests, finding dispositions and every applicable review are refreshed for the new head, with the original findings preserved for comparison. Evidence from an earlier head never counts for a later one.
 - [ ] **REVIEW-07**: A written review-classification policy exists. Ordinary documentation and planning-only changes receive a focused consistency review; Greptile, independent Codex code review and vibe-check are not routinely required for them. Classification depends on content, not file extension: changes to agent instructions, executable workflows, hooks, permissions, acceptance or release policy, or operational procedures are sensitive and require a risk assessment (RISK-01) and the applicable technical review, even when they live in Markdown. A mixed PR follows the requirements of its most consequential change.
-- [ ] **REVIEW-08**: Each PR records its classification and the rationale against its exact head SHA, and is reclassified when the head changes. Blanket "every PR" review wording is removed from `CLAUDE.md` and the BM/repository instructions and replaced by the REVIEW-07 policy, while REVIEW-02's pairing of Codex with every BM code-review run is kept. Demonstrated on an ordinary-docs PR and a sensitive-docs PR.
+- [ ] **REVIEW-08**: Each PR records its classification and the rationale against its exact head SHA, and is reclassified when the head changes. Blanket "every PR" review wording is removed from `CLAUDE.md` and the BM/repository instructions and replaced by the REVIEW-07 policy, while REVIEW-02's pairing of Codex with every BM code-review run is kept. Demonstrated on Phase 83's own sensitive-docs/mixed PR (owner decision 2026-10-22, Phase 83 D-14: the ordinary-docs-PR demonstration is removed because docs-only PRs are no longer opened; the policy still defines how ordinary docs/planning commits inside phase PRs are treated).
 
 ### Risk-based review depth
 
@@ -98,10 +98,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CISHIP-01 | Phase 82 | Pending |
-| CISHIP-02 | Phase 82 | Pending |
-| CISHIP-03 | Phase 82 | Pending |
-| CISHIP-04 | Phase 82 | Pending |
+| CISHIP-01 | Phase 82 | Complete |
+| CISHIP-02 | Phase 82 | Complete |
+| CISHIP-03 | Phase 82 | Complete |
+| CISHIP-04 | Phase 82 | Complete |
 | REVIEW-01 | Phase 83 | Pending |
 | REVIEW-02 | Phase 83 | Pending |
 | REVIEW-03 | Phase 83 | Pending |
@@ -137,4 +137,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-21*
-*Last updated: 2026-10-21 after adding the docs/planning review-classification policy (REVIEW-07, REVIEW-08, ACCEPT-03; 31 requirements, 100% coverage)*
+*Last updated: 2026-10-22 after amending REVIEW-08's demonstration per the owner's Phase 83 D-14 decision (31 requirements, 100% coverage)*

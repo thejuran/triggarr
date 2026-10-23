@@ -543,6 +543,306 @@ def test_card_malformed_by_queue_row_renders(client, test_app):
     assert "1 malformed record skipped" not in response.text
 
 
+# ---------------------------------------------------------------------------
+# 261022-l7h: Card label is never a failure for skip-only or unevaluated-queue rows (D-01..D-04)
+# ---------------------------------------------------------------------------
+
+
+def test_card_skip_only_partial_label_says_skipped_record(client, test_app):
+    """D-01/DISC-03: skip-only Partial cycle says 'skipped record', not 'failure reason'."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=1,
+        malformed_by_queue={"missing": 1},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 skipped record" in text
+    assert "Show 1 skipped records" not in text
+    assert "failure reason" not in text
+    assert "1 missing-queue record skipped — malformed data" in text
+    assert "Partial · 1 accepted, 0 failed" in text
+    assert "text-amber-400" in text
+
+
+def test_card_skip_only_plural_counts_records_not_rows(client, test_app):
+    """D-01/DISC-03: N counts skipped records (3), not rows (2)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=3,
+        malformed_by_queue={"missing": 2, "cutoff": 1},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 3 skipped records" in text
+    assert "failure reason" not in text
+    assert "Show 2 details" not in text
+
+
+def test_card_skip_only_failed_grade_says_failure_reason(client, test_app):
+    """Owner ruling on bm:dbe1b7f56bdd:SA-01 (2026-10-22, supersedes D-01 for red cards):
+    a Failed skip-only cycle (0 accepted, 0 failed) says 'failure reason', never the softer
+    'skipped record'. The row text stays unchanged."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed",
+        accepted=0,
+        failed=0,
+        malformed_skipped=1,
+        malformed_by_queue={"missing": 1},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "Show 1 failure reasons" not in text
+    assert "skipped record" not in text
+    assert "1 missing-queue record skipped — malformed data" in text
+    assert "text-triggarr-danger" in text
+
+
+@pytest.mark.parametrize(
+    ("malformed_skipped", "malformed_by_queue", "label"),
+    [
+        (3, {"missing": 2, "cutoff": 1}, "Show 2 failure reasons"),
+        (1, None, "Show 1 failure reason"),
+    ],
+)
+def test_card_failed_grade_never_says_skipped_record(
+    client, test_app, malformed_skipped, malformed_by_queue, label
+):
+    """Owner ruling on bm:dbe1b7f56bdd:SA-01: red Failed-grade cards always say
+    'Show N failure reason(s)', also when every row is a skipped record (per-queue
+    rows or the legacy aggregate row)."""
+    record = {"grade": "failed", "accepted": 0, "failed": 0, "malformed_skipped": malformed_skipped}
+    if malformed_by_queue is not None:
+        record["malformed_by_queue"] = malformed_by_queue
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(**record)
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert label in text
+    assert "skipped record" not in text
+    assert "detail" not in text.split("<summary", 1)[1].split("</summary>", 1)[0]
+
+
+def test_card_skip_only_legacy_aggregate_says_skipped_record(client, test_app):
+    """D-01: legacy aggregate malformed_skipped (no malformed_by_queue) also says 'skipped record'."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=1,
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "1 malformed record skipped" in text
+    assert "Show 1 skipped record" in text
+    assert "Show 1 skipped records" not in text
+    assert "failure reason" not in text
+
+
+def test_card_skip_only_mismatched_count_falls_back_to_failure_label(client, test_app):
+    """IN-02/WR-02: malformed_skipped disagreeing with the actual malformed rows (a
+    tampered/hand-edited state.json) falls back to the safe 'failure reason' label
+    instead of displaying an untrustworthy skipped-record count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=5,
+        malformed_by_queue={"missing": 2},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "Show 5 skipped records" not in text
+    assert "2 missing-queue records skipped — malformed data" in text
+
+
+def test_card_skip_only_zero_malformed_skipped_falls_back_to_failure_label(client, test_app):
+    """IN-02/WR-02: the originally reproduced mismatch (malformed_by_queue has rows but
+    malformed_skipped is 0) stays on the safe 'failure reason' label, never a
+    'Show 0 skipped records' count."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        malformed_skipped=0,
+        malformed_by_queue={"missing": 2},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "skipped record" not in text
+
+
+def test_card_details_label_unevaluated_only_singular(client, test_app):
+    """D-04: a single unevaluated-queue row with 0 failures says 'Show 1 detail'."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        failed=0,
+        malformed_skipped=0,
+        unevaluated=[{"queue": "cutoff", "reason": "tag 'x' not found"}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 detail" in text
+    assert "Show 1 details" not in text
+    assert "failure reason" not in text
+    assert "skipped record" not in text
+    assert "Cutoff unmet queue not evaluated: tag" in text
+
+
+def test_card_details_label_unevaluated_plural_success_grade(client, test_app):
+    """D-04: two unevaluated-queue rows on a Success-grade cycle say 'Show 2 details'."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="success",
+        accepted=1,
+        failed=0,
+        unevaluated=[
+            {"queue": "missing", "reason": "tag 'x' not found"},
+            {"queue": "cutoff", "reason": "tag 'x' not found"},
+        ],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 2 details" in text
+    assert "failure reason" not in text
+    assert "text-triggarr-green" in text
+
+
+def test_card_details_label_failed_grade_unevaluated_only_says_failure_reason(client, test_app):
+    """SA-01 owner ruling: a Failed-grade card with only unevaluated rows says 'failure
+    reason', never the neutral 'detail' label -- that label is for Partial/Success only."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed",
+        accepted=0,
+        failed=0,
+        unevaluated=[{"queue": "missing", "reason": "tag 'x' not found"}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "Show 1 detail" not in text
+    assert "text-triggarr-danger" in text
+
+
+def test_card_details_label_malformed_plus_unevaluated(client, test_app):
+    """D-04: malformed-skip row mixed with an unevaluated-queue row says 'Show 2 details' (rows, not records)."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        failed=0,
+        malformed_skipped=1,
+        malformed_by_queue={"missing": 1},
+        unevaluated=[{"queue": "cutoff", "reason": "tag 'x' not found"}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 2 details" in text
+    assert "failure reason" not in text
+    assert "skipped record" not in text
+    assert "1 missing-queue record skipped — malformed data" in text
+
+
+def test_card_failed_grade_malformed_plus_unevaluated_says_failure_reasons(client, test_app):
+    """A Failed card with a malformed row and an unevaluated row lists 2 rows, so its label
+    says 'Show 2 failure reasons' -- never 'Show 1 skipped record', which would hide the
+    unevaluated queue that actually caused the failure."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed",
+        accepted=0,
+        failed=0,
+        malformed_skipped=1,
+        malformed_by_queue={"cutoff": 1},
+        unevaluated=[{"queue": "missing", "reason": "tag 'x' not found"}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 2 failure reasons" in text
+    assert "skipped record" not in text
+    assert "Show 2 details" not in text
+    assert "Missing queue not evaluated" in text
+    assert "1 upgrade-queue record skipped — malformed data" in text
+
+
+def test_card_mixed_failure_and_skip_keeps_failure_label(client, test_app):
+    """D-02: any real failure keeps 'Show N failure reason(s)' even with a skip row present."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        failed=1,
+        failure_reasons=[{"reason": "HTTP 500", "count": 1}],
+        malformed_skipped=1,
+        malformed_by_queue={"missing": 1},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 2 failure reasons" in text
+    assert "Show 1 skipped record" not in text
+    assert "Show 2 skipped" not in text
+    assert "Show 2 details" not in text
+    assert "1 missing-queue record skipped — malformed data" in text
+
+
+def test_card_mixed_failure_and_unevaluated_keeps_failure_label(client, test_app):
+    """D-02/D-04: any real failure keeps 'Show N failure reason(s)' even with an unevaluated row present."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="partial",
+        accepted=1,
+        failed=1,
+        failure_reasons=[{"reason": "HTTP 500", "count": 1}],
+        unevaluated=[{"queue": "cutoff", "reason": "tag 'x' not found"}],
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 2 failure reasons" in text
+    assert "Show 2 details" not in text
+
+
+def test_card_eligible_not_searched_row_keeps_failure_label(client, test_app):
+    """Regression (plan-check addition, 261022-l7h): a Failed cycle whose only row is the
+    eligible-not-searched row keeps 'Show 1 failure reason' -- locks the 'other' row path."""
+    test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True
+    test_app.state.triggarr_state["radarr"]["Default"]["last_cycle"] = _last_cycle_record(
+        grade="failed",
+        accepted=0,
+        failed=0,
+        eligible={"missing": 1},
+    )
+    response = client.get("/partials/app-card/radarr/Default")
+    assert response.status_code == 200
+    text = response.text
+    assert "Show 1 failure reason" in text
+    assert "1 eligible item not searched this cycle" in text
+
+
 def test_grade_line_nothing_needed_no_counts_no_detail(client, test_app):
     """Nothing needed searching shows no counts and no detail panel (D-08/D-12)."""
     test_app.state.triggarr_state["radarr"]["Default"]["connected"] = True

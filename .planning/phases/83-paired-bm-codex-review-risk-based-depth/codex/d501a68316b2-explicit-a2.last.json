@@ -1,0 +1,246 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "d501a68316b2c3a032634741f8c73d373870e9f2",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 83: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..d501a68316b2c3a032634741f8c73d373870e9f2, with the requested transcript/artifact exclusions.",
+  "verdict": "findings",
+  "summary": "Two reproduced defects let the report checker label invalid or unfinished reviews complete. Inspected all 49 in-scope files. Independent checks passed: 39 targeted tests and 48 generated template cases. Harness evidence reports 2,215 passing tests on the inspected head.",
+  "coverage": [
+    "Full in-scope diff, including all planning markdown, configuration, schema, documentation, tests, and template changes; recovered truncated output through targeted reads.",
+    "Report validation, malformed input, schema versions, finding consistency, missing reports, process failure, wrong head/base, stale head, and unfinished review handling.",
+    "Contract invocation through checker assessment to checkpoint records and owner acceptance checklist.",
+    "Review classification, BM configuration changes, retry rules, evidence preservation, authorization boundaries, and preservation of existing CI/publication protections.",
+    "CycleTally.to_record → cycle_view → _build_app_context → partial_app_card → app_card.html → cycle_grade.html; legacy records, skip counts, unevaluated queues, failures, fetch errors, escaping, and refresh hooks.",
+    "Regression-test assertions and their ability to distinguish intended behavior from invalid acceptance."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**, except the explicitly authorized external pytest evidence file",
+    ".planning/**/*.jsonl"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..d501a68316b2c3a032634741f8c73d373870e9f2 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl'",
+      "exit_code": 0,
+      "purpose": "Inventory scope."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..d501a68316b2c3a032634741f8c73d373870e9f2 -- tests/codex_report_status.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_instructions.py tests/test_app_cards.py triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Inspect implementation and test changes; truncated portions recovered later."
+    },
+    {
+      "command": "cat /Users/julianamacbook/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/d501a68316b2-explicit-a2.pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read authorized harness evidence: exact head, exit 0, 2215 passed."
+    },
+    {
+      "command": "git diff 6f3841aa..d501a683 -- .claude CLAUDE.md docs .planning/config.json .planning/REQUIREMENTS.md .planning/ROADMAP.md .planning/STATE.md",
+      "exit_code": 0,
+      "purpose": "Inspect policy, schema, configuration, and tracking changes; truncated portions recovered later."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect invocation contract and baseline; truncated table recovered later."
+    },
+    {
+      "command": "cat tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Read complete checker regression tests."
+    },
+    {
+      "command": "git diff 6f3841aa..d501a683 -- CLAUDE.md docs/buildomator-greptile-pilot.md .planning/config.json .planning/STATE.md",
+      "exit_code": 0,
+      "purpose": "Recover complete instruction and configuration diff."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-0{1,2,3}-PLAN.md .planning/phases/83-*/83-0{1,2,3}-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Inspect early plans and summaries; truncated portions recovered later."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-02-PLAN.md .planning/phases/83-*/83-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Recover contract and checker implementation intent."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-04-PLAN.md .planning/phases/83-*/83-05-PLAN.md .planning/phases/83-*/83-config-before.json",
+      "exit_code": 0,
+      "purpose": "Inspect classification and update plans and saved configuration."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-06-PLAN.md .planning/phases/83-*/83-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect instruction wiring and quick-task plans."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-08-PLAN.md .planning/phases/83-*/83-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect negative demonstrations and post-fix review plans."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-10-PLAN.md .planning/phases/83-*/83-CONTEXT.md .planning/phases/83-*/83-DISCUSSION-LOG.md",
+      "exit_code": 0,
+      "purpose": "Inspect final checkpoint plan and recorded intent."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python - <<'PY'\nimport json\nfrom tests.codex_report_status import assess_report\ns=json.load(open('.claude/schemas/codex-review-findings.schema.json'))\nr={k:None for k in s['required']}\nr.update(inspected_head_sha='a'*40, inspected_base_sha='b'*40)\nprint(assess_report(json.dumps(r),exit_code=0,expected_head='a'*40,expected_base='b'*40,current_head='a'*40,attempt=1))\nr.update(schema_version='1',pr_url='none',scope='full diff',verdict='no-findings',summary='Stopped after one file; remaining files not inspected.',coverage=['one file'],exclusions=[],commands_run=[],findings=[],limitations=['Review aborted before remaining files were inspected.'])\nprint(assess_report(json.dumps(r),exit_code=0,expected_head='a'*40,expected_base='b'*40,current_head='a'*40,attempt=1))\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt reproductions; shell heredoc temporary-file creation blocked."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_instructions.py -q -p no:cacheprovider",
+      "exit_code": 1,
+      "purpose": "Attempt targeted tests; pytest capture could not create a temporary file."
+    },
+    {
+      "command": "rg -n 'malformed data|queue not evaluated|malformed_skipped|reason_count' triggarr/web tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Locate card data and assertions."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import json; from tests.codex_report_status import assess_report; s=json.load(open(\".claude/schemas/codex-review-findings.schema.json\")); r={k:None for k in s[\"required\"]}; r.update(inspected_head_sha=\"a\"*40,inspected_base_sha=\"b\"*40); check=lambda: assess_report(json.dumps(r),exit_code=0,expected_head=\"a\"*40,expected_base=\"b\"*40,current_head=\"a\"*40,attempt=1); print(check()); r.update(schema_version=\"1\",pr_url=\"none\",scope=\"full diff\",verdict=\"no-findings\",summary=\"Stopped after one file; remaining files not inspected.\",coverage=[\"one file\"],exclusions=[],commands_run=[],findings=[],limitations=[\"Review aborted before remaining files were inspected.\"]); print(check())'",
+      "exit_code": 0,
+      "purpose": "Reproduce invalid and unfinished reports receiving complete status."
+    },
+    {
+      "command": "rg -n 'malformed data|queue not evaluated|reason_count' triggarr; sed -n '450,760p' tests/test_app_cards.py; cat triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Recover complete added card tests and inspect template."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-04-SUMMARY.md .planning/phases/83-*/83-05-SUMMARY.md .planning/phases/83-*/83-06-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Inspect policy/update/wiring implementation records."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-07-SUMMARY.md .planning/phases/83-*/83-REVIEW-EVIDENCE.md .planning/phases/83-*/83-VALIDATION.md",
+      "exit_code": 0,
+      "purpose": "Inspect checkpoint records and validation strategy; truncated portions recovered later."
+    },
+    {
+      "command": "sed -n '165,190p' .planning/phases/83-*/83-07-SUMMARY.md; sed -n '1,28p' .planning/phases/83-*/83-REVIEW-EVIDENCE.md; sed -n '1,240p' .planning/phases/83-*/83-PATTERNS.md",
+      "exit_code": 0,
+      "purpose": "Recover record excerpts and inspect pattern map."
+    },
+    {
+      "command": "sed -n '241,490p' .planning/phases/83-*/83-PATTERNS.md; sed -n '150,165p' .planning/phases/83-*/83-07-SUMMARY.md; sed -n '135,152p' docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Finish pattern map and recover truncated documentation."
+    },
+    {
+      "command": "sed -n '1,250p' .planning/phases/83-*/83-RESEARCH.md",
+      "exit_code": 0,
+      "purpose": "Inspect research background; truncated portion recovered later."
+    },
+    {
+      "command": "sed -n '85,120p' .planning/phases/83-*/83-RESEARCH.md; sed -n '251,390p' .planning/phases/83-*/83-RESEARCH.md",
+      "exit_code": 0,
+      "purpose": "Continue research and recover earlier excerpt."
+    },
+    {
+      "command": "sed -n '72,86p' .planning/phases/83-*/83-RESEARCH.md; sed -n '391,520p' .planning/phases/83-*/83-RESEARCH.md; cat .planning/phases/83-*/83-QUICK-PROPOSAL.md",
+      "exit_code": 0,
+      "purpose": "Finish research and inspect quick-task proposal."
+    },
+    {
+      "command": "cat .planning/quick/261022-l7h*/261022-l7h-CONTEXT.md .planning/quick/261022-l7h*/261022-l7h-PLAN.md .planning/quick/261022-l7h*/261022-l7h-RESEARCH.md",
+      "exit_code": 0,
+      "purpose": "Inspect quick-task intent, plan, and research; truncated action recovered later."
+    },
+    {
+      "command": "sed -n '125,137p' .planning/quick/261022-l7h*/261022-l7h-PLAN.md; cat .planning/quick/261022-l7h*/261022-l7h-REVIEW.md .planning/quick/261022-l7h*/261022-l7h-SUMMARY.md .planning/quick/261022-l7h*/261022-l7h-VERIFICATION.md",
+      "exit_code": 0,
+      "purpose": "Inspect quick-task records as background, without treating approval as correctness evidence."
+    },
+    {
+      "command": "sed -n '118,124p' .planning/quick/261022-l7h*/261022-l7h-PLAN.md; sed -n '1,52p' .planning/phases/83-*/83-01-SUMMARY.md; sed -n '125,135p' docs/bm-review-baseline-2026-10-22.md; sed -n '1,360p' triggarr/search/outcome.py",
+      "exit_code": 0,
+      "purpose": "Recover remaining excerpts and trace cycle data production and validation."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_instructions.py -q -s -p no:cacheprovider -k 'not cli_complete and not cli_missing'",
+      "exit_code": 0,
+      "purpose": "Run tests without filesystem capture: 39 passed, 2 temporary-file cases deselected."
+    },
+    {
+      "command": "sed -n '350,420p' triggarr/web/routes.py; rg -n 'async def partial_app_card|cycle_grade|data-cycle-detail|autoescape' triggarr/web/routes.py triggarr/templates/partials/app_card.html triggarr/templates/dashboard.html; cat docs/owner-cli-acceptance.md; sed -n '1,125p' docs/buildomator-greptile-pilot.md; sed -n '116,125p' docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Trace callers and inspect surrounding acceptance protections."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import itertools,re; from pathlib import Path; from jinja2 import Environment; from triggarr.search.outcome import CycleTally,cycle_view; e=Environment(autoescape=True); e.filters.update(exact_time=lambda x:\"time\",relative_time=lambda x:\"ago\"); t=e.from_string(Path(\"triggarr/templates/partials/cycle_grade.html\").read_text()); count=0\nfor accepted,failed,malformed,unevaluated,fetch in itertools.product([0,1],[0,1],[0,1,3],[False,True],[False,True]):\n c=CycleTally(accepted=accepted)\n if failed: c.record_failed(\"HTTP 500\")\n if malformed: c.record_malformed(\"missing\",malformed)\n if unevaluated: c.mark_unevaluated(\"cutoff\",\"tag missing <script>\")\n if fetch: c.record_fetch_failure(\"HTTP 503\")\n v=cycle_view(c.to_record(active_queues=[\"missing\",\"cutoff\"],finished_at=\"2026-10-22T00:00:00Z\"),\"Radarr\"); html=t.render(app={\"last_cycle\":v,\"app_label\":\"Radarr\"}); match=re.search(r\"<summary[^>]*>(.*?)</summary>\",html)\n if v[\"has_detail\"]:\n  label=match.group(1); expected=\"failure reason\" if failed or fetch else \"detail\" if unevaluated else \"skipped record\"; assert expected in label,(v,label,expected)\n else: assert match is None\n assert \"<script>\" not in html\n count+=1\nprint(str(count)+\" generated normal-write template cases passed\")'",
+      "exit_code": 0,
+      "purpose": "Verify 48 generated normal-write cases through real cycle_view and template, including escaping."
+    },
+    {
+      "command": "sed -n '50,66p' .planning/phases/83-*/83-01-SUMMARY.md; sed -n '1200,1235p' triggarr/web/routes.py; git status --short; git diff --name-only 6f3841aa..d501a683 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl'",
+      "exit_code": 0,
+      "purpose": "Finish excerpt/caller inspection, confirm clean working tree, and reconcile all 49 changed files."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'from tests.test_codex_report_status import _valid_report,_assess; r=_valid_report(); r.update(schema_version=\"999\",coverage=None,findings=None,commands_run=None); print(_assess(r))'",
+      "exit_code": 0,
+      "purpose": "Reproduce F001 from the existing valid test fixture."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'from tests.test_codex_report_status import _valid_report,_assess; r=_valid_report(); r.update(verdict=\"no-findings\",findings=[],coverage=[\"one file\"],summary=\"Review stopped early\",limitations=[\"Remaining in-scope files were not inspected\"]); print(_assess(r))'",
+      "exit_code": 0,
+      "purpose": "Reproduce F002 from the existing valid test fixture."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Schema-invalid reports can pass as complete",
+      "file": "tests/codex_report_status.py",
+      "line_start": 51,
+      "line_end": 126,
+      "trigger": "A report contains required keys but invalid values, such as schema_version=\"999\" and null coverage, findings, and commands_run.",
+      "execution_path": "assess_report → _check_schema skips array validation for non-lists and never validates schema_version → finding checks return no reasons for non-list findings → coverage check ignores null → status complete → CLI exits 0.",
+      "consequence": "Malformed evidence is presented as a complete review with zero findings, contrary to the documented schema-validation boundary.",
+      "evidence": "The existing valid fixture, mutated with these four invalid values, returned Assessment(status='complete', reasons=(), qualified_ids=(), finding_count=0). A report with every non-SHA field null also returned complete. Existing tests cover absent fields and selected enums, but not these invalid types or versions.",
+      "suggested_fix": "Validate every schema node's declared type and enum recursively, including array items and nullable fields. Reject booleans as integers. Add negative tests for null/wrong-type containers, invalid schema versions, and malformed finding fields.",
+      "reproduced": true,
+      "reproduction_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'from tests.test_codex_report_status import _valid_report,_assess; r=_valid_report(); r.update(schema_version=\"999\",coverage=None,findings=None,commands_run=None); print(_assess(r))'",
+      "hypothesis": null
+    },
+    {
+      "id": "F002",
+      "severity": "high",
+      "title": "An unfinished review is indistinguishable from a completed review",
+      "file": "tests/codex_report_status.py",
+      "line_start": 235,
+      "line_end": 239,
+      "trigger": "Codex exits successfully with a schema-valid report after inspecting only part of the requested diff, disclosing the unfinished work in summary or limitations.",
+      "execution_path": "Contract permits only findings/no-findings verdicts and has no completion field → assess_report checks nonempty coverage but no review-completion signal → returns complete → contract step 6 and checkpoint acceptance checklist consume that status without triggering the incomplete-review retry path.",
+      "consequence": "A partially inspected checkpoint can be represented to the owner as review-complete even when the report explicitly says in-scope files remain unreviewed.",
+      "evidence": "A valid fixture with coverage=['one file'], summary='Review stopped early', and limitations=['Remaining in-scope files were not inspected'] returned complete with no reasons. The strict repository schema has no review_complete or incomplete_reasons fields, so even fully enforcing its current types would not prevent this case. No test covers successful process termination with unfinished review work.",
+      "suggested_fix": "Version the contract/schema to require an explicit review_complete boolean and incomplete_reasons list. Require true with no incomplete reasons before returning complete; distinguish unavailable test execution from unfinished diff inspection. Add a regression test for a schema-valid, zero-exit report declaring incomplete scope.",
+      "reproduced": true,
+      "reproduction_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'from tests.test_codex_report_status import _valid_report,_assess; r=_valid_report(); r.update(verdict=\"no-findings\",findings=[],coverage=[\"one file\"],summary=\"Review stopped early\",limitations=[\"Remaining in-scope files were not inspected\"]); print(_assess(r))'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Could not independently run the full pytest suite under the read-only sandbox. Initial targeted pytest execution failed because capture needed temporary files; rerunning without capture passed 39 tests, with two temporary-file CLI tests deselected.",
+    "Full-suite evidence is the authorized harness file: exact inspected head, exit 0, 2215 passed and 38 warnings.",
+    "Generated template checks exercise real tally/view/template code in memory, not HTTP routing, database fixtures, or browser interaction.",
+    "External BM installation, hosted GitHub settings, and live reviewer behavior were not inspected; review remained within the authorized file boundary.",
+    "No files were edited, committed, pushed, or published."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

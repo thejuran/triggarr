@@ -15,8 +15,26 @@
 <div class="text-[11px] text-amber-400 mb-2">&#9888; History not saved for {{ app.last_cycle.persistence_failed }} search{% if app.last_cycle.persistence_failed != 1 %}es{% endif %} — stats may undercount</div>
 {% endif %}
 {% if app.last_cycle.has_detail %}
+{% set ns = namespace(malformed=0, malformed_total=0, unevaluated=0, other=0) %}
+{% for r in app.last_cycle.reasons %}
+  {% if r.text.startswith('Missing queue not evaluated: ') or r.text.startswith('Cutoff unmet queue not evaluated: ') %}
+    {% set ns.unevaluated = ns.unevaluated + 1 %}
+  {% elif r.text.endswith('— malformed data') or r.text.endswith('skipped') %}
+    {% set ns.malformed = ns.malformed + 1 %}
+    {% set ns.malformed_total = ns.malformed_total + (r.text.split(' ')[0] | int(0)) %}
+  {% else %}
+    {% set ns.other = ns.other + 1 %}
+  {% endif %}
+{% endfor %}
+{% set no_failure = app.last_cycle.failed == 0 and not app.last_cycle.fetch_failed and ns.other == 0 %}
 <details data-cycle-detail class="mb-2 text-[11px] text-triggarr-muted">
+  {% if no_failure and ns.unevaluated > 0 and app.last_cycle.grade != 'failed' %}
+  <summary class="cursor-pointer select-none">Show {{ app.last_cycle.reason_count }} detail{% if app.last_cycle.reason_count != 1 %}s{% endif %}</summary>
+  {% elif no_failure and app.last_cycle.grade != 'failed' and ns.unevaluated == 0 and ns.malformed > 0 and app.last_cycle.malformed_skipped > 0 and app.last_cycle.malformed_skipped == ns.malformed_total %}
+  <summary class="cursor-pointer select-none">Show {{ app.last_cycle.malformed_skipped }} skipped record{% if app.last_cycle.malformed_skipped != 1 %}s{% endif %}</summary>
+  {% else %}
   <summary class="cursor-pointer select-none">Show {{ app.last_cycle.reason_count }} failure reason{% if app.last_cycle.reason_count != 1 %}s{% endif %}</summary>
+  {% endif %}
   <ul class="mt-1 ml-4 list-disc">
     {% for r in app.last_cycle.reasons %}
     <li>{{ r.text }}{% if r.count > 1 %} &times;{{ r.count }}{% endif %}</li>
