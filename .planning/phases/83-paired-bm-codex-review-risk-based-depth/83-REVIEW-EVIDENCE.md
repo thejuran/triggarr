@@ -2274,3 +2274,250 @@ Earlier-head Info items (`bm:36eaa67c2976:IN-01` to `IN-06`) remain nonblocking 
 - Review acceptance is pending and will not be requested for this head.
 
 This record is not owner acceptance.
+
+## Review after fixes, round 5 — head b19e7b28687b
+
+<!-- review-checkpoint head=b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e -->
+
+Demonstrates REVIEW-02/REVIEW-06's review-after-fixes path for the
+owner-approved round-5 batch: the two confirmed defects from the
+phase-execution review on head `49ded1e86444` (`bm:49ded1e86444:WR-01`,
+`WR-02`), fixed test-first.
+
+**Commit identities:** PR head SHA `b19e7b28687bf7c0bc3dbcb7f7eda217b63e3d2e`;
+base `6f3841aaae4f2511efe6796f7f5c7ad50b423f90`; Codex inspected head/base
+match. Fix commits `170c11d..fb0e47f` (opt-in schema-v1 assessment for
+WR-01; safe child-output decoding and a stub on every post-reservation
+failure for WR-02). The prior review was snapshotted as
+`83-REVIEW-49ded1e86444.md` before this round's re-review overwrote
+`83-REVIEW.md`.
+
+**BM review** (`83-REVIEW-b19e7b28687b.md`, round 5 re-review, full
+18-file scope, standard depth): 0 critical, 0 warning, 3 new info —
+IN-01 (Ctrl-C during the Codex wait still leaves a reserved attempt with
+no `.status.json`), IN-02 (the "every `RunnerError` already wrote its
+stub" invariant rests on a comment; the reservation itself can
+half-succeed), IN-03 (contract says UTF-8, code decodes with the locale
+encoding — correct today on this host, not guaranteed). None can make an
+incomplete review look complete. WR-01 and WR-02 are **fixed and
+verified** with real regression tests (the exact prior reproduction for
+WR-01; a real non-UTF-8 child process, not a mock, for WR-02). WR-03,
+WR-04, and IN-01 to IN-04 from the prior head are unchanged and remain
+carried to Phase 85 per owner; SA-01 to SA-03 are not applicable this
+round (already ruled by the owner on 2026-10-23).
+
+**Codex:** `codex/b19e7b28687b-round5-a1` — complete, `review_complete:
+true`, `incomplete_reasons: []`, verdict `no-findings`, 0 findings, 21
+commands run. Harness pytest: 2412 passed, 38 warnings.
+
+**Vibe-check (RISK-02):** pass 1 ran on this head; see the dedicated
+"Vibe-check deep review" section below for findings and the owner's
+batching decision.
+
+**Dispositions:** `bm:49ded1e86444:WR-01`, `WR-02` → confirmed fixed,
+verified on this head by the regression tests above and the paired Codex
+pass. No new confirmed defects on this head beyond the three info items
+already disclosed.
+
+This record is not owner acceptance.
+
+## Vibe-check deep review — pass 1 at b19e7b28687b and pass 2 at 385baa75ac1b
+
+RISK-02 selected an additional vibe-check for this high-risk checkpoint.
+Owner clarification (2026-10-23): vibe-check runs locally right after the
+BM code review whenever BM classes the work high risk — not on the final
+pushed head as originally recorded. It ran twice under that rule, never
+substituting for Codex, Greptile, or BM, and never reducing required
+coverage. State file:
+`.turingmind/state/format-53/83-paired-bm-codex-review-risk-based-depth.json`.
+
+**Pass 1** (2026-10-23T18:03:53Z, mode `deep`, diff
+`6f3841aa..b19e7b28687b`, agents: bugs, security, architecture, impact,
+compliance, language-python, framework-fastapi; a joined Codex sub-agent
+pass): 8 findings, 13 lower-confidence items filtered (sub-threshold or
+absorbed) —
+
+| ID | Severity/band | File | Title |
+|---|---|---|---|
+| ARCH-01 | medium/warning | `triggarr/templates/partials/cycle_grade.html:18` | Template re-derives reason-row classification by parsing display strings `outcome.py` already classifies |
+| bugs-001 | medium/warning | `tests/codex_review_run.py:362` | Codex `.jsonl` published with no local-path redaction; home path already leaked into committed evidence |
+| compliance-001 | medium/warning | `docs/review-classification-policy.md:14` | Contract/checkpoint-record docs named only as the review mechanism, not as sensitive content themselves |
+| codex-001 | medium/warning | `tests/codex_report_status.py:418` | A `commands_run` entry that is only whitespace still counts as a command run |
+| compliance-002 | low/medium | `tests/codex_review_run.py:284` | `getpass.getuser()` failure silently skips username redaction, no log |
+| sec-001 | medium/medium | `docs/owner-cli-acceptance.md:15` | Owner-acceptance prerequisite list omits Codex review status |
+| bugs-002 | medium/needs-verification | `tests/codex_review_run.py:338` | pytest timeout kills only the `uv` wrapper; the orphaned pytest keeps running |
+| rm-001 | low/needs-verification | `tests/codex_review_run.py:314` | Directory created without cleanup on `os.open()` failure |
+
+Joined Codex sub-agent: verdict `needs-attention`, 1 finding (== codex-001).
+
+**Owner direction (2026-10-23, verbatim):** "fix the two reproduced
+tooling defects and the two documentation gaps in one small batch before
+the push. The rest is debt you've already set aside, or decisions you've
+already made." Read against the table above: the two tooling defects are
+codex-001 (blank-command rule) and the process-group-kill class of
+bugs-002; the two documentation gaps are compliance-001 (classification
+policy's sensitive row) and sec-001 (acceptance-prerequisite list).
+ARCH-01, bugs-001/WR-04, compliance-002, and rm-001 are the debt already
+set aside or already decided elsewhere in this record (carried to Phase
+85). That batch landed as round 6 (commits `469622a..69f15d6` above): the
+blank-commands rule, the process-group kill on timeout, the
+classification-policy sensitive row naming the review machinery, and the
+acceptance-prerequisite list naming the Codex pass.
+
+**Pass 2** (2026-10-23T19:20:39Z, mode `deep`, diff
+`6f3841aa..385baa75ac1b`, agents: bugs, security, architecture, impact,
+compliance, language-python): 8 findings, 12 filtered. Four pass-1
+findings **resolved on recheck**: `compliance-001` and its two absorbed
+siblings (the sensitive row now names the contract, the checkpoint-record
+doc, both harness scripts, and the schema, backed by a new drift test),
+and `sec-001` (`owner-cli-acceptance.md` step 1 now lists the paired
+Codex review status, backed by a test). Remaining/new —
+
+| ID | Severity/band | File | Title |
+|---|---|---|---|
+| ARCH-01 | medium/medium | `triggarr/templates/partials/cycle_grade.html:18` | carried unchanged |
+| codex-001 | medium/critical | `tests/codex_report_status.py:418` | round-6 fix covers only all-blank `commands_run`; one non-blank entry can still mask the rest |
+| bugs-001 | medium/medium | `docs/owner-cli-acceptance.md:15` | Acceptance prerequisite is met by any recorded owner choice, including "wait" or "retry later" |
+| bugs-004 | medium/medium | `tests/codex_review_run.py:410` | Codex `.jsonl` still written raw with no local-path redaction |
+| bugs-001 | medium/medium | `tests/codex_review_run.py:362` | (duplicate id, same unredacted-`.jsonl` finding, carried) |
+| compliance-002 | low/medium | `tests/codex_review_run.py:284` | unchanged |
+| bugs-002 | medium/needs-verification | `tests/codex_review_run.py:386` | unchanged — this is the same class of issue as round-6's own BM `WR-01` (SIGTERM/SIGHUP orphan) |
+| rm-001 | low/needs-verification | `tests/codex_review_run.py:329` | unchanged |
+
+Joined Codex sub-agent: verdict `approve`, 0 findings.
+
+**Owner direction (2026-10-23, verbatim):** "do only the one-line wording
+fix." That is round 7 (commits `304a5f2`/`4e1d471`): rewrite the
+acceptance doc's Codex clause so a bare "wait" or "retry later" choice no
+longer satisfies the acceptance prerequisite by itself.
+
+**Rows left open on the vibe-check card, awaiting an owner decision at
+finalize rather than fixed in Phase 83:** `codex-001`'s remaining
+partial-blank-entry gap, the un-redacted `.jsonl` local-path leak
+(`bugs-001`/`bugs-004`, == `WR-04` elsewhere in this record), the
+SIGTERM/SIGHUP orphan risk (`bugs-002`, == round-6 BM `WR-01`),
+`compliance-002`'s silent `getuser()` failure, `rm-001`'s directory
+cleanup on `os.open()` failure, and `ARCH-01`'s template/`outcome.py`
+wording coupling (== `IN-01` elsewhere in this record). All are carried to
+Phase 85 in `.planning/backlog/MAINTENANCE.md`'s "Phase 83 carry-forward
+to Phase 85" section. `medium_acknowledgments` in the state file is
+empty — no medium-severity finding was dismissed outright; each was
+either fixed in a round above or is carried forward as recorded here.
+
+This record is not owner acceptance.
+
+## Review after fixes, round 6 — head 385baa75ac1b
+
+<!-- review-checkpoint head=385baa75ac1b31a30c0d49c8a21cfa122a69bce0 -->
+
+Demonstrates REVIEW-02/REVIEW-06 for the owner-approved round-6 batch
+(the vibe-check pass-1 "tooling defects and documentation gaps" batch
+above).
+
+**Commit identities:** PR head SHA `385baa75ac1b31a30c0d49c8a21cfa122a69bce0`;
+base `6f3841aaae4f2511efe6796f7f5c7ad50b423f90`; Codex inspected head/base
+match. Fix commits `469622a..69f15d6`: a `commands_run`-with-only-blank-
+entries rule, killing the whole pytest/codex process group on timeout,
+naming the review machinery as sensitive in the classification policy,
+and listing the paired Codex review among the acceptance prerequisites —
+each with its own failing-test-first commit. The prior review was
+snapshotted as `83-REVIEW-b19e7b28687b.md` before this round's re-review
+overwrote `83-REVIEW.md`.
+
+**BM review** (`83-REVIEW-385baa75ac1b.md`, round 6 re-review, full
+18-file scope, standard depth): 0 critical, 1 new warning, 3 new info.
+All four round-6 changes verified to do what they claim (targeted suites:
+341 passed; `ruff check` clean; two host-run probe scripts confirmed the
+narrower claims below). **WR-01** (new, a regression from the round-6
+fix itself): if the runner is terminated by SIGTERM/SIGHUP rather than
+interrupted by Ctrl-C, the detached (`start_new_session=True`) pytest or
+codex child keeps running as an orphan — confirmed live on this host by
+sending SIGTERM to a blocked `run_command` parent. **IN-01** (`_kill_group`
+suppresses only `ProcessLookupError`; macOS raises `PermissionError`
+(EPERM) for a group holding only a zombie leader — confirmed live).
+**IN-02** (the docstring says the group is killed on "any other
+interruption," but a grandchild left running after a *normal* exit is
+never killed). **IN-03** (the contract text was not updated for either
+round-6 change: it still says the timeout is "Python's subprocess
+timeout," and says nothing about the blank-commands rule). Owner carried
+WR-01 and IN-01 to IN-03 to Phase 85; the prior round's WR-03, WR-04, and
+IN-01 to IN-04 (r4) are unchanged and remain carried to Phase 85 as well.
+
+**Codex:** `codex/385baa75ac1b-round6-a1` — complete, `review_complete:
+true`, `incomplete_reasons: []`, 0 findings. Harness pytest: 2431 passed,
+38 warnings.
+
+**Vibe-check (RISK-02):** pass 2 ran on this head; see the "Vibe-check
+deep review" section above.
+
+**Dispositions:** round-6's own new `bm:385baa75ac1b:WR-01` and `IN-01`
+to `IN-03` → owner-ruled nonblocking debt, carried to Phase 85 (same
+disposition as the matching vibe-check `bugs-002`/`compliance-002`/
+`rm-001` rows above — one underlying class of orphan/edge-case gap,
+recorded once here and cross-referenced in the vibe-check section rather
+than re-triaged as new).
+
+This record is not owner acceptance.
+
+## Review after fixes, round 7 — head d90c1c135dac
+
+<!-- review-checkpoint head=d90c1c135dacec904c7df183a2d3ff7071699f24 -->
+
+Demonstrates REVIEW-02/REVIEW-06 for the owner-approved round-7 batch
+(the vibe-check pass-2 "one-line wording fix" above): closing the
+acceptance-wording gap that round 6's own BM review had not yet
+surfaced — a "wait" or "retry later" choice could otherwise be read as
+satisfying the acceptance prerequisite for an INCOMPLETE/PENDING Codex
+pass.
+
+**Commit identities:** PR head SHA `d90c1c135dacec904c7df183a2d3ff7071699f24`;
+base `6f3841aaae4f2511efe6796f7f5c7ad50b423f90`; Codex inspected head/base
+match. Fix commits `304a5f2` (failing test pinning the new wording) and
+`4e1d471` (rewrites the Codex clause in `docs/owner-cli-acceptance.md`
+step 1: only an owner-approved fallback review recorded for this exact
+head can now stand in for an INCOMPLETE/PENDING Codex pass; a wait or
+retry-later choice blocks acceptance). The prior review was snapshotted
+as `83-REVIEW-385baa75ac1b.md` before this round's re-review overwrote
+`83-REVIEW.md`.
+
+**BM review** (`83-REVIEW.md`, round 7 re-review, full 18-file scope,
+standard depth): 0 critical, 1 new warning, 2 new info. `git diff
+385baa7..d90c1c1` confirms no other in-scope file changed; `34` passed
+on the targeted instruction/contract/checkpoint-record tests. **WR-01**
+(new): acceptance now requires an "owner-approved fallback review," but
+the contract's only named example of a fallback is vibe-check, and the
+checkpoint record states vibe-check "never substitutes for Codex or
+Greptile" — the two governing documents contradict each other exactly
+where the owner makes the acceptance call, and the checkpoint record's
+Codex table has no field to record a fallback at all. This fails closed
+(no recorded fallback blocks acceptance), so it is not a blocker, but it
+matters most for the untrusted-source (Dependabot) path, where every PR
+now routes through this undefined fallback until Phase 85. **IN-01** (the
+"wait/retry-later blocks acceptance" consequence is stated only in the
+acceptance doc, not in the two documents it cites, so an owner could pick
+"wait" without being told it blocks acceptance). **IN-02** (the pilot
+checklist's approval-precondition list, `docs/buildomator-greptile-pilot.md:85`,
+still omits the paired Codex review from what it tells someone approving
+through the GitHub UI route). Owner decided WR-01 and IN-01/IN-02 in
+Phase 85 (recorded in commit `305e157`); the round-4 SA-01 to SA-03 items
+remain owner-ruled and are not repeated.
+
+**Codex:** `codex/d90c1c135dac-round7-a1` — complete, `review_complete:
+true`, `incomplete_reasons: []`, 0 findings. Harness pytest: 2432 passed,
+38 warnings — the full project suite, matching the independently-run
+`uv run pytest tests/ -x -q` result cited in `83-VERIFICATION.md`.
+
+**Vibe-check (RISK-02):** not re-run on this head. Since `385baa7`, only
+the one-line acceptance-wording fix changed in-scope files, and per the
+owner's own batching decisions above ("do only the one-line wording fix"
+at pass 2), this round is that fix, reviewed fresh by BM and the paired
+Codex pass on its own head — consistent with RISK-02's rule that
+vibe-check is an addition to, never a substitute for, those two.
+
+**Dispositions:** `bm:385baa75ac1b:WR-01..IN-03` (round 6's own findings)
+remain unchanged and carried to Phase 85, confirmed still present by
+direct comparison against the unchanged files. This head's own new
+`bm:d90c1c135dac:WR-01`, `IN-01`, `IN-02` → owner-ruled, carried to Phase
+85 per commit `305e157`.
+
+This record is not owner acceptance.
