@@ -2120,10 +2120,11 @@ draft PR — not run on this head.
 - Earlier-head Info `bm:36eaa67c2976:IN-01` to `IN-06` unchanged
   (nonblocking debt).
 
-### Vibe-check
+### Vibe-check (RISK-02)
 
-Pending. The owner's selected vibe-check moves to the next pushed head
-(the fix-round head); it did not run on `49ded1e86444`.
+Vibe-check (RISK-02): owner clarified 2026-10-23 that vibe-check runs after the BM code review when BM classes the work HIGH; it will run locally on the round-5 head right after the round-5 BM review, before the end-of-phase push. This replaces the earlier 'on the pushed head' timing; the earlier decision to run it (question A) stands.
+
+It did not run on `49ded1e86444`.
 
 ### PR comment state (process deviation, disclosed)
 
@@ -2145,10 +2146,23 @@ and waits for the owner's direction. PR #35 still has exactly one comment.
 
 ### Draft checkpoint body — to post at phase end on the final pushed head
 
-Verbatim copy of the body (currently also what comment `6370768885`
-shows, see above); only `###` headings are demoted to `####` to fit this
+Local draft; only `###` headings are demoted to `####` to fit this
 file's outline. At phase end it is superseded by the final head's own
 record, posted as a new comment for that head.
+
+It differs from the body currently shown on comment `6370768885` (edited
+2026-10-23T17:39:30Z, see above) only in the vibe-check timing, updated
+after the owner's second clarification. The posted comment still reads,
+verbatim:
+
+> - **Owner's decision (2026-10-23):** "Yes, on the pushed head (Recommended)." Because a fix round now replaces this head, the selected vibe-check moves to the next pushed head (owner decision, 2026-10-23). It did not run on this head.
+> - **Routine vibe-check status:** not run on this head; the selected vibe-check on the next pushed head also serves as the routine one.
+>
+> - Fixes for `bm:49ded1e86444:WR-01` and `WR-02` are in progress (owner-approved round 5). They will arrive as a new head, which needs its own BM review, Codex pass, CI, and the owner's selected vibe-check.
+> - The vibe-check did not run on this head; it moves to the next pushed head.
+
+That posted timing is superseded by the clarification recorded in
+"Vibe-check (RISK-02)" above. No GitHub call was made to change it.
 
 <!-- review-checkpoint head=49ded1e86444bc7122b7f0dda6e557312057a7a7 -->
 
@@ -2179,8 +2193,8 @@ Unchanged from the original version of this comment: **high**, because this PR c
 #### Vibe-check (RISK-02)
 
 - **Recommendation:** risk is high, so an additional vibe-check was recommended.
-- **Owner's decision (2026-10-23):** "Yes, on the pushed head (Recommended)." Because a fix round now replaces this head, the selected vibe-check moves to the next pushed head (owner decision, 2026-10-23). It did not run on this head.
-- **Routine vibe-check status:** not run on this head; the selected vibe-check on the next pushed head also serves as the routine one.
+- **Owner's decision (2026-10-23):** "Yes, on the pushed head (Recommended)." Owner clarification, 2026-10-23: when BM classes the work high risk, vibe-check runs after the BM code review. It will run locally on the round-5 head right after the round-5 BM review, before the end-of-phase push. This replaces the earlier "on the pushed head" timing; the decision to run it stands. It did not run on this head.
+- **Routine vibe-check status:** not run on this head; the selected vibe-check on the round-5 head also serves as the routine one.
 
 Vibe-check never substitutes for Codex or Greptile, never waives a finding and never reduces required coverage.
 
@@ -2254,8 +2268,8 @@ Earlier-head Info items (`bm:36eaa67c2976:IN-01` to `IN-06`) remain nonblocking 
 
 #### Incomplete items
 
-- Fixes for `bm:49ded1e86444:WR-01` and `WR-02` are in progress (owner-approved round 5). They will arrive as a new head, which needs its own BM review, Codex pass, CI, and the owner's selected vibe-check.
-- The vibe-check did not run on this head; it moves to the next pushed head.
+- Fixes for `bm:49ded1e86444:WR-01` and `WR-02` are in progress (owner-approved round 5). They will arrive as a new head, which needs its own BM review, then the owner's selected vibe-check (run locally right after that BM review), its own Codex pass and CI.
+- The vibe-check did not run on this head; it runs locally on the round-5 head right after the round-5 BM review.
 - Greptile did not run on this head.
 - Review acceptance is pending and will not be requested for this head.
 
