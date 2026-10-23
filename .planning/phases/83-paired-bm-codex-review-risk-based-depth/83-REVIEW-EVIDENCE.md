@@ -2030,3 +2030,233 @@ comment and this matching evidence-file section exist.
 
 This local evidence commit is planning-only. It is not pushed now; it
 rides with the next push or the phase closeout.
+
+## Phase-execution review — pushed head 49ded1e86444
+
+<!-- review-checkpoint head=49ded1e86444bc7122b7f0dda6e557312057a7a7 -->
+
+Written 2026-10-23, after execute-phase's `code_review_gate`, for PR #35
+head `49ded1e86444bc7122b7f0dda6e557312057a7a7` (base
+`6f3841aaae4f2511efe6796f7f5c7ad50b423f90`). Local HEAD at the time was
+`04a424e12de46abaab25df87b7920a9f0fe682ef`, which differs from the PR head
+only by planning markdown (`83-10-SUMMARY.md`, `83-REVIEW-36eaa67c2976.md`,
+this file), so every reviewed source file is identical at both commits.
+The prior review was snapshotted by head before this one overwrote
+`83-REVIEW.md` (`83-REVIEW-36eaa67c2976.md`, commit `04a424e`).
+
+### BM review (phase-execution path)
+
+- **Requested depth:** `standard` (`.planning/config.json` key
+  `workflow.code_review_depth`). The pushed-head risk note recommended
+  `deep`; deep was not selected, so the configured depth ran.
+- **Actual depth:** `standard`. Large-scope warning: not printed (13 files).
+- **Responsible files:** BM 5.0.3 `workflows/execute-phase.md` step
+  `code_review_gate` (line 1241) → `workflows/code-review.md` steps
+  `resolve_depth` and `compute_file_scope`.
+- **Report:** `83-REVIEW.md` (reviewed 2026-10-23T17:34:20Z), status
+  `issues_found`: 0 critical, 4 warnings (WR-01 to WR-04), 4 info
+  (IN-01 to IN-04), 3 set aside for owner ruling (SA-01 to SA-03). WR-01
+  was reproduced by the reviewer.
+- **Scope quirk:** BM 5.0.3's default scope for this path is built from the
+  plan SUMMARY key-files, and it missed four changed files: `CLAUDE.md`,
+  `docs/owner-cli-acceptance.md`, `tests/test_codex_review_run.py`,
+  `tests/test_review_checkpoint_record.py`. They are covered by the paired
+  Codex pass on this head (all 19 in-scope files) and by BM's `--files`
+  review of `36eaa67c2976`; `git diff --name-only
+  36eaa67c2976..49ded1e86444` does not touch them (content unchanged since).
+
+### Codex (paired pass)
+
+Runner invocation: label `phase`, attempt 1, `--trusted
+--allow-stale-head` (the runner only accepts the checkout's own HEAD as
+current, and the checkout was three planning-only commits ahead). Raw
+files: `codex/49ded1e86444-phase-a1.{prompt.txt,meta.json,jsonl,last.json,status.json,pytest.txt}`
+(commit `fdda780`). `.meta.json` records `harness_head`
+`04a424e12de46abaab25df87b7920a9f0fe682ef`, template version 5, all four
+audited inputs `committed_unchanged: true`.
+
+Two assessments of the same report, recorded side by side:
+
+1. **Runner's status file** (`.status.json`, compared with the local
+   checkout): `incomplete`, reason `stale: report is for 49ded1e86444,
+   current head is 04a424e12de4`.
+2. **Re-assessed against the PR head** (`gh pr view 35` `headRefOid` =
+   `49ded1e86444bc7122b7f0dda6e557312057a7a7`; `uv run python -B -m
+   tests.codex_report_status --report codex/49ded1e86444-phase-a1.last.json
+   --exit-code 0 --expected-head 49ded1e… --expected-base 6f3841aa…
+   --current-head 49ded1e… --attempt 1`, exit 0): `complete`, no reasons,
+   0 findings.
+
+Why the second counts: the record is for the PR head, and the report's
+`inspected_head_sha`/`inspected_base_sha` equal the PR head and base. The
+"stale" reason only says the local checkout moved on by planning-only
+commits; it says nothing about the reviewed code. Report fields: schema
+v2, `review_complete: true`, `incomplete_reasons: []`, verdict
+`no-findings`, 36 commands (34 exit 0, 2 exit 1 — a guessed path that does
+not exist, and a heredoc the sandbox could not create, re-run as a
+one-liner), harness pytest 2400 passed / 38 warnings.
+
+Secret checks before commit: `gitleaks detect --no-git --source codex/
+--no-banner --redact` → "no leaks found" (exit 0); 32-hex `grep -rlE` →
+no files listed (exit 1).
+
+### CI and Greptile
+
+CI run `39994637736`: lint, test, dependencies, secrets, docker,
+image-smoke, browser-e2e, CI ready all pass; CodeQL run `39994634667`
+(Analyze actions, Analyze python) pass; "Review acceptance" run
+`39994637752` pending (owner gate). Greptile: no review posted on the
+draft PR — not run on this head.
+
+### Dispositions (owner decisions, 2026-10-23)
+
+- `bm:49ded1e86444:WR-01`, `bm:49ded1e86444:WR-02` → confirmed defects;
+  fixed in owner-approved round 5 (test-first), verified on the next head.
+- `bm:49ded1e86444:WR-03`, `WR-04`, `SA-01`, `IN-01` to `IN-04` →
+  `nonblocking_debt`, carried to Phase 85. WR-04 is a doc inaccuracy; the
+  publish-as-is decision for the committed raw files stands.
+- `bm:49ded1e86444:SA-02` → owner decision already made: publish as-is.
+- `bm:49ded1e86444:SA-03` → owner ruling deferred to Phase 85.
+- Earlier-head Info `bm:36eaa67c2976:IN-01` to `IN-06` unchanged
+  (nonblocking debt).
+
+### Vibe-check
+
+Pending. The owner's selected vibe-check moves to the next pushed head
+(the fix-round head); it did not run on `49ded1e86444`.
+
+### PR comment state (process deviation, disclosed)
+
+Owner clarification (2026-10-23, relayed by the coordinator): no GitHub
+activity until the end of the phase. The updated checkpoint body below is
+therefore a **local draft, to post at phase end on the final pushed head**.
+
+That clarification arrived after this executor had already edited the
+existing comment for this head (id `6370768885`) in place with `gh api
+--method PATCH repos/thejuran/triggarr/issues/comments/6370768885 -F
+body=@FILE` at 2026-10-23T17:39:30Z, as the original hand-off asked. So
+the PR comment for `49ded1e86444` does **not** still show the original
+PENDING state: it currently shows the body below. No further GitHub call
+was made after the clarification, including no revert. The original
+PENDING body is preserved verbatim above, in "Phase PR checkpoint —
+pushed head 49ded1e86444" → "Durable copy of the posted comment", so it
+can be restored if the owner wants; restoring it is itself a GitHub call
+and waits for the owner's direction. PR #35 still has exactly one comment.
+
+### Draft checkpoint body — to post at phase end on the final pushed head
+
+Verbatim copy of the body (currently also what comment `6370768885`
+shows, see above); only `###` headings are demoted to `####` to fit this
+file's outline. At phase end it is superseded by the final head's own
+record, posted as a new comment for that head.
+
+<!-- review-checkpoint head=49ded1e86444bc7122b7f0dda6e557312057a7a7 -->
+
+Phase PR checkpoint for PR #35 (`paired-review` → `main`, draft), pushed head `49ded1e86444bc7122b7f0dda6e557312057a7a7`. This edit (2026-10-23) adds the phase-execution BM review, the paired Codex pass, CI and Greptile status for this head, and the finding dispositions.
+
+**A fix round is in progress.** The owner approved fixing two BM warnings now (round 5, 2026-10-23). The fixes will be pushed as a new head, which gets its own comment and its own fresh reviews. This head will then be superseded, and nothing recorded here counts as evidence for that new head.
+
+#### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `49ded1e86444bc7122b7f0dda6e557312057a7a7` |
+| PR base SHA | `6f3841aaae4f2511efe6796f7f5c7ad50b423f90` |
+| Tested SHA (if different from PR head) | same as PR head (harness pytest on this head's tree: 2400 passed; CI test job passed) |
+| Codex inspected head (`inspected_head_sha`) | `49ded1e86444bc7122b7f0dda6e557312057a7a7` |
+| Codex inspected base (`inspected_base_sha`) | `6f3841aaae4f2511efe6796f7f5c7ad50b423f90` |
+
+Reconciliation: all fields match. The Codex harness was started from a local checkout three planning-only commits ahead of this head (no non-planning file differs), with the runner's `--allow-stale-head` option, so the runner's own status file says "stale" against that local checkout. Re-checked against this PR head, the same report is complete. The PR head is what counts (see Codex below).
+
+#### Classification
+
+Unchanged from the original version of this comment: `code`, with `code`, `sensitive` and `ordinary-docs` classes present, superseding the pre-push head `e32da5d066833f24f6add08d778bd420770c4ecc`.
+
+#### Risk note (RISK-01)
+
+Unchanged from the original version of this comment: **high**, because this PR changes the review safeguards themselves and publishes review evidence. BM recommended `deep` for this review; the configured `standard` depth ran (see BM review).
+
+#### Vibe-check (RISK-02)
+
+- **Recommendation:** risk is high, so an additional vibe-check was recommended.
+- **Owner's decision (2026-10-23):** "Yes, on the pushed head (Recommended)." Because a fix round now replaces this head, the selected vibe-check moves to the next pushed head (owner decision, 2026-10-23). It did not run on this head.
+- **Routine vibe-check status:** not run on this head; the selected vibe-check on the next pushed head also serves as the routine one.
+
+Vibe-check never substitutes for Codex or Greptile, never waives a finding and never reduces required coverage.
+
+#### BM review
+
+| Field | Value |
+|---|---|
+| Path | phase execution |
+| Requested depth | `standard` (configured); `deep` was recommended in the risk note but not selected |
+| Actual depth | `standard` |
+| Large-scope warning | not printed (13 files reviewed) |
+| Responsible files | `.planning/config.json` key `workflow.code_review_depth`; BM 5.0.3 `workflows/execute-phase.md` step `code_review_gate` → `workflows/code-review.md` steps `resolve_depth` and `compute_file_scope` |
+| Report location | `.planning/phases/83-paired-bm-codex-review-risk-based-depth/83-REVIEW.md` |
+| Status | complete — 0 blockers, 4 warnings, 4 info, 3 set aside for owner ruling |
+
+Scope note: BM's default file scope for this path comes from the phase's plan summaries, and it left out four changed files: `CLAUDE.md`, `docs/owner-cli-acceptance.md`, `tests/test_codex_review_run.py` and `tests/test_review_checkpoint_record.py`. Those files are covered by the paired Codex pass on this head (all 19 changed files) and by BM's explicit-files review of head `36eaa67c2976`; their content has not changed since that head.
+
+#### Codex
+
+| Field | Value |
+|---|---|
+| Status | **complete** against this PR head (0 findings). The runner's own status file says `incomplete` — "stale: report is for 49ded1e86444, current head is 04a424e12de4" — because it compares with the local checkout, which is three planning-only commits ahead. The checker re-run against this PR head (`gh pr view` head = `49ded1e…`) returns `complete` with no reasons. |
+| Attempts | 1 (label `phase`, `--trusted --allow-stale-head`) |
+| Raw output paths | `.prompt.txt`, `.meta.json`, `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt` under `.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/49ded1e86444-phase-a1` |
+| Review complete | `review_complete: true`, `incomplete_reasons: []` (schema v2) |
+| Coverage | all 19 in-scope changed files and the surrounding code: runner, checker, schema, cycle-card template, classification and checkpoint procedures, acceptance docs, tests; seven independent checker probes |
+| Exclusions | `.planning/**/codex/**`, `.planning/**/*.jsonl`, `.planning/**/*.md` |
+| Commands run | 36 read-only commands; 34 exit 0, 2 exit 1 (a guessed file path that does not exist, and a probe script whose heredoc could not be created in the sandbox, re-run successfully as a one-line command) — neither affected coverage |
+| Limitations | did not run pytest itself (relied on the harness run: 2400 passed); did not exercise the runner's filesystem handling live; did not verify the BM install, live GitHub protections or browser display |
+
+Findings: none.
+
+Secret checks on the codex directory before commit: gitleaks — no leaks found; 32-character hex scan — no files listed.
+
+#### Greptile
+
+not run on this head (no review posted on the draft PR; Greptile is optional since 2026-10-22).
+
+#### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| lint | 39994637736 | pass |
+| test | 39994637736 | pass |
+| dependencies | 39994637736 | pass |
+| secrets | 39994637736 | pass |
+| docker | 39994637736 | pass |
+| image-smoke | 39994637736 | pass |
+| browser-e2e | 39994637736 | pass |
+| CI ready | 39994637736 | pass |
+| CodeQL (Analyze actions, Analyze python) | 39994634667 | pass |
+| Review acceptance | 39994637752 | pending (owner gate) |
+
+#### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:49ded1e86444:WR-01` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | confirmed defect — fix in owner-approved round 5 | Reproduced: a report labelled schema version 1 that admits it is unfinished is assessed "complete". | pending (next head) |
+| `bm:49ded1e86444:WR-02` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | confirmed defect — fix in owner-approved round 5 | Test output that is not valid UTF-8 crashes the runner and leaves no status file. | pending (next head) |
+| `bm:49ded1e86444:WR-03` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | nonblocking_debt (Phase 85) | The checker that judges a PR is that PR's own copy of the checker; not recorded today. Owner: carry to Phase 85. | n/a |
+| `bm:49ded1e86444:WR-04` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | nonblocking_debt (Phase 85) | The harness's "evidence never shows the home path" claim is inaccurate for the raw event stream. Publishing as-is was already approved by the owner; the doc correction and isolation go to Phase 85. | n/a |
+| `bm:49ded1e86444:IN-01` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | nonblocking_debt (Phase 85) | Card template matches row text, not a row kind; correct for every row today. | n/a |
+| `bm:49ded1e86444:IN-02` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | nonblocking_debt (Phase 85) | Checker does not compare the report's PR URL and scope with the request. | n/a |
+| `bm:49ded1e86444:IN-03` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | nonblocking_debt (Phase 85) | Prompt still describes an untrusted no-tests mode the runner refuses. | n/a |
+| `bm:49ded1e86444:IN-04` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | nonblocking_debt (Phase 85) | Unused helper and substring-only instruction tests. | n/a |
+| `bm:49ded1e86444:SA-01` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | nonblocking_debt (Phase 85) | `--trusted` is an operator flag and is never verified; owner: Phase 85 hardening. | n/a |
+| `bm:49ded1e86444:SA-02` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | owner decision: publish as-is | Username and home path in committed raw Codex output become public on merge; no credential. Decided 2026-10-23 before the push. | n/a |
+| `bm:49ded1e86444:SA-03` | bm | `49ded1e86444bc7122b7f0dda6e557312057a7a7` | owner ruling deferred to Phase 85 | Whether plan files that agents execute stay outside the Codex diff. | n/a |
+
+Earlier-head Info items (`bm:36eaa67c2976:IN-01` to `IN-06`) remain nonblocking debt as listed in the original version of this comment.
+
+#### Incomplete items
+
+- Fixes for `bm:49ded1e86444:WR-01` and `WR-02` are in progress (owner-approved round 5). They will arrive as a new head, which needs its own BM review, Codex pass, CI, and the owner's selected vibe-check.
+- The vibe-check did not run on this head; it moves to the next pushed head.
+- Greptile did not run on this head.
+- Review acceptance is pending and will not be requested for this head.
+
+This record is not owner acceptance.
