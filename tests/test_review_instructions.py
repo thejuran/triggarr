@@ -62,3 +62,28 @@ def test_pilot_doc_points_to_policy() -> None:
     """The pilot doc's routine workflow links the review-classification policy."""
     text = _read(PILOT_DOC)
     assert "review-classification-policy.md" in text
+
+
+POLICY_DOC = REPO_ROOT / "docs" / "review-classification-policy.md"
+
+# The review machinery itself is sensitive content (vibe-check #1, owner-approved round 6).
+REVIEW_MACHINERY = (
+    "docs/codex-adversarial-review-contract.md",
+    "docs/review-checkpoint-record.md",
+    "tests/codex_review_run.py",
+    "tests/codex_report_status.py",
+    ".claude/schemas/codex-review-findings.schema.json",
+)
+
+
+def _sensitive_covers_cell() -> str:
+    row = next(line for line in _read(POLICY_DOC).splitlines() if line.startswith("| sensitive |"))
+    return row.split("|")[2]
+
+
+def test_policy_sensitive_row_names_the_review_machinery() -> None:
+    covers = _sensitive_covers_cell()
+    for path in REVIEW_MACHINERY:
+        assert f"`{path}`" in covers, f"the sensitive row's 'What it covers' must name {path}"
+        assert (REPO_ROOT / path).is_file(), f"{path} is named as sensitive but does not exist"
+
