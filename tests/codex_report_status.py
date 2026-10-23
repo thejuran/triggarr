@@ -21,9 +21,13 @@ Completeness by schema version (owner decision 2026-10-22):
   an additional signal; the structured fields stay required).
 - schema_version "1" (recorded history): assessed under the v1 rules,
   which use the same phrase check, so an already recorded report keeps
-  the assessment it had. The v1 schema is
-  derived from the current schema by removing the two v2 fields, so it
-  cannot drift into a second hand-maintained copy.
+  the assessment it had -- but only when the caller asks for that with
+  ``legacy_v1=True`` (CLI ``--legacy-v1``). Without it, a v1 label is
+  incomplete and the report is judged by the current schema, so a new
+  report cannot skip the structured completeness check by labelling
+  itself v1. The runner (tests/codex_review_run.py) never passes the
+  flag. The v1 schema is derived from the current schema by removing the
+  two v2 fields, so it cannot drift into a second hand-maintained copy.
 
 Run as `uv run python tests/codex_report_status.py ...` (invoked by
 docs/codex-adversarial-review-contract.md, Invocation step 4.6, via
@@ -78,9 +82,22 @@ def _v1_schema(current: dict) -> dict:
     return schema
 
 
-def _schema_for(report: dict, current: dict) -> dict:
-    """Pick the schema a report is judged against; unknown versions use the current one."""
-    return _v1_schema(current) if report.get("schema_version") == "1" else current
+V1_NOT_LEGACY_REASON = (
+    "schema: schema_version 1 is accepted only when re-assessing a recorded report (--legacy-v1)"
+)
+
+
+def _uses_v1_rules(report: dict, legacy_v1: bool) -> bool:
+    return legacy_v1 and report.get("schema_version") == "1"
+
+
+def _schema_for(report: dict, current: dict, *, legacy_v1: bool = False) -> dict:
+    """Pick the schema a report is judged against.
+
+    The v1 schema applies only on the opt-in legacy path; every other
+    report, including a v1-labelled one, is judged by the current schema.
+    """
+    return _v1_schema(current) if _uses_v1_rules(report, legacy_v1) else current
 
 
 # JSON Schema type names used by the report schema, mapped to Python types.
@@ -295,13 +312,16 @@ def assess_report(
     attempt: int,
     source: str = "codex",
     read_error: str | None = None,
+    legacy_v1: bool = False,
 ) -> Assessment:
     """Decide whether *report_text* is a complete, current Codex review.
 
     Collects every applicable reason rather than stopping at the first;
     never raises on malformed input -- malformed input always yields
     "incomplete" with a reason explaining why. *read_error* is set by the
-    CLI when the report file exists but could not be read.
+    CLI when the report file exists but could not be read. *legacy_v1*
+    allows a schema v1 report to be assessed under the v1 rules; it is
+    only for re-assessing reports already recorded under v1.
     """
     reasons: list[str] = []
 
@@ -339,11 +359,14 @@ def assess_report(
         reasons.append("unparseable: report is not a JSON object")
         return Assessment("incomplete", tuple(reasons), (), 0, None, None)
 
-    reasons.extend(_check_schema(report, _schema_for(report, _load_schema())))
+    v1_rules = _uses_v1_rules(report, legacy_v1)
+    if report.get("schema_version") == "1" and not v1_rules:
+        reasons.append(V1_NOT_LEGACY_REASON)
+    reasons.extend(_check_schema(report, _schema_for(report, _load_schema(), legacy_v1=legacy_v1)))
     # Every schema version: self-described incompleteness in the text is an
     # incomplete review. Version 2 additionally states it structurally.
     reasons.extend(_self_declared_incomplete(report))
-    if report.get("schema_version") != "1":
+    if not v1_rules:
         reasons.extend(_structural_completeness(report))
 
     inspected_head = report.get("inspected_head_sha")
@@ -438,6 +461,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--current-head", required=True, type=_sha_type("--current-head"))
     parser.add_argument("--attempt", type=_positive_int, required=True)
     parser.add_argument("--source", default="codex")
+    parser.add_argument(
+        "--legacy-v1",
+        action="store_true",
+        help="Re-assess an already recorded schema v1 report under the v1 rules (never used for new runs)",
+    )
     return parser
 
 
@@ -474,6 +502,7 @@ def main(argv: list[str] | None = None) -> int:
         attempt=args.attempt,
         source=args.source,
         read_error=read_error,
+        legacy_v1=args.legacy_v1,
     )
 
     print(json.dumps(_assessment_to_dict(assessment)))
