@@ -929,10 +929,10 @@ def test_evidence_copy_is_created_exclusively_without_following_links(tmp_path, 
     seen: dict[str, int] = {}
     real_open = runner.os.open
 
-    def _spy_open(path, flags, *args):
+    def _spy_open(path, flags, *args, **kwargs):
         if str(path).endswith(runner.EVIDENCE_RELPATH):
             seen["flags"] = flags
-        return real_open(path, flags, *args)
+        return real_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(runner.os, "open", _spy_open)
     execute(run, command_runner=FakeRunner())
