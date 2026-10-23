@@ -281,7 +281,15 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   2. If supported, a scratch-project pilot routes only the plan checker — proven from gateway metadata, with every other agent staying on its own model — and exercises initial check, a known-defective plan, revision/recheck, and post-bounce checks; an unavailable gateway/model or incomplete output leaves the check explicitly incomplete with an error rather than silently passing, and nothing from this pilot is activated in the Triggarr repo without separate owner approval. (Instruction-enforced)
   3. The blind comparison on the original Phase 81 plans runs per the blueprint — recovered and hashed inputs, matched sessions, a withheld answer key, a separate revision round, adoption criteria set before the runs — or is explicitly recorded as unavailable if the exact originals cannot be recovered. (Instruction-enforced)
   4. At closeout, the phase record separates what was actually investigated (with its evidence and result) from work that was deferred or not run (with the reason), so a deferred or unavailable item is never reported as an investigated outcome. (Instruction-enforced)
-**Plans**: TBD
+**Plans**: 7 plans
+
+- [ ] 84-01-PLAN.md — isolation baseline, installed-runtime agent.spawn verification, scratch opt-in hook with live gateway routing proof, conditional D-02 update gate
+- [ ] 84-02-PLAN.md — matched-run harness, pilot exercises through BM's checker loop, fail-closed negatives and disable test
+- [ ] 84-03-PLAN.md — evidence-based cutoff, Phase 81 input recovery and freeze, Time Machine owner gate, ORIGINAL/PARTIAL/RECONSTRUCTED label
+- [ ] 84-04-PLAN.md — evaluator-only answer key, locked adoption criteria with owner acknowledgment, blind packet with contamination check
+- [ ] 84-05-PLAN.md — 2+2 matched blind runs, arm-blind fresh-session adjudication, locked-rule scoring, owner spot-check
+- [ ] 84-06-PLAN.md — revised snapshot freeze, shared feedback, 1+1 revision runs and blind adjudication
+- [ ] 84-07-PLAN.md — adoption evaluation, Triggarr isolation proof, investigated-vs-deferred closeout, owner decision
 
 ### Phase 85: Follow-on CI Improvements & Acceptance Usability
 
