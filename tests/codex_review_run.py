@@ -331,6 +331,7 @@ def _run_pytest(run: ReviewRun, worktree: Path, scratch: Path, command_runner: C
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            errors="replace",
             timeout=PYTEST_TIMEOUT_SECONDS,
         )
         exit_code, output = str(proc.returncode), proc.stdout or ""
@@ -381,7 +382,9 @@ def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: Comm
 def _git_stdout(argv: list[str], command_runner: CommandRunner) -> str:
     """Run a read-only git command in the harness checkout; any failure is a RunnerError."""
     try:
-        proc = command_runner(argv, cwd=HARNESS_ROOT, stdout=subprocess.PIPE, text=True, check=False)
+        proc = command_runner(
+            argv, cwd=HARNESS_ROOT, stdout=subprocess.PIPE, text=True, errors="replace", check=False
+        )
     except OSError as exc:
         raise RunnerError(f"{shlex.join(argv[:3])} could not run: {type(exc).__name__}") from exc
     if proc.returncode != 0:
@@ -491,6 +494,29 @@ def execute(
     run.out_base.parent.mkdir(parents=True, exist_ok=True)
     # The reservation is the first write; nothing else is touched if it fails.
     reserve_outputs(run, prompt)
+    try:
+        return _execute_reserved(run, prompt=prompt, meta=meta, inputs=inputs, command_runner=command_runner)
+    except RunnerError:
+        # Every RunnerError raised after the reservation has already written its status.
+        raise
+    except Exception as exc:
+        # The output name is reserved, so never leave it without a status,
+        # whatever went wrong. The type name only: messages can carry paths.
+        reason = f"harness failed after reserving the output: {type(exc).__name__}"
+        if not run.output(".status.json").exists():
+            _write_status_stub(run, reason)
+        raise RunnerError(reason) from exc
+
+
+def _execute_reserved(
+    run: ReviewRun,
+    *,
+    prompt: str,
+    meta: dict[str, object],
+    inputs: dict[str, dict[str, object]],
+    command_runner: CommandRunner,
+) -> int:
+    """Everything after the output name is reserved; see execute()."""
     run.output(".meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
     try:
@@ -508,9 +534,10 @@ def execute(
     except RunnerError as exc:
         _write_status_stub(run, f"harness failed before codex finished: {exc}")
         raise
-    except OSError as exc:
+    except Exception as exc:
         # The output name is already reserved, so record why this attempt
-        # stopped instead of leaving a reservation with no status.
+        # stopped instead of leaving a reservation with no status. This also
+        # covers errors that are not OSError, such as a decoding error.
         reason = f"harness failed before codex finished: {type(exc).__name__}"
         _write_status_stub(run, reason)
         raise RunnerError(reason) from exc
@@ -546,6 +573,7 @@ def execute(
             cwd=REPO_ROOT,
             stdout=subprocess.PIPE,
             text=True,
+            errors="replace",
         )
     except OSError as exc:
         _write_status_stub(run, f"checker could not run: {type(exc).__name__}")
