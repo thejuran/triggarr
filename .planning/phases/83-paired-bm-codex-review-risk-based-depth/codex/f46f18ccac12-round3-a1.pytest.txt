@@ -1,0 +1,131 @@
+Test evidence produced by the harness (tests/codex_review_run.py), not by Codex.
+head: f46f18ccac125562f04f95a536634b9b8f17a9cc
+source: trusted (--trusted)
+working copy: detached worktree at f46f18ccac125562f04f95a536634b9b8f17a9cc
+command: uv run --extra dev pytest tests/ -q
+exit_code: 1
+--- combined stdout and stderr ---
+Using CPython 3.13.12
+Creating virtual environment at: .venv
+   Building triggarr @ file://<worktree>
+      Built triggarr @ file://<worktree>
+Installed 51 packages in 42ms
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 24%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+............................F........................................... [ 33%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 42%]
+........................................................................ [ 45%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 54%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 66%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 84%]
+........................................................................ [ 87%]
+........................................................................ [ 90%]
+........................................................................ [ 93%]
+........................................................................ [ 96%]
+........................................................................ [ 99%]
+........................                                                 [100%]
+=================================== FAILURES ===================================
+______ test_evidence_copy_is_created_exclusively_without_following_links _______
+
+tmp_path = PosixPath('<tmp>/pytest-of-<user>/pytest-512/test_evidence_copy_is_created_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1091c9be0>
+
+    def test_evidence_copy_is_created_exclusively_without_following_links(tmp_path, monkeypatch) -> None:
+        run = _tmp_run(tmp_path, monkeypatch)
+        seen: dict[str, int] = {}
+        real_open = runner.os.open
+    
+        def _spy_open(path, flags, *args):
+            if str(path).endswith(runner.EVIDENCE_RELPATH):
+                seen["flags"] = flags
+            return real_open(path, flags, *args)
+    
+        monkeypatch.setattr(runner.os, "open", _spy_open)
+>       execute(run, command_runner=FakeRunner())
+
+tests/test_codex_review_run.py:938: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/codex_review_run.py:524: in execute
+    shutil.rmtree(scratch, ignore_errors=True)
+~/.local/share/uv/python/cpython-3.13.12-macos-aarch64-none/lib/python3.13/shutil.py:763: in rmtree
+    _rmtree_safe_fd(stack, onexc)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+stack = [], onexc = <function rmtree.<locals>.onexc at 0x10bcdd080>
+
+    def _rmtree_safe_fd(stack, onexc):
+        # Each stack item has four elements:
+        # * func: The first operation to perform: os.lstat, os.close or os.rmdir.
+        #   Walking a directory starts with an os.lstat() to detect symlinks; in
+        #   this case, func is updated before subsequent operations and passed to
+        #   onexc() if an error occurs.
+        # * dirfd: Open file descriptor, or None if we're processing the top-level
+        #   directory given to rmtree() and the user didn't supply dir_fd.
+        # * path: Path of file to operate upon. This is passed to onexc() if an
+        #   error occurs.
+        # * orig_entry: os.DirEntry, or None if we're processing the top-level
+        #   directory given to rmtree(). We used the cached stat() of the entry to
+        #   save a call to os.lstat() when walking subdirectories.
+        func, dirfd, path, orig_entry = stack.pop()
+        name = path if orig_entry is None else orig_entry.name
+        try:
+            if func is os.close:
+                os.close(dirfd)
+                return
+            if func is os.rmdir:
+                os.rmdir(name, dir_fd=dirfd)
+                return
+    
+            # Note: To guard against symlink races, we use the standard
+            # lstat()/open()/fstat() trick.
+            assert func is os.lstat
+            if orig_entry is None:
+                orig_st = os.lstat(name, dir_fd=dirfd)
+            else:
+                orig_st = orig_entry.stat(follow_symlinks=False)
+    
+            func = os.open  # For error reporting.
+>           topfd = os.open(name, os.O_RDONLY | os.O_NONBLOCK, dir_fd=dirfd)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           TypeError: test_evidence_copy_is_created_exclusively_without_following_links.<locals>._spy_open() got an unexpected keyword argument 'dir_fd'
+
+~/.local/share/uv/python/cpython-3.13.12-macos-aarch64-none/lib/python3.13/shutil.py:670: TypeError
+----------------------------- Captured stdout call -----------------------------
+pytest evidence: <tmp>/pytest-of-<user>/pytest-512/test_evidence_copy_is_created_0/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/aaaaaaaaaaaa-explicit-a1.pytest.txt (exit_code: 1)
+codex exit code: 0
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/fastapi/testclient.py:1
+  <worktree>/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_auth_integration.py: 6 warnings
+tests/test_auth_middleware.py: 5 warnings
+tests/test_auth_routes.py: 22 warnings
+tests/test_reset.py: 4 warnings
+  <worktree>/.venv/lib/python3.13/site-packages/starlette/testclient.py:454: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_codex_review_run.py::test_evidence_copy_is_created_exclusively_without_following_links
+1 failed, 2399 passed, 38 warnings in 88.42s (0:01:28)

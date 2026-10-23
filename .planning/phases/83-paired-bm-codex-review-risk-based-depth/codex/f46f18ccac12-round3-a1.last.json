@@ -1,0 +1,149 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "f46f18ccac125562f04f95a536634b9b8f17a9cc",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 83: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..f46f18ccac125562f04f95a536634b9b8f17a9cc, with the requested planning exclusions.",
+  "verdict": "findings",
+  "summary": "One confirmed test defect prevents a passing suite. Harness evidence on the exact head records 1 failed and 2399 passed. The full in-scope diff was inspected.",
+  "coverage": [
+    "All 19 changed files in the scoped diff, including the schema, both planning configuration files, policy documents, runner, checker, tests, and cycle-grade template.",
+    "Runner trust boundary, prompt substitution, output reservation, evidence copying, provenance, timeouts, cleanup, stale heads, and failure handling.",
+    "Checker schema validation, historical report compatibility, completeness, malformed JSON, finding consistency, and head/base binding.",
+    "Card labels traced through cycle_view and its route caller; regression coverage for legacy state, mismatched counts, unevaluated queues, and mixed failures.",
+    "Review classification, independent review requirements, owner acceptance, publication safeguards, and CI test invocation.",
+    "Harness test evidence verified against the inspected head."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify the inspected head before review."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm the requested base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..f46f18ccac125562f04f95a536634b9b8f17a9cc -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read the scoped diff; truncated portions were subsequently inspected through targeted reads."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness-produced test evidence."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory all in-scope changed files."
+    },
+    {
+      "command": "cat tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect the complete runner."
+    },
+    {
+      "command": "cat tests/codex_report_status.py docs/codex-adversarial-review-contract.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Inspect checker and review policy."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Inspect invocation, storage, retry, and checkpoint requirements."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- CLAUDE.md docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md tests/test_app_cards.py triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Inspect policy edits and all card behavior changes."
+    },
+    {
+      "command": "cat tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner regressions and mocked orchestration."
+    },
+    {
+      "command": "sed -n '1,430p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect checker tests, first portion."
+    },
+    {
+      "command": "sed -n '431,900p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining checker tests."
+    },
+    {
+      "command": "sed -n '1,150p' docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect baseline and proposed workflow settings."
+    },
+    {
+      "command": "sed -n '90,125p' docs/bm-review-baseline-2026-10-22.md; sed -n '151,300p' docs/bm-review-baseline-2026-10-22.md; sed -n '85,200p' docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Inspect remaining baseline and checkpoint text, including previously truncated portions."
+    },
+    {
+      "command": "cat tests/test_codex_review_contract.py tests/test_review_checkpoint_record.py tests/test_review_instructions.py",
+      "exit_code": 0,
+      "purpose": "Inspect all contract and instruction drift guards."
+    },
+    {
+      "command": "rg -n 'def .*cycle|malformed data|queue not evaluated|reason_count' triggarr/web tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Locate card behavior and surrounding tests."
+    },
+    {
+      "command": "rg -n 'malformed data|queue not evaluated|reason_count|def .*cycle' triggarr; sed -n '1,160p' CLAUDE.md; git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md; sed -n '540,580p' tests/test_codex_review_run.py; sed -n '65,90p' docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Trace card data production and inspect remaining policy and test excerpts."
+    },
+    {
+      "command": "sed -n '219,365p' triggarr/search/outcome.py; cat triggarr/templates/partials/cycle_grade.html; sed -n '440,548p' tests/test_app_cards.py; cat docs/owner-cli-acceptance.md; sed -n '1,120p' docs/buildomator-greptile-pilot.md",
+      "exit_code": 0,
+      "purpose": "Inspect card data sanitization, fixtures, and surrounding acceptance safeguards."
+    },
+    {
+      "command": "rg -n 'pytest|ruff|python-version' .github/workflows/ci.yml pyproject.toml; nl -ba tests/test_codex_review_run.py | sed -n '925,943p'; git status --porcelain",
+      "exit_code": 0,
+      "purpose": "Locate the confirmed defect, check CI applicability, and inspect working-copy status."
+    },
+    {
+      "command": "cat .claude/schemas/codex-review-findings.schema.json .planning/config.json .planning/phases/83-paired-bm-codex-review-risk-based-depth/83-config-before.json; sed -n '1,85p' docs/review-checkpoint-record.md; sed -n '14,50p' docs/owner-cli-acceptance.md; sed -n '1,47p' .github/workflows/ci.yml; rg -n 'cycle_view\\(' triggarr; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Complete schema/configuration inspection, resolve remaining truncated excerpts, verify callers and CI, and reconfirm head."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Forward keyword arguments from the os.open spy",
+      "file": "tests/test_codex_review_run.py",
+      "line_start": 932,
+      "line_end": 935,
+      "trigger": "Run the new evidence-copy test on Python 3.13 with fd-based shutil.rmtree cleanup.",
+      "execution_path": "The test patches runner.os.open, which changes the shared os module. execute() reaches its finally block and calls shutil.rmtree(); that calls os.open(..., dir_fd=dirfd), but _spy_open accepts only positional arguments.",
+      "consequence": "The test raises TypeError before reaching its evidence-copy flag assertion, causing the full test suite to fail. CI also uses Python 3.13 and runs this suite.",
+      "evidence": "The harness evidence for f46f18ccac125562f04f95a536634b9b8f17a9cc records this exact traceback at execute() cleanup: _spy_open() got an unexpected keyword argument 'dir_fd'. Result: 1 failed, 2399 passed. The failing test never reaches its intended O_CREAT/O_EXCL/O_NOFOLLOW assertion.",
+      "suggested_fix": "Accept **kwargs in _spy_open and forward them to real_open. Rerun the targeted test and the full suite.",
+      "reproduced": true,
+      "reproduction_command": "uv run --extra dev pytest tests/ -q",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Pytest was not rerun inside the read-only review sandbox. F001 was reproduced by the harness on the exact inspected head, as recorded in .codex-review-evidence/pytest.txt.",
+    "External BM installation claims and live GitHub protections were not independently verified; reads were restricted to this working copy.",
+    "No live Codex subprocess, browser, or deployment integration was exercised."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
