@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "executing -- Phase 84 wave 1 of 6 done (2/7 plans)"
-stopped_at: "Phase 84 wave 1 done (84-01, 84-03); next: wave 2 (84-02)"
-last_updated: "2026-10-25T17:43:58.000Z"
-last_activity: "2026-10-25 -- Phase 84 wave 1 done: agent.spawn hook verified-present on 2.1.281 (needs CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1); Phase 81 inputs recovered and labelled ORIGINAL via Time Machine"
+status: "executing -- Phase 84 wave 2 of 6 done (3/7 plans)"
+stopped_at: "Phase 84 wave 2 done (84-02); next: wave 3 (84-04, owner criteria acknowledgment)"
+last_updated: "2026-10-25T18:44:35.000Z"
+last_activity: "2026-10-25 -- Phase 84 wave 2 done: pilot E1-E3 routed checker-only to codex gpt-6-astra; E4/E5 full /bm:plan-phase loop timed out at 900s before checker spawn (incomplete); N1-N5 fail closed; Effort accepted: max"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 26
-  completed_plans: 21
+  completed_plans: 22
   percent: 40
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 84 (Codex plan-checker investigation) — Executing, wave 1 of 6 done; Phase 83 merged
-Plan: 2 of 7 done (84-01, 84-03; Phase 84 planned 2026-10-23; owner checkpoints in 84-01 D-02 conditional update, 84-03 Time Machine/Full Disk Access, 84-04 criteria lock, 84-05 spot-check, 84-07 adoption decision)
+Phase: 84 (Codex plan-checker investigation) — Executing, wave 2 of 6 done; Phase 83 merged
+Plan: 3 of 7 done (84-01, 84-03, 84-02; Phase 84 planned 2026-10-23; owner checkpoints in 84-01 D-02 conditional update, 84-03 Time Machine/Full Disk Access, 84-04 criteria lock, 84-05 spot-check, 84-07 adoption decision)
 Status: Phase 84 planned 2026-10-23 (7 plans, 6 waves; plan-checker passed iteration 3 after 2 revision rounds; research found agent.spawn present in installed CLI 2.1.281, so the D-02 update is likely unneeded; Phase 81 originals 81-08/09 need Time Machine, which requires Full Disk Access). Earlier: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
 Last activity: 2026-10-22 -- Plans 01-08 done. Quick path (261022-l7h, head a7995ba) and explicit /bm:code-review path (head d501a68) recorded in 83-REVIEW-EVIDENCE.md with paired Codex; 6 negative demos in 83-DEMONSTRATIONS.md. Owner rulings 2026-10-22: red Failed cards keep "failure reason(s)"; mixed code+sensitive PRs get both review classes. Craft-skill code-reviewer: owner accepted sticky but not inserted (no checkout; needs separate approval as a settings change beyond REVIEW-01). Next: plan 09 batched fix. 2026-10-23 -- Plan 09 done: 4 owner-approved fix rounds (D-08 overridden by owner), durable Codex completeness (schema v2, harness pytest evidence, runner, template v5, untrusted heads blocked until Phase 85); final head 36eaa67c2976 BM standard 0 blockers/6 info, Codex final complete 0 findings, 2400 tests on clean checkout. OPEN before push: owner decision on home-directory path inside committed codex .jsonl/.last.json files; disclosed deviations (gitleaks order slip; hook-block tool switch in bf4fb5f). 2026-10-23 -- Plan 10 done (PR #35 draft pushed at 49ded1e by owner choice); BM phase-execution review + paired Codex on 49ded1e; owner-approved local fix rounds 5-7 each with fresh BM + paired Codex (final heads 385baa7, d90c1c1: Codex complete, 0 findings); vibe-check passes at b19e7b2 and 385baa7. Verification 17/17 must-haves, human_needed: end-of-phase push + PR ready, Greptile/CI on final head, owner acceptance. Phase 85 carry-forward in .planning/backlog/MAINTENANCE.md. 2026-10-23 -- Owner accepted PR #35 at b07e532 (Review acceptance run 40033787485 success) and it merged as decd5f1.
 
