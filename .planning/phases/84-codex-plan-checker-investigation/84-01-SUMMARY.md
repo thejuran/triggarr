@@ -134,3 +134,12 @@ None — no external service configuration required. (If this route is ever prop
 ---
 *Phase: 84-codex-plan-checker-investigation*
 *Completed: 2026-10-25*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-01-SUMMARY.md`
+- FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-ISOLATION-BASELINE.txt`
+- FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-RUNTIME-VERDICT.md`
+- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router/hooks/register.js`
+- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/toy/` (toy GSD project fixture)
+- FOUND: commit `724efc6` in `git log --oneline --all`
