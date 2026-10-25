@@ -155,3 +155,21 @@ None beyond the three auto-fixed deviations above, all resolved within this plan
 ---
 *Phase: 84-codex-plan-checker-investigation*
 *Paused: 2026-10-25 (mid-execution, awaiting owner acknowledgment of the locked adoption criteria)*
+
+## Self-Check: PASSED
+
+Verified file existence (all FOUND):
+- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md`
+- `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/answer-key-initial.md`, `answer-key-revision.md`, `contamination-phrases.txt`, `adoption-criteria.locked.md`
+- `/Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py`
+- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress`
+- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/REVIEWER-BRIEF.md`, `README.md`
+
+Verified commit exists: `git log --oneline --all | grep -q 390534d` → FOUND.
+
+Verified STATE.md/ROADMAP.md/REQUIREMENTS.md untouched: `git status --short -- .planning/STATE.md .planning/ROADMAP.md .planning/REQUIREMENTS.md` → empty.
+
+Verified Task 1's exact `<verify>` command → exit 0 (re-run before writing this summary).
+Verified Task 2's exact `<verify>` command → exit 0 (re-run before writing this summary).
+Verified `shasum -a 256 -c` on `packets/blind-r1.sha256` (excluding its last line, from inside `packets/blind-r1`) → 133/133 OK.
+Verified `check_packet.py --self-test` and `check_fallback_parity.py --self-test` → both `SELF-TEST PASS`.
