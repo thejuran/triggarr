@@ -2,17 +2,20 @@
 phase: 84-codex-plan-checker-investigation
 plan: "03"
 subsystem: investigation
-tags: [phase-81, hash-manifest, provenance, d-08, d-09, d-10, time-machine, blind-comparison]
-status: paused
+status: complete
+tags: [phase-81, hash-manifest, provenance, d-08, d-09, d-10, time-machine, blind-comparison, original-recovered]
 
 # Dependency graph
 requires: []
 provides:
-  - "Frozen, hashed, provenance-tagged local candidates for 81-01..09-PLAN.md plus 81-CONTEXT/RESEARCH/PATTERNS/VALIDATION/DISCUSSION-LOG.md and the pre-cutoff ROADMAP.md, under /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-candidate/"
+  - "Frozen, hashed, provenance-tagged ORIGINAL set for all nine 81-01..09-PLAN.md plus 81-CONTEXT/RESEARCH/PATTERNS/VALIDATION.md, consolidated at /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/ -- the full D-09 bar met, not a partial set"
+  - "True pre-resequence originals of 81-08-PLAN.md and 81-09-PLAN.md, recovered read-only from a MaguffyNAS Time Machine backup (2026-10-19 17:40:44 local) after the owner granted Full Disk Access, confirmed pre-cutoff and mutually consistent with 81-01..07"
   - "A frozen source-commit snapshot (98e01b6bf884) with its .git/info/exclude and tracked/ignored listing, under /Users/julianamacbook/scratch/planchk-pilot/inputs/source/"
-  - "An evidence-based D-09 cutoff (2026-10-19 22:34:01 -0400) re-tested against new git/transcript/session evidence this execution gathered, confirming (not superseding) the research's recommendation"
-  - "An explicit UNAVAILABLE record for pre-cutoff REQUIREMENTS.md (not git-tracked at or before the cutoff; no usable on-disk fallback)"
-affects: [84-03 continuation (Task 3), 84-04, 84-05]
+  - "An evidence-based D-09 cutoff (2026-10-19 22:34:01 -0400), re-tested (not adopted) against git/transcript/session evidence, confirming the research's recommendation"
+  - "Nine-point mutual-consistency check (plan numbering, depends_on resolution, frontmatter phase field, requirements-union-vs-ROADMAP match, no forward references, no post-cutoff files) -- all pass"
+  - "Set label: ORIGINAL, to carry into every later report (84-04, 84-05)"
+  - "An explicit UNAVAILABLE record for pre-cutoff REQUIREMENTS.md (not git-tracked at or before the cutoff; no usable on-disk fallback) -- recorded but does not affect the ORIGINAL label, which depends only on the 9 plans + 4 context docs"
+affects: [84-04, 84-05]
 
 # Tech tracking
 tech-stack:
@@ -20,118 +23,186 @@ tech-stack:
   patterns:
     - "Evidence-based cutoff re-verification via git pickaxe (-S) + Claude-transcript tool_use jq projection + Codex-session metadata-only reads (timestamps/tool-names/file-paths, never message text), per D-09 and binding rule 4"
     - "cp -p mtime-preserving freeze into scratch, then chmod -R a-w, then shasum -a 256 aggregate manifest -- reused from docs/codex-adversarial-review-contract.md's AUDITED_INPUTS discipline"
+    - "Read-only APFS Time Machine snapshot access on a NAS destination: `tmutil listbackups` to enumerate, then direct `ls`/`stat`/`cp -p` on the exact backup path (no `mount`/`restore` verb) -- the backup auto-mounts on filesystem access once Full Disk Access is granted; the backup's nested `<date>.backup/<date>.backup/<Volume Name>/` structure is an APFS snapshot-mount quirk (outer wrapper dir shares the inner volume-dated dir's name)"
+    - "Consolidated 'best available' input directory (phase81-best/) assembled from two verified sources (never-tracked local files + Time Machine backup) so downstream plans get one unambiguous comparison path instead of reassembling it themselves"
 
 key-files:
   created:
-    - .planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md (local only, git-excluded, never committed per D-16; Time Machine and Set label sections still PENDING)
+    - .planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md (local only, git-excluded, never committed per D-16; now complete through Task 3 -- Cutoff, per-file table, Time Machine, consistency checks, Set label: ORIGINAL, Comparison input dir, Label to carry forward)
     - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-candidate/ (14 Phase-81 docs + ROADMAP.md, frozen read-only)
+    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/ (13 files recovered from the Oct 19 17:40:44 TM backup, frozen read-only)
+    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/ (13-file consolidated ORIGINAL comparison set, frozen read-only)
     - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884/ (frozen source-tree snapshot, 662 tracked files)
     - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884-git-info-exclude.txt
     - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884-81-phasedir-tracked-listing.txt
     - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884.files.sha256
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/ (created, empty, pending Task 2 owner response)
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-reconstructed/ (created, empty, pending Task 3)
+    - /Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256 (706 rows, verifies clean)
+    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-reconstructed/ (created in Task 1, confirmed empty at close -- never used, because the label is ORIGINAL not PARTIAL/RECONSTRUCTED)
   modified: []
 
 key-decisions:
   - "Cutoff: 2026-10-19 22:34:01 -0400 (the 81-08/09 gap-closure/resequence commit) -- Research cutoff CONFIRMED, not superseded, after dedicated re-investigation found no earlier (2026-10-18-or-before) 'codex invocation + edit to an 81-0N-PLAN.md file' signature"
   - "Resolved RESEARCH.md's flagged, previously-unresolved date mismatch: the blueprint's 'Blind comparison' paragraph first appears in git at 2026-10-20 21:30:02 (commit c2fb07a), not on its own self-dated '2026-10-18' -- the owner's request predates the paragraph's commit, the review itself does not"
-  - "81-08/81-09-PLAN.md: cutoff satisfied 'no' -- committed-replacement content from the 2026-10-19 22:34:01 resequence, further revised through same-evening/next-day owner-review rounds; true pre-resequence originals not in git or on disk"
-  - "REQUIREMENTS.md: recorded UNAVAILABLE for the pre-cutoff set -- removed from git 2026-06-04, not re-tracked until 2026-10-21 (after cutoff, different v2.13 scope); current on-disk copy postdates the cutoff so the plan's own on-disk-fallback rule does not apply"
+  - "Owner granted Full Disk Access (2026-10-25); tmutil listbackups unblocked. The latest pre-cutoff MaguffyNAS backup (2026-10-19-174044, completed 17:40:44 local, confirmed -0400 with no intervening DST transition) was read-only accessed via direct filesystem ls/stat/cp -p (no tmutil mount/restore verb) and yielded byte-identical copies of all 11 never-tracked files (81-01..07 + 4 context docs) plus genuinely different, genuinely pre-cutoff originals for 81-08 and 81-09"
+  - "81-08/81-09-PLAN.md TRUE ORIGINALS RECOVERED from Time Machine (mtimes 2026-10-18 16:15:16 / 16:41:25, both >24h before the cutoff) -- supersedes Task 1's 'cutoff satisfied: no' rows, which only had the post-resequence (2026-10-19 22:34:01 commit 5e0070e, further revised) on-disk content available"
+  - "Set label: ORIGINAL -- the full D-09 bar (all 9 plans + CONTEXT/RESEARCH/PATTERNS/VALIDATION, pre-cutoff, verified source, mutually consistent) is met in full; D-10's reconstructed-benchmark fallback was not triggered"
+  - "REQUIREMENTS.md: recorded UNAVAILABLE for the pre-cutoff set -- removed from git 2026-06-04, not re-tracked until 2026-10-21 (after cutoff, different v2.13 scope); current on-disk copy postdates the cutoff so the plan's own on-disk-fallback rule does not apply. Confirmed this does NOT block the ORIGINAL label, which the plan's Step B text scopes to the 9 plans + 4 context docs only"
+  - "Built a consolidated /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/ directory (not explicitly named in Task 3's <files> list) so 84-04/84-05 have a single unambiguous 13-file comparison path instead of needing to reassemble it from phase81-candidate/ + phase81-timemachine/2026-10-19-174044/ -- see Deviations"
   - "Source snapshot anchor corrected from the plan's stated 81-01-PLAN.md mtime (16:37:43) to the actual earliest 81-0N-PLAN.md mtime, 81-07-PLAN.md at 16:15:16 -- Rule 1 bug-fix in the plan's own stated fact; same commit selected either way (no intervening commits in that window)"
 
-requirements-completed: []
+requirements-completed: [PLANCHK-03]
 
 # Metrics
-duration: "in progress (paused at Task 2 owner checkpoint)"
-completed: null
+duration: "Task 1: see prior session (not separately timed). Task 2-3 continuation: ~75 min (2026-10-25T17:?? start of continuation through 2026-10-25T17:41:04Z self-check)."
+completed: 2026-10-25
 ---
 
-# Phase 84 Plan 03 (partial): Phase 81 Input Recovery, Freeze & Cutoff Evidence
+# Phase 84 Plan 03: Phase 81 Input Recovery, Freeze & Cutoff Evidence Summary
 
-**Task 1 complete: nine candidate Phase-81 plans, five context docs, and the pre-cutoff ROADMAP.md are frozen and hashed under `~/scratch/planchk-pilot/inputs/`, with an evidence-based D-09 cutoff (2026-10-19 22:34:01 -0400) confirmed against new git-pickaxe and transcript evidence. Paused at Task 2's Full Disk Access / Time Machine owner checkpoint before attempting 81-08/81-09's true pre-resequence originals.**
+**Full ORIGINAL (not partial) recovery of all nine Phase 81 plans and their four contemporaneous context docs, including the two plans (81-08/81-09) previously missing from git and disk, pulled read-only from a MaguffyNAS Time Machine backup after an owner Full-Disk-Access grant, hashed and frozen with a Set label of ORIGINAL ready for the 84-04/84-05 blind comparison.**
 
 ## Performance
 
-- **Status:** PAUSED at Task 2 (checkpoint:human-action, gate=blocking)
-- **Tasks completed:** 1 of 3 (Task 1 auto -- done; Task 2 checkpoint -- awaiting owner; Task 3 auto -- not started)
-- **Files modified (Triggarr tracked files):** 0 -- Task 1's only deliverables are the git-excluded `84-HASH-MANIFEST.md` and files entirely outside the repo under `~/scratch/planchk-pilot/inputs/` (D-16/D-06). This SUMMARY.md is the only file force-added/committed by this plan so far.
+- **Tasks completed:** 3 of 3 (Task 1 auto -- done in an earlier session; Task 2 checkpoint -- owner granted Full Disk Access, resumed and completed this session; Task 3 auto -- done this session)
+- **Files modified (Triggarr tracked files):** 0 -- every deliverable of this plan is either the git-excluded `84-HASH-MANIFEST.md` or files entirely outside the Triggarr repo under `~/scratch/planchk-pilot/inputs/` (D-16/D-06). This SUMMARY.md and the earlier paused-progress SUMMARY.md are the only files this plan has ever force-added/committed.
+- **Checkout status:** `git status --porcelain -- triggarr tests .claude CLAUDE.md` returned empty before, during, and after every task in this plan.
 
-## Accomplishments (Task 1)
+## Accomplishments
 
-- Re-tested (not adopted) the research's D-09 cutoff recommendation per the plan's explicit instruction, gathering five independent evidence sources: git log on the Phase 81 dir + blueprint doc (2026-10-15..2026-10-21), git log `--diff-filter=A` for `*81-0[1-9]-PLAN.md` on any ref, a git pickaxe (`-S`) search for the "Blind comparison" paragraph's first appearance, Codex session file names/mtimes (`~/.codex/sessions/2026/10/15..20`), and a Claude-transcript `jq` projection restricted to timestamp/tool-name/file-path for Write/Edit and codex-invoking Bash tool_use calls -- never message text or tool-result content, per binding rule 4.
-- Resolved a date mismatch the research had explicitly flagged as unresolved: the blueprint's "Blind comparison" paragraph claims it was "Added at the owner's request on 2026-10-18," but its first git-committed appearance (via `-S` pickaxe) is **2026-10-20 21:30:02 -0400**, inside the same commit cluster that records the Phase 81 closeout and both deep-review passes -- confirming the review happened that evening, as research concluded, not on the 18th.
-- Investigated a previously-unexamined long-running Codex session (`rollout-2026-10-18T15-21-02-...jsonl`, active 2026-10-18 15:21 through 2026-10-20 20:18 local) specifically for the plan's required "codex invocation + edit" cutoff signature on `81-0N-PLAN.md` files. Found scattered read-only `exec` tool calls referencing those filenames, but zero `apply_patch`/edit-type calls anywhere in the session targeting them -- the signature is absent, so this session does not establish an earlier-than-2026-10-19 cutoff.
-- Found and used direct tool-invocation evidence (not just file-mtime correlation, which is all the research had) that an actual Codex-backed review ran in the Oct 20 evening window: `CODEX_MODE="range"` / `CODEX_ACTION="run"` Bash tool_use calls at 2026-10-20 20:58:37 and 21:14:47 -0400, tightly bracketing the "deep-review pass 1" (20:54:37) and "pass 2" (21:13:20) commits.
-- Confirmed **cutoff: 2026-10-19 22:34:01 -0400**, labelled "Research cutoff confirmed."
-- Copied (`cp -p`, mtime-preserving) all nine `81-0N-PLAN.md` files plus `81-CONTEXT.md`, `81-RESEARCH.md`, `81-PATTERNS.md`, `81-VALIDATION.md`, `81-DISCUSSION-LOG.md` into `~/scratch/planchk-pilot/inputs/phase81-candidate/`; recomputed sha256 for 81-01..07 and confirmed an exact match against the research's previously-recorded baseline hashes.
-- Extracted the pre-cutoff `ROADMAP.md` via `git show 83496da:.planning/ROADMAP.md` (last commit before the cutoff touching that path) since the current on-disk copy postdates the cutoff.
-- Recorded `REQUIREMENTS.md` as explicitly **UNAVAILABLE** for the pre-cutoff set: not git-tracked at or before the cutoff (removed 2026-06-04, not re-tracked until 2026-10-21 for v2.13 scope), and the current on-disk copy's mtime (2026-10-22) also postdates the cutoff, so neither the plan's git-fallback nor its on-disk-fallback rule is satisfiable from this checkout.
-- Confirmed 81-08-PLAN.md and 81-09-PLAN.md are **committed-replacement content**, not originals: first appeared in git at the 2026-10-19 22:34:01 resequence commit, then further revised through same-evening/next-day owner-review rounds (the resequence-commit blob hashes differ from the final on-disk/HEAD blob hashes) -- both rows marked "cutoff satisfied: no."
-- Identified the Triggarr source commit (`98e01b6bf884`, 2026-10-18 15:29:51 -0400) the Phase 81 plans were written against, via `git merge-base --is-ancestor` confirmation against HEAD; exported it read-only with `git archive` (662 tracked files), saved `.git/info/exclude` as of that commit, and confirmed via `git ls-tree` that zero files under the Phase 81 phase directory were git-tracked at that point (empty output) -- consistent with D-08's framing and the blueprint's own ignored-files warning.
-- Froze both directories (`chmod -R a-w`), built the aggregate `inputs/manifest.sha256` (680 rows), and verified `shasum -a 256 -c manifest.sha256` passes with zero failures.
-- Confirmed the active Triggarr checkout was never touched: `git status --porcelain -- triggarr tests .claude CLAUDE.md` returned empty both before and after Task 1.
-- Ran Task 1's exact automated `<verify>` command and every `<acceptance_criteria>` line; all passed.
+### Task 1 (prior session, unchanged -- see commit a783baf for full detail)
+- Re-tested (not adopted) the research's D-09 cutoff recommendation across five independent evidence sources; confirmed cutoff 2026-10-19 22:34:01 -0400.
+- Froze all nine candidate `81-0N-PLAN.md` files, four never-tracked context docs plus `81-DISCUSSION-LOG.md`, and a pre-cutoff `ROADMAP.md` (`git show 83496da`) into `phase81-candidate/`; matched 81-01..07's hashes exactly against the research baseline.
+- Recorded `REQUIREMENTS.md` as explicitly UNAVAILABLE pre-cutoff (not git-tracked until 2026-10-21, after the cutoff).
+- Confirmed 81-08/81-09 on-disk were committed-replacement (post-resequence) content, not originals -- cutoff satisfied "no" at that point, because Time Machine was not yet accessible.
+- Exported and froze a source-commit snapshot (`98e01b6bf884`, 662 tracked files) with its `.git/info/exclude` and a confirmation that zero Phase 81 files were git-tracked at that commit.
+- Froze both directories and built the first `manifest.sha256` (680 rows); verified clean.
+
+### Task 2 (this session -- owner Full Disk Access checkpoint, resumed and completed)
+- **Resumed verification first:** re-confirmed commit `a783baf` exists and `shasum -a 256 -c manifest.sha256` still passes (680/680 OK) before touching anything new.
+- Owner's verbatim reply ("i gave claude full disk access can you find it now") = option 1, "granted." Confirmed Full Disk Access is working: `tmutil listbackups` (previously blocked) now lists 20 MaguffyNAS backups, 2026-10-09 through 2026-10-25.
+- **Checked, not assumed, the timezone interpretation** flagged in the continuation instructions: system timezone is `EDT -0400` with no DST transition between 2026-10-19 and today (US DST ends 2026-11-01), and the chosen backup's own internal file mtimes independently corroborate its folder-name timestamp under the same offset.
+- Selected `2026-10-19-174044.backup` (completed 17:40:44 local) -- the latest backup strictly before the 22:34:01 cutoff, ~4h54m margin.
+- **Read-only access mechanics, discovered live:** `tmutil listbackups -m` (still the `listbackups` verb) triggers the on-demand APFS snapshot mount; the backup then becomes directly `ls`/`stat`/`cp -p`-able at its nested `<date>.backup/<date>.backup/Macintosh HD - Data/` path (an APFS snapshot-mount naming quirk, not a mistake). No `tmutil mount`, `restore`, `delete`, or any other state-changing verb was ever invoked -- only `listbackups`, `ls`, `stat`, and `cp -p`, exactly as the plan's checkpoint specified.
+- Located the Phase 81 directory inside the backup and copied (`cp -p`, mtime-preserving) the 13 specified files (`81-01..09-PLAN.md`, `81-CONTEXT/RESEARCH/PATTERNS/VALIDATION.md`) into `phase81-timemachine/2026-10-19-174044/`.
+- **Result, verified by hash:** the 11 never-tracked files (81-01..07 + 4 context docs) are byte-identical (sha256-equal) between the Time Machine copy and the local candidate -- strong corroboration that neither copy was altered post-authoring. **81-08-PLAN.md and 81-09-PLAN.md differ** from the local (post-resequence, committed-replacement) versions: the TM copies carry `wave: 5`/`depends_on: [81-06, 81-07]` and `wave: 6`/`depends_on: [81-05, 81-07, 81-08]` respectively (pre-resequence numbering), versus the local `wave: 8`/`depends_on: [...81-12]` post-resequence content. Both TM-copy mtimes (2026-10-18 16:15:16 and 16:41:25) predate the cutoff by over a day.
+- Froze the new directory (`chmod -R a-w`), appended 13 rows to `manifest.sha256` (now 693), re-verified clean.
+- Wrote the full "Time Machine" section of `84-HASH-MANIFEST.md`: owner's choice verbatim, timezone check, backup selection rationale, access mechanics, per-file comparison table, and the recovery result.
+
+### Task 3 (this session)
+- Built the best-available nine-plan set (81-01..07 from `phase81-candidate/`, byte-identical either way; 81-08/09 from the TM recovery) and ran every required mutual-consistency check: plan numbers 01..09 contiguous (pass); every `depends_on` resolves inside the 01-09 set (pass); frontmatter `phase:` field identical across all nine (pass); the union of the nine plans' `requirements:` fields (ATTR-01..06, SONARRV5-01..03 -- 9 IDs) matches the cutoff `ROADMAP.md`'s (git `83496da`) Phase 81 requirements line **exactly, 9-for-9** (pass); no plan references a plan number above 09 (pass); no plan file postdates the cutoff (pass, latest mtime 2026-10-18 17:14:02, ~29h margin).
+- **Set label: ORIGINAL.** All 13 required inputs (9 plans + CONTEXT/RESEARCH/PATTERNS/VALIDATION) predate the cutoff, come from a verified source, and pass every consistency check -- the strict D-09 bar met in full, not a partial-credit label. `REQUIREMENTS.md` (UNAVAILABLE) and the current on-disk `ROADMAP.md` are outside the 13-item ORIGINAL criterion per the plan's own Step B wording, so they do not affect this label.
+- Per D-10, the reconstructed-benchmark step (Step C) applies "only when the label is not ORIGINAL" -- not triggered. `phase81-reconstructed/` (created empty in Task 1) stays empty; confirmed zero occurrences of `"type":"user"` anywhere in it.
+- Assembled `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/` -- a consolidated, frozen 13-file copy of the final ORIGINAL set, drawn from the two verified sources, so 84-04/84-05 have one unambiguous comparison directory (see Deviations: this directory was not named in Task 3's `<files>` list but is needed for the output to be directly usable).
+- Wrote `84-HASH-MANIFEST.md`'s "Comparison input dir" and "Label to carry into every report" lines, both literal (non-markdown-heading) lines as the plan's automated verify requires.
+- Ran both tasks' exact `<verify>` commands and every `<acceptance_criteria>` line; all pass (see Self-Check below for the literal commands and their exit codes).
 
 ## Task Commits
 
-No task-level commits yet. Task 1's deliverables are either the git-excluded `84-HASH-MANIFEST.md` (never committed, per D-16) or files entirely outside the repo under `~/scratch/planchk-pilot/inputs/` (per D-06/D-08) -- there is nothing in the Triggarr tracked tree for Task 1 to commit. This SUMMARY.md (partial, `status: paused`) is being force-added and committed now, per the pause protocol.
+No task-level commits. Tasks 1-3's deliverables are either the git-excluded `84-HASH-MANIFEST.md` (never committed, per D-16) or files entirely outside the Triggarr tracked tree under `~/scratch/planchk-pilot/inputs/` (per D-06/D-08) -- there is nothing in the Triggarr tracked tree for any task to commit individually.
+
+**Plan metadata commit (this session):** this SUMMARY.md, force-added, is the only file committed by this plan's completion (plus the earlier paused-progress SUMMARY.md at commit `a783baf`).
 
 ## Files Created/Modified
 
-- `.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md` -- Cutoff evidence, per-file provenance/hash/cutoff table, source-snapshot record (local only, never committed)
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-candidate/` -- 14 frozen Phase-81 docs + pre-cutoff ROADMAP.md
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884/` + 3 metadata files -- frozen source-commit snapshot
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256` -- aggregate shasum manifest (680 rows), verifies clean
-- `.planning/phases/84-codex-plan-checker-investigation/84-03-SUMMARY.md` -- this file (partial; the only file this pause commits)
+- `.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md` -- now complete: Cutoff evidence, per-file provenance/hash/cutoff table, source-snapshot record, Time Machine recovery (owner choice, timezone check, access mechanics, per-file comparison, result), Task 3 consistency checks, Set label: ORIGINAL, Comparison input dir, Label to carry forward (local only, never committed)
+- `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-candidate/` -- 14 frozen Phase-81 docs + pre-cutoff ROADMAP.md (Task 1)
+- `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/` -- 13 files recovered read-only from the Oct 19 17:40:44 TM backup (Task 2)
+- `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/` -- 13-file consolidated, frozen ORIGINAL comparison set (Task 3)
+- `/Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884/` + 3 metadata files -- frozen source-commit snapshot (Task 1)
+- `/Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256` -- aggregate shasum manifest, grew from 680 to 706 rows across Tasks 2-3, verifies clean throughout
+- `.planning/phases/84-codex-plan-checker-investigation/84-03-SUMMARY.md` -- this file (complete, replacing the paused partial version)
 
 ## Decisions Made
 
-- Cutoff confirmed at 2026-10-19 22:34:01 -0400 after active re-investigation (not a passive adoption of the research's number) -- see Key Decisions above.
-- REQUIREMENTS.md recorded UNAVAILABLE rather than substituting the current (post-cutoff) on-disk copy, per the plan's own explicit UNAVAILABLE rule.
-- Source-snapshot anchor corrected to the actual earliest plan mtime (81-07-PLAN.md, 16:15:16) rather than the plan's stated 81-01-PLAN.md mtime (16:37:43) -- see Deviations below.
+See `key-decisions` in the frontmatter above for the full list. The headline decision: the owner's Full Disk Access grant let this plan recover genuinely different, genuinely pre-cutoff originals for 81-08/81-09 from Time Machine, upgrading the achievable Set label from what would otherwise have been "PARTIAL (7 of 9 original plans)" to the full "ORIGINAL."
 
 ## Deviations from Plan
 
 ### Auto-fixed Issues
 
-**1. [Rule 1 - Bug] Plan's Step C cites the wrong file as "the earliest original plan mtime"**
-- **Found during:** Task 1, Step C (source snapshot)
-- **Issue:** The plan's action text says to anchor the source-commit search on "2026-10-18 16:37:43 (the earliest original plan mtime)," attributing that value to 81-01-PLAN.md. The actual earliest mtime among the nine candidate files is 81-07-PLAN.md at 2026-10-18 16:15:16 (confirmed from `84-RESEARCH.md`'s own mtime table and this execution's independent `stat` of the copied files).
-- **Fix:** Used the genuinely earliest mtime (16:15:16) to find "the last commit before," per the correct underlying intent (the source snapshot must predate every original plan file, not just one named one).
-- **Cost if wrong:** Negligible -- `git log --all --before=... -1` returns the identical commit (`98e01b6bf884`) for both timestamps, since no intervening commit exists in that ~22-minute window. Recorded explicitly in `84-HASH-MANIFEST.md`'s Source Snapshot section so the correction is visible, not silent.
+**1. [Rule 1 - Bug] Plan's Step C (Task 1) cites the wrong file as "the earliest original plan mtime"**
+- **Found during:** Task 1, Step C (source snapshot) -- carried over from the prior session, documented here for completeness.
+- **Issue:** The plan's action text attributes the earliest plan mtime (16:37:43) to 81-01-PLAN.md; the actual earliest is 81-07-PLAN.md at 16:15:16.
+- **Fix:** Used the genuinely earliest mtime to anchor the source-commit search.
+- **Cost if wrong:** Negligible -- both timestamps resolve to the identical commit (`98e01b6bf884`), no intervening commits in that window.
 - **Files modified:** none (research/selection logic only).
-- **Commit:** N/A (no code change; documented in the evidence record).
+- **Commit:** N/A.
+
+**2. [Rule 2 - Missing critical functionality] Built a consolidated `phase81-best/` comparison directory not named in Task 3's `<files>` list**
+- **Found during:** Task 3, Step D (final pointer)
+- **Issue:** The plan's Step A language ("Build the best available nine-plan set") implies constructing an actual resolved set, but Task 3's `<files>` frontmatter list only names `84-HASH-MANIFEST.md`, `phase81-reconstructed/`, and `manifest.sha256` -- not a merged directory. Without one, the "Comparison input dir" pointer would have to reference two different source directories (`phase81-candidate/` for 81-01..07 + context docs, `phase81-timemachine/2026-10-19-174044/` for 81-08/09), leaving 84-04/84-05 to reassemble the set themselves from scattered paths.
+- **Fix:** Created `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/`, a `cp -p` consolidation of the 13 verified files from their respective verified sources, frozen (`chmod -R a-w`) and hashed into `manifest.sha256`. This is explicitly covered by 84-CONTEXT.md's "Claude's Discretion: Exact scratch directory name/layout and packet assembly mechanics."
+- **Cost if wrong:** Low -- if this directory turns out unwanted, 84-04/84-05 can ignore it and read `phase81-candidate/` + `phase81-timemachine/2026-10-19-174044/` directly per the per-file table; no information was lost or altered, only duplicated under a third, clearly-labelled path, and `84-HASH-MANIFEST.md` documents exactly which file came from which source directory so the duplication is traceable.
+- **Files modified:** none outside `~/scratch/planchk-pilot/inputs/` (D-06/D-16 scope; not part of the Triggarr tracked tree).
+- **Commit:** N/A (scratch artifact, never committed).
 
 ---
 
-**Total deviations:** 1 auto-fixed (Rule 1, a minor factual correction with no downstream effect on which commit was selected).
-**Impact on plan:** None on the outcome; improves the evidence record's internal accuracy.
-
-## Assumption Drift (advisory)
-
-**1. The plan assumed Codex-session evidence would need only file-names/mtimes; this execution read tool-call-level metadata instead, within binding rule 4's bounds.**
-- **Found during:** Task 1, Step A (cutoff evidence)
-- **Planned:** The plan's Step A action text says to gather, for Codex sessions, only "file names and mtimes in `~/.codex/sessions/2026/10/15` through `~/.codex/sessions/2026/10/20`" -- a directory-listing-only instruction, contrasted with the deeper jq tool_use projection it specifies for Claude transcripts.
-- **Actual:** To test whether the long-running Oct-18 Codex session contained the plan's own required "codex invocation + edit" cutoff signature, this execution went one level deeper than file-names/mtimes: it extracted, per matching JSONL line, only `.timestamp` and `.payload.type`/`.payload.name` (the tool name), plus a `grep -oE` match of the bare filename token (e.g. `81-03-PLAN.md`) -- never full command text, never message content, never tool-result output. This stayed inside binding rule 4's explicit allowance ("timestamps, tool names, file paths") but went beyond the plan's own narrower Codex-session instruction.
-- **Why:** The plan's file-names/mtimes-only instruction cannot, by itself, tell you whether a session that *spans* the cutoff window actually touched the plan files inside it (a session's outer mtime range says nothing about what happened when). Determining the cutoff signature required looking inside.
-- **Cost if wrong:** Low. The deeper read stayed within binding rule 4's content boundary (confirmed: no message text or tool-result content was printed in any command run or captured in `84-HASH-MANIFEST.md`), and the result was a null finding (no edit signature) that did not change the cutoff decision. If this were judged out of bounds, the remedy is simply to disregard the Codex-session investigation subsection and rely on the Claude-transcript/git evidence alone -- the cutoff conclusion (confirmed, 2026-10-19 22:34:01) is unchanged either way.
+**Total deviations:** 2 auto-fixed (1 Rule 1 minor factual correction with no downstream effect, 1 Rule 2 added-for-usability consolidated directory).
+**Impact on plan:** None on the Set label or evidence outcome; the Rule 2 addition makes the already-correct output directly usable by downstream plans instead of requiring them to reassemble it.
 
 ## Issues Encountered
 
-None beyond the one auto-fixed deviation above.
+- **Time Machine APFS snapshot access initially appeared blocked even with Full Disk Access.** `ls`/`stat` on the exact path returned by `tmutil listbackups` failed ("No such file or directory") on the first attempt, and only the single most-recently-accessed backup (2026-10-09) was visible via `ls` on the destination's UUID directory. Running `tmutil listbackups -m` (the `-m` flag, still the `listbackups` verb) triggered the on-demand mount of the full backup set; afterward the target backup's path resolved normally via plain `ls`/`stat`/`cp -p`. No `mount`, `restore`, or other state-changing tmutil verb was ever invoked -- this is normal APFS Time-Machine-to-network lazy-mounting behavior, not a workaround of the binding rules. Resolved without further issue.
 
 ## User Setup Required
 
-**Yes -- this is the reason execution is paused.** See the CHECKPOINT REACHED section below (returned alongside this summary) for the three options the owner must choose between (grant Full Disk Access, perform the Time Machine read personally, or decline).
+None remaining. The one piece of user setup this plan ever needed -- Full Disk Access for Time Machine reads -- was granted by the owner and consumed in Task 2 this session.
 
 ## Next Phase Readiness
 
-- Task 1's frozen candidates, source snapshot, and cutoff evidence are complete and verified; Task 3 (consistency check, set label, reconstructed benchmark if needed) can proceed once Task 2's owner decision is recorded.
-- A continuation agent should re-verify `shasum -a 256 -c manifest.sha256` from `/Users/julianamacbook/scratch/planchk-pilot/inputs` before resuming, confirm `84-HASH-MANIFEST.md`'s "Cutoff" and per-file table are unchanged, then proceed to Task 2's owner response and Task 3.
-- Blocker: Task 2 cannot proceed without the owner's explicit choice (granted / copied / declined) per the checkpoint below.
+- The Phase 81 input side of PLANCHK-03 is fully resolved: `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/` is the frozen, hashed, ORIGINAL-labelled 13-file comparison set that 84-04/84-05 should hand to both checkers (ordinary BM vs. Codex-routed).
+- `84-HASH-MANIFEST.md`'s "Label to carry into every report: ORIGINAL" must be repeated verbatim in every subsequent 84-04/84-05 report per D-09/D-10's evidence-honesty requirement.
+- No blockers. Time Machine, the active checkout, and STATE.md/ROADMAP.md were never touched by this plan (orchestrator owns those writes per this plan's explicit scope).
 
 ---
 *Phase: 84-codex-plan-checker-investigation*
-*Paused: 2026-10-25 (mid-execution, awaiting owner Time Machine decision)*
+*Completed: 2026-10-25*
+
+## Self-Check
+
+Verified file existence:
+```
+$ test -f /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md && echo FOUND
+FOUND
+$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256 && echo FOUND
+FOUND
+$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/81-08-PLAN.md && echo FOUND
+FOUND
+$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/81-09-PLAN.md && echo FOUND
+FOUND
+$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/81-01-PLAN.md && echo FOUND
+FOUND
+$ test $(ls /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/*.md | wc -l) -eq 13 && echo "13 files confirmed"
+13 files confirmed
+```
+
+Verified manifest integrity:
+```
+$ cd /Users/julianamacbook/scratch/planchk-pilot/inputs && shasum -a 256 -c manifest.sha256 >/tmp/final-manifest-check.log 2>&1; echo "exit:$?"
+exit:0
+$ wc -l < /tmp/final-manifest-check.log
+706
+$ grep -v ": OK" /tmp/final-manifest-check.log | wc -l
+0
+```
+
+Verified commit `a783baf` (prior paused-progress commit) exists:
+```
+$ git log --oneline --all | grep -q a783baf && echo FOUND
+FOUND
+```
+
+Verified both tasks' exact `<verify>` commands pass:
+```
+Task 2 verify: exit 0
+Task 3 verify: exit 0
+```
+
+Verified checkout remained clean throughout:
+```
+$ git status --porcelain -- triggarr tests .claude CLAUDE.md
+(empty)
+```
+
+## Self-Check: PASSED
