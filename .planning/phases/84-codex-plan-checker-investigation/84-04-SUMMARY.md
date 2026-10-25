@@ -1,0 +1,157 @@
+---
+phase: 84-codex-plan-checker-investigation
+plan: "04"
+subsystem: investigation
+tags: [adoption-criteria, blind-comparison, evaluator-only, contamination-check, parity-check, d-12, d-13, d-14, d-15, d-17, d-18]
+status: paused
+
+# Dependency graph
+requires:
+  - phase: 84-codex-plan-checker-investigation (Plan 01)
+    provides: "Route decision (hook), routed model (claude-gpt-6-astra[1m])"
+  - phase: 84-codex-plan-checker-investigation (Plan 02)
+    provides: "Matched-run harness, --permission-mode dontAsk + run-settings.json, Effort accepted: max"
+  - phase: 84-codex-plan-checker-investigation (Plan 03)
+    provides: "ORIGINAL-labelled, frozen, hashed Phase 81 input set at inputs/phase81-best/"
+provides:
+  - "Locked adoption criteria (84-ADOPTION-CRITERIA.md): D-12..D-18 verbatim, fixed scoring rules, matched-run settings, input label, resolved checker alias (sonnet), route (hook), effort (max), sha256-hashed and copied read-only into evaluator-only/ -- pending owner acknowledgment (Task 3 paused)"
+  - "Evaluator-only answer keys (K1-K7 initial, R1-R4 revision) and a 26-line contamination-phrase list, isolated in a mode-700 directory"
+  - "check_packet.py (stdlib, self-tested) -- contamination/forbidden-name check for the blind packet, with a Rule-1 fix for its own REVIEWER-BRIEF.md false-positive"
+  - "A frozen, hash-manifested, contamination-clean blind packet (packets/blind-r1/, 133 files) with its driver prompt (packets/blind-r1-driver.txt) and a redacted copy of the two pre-cutoff sandbox runbook references"
+  - "check_fallback_parity.py (stdlib, self-tested) -- confirms 'PARITY OK (route=hook)' for the live blind-r1 driver (no codex driver needed under route=hook)"
+affects: [84-05, 84-06]
+
+# Tech tracking
+tech-stack:
+  added: []
+  patterns:
+    - "Longest-match-first literal-string redaction (host/IP/user categories only, never the original value) over sanitized external runbook references, with a residual-token grep as a post-redaction self-check"
+    - "Content-hash (not path) matching against a frozen-inputs manifest to distinguish a verified original input (phrase hit = INFO) from a newly-authored packet file (phrase hit = failure) in the same contamination scan"
+
+key-files:
+  created:
+    - .planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md (local only, git-excluded, never committed per D-16; Owner acknowledgment section still PENDING)
+    - /Users/julianamacbook/scratch/planchk-pilot/evaluator-only/ (mode 700; answer-key-initial.md, answer-key-revision.md, contamination-phrases.txt, adoption-criteria.locked.md)
+    - /Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py
+    - /Users/julianamacbook/scratch/planchk-pilot/harness/check_fallback_parity.py
+    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/ (frozen, 133 files)
+    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt
+    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1.sha256
+    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-drivers.sha256
+    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1.check.txt
+    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1.progress
+  modified: []
+
+key-decisions:
+  - "Input label carried forward verbatim: ORIGINAL (from 84-HASH-MANIFEST.md)"
+  - "Checker invocation alias resolved live: sonnet (bm-sdk query resolve-model bm-plan-checker, model_profile balanced) -- matches 84-RESEARCH.md's expectation"
+  - "Route: hook (carried from 84-RUNTIME-VERDICT.md); no fallback-agent driver or --agents-file needed; blind-r1-driver.txt is used byte-for-byte by both arms"
+  - "Effort: max (carried from 84-PILOT-EVIDENCE.md's 'Effort accepted: max', string-equality-checked against the criteria record)"
+  - ".planning/REQUIREMENTS.md and /Users/julianamacbook/Cowork/mediaserver/v5test-results.md (+ v5test-results/) recorded UNAVAILABLE in the packet README rather than substituted with a wrong-era copy -- the latter also postdates the cutoff and falls inside the actual manual-review window"
+
+requirements-completed: []
+
+# Metrics
+duration: "~25min (building Tasks 1-2 this session; exact session start not separately timestamped)"
+completed: 2026-10-25
+---
+
+# Phase 84 Plan 04: Locked Adoption Criteria & Blind Packet (Paused at Owner Acknowledgment) Summary
+
+**Built and verified the locked D-12..D-18 adoption-criteria record, the withheld K1-K7/R1-R4 evaluator-only answer keys, and a frozen, hash-manifested, contamination-clean 133-file blind comparison packet with its driver prompt -- paused before any comparison run, per binding rule 5, for the owner's explicit acknowledgment of the criteria.**
+
+## Performance
+
+- **Duration:** ~25 min (Tasks 1-2 this session)
+- **Completed (this session):** 2026-10-25T18:58:15Z
+- **Tasks:** 2 of 3 complete and verified (Task 1 auto, Task 2 auto); Task 3 (checkpoint:human-verify, gate=blocking) reached and paused -- awaiting the owner's reply, no comparison run started
+- **Files modified (Triggarr tracked files):** 0 besides this SUMMARY.md -- every other deliverable is either the git-excluded `84-ADOPTION-CRITERIA.md` or lives entirely outside the repo under `~/scratch/planchk-pilot/` (D-16/D-06)
+
+## Accomplishments
+
+### Task 1 — Evaluator-only answer keys and the locked criteria record
+- Created `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/` at mode 700 and wrote `answer-key-initial.md` (K1-K7, the blueprint's 7 evaluator-only reproduction checks verbatim-in-substance plus the credit rule), `answer-key-revision.md` (R1-R4, the 4 later revision-round findings), and `contamination-phrases.txt` (26 lowercase, finding-specific phrases; confirmed no "name reuse"/"stable identity" line, since those distinctions must remain discussable in the packet).
+- Wrote `84-ADOPTION-CRITERIA.md`: D-12, D-13, D-14 (all seven bullets), D-15, D-17, D-18 copied verbatim from `84-CONTEXT.md`; the fixed scoring rules (hit/real-finding/false-positive definitions, the D-12 mean-and-floor bar, the D-13 FP-cap formula, per-D-14-item evidence sources, answer-key-validity handling, D-15's "any unmet item -> not met", D-17's run order and one-retry rule, D-18's harness ceiling and doctor-state check); the matched-run settings (parent alias opus, checker alias **sonnet** resolved live via `bm-sdk query resolve-model bm-plan-checker`, Route: hook, Effort: max copied from and string-equal to `84-PILOT-EVIDENCE.md`'s "Effort accepted: max", shared settings file, fresh session/packet per run, blind adjudicator); the Input label (ORIGINAL, carried from `84-HASH-MANIFEST.md`); and known limitations (BM-4.9.1-vs-5.0.3 checker version, the `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` prerequisite, E4/E5's 900s-ceiling shortfall, the agentId-absent correlation method) carried forward rather than re-discovered.
+- Computed and recorded `Record sha256: 3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69` over the record's content, then copied the file byte-identically into `evaluator-only/adoption-criteria.locked.md` and `chmod a-w` it.
+- Ran the task's exact automated `<verify>` command: **exit 0.**
+
+### Task 2 — Blind packet assembly, contamination check, driver prompt, route parity
+- Wrote `harness/check_packet.py` (stdlib only): content-hash-against-manifest classification (frozen original -> phrase hit is INFO; anything else -> phrase hit or forbidden-name match fails), a 4-case `--self-test` (forbidden phrase present/absent, forbidden-name file, and — after the Rule 1 fix below — a clean `REVIEWER-BRIEF.md`), all passing.
+- Assembled `packets/blind-r1/` as a project-shaped tree: `triggarr/`+`tests/`+`CLAUDE.md`+`docs/PLANNING-FORMAT.md`+the approved design spec (`docs/superpowers/specs/2026-10-08-search-correctness-design.md`, no amendments found referenced anywhere) from the frozen source snapshot `98e01b6bf884`; the pre-cutoff `.planning/ROADMAP.md`; `.planning/phases/81-correct-sonarr-grab-attribution/` containing exactly the 9 ORIGINAL-labelled plans plus `81-CONTEXT/RESEARCH/PATTERNS/VALIDATION/DISCUSSION-LOG.md` (14 files); redacted copies of the two pre-cutoff sandbox runbook references (`SANDBOX-sonarr-v5.md`, `RUNBOOK-sonarr-v5-test.md` — both mtimes predate the cutoff); `REVIEWER-BRIEF.md` (the blueprint's reproduction-instructions paragraph minus its hidden-defects sentence, plus the design-distinctions sentence rephrased as "Reviewers must consider these distinctions"); and a `README.md` recording the redaction log (HOST=92, IP=1, USER=14, SECRET=0, counts only) and the two inputs recorded UNAVAILABLE rather than substituted (`.planning/REQUIREMENTS.md`; the mediaserver's `v5test-results.md`/`v5test-results/`, which postdates the cutoff and falls inside the actual 2026-10-20 20:19:46-21:57:02 manual-review window).
+- Wrote `packets/blind-r1-driver.txt`: a single `Agent(subagent_type="bm:bm-plan-checker", model="sonnet", description="Verify Phase 81 plans", prompt=<BM step-10 checker template filled for Phase 81>)` call, with the mechanically-comparable `subagent_type:`/`model:`/`description:`/`prompt:` line format the plan requires; confirmed exactly one `subagent_type:` line and one `model:` line, and zero contamination-phrase hits.
+- Froze the packet (`chmod -R a-w`), wrote `packets/blind-r1.sha256` (133 file rows + the driver's own row) and `packets/blind-r1-drivers.sha256`; `shasum -a 256 -c` on both verifies clean (133/133 OK).
+- Wrote `harness/check_fallback_parity.py` (stdlib only): route-aware parity check (hook: driver-identity only; fallback-agent: body/frontmatter/driver-line-shape parity, all four self-test cases — planted body diff, model-line retained, one-word prompt diff, correct set — passing). Live run against the actual `84-RUNTIME-VERDICT.md`/drivers prints `PARITY OK (route=hook)`; appended to `packets/blind-r1.check.txt` after `PACKET CLEAN`.
+- Ran the task's exact automated `<verify>` command: **exit 0.**
+
+### Task 3 — paused at the owner-acknowledgment checkpoint
+Not yet executed. Per binding rule 5, this is a real stop: the criteria, scoring rules, matched-run settings, route disclosure, and known limitations above must be presented to the owner in plain language and explicitly acknowledged (or revised and re-hashed) before any comparison run. No comparison run has been started. See the CHECKPOINT REACHED section returned alongside this summary.
+
+## Task Commits
+
+No task-level code commits in Triggarr: every file Tasks 1-2 create or modify is either the git-excluded `84-ADOPTION-CRITERIA.md` (never committed, per D-16) or lives entirely outside the repo under `~/scratch/planchk-pilot/` (D-06). Only this SUMMARY.md (partial, `status: paused`) is force-added and committed now, per the pause protocol, so its commit timestamp — and therefore the criteria's lock timestamp recorded inside it — precedes any Plan 05 run.
+
+## Files Created/Modified
+
+- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, `Record sha256: 3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`, Owner acknowledgment section still pending (local only, never committed)
+- `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/` — answer keys, contamination phrases, the locked criteria's read-only copy (mode 700)
+- `/Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py` — contamination and route-parity checks (stdlib only)
+- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/` — the frozen, 133-file blind comparison packet
+- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress` — driver prompt and freeze/verification evidence
+- `.planning/phases/84-codex-plan-checker-investigation/84-04-SUMMARY.md` — this file (partial; the only file this pause commits)
+
+## ADOPTION-CRITERIA sha256: 3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69
+
+## Decisions Made
+
+See `key-decisions` in the frontmatter above. Headline: every value needed by Plan 05 (checker alias, route, effort, input label) was resolved live from this session's own evidence or carried forward from Plans 01-03's records — none was assumed or chosen to fit an anticipated result.
+
+## Deviations from Plan
+
+### Auto-fixed Issues
+
+**1. [Rule 1 - Bug] `check_packet.py`'s own forbidden-name pattern `*REVIEW*` would always reject the packet's required `REVIEWER-BRIEF.md`**
+- **Found during:** Task 2, Step D (first contamination-check run against the assembled packet)
+- **Issue:** The plan's Step A forbidden-name list (`*SUMMARY*`, `*REVIEW*`, `*VERIFICATION*`, `*UAT*`, ...) is meant to catch later review/revision artifacts (e.g. a stray deep-review note), but `*REVIEW*` also matches the packet's own deliberately-included `REVIEWER-BRIEF.md` — a file Step B explicitly instructs creating and Task 2's own `<verify>`/`<acceptance_criteria>` require to exist. As written, the check could never pass on a conforming packet.
+- **Fix:** Added a narrow, named exemption (`REVIEWER-BRIEF.md` only) to the forbidden-name check, with the reasoning recorded inline in the script. Added a dedicated self-test case confirming a clean `REVIEWER-BRIEF.md` passes.
+- **Cost if wrong:** If this exemption were instead hiding a real leak, a `REVIEWER-BRIEF.md` containing K1-K7/R1-R4 wording would still be caught by the separate acceptance-criteria check (`grep` for K/R wording) and by the phrase-contamination scan (REVIEWER-BRIEF.md's own content is still scanned for phrases, only its *filename* is exempted from the forbidden-name list) — confirmed clean in this execution.
+- **Files modified:** `harness/check_packet.py`.
+- **Commit:** N/A (scratch file, not committed).
+
+**2. [Rule 2 - Missing critical functionality] The packet's own `README.md` tripped the contamination check it was meant to satisfy**
+- **Found during:** Task 2, Step D (first contamination-check run)
+- **Issue:** My first draft of `README.md` (required by the acceptance criteria: "a redaction log with counts exists in packets/blind-r1/README") used the literal phrases "PLANCHK-03 blind comparison" and "the blind packet" — both on the contamination-phrase list, since they are investigation-process terms that should not reach a checker session.
+- **Fix:** Rewrote the two sentences in neutral language ("an independently-adjudicated, two-arm comparison... (two separate model configurations)", "this packet") with no loss of information; re-ran the contamination check, now clean.
+- **Cost if wrong:** Low — this is the executor's own newly-authored file, not a frozen original, so it was correctly treated as fully subject to the contamination check; the fix only changes wording, not the redaction log's actual counts or the unavailable-inputs record.
+- **Files modified:** `packets/blind-r1/README.md` (before freezing; refrozen after the fix).
+- **Commit:** N/A (scratch file, not committed).
+
+**3. [Rule 2 - Missing critical functionality] Thorough redaction of the two sandbox runbook references before freezing the packet**
+- **Found during:** Task 2, Step B (sandbox-runbook copy)
+- **Issue:** The plan requires redacting "private hostnames, IPs, usernames and any credential-like strings" from the two runbook files before they enter a packet that a Codex-routed (external-backend) checker will read in Plan 05. The source files contain a real NAS hostname, a real personal seedbox domain, a real username, a real LAN IP, and several internal container hostnames.
+- **Fix:** Wrote a longest-match-first literal-string redaction script (ordered to avoid partial-match collisions, e.g. `nyx.usbx.me` before `jules1651`), applied it, then ran a residual-token grep over the redacted output confirming zero remaining occurrences of every identified private token before the files entered the frozen packet. Logged counts only (HOST=92, IP=1, USER=14, SECRET=0), never the original values, per the plan's own instruction and this project's CLAUDE.md ("never log sensitive data").
+- **Cost if wrong:** High if missed — an unredacted leak would send the owner's real infrastructure topology, personal domain and username to an external LLM backend via model-gateway. Mitigated by the explicit residual-token verification step before freezing, not just trusting the redaction script's own reported counts.
+- **Files modified:** `packets/blind-r1/sandbox-runbook/SANDBOX-sonarr-v5.md`, `RUNBOOK-sonarr-v5-test.md` (new, redacted copies only — the originals at `/Users/julianamacbook/Cowork/mediaserver/` were never modified).
+- **Commit:** N/A (scratch files, not committed).
+
+---
+
+**Total deviations:** 3 auto-fixed (1 Rule 1 bug in the check script's own pattern scope, 2 Rule 2 missing-critical-functionality additions — clean packet-internal wording and thorough redaction). None touch Triggarr; all are scoped to the scratch pilot and its packet. Each was verified against the task's own automated `<verify>` command (all passing, exit 0) before being relied on.
+**Impact on plan:** All three were necessary for the packet to actually satisfy its own stated purpose (a clean, non-leaking, checker-ready comparison input) rather than merely appearing to.
+
+## Issues Encountered
+
+None beyond the three auto-fixed deviations above, all resolved within this plan using the plan's own granted decision authority (Rule 1/Rule 2).
+
+## User Setup Required
+
+**Yes — this is why execution is paused.** See the CHECKPOINT REACHED section returned alongside this summary: the owner must review the locked adoption criteria in plain language and reply "acknowledged" (or request changes, which are only permitted at this point) before Plan 05 runs any comparison.
+
+## Next Phase Readiness
+
+- Tasks 1-2 are complete and independently verified (both tasks' exact `<verify>` commands exit 0); Task 3 cannot proceed without the owner's explicit acknowledgment of `84-ADOPTION-CRITERIA.md`.
+- A continuation agent should re-verify `shasum -a 256 -c` on `packets/blind-r1.sha256` (excluding its last line) and `inputs/manifest.sha256` from their respective directories, confirm `84-ADOPTION-CRITERIA.md`'s `Record sha256:` line is unchanged, then present the checkpoint to the owner (or process the owner's recorded reply if already given) and complete Task 3.
+- Blocker: Task 3, and all of Plan 05, cannot proceed without the owner's recorded acknowledgment (or requested changes, re-hashed and re-presented) of the locked criteria.
+
+---
+*Phase: 84-codex-plan-checker-investigation*
+*Paused: 2026-10-25 (mid-execution, awaiting owner acknowledgment of the locked adoption criteria)*
