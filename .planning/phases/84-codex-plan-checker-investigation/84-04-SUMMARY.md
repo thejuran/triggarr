@@ -162,27 +162,86 @@ Still no comparison run, validation run, or gateway request was started; the own
 acknowledged this twice-revised record. See the CHECKPOINT REACHED section returned alongside this
 summary.
 
+**Revision 3 (2026-10-26):** The owner reviewed the revision-2 record and again declined to
+acknowledge it, this time asking that the record be **consolidated into one authoritative set of
+rules**, with every piece of superseded wording confined to the "Revision history" section, plus
+five substantive changes: (1) relax routing exclusivity so that individually-attributable,
+demonstrably-unrelated non-codex gateway traffic no longer voids attribution by itself, and require
+within-session accounting (the parent and any other agent inside the test's own session) rather
+than relying on session-id match alone; (2) align evidence-window sampling with the full window
+including its 5-second margins (samples taken exactly at child launch/exit do not cover the
+margins), and require independent process-start evidence — not `served`-counter agreement alone —
+against a gateway restart; (3) resolve "fixed run counts" vs. "one retry per incomplete run" into
+an explicit stated maximum; (4) restate the no-paid-API-overage constraint as hard, not
+observational, and define concretely how it is checked read-only for both arms; (5) require the
+full blind round (runs, freeze, adjudication, owner spot-check, feedback/packet preparation) to
+complete before any revision run starts, rather than permitting an uninterrupted batch across both
+rounds.
+
+All five were applied, and the record was restructured end-to-end this session:
+`84-ADOPTION-CRITERIA.md` is now organized as D-12..D-18 verbatim plus a "How these are applied"
+pointer list, followed by nine authoritative, present-tense sections (§2 Matched-run settings, §3
+Effort, §4 Scoring rules, §5 Run budget and sequencing, §6 Billing, §7 Full-loop validation, §8
+Routing attribution standard, §9 Known limitations) and a "Revision history" that names, under each
+prior revision, exactly which wording that revision's text superseded — there is no remaining
+"both are kept, for the audit trail" / "this section governs where they differ" layering anywhere
+in the body. The budget arithmetic resolves to the owner's own stated numbers: **2.0 hours maximum
+with no retries** (6 scored attempts × 15 min + 30 min validation), **3.5 hours maximum if every
+scored attempt needs its one retry** (12 × 15 min + 30 min). The billing section states the
+no-overage constraint as hard and cites concrete, read-only, non-secret findings from this session:
+the Codex backend has no API-key path in this gateway at all (ChatGPT OAuth only, per `commands.js`
+line 533's `ChatGPT auth: valid` and the `login`/`doctor` flow); the ordinary arm's
+`ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`/`CLAUDE_CODE_OAUTH_TOKEN` env vars are confirmed unset
+and a Keychain "Claude Code-credentials" entry exists (attributes only, never the secret), recorded
+as "most likely subscription, not confirmed" rather than guessed. The routing section's new
+"Restart" rule cites a real, live-confirmed mechanism found by reading
+`lib/process-supervision.js`/`lib/commands.js` in the installed model-gateway 0.51.2: the shim
+already writes `~/.claude/model-gateway/shim.pid.json` (`{pid, command, startedAt}`) on every start,
+with `startedAt` captured via `ps -ww -p <pid> -o pid=,ppid=,lstart=,args=` — read this session,
+read-only, confirming the current shim PID (`43968`) and its `startedAt`/live `ps -o lstart` agree
+exactly (`Mon Oct 12 17:44:56 2026`), with no gateway request sent. The record was re-hashed (new
+`Record sha256: 35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`, superseding
+`24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`), computed by the same
+line-anchored method used in revisions 1 and 2 and cross-checked by a second, independent
+`head`-based extraction (both methods agree). The locked copy at
+`evaluator-only/adoption-criteria.locked.md` was refreshed (`chmod u+w`, byte-identical copy,
+`chmod a-w`; `cmp` confirms byte-identity), and Plan 04's Task 1 and Task 2 exact automated
+`<verify>` commands were both re-run and both still exit 0 (Effort-equality check still passes:
+`max == max`; contamination/packet/parity checks still pass). No existing D-12..D-18 text and no
+finding (E1-E7, N1-N5) was altered or relabelled; every piece of text this revision's consolidation
+replaces is named, under its originating revision, in "Revision history." Still no comparison run,
+validation run, or gateway/model request was started at any point during this revision. This
+revision also newly specifies (for Plan 05, not executed now): the scratch `agent.spawn` hook must
+gain an append-only per-spawn log line (timestamp, subagent name, rewritten model, counter) before
+any run, and the record's §5 sequencing (full-loop validation + 4 blind runs → freeze → blind
+adjudication + owner spot-check → identical feedback/revised packet prepared and hashed → only then
+the 2 revision runs → revision adjudication) must be followed, with no uninterrupted batch spanning
+the blind and revision rounds. The owner has not yet acknowledged this third revision. See the
+CHECKPOINT REACHED section returned alongside this summary.
+
 ## Task Commits
 
 No task-level code commits in Triggarr: every file Tasks 1-2 create or modify is either the git-excluded `84-ADOPTION-CRITERIA.md` (never committed, per D-16) or lives entirely outside the repo under `~/scratch/planchk-pilot/` (D-06). Only this SUMMARY.md (partial, `status: paused`) is force-added and committed now, per the pause protocol, so its commit timestamp — and therefore the criteria's lock timestamp recorded inside it — precedes any Plan 05 run.
 
 ## Files Created/Modified
 
-- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, revised twice on 2026-10-26 per the owner's five (revision 1) then three (revision 2) requested changes, `Record sha256: 24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796` (supersedes `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`, which supersedes `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`), Owner acknowledgment section still pending (local only, never committed)
+- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, revised three times on 2026-10-26 per the owner's five (revision 1), three (revision 2), then five-plus-consolidation (revision 3) requested changes; revision 3 restructures the record into D-12..D-18 verbatim plus nine single-authority sections (§2-§9) and a "Revision history" holding all superseded wording, `Record sha256: 35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93` (supersedes `24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`, which supersedes `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`, which supersedes `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`), Owner acknowledgment section still pending (local only, never committed)
 - `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/` — answer keys, contamination phrases, the locked criteria's read-only copy (mode 700)
 - `/Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py` — contamination and route-parity checks (stdlib only)
 - `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/` — the frozen, 133-file blind comparison packet
 - `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress` — driver prompt and freeze/verification evidence
 - `.planning/phases/84-codex-plan-checker-investigation/84-04-SUMMARY.md` — this file (partial; the only file this pause commits)
 
-## ADOPTION-CRITERIA sha256: 24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796
+## ADOPTION-CRITERIA sha256: 35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93
 
-(Supersedes the revision-1 value `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`,
+(Supersedes the revision-2 value `24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`,
+which superseded the revision-1 value `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`,
 which itself superseded the 2026-10-25 value
-`3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69` — neither prior value was
-acknowledged by the owner; both rounds of changes were requested before acknowledgment. This line
-will be updated again if the owner requests further changes; it is finalized only once the owner's
-"acknowledged" reply is recorded in `84-ADOPTION-CRITERIA.md`'s "Owner acknowledgment" section.)
+`3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69` — none of the three prior values
+was acknowledged by the owner; all three rounds of changes were requested before acknowledgment.
+This line will be updated again if the owner requests further changes; it is finalized only once
+the owner's "acknowledged" reply is recorded in `84-ADOPTION-CRITERIA.md`'s "Owner acknowledgment"
+section.)
 
 ## Decisions Made
 
@@ -227,13 +286,14 @@ None beyond the three auto-fixed deviations above, all resolved within this plan
 
 ## User Setup Required
 
-**Yes — this is why execution is paused.** See the CHECKPOINT REACHED section returned alongside this summary: the owner must review the **twice-revised** locked adoption criteria (revision 2, 2026-10-26) in plain language and reply "acknowledged" (or request further changes, which are only permitted at this point) before Plan 05 runs any comparison or the full-loop validation exercise.
+**Yes — this is why execution is paused.** See the CHECKPOINT REACHED section returned alongside this summary: the owner must review the **three-times-revised, now consolidated** locked adoption criteria (revision 3, 2026-10-26) in plain language and reply "acknowledged" (or request further changes, which are only permitted at this point) before Plan 05 runs any comparison or the full-loop validation exercise.
 
 ## Next Phase Readiness
 
-- Tasks 1-2 are complete and independently verified (both tasks' exact `<verify>` commands exit 0, re-confirmed after both revision 1 and revision 2); Task 3 cannot proceed without the owner's explicit acknowledgment of the **twice-revised** `84-ADOPTION-CRITERIA.md` (`Record sha256: 24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`).
+- Tasks 1-2 are complete and independently verified (both tasks' exact `<verify>` commands exit 0, re-confirmed after revision 1, revision 2, and now revision 3); Task 3 cannot proceed without the owner's explicit acknowledgment of the **consolidated** `84-ADOPTION-CRITERIA.md` (`Record sha256: 35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`).
 - A continuation agent should re-verify `shasum -a 256 -c` on `packets/blind-r1.sha256` (excluding its last line) and `inputs/manifest.sha256` from their respective directories, confirm `84-ADOPTION-CRITERIA.md`'s `Record sha256:` line is unchanged from this revision (or apply any newly requested changes, re-hash, and re-present), then present the checkpoint to the owner (or process the owner's recorded reply if already given) and complete Task 3.
 - Blocker: Task 3, and all of Plan 05 (including the new full-loop validation exercise), cannot proceed without the owner's recorded acknowledgment (or further requested changes, re-hashed and re-presented) of the locked criteria.
+- **New obligations for Plan 05, specified by revision 3 but not implemented now:** (i) before any run, add an append-only per-spawn log line (timestamp, subagent name, rewritten model, counter) to the scratch `agent.spawn` hook from Plan 01 — this is a change to scratch code, must itself be recorded and hashed before use, and is required for §8's "within-session accounting" rule; (ii) follow §5's mandatory sequencing (full-loop validation + 4 blind runs → freeze → blind adjudication + owner spot-check → identical feedback/revised packet prepared and hashed → only then the 2 revision runs → revision adjudication) — no uninterrupted batch may span the blind and revision rounds, and within either batch of runs, launching as a batch (rather than one at a time) is permitted only when every §8 exclusivity condition holds for each run in the batch.
 
 ---
 *Phase: 84-codex-plan-checker-investigation*
@@ -309,3 +369,50 @@ Re-verified after applying the owner's three requested clarifications:
 - No comparison run, validation run, or gateway/model request was started at any point during this
   revision. `git status --short` (Triggarr repo root) shows no changes to `.planning/STATE.md`,
   `.planning/ROADMAP.md`, or `.planning/REQUIREMENTS.md`, and no other tracked file.
+
+## Self-Check (Revision 3, 2026-10-26): PASSED
+
+Re-verified after consolidating the record into one authoritative rule set per the owner's
+instruction:
+- `grep -n "^Record sha256:" 84-ADOPTION-CRITERIA.md` → exactly one line, value
+  `35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`.
+- Hash recomputed independently by two methods: Python `bytes.split(b'\n')` line-join up to the
+  line starting `Record sha256:` (no trailing newline), and an independent `head -n`-based
+  extraction (`head -n $((LINE-1))` then dropping the one trailing newline byte) → both agree with
+  the recorded value.
+- `grep -Ec "^Effort: (max|xhigh)$"` and `grep -Ec "^Route: (hook|fallback-agent)$"` both return
+  exactly `1` (no accidental duplicate standalone lines introduced by the rewrite).
+- `cmp 84-ADOPTION-CRITERIA.md evaluator-only/adoption-criteria.locked.md` → exit 0 (byte-identical;
+  locked copy refreshed `chmod u+w` → copy → `chmod a-w`).
+- Plan 04 Task 1's exact `<verify>` command → exit 0 (Effort equality `max == max` still holds;
+  D-12..D-18, `Input label:`, `Route: hook`, and the 64-hex-char `Record sha256:` line are all
+  present).
+- Plan 04 Task 2's exact `<verify>` command → exit 0 (`PACKET CLEAN`, `PARITY OK (route=hook)`,
+  packet and driver shas still verify — this task does not read `84-ADOPTION-CRITERIA.md`'s content
+  directly, so it was unaffected by the rewrite, and re-running it confirms nothing else in the
+  pilot was disturbed).
+- The new read-only, non-secret source citations added this revision were independently confirmed
+  this session, with no gateway request or child `claude` session started: `~/.claude/model-gateway/
+  shim.pid` (`43968`) and `shim.pid.json` (`startedAt: "Mon Oct 12 17:44:56 2026"`) were read
+  directly; a `ps -p 43968 -o pid=,lstart=` cross-check returned the identical `lstart` value; the
+  `writePidRecordAsync`/`processInfoSync` call sites were read in
+  `lib/process-supervision.js` (lines 49-87, 276-281) and `lib/commands.js` (line 2187); the
+  Codex-backend OAuth-only auth path was read in `commands.js` (`login`, `ChatGPT auth: valid` at
+  line 533) and confirmed present via a directory listing (not a content read) of
+  `~/.config/claude-code-proxy/`; `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`/
+  `CLAUDE_CODE_OAUTH_TOKEN` presence (not value) was checked via `printenv` and found unset; a
+  macOS Keychain entry named "Claude Code-credentials" was confirmed to exist via `security
+  find-generic-password` with no `-w` flag (attributes only, the secret was never retrieved); the
+  `request-routes.jsonl` append-only write site (`lib/request-worker.js` line 1150) and its path
+  definition (`runtime.js` line 32) were read to confirm no internal rotation/truncation logic.
+  `/healthz` was not queried, per binding rule 1.
+- No existing D-12..D-18 text, and no finding (E1-E7, N1-N5) in `84-PILOT-EVIDENCE.md`, was altered
+  or relabelled. Every piece of wording this revision's consolidation replaces is named, under its
+  originating revision, in the rewritten "Revision history" section — there is no remaining
+  "both are kept, for the audit trail" / "this section governs where they differ" layering in the
+  body.
+- No comparison run, validation run, or gateway/model request was started at any point during this
+  revision. `git status --short` (Triggarr repo root) shows no changes to `.planning/STATE.md`,
+  `.planning/ROADMAP.md`, or `.planning/REQUIREMENTS.md`; the only modified tracked file is this
+  SUMMARY.md (`84-ADOPTION-CRITERIA.md` itself is git-excluded per D-16, so it does not appear in
+  `git status`).
