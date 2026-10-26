@@ -86,20 +86,56 @@ completed: 2026-10-25
 ### Task 3 — paused at the owner-acknowledgment checkpoint
 Not yet executed. Per binding rule 5, this is a real stop: the criteria, scoring rules, matched-run settings, route disclosure, and known limitations above must be presented to the owner in plain language and explicitly acknowledged (or revised and re-hashed) before any comparison run. No comparison run has been started. See the CHECKPOINT REACHED section returned alongside this summary.
 
+**Revision 1 (2026-10-26):** The owner reviewed the record and declined to acknowledge the
+2026-10-25 version, requesting five changes before freezing: (1) a separate, one-attempt,
+30-minute full-loop validation exercise outside the scored-run budget, without loosening the
+end-to-end requirement; (2) a per-arm effective-settings disclosure instead of trusting the shared
+"Effort: max" flag name alone; (3) an explicit statement that usage is observational, with only
+wall-clock ceilings and run counts actually enforced; (4) a classification of session/timing
+correlation as indirect routing evidence, with a defined standard for unambiguous attribution; (5)
+final, pinned scoring rules for duplicate findings, additional-finding buckets, the false-positive
+denominator, and incomplete-run scoring. All five were applied to `84-ADOPTION-CRITERIA.md` this
+session (five new sections added: "Full-loop validation (separate from comparison budget)",
+"Effective settings per arm", "Routing attribution standard", "Usage", "Scoring rules (final)",
+plus a "Revision log" section); no existing D-12..D-18 text, the original "Scoring rules (fixed
+before any run)" section, or the "Matched-run settings" section was deleted. The record was
+re-hashed (new `Record sha256: f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`,
+superseding `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`), the locked copy at
+`evaluator-only/adoption-criteria.locked.md` was refreshed (`chmod u+w`, byte-identical copy,
+`chmod a-w`; `cmp` confirms byte-identity), and Task 1's and Task 2's exact automated `<verify>`
+commands were both re-run and both still exit 0 (Effort-equality check still passes: `max == max`;
+contamination/packet/parity checks still pass). The investigation into item 2 (reading
+`lib/request-worker.js` in the installed model-gateway 0.51.2, read-only) and item 4 (reading
+`dispatchRequestIdentity()` in the same file) surfaced two concrete, citable findings now recorded
+in the criteria: the harness's shared `--effort max` flag is logged as `effort: "max"` on every
+codex-arm request but as `effort: null` on the one recorded ordinary-arm run, because
+model-gateway's own anthropic-passthrough log call (line 2345) never passes an `effort` argument at
+all; and the `x-claude-code-agent-id` header the runtime already sends is read by
+`dispatchRequestIdentity()` but that function is only invoked on the `auto`-dispatch branch, never
+on the direct hook-routed or anthropic-passthrough paths this comparison uses — which is why
+`agentId` has been uniformly absent from every route-log line this phase has produced. Still no
+comparison run, validation run, or gateway request was started; the owner has not yet acknowledged
+this revised record. See the CHECKPOINT REACHED section returned alongside this summary.
+
 ## Task Commits
 
 No task-level code commits in Triggarr: every file Tasks 1-2 create or modify is either the git-excluded `84-ADOPTION-CRITERIA.md` (never committed, per D-16) or lives entirely outside the repo under `~/scratch/planchk-pilot/` (D-06). Only this SUMMARY.md (partial, `status: paused`) is force-added and committed now, per the pause protocol, so its commit timestamp — and therefore the criteria's lock timestamp recorded inside it — precedes any Plan 05 run.
 
 ## Files Created/Modified
 
-- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, `Record sha256: 3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`, Owner acknowledgment section still pending (local only, never committed)
+- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, revised 2026-10-26 per the owner's five requested changes (revision 1), `Record sha256: f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05` (supersedes `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`), Owner acknowledgment section still pending (local only, never committed)
 - `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/` — answer keys, contamination phrases, the locked criteria's read-only copy (mode 700)
 - `/Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py` — contamination and route-parity checks (stdlib only)
 - `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/` — the frozen, 133-file blind comparison packet
 - `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress` — driver prompt and freeze/verification evidence
 - `.planning/phases/84-codex-plan-checker-investigation/84-04-SUMMARY.md` — this file (partial; the only file this pause commits)
 
-## ADOPTION-CRITERIA sha256: 3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69
+## ADOPTION-CRITERIA sha256: f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05
+
+(Supersedes the 2026-10-25 value `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`,
+which the owner declined to acknowledge pending the revision 1 changes recorded above. This line
+will be updated again if the owner requests further changes; it is finalized only once the owner's
+"acknowledged" reply is recorded in `84-ADOPTION-CRITERIA.md`'s "Owner acknowledgment" section.)
 
 ## Decisions Made
 
@@ -144,13 +180,13 @@ None beyond the three auto-fixed deviations above, all resolved within this plan
 
 ## User Setup Required
 
-**Yes — this is why execution is paused.** See the CHECKPOINT REACHED section returned alongside this summary: the owner must review the locked adoption criteria in plain language and reply "acknowledged" (or request changes, which are only permitted at this point) before Plan 05 runs any comparison.
+**Yes — this is why execution is paused.** See the CHECKPOINT REACHED section returned alongside this summary: the owner must review the **revised** locked adoption criteria (revision 1, 2026-10-26) in plain language and reply "acknowledged" (or request further changes, which are only permitted at this point) before Plan 05 runs any comparison or the full-loop validation exercise.
 
 ## Next Phase Readiness
 
-- Tasks 1-2 are complete and independently verified (both tasks' exact `<verify>` commands exit 0); Task 3 cannot proceed without the owner's explicit acknowledgment of `84-ADOPTION-CRITERIA.md`.
-- A continuation agent should re-verify `shasum -a 256 -c` on `packets/blind-r1.sha256` (excluding its last line) and `inputs/manifest.sha256` from their respective directories, confirm `84-ADOPTION-CRITERIA.md`'s `Record sha256:` line is unchanged, then present the checkpoint to the owner (or process the owner's recorded reply if already given) and complete Task 3.
-- Blocker: Task 3, and all of Plan 05, cannot proceed without the owner's recorded acknowledgment (or requested changes, re-hashed and re-presented) of the locked criteria.
+- Tasks 1-2 are complete and independently verified (both tasks' exact `<verify>` commands exit 0, re-confirmed after revision 1); Task 3 cannot proceed without the owner's explicit acknowledgment of the **revised** `84-ADOPTION-CRITERIA.md` (`Record sha256: f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`).
+- A continuation agent should re-verify `shasum -a 256 -c` on `packets/blind-r1.sha256` (excluding its last line) and `inputs/manifest.sha256` from their respective directories, confirm `84-ADOPTION-CRITERIA.md`'s `Record sha256:` line is unchanged from this revision (or apply any newly requested changes, re-hash, and re-present), then present the checkpoint to the owner (or process the owner's recorded reply if already given) and complete Task 3.
+- Blocker: Task 3, and all of Plan 05 (including the new full-loop validation exercise), cannot proceed without the owner's recorded acknowledgment (or further requested changes, re-hashed and re-presented) of the locked criteria.
 
 ---
 *Phase: 84-codex-plan-checker-investigation*
@@ -173,3 +209,25 @@ Verified Task 1's exact `<verify>` command → exit 0 (re-run before writing thi
 Verified Task 2's exact `<verify>` command → exit 0 (re-run before writing this summary).
 Verified `shasum -a 256 -c` on `packets/blind-r1.sha256` (excluding its last line, from inside `packets/blind-r1`) → 133/133 OK.
 Verified `check_packet.py --self-test` and `check_fallback_parity.py --self-test` → both `SELF-TEST PASS`.
+
+## Self-Check (Revision 1, 2026-10-26): PASSED
+
+Re-verified after applying the owner's five requested changes:
+- `grep -n "^Record sha256:" 84-ADOPTION-CRITERIA.md` → exactly one line, value
+  `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`.
+- Hash recomputed independently by two methods (Python `bytes.split(b'\n')` line-join up to the
+  line starting `Record sha256:`, and a `sed`-based extraction) → both agree with the recorded
+  value. The same method, applied to a reconstruction of the pre-revision file, reproduces the
+  known-good superseded hash `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`,
+  confirming the hashing method itself (an earlier attempt using Python's plain `bytes.find()`
+  instead of a line-start match collided with this revision's own "Revision log" section, which
+  mentions the superseded hash by name — caught before trusting it, corrected to the line-anchored
+  method before writing the final value).
+- `cmp 84-ADOPTION-CRITERIA.md evaluator-only/adoption-criteria.locked.md` → exit 0 (byte-identical;
+  locked copy is `chmod a-w`).
+- Task 1's exact `<verify>` command → exit 0 (Effort equality `max == max` still holds).
+- Task 2's exact `<verify>` command → exit 0 (`PACKET CLEAN`, `PARITY OK (route=hook)`, packet and
+  driver shas still verify).
+- No comparison run, validation run, or gateway/model request was started at any point during this
+  revision. `git status --short` shows no changes to `.planning/STATE.md`, `.planning/ROADMAP.md`,
+  or `.planning/REQUIREMENTS.md`.
