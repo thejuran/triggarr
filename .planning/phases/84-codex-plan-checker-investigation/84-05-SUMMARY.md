@@ -2,8 +2,8 @@
 phase: 84-codex-plan-checker-investigation
 plan: "05"
 subsystem: investigation
-tags: [blind-comparison, adjudication, hooks-sandbox, model-gateway, bm-plan-checker, codex, within-session-accounting]
-status: paused
+tags: [blind-comparison, adjudication, hooks-sandbox, model-gateway, bm-plan-checker, codex, within-session-accounting, input-label-correction]
+status: complete
 
 # Dependency graph
 requires:
@@ -57,14 +57,26 @@ duration: "~5h (hook-sandbox + classifier debugging, full-loop validation x3 att
 completed: 2026-10-26
 ---
 
-# Phase 84 Plan 05: Blind First Pass + Arm-Blind Adjudication (Paused at Owner Spot-Check) Summary
+# Phase 84 Plan 05: Blind First Pass + Arm-Blind Adjudication Summary
 
-**Four matched blind runs (2 ordinary + 2 codex, two disclosed retries) adjudicated arm-blind against the withheld K1-K7 answer key by a fresh session with real reproduction evidence, after fixing a hooks-sandbox import rejection and two live classifier bugs found during pre-flight validation — D-12's hit bar is unmeetable because all seven answer-key defects turned out to already be fixed by this plan set, and the codex arm has one unresolved timeout after its one permitted retry; paused at the binding-rule-7 owner spot-check checkpoint.**
+**CORRECTION (2026-10-26, owner ruling — see `84-INPUT-LABEL-CORRECTION.md`, local,
+git-excluded): the input set used for this plan's blind runs was post-review, not original.
+It contains in-text revision markers ("(R1)".."(R6)") showing it already reflects fixes from
+an owner review during Phase 81's own planning session, which is why every K1-K7
+answer-key item below was found "invalid" — not because the checkers performed poorly.
+The owner ruled the known-defect comparison (D-12) **invalid / not measurable**, not zero
+hits; the additional findings remain **exploratory**, and the five disputed calls listed
+below are **unresolved by the owner** (no spot-check reply was given before this ruling
+superseded the open checkpoint) — none of them is counted as a confirmed success, and this
+plan does not claim a settled false-alarm rate. The routing, fail-closed, and post-bounce
+mechanics this plan proved are unaffected by this correction (see "Accomplishments" below).**
+
+~~**Four matched blind runs (2 ordinary + 2 codex, two disclosed retries) adjudicated arm-blind against the withheld K1-K7 answer key by a fresh session with real reproduction evidence, after fixing a hooks-sandbox import rejection and two live classifier bugs found during pre-flight validation — D-12's hit bar is unmeetable because all seven answer-key defects turned out to already be fixed by this plan set, and the codex arm has one unresolved timeout after its one permitted retry; paused at the binding-rule-7 owner spot-check checkpoint.**~~
 
 ## Performance
 
 - **Duration:** ~5h wall-clock this session (includes hook/classifier debugging); **2.40h** of actual scored/validation/adjudication model-session time plus **~18min** of pre-flight smoke-test debugging (not scored)
-- **Tasks:** Task 1 (auto) complete, Task 2 (auto) complete, Task 3 (checkpoint:human-verify) — **paused here**, awaiting the owner's reply
+- **Tasks:** Task 1 (auto) complete, Task 2 (auto) complete, Task 3 (checkpoint:human-verify) — **closed by owner ruling 2026-10-26**: the owner ruled the known-defect comparison invalid/not measurable (post-review input, see correction above) rather than replying "agree" or naming a disputed call to re-adjudicate; the five disputed calls below stay unresolved by the owner, not adjudicated either way
 - **Files modified (Triggarr tracked files):** 0 besides this SUMMARY.md — every other deliverable is either the git-excluded `84-COMPARISON-REPORT.md` or lives entirely outside the repo under `~/scratch/planchk-pilot/` (D-16/D-06)
 
 ## Accomplishments
@@ -176,11 +188,11 @@ None beyond the deviations documented above, all resolved within this plan's gra
 
 None — no external service configuration required.
 
-## CHECKPOINT REACHED
+## Checkpoint Resolution (Task 3, closed 2026-10-26)
 
-**Type:** human-verify
+**Type:** human-verify (opened) → closed by owner ruling (not by an "agree"/disputed-call reply)
 **Plan:** 84-05
-**Progress:** 2/3 tasks complete, paused at Task 3 (the owner spot-check)
+**Progress:** 3/3 tasks closed (Task 3 closed by owner ruling on the input-label finding, superseding the open spot-check question below)
 
 ### Completed Tasks
 
@@ -189,15 +201,22 @@ None — no external service configuration required.
 | Pre-flight | Hook/harness fixes + full-loop validation | Validation incomplete (4/5 steps met); hook and classifier bugs fixed | `84-COMPARISON-REPORT.md` §"Full-loop validation" |
 | 1 | Four matched blind runs | Complete (2 retries disclosed) | `84-COMPARISON-REPORT.md` §"Blind first pass" / `runs/blind/` |
 | 2 | Arm-blind fresh-session adjudication | Complete | `adjudication/blind-r1/work/adjudication.json` |
+| 3 | Owner spot-check | **Closed by owner ruling** (see below) — not an "agree" or a named-disputed-call reply | `84-INPUT-LABEL-CORRECTION.md`, this section |
 
-### Current Task
+### What the checkpoint originally asked, and how it was actually closed
 
-**Task 3:** Owner spot-check of the adjudication summary and disputed calls
-**Status:** Awaiting owner reply (real stop per binding rule 7 — not auto-approved)
+The checkpoint below was presented to the owner as written at the time. Before the owner
+replied to the spot-check question itself, the orchestrator's own investigation found that
+the input set was post-review, not original (see `84-INPUT-LABEL-CORRECTION.md`), and
+presented that finding to the owner together with the checkpoint. The owner's ruling
+(2026-10-26, quoted in full in `84-INPUT-LABEL-CORRECTION.md`'s header) closes Task 3 on
+that basis: the known-defect comparison is recorded as **invalid / not measurable** — not
+zero hits, and not evidence either checker performed poorly — and the five disputed calls
+listed below stay **unresolved by the owner** (the owner did not reply "agree" or name a
+call to re-adjudicate; no fresh arm-blind re-adjudication was run, per the ruling's "no
+further runs" instruction). They are not counted as confirmed successes.
 
-### Checkpoint Details
-
-**Full-loop validation (one attempt, no retry):**
+**Full-loop validation (one attempt, no retry) — unaffected by the correction, preserved as-is:**
 | Step | Met? |
 |---|---|
 | 1. Checker spawn (step 10) reached | **Met** |
@@ -206,9 +225,14 @@ None — no external service configuration required.
 | 4. A full step-12 revision/recheck cycle | **Not met** — the first-pass plan happened to pass cleanly, so BM's revision loop never triggered |
 | 5. Post-bounce recheck (step 12.5) independently confirmed | **Met** |
 
-Overall: **incomplete** (4/5). Per the locked criteria, this means D-14's "end-to-end loop" item is **not met** — the mechanism itself worked in every way observed, but this one permitted attempt did not happen to exercise a revision cycle.
+Overall: **incomplete** (4/5) — the full BM loop is only **partially validated**: routing and
+post-bounce recheck are proven; revision/recheck was never exercised. Per the locked
+criteria, this means D-14's "end-to-end loop" item is **not met** — the mechanism itself
+worked in every way observed, but this one permitted attempt did not happen to exercise a
+revision cycle. This finding is independent of the input-label correction and stands as
+recorded.
 
-**Per-run status/duration/routing tier:**
+**Per-run status/duration/routing tier — unaffected by the correction, preserved as-is:**
 | Run | Status | Duration | Routing |
 |---|---|---|---|
 | ordinary-a1 (→ a3 retry) | complete (after 1 retry) | 307.2s | anthropic/sonnet |
@@ -216,25 +240,41 @@ Overall: **incomplete** (4/5). Per the locked criteria, this means D-14's "end-t
 | codex-a1 | complete | 839.2s | codex/gpt-6-astra, ATTRIBUTED tier |
 | codex-a2 (→ a3 retry) | **incomplete** (both attempts timed out at 900s) | 900.0s / 900.0s | codex/gpt-6-astra reached both times, never finished in time |
 
-**Adjudicated hit counts per arm** (all K1-K7 excluded — none are real defects in this input set, each already fixed by these plans):
-| Arm | HITs on K1-K7 | Valid additional findings | False alarms | Indeterminates |
+**Adjudicated hit counts per arm** (all K1-K7 excluded — not because they are not real
+defects in general, but because they are already fixed in this specific post-review input
+set; see the correction):
+| Arm | HITs on K1-K7 | Valid additional findings (exploratory, see disputed calls) | False alarms | Indeterminates |
 |---|---|---|---|---|
-| Ordinary | 0 | 1 (disputed) | 0 | 0 |
-| Codex | 0 | 7 (3 disputed) | 0 | 0 (1 run scored zero — incomplete) |
+| Ordinary | 0 | 1 (disputed, unresolved) | 0 | 0 |
+| Codex | 0 | 7 (3 disputed, unresolved) | 0 | 0 (1 run scored zero — incomplete) |
 
-**D-12 (hit bar): not met** — mean codex hits (0) − mean ordinary hits (0) = 0, not ≥ 2.
-**D-13 (false-positive cap): met for both arms** on its own numeric terms (zero false alarms anywhere); the codex arm's separate completeness requirement (D-14) is still not met because of the unresolved timeout.
+**D-12 (hit bar): INVALID / NOT MEASURABLE** (corrected 2026-10-26) — ~~not met — mean codex
+hits (0) − mean ordinary hits (0) = 0, not ≥ 2~~. The arithmetic is preserved for the record
+but does not measure what D-12 requires, because the input was post-review and every K-item
+was already fixed before the comparison ran. This is explicitly not zero hits and not
+evidence either checker underperformed.
+**D-13 (false-positive cap): arithmetic satisfied on exploratory, partly-disputed findings —
+not claimed as a settled rate** (corrected 2026-10-26) — ~~met for both arms~~ on its own
+numeric terms (zero false alarms anywhere); the codex arm's separate completeness
+requirement (D-14) is still not met because of the unresolved timeout. The additional
+findings the ratio is computed from are exploratory and five of eight are disputed and
+unresolved by the owner.
 
-**Disputed calls** (full detail in `84-COMPARISON-REPORT.md`'s "Disputed calls" section):
+**Disputed calls — UNRESOLVED by the owner** (full detail in `84-COMPARISON-REPORT.md`'s
+"Disputed calls" section; none of these is counted as a confirmed success):
 1. **K7 (which planning files git actually tracks)** — judged not a real defect in these plans, but the adjudicator had to simulate two possible tracked-states in a scratch repo rather than check the real repository, since the frozen packet doesn't include real git history.
 2. **Ordinary checker's one finding** (a known Sonarr-v5 gap already recorded in the project's own roadmap) — credited as a real additional finding even though that checker itself called it a "known gap," not a plan defect — a judgment call by the adjudicator.
 3. **Codex checker's finding on old installs** — real and reproduced, but only affects a narrow, old-install migration path; debatable how seriously to weigh it.
 4. **Codex checker's finding on sandbox test ordering** — a real contradiction of the plans' own stated safety-gate rule, but the adjudicator judges the practical risk as low (an earlier gate and the test-only sandbox already bound the exposure).
 5. **Codex checker's finding on a database backup gap** — real and reproduced, but only triggers after an unclean shutdown followed by restoring that backup, a narrow scenario.
 
-### Awaiting
+### Resolution
 
-Reply **"agree"**, or name which of the five disputed calls above you want re-adjudicated. If you dispute any, a fresh adjudicator session (same blinding, limited to those specific findings) will be run, both verdicts recorded, and D-12/D-13 restated if anything changes. No revision run (Plan 06) will start until this checkpoint clears.
+No further runs, re-adjudication, or backup searches were performed, per the owner's explicit
+instruction. Plan 06 (the revision round) is recorded separately as **not performed —
+comparison input invalid** (see `84-06-SUMMARY.md`), not completed or passed. Plan 07 carries
+forward the corrected label and the invalid/not-measurable status into the adoption
+evaluation and closeout.
 
 ## Self-Check: PASSED
 
@@ -254,4 +294,12 @@ Verified Task 2's exact `<verify>` command → exit 0 (re-run before writing thi
 
 Verified STATE.md/ROADMAP.md/REQUIREMENTS.md untouched: `git status --short -- .planning/STATE.md .planning/ROADMAP.md .planning/REQUIREMENTS.md` → empty.
 
-No commit to verify yet — this is the commit that will create the record (see below).
+## Self-Check (closeout, 2026-10-26): PASSED
+
+Verified `84-INPUT-LABEL-CORRECTION.md` exists (local, git-excluded):
+`test -f /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-INPUT-LABEL-CORRECTION.md && echo FOUND` → FOUND.
+Verified prior commit `e5ed13c` (84-03/84-04 label correction) exists:
+`git log --oneline --all | grep -q e5ed13c && echo FOUND` → FOUND.
+Verified no evidence file was committed by this closeout:
+`git status --short` shows only this SUMMARY.md as modified at commit time.
+Verified STATE.md/ROADMAP.md/REQUIREMENTS.md still untouched (re-checked at closeout) → empty.
