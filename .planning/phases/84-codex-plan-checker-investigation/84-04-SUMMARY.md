@@ -44,7 +44,7 @@ key-files:
   modified: []
 
 key-decisions:
-  - "Input label carried forward verbatim: ORIGINAL (from 84-HASH-MANIFEST.md)"
+  - "Input label carried forward verbatim: ORIGINAL (from 84-HASH-MANIFEST.md) -- SUPERSEDED 2026-10-26: corrected to 'post-review, not original' per 84-INPUT-LABEL-CORRECTION.md (local, git-excluded). The locked 84-ADOPTION-CRITERIA.md record (hash-locked, not edited) still reads 'Input label: ORIGINAL' in its header; the correction file governs how that text is now read, without altering the acknowledged hash e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a."
   - "Checker invocation alias resolved live: sonnet (bm-sdk query resolve-model bm-plan-checker, model_profile balanced) -- matches 84-RESEARCH.md's expectation"
   - "Route: hook (carried from 84-RUNTIME-VERDICT.md); no fallback-agent driver or --agents-file needed; blind-r1-driver.txt is used byte-for-byte by both arms"
   - "Effort: max (carried from 84-PILOT-EVIDENCE.md's 'Effort accepted: max', string-equality-checked against the criteria record)"

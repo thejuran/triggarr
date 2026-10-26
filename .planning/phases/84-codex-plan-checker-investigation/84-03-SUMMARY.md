@@ -13,7 +13,7 @@ provides:
   - "A frozen source-commit snapshot (98e01b6bf884) with its .git/info/exclude and tracked/ignored listing, under /Users/julianamacbook/scratch/planchk-pilot/inputs/source/"
   - "An evidence-based D-09 cutoff (2026-10-19 22:34:01 -0400), re-tested (not adopted) against git/transcript/session evidence, confirming the research's recommendation"
   - "Nine-point mutual-consistency check (plan numbering, depends_on resolution, frontmatter phase field, requirements-union-vs-ROADMAP match, no forward references, no post-cutoff files) -- all pass"
-  - "Set label: ORIGINAL, to carry into every later report (84-04, 84-05)"
+  - "Set label: ORIGINAL, to carry into every later report (84-04, 84-05) -- SUPERSEDED 2026-10-26: corrected to 'post-review, not original' per 84-INPUT-LABEL-CORRECTION.md (in-text R1-R6 revision markers already present in the frozen plans)"
   - "An explicit UNAVAILABLE record for pre-cutoff REQUIREMENTS.md (not git-tracked at or before the cutoff; no usable on-disk fallback) -- recorded but does not affect the ORIGINAL label, which depends only on the 9 plans + 4 context docs"
 affects: [84-04, 84-05]
 
@@ -45,7 +45,7 @@ key-decisions:
   - "Resolved RESEARCH.md's flagged, previously-unresolved date mismatch: the blueprint's 'Blind comparison' paragraph first appears in git at 2026-10-20 21:30:02 (commit c2fb07a), not on its own self-dated '2026-10-18' -- the owner's request predates the paragraph's commit, the review itself does not"
   - "Owner granted Full Disk Access (2026-10-25); tmutil listbackups unblocked. The latest pre-cutoff MaguffyNAS backup (2026-10-19-174044, completed 17:40:44 local, confirmed -0400 with no intervening DST transition) was read-only accessed via direct filesystem ls/stat/cp -p (no tmutil mount/restore verb) and yielded byte-identical copies of all 11 never-tracked files (81-01..07 + 4 context docs) plus genuinely different, genuinely pre-cutoff originals for 81-08 and 81-09"
   - "81-08/81-09-PLAN.md TRUE ORIGINALS RECOVERED from Time Machine (mtimes 2026-10-18 16:15:16 / 16:41:25, both >24h before the cutoff) -- supersedes Task 1's 'cutoff satisfied: no' rows, which only had the post-resequence (2026-10-19 22:34:01 commit 5e0070e, further revised) on-disk content available"
-  - "Set label: ORIGINAL -- the full D-09 bar (all 9 plans + CONTEXT/RESEARCH/PATTERNS/VALIDATION, pre-cutoff, verified source, mutually consistent) is met in full; D-10's reconstructed-benchmark fallback was not triggered"
+  - "Set label: ORIGINAL -- the full D-09 bar (all 9 plans + CONTEXT/RESEARCH/PATTERNS/VALIDATION, pre-cutoff, verified source, mutually consistent) is met in full; D-10's reconstructed-benchmark fallback was not triggered -- SUPERSEDED 2026-10-26: 'met in full' describes only the provenance/consistency bar as scoped (pre-cutoff timestamps, verified source, mutual consistency); it does not establish pre-review originality. The frozen plans contain in-text revision markers showing they already reflect an owner review's fixes. Corrected label: 'post-review, not original' per 84-INPUT-LABEL-CORRECTION.md."
   - "REQUIREMENTS.md: recorded UNAVAILABLE for the pre-cutoff set -- removed from git 2026-06-04, not re-tracked until 2026-10-21 (after cutoff, different v2.13 scope); current on-disk copy postdates the cutoff so the plan's own on-disk-fallback rule does not apply. Confirmed this does NOT block the ORIGINAL label, which the plan's Step B text scopes to the 9 plans + 4 context docs only"
   - "Built a consolidated /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/ directory (not explicitly named in Task 3's <files> list) so 84-04/84-05 have a single unambiguous 13-file comparison path instead of needing to reassemble it from phase81-candidate/ + phase81-timemachine/2026-10-19-174044/ -- see Deviations"
   - "Source snapshot anchor corrected from the plan's stated 81-01-PLAN.md mtime (16:37:43) to the actual earliest 81-0N-PLAN.md mtime, 81-07-PLAN.md at 16:15:16 -- Rule 1 bug-fix in the plan's own stated fact; same commit selected either way (no intervening commits in that window)"
@@ -59,7 +59,18 @@ completed: 2026-10-25
 
 # Phase 84 Plan 03: Phase 81 Input Recovery, Freeze & Cutoff Evidence Summary
 
-**Full ORIGINAL (not partial) recovery of all nine Phase 81 plans and their four contemporaneous context docs, including the two plans (81-08/81-09) previously missing from git and disk, pulled read-only from a MaguffyNAS Time Machine backup after an owner Full-Disk-Access grant, hashed and frozen with a Set label of ORIGINAL ready for the 84-04/84-05 blind comparison.**
+**CORRECTION (2026-10-26, owner ruling — see `84-INPUT-LABEL-CORRECTION.md`, local,
+git-excluded): the "Set label: ORIGINAL" claim below is superseded. The frozen set
+contains in-text revision markers ("(R1)".."(R6)" in 81-02/03/04/05-PLAN.md) disclosing
+that it already reflects fixes from an owner review during Phase 81's own planning session
+— the corrected label is "post-review, not original." This plan's provenance/cutoff
+methodology (git log, git pickaxe, Codex session mtimes, Claude transcript timestamps, Time
+Machine) never checked plan CONTENT for such markers; see the correction file for the full
+root-cause analysis. The recovery, hashing, and freeze work below is unaffected and remains
+accurate as a provenance/consistency record — only the "original" characterization of what
+was recovered is corrected.**
+
+~~**Full ORIGINAL (not partial) recovery of all nine Phase 81 plans and their four contemporaneous context docs, including the two plans (81-08/81-09) previously missing from git and disk, pulled read-only from a MaguffyNAS Time Machine backup after an owner Full-Disk-Access grant, hashed and frozen with a Set label of ORIGINAL ready for the 84-04/84-05 blind comparison.**~~
 
 ## Performance
 
