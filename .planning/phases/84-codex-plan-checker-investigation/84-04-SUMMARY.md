@@ -48,6 +48,7 @@ key-decisions:
   - "Route: hook (carried from 84-RUNTIME-VERDICT.md); no fallback-agent driver or --agents-file needed; blind-r1-driver.txt is used byte-for-byte by both arms"
   - "Effort: max (carried from 84-PILOT-EVIDENCE.md's 'Effort accepted: max', string-equality-checked against the criteria record)"
   - ".planning/REQUIREMENTS.md and /Users/julianamacbook/Cowork/mediaserver/v5test-results.md (+ v5test-results/) recorded UNAVAILABLE in the packet README rather than substituted with a wrong-era copy -- the latter also postdates the cutoff and falls inside the actual manual-review window"
+  - "Revision 4's §6 launch precondition is MET for every participating backend (Codex, Anthropic/ordinary arm, parent/orchestrator) on the basis of four dated owner attestations recorded verbatim in 84-ADOPTION-CRITERIA.md §6 item 2 (plan tiers; no separate API billing; Claude extra usage confirmed off after being briefly on) plus prior read-only evidence -- Plan 05 must re-check this immediately before its first run"
 
 requirements-completed: []
 
@@ -219,26 +220,118 @@ the 2 revision runs → revision adjudication) must be followed, with no uninter
 the blind and revision rounds. The owner has not yet acknowledged this third revision. See the
 CHECKPOINT REACHED section returned alongside this summary.
 
+**Revision 4 (2026-10-26):** The owner reviewed the revision-3 record and again declined to
+acknowledge it, identifying three specific defects the orchestrator had flagged against revision 3,
+plus one correction of the owner's own: (1) the process-census and restart evidence in §8 were
+still sampled "immediately before launch and immediately after exit," not across the same
+5-second-margin-inclusive window already required for the log offset and the `/healthz` counters;
+(2) §6's Codex billing bullet asserted "no API-key path for the Codex backend in this gateway at
+all ... by construction" — a certainty claim the read-only evidence does not actually support,
+because every Codex-auth code path (`login`, `setup`, `doctor`, the `isAuthed()` readiness check)
+forwards its real work to `claude-code-proxy`, a separately downloaded, compiled binary this
+investigation has not inspected; (3) §6 had no precondition that blocks a run from launching when
+subscription-only billing cannot be confirmed for every participating backend, only a requirement to
+record usage as observational; (4) §8's session-id census bullet said a matching session id
+"establishes exclusivity outright," which overstates what a session match actually proves.
+
+All four were applied in place this session, inside the consolidated structure revision 3
+established (one authoritative rule per section; no wording restored outside "Revision history"):
+§8 now defines one **pre-window sample** and one **post-window sample**, used identically by all
+four evidence types (log offset/inode/size, `/healthz` counters, `shim.pid`/`shim.pid.json`, and the
+`claude` process census) — the "Restart" paragraph and the "Process census" bullet were both
+rewritten to reference these same two named samples instead of "immediately before launch/after
+exit." §6's Codex-backend bullet was rewritten from the "by construction" certainty claim to a
+cited, read-only evidentiary statement ("subscription OAuth indicated by gateway source; proxy
+behaviour unverified"), with a corrected `doctor`-vs-`setup` citation (this session's direct reading
+of the installed model-gateway 0.51.2's `lib/commands.js` found that `ChatGPT auth: valid`, line
+533, is printed by the `setup` command, not `doctor`, which instead prints `codex auth:
+authenticated`, line 1153, from the same underlying `codexAuth` check) and a named **LIMITATION**
+that the proxy binary (`raine/claude-code-proxy`, confirmed present at `~/.config/claude-code-proxy/`
+via a directory listing only, mode 700, contents not read; no `apiKey`/`api_key`/`API_KEY` string
+anywhere in the gateway's own `lib/*.js`, grepped this session) was never downloaded, decompiled, or
+inspected, so its own billing/API-key behavior is unverified, not ruled out. §6 gained a new item 2,
+"Launch precondition," a hard gate: no validation or scored run may launch unless subscription-only
+billing is confirmed, by non-model-request evidence only (local config/credential metadata, help
+text, or a dated owner attestation — never a model request, gateway request, or status/auth command
+run merely to discover billing mode), for all three participating backends — the Codex arm, the
+Anthropic/ordinary arm, and the parent/orchestrator sessions themselves (Anthropic) — with a
+per-backend table. As first written, before any owner response, every row read "not confirmed —
+BLOCKED." §8's session-id census bullet was corrected from "exclusivity is established outright" to:
+a matching session id establishes only **session exclusivity** (no other session used the gateway in
+the window) and never checker-specific attribution by itself — the within-session accounting already
+required above (hook-spawn log, checker interval, model-id partition, reconciliation) still applies
+in full even when the session id matches, and a `codex` line is attributed to the checker only when
+that accounting ties it to a checker interval or hook-log spawn, never to the parent or another agent
+by default. The rest of the record (§7 steps 2/5, §4's D-14 evidence map, §8's "Consequence"
+paragraph) was checked for the same "session match ⇒ checker attribution" implication and needed no
+correction — each already required the full §8 standard. No existing D-12..D-18 text, and no finding
+(E1-E7, N1-N5), was altered or relabelled; every piece of wording this revision replaces is named,
+under "revision 4," in "Revision history," and no earlier revision's wording was reintroduced as a
+second, competing version. The read-only investigation this revision performed — reading
+`lib/commands.js`/`lib/runtime.js` in the installed model-gateway 0.51.2, listing (never reading the
+contents of) `~/.config/claude-code-proxy/`, and re-reading `~/.claude/model-gateway/shim.pid`/
+`shim.pid.json` (PID `43968`, `startedAt` unchanged from revision 3's finding) — sent no gateway
+request and started no `claude-code-proxy codex auth status`/`doctor`/`setup` invocation; those
+commands were read as source, never executed, per binding rule 1.
+
+**Owner attestations, same session, applied within revision 4 (not a fifth revision):** immediately
+after seeing §6's new per-backend table, the owner supplied four dated statements, recorded verbatim
+and in order in §6 item 2: (1) "I have claude max 20 and chatgpt pro." (2) "no api billing and extra
+usage is on." (3) "extra usage is on claude but there is no guarantee there will be extra money but
+do you think you need it I want to avoid" (4) "extra usage is off." Applied as received, the table's
+status moved through three states, none deleted from the record: attestation 1 alone left every row
+"not confirmed — BLOCKED" (plan tier only); attestation 2 resolved the API-billing question but
+opened an account-ambiguous "extra usage is on," leaving every row "not confirmed — BLOCKED" because
+which account was unstated; attestation 3 named the Claude account specifically (not ChatGPT) and
+stated the owner's intent to avoid paid extra usage; attestation 4 confirmed that Claude extra usage
+is now off. The final, current table reads: **Anthropic/ordinary arm and parent/orchestrator —
+confirmed subscription-only** (attestations 1/2/4 plus the existing unset-env-var/Keychain-presence
+evidence); **Codex — confirmed subscription-only on the gateway side** (attestations 1/2 plus the
+gateway-source OAuth-only evidence), with the `claude-code-proxy` binary's own internals carried
+forward as a disclosed, non-blocking limitation (§9) rather than as grounds to withhold confirmation
+of the owner-attestable facts. **The §6 launch precondition is now MET for every participating
+backend**, subject to two standing conditions recorded in the same section: Plan 05 must re-check the
+attestation and the local env/credential evidence immediately before its first run (point-in-time
+confirmation, not a standing one), and item 3's quota/rate-limit/`upstream-blocked` stop is
+unaffected and still applies.
+
+The record was re-hashed once, over its final state including both the structural fixes and the
+attestation-driven §6/§9 updates (new `Record sha256:
+e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a`, superseding
+`35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`), computed by the same
+line-anchored method used in revisions 1-3 and independently cross-checked by a `head`-based
+extraction (both agree). The locked copy at `evaluator-only/adoption-criteria.locked.md` was
+refreshed (`chmod u+w`, byte-identical copy, `chmod a-w`; `cmp` confirms byte-identity), and Plan
+04's Task 1 and Task 2 exact automated `<verify>` commands were both re-run against this final state
+and both still exit 0 (Effort-equality check still passes: `max == max`; contamination/packet/parity
+checks still pass, including the expected negative-path output inside each script's own
+`--self-test`). No request of any kind — model, gateway, or status/auth command — was started at any
+point during this revision; every billing-mode fact above is either owner attestation or the prior
+read-only evidence from item 1. The owner has not yet acknowledged this fourth revision as a whole
+(the attestations resolved §6's launch precondition, which is a different step from acknowledging the
+full record). See the CHECKPOINT REACHED section returned alongside this summary.
+
 ## Task Commits
 
 No task-level code commits in Triggarr: every file Tasks 1-2 create or modify is either the git-excluded `84-ADOPTION-CRITERIA.md` (never committed, per D-16) or lives entirely outside the repo under `~/scratch/planchk-pilot/` (D-06). Only this SUMMARY.md (partial, `status: paused`) is force-added and committed now, per the pause protocol, so its commit timestamp — and therefore the criteria's lock timestamp recorded inside it — precedes any Plan 05 run.
 
 ## Files Created/Modified
 
-- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, revised three times on 2026-10-26 per the owner's five (revision 1), three (revision 2), then five-plus-consolidation (revision 3) requested changes; revision 3 restructures the record into D-12..D-18 verbatim plus nine single-authority sections (§2-§9) and a "Revision history" holding all superseded wording, `Record sha256: 35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93` (supersedes `24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`, which supersedes `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`, which supersedes `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`), Owner acknowledgment section still pending (local only, never committed)
+- `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, revised four times on 2026-10-26 per the owner's five (revision 1), three (revision 2), five-plus-consolidation (revision 3), then three-plus-one-correction (revision 4) requested changes; revision 3 restructured the record into D-12..D-18 verbatim plus nine single-authority sections (§2-§9) and a "Revision history" holding all superseded wording; revision 4 fixed §8's sampling (one shared pre-window/post-window sample for all four evidence types), §6's Codex billing certainty (replaced with cited evidence plus the proxy-binary limitation), added §6's hard launch precondition (initially BLOCKED on every row, then resolved to MET for every participating backend by four dated owner attestations recorded verbatim in §6), and corrected §8's session-id wording (session match ⇒ session exclusivity only, never checker attribution by default); `Record sha256: e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a` (supersedes `35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`, which supersedes `24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`, which supersedes `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`, which supersedes `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`), Owner acknowledgment section still pending (local only, never committed)
 - `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/` — answer keys, contamination phrases, the locked criteria's read-only copy (mode 700)
 - `/Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py` — contamination and route-parity checks (stdlib only)
 - `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/` — the frozen, 133-file blind comparison packet
 - `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress` — driver prompt and freeze/verification evidence
 - `.planning/phases/84-codex-plan-checker-investigation/84-04-SUMMARY.md` — this file (partial; the only file this pause commits)
 
-## ADOPTION-CRITERIA sha256: 35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93
+## ADOPTION-CRITERIA sha256: e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a
 
-(Supersedes the revision-2 value `24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`,
+(Supersedes the revision-3 value `35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`,
+which superseded the revision-2 value `24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`,
 which superseded the revision-1 value `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`,
 which itself superseded the 2026-10-25 value
-`3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69` — none of the three prior values
-was acknowledged by the owner; all three rounds of changes were requested before acknowledgment.
+`3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69` — none of the four prior values
+was acknowledged by the owner; all four rounds of changes were requested before acknowledgment.
 This line will be updated again if the owner requests further changes; it is finalized only once
 the owner's "acknowledged" reply is recorded in `84-ADOPTION-CRITERIA.md`'s "Owner acknowledgment"
 section.)
@@ -290,10 +383,11 @@ None beyond the three auto-fixed deviations above, all resolved within this plan
 
 ## Next Phase Readiness
 
-- Tasks 1-2 are complete and independently verified (both tasks' exact `<verify>` commands exit 0, re-confirmed after revision 1, revision 2, and now revision 3); Task 3 cannot proceed without the owner's explicit acknowledgment of the **consolidated** `84-ADOPTION-CRITERIA.md` (`Record sha256: 35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`).
+- Tasks 1-2 are complete and independently verified (both tasks' exact `<verify>` commands exit 0, re-confirmed after revision 1, revision 2, revision 3, and now revision 4); Task 3 cannot proceed without the owner's explicit acknowledgment of the **consolidated, attestation-updated** `84-ADOPTION-CRITERIA.md` (`Record sha256: e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a`).
 - A continuation agent should re-verify `shasum -a 256 -c` on `packets/blind-r1.sha256` (excluding its last line) and `inputs/manifest.sha256` from their respective directories, confirm `84-ADOPTION-CRITERIA.md`'s `Record sha256:` line is unchanged from this revision (or apply any newly requested changes, re-hash, and re-present), then present the checkpoint to the owner (or process the owner's recorded reply if already given) and complete Task 3.
-- Blocker: Task 3, and all of Plan 05 (including the new full-loop validation exercise), cannot proceed without the owner's recorded acknowledgment (or further requested changes, re-hashed and re-presented) of the locked criteria.
+- Blocker: Task 3, and all of Plan 05 (including the new full-loop validation exercise), cannot proceed without the owner's recorded acknowledgment (or further requested changes, re-hashed and re-presented) of the locked criteria. Note this is a separate gate from §6's launch precondition: the launch precondition (billing) is now recorded MET, but Task 3's "acknowledged" reply to the record as a whole has not yet been given.
 - **New obligations for Plan 05, specified by revision 3 but not implemented now:** (i) before any run, add an append-only per-spawn log line (timestamp, subagent name, rewritten model, counter) to the scratch `agent.spawn` hook from Plan 01 — this is a change to scratch code, must itself be recorded and hashed before use, and is required for §8's "within-session accounting" rule; (ii) follow §5's mandatory sequencing (full-loop validation + 4 blind runs → freeze → blind adjudication + owner spot-check → identical feedback/revised packet prepared and hashed → only then the 2 revision runs → revision adjudication) — no uninterrupted batch may span the blind and revision rounds, and within either batch of runs, launching as a batch (rather than one at a time) is permitted only when every §8 exclusivity condition holds for each run in the batch.
+- **New obligations for Plan 05, specified by revision 4 and not implemented now:** (iii) the §6 "Launch precondition" hard gate — before any validation or scored run, re-confirm the owner's attestation is still current and re-check, read-only, the local environment/credential presence from §6 item 1 (env vars still unset, Keychain entry still present); if anything has changed since this record's attestation, treat the precondition as unmet again and stop rather than assuming it still holds. Item 3's quota/rate-limit/`upstream-blocked` stop is unaffected by this and still applies independently. (iv) every evidence-gathering step in §8 (log offset/inode/size, `/healthz` counters, `shim.pid`/`shim.pid.json`, and the `claude` process census) must use the same two named pre-window and post-window samples, never "immediately at launch/exit" sampling for any of the four. (v) attribution of any `codex`-backend line to the checker specifically still requires the within-session accounting in §8 even when every line's session id matches the run's own session — a session match alone is never read as checker attribution.
 
 ---
 *Phase: 84-codex-plan-checker-investigation*
@@ -413,6 +507,57 @@ instruction:
   body.
 - No comparison run, validation run, or gateway/model request was started at any point during this
   revision. `git status --short` (Triggarr repo root) shows no changes to `.planning/STATE.md`,
+  `.planning/ROADMAP.md`, or `.planning/REQUIREMENTS.md`; the only modified tracked file is this
+  SUMMARY.md (`84-ADOPTION-CRITERIA.md` itself is git-excluded per D-16, so it does not appear in
+  `git status`).
+
+## Self-Check (Revision 4, 2026-10-26): PASSED
+
+Re-verified after applying the orchestrator's three flagged fixes, the owner's own §8 correction,
+and the owner's four dated billing attestations, all within this one revision:
+- `grep -n "^Record sha256:" 84-ADOPTION-CRITERIA.md` → exactly one line, value
+  `e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a`.
+- Hash recomputed independently by two methods — Python `bytes.split(b'\n')` line-join up to the
+  line starting `Record sha256:` (no trailing newline), and a `head -n`/`shasum` extraction dropping
+  the one trailing newline byte — both agree with the recorded value, and both were re-run a second
+  time after the structural fixes alone (producing the intermediate value
+  `d3365a9d2ed83510a50f57367a74f444a0fc9f5d2304900be1f4487018a28360`, not recorded as the file's own
+  `Record sha256:` line at any point, superseded in-session once the attestations were folded in)
+  and a third time after the attestations were added, confirming the final value above.
+- `grep -Ec "^Effort: (max|xhigh)$"` and `grep -Ec "^Route: (hook|fallback-agent)$"` both return
+  exactly `1` (no accidental duplicate standalone lines introduced by the rewrite).
+- `cmp 84-ADOPTION-CRITERIA.md evaluator-only/adoption-criteria.locked.md` → exit 0 (byte-identical;
+  locked copy refreshed `chmod u+w` → copy → `chmod a-w` after the final content was in place).
+- Plan 04 Task 1's exact `<verify>` command → exit 0 (Effort equality `max == max` still holds;
+  D-12..D-18, `Input label:`, `Route: hook`, and the 64-hex-char `Record sha256:` line are all
+  present).
+- Plan 04 Task 2's exact `<verify>` command → exit 0 (`PACKET CLEAN`, `PARITY OK (route=hook)`,
+  packet and driver shas still verify — this task does not read `84-ADOPTION-CRITERIA.md`'s content
+  directly, so it was unaffected by the billing-section rewrite).
+- Read-only source citations corrected or added this revision were independently confirmed by direct
+  `Read`/`grep` of the installed model-gateway 0.51.2 plugin cache (`~/.claude/plugins/cache/
+  eigenwise-toolshed/model-gateway/0.51.2/lib/`), with no gateway request, no `claude-code-proxy`
+  invocation, and no `doctor`/`setup`/`login`/`status` command run: `setup`'s `ChatGPT auth: valid`
+  at `commands.js` line 533 (confirmed distinct from `doctor`'s `codex auth: authenticated` at line
+  1153, both reading the same `readiness.checks.codexAuth`); `login`'s proxy spawn at line 2475;
+  `isAuthed()` at lines 285-287 (spawns the proxy binary with `codex auth status`, pattern-matches
+  "account"); `PROXY_BIN`/`REPO` constants at lines 64/92; the module header's "owns the OAuth"
+  sentence at lines 8-9; `runtime.js`'s credentials-path message at line 197; a directory listing
+  (not a content read) of `~/.config/claude-code-proxy/` confirmed present with a mode-700 `codex`
+  subdirectory; a `grep` of this gateway's own `lib/*.js` for `apiKey`/`api_key`/`API_KEY` returned
+  no matches; `~/.claude/model-gateway/shim.pid`/`shim.pid.json` were re-read and still show PID
+  `43968`, `startedAt` unchanged from revision 3's finding. The four owner attestations were recorded
+  verbatim as given, in the order received, with no paraphrase or broadening, per the coordinator's
+  explicit instruction; none was invented or assumed.
+- No existing D-12..D-18 text, and no finding (E1-E7, N1-N5), was altered or relabelled. Every piece
+  of wording this revision replaces (the "immediately before launch/after exit" sampling language,
+  the "by construction" Codex billing certainty, the "exclusivity is established outright" sentence)
+  is named, under "revision 4," in the rewritten "Revision history" section; the new §6 launch
+  precondition and its attestation-driven resolution are recorded as additions, not as superseding
+  any prior wording, since revision 3 had no equivalent gate.
+- No comparison run, validation run, model request, or gateway request was started at any point
+  during this revision, including while recording and applying the owner's billing attestations.
+  `git status --short` (Triggarr repo root) shows no changes to `.planning/STATE.md`,
   `.planning/ROADMAP.md`, or `.planning/REQUIREMENTS.md`; the only modified tracked file is this
   SUMMARY.md (`84-ADOPTION-CRITERIA.md` itself is git-excluded per D-16, so it does not appear in
   `git status`).
