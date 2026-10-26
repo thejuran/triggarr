@@ -286,7 +286,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] 84-01-PLAN.md — isolation baseline, installed-runtime agent.spawn verification, scratch opt-in hook with live gateway routing proof, conditional D-02 update gate
 - [x] 84-02-PLAN.md — matched-run harness, pilot exercises through BM's checker loop, fail-closed negatives and disable test
 - [x] 84-03-PLAN.md — evidence-based cutoff, Phase 81 input recovery and freeze, Time Machine owner gate, ORIGINAL/PARTIAL/RECONSTRUCTED label
-- [ ] 84-04-PLAN.md — evaluator-only answer key, locked adoption criteria with owner acknowledgment, blind packet with contamination check
+- [x] 84-04-PLAN.md — evaluator-only answer key, locked adoption criteria with owner acknowledgment, blind packet with contamination check
 - [ ] 84-05-PLAN.md — 2+2 matched blind runs, arm-blind fresh-session adjudication, locked-rule scoring, owner spot-check
 - [ ] 84-06-PLAN.md — revised snapshot freeze, shared feedback, 1+1 revision runs and blind adjudication
 - [ ] 84-07-PLAN.md — adoption evaluation, Triggarr isolation proof, investigated-vs-deferred closeout, owner decision
@@ -334,7 +334,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Complete (multi-season pack and alternate series order unverified-live under D-12) | 2026-10-21 |
 | 82. CI Tests What We Ship | 9/9 | Complete | 2026-10-22 |
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
-| 84. Codex Plan-Checker Investigation | 3/7 | In progress | - |
+| 84. Codex Plan-Checker Investigation | 4/7 | In progress | - |
 | 85. Follow-on CI Improvements & Acceptance Usability | 0/TBD | Not started | - |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
