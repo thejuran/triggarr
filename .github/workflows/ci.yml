@@ -359,6 +359,41 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # Policy: docs/os-scan-policy.md. Never replace with aquasecurity/trivy-action or
+  # setup-trivy (compromised March 2026, CVE-2026-33634).
+  os-scan:
+    needs: [docker]
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    env:
+      TRIVY_VERSION: "0.76.1"
+      TRIVY_SHA256: "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: audited-image
+          path: image
+
+      - name: Verify audited image checksum
+        working-directory: image
+        run: sha256sum -c image.tar.sha256
+
+      - name: Install Trivy (pinned binary, checksum-verified)
+        run: |
+          curl -fsSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "$TRIVY_SHA256  trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" trivy
+          ./trivy --version
+
+      - name: Scan OS packages (scanner errors fail the job)
+        run: ./trivy image --input image/image.tar --scanners vuln --pkg-types os --format json --output trivy-results.json
+
+      - name: Apply OS-scan policy
+        run: |
+          node .github/scripts/os-scan-gate.cjs --report trivy-results.json --exceptions .github/os-scan-exceptions.json --summary "$GITHUB_STEP_SUMMARY" --trivy-version "$TRIVY_VERSION"
+
   ci-ready:
     name: CI ready
     if: always()
