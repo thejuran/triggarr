@@ -152,6 +152,15 @@ When Codex (or BM) reports findings (D-08):
 - There is no automatic cross-agent fix loop beyond this one batched revision and its one fresh round of reviews.
 - The owner sees the original Codex report plus the dispositions before acceptance — dispositions never replace the original report in what the owner is shown.
 
+## Coverage evidence for vibe-check
+
+Coverage is prepared before the review snapshot, from one of two sources, and recorded with the review. There is no percentage gate.
+
+1. **CI artifact for this exact head**, when a CI run exists: `gh run download <run_id> -n coverage-<run_id>-<run_attempt>`, then `node .github/scripts/coverage-provenance.cjs check --provenance coverage-provenance.json --coverage coverage.xml --expected-head <full head> --expected-run-id <run_id>`. Synthetic-merge coverage (a `pull_request`-triggered run's `GITHUB_SHA`, not the PR head) passes only when the measured source (`triggarr`, `tests`, `pyproject.toml`, `uv.lock`) is identical between the tested commit and the head — measured-source equivalence, not just a matching SHA.
+2. **Exact-head local coverage**, when no usable CI artifact exists (for example a pre-push review): on a clean checkout of exactly that head, run `uv run pytest tests/ -q --cov=triggarr --cov-branch --cov-report=xml:coverage.xml`, then `node .github/scripts/coverage-provenance.cjs write-local --head <full head> --coverage coverage.xml --test-exit <n> --test-seconds <n> --out coverage-provenance.json` and `check --expected-head <full head>`.
+
+Only after the `check` command passes is `coverage.xml` copied to the vibe-check review worktree root, and the source used (CI artifact or local) is recorded with the review. A wrong-commit, missing, merge-SHA-confused, measured-source-mismatched, or failed-run report is recorded as "coverage evidence unavailable" and not used. Evidence is never added to a review that has already run: a CI artifact that arrives later is validated and recorded as separate CI evidence for that head, and a review that should use it is a fresh review.
+
 ## Owner acceptance checklist
 
 At acceptance time, the owner gets one checklist message in the CLI:
@@ -165,9 +174,11 @@ Full base SHA: <full 40-char sha>
 Review status on this head:
 - BM: <status, requested vs. actual depth>
 - Codex: <status, from docs/codex-adversarial-review-contract.md Invocation (tests/codex_review_run.py → tests/codex_report_status.py)>
+- Codex fallback (only if Codex is INCOMPLETE/PENDING): <path to <head12>-fallback.json and the validator's output>
 - Greptile: <status, or "did not run on this head">
 - Vibe-check: <status, or "not selected for this checkpoint">
 - CI: <status>
+- Readiness check: <output of acceptance-readiness.cjs for this head>
 
 Findings and dispositions:
 - <qualified ID>: <decision> — <evidence>

@@ -205,7 +205,7 @@ def test_record_documents_coverage_evidence() -> None:
     assert "measured-source equivalence" in section
     assert "worktree root" in section
     assert "only after" in section.lower()
-    assert "evidence is never added to a review that has already run" in section
+    assert "evidence is never added to a review that has already run" in section.lower()
 
 
 def test_checklist_names_readiness_output() -> None:
