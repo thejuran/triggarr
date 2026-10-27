@@ -102,11 +102,60 @@ _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
 
 CommandRunner = Callable[..., subprocess.CompletedProcess]
 
+# Bounds the post-kill output drain (the second `communicate()` call after a
+# timeout or signal kills the process group). A descendant that escaped into
+# its own process group (e.g. via setsid) can keep holding the stdout pipe
+# open even after the tracked group is dead; without this bound that drain
+# could hang the run forever despite the kill having already happened.
+DRAIN_TIMEOUT_SECONDS = 10
+
+# Process-group ids started by run_command(start_new_session=True) that are
+# still active. SIGTERM/SIGHUP handlers kill every group listed here so an
+# external signal can't leave the Codex/pytest group orphaned.
+_ACTIVE_GROUPS: set[int] = set()
+
 
 def _kill_group(proc: subprocess.Popen) -> None:
     # ProcessLookupError: the whole group has already exited.
     with contextlib.suppress(ProcessLookupError):
         os.killpg(proc.pid, signal.SIGKILL)
+
+
+def _terminate_active_groups() -> None:
+    """Kill every process group run_command is still tracking."""
+    for pgid in list(_ACTIVE_GROUPS):
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(pgid, signal.SIGKILL)
+
+
+def _handle_termination_signal(signum: int, _frame: object) -> None:
+    _terminate_active_groups()
+    print(f"error: received {signal.Signals(signum).name}; stopped the Codex/pytest process group")
+    raise SystemExit(128 + signum)
+
+
+def install_signal_handlers() -> dict[int, object]:
+    """Install SIGTERM/SIGHUP handlers that kill every tracked process group.
+
+    Returns the previous handlers so the caller can restore them.
+    """
+    previous: dict[int, object] = {}
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        previous[sig] = signal.getsignal(sig)
+        signal.signal(sig, _handle_termination_signal)
+    return previous
+
+
+def _is_text_mode(kwargs: dict) -> bool:
+    """True when the Popen call will hand back str output, not bytes."""
+    return bool(kwargs.get("text") or kwargs.get("universal_newlines") or kwargs.get("encoding"))
+
+
+def _with_drain_marker(output: str | bytes | None, *, text_mode: bool) -> str | bytes:
+    marker = f"\n[drain timed out after {DRAIN_TIMEOUT_SECONDS}s; output truncated]\n"
+    if text_mode:
+        return (output or "") + marker
+    return (output or b"") + marker.encode()
 
 
 def run_command(
@@ -122,24 +171,38 @@ def run_command(
 
     `uv run` starts pytest as a child of its own, so killing only the direct
     child on a timeout would leave pytest running. With *start_new_session*
-    the child leads a new process group, and a timeout (or any other
-    interruption) kills that group before re-raising.
+    the child leads a new process group, tracked in _ACTIVE_GROUPS so an
+    external SIGTERM/SIGHUP can also kill it, and a timeout (or any other
+    interruption) kills that group before re-raising. The post-kill drain
+    that collects partial output is bounded by DRAIN_TIMEOUT_SECONDS so a
+    descendant holding stdout open in a different process group can't hang
+    the run.
     """
     if not start_new_session:
         return subprocess.run(argv, input=input, timeout=timeout, check=check, **kwargs)
     if input is not None:
         kwargs["stdin"] = subprocess.PIPE
+    text_mode = _is_text_mode(kwargs)
     with subprocess.Popen(argv, start_new_session=True, **kwargs) as proc:
+        _ACTIVE_GROUPS.add(proc.pid)
         try:
-            stdout, stderr = proc.communicate(input, timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            _kill_group(proc)
-            exc.stdout, exc.stderr = proc.communicate()
-            raise
-        except BaseException:
-            _kill_group(proc)
-            proc.wait()
-            raise
+            try:
+                stdout, stderr = proc.communicate(input, timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                _kill_group(proc)
+                try:
+                    exc.stdout, exc.stderr = proc.communicate(timeout=DRAIN_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired as drain_exc:
+                    exc.stdout = _with_drain_marker(drain_exc.stdout, text_mode=text_mode)
+                    exc.stderr = _with_drain_marker(drain_exc.stderr, text_mode=text_mode)
+                raise
+            except BaseException:
+                _kill_group(proc)
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    proc.wait(timeout=DRAIN_TIMEOUT_SECONDS)
+                raise
+        finally:
+            _ACTIVE_GROUPS.discard(proc.pid)
     completed = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
     if check:
         completed.check_returncode()
@@ -713,32 +776,37 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+    previous_handlers = install_signal_handlers()
     try:
-        run = ReviewRun(
-            args.head, args.base, args.label, args.attempt, args.pr_url, args.scope, args.phase_dir, args.trusted
-        )
-    except ValueError as exc:
-        parser.error(str(exc))
-    if not run.trusted:
-        print(f"error: {UNTRUSTED_REFUSAL}")
-        return 2
-    if not (REPO_ROOT / run.phase_dir).is_dir():
-        parser.error(f"phase-dir does not exist: {run.phase_dir}")
-    if args.dry_run:
-        return dry_run(run)
-    try:
-        return execute(run, allow_stale_head=args.allow_stale_head)
-    except FileExistsError as exc:
-        print(f"error: {exc}; use the next attempt number")
-        return 2
-    except RunnerError as exc:
-        print(f"error: {exc}")
-        return 2
-    except subprocess.CalledProcessError as exc:
-        print(f"error: {shlex.join(str(part) for part in exc.cmd[:3])} exited {exc.returncode}")
-        return 2
+        parser = _build_parser()
+        args = parser.parse_args(argv)
+        try:
+            run = ReviewRun(
+                args.head, args.base, args.label, args.attempt, args.pr_url, args.scope, args.phase_dir, args.trusted
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        if not run.trusted:
+            print(f"error: {UNTRUSTED_REFUSAL}")
+            return 2
+        if not (REPO_ROOT / run.phase_dir).is_dir():
+            parser.error(f"phase-dir does not exist: {run.phase_dir}")
+        if args.dry_run:
+            return dry_run(run)
+        try:
+            return execute(run, allow_stale_head=args.allow_stale_head)
+        except FileExistsError as exc:
+            print(f"error: {exc}; use the next attempt number")
+            return 2
+        except RunnerError as exc:
+            print(f"error: {exc}")
+            return 2
+        except subprocess.CalledProcessError as exc:
+            print(f"error: {shlex.join(str(part) for part in exc.cmd[:3])} exited {exc.returncode}")
+            return 2
+    finally:
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
 
 
 if __name__ == "__main__":

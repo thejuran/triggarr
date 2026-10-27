@@ -1400,10 +1400,10 @@ def test_post_kill_drain_is_bounded(tmp_path: Path) -> None:
                 break
             time.sleep(0.05)
         if grandchild is not None:
-            try:
+            import contextlib
+
+            with contextlib.suppress(ProcessLookupError):
                 os.kill(grandchild, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
 
 
 # --- D-18, round-6 WR-01: main() restores the previous handlers on return ----
