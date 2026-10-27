@@ -82,6 +82,13 @@ AUDITED_INPUTS = (
     "tests/codex_review_run.py",
 )
 
+# The checker and schema a base-commit grader needs to cross-grade a report
+# whose own checker/schema changed in the reviewed diff (D-18, checker B13).
+GRADER_FILES = (
+    "tests/codex_report_status.py",
+    ".claude/schemas/codex-review-findings.schema.json",
+)
+
 # Owner decision 2026-10-22: only this repository's own branches are trusted.
 # Widening TRUSTED_AUTHORS is a sensitive review-machinery change and needs
 # its own review.
@@ -102,7 +109,15 @@ EXCLUDE_PATHSPECS = (
     ":(exclude,glob).planning/**/*.md",
 )
 
-OUTPUT_SUFFIXES = (".prompt.txt", ".meta.json", ".jsonl", ".last.json", ".status.json", ".pytest.txt")
+OUTPUT_SUFFIXES = (
+    ".prompt.txt",
+    ".meta.json",
+    ".jsonl",
+    ".last.json",
+    ".status.json",
+    ".pytest.txt",
+    ".base-status.json",
+)
 
 # Where the harness evidence is copied inside the temp worktree (untracked),
 # so the prompt names a working-copy-relative path and never the operator's
@@ -770,6 +785,20 @@ def audit_inputs(command_runner: CommandRunner) -> dict[str, dict[str, object]]:
     }
 
 
+def audited_inputs_changed(run: ReviewRun, command_runner: CommandRunner) -> list[str]:
+    """Return the AUDITED_INPUTS paths that changed between --base and --head.
+
+    A non-empty result means the diff under review modifies the very
+    checker, schema, prompt contract or runner that grades it (D-18
+    WR-03/ARCH-03/impact-001), so the result is also cross-graded by the
+    base commit's own checker (see materialize_grader / _run_base_grader).
+    """
+    output = _git_stdout(
+        ["git", "diff", "--name-only", f"{run.base}..{run.head}", "--", *AUDITED_INPUTS], command_runner
+    )
+    return sorted(line.strip() for line in output.splitlines() if line.strip())
+
+
 def run_meta(
     run: ReviewRun,
     *,
@@ -777,6 +806,7 @@ def run_meta(
     inputs: dict[str, dict[str, object]],
     allow_stale_head: bool,
     trust_verification: dict[str, object] | None,
+    audited_inputs_changed_in_diff: list[str],
 ) -> dict[str, object]:
     return {
         "meta_version": 2,
@@ -793,6 +823,13 @@ def run_meta(
         "codex_timeout_seconds": CODEX_TIMEOUT_SECONDS,
         "trust_verification": trust_verification,
         "test_evidence_source": "harness-local-pytest",
+        "audited_inputs_changed_in_diff": audited_inputs_changed_in_diff,
+        # The base-commit grader is only ever materialized from this base
+        # (verify_trust has already required it to be on origin/main); this
+        # is a static fact about the trusted path, not conditional on
+        # whether audited_inputs_changed_in_diff is non-empty.
+        "base_grader_ref": run.base,
+        "base_grader_source": "base",
     }
 
 
@@ -841,6 +878,100 @@ def _write_status_stub(run: ReviewRun, reason: str) -> None:
     run.output(".status.json").write_text(json.dumps(stub) + "\n", encoding="utf-8")
     print(f"status: {run.output('.status.json')}")
     print(json.dumps(stub))
+
+
+def _write_base_status_stub(run: ReviewRun, reason: str) -> None:
+    """Record an incomplete .base-status.json when the base checker's own result is unavailable."""
+    stub = {
+        "status": "incomplete",
+        "reasons": [reason],
+        "qualified_ids": [],
+        "finding_count": 0,
+        "inspected_head": None,
+        "inspected_base": None,
+    }
+    run.output(".base-status.json").write_text(json.dumps(stub) + "\n", encoding="utf-8")
+    print(f"base-status: {run.output('.base-status.json')}")
+    print(json.dumps(stub))
+
+
+def materialize_grader(grader_ref: str, dest: Path, command_runner: CommandRunner) -> None:
+    """Write the checker and schema exactly as they exist at *grader_ref* into *dest*.
+
+    Always materialized from git objects (``git show <grader_ref>:<path>``),
+    never from a worktree of the reviewed head: the base grader is the
+    operator's own repository history, not anything the PR under review
+    could have supplied (checker B13). The trusted path always calls this
+    with grader_ref = run.base, which verify_trust has already required to
+    be on refs/remotes/origin/main.
+    """
+    for relpath in GRADER_FILES:
+        target = dest / relpath
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = command_runner(
+                ["git", "show", f"{grader_ref}:{relpath}"],
+                cwd=HARNESS_ROOT,
+                stdout=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+        except OSError as exc:
+            raise RunnerError(f"could not materialize the base grader: {type(exc).__name__}") from exc
+        if proc.returncode != 0:
+            raise RunnerError(
+                "grader changed in this diff and the base commit has no checker to cross-grade it:"
+                f" base commit {grader_ref[:12]} has no {relpath}"
+            )
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(proc.stdout or "")
+
+
+def _run_base_grader(
+    run: ReviewRun, *, grader_ref: str, checker_tail: list[str], command_runner: CommandRunner
+) -> int:
+    """Materialize *grader_ref*'s checker/schema and cross-grade the same report with it.
+
+    Returns the base checker's exit code (0 = complete). Any failure to
+    materialize or run the base checker is recorded as an incomplete
+    .base-status.json and treated as a non-zero (failing) result, never as
+    a pass by default (fail closed).
+    """
+    try:
+        tmp = Path(tempfile.mkdtemp(prefix="codex-base-grader-"))
+    except OSError as exc:
+        _write_base_status_stub(run, f"harness could not create its base-grader temp directory: {type(exc).__name__}")
+        return 1
+    try:
+        try:
+            materialize_grader(grader_ref, tmp, command_runner)
+        except RunnerError as exc:
+            _write_base_status_stub(run, str(exc))
+            return 1
+        base_checker_path = tmp / "tests" / "codex_report_status.py"
+        try:
+            proc = command_runner(
+                [sys.executable, str(base_checker_path), *checker_tail],
+                cwd=REPO_ROOT,
+                stdout=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+        except OSError as exc:
+            _write_base_status_stub(run, f"base checker could not run: {type(exc).__name__}")
+            return 1
+        if not (proc.stdout or "").strip():
+            _write_base_status_stub(run, f"base checker produced no output (exit {proc.returncode})")
+            return 1
+        run.output(".base-status.json").write_text(proc.stdout, encoding="utf-8")
+        print(f"base-status: {run.output('.base-status.json')}")
+        print(proc.stdout, end="")
+        return proc.returncode
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _finalize_raw_outputs(run: ReviewRun, *, worktree: Path, scratch: Path) -> None:
@@ -916,6 +1047,7 @@ def execute(
             f"--head {run.head[:12]} is not the checkout's HEAD {harness_head[:12]}, so the result can only be"
             " assessed stale; pass --allow-stale-head to run it anyway"
         )
+    audited_changed = audited_inputs_changed(run, command_runner)
     template = load_template()
     prompt = render_prompt(template, prompt_values(run))
     meta = run_meta(
@@ -924,6 +1056,7 @@ def execute(
         inputs=inputs,
         allow_stale_head=allow_stale_head,
         trust_verification=trust_verification,
+        audited_inputs_changed_in_diff=audited_changed,
     )
 
     run.out_base.parent.mkdir(parents=True, exist_ok=True)
@@ -1005,9 +1138,10 @@ def _execute_reserved(
         changed = sorted(path for path in AUDITED_INPUTS if inputs_after.get(path) != inputs[path])
         _write_status_stub(run, f"audited inputs changed during the run: {changed}")
         return 1
+    checker_full_argv = checker_argv(run, exit_code=codex_exit, current_head=current_head)
     try:
         checker = command_runner(
-            checker_argv(run, exit_code=codex_exit, current_head=current_head),
+            checker_full_argv,
             cwd=REPO_ROOT,
             stdout=subprocess.PIPE,
             text=True,
@@ -1022,7 +1156,17 @@ def _execute_reserved(
     run.output(".status.json").write_text(checker.stdout, encoding="utf-8")
     print(f"status: {run.output('.status.json')}")
     print(checker.stdout, end="")
-    return checker.returncode
+
+    grader_changed = meta["audited_inputs_changed_in_diff"]
+    if not grader_changed:
+        return checker.returncode
+    print(f"grader changed in this diff: {grader_changed}; cross-grading with the base commit's checker")
+    base_exit = _run_base_grader(
+        run, grader_ref=run.base, checker_tail=checker_full_argv[2:], command_runner=command_runner
+    )
+    if base_exit != 0:
+        print("grader changed in this diff: the base commit's checker did not confirm completeness")
+    return checker.returncode if base_exit == 0 else 1
 
 
 def _trust_preview_commands(run: ReviewRun) -> list[str]:
