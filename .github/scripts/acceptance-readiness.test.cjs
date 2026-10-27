@@ -1,6 +1,10 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {readiness, renderChecklist, codexStatusFor, headTrustFor, runCli} = require('./acceptance-readiness.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
+const {
+  readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS,
+} = require('./acceptance-readiness.cjs');
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -35,6 +39,7 @@ function baseline() {
       meta: {
         meta_version: 2,
         head: HEAD,
+        base: BASE,
         attempt: 1,
         review_mode: 'trusted-local-tests',
         audited_inputs_changed_in_diff: [],
@@ -74,6 +79,7 @@ function codexIncompleteNoFallback() {
     meta: {
       meta_version: 2,
       head: HEAD,
+      base: BASE,
       attempt: 2,
       review_mode: 'trusted-local-tests',
       audited_inputs_changed_in_diff: [],
@@ -100,6 +106,7 @@ function untrustedBaseline({prAuthor, prAuthorIsBot, isCrossRepository}) {
     meta: {
       meta_version: 2,
       head: HEAD,
+      base: BASE,
       attempt: 1,
       review_mode: 'untrusted-refused',
       audited_inputs_changed_in_diff: [],
@@ -228,6 +235,7 @@ test('Codex complete but a changed grader with an incomplete base-status blocks 
     meta: {
       meta_version: 2,
       head: HEAD,
+      base: BASE,
       attempt: 1,
       review_mode: 'trusted-local-tests',
       audited_inputs_changed_in_diff: ['tests/codex_report_status.py'],
@@ -293,6 +301,7 @@ test('a trusted head with only an untrusted-refused record and a fallback is blo
     meta: {
       meta_version: 2,
       head: HEAD,
+      base: BASE,
       attempt: 1,
       review_mode: 'untrusted-refused',
       audited_inputs_changed_in_diff: [],
@@ -366,7 +375,7 @@ test('codexStatusFor: trusted + complete + no audited changes is ok', () => {
   const result = codexStatusFor({
     status: {status: 'complete'},
     baseStatus: null,
-    meta: {head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
+    meta: {head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
     out: CODEX_OUT,
     head: HEAD,
     base: BASE,
@@ -414,6 +423,18 @@ function variableKey(name) {
   return JSON.stringify(['gh', 'variable', 'get', name]);
 }
 
+// Mirrors tests/codex_review_run.py AUDITED_INPUTS (checked by a drift test below).
+const EXPECTED_AUDITED_INPUTS = [
+  'docs/codex-adversarial-review-contract.md',
+  '.claude/schemas/codex-review-findings.schema.json',
+  'tests/codex_report_status.py',
+  'tests/codex_review_run.py',
+];
+
+function gitDiffKey(base = BASE, head = HEAD) {
+  return JSON.stringify(['git', 'diff', '--name-only', `${base}..${head}`, '--', ...EXPECTED_AUDITED_INPUTS]);
+}
+
 function withCapturedConsole(fn) {
   const logs = [];
   const errors = [];
@@ -452,11 +473,12 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [gitDiffKey()]: '',
   });
   const readFile = fileTable({
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
-      meta_version: 2, head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
   });
 
@@ -486,11 +508,12 @@ test('runCli blocks "CI ready" when a page-2 match has a different head_sha', ()
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [gitDiffKey()]: '',
   });
   const readFile = fileTable({
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
-      meta_version: 2, head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
   });
 
@@ -513,11 +536,12 @@ test('runCli fails closed on unparseable check-runs slurp output', () => {
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [gitDiffKey()]: '',
   });
   const readFile = fileTable({
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
-      meta_version: 2, head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
   });
 
@@ -544,11 +568,12 @@ test('runCli fails closed on a non-array comments slurp output', () => {
     [commentsKey()]: JSON.stringify({not: 'an array'}),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [gitDiffKey()]: '',
   });
   const readFile = fileTable({
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
-      meta_version: 2, head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
   });
 
@@ -577,11 +602,12 @@ test('runCli: a fully ready PR exits 0 and the output never contains the string 
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [gitDiffKey()]: '',
   });
   const readFile = fileTable({
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
-      meta_version: 2, head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
   });
 
@@ -603,4 +629,96 @@ test('runCli rejects an invalid --pr before calling the injected exec', () => {
   assert.equal(exitCode, 2);
   assert.equal(execCalled, false);
   assert.equal(readCalled, false);
+});
+
+// --- WR-01 regressions: readiness must not trust the head runner's own meta ---
+
+test('AUDITED_INPUTS mirrors tests/codex_review_run.py AUDITED_INPUTS', () => {
+  const runner = fs.readFileSync(path.join(__dirname, '../../tests/codex_review_run.py'), 'utf8');
+  const block = runner.match(/^AUDITED_INPUTS = \(\n([\s\S]*?)^\)/m);
+  assert.ok(block, 'AUDITED_INPUTS tuple not found in tests/codex_review_run.py');
+  const pyList = [...block[1].matchAll(/"([^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual([...AUDITED_INPUTS], pyList);
+  assert.deepEqual([...AUDITED_INPUTS], EXPECTED_AUDITED_INPUTS);
+});
+
+test('codexStatusFor: a recomputed audited change overrides a meta that claims none', () => {
+  const result = codexStatusFor({
+    status: {status: 'complete'},
+    baseStatus: null,
+    meta: {head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
+    auditedChanged: ['tests/codex_report_status.py'],
+    out: CODEX_OUT, head: HEAD, base: BASE, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.detail.includes('grader changed in this diff'), result.detail);
+});
+
+test('codexStatusFor: a meta without head is never complete', () => {
+  const meta = {base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []};
+  const result = codexStatusFor({
+    status: {status: 'complete'}, baseStatus: null, meta, auditedChanged: [],
+    out: CODEX_OUT, head: HEAD, base: BASE, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.detail.includes('Codex evidence is for a different head'), result.detail);
+});
+
+test('codexStatusFor: a meta for a different base (or none) is never complete', () => {
+  for (const meta of [
+    {head: HEAD, base: 'd'.repeat(40), attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
+    {head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
+  ]) {
+    const result = codexStatusFor({
+      status: {status: 'complete'}, baseStatus: null, meta, auditedChanged: [],
+      out: CODEX_OUT, head: HEAD, base: BASE, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
+    });
+    assert.equal(result.ok, false);
+    assert.ok(result.detail.includes('Codex evidence is for a different base'), result.detail);
+  }
+});
+
+function readyCliFixture(gitDiffOutput) {
+  const prInfo = JSON.stringify({
+    number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
+    author: {login: 'thejuran', is_bot: false}, isCrossRepository: false,
+  });
+  const checksPages = JSON.stringify([
+    {total_count: 2, check_runs: [
+      {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+    ]},
+  ]);
+  const table = {
+    [prViewKey()]: prInfo,
+    [checkRunsKey()]: checksPages,
+    [commentsKey()]: JSON.stringify([[]]),
+    [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify({schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}}),
+    [variableKey('REVIEW_BLOCKERS')]: JSON.stringify({schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}}),
+  };
+  if (gitDiffOutput !== undefined) table[gitDiffKey()] = gitDiffOutput;
+  const readFile = fileTable({
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests',
+      audited_inputs_changed_in_diff: [],
+    }),
+  });
+  return {exec: execTable(table), readFile};
+}
+
+test('runCli recomputes audited-input changes and blocks when meta hid a changed grader', () => {
+  const {exec, readFile} = readyCliFixture('tests/codex_review_run.py\n');
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.equal(exitCode, 1);
+  const output = logs.join('\n');
+  assert.ok(output.includes('Codex: BLOCKED'), output);
+  assert.ok(output.includes('grader changed in this diff'), output);
+});
+
+test('runCli fails closed when the audited-input diff cannot be computed', () => {
+  const {exec, readFile} = readyCliFixture(undefined);
+  const {exitCode, errors} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('could not compute audited-input changes')), errors.join('\n'));
 });

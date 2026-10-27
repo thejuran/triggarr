@@ -16,6 +16,16 @@ const REPO = 'thejuran/triggarr';
 // Widening this set is a sensitive review-machinery change.
 const TRUSTED_AUTHORS = Object.freeze(['thejuran']);
 
+// Mirrors tests/codex_review_run.py AUDITED_INPUTS (a drift test pins the two).
+// Readiness recomputes which of these changed in base..head itself rather than
+// trusting the reviewed head's own runner to report it (D-18, WR-01).
+const AUDITED_INPUTS = Object.freeze([
+  'docs/codex-adversarial-review-contract.md',
+  '.claude/schemas/codex-review-findings.schema.json',
+  'tests/codex_report_status.py',
+  'tests/codex_review_run.py',
+]);
+
 const PR_ARG_RE = /^[1-9][0-9]*$/;
 const HEAD_RE = /^[0-9a-f]{40}$/;
 const OUT_PATH_RE = /^\.planning\/phases\/[A-Za-z0-9._-]+\/codex\/[0-9a-f]{12}-[a-z0-9-]+-a[0-9]+$/;
@@ -34,12 +44,19 @@ function headTrustFor({isCrossRepository, author}) {
 // reports complete; a record claiming complete is blocked outright. When
 // incomplete, the single owner-approved-fallback validator decides whether the
 // fallback satisfies the item -- never a local re-implementation of that rule.
-function codexStatusFor({status, baseStatus, meta, out, head, base, pr, prAuthor, headTrust, fallback}) {
-  if (meta && Object.hasOwn(meta, 'head') && meta.head !== head) {
+// auditedChanged is readiness's own recomputation of the audited inputs changed
+// in base..head; it is unioned with the meta's claim so the head's runner can
+// never talk the base cross-grade away. The meta must name this head and base.
+function codexStatusFor({status, baseStatus, meta, auditedChanged: recomputed, out, head, base, pr, prAuthor, headTrust, fallback}) {
+  if (!meta || meta.head !== head) {
     return {ok: false, detail: 'Codex evidence is for a different head'};
   }
+  if (meta.base !== base) {
+    return {ok: false, detail: 'Codex evidence is for a different base'};
+  }
 
-  const auditedChanged = Array.isArray(meta?.audited_inputs_changed_in_diff) ? meta.audited_inputs_changed_in_diff : [];
+  const claimed = Array.isArray(meta.audited_inputs_changed_in_diff) ? meta.audited_inputs_changed_in_diff : [];
+  const auditedChanged = [...new Set([...claimed, ...(Array.isArray(recomputed) ? recomputed : [])])];
   const baseOk = auditedChanged.length === 0 || baseStatus?.status === 'complete';
   const headSideComplete = meta?.review_mode === 'trusted-local-tests' && status?.status === 'complete';
 
@@ -354,6 +371,21 @@ function runCli(argv, {exec, readFile} = {}) {
   }
   const baseStatus = readJsonIfPresent(readFileFn, `${opts.codexOut}.base-status.json`);
 
+  // Recompute the audited-input change set from git itself (argument array,
+  // no shell); fail closed when it cannot be computed (e.g. commits not fetched).
+  if (!HEAD_RE.test(head || '') || !HEAD_RE.test(base || '')) {
+    console.error('could not compute audited-input changes: PR head/base is not a 40-hex commit SHA');
+    return 1;
+  }
+  let auditedChanged;
+  try {
+    const diffText = execFn('git', ['diff', '--name-only', `${base}..${head}`, '--', ...AUDITED_INPUTS]);
+    auditedChanged = String(diffText).split('\n').map(line => line.trim()).filter(Boolean);
+  } catch (err) {
+    console.error(`could not compute audited-input changes (git diff ${base}..${head}): ${err.message}`);
+    return 1;
+  }
+
   let fallback = null;
   if (opts.fallback) {
     try {
@@ -379,7 +411,7 @@ function runCli(argv, {exec, readFile} = {}) {
     commentsError,
     dispositions,
     blockers,
-    codex: {status, baseStatus, meta, out: opts.codexOut},
+    codex: {status, baseStatus, meta, auditedChanged, out: opts.codexOut},
     fallback,
   });
 
@@ -391,4 +423,4 @@ if (require.main === module) {
   process.exitCode = runCli(process.argv.slice(2));
 }
 
-module.exports = {readiness, renderChecklist, codexStatusFor, headTrustFor, runCli};
+module.exports = {readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS};
