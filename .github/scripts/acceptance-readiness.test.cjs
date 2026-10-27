@@ -473,6 +473,7 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
@@ -508,6 +509,7 @@ test('runCli blocks "CI ready" when a page-2 match has a different head_sha', ()
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
@@ -536,6 +538,7 @@ test('runCli fails closed on unparseable check-runs slurp output', () => {
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
@@ -568,6 +571,7 @@ test('runCli fails closed on a non-array comments slurp output', () => {
     [commentsKey()]: JSON.stringify({not: 'an array'}),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
@@ -602,6 +606,7 @@ test('runCli: a fully ready PR exits 0 and the output never contains the string 
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
@@ -696,6 +701,7 @@ function readyCliFixture(gitDiffOutput) {
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify({schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}}),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify({schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}}),
   };
+  table[mergeBaseKey()] = `${BASE}\n`;
   if (gitDiffOutput !== undefined) table[gitDiffKey()] = gitDiffOutput;
   const readFile = fileTable({
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
@@ -721,4 +727,106 @@ test('runCli fails closed when the audited-input diff cannot be computed', () =>
   const {exitCode, errors} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
   assert.equal(exitCode, 1);
   assert.ok(errors.some(e => e.includes('could not compute audited-input changes')), errors.join('\n'));
+});
+
+// --- Iteration-2 WR-01 regressions: the reviewed base is the merge-base ---
+
+// A main tip that has moved past the branch's fork point (BASE) with a merge
+// commit, as happens whenever another PR lands on main.
+const MAIN_TIP = 'e'.repeat(40);
+
+function mergeBaseKey(base = BASE, head = HEAD) {
+  return JSON.stringify(['git', 'merge-base', base, head]);
+}
+
+function movedMainFixture({metaBase, mergeBaseOutput = `${BASE}\n`, diffs}) {
+  const prInfo = JSON.stringify({
+    number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: MAIN_TIP,
+    author: {login: 'thejuran', is_bot: false}, isCrossRepository: false,
+  });
+  const checksPages = JSON.stringify([
+    {total_count: 2, check_runs: [
+      {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+    ]},
+  ]);
+  const table = {
+    [prViewKey()]: prInfo,
+    [checkRunsKey()]: checksPages,
+    [commentsKey()]: JSON.stringify([[]]),
+    [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify({schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}}),
+    [variableKey('REVIEW_BLOCKERS')]: JSON.stringify({schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}}),
+  };
+  if (mergeBaseOutput !== null) table[mergeBaseKey(MAIN_TIP)] = mergeBaseOutput; // null: git cannot answer
+  for (const [base, output] of Object.entries(diffs || {})) table[gitDiffKey(base)] = output;
+  const readFile = fileTable({
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: metaBase, attempt: 1, review_mode: 'trusted-local-tests',
+      audited_inputs_changed_in_diff: [],
+    }),
+  });
+  return {exec: execTable(table), readFile};
+}
+
+test('runCli accepts local-checkpoint Codex evidence whose base is the merge-base when main has moved', () => {
+  // An audited input changed on main (MAIN_TIP side) but not in this PR: the
+  // two-dot MAIN_TIP..HEAD diff would list it; the reviewed BASE..HEAD range does not.
+  const {exec, readFile} = movedMainFixture({
+    metaBase: BASE,
+    diffs: {[BASE]: '', [MAIN_TIP]: 'tests/codex_review_run.py\n'},
+  });
+  const {exitCode, logs, errors} = withCapturedConsole(
+    () => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile})
+  );
+  const output = [...logs, ...errors].join('\n');
+  assert.equal(exitCode, 0, output);
+  assert.ok(output.includes('Codex: ok'), output);
+  assert.ok(output.includes(`Full base SHA: ${MAIN_TIP}`), output);
+  assert.ok(output.includes(`Reviewed base SHA (merge-base): ${BASE}`), output);
+});
+
+test('runCli rejects Codex evidence based on a PR base that is not an ancestor of the head', () => {
+  // meta.base equals baseRefOid, but baseRefOid is not the merge-base: no
+  // runner records that range, so it is not accepted as reviewed evidence.
+  const {exec, readFile} = movedMainFixture({
+    metaBase: MAIN_TIP,
+    diffs: {[BASE]: '', [MAIN_TIP]: ''},
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.equal(exitCode, 1);
+  assert.ok(logs.join('\n').includes('Codex evidence is for a different base'), logs.join('\n'));
+});
+
+test('runCli rejects Codex evidence for a base that is neither the PR base nor the merge-base', () => {
+  const {exec, readFile} = movedMainFixture({
+    metaBase: 'd'.repeat(40),
+    diffs: {[BASE]: '', [MAIN_TIP]: '', ['d'.repeat(40)]: ''},
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.equal(exitCode, 1);
+  assert.ok(logs.join('\n').includes('Codex evidence is for a different base'), logs.join('\n'));
+});
+
+test('runCli fails closed when the merge-base cannot be computed or is not a commit SHA', () => {
+  for (const mergeBaseOutput of [null, '', 'not-a-sha\n']) {
+    const {exec, readFile} = movedMainFixture({metaBase: BASE, mergeBaseOutput, diffs: {[BASE]: '', [MAIN_TIP]: ''}});
+    const {exitCode, errors} = withCapturedConsole(
+      () => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile})
+    );
+    assert.equal(exitCode, 1);
+    assert.ok(errors.some(e => e.includes('could not compute the merge-base')), errors.join('\n'));
+  }
+});
+
+test('codexStatusFor checks meta.base against the reviewed base when one is given', () => {
+  const meta = {head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []};
+  const common = {
+    status: {status: 'complete'}, baseStatus: null, meta, auditedChanged: [],
+    out: CODEX_OUT, head: HEAD, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
+  };
+  assert.equal(codexStatusFor({...common, base: MAIN_TIP, reviewedBase: BASE}).ok, true);
+  const wrong = codexStatusFor({...common, base: BASE, reviewedBase: MAIN_TIP});
+  assert.equal(wrong.ok, false);
+  assert.ok(wrong.detail.includes('Codex evidence is for a different base'), wrong.detail);
 });

@@ -45,13 +45,24 @@ function headTrustFor({isCrossRepository, author}) {
 // incomplete, the single owner-approved-fallback validator decides whether the
 // fallback satisfies the item -- never a local re-implementation of that rule.
 // auditedChanged is readiness's own recomputation of the audited inputs changed
-// in base..head; it is unioned with the meta's claim so the head's runner can
-// never talk the base cross-grade away. The meta must name this head and base.
-function codexStatusFor({status, baseStatus, meta, auditedChanged: recomputed, out, head, base, pr, prAuthor, headTrust, fallback}) {
+// in reviewedBase..head; it is unioned with the meta's claim so the head's runner
+// can never talk the base cross-grade away. The meta must name this head and the
+// reviewed base: the merge-base of the PR base and head (WR-01, iteration 2).
+// That single rule covers both contract forms: a PR checkpoint's base must be an
+// ancestor of the head, so it IS the merge-base, and a local phase checkpoint
+// uses `git merge-base origin/main HEAD`, which stays the merge-base after main
+// moves on. A PR base that is not an ancestor of the head is never accepted,
+// since no runner reviews that range. Without a reviewedBase (direct callers)
+// the PR base itself is required, which is the stricter pre-existing rule.
+// `base` stays the PR base for the fallback validator.
+function codexStatusFor({
+  status, baseStatus, meta, auditedChanged: recomputed, out, head, base, reviewedBase, pr, prAuthor, headTrust, fallback,
+}) {
   if (!meta || meta.head !== head) {
     return {ok: false, detail: 'Codex evidence is for a different head'};
   }
-  if (meta.base !== base) {
+  const expectedBase = reviewedBase === undefined ? base : reviewedBase;
+  if (!HEAD_RE.test(expectedBase || '') || meta.base !== expectedBase) {
     return {ok: false, detail: 'Codex evidence is for a different base'};
   }
 
@@ -150,7 +161,7 @@ function gateItem({pr, draft, head, checks, comments, dispositions, blockers}) {
 function readiness(input) {
   const {
     pr, prAuthor, prAuthorIsBot, isCrossRepository, draft, open,
-    head, baseSha, checks, comments, checksError, commentsError,
+    head, baseSha, mergeBase, checks, comments, checksError, commentsError,
     dispositions, blockers, codex = {}, fallback,
   } = input;
 
@@ -185,11 +196,11 @@ function readiness(input) {
   }
 
   const headTrust = headTrustFor({isCrossRepository, author: {login: prAuthor, is_bot: prAuthorIsBot}});
-  const codexResult = codexStatusFor({...codex, head, base: baseSha, pr, prAuthor, headTrust, fallback});
+  const codexResult = codexStatusFor({...codex, head, base: baseSha, reviewedBase: mergeBase, pr, prAuthor, headTrust, fallback});
   items.push({name: 'Codex', status: codexResult.ok ? 'ok' : 'blocked', detail: codexResult.detail});
 
   const ready = items.every(i => i.status === 'ok');
-  return {ready, pr, head, base: baseSha, items};
+  return {ready, pr, head, base: baseSha, reviewedBase: mergeBase, items};
 }
 
 // renderChecklist(result) -> the D-12 owner-acceptance checklist text, extended
@@ -201,6 +212,9 @@ function renderChecklist(result) {
   lines.push(`PR: #${result.pr}`);
   lines.push(`Full head SHA: ${result.head}`);
   lines.push(`Full base SHA: ${result.base}`);
+  if (result.reviewedBase !== undefined) {
+    lines.push(`Reviewed base SHA (merge-base): ${result.reviewedBase}`);
+  }
   lines.push('');
   lines.push('Review status on this head:');
   lines.push('- BM: <fill from the checkpoint record>');
@@ -371,18 +385,32 @@ function runCli(argv, {exec, readFile} = {}) {
   }
   const baseStatus = readJsonIfPresent(readFileFn, `${opts.codexOut}.base-status.json`);
 
-  // Recompute the audited-input change set from git itself (argument array,
-  // no shell); fail closed when it cannot be computed (e.g. commits not fetched).
+  // Recompute the reviewed base and the audited-input change set from git
+  // itself (argument arrays, no shell); fail closed when either cannot be
+  // computed (e.g. commits not fetched). The reviewed range is
+  // merge-base..head, the PR's own changes, so audited inputs changed only on
+  // the base branch after the fork point are not counted (WR-01, iteration 2).
   if (!HEAD_RE.test(head || '') || !HEAD_RE.test(base || '')) {
     console.error('could not compute audited-input changes: PR head/base is not a 40-hex commit SHA');
     return 1;
   }
+  let mergeBase;
+  try {
+    mergeBase = String(execFn('git', ['merge-base', base, head])).trim();
+  } catch (err) {
+    console.error(`could not compute the merge-base (git merge-base ${base} ${head}): ${err.message}`);
+    return 1;
+  }
+  if (!HEAD_RE.test(mergeBase)) {
+    console.error(`could not compute the merge-base (git merge-base ${base} ${head}): not a 40-hex commit SHA`);
+    return 1;
+  }
   let auditedChanged;
   try {
-    const diffText = execFn('git', ['diff', '--name-only', `${base}..${head}`, '--', ...AUDITED_INPUTS]);
+    const diffText = execFn('git', ['diff', '--name-only', `${mergeBase}..${head}`, '--', ...AUDITED_INPUTS]);
     auditedChanged = String(diffText).split('\n').map(line => line.trim()).filter(Boolean);
   } catch (err) {
-    console.error(`could not compute audited-input changes (git diff ${base}..${head}): ${err.message}`);
+    console.error(`could not compute audited-input changes (git diff ${mergeBase}..${head}): ${err.message}`);
     return 1;
   }
 
@@ -405,6 +433,7 @@ function runCli(argv, {exec, readFile} = {}) {
     open: prInfo.state === 'OPEN',
     head,
     baseSha: base,
+    mergeBase,
     checks,
     comments,
     checksError,
