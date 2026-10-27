@@ -1,0 +1,38 @@
+// Classic PreToolUse guard: refuses a bm:bm-plan-checker Agent spawn whenever
+// the agent.spawn module hook that would route it to the Codex backend has
+// not loaded (CLAUDE_CODE_ENABLE_FUNCTION_HOOKS is not "1"). Classic hooks
+// load even when the modules gate is off, so this is the fail-closed
+// backstop for register.js: it can only block a spawn, never allow or
+// rewrite one. Prints only the flag state on refusal, never env contents.
+let raw = '';
+process.stdin.on('data', (chunk) => {
+  raw += chunk;
+});
+process.stdin.on('end', () => {
+  let input;
+  try {
+    input = JSON.parse(raw);
+  } catch {
+    process.stderr.write(
+      'planchk-router: could not parse PreToolUse input; refusing Agent spawn so the Codex route cannot silently fail. Stop and report.\n'
+    );
+    process.exit(2);
+    return;
+  }
+
+  const toolInput = input && input.tool_input;
+  if (!toolInput || toolInput.subagent_type !== 'bm:bm-plan-checker') {
+    process.exit(0);
+    return;
+  }
+
+  if (process.env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS === '1') {
+    process.exit(0);
+    return;
+  }
+
+  process.stderr.write(
+    'planchk-router: refusing bm:bm-plan-checker spawn - CLAUDE_CODE_ENABLE_FUNCTION_HOOKS is not 1, so the Codex route would silently not apply. Stop and report.\n'
+  );
+  process.exit(2);
+});

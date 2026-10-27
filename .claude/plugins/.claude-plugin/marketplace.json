@@ -1,0 +1,12 @@
+{
+  "name": "triggarr-local",
+  "owner": { "name": "thejuran" },
+  "description": "Local-only marketplace for Triggarr-specific Claude Code plugins (not for public distribution).",
+  "plugins": [
+    {
+      "name": "planchk-router",
+      "source": "./planchk-router",
+      "description": "Triggarr only: route bm:bm-plan-checker to the model-gateway Codex model (fail-closed)."
+    }
+  ]
+}
