@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: executing
-stopped_at: "Phase 85 planned; next: /bm:execute-phase 85"
-last_updated: "2026-10-27T14:54:45.253Z"
-last_activity: 2026-10-27 -- Phase 85 execution started
+status: "Phase 85 executed, in review -- unpushed; BM review clean after 4 owner-approved fix rounds; paired Codex pending by PR URL after push; verification human_needed (8 items)"
+stopped_at: "Phase 85 executed 2026-10-27 (19/19 plans) at af08d2a; next: owner vibe-check decision + /deep-review offer, then end-of-phase push/PR and Codex by PR URL"
+last_updated: "2026-10-27T22:31:35Z"
+last_activity: "2026-10-27 -- Phase 85 executed (19/19 plans, 5 waves); BM phase review clean at iteration 5 after 4 owner-approved fix rounds; local Codex refused (worktree vs local-origin trust), owner chose Codex by PR URL after push; verification human_needed"
 progress:
   total_phases: 7
   completed_phases: 3
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85 (Follow-on CI improvements & acceptance usability) — EXECUTING
-Plan: 19 of 19 done (all waves complete); next: BM phase review + paired Codex, verification
-Status: Executing Phase 85
-Last activity: 2026-10-27 -- Phase 85 execution started
+Phase: 85 (Follow-on CI improvements & acceptance usability) — EXECUTED, IN REVIEW (unpushed)
+Plan: 19 of 19 done; BM review iteration 5 clean at 1f8e339 (rounds 1-4 owner-approved); verification human_needed (85-VERIFICATION.md, 85-HUMAN-UAT.md: P1-P6, paired Codex by PR URL, register schema-2 migration)
+Status: Phase 85 executed, in review -- next: owner vibe-check decision and /deep-review offer, then end-of-phase push + ready PR, Codex by PR URL, hand-off steps in 85-REVIEW-EVIDENCE.md
+Last activity: 2026-10-27 -- Phase 85 executed and verified locally (human_needed); see 85-REVIEW-EVIDENCE.md post-plan review record
 
 ### v2.13 milestone shape
 
