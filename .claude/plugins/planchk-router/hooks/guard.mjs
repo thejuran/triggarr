@@ -16,7 +16,10 @@ process.stdin.on('end', () => {
     process.stderr.write(
       'planchk-router: could not parse PreToolUse input; refusing Agent spawn so the Codex route cannot silently fail. Stop and report.\n'
     );
-    process.exit(2);
+    // Set exitCode (not process.exit()) so the write above is guaranteed to flush
+    // before the process ends naturally -- process.exit() right after a stderr
+    // write can truncate the message on a piped stream.
+    process.exitCode = 2;
     return;
   }
 
@@ -34,5 +37,6 @@ process.stdin.on('end', () => {
   process.stderr.write(
     'planchk-router: refusing bm:bm-plan-checker spawn - CLAUDE_CODE_ENABLE_FUNCTION_HOOKS is not 1, so the Codex route would silently not apply. Stop and report.\n'
   );
-  process.exit(2);
+  // Same reasoning as above: exitCode, not process.exit(), so the write flushes.
+  process.exitCode = 2;
 });
