@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- Codex-routed plan checker activated for Triggarr (quick 261026-s2v, local branch, vibe-check decision pending); next: Phase 85"
-stopped_at: "Quick 261026-s2v verified at 4d7e677 (BM + paired Codex: 0 findings); owner vibe-check decision pending; next: /bm:discuss-phase 85"
-last_updated: "2026-10-27T03:15:00.000Z"
+status: "planning -- Codex-routed plan checker activated for Triggarr (quick 261026-s2v, local branch; owner skipped vibe-check); next: Phase 85"
+stopped_at: "Quick 261026-s2v verified at 4d7e677 (BM + paired Codex: 0 findings); owner skipped vibe-check, plugin tests to CI in Phase 85; next: /bm:discuss-phase 85"
+last_updated: "2026-10-27T03:30:00.000Z"
 last_activity: "2026-10-26 -- Phase 84 verified passed (4/4): agent.spawn hook routes only bm-plan-checker to codex (early-access flag required); blind comparison invalid (Phase 81 input post-review, R1-R6 markers); adoption not recommended per D-15, owner override to adopt; activation deferred to a quick task (Triggarr only, stop-and-report on failure)"
 progress:
   total_phases: 5

@@ -57,7 +57,7 @@ Reconciliation: All fields match; no reconciliation needed.
 ### Vibe-check (RISK-02)
 
 - **Recommendation:** run vibe-check locally on `cbec881..4d7e677` before the end-of-phase push, focused on `guard.mjs` fail-closed behavior and the README procedure (disable vs. fail-closed, post-update rechecks).
-- **Owner's decision:** PENDING — not yet asked.
+- **Owner's decision:** "skip vibe-check, add tests to CI in Phase 85" (2026-10-26)
 
 - **Routine vibe-check status:** not run on this head.
 
@@ -112,9 +112,8 @@ not run on this head (local checkpoint, not pushed). Local: pytest 2432 passed (
 | BM WR-06, WR-07 | bm | `b4e4a31…` | fixed | `a805f3f`; prior guard hang now fails cleanly (null vs 2) | `4d7e677` |
 | BM IN-01 (REVIEW-4: stderr write callback ignores err) | bm | `a805f3f…` | nonblocking_debt | exit code 2 unaffected; message loss only if stderr already closed | `4d7e677` |
 | BM IN-01 (REVIEW-5: README line wrap) | bm | `4d7e677…` | nonblocking_debt | cosmetic | `4d7e677` |
-| Plugin tests not in CI | bm/codex | `4d7e677…` | nonblocking_debt | owner ruling needed (adding to `.github/workflows/ci.yml` is a sensitive workflow change) | — |
+| Plugin tests not in CI | bm/codex | `4d7e677…` | nonblocking_debt | owner 2026-10-26: add to CI in Phase 85 (`.planning/backlog/MAINTENANCE.md`) | — |
 
 ### Incomplete items
 
-- Vibe-check owner decision pending (risk high).
 - Greptile and CI: not run (local checkpoint; run at end-of-phase push).
