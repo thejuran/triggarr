@@ -1428,3 +1428,259 @@ def test_signal_handlers_restored_after_main(monkeypatch) -> None:
     assert seen["hup"] is runner._handle_termination_signal
     assert signal.getsignal(signal.SIGTERM) == before_term
     assert signal.getsignal(signal.SIGHUP) == before_hup
+
+
+# --- D-18, rm-001: _write_evidence_copy cleans up its own failed mkdir ------
+
+
+def test_write_evidence_copy_removes_directory_on_open_failure(tmp_path: Path, monkeypatch) -> None:
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    real_open = runner.os.open
+
+    def _fails_on_evidence_file(path, flags, *args, **kwargs):
+        if str(path).endswith(runner.EVIDENCE_RELPATH):
+            raise PermissionError("simulated: cannot create the evidence file")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(runner.os, "open", _fails_on_evidence_file)
+
+    with pytest.raises(runner.RunnerError, match="could not create the evidence copy"):
+        runner._write_evidence_copy(worktree, "some text")
+
+    assert not (worktree / Path(runner.EVIDENCE_RELPATH).parent).exists()
+
+
+# --- D-18, compliance-002: a getpass.getuser() failure is logged, not silent -
+
+
+def _raise_keyerror() -> str:
+    raise KeyError("no pwd entry for uid")
+
+
+def test_redact_local_paths_warns_when_getuser_fails(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(runner.getpass, "getuser", _raise_keyerror)
+    worktree = tmp_path / "wt"
+    scratch = tmp_path / "scratch"
+    text = f"path inside {worktree} and {scratch}\n"
+
+    redacted = runner.redact_local_paths(text, worktree=worktree, scratch=scratch)
+
+    out = capsys.readouterr().out
+    assert "warning: getpass.getuser() failed (KeyError)" in out
+    assert "<worktree>" in redacted and "<scratch>" in redacted
+    assert str(worktree) not in redacted and str(scratch) not in redacted
+
+
+# --- D-18, WR-04: future raw Codex output is redacted before grading --------
+
+
+def test_redact_docstring_does_not_claim_raw_stream_is_never_written() -> None:
+    doc = runner.redact_local_paths.__doc__ or ""
+    assert "never appear" not in doc
+    assert ".jsonl" in doc and ".last.json" in doc
+
+
+def test_raw_codex_outputs_are_redacted(tmp_path: Path, monkeypatch) -> None:
+    import json as _json
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    worktree = tmp_path / "scratch" / "wt"
+    scratch = tmp_path / "scratch"
+    home = Path.home()
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if argv[0] == "codex":
+            kwargs["stdout"].write(_json.dumps({"note": f"{scratch} {worktree} {home}"}) + "\n")
+            run.output(".last.json").write_text(
+                _json.dumps(
+                    {
+                        "inspected_head_sha": H,
+                        "inspected_base_sha": B,
+                        "note": f"{scratch} {worktree} {home}",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(argv, 0)
+        return fake(argv, **kwargs)
+
+    execute(run, command_runner=_spy)
+
+    jsonl = run.output(".jsonl").read_text(encoding="utf-8")
+    last = run.output(".last.json").read_text(encoding="utf-8")
+    for text in (jsonl, last):
+        assert "<scratch>" in text and "<worktree>" in text and "~" in text
+        assert str(scratch) not in text and str(worktree) not in text and str(home) not in text
+    parsed = _json.loads(last)
+    assert parsed["inspected_head_sha"] == H
+    assert parsed["inspected_base_sha"] == B
+
+
+def test_exception_mid_codex_redacts_partial_outputs(tmp_path: Path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    scratch = tmp_path / "scratch"
+    fake = FakeRunner()
+
+    def _spy(argv, **kwargs):
+        if argv[0] == "codex":
+            kwargs["stdout"].write(f"partial event mentioning {scratch}\n")
+            raise RuntimeError("simulated: codex crashed")
+        return fake(argv, **kwargs)
+
+    with pytest.raises(runner.RunnerError, match="RuntimeError"):
+        execute(run, command_runner=_spy)
+
+    jsonl = run.output(".jsonl").read_text(encoding="utf-8")
+    assert "<scratch>" in jsonl and str(scratch) not in jsonl
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "RuntimeError" in status
+
+
+# --- D-18 / checker B12: SIGTERM/SIGHUP mid-Codex still redacts partial ------
+# output and leaves an interrupted, incomplete status -- never a clean one.
+
+_FAKE_CODEX_SCRIPT = """
+import json, os, sys, time
+from pathlib import Path
+
+argv = sys.argv[1:]
+worktree = Path(argv[argv.index("-C") + 1])
+last_json = Path(argv[argv.index("-o") + 1])
+scratch = worktree.parent
+home = Path.home()
+
+Path(os.environ["FAKE_CODEX_PID_FILE"]).write_text(str(os.getpid()), encoding="utf-8")
+
+event = {"type": "partial", "note": f"{scratch} {worktree} {home}"}
+sys.stdout.write(json.dumps(event) + "\\n")
+sys.stdout.flush()
+
+last_json.write_text(
+    json.dumps({"partial": True, "paths": [str(scratch), str(worktree), str(home)]}),
+    encoding="utf-8",
+)
+
+Path(os.environ["FAKE_CODEX_READY_MARKER"]).touch()
+time.sleep(60)
+"""
+
+_SIGNAL_MID_CODEX_HARNESS = """
+import json, os, sys
+from pathlib import Path
+
+from tests import codex_review_run as runner
+from tests.test_codex_review_run import FakeRunner, H, B, PHASE_DIR
+
+tmp_root = Path(sys.argv[1])
+fake_codex_path = sys.argv[2]
+marker_path = sys.argv[3]
+pid_file_path = sys.argv[4]
+calls_path = Path(sys.argv[5])
+
+runner.REPO_ROOT = tmp_root
+(tmp_root / PHASE_DIR).mkdir(parents=True)
+(tmp_root / "scratch").mkdir()
+runner.tempfile.mkdtemp = lambda prefix="codex-review-": str(tmp_root / "scratch")
+
+fake = FakeRunner()
+
+
+def command_runner(argv, **kwargs):
+    if argv and argv[0] == "codex":
+        new_argv = [sys.executable, fake_codex_path, *argv[1:]]
+        env = dict(os.environ)
+        env["FAKE_CODEX_READY_MARKER"] = marker_path
+        env["FAKE_CODEX_PID_FILE"] = pid_file_path
+        kwargs["env"] = env
+        return runner.run_command(new_argv, **kwargs)
+    return fake(argv, **kwargs)
+
+
+run = runner.ReviewRun(H, B, "explicit", 1, "none (local checkpoint, not pushed)", "scope", PHASE_DIR, True)
+runner.install_signal_handlers()
+try:
+    runner.execute(run, command_runner=command_runner)
+finally:
+    calls_path.write_text(json.dumps(fake.calls), encoding="utf-8")
+"""
+
+
+def _assert_signal_mid_codex_redacts_partial_outputs(tmp_path: Path, monkeypatch, sig: int) -> None:
+    import json
+    import os
+    import signal
+    import sys
+    import time
+
+    fake_codex_path = str(tmp_path / "fake_codex.py")
+    (tmp_path / "fake_codex.py").write_text(_FAKE_CODEX_SCRIPT, encoding="utf-8")
+    marker_path = str(tmp_path / "ready.marker")
+    pid_file_path = str(tmp_path / "fake_codex.pid")
+    calls_path = tmp_path / "calls.json"
+
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            _SIGNAL_MID_CODEX_HARNESS,
+            str(tmp_path),
+            fake_codex_path,
+            marker_path,
+            pid_file_path,
+            str(calls_path),
+        ],
+        cwd=runner.HARNESS_ROOT,
+    )
+    try:
+        marker = Path(marker_path)
+        deadline = time.monotonic() + 10
+        while not marker.exists():
+            if time.monotonic() > deadline:
+                raise TimeoutError("fake_codex never touched its ready marker")
+            time.sleep(0.02)
+        fake_codex_pid = int(Path(pid_file_path).read_text(encoding="utf-8").strip())
+
+        os.kill(child.pid, sig)
+
+        assert child.wait(timeout=10) == 128 + sig
+        assert _process_group_is_gone(fake_codex_pid, timeout=10)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    run = _run(attempt=1)
+    jsonl = run.output(".jsonl").read_text(encoding="utf-8")
+    last_json = run.output(".last.json").read_text(encoding="utf-8")
+    scratch = tmp_path / "scratch"
+    worktree = scratch / "wt"
+    home = str(Path.home())
+    for text in (jsonl, last_json):
+        assert "<scratch>" in text and "<worktree>" in text and "~" in text
+        assert str(scratch) not in text and str(worktree) not in text and home not in text
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    signame = signal.Signals(sig).name
+    assert any(f"interrupted by {signame}" in reason for reason in status["reasons"])
+
+    calls = json.loads(calls_path.read_text(encoding="utf-8"))
+    assert not any(_is_checker(call) for call in calls)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups and POSIX signals are not available on Windows")
+def test_sigterm_mid_codex_redacts_partial_outputs(tmp_path: Path, monkeypatch) -> None:
+    import signal
+
+    _assert_signal_mid_codex_redacts_partial_outputs(tmp_path, monkeypatch, signal.SIGTERM)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups and POSIX signals are not available on Windows")
+def test_sighup_mid_codex_redacts_partial_outputs(tmp_path: Path, monkeypatch) -> None:
+    import signal
+
+    _assert_signal_mid_codex_redacts_partial_outputs(tmp_path, monkeypatch, signal.SIGHUP)
