@@ -248,6 +248,16 @@ function requireArg(args, name) {
   return value;
 }
 
+// Strict non-negative integer flag: an empty value (an unset step output) or
+// anything else Number() would quietly coerce (e.g. '' -> 0) fails closed.
+function intArg(args, name) {
+  const raw = requireArg(args, name);
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+    throw new Error(`--${name} must be a non-negative integer, got ${JSON.stringify(raw)}`);
+  }
+  return Number(raw);
+}
+
 function defaultIo() {
   return {
     env: process.env,
@@ -266,8 +276,8 @@ function defaultIo() {
 // command always exits 0 on a successful write.
 function cliWrite(args, io) {
   const coveragePath = requireArg(args, 'coverage');
-  const testExit = Number(requireArg(args, 'test-exit'));
-  const testSeconds = Number(requireArg(args, 'test-seconds'));
+  const testExit = intArg(args, 'test-exit');
+  const testSeconds = intArg(args, 'test-seconds');
   const outPath = requireArg(args, 'out');
 
   const env = io.env;
@@ -288,8 +298,8 @@ function cliWrite(args, io) {
 function cliWriteLocal(args, io) {
   const head = requireArg(args, 'head');
   const coveragePath = requireArg(args, 'coverage');
-  const testExit = Number(requireArg(args, 'test-exit'));
-  const testSeconds = Number(requireArg(args, 'test-seconds'));
+  const testExit = intArg(args, 'test-exit');
+  const testSeconds = intArg(args, 'test-seconds');
   const outPath = requireArg(args, 'out');
 
   const status = io.git(['status', '--porcelain']);

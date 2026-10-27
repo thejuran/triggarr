@@ -563,3 +563,64 @@ test('runCli check exits 1 and prints each problem when evidence is invalid', ()
   assert.ok(errors.some(m => m.includes('tests failed in this run')), JSON.stringify(errors));
   assert.ok(errors.some(m => m.includes("cannot read the reviewed head's measured source")), JSON.stringify(errors));
 });
+
+// ---- WR-03 regressions: an empty or non-integer --test-exit/--test-seconds never records a passing run ----
+
+for (const bad of ['', 'abc', '-1', '1.5', ' 0', '0x0']) {
+  test(`runCli write refuses --test-exit ${JSON.stringify(bad)} and writes nothing`, () => {
+    const errors = [];
+    let wrote = false;
+    const io = fakeIo({
+      env: PUSH_ENV,
+      git: argsArr => {
+        const joined = argsArr.join(' ');
+        if (joined === 'rev-parse HEAD') return PUSH_SHA;
+        if (argsArr[0] === 'rev-parse') return MEASURED_TREES[argsArr[1].split(':')[1]];
+        throw new Error(`unexpected git call: ${joined}`);
+      },
+      readFile: () => WITH_BRANCHES,
+      writeFile: () => { wrote = true; },
+      error: msg => errors.push(msg),
+    });
+    const exitCode = runCli(
+      ['write', '--coverage', 'coverage.xml', '--test-exit', bad, '--test-seconds', '1', '--out', 'coverage-provenance.json'],
+      io
+    );
+    assert.equal(exitCode, 1);
+    assert.equal(wrote, false);
+    assert.ok(errors.some(e => e.includes('--test-exit must be a non-negative integer')), errors.join('\n'));
+  });
+}
+
+test('runCli write refuses an empty --test-seconds', () => {
+  const errors = [];
+  const io = fakeIo({
+    env: PUSH_ENV,
+    git: argsArr => {
+      const joined = argsArr.join(' ');
+      if (joined === 'rev-parse HEAD') return PUSH_SHA;
+      if (argsArr[0] === 'rev-parse') return MEASURED_TREES[argsArr[1].split(':')[1]];
+      throw new Error(`unexpected git call: ${joined}`);
+    },
+    readFile: () => WITH_BRANCHES,
+    writeFile: () => { throw new Error('must not write'); },
+    error: msg => errors.push(msg),
+  });
+  const exitCode = runCli(
+    ['write', '--coverage', 'coverage.xml', '--test-exit', '0', '--test-seconds', '', '--out', 'coverage-provenance.json'],
+    io
+  );
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('--test-seconds must be a non-negative integer')), errors.join('\n'));
+});
+
+test('runCli write-local refuses an empty --test-exit before touching git', () => {
+  const errors = [];
+  const io = fakeIo({error: msg => errors.push(msg)});
+  const exitCode = runCli(
+    ['write-local', '--head', LOCAL_SHA, '--coverage', 'coverage.xml', '--test-exit', '', '--test-seconds', '1', '--out', 'out.json'],
+    io
+  );
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('--test-exit must be a non-negative integer')), errors.join('\n'));
+});
