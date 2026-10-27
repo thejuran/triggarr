@@ -13,6 +13,7 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GUARD_PATH = path.join(__dirname, '..', 'hooks', 'guard.mjs');
 const REGISTER_PATH = path.join(__dirname, '..', 'hooks', 'register.js');
+const HOOKS_JSON_PATH = path.join(__dirname, '..', 'hooks', 'hooks.json');
 
 function runGuard(stdinPayload, flagValue) {
   const env = { ...process.env };
@@ -118,4 +119,25 @@ test('static: register.js has no try/catch/console (comments stripped) and only 
   const ids = [...raw.matchAll(/claude-[A-Za-z0-9.\-[\]]+/g)].map((m) => m[0]);
   const uniqueIds = [...new Set(ids)];
   assert.deepEqual(uniqueIds, ['claude-gpt-6-astra[1m]']);
+});
+
+// All tests above exercise guard.mjs/register.js directly, bypassing hooks.json
+// entirely -- nothing asserted that the real dispatch wiring (the module list and
+// the PreToolUse matcher that actually makes guard.mjs reachable) is intact. This
+// test closes that gap: dropping "./register.js" from `modules`, narrowing the
+// matcher, or pointing the command at a different file would fail this test even
+// though it would leave all 9 behavior tests above untouched.
+function loadHooksConfig(hooksJsonPath) {
+  return JSON.parse(readFileSync(hooksJsonPath, 'utf8'));
+}
+
+test('hooks.json: wires register.js as a module and guards Agent|Task via PreToolUse', () => {
+  const hooksConfig = loadHooksConfig(HOOKS_JSON_PATH);
+
+  assert.ok(Array.isArray(hooksConfig.modules));
+  assert.ok(hooksConfig.modules.includes('./register.js'));
+
+  const preToolUse = hooksConfig.hooks.PreToolUse[0];
+  assert.equal(preToolUse.matcher, 'Agent|Task');
+  assert.match(preToolUse.hooks[0].command, /guard\.mjs/);
 });
