@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
 CI_WORKFLOW = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+UV_LOCK = (REPO_ROOT / "uv.lock").read_text()
 
 
 def _ci_workflow() -> dict:
@@ -120,3 +122,48 @@ def test_node_tests_include_planchk_router_by_explicit_path() -> None:
     )
     assert "process.versions.node" in run_text
     assert "20" in run_text
+
+
+def _locked_packaging_version() -> str:
+    match = re.search(r'name = "packaging"\nversion = "([^"]+)"', UV_LOCK)
+    assert match, "packaging version not found in uv.lock"
+    return match.group(1)
+
+
+def test_docker_job_checks_lock_consistency_before_audit_and_save() -> None:
+    """CIMAINT-01: the lock-consistency step runs after the audit export and before pip-audit/save."""
+    job = _ci_workflow()["jobs"]["docker"]
+    steps = job["steps"]
+    names = [s.get("name") for s in steps]
+
+    audit_idx = names.index("Audit actual image dependencies")
+    consistency_idx = names.index("Check image dependencies match uv.lock")
+    vuln_idx = names.index("Check image dependency vulnerabilities")
+    save_idx = names.index("Save the audited image")
+
+    assert audit_idx < consistency_idx < vuln_idx
+    assert consistency_idx < save_idx
+
+
+def test_lock_consistency_uses_image_environment_and_exact_export() -> None:
+    """The consistency step exports uv.lock exactly, dumps the image's own environment, and compares them."""
+    job = _ci_workflow()["jobs"]["docker"]
+    step = _step_by_name(job["steps"], "Check image dependencies match uv.lock")
+    run_text = str(step.get("run", ""))
+
+    assert "uv export --locked --no-dev --no-emit-project --no-hashes" in run_text
+    assert "--dump-environment" in run_text
+    assert "triggarr:ci-test" in run_text
+    assert "image_lock_consistency.py --locked" in run_text
+
+    version = _locked_packaging_version()
+    assert f"--with packaging=={version}" in run_text
+
+
+def test_lock_consistency_step_has_no_if_or_continue_on_error() -> None:
+    """A mismatched image must never be uploaded -- this step cannot be conditionally skipped."""
+    job = _ci_workflow()["jobs"]["docker"]
+    step = _step_by_name(job["steps"], "Check image dependencies match uv.lock")
+
+    assert "if" not in step
+    assert "continue-on-error" not in step
