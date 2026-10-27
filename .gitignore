@@ -76,3 +76,9 @@ tmp/
 # Browser-e2e suite output (Playwright --output directories)
 e2e-artifacts/
 test-results/
+
+# Coverage artifacts (CIMAINT-06) -- generated per CI run/local test, never committed
+coverage.xml
+.coverage
+.coverage.*
+coverage-provenance.json
