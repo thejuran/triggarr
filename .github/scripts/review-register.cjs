@@ -13,7 +13,7 @@
 // Register content (dispositions, blocker ids) is evidence text, not a secret, but
 // this script never prints `gh`'s own auth output -- only the JSON it reads/writes.
 
-const {execFileSync} = require('node:child_process');
+const {execFileSync: defaultExecFileSync} = require('node:child_process');
 const fs = require('node:fs');
 
 const {registerKey} = require('./review-acceptance.cjs');
@@ -163,8 +163,8 @@ function parseArgs(argv) {
   return opts;
 }
 
-function readRegister(exec, name) {
-  const text = exec('gh', ['variable', 'get', name], {encoding: 'utf8'});
+function readRegister(execFileSync, name) {
+  const text = execFileSync('gh', ['variable', 'get', name], {encoding: 'utf8'});
   try {
     return JSON.parse(text);
   } catch (err) {
@@ -172,11 +172,11 @@ function readRegister(exec, name) {
   }
 }
 
-function writeRegister(exec, name, register) {
-  exec('gh', ['variable', 'set', name, '--body', JSON.stringify(register)], {encoding: 'utf8'});
+function writeRegister(execFileSync, name, register) {
+  execFileSync('gh', ['variable', 'set', name, '--body', JSON.stringify(register)], {encoding: 'utf8'});
 }
 
-function runUpsert(opts, exec) {
+function runUpsert(opts, execFileSync) {
   const name = KIND_VARIABLES[opts.kind];
   let slice;
   try {
@@ -188,7 +188,7 @@ function runUpsert(opts, exec) {
 
   let before;
   try {
-    before = readRegister(exec, name);
+    before = readRegister(execFileSync, name);
   } catch (err) {
     console.error(err.message);
     return 1;
@@ -209,11 +209,11 @@ function runUpsert(opts, exec) {
     return 0;
   }
 
-  writeRegister(exec, name, written);
+  writeRegister(execFileSync, name, written);
 
   let readBack;
   try {
-    readBack = readRegister(exec, name);
+    readBack = readRegister(execFileSync, name);
   } catch (err) {
     console.error(err.message);
     return 1;
@@ -228,12 +228,12 @@ function runUpsert(opts, exec) {
   return 0;
 }
 
-function runMigrate(opts, exec) {
+function runMigrate(opts, execFileSync) {
   const name = KIND_VARIABLES[opts.kind];
 
   let before;
   try {
-    before = readRegister(exec, name);
+    before = readRegister(execFileSync, name);
   } catch (err) {
     console.error(err.message);
     return 1;
@@ -253,11 +253,11 @@ function runMigrate(opts, exec) {
     return 0;
   }
 
-  writeRegister(exec, name, migrated);
+  writeRegister(execFileSync, name, migrated);
 
   let readBack;
   try {
-    readBack = readRegister(exec, name);
+    readBack = readRegister(execFileSync, name);
   } catch (err) {
     console.error(err.message);
     return 1;
@@ -272,9 +272,9 @@ function runMigrate(opts, exec) {
 }
 
 // CLI entry point. argv is the subcommand + flag list (no node/script path).
-// exec defaults to execFileSync and is injectable for tests; every gh invocation
-// passes an argument array, never a shell string.
-function runCli(argv, {exec = execFileSync} = {}) {
+// The exec option defaults to node:child_process's execFileSync and is injectable
+// for tests; every gh invocation passes an argument array, never a shell string.
+function runCli(argv, {exec: execFileSync = defaultExecFileSync} = {}) {
   let opts;
   try {
     opts = parseArgs(argv);
@@ -283,8 +283,8 @@ function runCli(argv, {exec = execFileSync} = {}) {
     return 1;
   }
 
-  if (opts.subcommand === 'migrate') return runMigrate(opts, exec);
-  return runUpsert(opts, exec);
+  if (opts.subcommand === 'migrate') return runMigrate(opts, execFileSync);
+  return runUpsert(opts, execFileSync);
 }
 
 if (require.main === module) {
