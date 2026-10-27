@@ -145,3 +145,72 @@ def test_pilot_approval_precondition_includes_codex() -> None:
     step = next(line for line in workflow_section.splitlines() if line.strip().startswith("4. "))
     assert "paired Codex review" in step
     assert "codex-fallback.cjs" in step
+
+
+# --- Task 2: D-19/D-20 acceptance procedure, register docs, coverage evidence ----
+
+
+def _acceptance_step(number: int) -> str:
+    prefix = f"{number}. "
+    return next(line for line in _read(ACCEPTANCE).splitlines() if line.startswith(prefix))
+
+
+def test_owner_procedure_runs_readiness_check() -> None:
+    step1 = _acceptance_step(1)
+    step5 = _acceptance_step(5)
+    assert "acceptance-readiness.cjs" in step1
+    assert "acceptance-readiness.cjs" in step5
+
+
+def test_owner_procedure_serializes_register_updates() -> None:
+    text = _read(ACCEPTANCE)
+    assert any(
+        "serialized" in s.lower() and "compare-and-swap" in s.lower() and "one pr" in s.lower()
+        for s in _sentences(text)
+    ), "owner-cli-acceptance.md must state in one sentence that final acceptance updates are serialized"
+    assert "review-register.cjs" in text
+
+
+def test_pilot_register_shape_is_schema_two() -> None:
+    text = _read(PILOT)
+    section = text.split("### Register shape", 1)[1]
+    assert section.count('"schema":2') == 2
+    assert section.count("by_pr_head") >= 2
+    assert "global_open" in section
+    assert "migrate --kind" in section
+
+
+def test_pilot_no_python_distributions() -> None:
+    text = _read(PILOT)
+    assert "and distributions" not in text
+    assert "built Python distributions" not in text
+
+
+def test_pilot_mentions_os_scan() -> None:
+    text = _read(PILOT)
+    assert "is not an OS image vulnerability scan" not in text
+    assert "os-scan-policy.md" in text
+
+
+def test_record_documents_coverage_evidence() -> None:
+    text = _read(RECORD)
+    heading = "## Coverage evidence for vibe-check"
+    assert heading in text
+    section = text.split(heading, 1)[1]
+    section = section.split("\n## ", 1)[0]
+    assert "coverage-provenance.cjs check" in section
+    assert "write-local" in section
+    assert "--expected-head" in section
+    assert "coverage-<run_id>-<run_attempt>" in section
+    assert "measured-source equivalence" in section
+    assert "worktree root" in section
+    assert "only after" in section.lower()
+    assert "evidence is never added to a review that has already run" in section
+
+
+def test_checklist_names_readiness_output() -> None:
+    text = _read(RECORD)
+    heading = "## Owner acceptance checklist"
+    assert heading in text
+    section = text.split(heading, 1)[1]
+    assert "acceptance-readiness.cjs" in section
