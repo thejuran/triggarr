@@ -153,6 +153,11 @@ jobs:
           docker run --rm --entrypoint python triggarr:ci-test -m pip freeze --all --exclude triggarr > image-requirements.txt
           test -s image-requirements.txt
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Check image dependencies match uv.lock
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file requirements-locked.txt
+          docker run --rm -v "$PWD/.github/scripts:/check:ro" --entrypoint python triggarr:ci-test /check/image_lock_consistency.py --dump-environment > image-environment.json
+          uv run --no-project --with packaging==26.0 python .github/scripts/image_lock_consistency.py --locked requirements-locked.txt --freeze image-requirements.txt --environment image-environment.json
       - name: Check image dependency vulnerabilities
         run: uvx --from pip-audit==2.10.1 pip-audit --strict --no-deps --disable-pip -r image-requirements.txt
 
