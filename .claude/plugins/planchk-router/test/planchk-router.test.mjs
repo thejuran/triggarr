@@ -5,7 +5,7 @@
 // node:url are used -- no packages installed, nothing to audit.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -140,4 +140,37 @@ test('hooks.json: wires register.js as a module and guards Agent|Task via PreToo
   const preToolUse = hooksConfig.hooks.PreToolUse[0];
   assert.equal(preToolUse.matcher, 'Agent|Task');
   assert.match(preToolUse.hooks[0].command, /guard\.mjs/);
+});
+
+// Preload that drives the guard's own process.stdin deterministically: once
+// guard.mjs has registered its listeners, deliver a non-checker payload (which
+// alone would exit 0), then a stream error, then 'end'. The real stdin stays
+// open until the parent closes it, so only these emitted events reach the guard.
+const STDIN_ERROR_PRELOAD =
+  'data:text/javascript,' +
+  encodeURIComponent(`
+const t = setInterval(() => {
+  if (process.stdin.listenerCount('end') === 0) return;
+  clearInterval(t);
+  process.stdin.emit('data', JSON.stringify({ tool_input: { subagent_type: 'other' } }));
+  process.stdin.emit('error', new Error('synthetic stdin error'));
+  process.stdin.emit('end');
+}, 5);
+`);
+
+test('guard: stdin error then end -> stays exit 2, refusal on stderr (no later exit 0)', async () => {
+  const env = { ...process.env };
+  delete env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS;
+  const child = spawn(process.execPath, ['--import', STDIN_ERROR_PRELOAD, GUARD_PATH], { env });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+    if (stderr.includes('stdin error')) {
+      child.stdin.end();
+    }
+  });
+  const code = await new Promise((resolve) => child.on('close', resolve));
+  assert.equal(code, 2);
+  assert.match(stderr, /planchk-router: stdin error while reading PreToolUse input/);
 });

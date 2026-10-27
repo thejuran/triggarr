@@ -5,6 +5,8 @@
 // backstop for register.js: it can only block a spawn, never allow or
 // rewrite one. Prints only the flag state on refusal, never env contents.
 let raw = '';
+// Once refused, stay refused: no later handler may downgrade the exit code.
+let refused = false;
 process.stdin.on('data', (chunk) => {
   raw += chunk;
 });
@@ -15,9 +17,13 @@ process.stdin.on('error', () => {
   process.stderr.write(
     'planchk-router: stdin error while reading PreToolUse input; refusing Agent spawn so the Codex route cannot silently fail. Stop and report.\n'
   );
+  refused = true;
   process.exitCode = 2;
 });
 process.stdin.on('end', () => {
+  if (refused) {
+    return;
+  }
   let input;
   try {
     input = JSON.parse(raw);
