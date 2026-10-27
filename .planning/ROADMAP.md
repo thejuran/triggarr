@@ -323,8 +323,8 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] 85-14-PLAN.md — TDD: owner-approved fallback validator and read-only acceptance readiness check (D-12 checklist, gate's own logic; bot/fork heads need the fallback until 85.1)
 - [x] 85-15-PLAN.md — Required os-scan and actionlint jobs in CI ready and REQUIRED_JOBS; all workflows lint clean
 - [x] 85-16-PLAN.md — Review-machinery drift guard; PLAN files sensitive and in Codex scope (prompt v6); D-01 policy status
-- [ ] 85-17-PLAN.md — Docs: owner-approved Codex fallback, keyed register and serialized updates, readiness and coverage procedures
-- [ ] 85-18-PLAN.md — Prepare the on-PR negative demonstration (mismatched image, bad workflow): recipes, patch, evidence skeleton; push is a hand-off step
+- [x] 85-17-PLAN.md — Docs: owner-approved Codex fallback, keyed register and serialized updates, readiness and coverage procedures
+- [x] 85-18-PLAN.md — Prepare the on-PR negative demonstration (mismatched image, bad workflow): recipes, patch, evidence skeleton; push is a hand-off step
 - [ ] 85-19-PLAN.md — Phase verification, pending GitHub evidence, backlog resolution, classification, RISK-01 and hand-off
 
 ### Phase 85.1: Isolated Codex Review for Untrusted PRs (INSERTED)
@@ -368,7 +368,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 82. CI Tests What We Ship | 9/9 | Complete | 2026-10-22 |
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
-| 85. Follow-on CI Improvements & Acceptance Usability | 16/19 | In Progress|  |
+| 85. Follow-on CI Improvements & Acceptance Usability | 18/19 | In Progress|  |
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 0/TBD | Not started | - |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
