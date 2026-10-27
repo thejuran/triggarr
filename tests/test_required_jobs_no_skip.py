@@ -20,7 +20,16 @@ For each required job it asserts:
 - no job-level ``if``, except ``ci-ready``'s exact ``always()``;
 - no ``continue-on-error`` at job or step level, whatever its value;
 - every step ``if`` is on the reviewed allowlist, keyed by job, step name and
-  exact condition.
+  exact condition;
+- no reusable workflow (job-level ``uses:``) and no local action
+  (``uses: ./...``), whose steps this guard cannot see (review SA-05);
+- every job and step key is a string, and no key is a case variant of
+  ``if``, ``continue-on-error``, ``uses`` or ``steps``.
+
+It also cross-checks the job sets, so a job dropped from a required check
+fails: ``ci-ready``'s ``needs`` must equal ``ALL_JOBS`` from
+``tests/test_ci_gate.py``, and ``review-acceptance.yml`` must hold exactly the
+``acceptance`` job.
 
 PyYAML follows YAML 1.1, so a bare ``on:`` key loads as ``True``;
 ``workflow_triggers`` accepts either spelling.
@@ -34,6 +43,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.test_ci_gate import ALL_JOBS
+
 REPO_ROOT = Path(__file__).parent.parent
 CI_PATH = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 ACCEPTANCE_PATH = REPO_ROOT / ".github" / "workflows" / "review-acceptance.yml"
@@ -42,6 +53,8 @@ ACCEPTANCE_TEXT = ACCEPTANCE_PATH.read_text()
 
 AGGREGATE_JOB = "ci-ready"
 AGGREGATE_IF = "always()"
+ACCEPTANCE_JOBS = frozenset({"acceptance"})
+WATCHED_KEYS = frozenset({"if", "continue-on-error", "uses", "steps"})
 
 BROWSER_EVIDENCE_CONDITION = (
     "failure() && hashFiles('e2e-artifacts/credential/scan-complete.json') != '' && "
@@ -72,6 +85,8 @@ class _StrictLoader(yaml.SafeLoader):
             if key_node.tag == "tag:yaml.org,2002:merge":
                 continue
             key = self.construct_object(key_node, deep=True)
+            if not isinstance(key, str | int | float | bool) and key is not None:
+                raise yaml.constructor.ConstructorError(None, None, f"unhashable key {key!r}", key_node.start_mark)
             if key in seen:
                 raise yaml.constructor.ConstructorError(None, None, f"duplicate key {key!r}", key_node.start_mark)
             seen.add(key)
@@ -79,7 +94,7 @@ class _StrictLoader(yaml.SafeLoader):
 
 
 def load_workflow(text: str) -> dict[Any, Any]:
-    doc = yaml.load(text, Loader=_StrictLoader)  # noqa: S506 -- _StrictLoader subclasses SafeLoader
+    doc = yaml.load(text, Loader=_StrictLoader)  # _StrictLoader subclasses SafeLoader
     if not isinstance(doc, dict):
         raise ValueError("workflow is not a mapping")
     return doc
@@ -98,13 +113,25 @@ def _step_label(index: int, step: dict[Any, Any]) -> str:
     return f'step {index} "{name}"' if isinstance(name, str) else f"step {index} (unnamed)"
 
 
+def _key_problems(where: str, mapping: dict[Any, Any]) -> list[str]:
+    problems = []
+    for key in mapping:
+        if not isinstance(key, str):
+            problems.append(f"{where} has a non-string key {key!r}")
+        elif key not in WATCHED_KEYS and key.lower() in WATCHED_KEYS:
+            problems.append(f"{where} has a case variant of a watched key: {key!r}")
+    return problems
+
+
 def job_problems(job_id: str, job: Any, *, allowed_if: str | None) -> list[str]:
     """Problems that could let required job ``job_id`` be skipped or ignored."""
     prefix = f'required job "{job_id}"'
     if not isinstance(job, dict):
         return [f"{prefix} is not a mapping"]
 
-    problems: list[str] = []
+    problems = _key_problems(prefix, job)
+    if "uses" in job:
+        problems.append(f"{prefix} calls a reusable workflow (job-level uses: {job['uses']!r})")
     if "continue-on-error" in job:
         problems.append(f"{prefix} sets continue-on-error")
     if "if" in job:
@@ -124,6 +151,10 @@ def job_problems(job_id: str, job: Any, *, allowed_if: str | None) -> list[str]:
             problems.append(f"{prefix} step {index} is not a mapping")
             continue
         label = _step_label(index, step)
+        problems.extend(_key_problems(f"{prefix} {label}", step))
+        uses = step.get("uses")
+        if "uses" in step and (not isinstance(uses, str) or uses.startswith((".", "/"))):
+            problems.append(f"{prefix} {label} uses a local or unreadable action: {uses!r}")
         if "continue-on-error" in step:
             problems.append(f"{prefix} {label} sets continue-on-error")
         if "if" in step and (job_id, step.get("name"), step["if"]) not in STEP_IF_ALLOWLIST:
@@ -158,7 +189,11 @@ def ci_problems(text: str) -> list[str]:
     if AGGREGATE_JOB not in jobs:
         return [f'ci.yml aggregate job "{AGGREGATE_JOB}" not found']
 
-    for job_id in [*_needs(jobs[AGGREGATE_JOB]), AGGREGATE_JOB]:
+    needs = _needs(jobs[AGGREGATE_JOB])
+    if sorted(map(str, needs)) != sorted(ALL_JOBS):
+        problems.append(f"ci.yml {AGGREGATE_JOB} needs {needs!r} must be exactly {sorted(ALL_JOBS)!r}")
+
+    for job_id in [*needs, AGGREGATE_JOB]:
         if job_id not in jobs:
             problems.append(f'ci.yml required job "{job_id}" not found')
             continue
@@ -171,6 +206,8 @@ def acceptance_problems(text: str) -> list[str]:
     doc, problems = _load_problem("review-acceptance.yml", text)
     if doc is None:
         return problems
+    if set(doc["jobs"]) != ACCEPTANCE_JOBS:
+        problems.append(f"review-acceptance.yml jobs {list(doc['jobs'])!r} must be exactly {sorted(ACCEPTANCE_JOBS)!r}")
     for job_id, job in doc["jobs"].items():
         problems.extend(job_problems(str(job_id), job, allowed_if=None))
     return problems
@@ -324,3 +361,115 @@ def test_allowlisted_name_with_a_different_condition_is_rejected() -> None:
         "      - name: Upload test evidence\n        if: success()\n",
     )
     assert any("if: not on the reviewed allowlist: 'success()'" in p for p in ci_problems(mutated))
+
+
+# --- CR-02: comments and header spellings cannot hide a step or a job --------
+
+
+def test_column_zero_comment_cannot_hide_a_ci_ready_step_if() -> None:
+    mutated = CI_TEXT + "# reviewed\n        if: github.run_attempt == '0'\n"
+    assert ci_problems(mutated) == [
+        'required job "ci-ready" step 0 "Require every mandatory job to succeed" '
+        "if: not on the reviewed allowlist: \"github.run_attempt == '0'\""
+    ]
+
+
+def test_column_zero_comment_cannot_hide_a_ci_ready_continue_on_error() -> None:
+    mutated = CI_TEXT + "# reviewed\n        continue-on-error: true\n"
+    assert any(
+        p.startswith('required job "ci-ready" step 0') and "continue-on-error" in p for p in ci_problems(mutated)
+    )
+
+
+def test_column_zero_comment_cannot_hide_the_acceptance_gate_step_if() -> None:
+    mutated = ACCEPTANCE_TEXT + "# end of gate\n        if: github.run_attempt == '0'\n"
+    assert acceptance_problems(mutated) == [
+        'required job "acceptance" step 1 (unnamed) if: not on the reviewed allowlist: "github.run_attempt == \'0\'"'
+    ]
+
+
+ACCEPTANCE_HEADER = "  acceptance:\n"
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "  acceptance: # gate\n",
+        '  "acceptance":\n',
+        "  'acceptance' :\n",
+        "  ? acceptance\n  :\n",
+    ],
+)
+def test_acceptance_header_spelling_cannot_hide_a_job_level_if(header: str) -> None:
+    mutated = _mutate(ACCEPTANCE_TEXT, ACCEPTANCE_HEADER, f"{header}    if: github.run_attempt == '0'\n")
+    assert acceptance_problems(mutated) == [
+        'required job "acceptance" has a job-level if: "github.run_attempt == \'0\'"'
+    ]
+
+
+def test_reindented_jobs_block_cannot_hide_a_job_level_if() -> None:
+    head, sep, body = ACCEPTANCE_TEXT.partition("\njobs:\n")
+    reindented = "".join(f"  {line}" if line.strip() else line for line in body.splitlines(keepends=True))
+    mutated = _mutate(head + sep + reindented, "    acceptance:\n", '    acceptance:\n      if: "false"\n')
+    assert acceptance_problems(mutated) == ["required job \"acceptance\" has a job-level if: 'false'"]
+
+
+def test_reindented_real_jobs_block_still_passes() -> None:
+    head, sep, body = ACCEPTANCE_TEXT.partition("\njobs:\n")
+    reindented = "".join(f"  {line}" if line.strip() else line for line in body.splitlines(keepends=True))
+    assert acceptance_problems(head + sep + reindented) == []
+
+
+def test_job_dropped_from_ci_ready_needs_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, "browser-e2e, os-scan, actionlint]", "browser-e2e, actionlint]")
+    problems = ci_problems(mutated)
+    assert len(problems) == 1 and problems[0].startswith("ci.yml ci-ready needs")
+
+
+def test_ci_ready_needs_as_a_single_string_is_rejected() -> None:
+    old = "    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e, os-scan, actionlint]\n"
+    problems = ci_problems(_mutate(CI_TEXT, old, "    needs: test\n"))
+    assert any(p.startswith("ci.yml ci-ready needs") for p in problems)
+
+
+def test_acceptance_job_renamed_or_added_is_rejected() -> None:
+    renamed = _mutate(ACCEPTANCE_TEXT, ACCEPTANCE_HEADER, "  acceptance-gate:\n")
+    assert any(p.startswith("review-acceptance.yml jobs") for p in acceptance_problems(renamed))
+    added = ACCEPTANCE_TEXT + "  extra:\n    runs-on: ubuntu-latest\n    steps:\n      - run: exit 0\n"
+    assert any(p.startswith("review-acceptance.yml jobs") for p in acceptance_problems(added))
+
+
+def test_missing_aggregate_job_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, "\n  ci-ready:\n", "\n  ci-ready-renamed:\n")
+    assert ci_problems(mutated) == ['ci.yml aggregate job "ci-ready" not found']
+
+
+@pytest.mark.parametrize("key", ["IF", "If", "Continue-On-Error", "USES"])
+def test_case_variant_of_a_watched_step_key_is_rejected(key: str) -> None:
+    mutated = _mutate(CI_TEXT, FAIL_STEP, f'{FAIL_STEP}        {key}: "false"\n')
+    assert any("case variant of a watched key" in p for p in ci_problems(mutated))
+
+
+def test_non_string_step_key_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, FAIL_STEP, f'{FAIL_STEP}        ? [if]\n        : "false"\n')
+    problems = ci_problems(mutated)
+    assert problems and all("cannot be loaded" in p or "non-string key" in p for p in problems)
+
+
+# --- SA-05 (forbidden today): reusable workflows and local actions -----------
+
+
+def test_required_job_calling_a_reusable_workflow_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, LINT_HEADER, f"{LINT_HEADER}    uses: ./.github/workflows/lint.yml\n")
+    assert any(p.startswith('required job "lint" calls a reusable workflow') for p in ci_problems(mutated))
+
+
+@pytest.mark.parametrize("uses", ["./.github/actions/setup", "../outside", "/abs/path"])
+def test_required_step_using_a_local_action_is_rejected(uses: str) -> None:
+    mutated = _mutate(CI_TEXT, FAIL_STEP, f"      - uses: {uses}\n{FAIL_STEP}")
+    assert any("uses a local or unreadable action" in p for p in ci_problems(mutated))
+
+
+def test_acceptance_step_using_a_local_action_is_rejected() -> None:
+    mutated = ACCEPTANCE_TEXT + "      - uses: ./.github/actions/gate\n"
+    assert any("uses a local or unreadable action" in p for p in acceptance_problems(mutated))
