@@ -277,7 +277,7 @@ Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
 - [ ] Every BM code review is paired with an exact-commit Codex adversarial pass; missing or stale evidence is incomplete — v2.13
 - [ ] BM recommends review depth per checkpoint and suggests vibe-check for high risk, recording the owner's choice — v2.13
 - [ ] Docs/planning-only changes are reviewed by content-based classification, and GitHub checks honor it without weakening protection for code or control changes — v2.13
-- [ ] Codex plan-checker routing investigated with recorded evidence — v2.13
+- [x] Codex plan-checker routing investigated with recorded evidence — v2.13 (Validated in Phase 84: hook routing proven; blind comparison invalid because the recovered Phase 81 input was post-review; owner chose to adopt, activation pending)
 - [ ] Follow-on CI improvements (dependencies, updates, image audit, workflow lint, coverage, permissions) delivered with acceptance evidence — v2.13
 - [ ] Pilot results and reusable guidance recorded — v2.13
 
@@ -395,4 +395,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-21 after starting v2.13 CI & Review Workflow*
+*Last updated: 2026-10-26 after Phase 84 (Codex plan-checker investigation)*
