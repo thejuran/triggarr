@@ -368,7 +368,7 @@ function readStepItem(lines, seqCol) {
 }
 
 // Reads a job's body (parseJobs' raw `lines`) into its job-level keys and
-// its steps. Returns {jobKeys: [{key, value}], steps: [{name, conditions}],
+// its steps. Returns {jobKeys: [{key, value}], steps: [{name, conditions, uses, hasRun}],
 // problems: [string]}. Every shape it cannot read is a problem, so callers
 // fail closed instead of treating an unread step as having no condition.
 function readJobBody(jobLines) {
@@ -443,7 +443,9 @@ function readJobBody(jobLines) {
     problems.push(...item.problems);
     const names = item.entries.filter(entry => entry.key === 'name').map(entry => stripQuotes(entry.value));
     const conditions = item.entries.filter(entry => entry.key === 'if').map(entry => entry.value);
-    steps.push({name: names.length ? names[0] : null, conditions});
+    const uses = item.entries.filter(entry => entry.key === 'uses').map(entry => stripQuotes(entry.value));
+    const hasRun = item.entries.some(entry => entry.key === 'run');
+    steps.push({name: names.length ? names[0] : null, conditions, uses: uses.length ? uses[0] : null, hasRun});
   }
 
   return {jobKeys, steps, problems};
@@ -507,6 +509,11 @@ const STEP_IF_ALLOWLIST = Object.freeze({
     "failure() && hashFiles('e2e-artifacts/credential/scan-complete.json') != '' && " +
     "hashFiles('e2e-artifacts/pages/scan-complete.json') != ''",
 });
+// Every allowlisted entry is an evidence upload, so the step carrying it must
+// be the only step of that name in its job, use this action and have no run:
+// (review iteration 3 WR-01). The authoritative check is the PyYAML guard in
+// tests/test_required_jobs_no_skip.py; this detector is a secondary line.
+const ALLOWLISTED_STEP_USES = 'actions/upload-artifact@';
 
 function parseFlowList(raw) {
   const trimmed = raw.trim();
@@ -728,6 +735,17 @@ function findSkipConditions({workflowText, aggregateJobId, triggerContract}) {
         const allowlistKey = `${id}::${step.name}`;
         if (STEP_IF_ALLOWLIST[allowlistKey] !== condition) {
           problems.push(`required job "${id}" step if: not on the reviewed allowlist: "${step.name}": ${condition}`);
+          continue;
+        }
+        const sameName = body.steps.filter(other => other.name === step.name).length;
+        if (sameName !== 1) {
+          problems.push(`required job "${id}" step "${step.name}": allowlisted step name appears ${sameName} times`);
+        }
+        if (!step.uses || !step.uses.startsWith(ALLOWLISTED_STEP_USES)) {
+          problems.push(`required job "${id}" step "${step.name}": allowlisted step must use ${ALLOWLISTED_STEP_USES}`);
+        }
+        if (step.hasRun) {
+          problems.push(`required job "${id}" step "${step.name}": allowlisted step must not have run:`);
         }
       }
     }

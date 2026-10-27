@@ -866,4 +866,30 @@ describe('ACCEPT-03 no-skip detector', () => {
       'browser-e2e::Upload browser failure evidence',
     ]));
   });
+
+  // Review iteration 3 WR-01: the allowlist must pin the upload step, not
+  // just its name. A gate step renamed to an allowlisted name with the
+  // allowlisted condition would otherwise run only after a failure.
+  const browserGate = '      - name: Require a complete browser-suite result\n';
+  const browserUpload = '      - name: Upload browser failure evidence\n';
+  const browserIf =
+    '        if: >-\n' +
+    '          failure() &&\n' +
+    "          hashFiles('e2e-artifacts/credential/scan-complete.json') != '' &&\n" +
+    "          hashFiles('e2e-artifacts/pages/scan-complete.json') != ''\n";
+
+  test('a gate renamed to the allowlisted upload name and condition is reported', () => {
+    const problems = ciProblems(mutate(ciText, browserGate, browserUpload + browserIf));
+    assert.ok(problems.some(p => p.includes('allowlisted step name appears 2 times')), problems.join('\n'));
+    assert.ok(problems.some(p => p.includes('allowlisted step must not have run:')), problems.join('\n'));
+  });
+
+  test('a gate renamed to the allowlisted upload after the real upload is renamed away is reported', () => {
+    const swapped = mutate(ciText, browserUpload + browserIf, '      - name: Upload browser evidence\n');
+    const problems = ciProblems(mutate(swapped, browserGate, browserUpload + browserIf));
+    assert.ok(
+      problems.some(p => p.includes('allowlisted step must use actions/upload-artifact@')),
+      problems.join('\n')
+    );
+  });
 });

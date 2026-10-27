@@ -62,7 +62,12 @@ BROWSER_EVIDENCE_CONDITION = (
 )
 
 # The only step-level conditions a required job may carry: (job, step name,
-# exact condition). Mirrors STEP_IF_ALLOWLIST in ci-job-consistency.cjs.
+# exact condition). Mirrors STEP_IF_ALLOWLIST in ci-job-consistency.cjs. Each
+# entry is an evidence upload, so the step carrying it must also be the only
+# step of that name in its job, use actions/upload-artifact and have no run:
+# (review WR-01: otherwise a gate step renamed to an allowlisted name, with
+# the allowlisted condition, would stop running on success).
+ALLOWLISTED_STEP_USES = "actions/upload-artifact@"
 STEP_IF_ALLOWLIST = frozenset(
     {
         ("test", "Upload test evidence", "always()"),
@@ -157,8 +162,18 @@ def job_problems(job_id: str, job: Any, *, allowed_if: str | None) -> list[str]:
             problems.append(f"{prefix} {label} uses a local or unreadable action: {uses!r}")
         if "continue-on-error" in step:
             problems.append(f"{prefix} {label} sets continue-on-error")
-        if "if" in step and (job_id, step.get("name"), step["if"]) not in STEP_IF_ALLOWLIST:
+        if "if" not in step:
+            continue
+        if (job_id, step.get("name"), step["if"]) not in STEP_IF_ALLOWLIST:
             problems.append(f"{prefix} {label} if: not on the reviewed allowlist: {step['if']!r}")
+            continue
+        same_name = sum(1 for other in steps if isinstance(other, dict) and other.get("name") == step["name"])
+        if same_name != 1:
+            problems.append(f"{prefix} {label} allowlisted step name appears {same_name} times")
+        if not isinstance(uses, str) or not uses.startswith(ALLOWLISTED_STEP_USES):
+            problems.append(f"{prefix} {label} allowlisted step must use {ALLOWLISTED_STEP_USES}, got {uses!r}")
+        if "run" in step:
+            problems.append(f"{prefix} {label} allowlisted step must not have run:")
     return problems
 
 
@@ -473,3 +488,42 @@ def test_required_step_using_a_local_action_is_rejected(uses: str) -> None:
 def test_acceptance_step_using_a_local_action_is_rejected() -> None:
     mutated = ACCEPTANCE_TEXT + "      - uses: ./.github/actions/gate\n"
     assert any("uses a local or unreadable action" in p for p in acceptance_problems(mutated))
+
+
+# --- WR-01: an allowlisted (name, condition) pins the evidence upload step ----
+
+BROWSER_GATE = "      - name: Require a complete browser-suite result\n"
+BROWSER_UPLOAD = "      - name: Upload browser failure evidence\n"
+BROWSER_IF = (
+    "        if: >-\n"
+    "          failure() &&\n"
+    "          hashFiles('e2e-artifacts/credential/scan-complete.json') != '' &&\n"
+    "          hashFiles('e2e-artifacts/pages/scan-complete.json') != ''\n"
+)
+
+
+def test_gate_renamed_to_the_allowlisted_upload_with_the_same_condition_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, BROWSER_GATE, BROWSER_UPLOAD + BROWSER_IF)
+    problems = ci_problems(mutated)
+    assert any("allowlisted step name appears 2 times" in p for p in problems)
+    assert any("allowlisted step must not have run:" in p for p in problems)
+
+
+def test_gate_renamed_to_the_allowlisted_upload_with_a_different_condition_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, BROWSER_GATE, BROWSER_UPLOAD + "        if: always()\n")
+    assert any("if: not on the reviewed allowlist: 'always()'" in p for p in ci_problems(mutated))
+
+
+def test_gate_renamed_and_real_upload_renamed_away_is_rejected() -> None:
+    # The gate takes the upload's name and condition; the real upload is
+    # renamed and loses its condition, so the name is unique again.
+    swapped = _mutate(CI_TEXT, BROWSER_UPLOAD + BROWSER_IF, "      - name: Upload browser evidence\n")
+    mutated = _mutate(swapped, BROWSER_GATE, BROWSER_UPLOAD + BROWSER_IF)
+    problems = ci_problems(mutated)
+    assert any("allowlisted step must use actions/upload-artifact@" in p for p in problems)
+    assert any("allowlisted step must not have run:" in p for p in problems)
+
+
+def test_test_job_gate_renamed_to_the_allowlisted_upload_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, FAIL_STEP, "      - name: Upload test evidence\n        if: always()\n")
+    assert any("allowlisted step name appears 2 times" in p for p in ci_problems(mutated))
