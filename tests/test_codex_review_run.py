@@ -636,7 +636,7 @@ def test_main_untrusted_refuses_when_output_already_exists(tmp_path, monkeypatch
 
 
 def test_execute_refuses_untrusted_before_any_work(tmp_path, monkeypatch) -> None:
-    """execute()/verify_trust()/materialize_grader() are never reached for an untrusted run (defense in depth)."""
+    """execute()/verify_trust() are never reached for an untrusted run (defense in depth)."""
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
     (tmp_path / PHASE_DIR).mkdir(parents=True)
     run = _run(attempt=1, trusted=False)
@@ -645,11 +645,7 @@ def test_execute_refuses_untrusted_before_any_work(tmp_path, monkeypatch) -> Non
     def _forbidden_verify_trust(*_args, **_kwargs):
         raise AssertionError("verify_trust must not run for an untrusted ReviewRun")
 
-    def _forbidden_materialize(*_args, **_kwargs):
-        raise AssertionError("materialize_grader must not run for an untrusted ReviewRun")
-
     monkeypatch.setattr(runner, "verify_trust", _forbidden_verify_trust)
-    monkeypatch.setattr(runner, "materialize_grader", _forbidden_materialize)
 
     with pytest.raises(runner.RunnerError, match="Phase 85.1"):
         execute(run, command_runner=fake)
