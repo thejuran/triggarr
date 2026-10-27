@@ -307,16 +307,16 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   7. GitHub's required checks honor Phase 83's review classification without weakening protection for code or control changes. The mechanism is designed and verified with an ordinary-docs PR, a sensitive-docs PR, a mixed docs-and-code PR, and a misclassified PR (claims ordinary docs but contains a consequential change) that still gets the full checks. Required checks are never disabled ad hoc, and exact-commit owner acceptance stays required for every PR. Until this is verified, existing protections are preserved and any review still running automatically on docs-only PRs is disclosed. (GitHub-enforced) Owner decision 2026-10-26 (D-01): no docs fast path — every PR runs every required check; verified by a permanent no-skip test over ordinary-docs, sensitive-docs, mixed and misclassified fixture diffs plus Phase 85's own mixed PR as the real GitHub run (D-02).
 **Plans**: 19 plans
 
-- [ ] 85-01-PLAN.md — Record owner decisions D-01/D-14 in requirements/roadmap; written OS-scan policy before enforcement; README standalone install (owner choice)
-- [ ] 85-02-PLAN.md — TDD: ACCEPT-03 no-skip detector over required workflows with four classification fixtures
-- [ ] 85-03-PLAN.md — Codex runner: SIGTERM/SIGHUP cleanup, bounded drain, evidence-dir cleanup, getpass warning, raw-output redaction
-- [ ] 85-04-PLAN.md — TDD: hollow-report guard rejects null exit codes and trivial-only commands
-- [ ] 85-05-PLAN.md — Acceptance register keyed by PR + head, draft rejection, read-back writer, gate pin bootstrap
-- [ ] 85-06-PLAN.md — Grouped, bounded monthly Dependabot updates with a config contract test
-- [ ] 85-07-PLAN.md — TDD: OS-package scan gate with expiring owner-approved exceptions, fail-closed scanner errors
-- [ ] 85-08-PLAN.md — Dockerfile installs runtime deps from uv.lock (hash-checked); image/lockfile consistency checker
-- [ ] 85-09-PLAN.md — TDD: pytest-cov and coverage provenance writer/checker (PR head vs synthetic merge)
-- [ ] 85-10-PLAN.md — Release: drop Python distributions; only tag-only github-release job holds contents: write
+- [x] 85-01-PLAN.md — Record owner decisions D-01/D-14 in requirements/roadmap; written OS-scan policy before enforcement; README standalone install (owner choice)
+- [x] 85-02-PLAN.md — TDD: ACCEPT-03 no-skip detector over required workflows with four classification fixtures
+- [x] 85-03-PLAN.md — Codex runner: SIGTERM/SIGHUP cleanup, bounded drain, evidence-dir cleanup, getpass warning, raw-output redaction
+- [x] 85-04-PLAN.md — TDD: hollow-report guard rejects null exit codes and trivial-only commands
+- [x] 85-05-PLAN.md — Acceptance register keyed by PR + head, draft rejection, read-back writer, gate pin bootstrap
+- [x] 85-06-PLAN.md — Grouped, bounded monthly Dependabot updates with a config contract test
+- [x] 85-07-PLAN.md — TDD: OS-package scan gate with expiring owner-approved exceptions, fail-closed scanner errors
+- [x] 85-08-PLAN.md — Dockerfile installs runtime deps from uv.lock (hash-checked); image/lockfile consistency checker
+- [x] 85-09-PLAN.md — TDD: pytest-cov and coverage provenance writer/checker (PR head vs synthetic merge)
+- [x] 85-10-PLAN.md — Release: drop Python distributions; only tag-only github-release job holds contents: write
 - [ ] 85-11-PLAN.md — CI wiring: branch coverage with provenance, planchk-router tests, lock consistency, no dist build
 - [ ] 85-12-PLAN.md — Verify Trivy/actionlint pins with checksums; local OS-scan baseline; owner decision on blocking findings
 - [ ] 85-13-PLAN.md — Codex runner: verified-origin --trusted, base-checker cross-grade from main; --untrusted runs nothing and records INCOMPLETE (interim until 85.1)
@@ -368,7 +368,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 82. CI Tests What We Ship | 9/9 | Complete | 2026-10-22 |
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
-| 85. Follow-on CI Improvements & Acceptance Usability | 0/19 | Planned | - |
+| 85. Follow-on CI Improvements & Acceptance Usability | 10/19 | In Progress|  |
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 0/TBD | Not started | - |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
