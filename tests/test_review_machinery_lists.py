@@ -194,18 +194,52 @@ def test_policy_classifies_plan_files_as_sensitive() -> None:
 
 
 PLAN_SAMPLE = ".planning/phases/85-x/85-01-PLAN.md"
+PLAN_SAMPLES = (
+    PLAN_SAMPLE,
+    ".planning/phases/99-y/99-12-PLAN.md",
+    ".planning/phases/a/b/85-03-PLAN.md",
+)
+NON_PLAN_SAMPLES = (
+    ".planning/STATE.md",
+    ".planning/phases/85-x/85-01-SUMMARY.md",
+)
 
 
 def test_no_exclusion_hides_plan_or_machinery_files() -> None:
     plan_pathspecs = getattr(runner, "PLAN_PATHSPECS", ())
-    assert in_effective_codex_scope(PLAN_SAMPLE, EXCLUDE_PATHSPECS, plan_pathspecs), (
-        f"{PLAN_SAMPLE} must be in the effective Codex review scope"
-    )
+    for sample in PLAN_SAMPLES:
+        assert in_effective_codex_scope(sample, EXCLUDE_PATHSPECS, plan_pathspecs), (
+            f"{sample} must be in the effective Codex review scope"
+        )
+    for sample in NON_PLAN_SAMPLES:
+        assert not in_effective_codex_scope(sample, EXCLUDE_PATHSPECS, plan_pathspecs), (
+            f"{sample} must stay out of the effective Codex review scope"
+        )
     machinery_paths = extract_policy_machinery(POLICY_TEXT) | set(AUDITED_INPUTS)
     for path in sorted(machinery_paths):
         assert not any(_pathspec_matches(spec, path) for spec in EXCLUDE_PATHSPECS), (
             f"EXCLUDE_PATHSPECS must not match review-machinery file {path}"
         )
+    assert set(EXCLUDE_PATHSPECS) == set(EXPECTED_EXCLUDES)
+
+
+def test_extra_plan_exclusion_does_not_remove_plan_coverage() -> None:
+    """An exclusion that also matches PLAN files doesn't hide them: the positive PLAN diff still covers them."""
+    plan_pathspecs = getattr(runner, "PLAN_PATHSPECS", ())
+    extra_excludes = (*EXCLUDE_PATHSPECS, ":(exclude,glob).planning/**/*-PLAN.md")
+    for sample in PLAN_SAMPLES:
+        assert in_effective_codex_scope(sample, extra_excludes, plan_pathspecs), (
+            f"{sample} must stay in scope through the positive PLAN diff even if also excluded"
+        )
+
+
+def test_emptied_plan_pathspecs_drops_plan_sample_from_scope() -> None:
+    """If PLAN_PATHSPECS drifts to empty, a PLAN sample falls out of scope -- caught, not silent (checker W04)."""
+    problems = []
+    if not in_effective_codex_scope(PLAN_SAMPLE, EXCLUDE_PATHSPECS, ()):
+        problems.append(f"PLAN_PATHSPECS no longer covers {PLAN_SAMPLE}")
+    assert problems, "emptied PLAN_PATHSPECS must be caught, not silently accepted"
+    assert any("PLAN_PATHSPECS" in p and PLAN_SAMPLE in p for p in problems)
 
 
 # --- Mutation tests: each asserts its specific problem substring ------------

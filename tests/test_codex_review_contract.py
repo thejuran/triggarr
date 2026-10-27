@@ -50,9 +50,9 @@ def _load_schema() -> dict:
 
 
 def _extract_fixed_prompt() -> str:
-    """Return the first fenced block after the '## Fixed prompt (version 5)' heading."""
+    """Return the first fenced block after the '## Fixed prompt (version 6)' heading."""
     text = CONTRACT.read_text(encoding="utf-8")
-    heading = "## Fixed prompt (version 5)"
+    heading = "## Fixed prompt (version 6)"
     idx = text.index(heading)
     after = text[idx + len(heading) :]
     match = re.search(r"```(?:[^\n]*)\n(.*?)```", after, re.DOTALL)
@@ -145,11 +145,22 @@ def test_contract_references_schema_path() -> None:
 _HEX32_RE = re.compile(r"(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 
 
-def test_contract_template_version_five() -> None:
+def test_contract_template_version_six() -> None:
     text = CONTRACT.read_text(encoding="utf-8")
-    assert "Template version: 5." in text
-    for old in (1, 2, 3, 4):
+    assert "Template version: 6." in text
+    for old in (1, 2, 3, 4, 5):
         assert f"## Fixed prompt (version {old})" not in text
+
+
+# D-17 (Phase 85): phase plan files are agent instructions BM executors
+# follow, so they are brought into Codex review scope through a second,
+# positive diff rather than by narrowing the blanket .planning/**/*.md
+# exclusion (a git pathspec cannot re-include a path an exclude matches).
+def test_prompt_includes_plan_file_diff() -> None:
+    prompt = _extract_fixed_prompt()
+    assert "git diff {{BASE_SHA}}..{{HEAD_SHA}} -- ':(glob).planning/**/*-PLAN.md'" in prompt
+    assert "agent instructions" in prompt.lower()
+    assert "review scope" in prompt.lower()
 
 
 def test_contract_prompt_confines_reads_to_working_copy() -> None:

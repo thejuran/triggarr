@@ -9,6 +9,7 @@ command runner. Codex itself is never called.
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ import pytest
 from tests import codex_review_run as runner
 from tests.codex_review_run import (
     EXCLUDE_PATHSPECS,
+    PLAN_PATHSPECS,
     REPO_ROOT,
     SCHEMA_PATH,
     ReviewRun,
@@ -27,6 +29,7 @@ from tests.codex_review_run import (
     execute,
     load_template,
     main,
+    plan_diff_argv,
     pytest_argv,
     render_prompt,
     worktree_add_argv,
@@ -68,9 +71,9 @@ def _values(**overrides) -> dict[str, str]:
 # --- Template and rendering -------------------------------------------------
 
 
-def test_template_is_the_contract_version_five_prompt() -> None:
-    assert runner.TEMPLATE_HEADING == "## Fixed prompt (version 5)"
-    assert runner.template_version() == "5"
+def test_template_is_the_contract_version_six_prompt() -> None:
+    assert runner.TEMPLATE_HEADING == "## Fixed prompt (version 6)"
+    assert runner.template_version() == "6"
     template = load_template()
     assert template.startswith("Independently review {{PR_URL}}")
     assert "{{TEST_EVIDENCE}}" in template
@@ -122,6 +125,17 @@ def test_pathspecs_match_the_prompt() -> None:
 
 def test_diff_argv_uses_pathspecs() -> None:
     assert diff_argv(B, H) == ["git", "diff", f"{B}..{H}", "--", ".", *EXCLUDE_PATHSPECS]
+
+
+# D-17 (Phase 85): a second, positive diff brings phase plan files back into
+# scope -- a pathspec cannot re-include a path the blanket
+# .planning/**/*.md exclusion already matches.
+def test_plan_pathspecs_is_a_positive_glob_for_plan_files() -> None:
+    assert PLAN_PATHSPECS == (":(glob).planning/**/*-PLAN.md",)
+
+
+def test_plan_diff_argv_uses_plan_pathspecs() -> None:
+    assert plan_diff_argv(B, H) == ["git", "diff", f"{B}..{H}", "--", *PLAN_PATHSPECS]
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -368,6 +382,9 @@ def test_dry_run_prints_prompt_and_commands_without_running(monkeypatch, capsys)
     assert "codex exec --sandbox read-only --ephemeral" in out
     assert "git worktree remove --force" in out
     assert "tests/codex_report_status.py" in out
+    # Both the full diff and the second, positive PLAN-file diff are previewed (D-17).
+    assert shlex.join(diff_argv(B, H)) in out
+    assert shlex.join(plan_diff_argv(B, H)) in out
     # The evidence copy lands in the worktree before Codex starts.
     assert out.index("# copy ") < out.index("codex exec --sandbox")
     assert {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES} == before
