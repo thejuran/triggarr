@@ -458,7 +458,18 @@ class FakeRunner:
 def _tmp_run(tmp_path: Path, monkeypatch) -> ReviewRun:
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
     (tmp_path / PHASE_DIR).mkdir(parents=True)
-    monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(tmp_path / "scratch"))
+
+    def _mkdtemp(prefix: str = "") -> str:
+        # "codex-review-" keeps the long-established "scratch" name every
+        # existing test hardcodes; any other prefix (e.g. the base-grader's
+        # "codex-base-grader-") gets its own distinct directory, so the two
+        # temp dirs created in one execute() run are never the same path.
+        name = "scratch" if prefix == "codex-review-" else prefix.strip("-") or "tmp"
+        target = tmp_path / name
+        target.mkdir(exist_ok=True)
+        return str(target)
+
+    monkeypatch.setattr(runner.tempfile, "mkdtemp", _mkdtemp)
     (tmp_path / "scratch").mkdir()
     return _run(attempt=1)
 
