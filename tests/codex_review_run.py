@@ -114,21 +114,32 @@ DRAIN_TIMEOUT_SECONDS = 10
 # external signal can't leave the Codex/pytest group orphaned.
 _ACTIVE_GROUPS: set[int] = set()
 
+# Set by _handle_termination_signal to the signal number it was called with,
+# so a later cleanup step (_finalize_raw_outputs) can name the signal in the
+# status it records, even though the handler itself only communicates via
+# the SystemExit it raises.
+_RECEIVED_SIGNAL: int | None = None
+
 
 def _kill_group(proc: subprocess.Popen) -> None:
-    # ProcessLookupError: the whole group has already exited.
-    with contextlib.suppress(ProcessLookupError):
+    # The group may already be gone (ProcessLookupError), or a second kill
+    # racing right behind the signal handler's own first SIGKILL can find it
+    # briefly unsignalable (PermissionError, confirmed on macOS) -- both mean
+    # "already handled", not a real failure, so any OSError here is ignored.
+    with contextlib.suppress(OSError):
         os.killpg(proc.pid, signal.SIGKILL)
 
 
 def _terminate_active_groups() -> None:
     """Kill every process group run_command is still tracking."""
     for pgid in list(_ACTIVE_GROUPS):
-        with contextlib.suppress(ProcessLookupError):
+        with contextlib.suppress(OSError):
             os.killpg(pgid, signal.SIGKILL)
 
 
 def _handle_termination_signal(signum: int, _frame: object) -> None:
+    global _RECEIVED_SIGNAL
+    _RECEIVED_SIGNAL = signum
     _terminate_active_groups()
     print(f"error: received {signal.Signals(signum).name}; stopped the Codex/pytest process group")
     raise SystemExit(128 + signum)
@@ -374,8 +385,16 @@ def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
 
     The evidence is committed to a public repository, so the temp worktree,
     the temp dir, the system temp dir, the main checkout and the home
-    directory never appear in it, and neither does the username in pytest's
-    ``pytest-of-<user>`` temp directory (it shows up in failure output).
+    directory are all redacted out of it, and so is the username in
+    pytest's ``pytest-of-<user>`` temp directory (it shows up in failure
+    output).
+
+    This also runs, going forward, on the raw Codex ``.jsonl`` event stream
+    and ``.last.json`` report after each run finishes or is interrupted, so
+    a future run's local paths are redacted there too before the checker
+    grades it. Raw evidence already published is left as published, by
+    owner decision; Codex's own reads of these files during the run are not
+    redacted.
     """
     replacements: list[tuple[str, str]] = []
     paths = (
@@ -391,7 +410,11 @@ def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
                 replacements.append((variant, marker))
     try:
         user = getpass.getuser()
-    except (KeyError, OSError):
+    except (KeyError, OSError) as exc:
+        print(
+            f"warning: getpass.getuser() failed ({type(exc).__name__});"
+            " username redaction in evidence text is skipped"
+        )
         user = ""
     if user:
         replacements.append((f"pytest-of-{user}", "pytest-of-<user>"))
@@ -424,6 +447,10 @@ def _write_evidence_copy(worktree: Path, text: str) -> None:
         directory.mkdir()
         fd = os.open(worktree / EVIDENCE_RELPATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
     except OSError as exc:
+        # The lexists check above guarantees this directory did not exist
+        # before this call, so anything it created is always safe to remove.
+        with contextlib.suppress(OSError):
+            directory.rmdir()
         raise RunnerError(f"could not create the evidence copy in the worktree: {type(exc).__name__}") from exc
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(text)
@@ -489,6 +516,32 @@ def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: Comm
             return None
     print(f"codex exit code: {proc.returncode}")
     return proc.returncode
+
+
+def _redact_file(path: Path, *, worktree: Path, scratch: Path) -> None:
+    """Rewrite *path* with local absolute paths redacted, if it exists and needs it.
+
+    Write-then-rename, matching this repo's atomic-write convention: the
+    redacted text lands in a sibling temp file first, so a failure partway
+    through never leaves *path* half-written.
+    """
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8", errors="replace")
+    redacted = redact_local_paths(text, worktree=worktree, scratch=scratch)
+    if redacted == text:
+        return
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".redact-tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(redacted)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def _git_stdout(argv: list[str], command_runner: CommandRunner) -> str:
@@ -567,6 +620,44 @@ def _write_status_stub(run: ReviewRun, reason: str) -> None:
     print(json.dumps(stub))
 
 
+def _finalize_raw_outputs(run: ReviewRun, *, worktree: Path, scratch: Path) -> None:
+    """Redact the raw Codex outputs before grading, in a path that always runs.
+
+    Called from a `finally` around the Codex step, not only after it returns
+    normally: a SIGTERM/SIGHUP handler raises SystemExit, which would skip a
+    post-return call and leave partial raw output unredacted (checker B12).
+
+    Ordering guarantee: by the time this runs, a terminating signal has
+    already SIGKILLed every tracked process group (install_signal_handlers),
+    run_command's BaseException branch has waited for the child bounded by
+    DRAIN_TIMEOUT_SECONDS, and _run_codex's `with open(...)` for the .jsonl
+    stream has closed -- so no writer is still appending to either file.
+
+    If this runs while an exception is propagating (including the SystemExit
+    a signal handler raises) and no status has been recorded yet, this also
+    writes an incomplete status stub naming the signal or failure, then lets
+    the exception continue unchanged so the exit status is unaffected.
+    """
+    _, exc_value, _ = sys.exc_info()
+    redaction_failed = False
+    for suffix in (".jsonl", ".last.json"):
+        path = run.output(suffix)
+        try:
+            _redact_file(path, worktree=worktree, scratch=scratch)
+        except OSError as exc:
+            print(f"warning: could not redact {path}: {type(exc).__name__}")
+            redaction_failed = True
+    if exc_value is None or run.output(".status.json").exists():
+        return
+    if isinstance(exc_value, SystemExit) and _RECEIVED_SIGNAL is not None:
+        reason = f"interrupted by {signal.Signals(_RECEIVED_SIGNAL).name} during the Codex step"
+    else:
+        reason = f"run failed during the Codex step: {type(exc_value).__name__}"
+    if redaction_failed:
+        reason += "; the raw output may contain unredacted local paths"
+    _write_status_stub(run, reason)
+
+
 def _add_worktree(run: ReviewRun, worktree: Path, command_runner: CommandRunner) -> None:
     try:
         added = command_runner(worktree_add_argv(worktree, run.head), cwd=REPO_ROOT, check=False)
@@ -589,7 +680,7 @@ def execute(
         raise RunnerError(UNTRUSTED_REFUSAL)
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
     if existing:
-        # Raw outputs are never edited after being written; use a new attempt number.
+        # Raw outputs are not edited after the pre-grading redaction; use a new attempt number.
         raise FileExistsError(f"review outputs already exist: {existing}")
 
     inputs = audit_inputs(command_runner)
@@ -642,7 +733,10 @@ def _execute_reserved(
     try:
         _add_worktree(run, worktree, command_runner)
         _run_pytest(run, worktree, scratch, command_runner)
-        codex_exit = _run_codex(run, worktree, prompt, command_runner)
+        try:
+            codex_exit = _run_codex(run, worktree, prompt, command_runner)
+        finally:
+            _finalize_raw_outputs(run, worktree=worktree, scratch=scratch)
     except RunnerError as exc:
         _write_status_stub(run, f"harness failed before codex finished: {exc}")
         raise
