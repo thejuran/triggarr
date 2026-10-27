@@ -110,7 +110,7 @@ The owner may then approve an independent review of exactly that head, recorded 
 - `schema` — the fallback record schema version
 - `pr` — the PR number
 - `head` — the full head SHA this fallback covers
-- `base` — the full base SHA
+- `base` — the full reviewed base SHA: the same `BASE_SHA` the Codex output records (its meta `base`), which readiness requires to be the merge-base of the PR base and the head. The `validate` command's `--base` must equal it.
 - `codex_out` — the Codex output prefix this is a fallback for
 - `reviewer` — `{name, kind}`: the independent reviewer — never BM, never Claude's own review, never the Codex runner, never the PR author — for example a vibe-check deep review, or a manual Codex session that receives the diff only as text, with no checkout of the head and no tools. Never a session opened inside a checkout of an untrusted head, and never run on the operator's machine with the untrusted head's code.
 - `scope` — `{base, head, diff: "full"}`: the fallback reviews the full base..head diff, never a partial one

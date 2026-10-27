@@ -75,6 +75,8 @@ function basename(path) {
 // validateFallback(record, context) -> {ok, reasons}
 // context: {pr, head, base, prAuthor, headTrust: 'trusted'|'untrusted',
 //           codexStatus: {complete, attempt, out, reviewMode}}
+// `base` is the reviewed base: the base the Codex evidence records (the
+// merge-base of the PR base and head), never a newer PR base (WR-02, iteration 3).
 function validateFallback(record, context = {}) {
   const {pr, head, base, prAuthor, headTrust, codexStatus} = context;
   const reasons = [];
@@ -138,7 +140,7 @@ function validateFallback(record, context = {}) {
   const baseMismatch =
     (Object.hasOwn(record, 'base') && record.base !== base) ||
     (Object.hasOwn(scope, 'base') && scope.base !== base);
-  if (baseMismatch) reasons.push('fallback scope base does not match the PR base');
+  if (baseMismatch) reasons.push('fallback scope base does not match the reviewed base (merge-base)');
 
   if (Object.hasOwn(scope, 'diff') && scope.diff !== 'full') {
     reasons.push('fallback must review the full base..head diff');
@@ -287,6 +289,7 @@ function codexStatusFromOutput(codexOutPrefix, readFileSync) {
     out: codexOutPrefix,
     reviewMode: meta.review_mode,
     head: meta.head,
+    base: meta.base,
   };
 }
 
@@ -385,6 +388,13 @@ function runCli(argv, io = {}) {
   }
   if (codexStatus.head !== opts.head) {
     error(`Codex output is for a different head: ${opts.codexOut} records ${JSON.stringify(codexStatus.head)}`);
+    return 1;
+  }
+  // --base is the reviewed base: the BASE_SHA the Codex run recorded, which
+  // readiness requires to be the merge-base of the PR base and head. Binding it
+  // to the meta keeps the fallback and its Codex evidence on one base (WR-02).
+  if (codexStatus.base !== opts.base) {
+    error(`Codex output is for a different base: ${opts.codexOut} records ${JSON.stringify(codexStatus.base)}`);
     return 1;
   }
 

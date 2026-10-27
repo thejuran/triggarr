@@ -146,17 +146,17 @@ test('a scope head mismatch is a different head', () => {
   assert.ok(reasons.includes('fallback is for a different head'));
 });
 
-test('a base mismatch does not match the PR base', () => {
+test('a base mismatch does not match the reviewed base', () => {
   const record = validRecord({base: 'd'.repeat(40)});
   const {reasons} = validateFallback(record, validContext());
-  assert.ok(reasons.includes('fallback scope base does not match the PR base'));
+  assert.ok(reasons.includes('fallback scope base does not match the reviewed base (merge-base)'));
 });
 
-test('a scope base mismatch does not match the PR base', () => {
+test('a scope base mismatch does not match the reviewed base', () => {
   const record = validRecord();
   record.scope = {...record.scope, base: 'd'.repeat(40)};
   const {reasons} = validateFallback(record, validContext());
-  assert.ok(reasons.includes('fallback scope base does not match the PR base'));
+  assert.ok(reasons.includes('fallback scope base does not match the reviewed base (merge-base)'));
 });
 
 test('a partial scope diff must review the full diff', () => {
@@ -374,6 +374,7 @@ test('runCli validates a valid fallback file and exits 0', () => {
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2,
       head: HEAD,
+      base: BASE,
       attempt: 2,
       review_mode: 'trusted-local-tests',
       audited_inputs_changed_in_diff: [],
@@ -405,6 +406,7 @@ test('runCli prints each reason and exits 1 for an invalid fallback file', () =>
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2,
       head: HEAD,
+      base: BASE,
       attempt: 2,
       review_mode: 'trusted-local-tests',
       audited_inputs_changed_in_diff: [],
@@ -547,3 +549,26 @@ for (const name of [
     assert.equal(ok, true, JSON.stringify(reasons));
   });
 }
+
+// --- Iteration-3 WR-02 regressions: the CLI binds --base to the Codex evidence's base ---
+
+test('runCli validate rejects Codex output whose meta base differs from --base', () => {
+  const {exitCode, errors} = runValidate(cliFiles({base: 'd'.repeat(40)}));
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('Codex output is for a different base')), errors.join('\n'));
+});
+
+test('runCli validate rejects Codex output whose meta names no base', () => {
+  const files = cliFiles();
+  const meta = JSON.parse(files[`${CODEX_OUT}.meta.json`]);
+  delete meta.base;
+  files[`${CODEX_OUT}.meta.json`] = JSON.stringify(meta);
+  const {exitCode, errors} = runValidate(files);
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('Codex output is for a different base')), errors.join('\n'));
+});
+
+test('runCli validate accepts a fallback whose base matches the Codex evidence base', () => {
+  const {exitCode, errors} = runValidate(cliFiles());
+  assert.equal(exitCode, 0, errors.join('\n'));
+});

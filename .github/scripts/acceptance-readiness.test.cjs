@@ -898,3 +898,51 @@ test('runCli blocks Codex when the status file was graded for a different head',
   assert.equal(exitCode, 1);
   assert.ok(logs.join('\n').includes('Codex status file is not bound to this head and base'), logs.join('\n'));
 });
+
+// --- Iteration-3 WR-02 regressions: a fallback names the same reviewed base as its Codex evidence ---
+
+function movedMainFallbackArgs(fallbackBase) {
+  return {
+    status: {status: 'incomplete', reasons: ['codex attempt 2 failed']},
+    baseStatus: null,
+    meta: {head: HEAD, base: BASE, attempt: 2, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
+    auditedChanged: [],
+    out: CODEX_OUT,
+    head: HEAD,
+    base: MAIN_TIP, // baseRefOid: main moved past the fork point
+    reviewedBase: BASE, // merge-base: the range the Codex evidence covers
+    pr: PR,
+    prAuthor: 'thejuran',
+    headTrust: 'trusted',
+    fallback: validFallback({base: fallbackBase, scope: {base: fallbackBase, head: HEAD, diff: 'full'}}),
+  };
+}
+
+test('codexStatusFor accepts a fallback that names the merge-base its Codex evidence reviewed', () => {
+  const result = codexStatusFor(movedMainFallbackArgs(BASE));
+  assert.equal(result.ok, true, result.detail);
+  assert.ok(result.detail.includes('owner-approved fallback'), result.detail);
+});
+
+test('codexStatusFor rejects a fallback that names the moved PR base instead of the reviewed base', () => {
+  const result = codexStatusFor(movedMainFallbackArgs(MAIN_TIP));
+  assert.equal(result.ok, false);
+  assert.ok(result.detail.includes('fallback scope base does not match the reviewed base'), result.detail);
+});
+
+test('codexStatusFor rejects a fallback whose record base and scope base disagree', () => {
+  const args = movedMainFallbackArgs(BASE);
+  args.fallback.scope = {...args.fallback.scope, base: MAIN_TIP};
+  const result = codexStatusFor(args);
+  assert.equal(result.ok, false);
+  assert.ok(result.detail.includes('fallback scope base does not match the reviewed base'), result.detail);
+});
+
+test('codexStatusFor without a reviewed base still binds the fallback to the PR base', () => {
+  const args = movedMainFallbackArgs(MAIN_TIP);
+  delete args.reviewedBase;
+  args.meta = {...args.meta, base: MAIN_TIP};
+  assert.equal(codexStatusFor(args).ok, true);
+  args.fallback = validFallback(); // names BASE, not the PR base MAIN_TIP
+  assert.equal(codexStatusFor(args).ok, false);
+});

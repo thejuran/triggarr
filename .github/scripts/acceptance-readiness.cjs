@@ -54,7 +54,9 @@ function headTrustFor({isCrossRepository, author}) {
 // moves on. A PR base that is not an ancestor of the head is never accepted,
 // since no runner reviews that range. Without a reviewedBase (direct callers)
 // the PR base itself is required, which is the stricter pre-existing rule.
-// `base` stays the PR base for the fallback validator.
+// A fallback stands in for that same Codex evidence, so the fallback validator
+// is given the same reviewed base (WR-02, iteration 3): the record and its
+// Codex evidence must name one base, the range actually reviewed.
 function codexStatusFor({
   status, baseStatus, meta, auditedChanged: recomputed, out, head, base, reviewedBase, pr, prAuthor, headTrust, fallback,
 }) {
@@ -109,7 +111,7 @@ function codexStatusFor({
     return {ok: false, detail: 'INCOMPLETE/PENDING: no recorded fallback; wait or retry later blocks acceptance'};
   }
 
-  const {ok, reasons} = validateFallback(fallback, {pr, head, base, prAuthor, headTrust, codexStatus});
+  const {ok, reasons} = validateFallback(fallback, {pr, head, base: expectedBase, prAuthor, headTrust, codexStatus});
   if (!ok) {
     return {ok: false, detail: reasons.join('; ')};
   }
