@@ -114,6 +114,16 @@ None - no external service configuration required.
 - All 129 tests in `tests/test_codex_review_run.py` + `tests/test_codex_review_contract.py` pass; `uv run ruff check tests/` is clean; the full repo suite (2443 tests) passes.
 - Committed raw evidence under `.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/` is untouched (confirmed via `git log <plan-start-SHA>..HEAD -- <that path>` printing nothing).
 
+## Self-Check: PASSED
+
+- FOUND: tests/codex_review_run.py
+- FOUND: tests/test_codex_review_run.py
+- FOUND: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-03-SUMMARY.md
+- FOUND commit: 3a8eff2 (test(85-03): add failing signal and drain tests)
+- FOUND commit: f17eae7 (feat(85-03): kill the Codex/pytest group on SIGTERM/SIGHUP and bound the post-kill drain)
+- FOUND commit: f48c011 (test(85-03): add failing evidence-dir, getpass and raw-output redaction tests)
+- FOUND commit: 6ce9d49 (fix(85-03): clean up evidence dir, warn on getpass failure, redact raw Codex output (D-18))
+
 ---
 *Phase: 85-follow-on-ci-improvements-acceptance-usability*
 *Completed: 2026-10-27*
