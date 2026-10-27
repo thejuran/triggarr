@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -1259,3 +1260,171 @@ def test_run_command_passes_input_to_a_session_child() -> None:
     )
     assert proc.returncode == 0
     assert proc.stdout == "PROMPT\n"
+
+
+# --- D-18, round-6 WR-01: an external SIGTERM/SIGHUP kills the active group --
+#
+# install_signal_handlers() registers a handler that kills every process group
+# run_command is still tracking (_ACTIVE_GROUPS), then exits 128+signum. The
+# handler runs in a separate child process so the active handler can be
+# replaced and restored without touching this test session's own signal
+# disposition.
+
+_REPORT_ACTIVE_GROUP_THEN_RUN = """
+import sys, threading, time
+from tests import codex_review_run as runner
+
+pid_file = sys.argv[1]
+
+
+def _report_pgid():
+    while not runner._ACTIVE_GROUPS:
+        time.sleep(0.01)
+    with open(pid_file, "w") as handle:
+        handle.write(str(next(iter(runner._ACTIVE_GROUPS))))
+
+
+threading.Thread(target=_report_pgid, daemon=True).start()
+runner.install_signal_handlers()
+runner.run_command(["sleep", "60"], start_new_session=True)
+"""
+
+
+def _wait_for_text(path: Path, timeout: float = 5.0) -> str:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists():
+            text = path.read_text(encoding="utf-8").strip()
+            if text:
+                return text
+        time.sleep(0.02)
+    raise TimeoutError(f"{path} was never written")
+
+
+def _process_group_is_gone(pgid: int, timeout: float = 5.0) -> bool:
+    import os
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _assert_signal_kills_active_process_group(tmp_path: Path, sig: int) -> None:
+    import os
+    import sys
+
+    pid_file = tmp_path / "pgid.txt"
+    child = subprocess.Popen(
+        [sys.executable, "-c", _REPORT_ACTIVE_GROUP_THEN_RUN, str(pid_file)],
+        cwd=runner.REPO_ROOT,
+    )
+    try:
+        pgid = int(_wait_for_text(pid_file))
+        os.kill(child.pid, sig)
+        assert _process_group_is_gone(pgid)
+        assert child.wait(timeout=5) != 0
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups and POSIX signals are not available on Windows")
+def test_sigterm_kills_active_process_group(tmp_path: Path) -> None:
+    import signal
+
+    _assert_signal_kills_active_process_group(tmp_path, signal.SIGTERM)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups and POSIX signals are not available on Windows")
+def test_sighup_kills_active_process_group(tmp_path: Path) -> None:
+    import signal
+
+    _assert_signal_kills_active_process_group(tmp_path, signal.SIGHUP)
+
+
+# --- D-18, bugs-002: the post-kill output drain is bounded --------------------
+#
+# A grandchild started in its own (different) process group can keep the
+# stdout pipe open after run_command kills the direct child's group; the
+# second communicate() call must give up after DRAIN_TIMEOUT_SECONDS instead
+# of hanging forever.
+
+_FORKS_DETACHED_GRANDCHILD = """
+import subprocess, sys, time
+grandchild = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True)
+with open(sys.argv[1], "w") as handle:
+    handle.write(str(grandchild.pid))
+time.sleep(30)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are not available on Windows")
+def test_post_kill_drain_is_bounded(tmp_path: Path) -> None:
+    import os
+    import signal
+    import sys
+    import time
+
+    pid_file = tmp_path / "grandchild.pid"
+    argv = [sys.executable, "-c", _FORKS_DETACHED_GRANDCHILD, str(pid_file)]
+    grandchild: int | None = None
+    try:
+        start = time.monotonic()
+        with pytest.raises(subprocess.TimeoutExpired) as exc_info:
+            runner.run_command(
+                argv,
+                start_new_session=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=0.5,
+            )
+        elapsed = time.monotonic() - start
+        assert elapsed < runner.DRAIN_TIMEOUT_SECONDS + 5
+        marker = f"\n[drain timed out after {runner.DRAIN_TIMEOUT_SECONDS}s; output truncated]\n"
+        assert (exc_info.value.stdout or "").endswith(marker)
+    finally:
+        for _ in range(100):
+            text = pid_file.read_text().strip() if pid_file.exists() else ""
+            if text:
+                grandchild = int(text)
+                break
+            time.sleep(0.05)
+        if grandchild is not None:
+            try:
+                os.kill(grandchild, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+# --- D-18, round-6 WR-01: main() restores the previous handlers on return ----
+
+
+def test_signal_handlers_restored_after_main(monkeypatch) -> None:
+    import signal
+
+    before_term = signal.getsignal(signal.SIGTERM)
+    before_hup = signal.getsignal(signal.SIGHUP)
+    seen: dict[str, object] = {}
+
+    def _capture(_run, **_kwargs):
+        seen["term"] = signal.getsignal(signal.SIGTERM)
+        seen["hup"] = signal.getsignal(signal.SIGHUP)
+        return 0
+
+    monkeypatch.setattr(runner, "execute", _capture)
+    assert main(_cli(PHASE_DIR, "--trusted")) == 0
+
+    assert seen["term"] is runner._handle_termination_signal
+    assert seen["hup"] is runner._handle_termination_signal
+    assert signal.getsignal(signal.SIGTERM) == before_term
+    assert signal.getsignal(signal.SIGHUP) == before_hup
