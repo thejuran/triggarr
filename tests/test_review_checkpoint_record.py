@@ -49,3 +49,32 @@ def test_raw_output_paths_include_pytest_evidence() -> None:
 def test_codex_table_records_structured_completeness() -> None:
     line = _codex_table_line("Review complete")
     assert "review_complete" in line and "incomplete_reasons" in line
+
+
+# D-16 (Phase 85 round-7 WR-01/IN-01): the Codex table needs a Fallback row
+# naming the validated owner-approved-fallback record format.
+def test_codex_table_has_fallback_row() -> None:
+    line = _codex_table_line("Fallback")
+    assert "fallback.json" in line
+    assert "codex-fallback.cjs" in line
+
+
+# D-16/D-18: the Raw output paths row must include the new .base-status.json
+# output; the Phase 85.1 isolated-review outputs do not exist yet and must
+# not be named anywhere in this record.
+def test_raw_output_paths_include_new_outputs() -> None:
+    line = _codex_table_line("Raw output paths")
+    assert ".base-status.json" in line
+    text = _read()
+    for not_yet in (".ci-evidence.json", ".grader-provenance.json", ".boundary.json"):
+        assert not_yet not in text, f"{not_yet} is Phase 85.1 work and must not appear yet"
+
+
+# D-16/IN-01: "wait" and "retry later" must be stated, in one sentence, as
+# blocking acceptance -- not merely as options with no stated consequence.
+def test_wait_and_retry_later_block_acceptance() -> None:
+    text = _read()
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    assert any(
+        "wait" in s.lower() and "retry later" in s.lower() and "block acceptance" in s.lower() for s in sentences
+    ), "record must state in one sentence that wait and retry later block acceptance"
