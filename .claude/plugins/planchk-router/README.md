@@ -56,11 +56,38 @@ claude --debug hooks -p "Reply OK"
 Claude Code update — the hooks-module gate is a server-side rollout flag plus this
 env override, and either side of that could change.
 
+That load-line check only proves `register.js` (the module hook) still loads — it
+says nothing about whether `guard.mjs` (the classic hook) still blocks when the
+module gate is off. Re-run the negative (fail-closed) check too, after every update,
+the same way the activation evidence did it: without editing
+`.claude/settings.local.json`, sideload the plugin for one disposable session from a
+throwaway directory with no `.claude/` of its own, with
+`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` left unset:
+
+```bash
+cd /path/to/some/throwaway/dir
+claude --plugin-dir /path/to/triggarr/.claude/plugins -p "<prompt that spawns a bm:bm-plan-checker agent>"
+```
+
+Confirm the spawn is refused: a non-zero exit and the
+`planchk-router: refusing bm:bm-plan-checker spawn` message on stderr (or in the
+`--debug hooks` log). If that message does not appear, the guard has stopped firing
+and the plugin can no longer fail closed — stop and investigate before relying on it
+again.
+
 ## Disable / remove
 
-- Disable (guard then blocks every `bm:bm-plan-checker` spawn instead of letting it
-  run unrouted): `claude plugin disable planchk-router@triggarr-local --scope local`.
-  Removing only the `env` key has the same effect — the guard fails closed.
+- Disable the plugin — `claude plugin disable planchk-router@triggarr-local --scope
+  local`. This turns OFF both `register.js` and `guard.mjs`: nothing intercepts the
+  spawn anymore, so `bm:bm-plan-checker` runs unrouted on the ordinary Claude model
+  it would always use. This is the deliberate "off switch" (opt out of Codex
+  routing), not a fail-closed state — it does not block anything.
+- Remove or revert ONLY the `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` env key while the
+  plugin stays enabled — this is different from disabling the plugin. `register.js`
+  stops loading (module hooks need the flag), but `guard.mjs` is a classic hook and
+  still loads regardless, so it still fires and blocks (exit 2) every
+  `bm:bm-plan-checker` spawn with a visible refusal instead of letting it run
+  unrouted. This is the actual fail-closed path.
 - Full removal (also uninstalls): `claude plugin marketplace remove triggarr-local`.
 
 ## After a real checker run
@@ -86,3 +113,11 @@ itself silently fails for some other reason.
   between the two systems.
 - The model-gateway proxy's own billing/API-key internals are unverified, not ruled
   out, though its behavior is consistent with subscription-only billing.
+- The guard matches on the PreToolUse tool names `Agent`/`Task` and the
+  `tool_input.subagent_type` field (RESEARCH.md Assumptions Log, A2 — verified only
+  on the Claude Code version active at activation time). If a future Claude Code
+  update renames either the tool or the field at the same time it changes the
+  hooks-module gate, the guard would silently `exit(0)` on every spawn and
+  `bm:bm-plan-checker` would run unrouted on a Claude model with no visible error —
+  which is exactly why the negative recheck above has to be re-run after every
+  update, not just the module-loaded line.
