@@ -644,6 +644,222 @@ describe('ACCEPT-03 no-skip detector', () => {
     });
   }
 
+  // Iteration-2 CR-01 regressions: every YAML spelling of a step (or job)
+  // `if` key must be found, and any step/job shape the detector cannot read
+  // must be reported rather than silently treated as "no condition".
+  const CI_FAIL_STEP = '      - name: Fail if tests failed\n';
+  const ACCEPTANCE_SCRIPT_STEP = '      - uses: actions/github-script@';
+
+  // Returns the raw text of the step that starts at `marker`, up to (not
+  // including) the next line indented 6 or fewer spaces, or end of text.
+  function stepBlock(text, marker) {
+    const start = text.indexOf(marker);
+    assert.ok(start !== -1, `expected to find ${JSON.stringify(marker)} in text`);
+    const lines = text.slice(start).split('\n');
+    let count = 1;
+    while (count < lines.length && (lines[count].trim() === '' || /^ {7,}/.test(lines[count]))) count++;
+    while (count > 1 && lines[count - 1].trim() === '') count--;
+    return lines.slice(0, count).join('\n') + '\n';
+  }
+
+  // Re-indents a whole step so the dash is followed by three spaces (keys at
+  // column 10), with `if: <condition>` as its first key. Valid YAML.
+  function reindentWithFirstIf(block, condition) {
+    const lines = block.replace(/\n$/, '').split('\n');
+    const first = `      -   if: ${condition}\n          ${lines[0].slice('      - '.length)}`;
+    const rest = lines.slice(1).map(line => (line.trim() === '' ? line : `  ${line}`));
+    return [first, ...rest].join('\n') + '\n';
+  }
+
+  function ciProblems(text) {
+    return findSkipConditions({workflowText: text, aggregateJobId: 'ci-ready', triggerContract: TRIGGER_CONTRACTS['ci.yml']});
+  }
+  function acceptanceProblems(text) {
+    return findSkipConditions({
+      workflowText: text,
+      aggregateJobId: null,
+      triggerContract: TRIGGER_CONTRACTS['review-acceptance.yml'],
+    });
+  }
+
+  const ciFailBlock = stepBlock(ciText, CI_FAIL_STEP);
+  const acceptanceScriptBlock = stepBlock(acceptanceText, ACCEPTANCE_SCRIPT_STEP);
+
+  const CI_STEP_IF_VARIANTS = [
+    {label: 'if : false (space before colon)', to: `${CI_FAIL_STEP}        if : false\n`, expect: 'false'},
+    {
+      label: "if : github.run_attempt == '0' (non-constant, actionlint-clean)",
+      to: `${CI_FAIL_STEP}        if : github.run_attempt == '0'\n`,
+      expect: "github.run_attempt == '0'",
+    },
+    {label: '"if" : false (quoted key, space before colon)', to: `${CI_FAIL_STEP}        "if" : false\n`, expect: 'false'},
+    {label: 'if: on the following line', to: `${CI_FAIL_STEP}        if:\n          false\n`, expect: 'false'},
+  ];
+
+  for (const variant of CI_STEP_IF_VARIANTS) {
+    test(`ci.yml: step ${variant.label} on "Fail if tests failed" is reported`, () => {
+      const problems = ciProblems(mutate(ciText, CI_FAIL_STEP, variant.to));
+      assert.ok(
+        problems.includes(
+          `required job "test" step if: not on the reviewed allowlist: "Fail if tests failed": ${variant.expect}`
+        ),
+        JSON.stringify(problems)
+      );
+    });
+  }
+
+  test('ci.yml: a re-indented step "-   if: false" on "Fail if tests failed" is reported', () => {
+    const problems = ciProblems(mutate(ciText, ciFailBlock, reindentWithFirstIf(ciFailBlock, 'false')));
+    assert.ok(
+      problems.includes('required job "test" step if: not on the reviewed allowlist: "Fail if tests failed": false'),
+      JSON.stringify(problems)
+    );
+  });
+
+  test('ci.yml: a flow-mapping step with if: false is reported', () => {
+    const problems = ciProblems(
+      mutate(ciText, ciFailBlock, '      - {name: Fail if tests failed, if: false, run: exit 1}\n')
+    );
+    assert.ok(
+      problems.includes('required job "test" step if: not on the reviewed allowlist: "Fail if tests failed": false'),
+      JSON.stringify(problems)
+    );
+  });
+
+  test("ci.yml: a flow-mapping step with a non-constant if is reported", () => {
+    const problems = ciProblems(
+      mutate(ciText, ciFailBlock, "      - {name: Fail if tests failed, if : github.run_attempt == '0', run: exit 1}\n")
+    );
+    assert.ok(
+      problems.includes(
+        'required job "test" step if: not on the reviewed allowlist: "Fail if tests failed": github.run_attempt == \'0\''
+      ),
+      JSON.stringify(problems)
+    );
+  });
+
+  const CI_UNPARSEABLE_STEPS = [
+    {label: 'an alias step (- *alias)', to: '      - *failstep\n'},
+    {label: 'an explicit-key step (? if)', to: '      - name: Fail if tests failed\n        ? if\n        : false\n        run: exit 1\n'},
+    {label: 'a merge-key step (<<: *alias)', to: '      - <<: *skipped\n        name: Fail if tests failed\n        run: exit 1\n'},
+    {label: 'an escaped quoted key ("i\\x66")', to: '      - name: Fail if tests failed\n        "i\\x66": false\n        run: exit 1\n'},
+    {label: 'an unterminated flow-mapping step', to: '      - {name: Fail if tests failed, if: false\n'},
+  ];
+
+  for (const variant of CI_UNPARSEABLE_STEPS) {
+    test(`ci.yml: ${variant.label} in the test job is reported as unparseable`, () => {
+      const problems = ciProblems(mutate(ciText, ciFailBlock, variant.to));
+      assert.ok(
+        problems.some(p => p.startsWith('required job "test" cannot be parsed for skip conditions:')),
+        JSON.stringify(problems)
+      );
+    });
+  }
+
+  test('ci.yml: a flow-sequence steps: value is reported as unparseable', () => {
+    const problems = ciProblems(
+      mutate(
+        ciText,
+        '  lint:\n    timeout-minutes: 20\n    runs-on: ubuntu-latest\n    steps:\n',
+        '  lint:\n    timeout-minutes: 20\n    runs-on: ubuntu-latest\n    steps: [{if: false, run: exit 0}]\n    x-old-steps:\n'
+      )
+    );
+    assert.ok(
+      problems.some(p => p.startsWith('required job "lint" cannot be parsed for skip conditions:')),
+      JSON.stringify(problems)
+    );
+  });
+
+  const JOB_IF_VARIANTS = [
+    {label: 'if : false', to: '    if : false\n'},
+    {label: '"if": false', to: '    "if": false\n'},
+    {label: 'if: on the following line', to: '    if:\n      false\n'},
+  ];
+
+  for (const variant of JOB_IF_VARIANTS) {
+    test(`ci.yml: a job-level ${variant.label} on the test job is reported`, () => {
+      const problems = ciProblems(
+        mutate(ciText, '  test:\n    timeout-minutes: 20\n', `  test:\n    timeout-minutes: 20\n${variant.to}`)
+      );
+      assert.ok(problems.includes('required job "test" has a job-level if:'), JSON.stringify(problems));
+    });
+
+    test(`review-acceptance.yml: a job-level ${variant.label} on the acceptance job is reported`, () => {
+      const problems = acceptanceProblems(
+        mutate(acceptanceText, '    timeout-minutes: 5\n', `    timeout-minutes: 5\n${variant.to}`)
+      );
+      assert.ok(problems.includes('required job "acceptance" has a job-level if:'), JSON.stringify(problems));
+    });
+  }
+
+  test('ci.yml: a job body re-indented away from 4 spaces is reported as unparseable', () => {
+    const problems = ciProblems(
+      mutate(ciText, '  lint:\n    timeout-minutes: 20\n', '  lint:\n      if: false\n    timeout-minutes: 20\n')
+    );
+    assert.ok(
+      problems.some(p => p.startsWith('required job "lint" cannot be parsed for skip conditions:')),
+      JSON.stringify(problems)
+    );
+  });
+
+  test('review-acceptance.yml: step if : false (space before colon) is reported', () => {
+    const problems = acceptanceProblems(
+      mutate(acceptanceText, ACCEPTANCE_SCRIPT_STEP, `      - if : false\n        uses: actions/github-script@`)
+    );
+    assert.ok(
+      problems.some(p => p.startsWith('required job "acceptance" step if: not on the reviewed allowlist:') &&
+        p.endsWith(': false')),
+      JSON.stringify(problems)
+    );
+  });
+
+  test('review-acceptance.yml: a re-indented step "-   if: false" is reported', () => {
+    const problems = acceptanceProblems(
+      mutate(acceptanceText, acceptanceScriptBlock, reindentWithFirstIf(acceptanceScriptBlock, 'false'))
+    );
+    assert.ok(
+      problems.some(p => p.startsWith('required job "acceptance" step if: not on the reviewed allowlist:') &&
+        p.endsWith(': false')),
+      JSON.stringify(problems)
+    );
+  });
+
+  test('review-acceptance.yml: a flow-mapping step with if: false is reported', () => {
+    const problems = acceptanceProblems(
+      mutate(
+        acceptanceText,
+        acceptanceScriptBlock,
+        '      - {uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd, if: false, with: {script: "1"}}\n'
+      )
+    );
+    assert.ok(
+      problems.some(p => p.startsWith('required job "acceptance" step if: not on the reviewed allowlist:') &&
+        p.endsWith(': false')),
+      JSON.stringify(problems)
+    );
+  });
+
+  test('review-acceptance.yml: an alias step is reported as unparseable', () => {
+    const problems = acceptanceProblems(mutate(acceptanceText, acceptanceScriptBlock, '      - *gate\n'));
+    assert.ok(
+      problems.some(p => p.startsWith('required job "acceptance" cannot be parsed for skip conditions:')),
+      JSON.stringify(problems)
+    );
+  });
+
+  test('the parser leaves if-like text inside run/script blocks and with: values alone', () => {
+    // `if-no-files-found:` keys, shell `if [ ... ]` and JS `if (...)` lines in
+    // the real files are not step conditions; the real files report nothing.
+    assert.deepEqual(ciProblems(ciText), []);
+    assert.deepEqual(acceptanceProblems(acceptanceText), []);
+    const withNestedIf = mutate(
+      ciText,
+      ciFailBlock,
+      `${ciFailBlock.replace(/\n$/, '')}\n        with:\n          if: not-a-step-condition\n`
+    );
+    assert.deepEqual(ciProblems(withNestedIf), []);
+  });
+
   test('STEP_IF_ALLOWLIST pins exactly the two currently reviewed entries', () => {
     assert.deepEqual(new Set(Object.keys(STEP_IF_ALLOWLIST)), new Set([
       'test::Upload test evidence',

@@ -174,37 +174,293 @@ function checkJobListConsistency({workflowText, requiredJobs}) {
   return problems;
 }
 
-// Returns a job's 4-space `if:` condition, whitespace-normalized to single
-// spaces, supporting both a single-line value and a folded `>-`/`|` block.
-// Returns null if the job has no `if:`.
+// ---- Minimal YAML block-mapping reader (stdlib only) ----------------------
+// The skip detector must find a mapping key however YAML lets it be spelled
+// (`if:`, `if :`, `"if":`, `'if' :`, a key on the dash line with any number
+// of spaces after the dash, a flow-mapping step), and must REPORT any shape
+// it cannot read rather than treat it as "no condition". These helpers read
+// only the structure the detector needs: keys at a known column, and the
+// scalar value of a key. Anything else (explicit `?` keys, merge `<<` keys,
+// aliases/anchors/tags in key position, undecodable quoted keys) is returned
+// as unparseable so the caller can fail closed.
+
+const JOB_KEY_INDENT = 4;
+
+function indentOf(line) {
+  return line.match(/^ */)[0].length;
+}
+
+function isBlankOrComment(line) {
+  return /^\s*(#.*)?$/.test(line);
+}
+
+// Parses `key: rest` at the start of `text` (text begins at the key column).
+// Returns {key, rest} or null when the text is not a plain or quoted
+// mapping key. In flow context a quoted key may be followed directly by `:`.
+function parseMappingKey(text, {flow = false} = {}) {
+  const afterColon = flow ? '' : '(?=\\s|$)';
+  let match = text.match(new RegExp(`^("(?:[^"\\\\]|\\\\.)*")\\s*:${afterColon}([\\s\\S]*)$`));
+  if (match) {
+    try {
+      return {key: JSON.parse(match[1]), rest: match[2]};
+    } catch {
+      return null; // a YAML escape JSON cannot decode (e.g. "i\x66"): fail closed
+    }
+  }
+  match = text.match(new RegExp(`^'((?:[^']|'')*)'\\s*:${afterColon}([\\s\\S]*)$`));
+  if (match) {
+    return {key: match[1].replace(/''/g, "'"), rest: match[2]};
+  }
+  // A plain key may not start with a YAML indicator (quote, flow bracket,
+  // anchor/alias/tag, block scalar, explicit key, directive, comment, merge
+  // `<<`, sequence dash) or whitespace.
+  match = text.match(/^([^\s"'{}[\],&*!|>?%@`#<-][^#\n]*?)\s*:(?=\s|$)([\s\S]*)$/);
+  if (match) {
+    return {key: match[1], rest: match[2]};
+  }
+  return null;
+}
+
+// Reads the scalar value of the key on lines[index] (whose inline remainder
+// is `inlineRaw` and whose key sits at `keyCol`): the inline text plus every
+// following line indented deeper than the key (block scalar or multi-line
+// plain scalar), whitespace-normalized to single spaces.
+function readKeyValue(lines, index, inlineRaw, keyCol) {
+  const inline = inlineRaw.trim();
+  const collected = /^[>|][-+0-9]*$/.test(inline) ? [] : [inline];
+  for (let j = index + 1; j < lines.length; j++) {
+    const continuation = lines[j];
+    if (/^\s*$/.test(continuation)) continue;
+    if (indentOf(continuation) <= keyCol) break;
+    collected.push(continuation.trim());
+  }
+  return collected.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+// Reads the block mapping whose keys sit at `keyCol` in `lines`. Returns
+// {entries: [{key, value}], problems: [string]}. Lines deeper than keyCol
+// belong to the previous key's value; a non-comment line shallower than
+// keyCol, or a key line that does not parse, is a problem.
+function readBlockMapping(lines, keyCol) {
+  const entries = [];
+  const problems = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (isBlankOrComment(line)) continue;
+    const indent = indentOf(line);
+    if (indent > keyCol) continue;
+    if (indent < keyCol) {
+      problems.push(`unexpected indentation at ${JSON.stringify(line.trim())}`);
+      continue;
+    }
+    const parsed = parseMappingKey(line.slice(keyCol));
+    if (!parsed) {
+      problems.push(`unreadable key at ${JSON.stringify(line.trim())}`);
+      continue;
+    }
+    entries.push({key: parsed.key, value: readKeyValue(lines, i, parsed.rest, keyCol)});
+  }
+  return {entries, problems};
+}
+
+// Reads a flow mapping `{k: v, ...}` from `text` (starting at `{`, possibly
+// spanning lines). Returns {entries, problems}; an unbalanced mapping, text
+// after the closing brace, or an entry without a readable key is a problem.
+function readFlowMapping(text) {
+  const parts = [];
+  let current = '';
+  let depth = 0;
+  let quote = null;
+  let lastSignificant = '';
+  let end = -1;
+  for (let i = 0; i < text.length && end === -1; i++) {
+    const ch = text[i];
+    if (quote) {
+      current += ch;
+      if (quote === '"' && ch === '\\') {
+        current += text[i + 1] ?? '';
+        i++;
+      } else if (ch === quote) {
+        if (quote === "'" && text[i + 1] === "'") {
+          current += "'";
+          i++;
+        } else {
+          quote = null;
+          lastSignificant = ch;
+        }
+      }
+      continue;
+    }
+    if ((ch === '"' || ch === "'") && ['', ':', '{', '[', ','].includes(lastSignificant)) {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '#' && (i === 0 || /\s/.test(text[i - 1]))) {
+      while (i + 1 < text.length && text[i + 1] !== '\n') i++;
+      continue;
+    }
+    if (!/\s/.test(ch)) lastSignificant = ch;
+    if (ch === '{' || ch === '[') {
+      depth++;
+      if (depth === 1) {
+        lastSignificant = '{';
+        continue;
+      }
+    } else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 0) {
+        parts.push(current);
+        end = i;
+        continue;
+      }
+    } else if (ch === ',' && depth === 1) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+
+  if (end === -1) {
+    return {entries: [], problems: ['unterminated flow mapping']};
+  }
+  const problems = [];
+  if (!isBlankOrComment(text.slice(end + 1).replace(/\n/g, ' '))) {
+    problems.push('text after a flow mapping');
+  }
+  const entries = [];
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed === '') continue;
+    const parsed = parseMappingKey(trimmed, {flow: true});
+    if (!parsed) {
+      problems.push(`unreadable flow-mapping entry ${JSON.stringify(trimmed)}`);
+      continue;
+    }
+    entries.push({key: parsed.key, value: parsed.rest.replace(/\s+/g, ' ').trim()});
+  }
+  return {entries, problems};
+}
+
+// Reads one `steps:` item (its lines, the first starting with the dash at
+// seqCol) into {entries, problems}.
+function readStepItem(lines, seqCol) {
+  const afterDash = lines[0].slice(seqCol + 1);
+  const gap = indentOf(afterDash);
+  const content = afterDash.slice(gap);
+
+  if (content.startsWith('{')) {
+    return readFlowMapping([content, ...lines.slice(1)].join('\n'));
+  }
+  if (isBlankOrComment(content)) {
+    // `-` alone: the mapping starts on the next content line.
+    const body = lines.slice(1);
+    const firstIdx = body.findIndex(line => !isBlankOrComment(line));
+    if (firstIdx === -1 || indentOf(body[firstIdx]) <= seqCol) {
+      return {entries: [], problems: ['empty step']};
+    }
+    return readBlockMapping(body, indentOf(body[firstIdx]));
+  }
+  // The first key sits on the dash line, after any number of spaces.
+  const keyCol = seqCol + 1 + gap;
+  return readBlockMapping([' '.repeat(keyCol) + content, ...lines.slice(1)], keyCol);
+}
+
+// Reads a job's body (parseJobs' raw `lines`) into its job-level keys and
+// its steps. Returns {jobKeys: [{key, value}], steps: [{name, conditions}],
+// problems: [string]}. Every shape it cannot read is a problem, so callers
+// fail closed instead of treating an unread step as having no condition.
+function readJobBody(jobLines) {
+  const problems = [];
+  const steps = [];
+  const firstIdx = jobLines.findIndex(line => !isBlankOrComment(line));
+  if (firstIdx === -1) {
+    return {jobKeys: [], steps, problems};
+  }
+  if (indentOf(jobLines[firstIdx]) !== JOB_KEY_INDENT) {
+    problems.push(`job keys are not indented by ${JOB_KEY_INDENT} spaces`);
+    return {jobKeys: [], steps, problems};
+  }
+
+  // Job-level keys: every non-comment line at the job-key column, except
+  // the dash lines of a sequence written at that same column.
+  const jobKeyLines = jobLines.map(line =>
+    !isBlankOrComment(line) && indentOf(line) === JOB_KEY_INDENT && /^ *-(\s|$)/.test(line) ? '' : line
+  );
+  const jobMapping = readBlockMapping(jobKeyLines, JOB_KEY_INDENT);
+  problems.push(...jobMapping.problems);
+  const jobKeys = jobMapping.entries;
+
+  const stepsKeyIdxs = [];
+  jobLines.forEach((line, idx) => {
+    if (isBlankOrComment(line) || indentOf(line) !== JOB_KEY_INDENT) return;
+    const parsed = parseMappingKey(line.slice(JOB_KEY_INDENT));
+    if (parsed && parsed.key === 'steps') stepsKeyIdxs.push({idx, rest: parsed.rest});
+  });
+  if (stepsKeyIdxs.length > 1) {
+    problems.push('more than one steps: key');
+  }
+  if (stepsKeyIdxs.length === 0) {
+    return {jobKeys, steps, problems};
+  }
+  const {idx: stepsIdx, rest: stepsRest} = stepsKeyIdxs[0];
+  if (!isBlankOrComment(stepsRest)) {
+    problems.push(`steps: is not a block sequence (${JSON.stringify(stepsRest.trim())})`);
+    return {jobKeys, steps, problems};
+  }
+
+  // Split the steps region into items by the dash column of the first item.
+  const items = [];
+  let seqCol = null;
+  for (let i = stepsIdx + 1; i < jobLines.length; i++) {
+    const line = jobLines[i];
+    if (isBlankOrComment(line)) {
+      if (items.length) items[items.length - 1].push(line);
+      continue;
+    }
+    const indent = indentOf(line);
+    const isItem = /^-(\s|$)/.test(line.slice(indent));
+    if (seqCol === null) {
+      if (!isItem || indent < JOB_KEY_INDENT) {
+        if (indent > JOB_KEY_INDENT) problems.push(`steps: is not a block sequence (${JSON.stringify(line.trim())})`);
+        break;
+      }
+      seqCol = indent;
+    }
+    if (indent <= JOB_KEY_INDENT && !(indent === seqCol && isItem)) break; // back at a job-level key
+    if (indent === seqCol && isItem) {
+      items.push([line]);
+    } else if (indent > seqCol) {
+      items[items.length - 1].push(line);
+    } else {
+      problems.push(`unexpected line in steps: ${JSON.stringify(line.trim())}`);
+    }
+  }
+
+  for (const itemLines of items) {
+    const item = readStepItem(itemLines, seqCol);
+    problems.push(...item.problems);
+    const names = item.entries.filter(entry => entry.key === 'name').map(entry => stripQuotes(entry.value));
+    const conditions = item.entries.filter(entry => entry.key === 'if').map(entry => entry.value);
+    steps.push({name: names.length ? names[0] : null, conditions});
+  }
+
+  return {jobKeys, steps, problems};
+}
+
+// Returns a job's job-level `if` condition, whitespace-normalized to single
+// spaces, supporting a single-line value, a folded `>-`/`|` block, and a
+// value on the following lines, in any key spelling YAML allows. Returns
+// null if the job has no `if`.
 function extractJobIf(text, jobId) {
   const jobs = parseJobs(text);
   const job = jobs.find(j => j.id === jobId);
   if (!job) {
     throw new Error(`Job "${jobId}" not found`);
   }
-
-  for (let i = 0; i < job.lines.length; i++) {
-    const line = job.lines[i];
-    const singleMatch = line.match(/^    if:\s*(.+?)\s*$/);
-    if (!singleMatch) continue;
-
-    const value = singleMatch[1];
-    if (/^[>|][-+]?$/.test(value)) {
-      const collected = [];
-      for (let j = i + 1; j < job.lines.length; j++) {
-        const continuation = job.lines[j];
-        if (/^\s*$/.test(continuation)) continue;
-        if (!/^      /.test(continuation)) break; // dedent back to job-key level ends the block
-        collected.push(continuation.trim());
-      }
-      return collected.join(' ').replace(/\s+/g, ' ').trim();
-    }
-
-    return value.replace(/\s+/g, ' ').trim();
-  }
-
-  return null;
+  const ifEntry = readJobBody(job.lines).jobKeys.find(entry => entry.key === 'if');
+  return ifEntry ? ifEntry.value : null;
 }
 
 // ACCEPT-03 (D-01/D-02): no skip condition may let a required check pass
@@ -333,51 +589,6 @@ function parseOnBlock(text) {
   return {triggers};
 }
 
-// Collects every step-level `if:` inside a job's raw lines, paired with
-// that step's `name:` (single-line or folded `>-`/`|` block, normalized
-// like extractJobIf). Steps with no `if:` are omitted.
-function extractStepIfs(jobLines) {
-  const steps = [];
-  let current = null;
-  for (let i = 0; i < jobLines.length; i++) {
-    const line = jobLines[i];
-    if (/^      - /.test(line)) {
-      current = {name: null, condition: null};
-      steps.push(current);
-    }
-    if (!current) continue;
-
-    const nameMatch = line.match(/^      - name:\s*(.+?)\s*$/) || line.match(/^        name:\s*(.+?)\s*$/);
-    if (nameMatch) {
-      current.name = stripQuotes(nameMatch[1]);
-      continue;
-    }
-
-    // `if:` is a step key either on its own 8-space line or as the first key
-    // on the step-start line (`      - if: false`); a quoted key is the same
-    // key to YAML. An empty value (scalar on the following lines) is read
-    // like a block so it can never slip past as "no condition".
-    const ifMatch = line.match(/^(?:      - |        )(?:if|"if"|'if'):(?:\s+(.*?))?\s*$/);
-    if (ifMatch && current.condition === null) {
-      const value = ifMatch[1] || '';
-      if (value === '' || /^[>|][-+]?$/.test(value)) {
-        const collected = [];
-        for (let j = i + 1; j < jobLines.length; j++) {
-          const continuation = jobLines[j];
-          if (/^\s*$/.test(continuation)) continue;
-          if (!/^          /.test(continuation)) break; // dedent ends the folded block
-          collected.push(continuation.trim());
-        }
-        current.condition = collected.join(' ').replace(/\s+/g, ' ').trim();
-      } else {
-        current.condition = value.replace(/\s+/g, ' ').trim();
-      }
-    }
-  }
-
-  return steps.filter(step => step.condition !== null);
-}
-
 // Resolves which job ids are "required" for a given aggregate: every job
 // when aggregateJobId is null (every job in the workflow is required, as in
 // review-acceptance.yml), otherwise the aggregate's own needs plus the
@@ -502,12 +713,22 @@ function findSkipConditions({workflowText, aggregateJobId, triggerContract}) {
       }
     }
 
-    for (const step of extractStepIfs(job.lines)) {
-      const allowlistKey = `${id}::${step.name}`;
-      if (STEP_IF_ALLOWLIST[allowlistKey] !== step.condition) {
-        problems.push(
-          `required job "${id}" step if: not on the reviewed allowlist: "${step.name}": ${step.condition}`
-        );
+    // Any job or step shape the reader cannot parse is reported (fail
+    // closed): an unread step could carry a condition nobody reviewed.
+    const body = readJobBody(job.lines);
+    for (const problem of body.problems) {
+      problems.push(`required job "${id}" cannot be parsed for skip conditions: ${problem}`);
+    }
+    if (body.jobKeys.filter(entry => entry.key === 'if').length > 1) {
+      problems.push(`required job "${id}" cannot be parsed for skip conditions: more than one job-level if`);
+    }
+
+    for (const step of body.steps) {
+      for (const condition of step.conditions) {
+        const allowlistKey = `${id}::${step.name}`;
+        if (STEP_IF_ALLOWLIST[allowlistKey] !== condition) {
+          problems.push(`required job "${id}" step if: not on the reviewed allowlist: "${step.name}": ${condition}`);
+        }
       }
     }
   }
