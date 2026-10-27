@@ -2,10 +2,14 @@
 
 Implements docs/codex-adversarial-review-contract.md, Invocation:
 
+-1. Verifies ``--trusted`` against a boundary the operator cannot simply
+   assert: GitHub PR ownership or this machine's own local commit history
+   (``verify_trust()``, D-18 SA-01). Refused before anything else runs or
+   is written.
 0. Refuses to start if the contract, schema, checker or runner has
    uncommitted changes, then saves the exact rendered prompt as
    ``<OUT>.prompt.txt`` and a provenance record (template version, sha256
-   of those files, harness HEAD) as ``<OUT>.meta.json``.
+   of those files, harness HEAD, trust verification) as ``<OUT>.meta.json``.
 1. Creates a detached worktree of the exact head SHA in a fresh temp dir.
 2. Runs ``uv run --extra dev pytest tests/ -q`` inside that worktree,
    outside the Codex sandbox, in its own process group so a timeout kills
@@ -19,12 +23,18 @@ Implements docs/codex-adversarial-review-contract.md, Invocation:
    schema, prompt on stdin, event stream to ``<OUT>.jsonl``.
 5. Always removes the worktree, on success and on failure.
 6. Runs tests/codex_report_status.py and saves its JSON as
-   ``<OUT>.status.json``.
+   ``<OUT>.status.json``. If this diff changed the checker, schema, prompt
+   or runner itself, also cross-grades the same report with the base
+   commit's own checker (materialized from git objects only) and saves it
+   as ``<OUT>.base-status.json``; the run is complete only if both agree.
 
-Only ``--trusted`` heads (this repository's own branches) are reviewed.
-``--untrusted`` (Dependabot or outside-contributor heads) is refused before
-anything runs or is written: Codex stays PENDING for those heads and their
-CI results are used instead.
+Only ``--trusted`` heads (verified by ``verify_trust()``) are reviewed.
+``--untrusted`` (bot or fork PRs) issues no command of any kind and is
+refused (interim rule, D-07 amendment): it records a permanent INCOMPLETE
+result (``<OUT>.meta.json`` and ``<OUT>.status.json``, review_mode
+"untrusted-refused") instead of running anything, until Phase 85.1
+delivers the isolated review. CI plus an owner-approved fallback review
+(D-16) covers that head in the interim.
 
 Every command is an argument list run without a shell; free-text inputs
 (PR URL, scope) only ever reach Codex through the prompt on stdin.
@@ -72,6 +82,19 @@ AUDITED_INPUTS = (
     "tests/codex_review_run.py",
 )
 
+# The checker and schema a base-commit grader needs to cross-grade a report
+# whose own checker/schema changed in the reviewed diff (D-18, checker B13).
+GRADER_FILES = (
+    "tests/codex_report_status.py",
+    ".claude/schemas/codex-review-findings.schema.json",
+)
+
+# Owner decision 2026-10-22: only this repository's own branches are trusted.
+# Widening TRUSTED_AUTHORS is a sensitive review-machinery change and needs
+# its own review.
+REPO_SLUG = "thejuran/triggarr"
+TRUSTED_AUTHORS = frozenset({"thejuran"})
+
 TEMPLATE_HEADING = "## Fixed prompt (version 5)"
 PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDENCE"})
 
@@ -86,7 +109,15 @@ EXCLUDE_PATHSPECS = (
     ":(exclude,glob).planning/**/*.md",
 )
 
-OUTPUT_SUFFIXES = (".prompt.txt", ".meta.json", ".jsonl", ".last.json", ".status.json", ".pytest.txt")
+OUTPUT_SUFFIXES = (
+    ".prompt.txt",
+    ".meta.json",
+    ".jsonl",
+    ".last.json",
+    ".status.json",
+    ".pytest.txt",
+    ".base-status.json",
+)
 
 # Where the harness evidence is copied inside the temp worktree (untracked),
 # so the prompt names a working-copy-relative path and never the operator's
@@ -99,6 +130,15 @@ PYTEST_TIMEOUT_SECONDS = 1800
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 _LABEL_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 _PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
+_PR_URL_RE = re.compile(r"https://github\.com/([^/]+/[^/]+)/pull/([0-9]+)")
+
+# Reflog subjects written by this machine's own commit operations ("commit:",
+# "commit (amend):", "commit (merge):", "commit (initial):"). Fetched,
+# cherry-picked, rebased or reset-to commits never match this, which is the
+# point: author/committer email is never a trust signal, only this.
+LOCAL_COMMIT_SUBJECT_RE = re.compile(r"^commit( \((amend|merge|initial)\))?: ")
+
+LOCAL_CHECKPOINT_PR_URL = "none (local checkpoint, not pushed)"
 
 CommandRunner = Callable[..., subprocess.CompletedProcess]
 
@@ -374,10 +414,179 @@ def _pytest_env() -> dict[str, str]:
 
 
 UNTRUSTED_REFUSAL = (
-    "Codex is not run for untrusted heads (Dependabot or outside-contributor PRs) until the harness is"
-    " hardened. Record 'Codex: PENDING — untrusted source' and use the PR's CI results for test evidence;"
-    " the owner chooses: wait, retry later, or approve a fallback."
+    "untrusted head (bot or fork PR): Codex review is refused until Phase 85.1 delivers the isolated"
+    " review; recorded INCOMPLETE. Use CI plus an owner-approved fallback review"
+    " (D-16, .github/scripts/codex-fallback.cjs)"
 )
+
+# The .status.json reason for an --untrusted refusal. Phrased independently
+# from UNTRUSTED_REFUSAL (which stdout always shows verbatim) so the record
+# itself names, word for word, why a review_mode "untrusted-refused" result
+# can never become clean.
+UNTRUSTED_STATUS_REASON = (
+    "refused until Phase 85.1 delivers the isolated review for untrusted (bot or fork) heads;"
+    " use CI plus an owner-approved fallback (D-16) in the interim"
+)
+
+
+def _require_base_on_main(run: ReviewRun, command_runner: CommandRunner) -> None:
+    """Require --base to already be on this checkout's origin/main.
+
+    Applies to both the PR and local-checkpoint forms, so the base-commit
+    grader Task 2 may materialize (``materialize_grader(grader_ref=run.base,
+    ...)``) is always code that already landed on this repository's main,
+    never a PR-supplied base (checker B13). No fetch happens here; a stale
+    local origin/main is the operator's to refresh.
+    """
+    try:
+        result = command_runner(
+            ["git", "merge-base", "--is-ancestor", run.base, "refs/remotes/origin/main"],
+            cwd=HARNESS_ROOT,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not verify trust: git merge-base could not run ({type(exc).__name__})") from exc
+    if result.returncode != 0:
+        raise RunnerError(
+            f"base is not on origin/main: {run.base[:12]} is not an ancestor of refs/remotes/origin/main;"
+            " run `git fetch origin main` and retry"
+        )
+
+
+_GH_PR_VIEW_FIELDS = "author,isCrossRepository,headRefOid,baseRefOid"
+
+
+def _verify_trust_pr(run: ReviewRun, command_runner: CommandRunner, match: re.Match[str]) -> dict[str, object]:
+    slug, number = match.group(1), match.group(2)
+    if slug != REPO_SLUG:
+        raise RunnerError(f"PR URL is for a different repository: {slug!r} is not this repository ({REPO_SLUG})")
+    try:
+        result = command_runner(
+            ["gh", "pr", "view", number, "--repo", REPO_SLUG, "--json", _GH_PR_VIEW_FIELDS],
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not verify trust: gh pr view could not run ({type(exc).__name__})") from exc
+    if result.returncode != 0:
+        raise RunnerError(f"could not verify trust: gh pr view exited {result.returncode}")
+    try:
+        data = json.loads(result.stdout or "")
+    except ValueError as exc:
+        raise RunnerError(
+            f"could not verify trust: gh pr view returned unparseable JSON ({type(exc).__name__})"
+        ) from exc
+    author = data.get("author") or {}
+    login = author.get("login", "")
+    is_bot = bool(author.get("is_bot")) or login.endswith("[bot]")
+    if data.get("isCrossRepository"):
+        raise RunnerError(f"PR #{number} is cross-repository (fork): not a trusted origin for local test execution")
+    if is_bot:
+        raise RunnerError(
+            f"not a trusted origin for local test execution: author {login} is a bot; use --untrusted for this head"
+        )
+    if login not in TRUSTED_AUTHORS:
+        raise RunnerError(f"author {login} is not in TRUSTED_AUTHORS")
+    if data.get("headRefOid") != run.head:
+        raise RunnerError(f"PR head is {data.get('headRefOid')}, not --head {run.head}")
+    if data.get("baseRefOid") != run.base:
+        raise RunnerError(f"PR base is {data.get('baseRefOid')}, not --base {run.base}")
+    _require_base_on_main(run, command_runner)
+    return {"method": "gh pr view", "pr_number": int(number), "author": login, "commits_checked": None}
+
+
+def _verify_trust_local(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
+    try:
+        ancestor = command_runner(
+            ["git", "merge-base", "--is-ancestor", run.base, run.head], cwd=HARNESS_ROOT, check=False
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not verify trust: git merge-base could not run ({type(exc).__name__})") from exc
+    if ancestor.returncode != 0:
+        raise RunnerError(f"base is not an ancestor of head: {run.base[:12]} is not an ancestor of {run.head[:12]}")
+
+    try:
+        contains = command_runner(
+            ["git", "for-each-ref", "--contains", run.head, "--format=%(refname)", "refs/heads/"],
+            cwd=HARNESS_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not verify trust: git for-each-ref could not run ({type(exc).__name__})") from exc
+    if contains.returncode != 0 or not (contains.stdout or "").strip():
+        raise RunnerError(f"head {run.head[:12]} is not on a local branch")
+
+    rev_list_output = _git_stdout(["git", "rev-list", f"{run.base}..{run.head}"], command_runner)
+    commits = [line.strip() for line in rev_list_output.splitlines() if line.strip()]
+
+    try:
+        all_branches = command_runner(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/heads/"],
+            cwd=HARNESS_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not verify trust: git for-each-ref could not run ({type(exc).__name__})") from exc
+    refs = ["HEAD", *(line.strip() for line in (all_branches.stdout or "").splitlines() if line.strip())]
+
+    committed: set[str] = set()
+    for ref in refs:
+        try:
+            reflog = command_runner(
+                ["git", "reflog", "show", "--format=%H%x09%gs", ref],
+                cwd=HARNESS_ROOT,
+                stdout=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise RunnerError(f"could not verify trust: git reflog show could not run ({type(exc).__name__})") from exc
+        if reflog.returncode != 0:
+            continue  # a ref with no reflog contributes nothing
+        for line in (reflog.stdout or "").splitlines():
+            if "\t" not in line:
+                continue
+            sha, subject = line.split("\t", 1)
+            if LOCAL_COMMIT_SUBJECT_RE.match(subject):
+                committed.add(sha)
+
+    missing = [sha for sha in commits if sha not in committed]
+    if missing:
+        raise RunnerError(
+            f"local checkpoint origin not established: {missing[0][:12]} was not committed on this machine"
+        )
+
+    _require_base_on_main(run, command_runner)
+    return {"method": "local reflog", "pr_number": None, "author": None, "commits_checked": len(commits)}
+
+
+def verify_trust(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
+    """Verify --trusted against a boundary the operator cannot simply assert (D-18 SA-01).
+
+    A PR is trusted only if GitHub itself reports it as same-repository,
+    non-bot, authored by someone in TRUSTED_AUTHORS, with the given --head
+    and --base. A local checkpoint is trusted only if this machine's own
+    commit operations created every commit in scope: fetched, cherry-picked,
+    rebased or reset-to commits fail closed, and the remedy is to push and
+    review by PR URL instead (owner-authored PRs pass the PR check).
+    Self-declared signals -- local branch membership, author/committer
+    email, the operator's own flag -- never establish trust on their own.
+    A bot or fork head is never trusted; until Phase 85.1 it gets CI plus an
+    owner-approved fallback review (D-16). Both forms also require --base to
+    already be an ancestor of (or equal to) refs/remotes/origin/main, so the
+    base-commit grader (Task 2) never executes a PR-supplied base.
+    """
+    if run.pr_url == LOCAL_CHECKPOINT_PR_URL:
+        return _verify_trust_local(run, command_runner)
+    match = _PR_URL_RE.fullmatch(run.pr_url)
+    if match is None:
+        raise RunnerError(f"unrecognized --pr-url form: {run.pr_url!r}")
+    return _verify_trust_pr(run, command_runner, match)
 
 
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
@@ -576,21 +785,72 @@ def audit_inputs(command_runner: CommandRunner) -> dict[str, dict[str, object]]:
     }
 
 
+def audited_inputs_changed(run: ReviewRun, command_runner: CommandRunner) -> list[str]:
+    """Return the AUDITED_INPUTS paths that changed between --base and --head.
+
+    A non-empty result means the diff under review modifies the very
+    checker, schema, prompt contract or runner that grades it (D-18
+    WR-03/ARCH-03/impact-001), so the result is also cross-graded by the
+    base commit's own checker (see materialize_grader / _run_base_grader).
+    """
+    output = _git_stdout(
+        ["git", "diff", "--name-only", f"{run.base}..{run.head}", "--", *AUDITED_INPUTS], command_runner
+    )
+    return sorted(line.strip() for line in output.splitlines() if line.strip())
+
+
 def run_meta(
-    run: ReviewRun, *, harness_head: str, inputs: dict[str, dict[str, object]], allow_stale_head: bool
+    run: ReviewRun,
+    *,
+    harness_head: str,
+    inputs: dict[str, dict[str, object]],
+    allow_stale_head: bool,
+    trust_verification: dict[str, object] | None,
+    audited_inputs_changed_in_diff: list[str],
 ) -> dict[str, object]:
     return {
-        "meta_version": 1,
+        "meta_version": 2,
         "head": run.head,
         "base": run.base,
         "label": run.label,
         "attempt": run.attempt,
         "trusted": run.trusted,
+        "review_mode": "trusted-local-tests",
         "template_version": template_version(),
         "harness_head": harness_head,
         "allow_stale_head": allow_stale_head,
         "inputs": inputs,
         "codex_timeout_seconds": CODEX_TIMEOUT_SECONDS,
+        "trust_verification": trust_verification,
+        "test_evidence_source": "harness-local-pytest",
+        "audited_inputs_changed_in_diff": audited_inputs_changed_in_diff,
+        # The base-commit grader is only ever materialized from this base
+        # (verify_trust has already required it to be on origin/main); this
+        # is a static fact about the trusted path, not conditional on
+        # whether audited_inputs_changed_in_diff is non-empty.
+        "base_grader_ref": run.base,
+        "base_grader_source": "base",
+    }
+
+
+def untrusted_refused_meta(run: ReviewRun) -> dict[str, object]:
+    """The minimal provenance record for an --untrusted refusal.
+
+    No command runs to produce this (checker B13/T-85-39b), so it carries
+    none of the harness-derived fields (inputs, harness_head, trust
+    verification) a trusted run's run_meta() records.
+    """
+    return {
+        "meta_version": 2,
+        "head": run.head,
+        "base": run.base,
+        "label": run.label,
+        "attempt": run.attempt,
+        "pr_url": run.pr_url,
+        "trusted": False,
+        "review_mode": "untrusted-refused",
+        "trust_verification": None,
+        "test_evidence_source": None,
     }
 
 
@@ -618,6 +878,100 @@ def _write_status_stub(run: ReviewRun, reason: str) -> None:
     run.output(".status.json").write_text(json.dumps(stub) + "\n", encoding="utf-8")
     print(f"status: {run.output('.status.json')}")
     print(json.dumps(stub))
+
+
+def _write_base_status_stub(run: ReviewRun, reason: str) -> None:
+    """Record an incomplete .base-status.json when the base checker's own result is unavailable."""
+    stub = {
+        "status": "incomplete",
+        "reasons": [reason],
+        "qualified_ids": [],
+        "finding_count": 0,
+        "inspected_head": None,
+        "inspected_base": None,
+    }
+    run.output(".base-status.json").write_text(json.dumps(stub) + "\n", encoding="utf-8")
+    print(f"base-status: {run.output('.base-status.json')}")
+    print(json.dumps(stub))
+
+
+def materialize_grader(grader_ref: str, dest: Path, command_runner: CommandRunner) -> None:
+    """Write the checker and schema exactly as they exist at *grader_ref* into *dest*.
+
+    Always materialized from git objects (``git show <grader_ref>:<path>``),
+    never from a worktree of the reviewed head: the base grader is the
+    operator's own repository history, not anything the PR under review
+    could have supplied (checker B13). The trusted path always calls this
+    with grader_ref = run.base, which verify_trust has already required to
+    be on refs/remotes/origin/main.
+    """
+    for relpath in GRADER_FILES:
+        target = dest / relpath
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = command_runner(
+                ["git", "show", f"{grader_ref}:{relpath}"],
+                cwd=HARNESS_ROOT,
+                stdout=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+        except OSError as exc:
+            raise RunnerError(f"could not materialize the base grader: {type(exc).__name__}") from exc
+        if proc.returncode != 0:
+            raise RunnerError(
+                "grader changed in this diff and the base commit has no checker to cross-grade it:"
+                f" base commit {grader_ref[:12]} has no {relpath}"
+            )
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(proc.stdout or "")
+
+
+def _run_base_grader(
+    run: ReviewRun, *, grader_ref: str, checker_tail: list[str], command_runner: CommandRunner
+) -> int:
+    """Materialize *grader_ref*'s checker/schema and cross-grade the same report with it.
+
+    Returns the base checker's exit code (0 = complete). Any failure to
+    materialize or run the base checker is recorded as an incomplete
+    .base-status.json and treated as a non-zero (failing) result, never as
+    a pass by default (fail closed).
+    """
+    try:
+        tmp = Path(tempfile.mkdtemp(prefix="codex-base-grader-"))
+    except OSError as exc:
+        _write_base_status_stub(run, f"harness could not create its base-grader temp directory: {type(exc).__name__}")
+        return 1
+    try:
+        try:
+            materialize_grader(grader_ref, tmp, command_runner)
+        except RunnerError as exc:
+            _write_base_status_stub(run, str(exc))
+            return 1
+        base_checker_path = tmp / "tests" / "codex_report_status.py"
+        try:
+            proc = command_runner(
+                [sys.executable, str(base_checker_path), *checker_tail],
+                cwd=REPO_ROOT,
+                stdout=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+        except OSError as exc:
+            _write_base_status_stub(run, f"base checker could not run: {type(exc).__name__}")
+            return 1
+        if not (proc.stdout or "").strip():
+            _write_base_status_stub(run, f"base checker produced no output (exit {proc.returncode})")
+            return 1
+        run.output(".base-status.json").write_text(proc.stdout, encoding="utf-8")
+        print(f"base-status: {run.output('.base-status.json')}")
+        print(proc.stdout, end="")
+        return proc.returncode
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _finalize_raw_outputs(run: ReviewRun, *, worktree: Path, scratch: Path) -> None:
@@ -678,6 +1032,9 @@ def execute(
     """
     if not run.trusted:
         raise RunnerError(UNTRUSTED_REFUSAL)
+    # Verified before anything else, including the existing-output check, so
+    # nothing is written for a refused head (D-18 SA-01).
+    trust_verification = verify_trust(run, command_runner)
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
     if existing:
         # Raw outputs are not edited after the pre-grading redaction; use a new attempt number.
@@ -690,9 +1047,17 @@ def execute(
             f"--head {run.head[:12]} is not the checkout's HEAD {harness_head[:12]}, so the result can only be"
             " assessed stale; pass --allow-stale-head to run it anyway"
         )
+    audited_changed = audited_inputs_changed(run, command_runner)
     template = load_template()
     prompt = render_prompt(template, prompt_values(run))
-    meta = run_meta(run, harness_head=harness_head, inputs=inputs, allow_stale_head=allow_stale_head)
+    meta = run_meta(
+        run,
+        harness_head=harness_head,
+        inputs=inputs,
+        allow_stale_head=allow_stale_head,
+        trust_verification=trust_verification,
+        audited_inputs_changed_in_diff=audited_changed,
+    )
 
     run.out_base.parent.mkdir(parents=True, exist_ok=True)
     # The reservation is the first write; nothing else is touched if it fails.
@@ -773,9 +1138,10 @@ def _execute_reserved(
         changed = sorted(path for path in AUDITED_INPUTS if inputs_after.get(path) != inputs[path])
         _write_status_stub(run, f"audited inputs changed during the run: {changed}")
         return 1
+    checker_full_argv = checker_argv(run, exit_code=codex_exit, current_head=current_head)
     try:
         checker = command_runner(
-            checker_argv(run, exit_code=codex_exit, current_head=current_head),
+            checker_full_argv,
             cwd=REPO_ROOT,
             stdout=subprocess.PIPE,
             text=True,
@@ -790,7 +1156,37 @@ def _execute_reserved(
     run.output(".status.json").write_text(checker.stdout, encoding="utf-8")
     print(f"status: {run.output('.status.json')}")
     print(checker.stdout, end="")
-    return checker.returncode
+
+    grader_changed = meta["audited_inputs_changed_in_diff"]
+    if not grader_changed:
+        return checker.returncode
+    print(f"grader changed in this diff: {grader_changed}; cross-grading with the base commit's checker")
+    base_exit = _run_base_grader(
+        run, grader_ref=run.base, checker_tail=checker_full_argv[2:], command_runner=command_runner
+    )
+    if base_exit != 0:
+        print("grader changed in this diff: the base commit's checker did not confirm completeness")
+    return checker.returncode if base_exit == 0 else 1
+
+
+def _trust_preview_commands(run: ReviewRun) -> list[str]:
+    """Commands verify_trust() would run for *run*, without running any of them."""
+    base_on_main = shlex.join(["git", "merge-base", "--is-ancestor", run.base, "refs/remotes/origin/main"])
+    if run.pr_url == LOCAL_CHECKPOINT_PR_URL:
+        return [
+            shlex.join(["git", "merge-base", "--is-ancestor", run.base, run.head]),
+            shlex.join(["git", "for-each-ref", "--contains", run.head, "--format=%(refname)", "refs/heads/"]),
+            shlex.join(["git", "rev-list", f"{run.base}..{run.head}"]),
+            shlex.join(["git", "for-each-ref", "--format=%(refname)", "refs/heads/"]),
+            "git reflog show --format=%H%x09%gs <ref>  # HEAD and every local branch",
+            base_on_main,
+        ]
+    match = _PR_URL_RE.fullmatch(run.pr_url)
+    number = match.group(2) if match else "<pr-number>"
+    return [
+        shlex.join(["gh", "pr", "view", number, "--repo", REPO_SLUG, "--json", _GH_PR_VIEW_FIELDS]),
+        base_on_main,
+    ]
 
 
 def dry_run(run: ReviewRun) -> int:
@@ -800,6 +1196,9 @@ def dry_run(run: ReviewRun) -> int:
     print("# Rendered prompt (sent on stdin to codex exec)")
     print(prompt)
     print("# Commands")
+    print("# trust verification (D-18 SA-01)")
+    for command in _trust_preview_commands(run):
+        print(command)
     print(f"git status --porcelain --untracked-files=all -- {' '.join(AUDITED_INPUTS)}  # must be empty")
     print(f"# save the prompt to {shlex.quote(str(run.output('.prompt.txt')))}")
     print(f"# save provenance to {shlex.quote(str(run.output('.meta.json')))}")
@@ -869,6 +1268,37 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _untrusted_main(run: ReviewRun, *, dry_run: bool) -> int:
+    """Record the --untrusted refusal as a recorded INCOMPLETE result (interim rule, D-07 amendment).
+
+    Issues no command of any kind -- no gh, git, uv, pytest, docker or codex
+    call; no checkout, fetch or worktree; no `git show`; no grader
+    materialized (checker B13, T-85-39b/T-85-39c). Until Phase 85.1 delivers
+    the isolated review, a bot or fork head's Codex result is always this
+    recorded refusal, never a clean or complete one.
+    """
+    existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
+    if existing:
+        print(f"error: review outputs already exist: {existing}; use the next attempt number")
+        return 2
+    if dry_run:
+        print(f"# would write {run.output('.meta.json')}")
+        print(f"# would write {run.output('.status.json')}")
+        print(f"error: {UNTRUSTED_REFUSAL}")
+        return 2
+    run.out_base.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(run.output(".meta.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        print(f"error: review outputs already exist: {run.output('.meta.json')}; use the next attempt number")
+        return 2
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(untrusted_refused_meta(run), indent=2) + "\n")
+    _write_status_stub(run, UNTRUSTED_STATUS_REASON)
+    print(f"error: {UNTRUSTED_REFUSAL}")
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     previous_handlers = install_signal_handlers()
     try:
@@ -880,11 +1310,10 @@ def main(argv: list[str] | None = None) -> int:
             )
         except ValueError as exc:
             parser.error(str(exc))
-        if not run.trusted:
-            print(f"error: {UNTRUSTED_REFUSAL}")
-            return 2
         if not (REPO_ROOT / run.phase_dir).is_dir():
             parser.error(f"phase-dir does not exist: {run.phase_dir}")
+        if not run.trusted:
+            return _untrusted_main(run, dry_run=args.dry_run)
         if args.dry_run:
             return dry_run(run)
         try:
