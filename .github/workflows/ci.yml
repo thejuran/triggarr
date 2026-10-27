@@ -206,6 +206,32 @@ jobs:
           GITLEAKS_ENABLE_COMMENTS: 'false'
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
 
+  # Always runs and is required: a skip can never fake a CI ready pass (CIMAINT-04).
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Require shellcheck for run-step linting
+        run: |
+          command -v shellcheck || { echo "shellcheck is not on PATH; actionlint would skip shell checks" >&2; exit 1; }
+          shellcheck --version
+
+      - name: Install actionlint (pinned binary, checksum-verified)
+        run: |
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" | sha256sum -c -
+          tar -xzf "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" actionlint
+
+      - name: Lint all workflows
+        run: ./actionlint -color
+
   dependencies:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -397,7 +423,7 @@ jobs:
   ci-ready:
     name: CI ready
     if: always()
-    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e]
+    needs: [test, lint, docker, secrets, dependencies, image-smoke, browser-e2e, os-scan, actionlint]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -407,7 +433,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, os, sys
-          required = {"test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e"}
+          required = {"test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e", "os-scan", "actionlint"}
           results = json.loads(os.environ["RESULTS"])
           if set(results) != required:
               sys.exit("Missing or unexpected mandatory CI jobs")
