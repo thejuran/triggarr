@@ -389,20 +389,40 @@ def _is_checker(argv) -> bool:
     return any(str(part).endswith("codex_report_status.py") for part in argv) and "--report" in argv
 
 
-class FakeRunner:
-    """Records every command; fails the one whose program matches *fail_on*."""
+# A fixed local-branch name FakeRunner reports verify_trust()'s local-checkpoint
+# for-each-ref calls as containing, so the default FakeRunner (trusted, local
+# checkpoint form, head=H/base=B) passes trust verification without any test
+# needing to know these internals.
+TRUSTED_BRANCH_REF = "refs/heads/trusted-branch"
 
-    def __init__(self, fail_on: str | None = None, codex_exit: int = 0, dirty: str = "") -> None:
+
+class FakeRunner:
+    """Records every command; fails the one whose program matches *fail_on*.
+
+    By default, answers verify_trust()'s local-checkpoint commands (D-18
+    SA-01) so a plain FakeRunner() lets a --trusted, local-checkpoint
+    ReviewRun (the default `_run()`/`_tmp_run()` shape) proceed past trust
+    verification. Pass *trust_fail_on* to make one of those specific trust
+    commands fail instead, for tests exercising a refusal path.
+    """
+
+    def __init__(
+        self, fail_on: str | None = None, codex_exit: int = 0, dirty: str = "", trust_fail_on: str | None = None
+    ) -> None:
         self.calls: list[list[str]] = []
         self.fail_on = fail_on
         self.codex_exit = codex_exit
         self.dirty = dirty
+        self.trust_fail_on = trust_fail_on
+        self._rev_list_shas: set[str] = set()
 
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
         program = argv[2] if argv[0] == "timeout" else argv[0]
         if self.fail_on and self.fail_on in (program, " ".join(argv[:3])):
             raise OSError("simulated failure")
+        if self.trust_fail_on and self.trust_fail_on in (argv[1] if len(argv) > 1 else "", " ".join(argv[:3])):
+            return subprocess.CompletedProcess(argv, 1, stdout="")
         if argv[:3] == ["git", "worktree", "add"]:
             Path(argv[4]).mkdir(parents=True)
             return subprocess.CompletedProcess(argv, 0)
@@ -410,6 +430,20 @@ class FakeRunner:
             return subprocess.CompletedProcess(argv, 0, stdout=self.dirty)
         if argv[:2] == ["git", "rev-parse"]:
             return subprocess.CompletedProcess(argv, 0, stdout=H + "\n")
+        if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return subprocess.CompletedProcess(argv, 0)
+        if argv[:2] == ["git", "for-each-ref"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=f"{TRUSTED_BRANCH_REF}\n")
+        if argv[:2] == ["git", "rev-list"]:
+            head_sha = argv[2].split("..")[-1]
+            self._rev_list_shas.add(head_sha)
+            return subprocess.CompletedProcess(argv, 0, stdout=f"{head_sha}\n")
+        if argv[:3] == ["git", "reflog", "show"]:
+            shas = self._rev_list_shas or {H}
+            lines = "".join(f"{sha}\tcommit: fake local commit\n" for sha in shas)
+            return subprocess.CompletedProcess(argv, 0, stdout=lines)
+        if argv[:2] == ["git", "diff"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="")
         if argv[0] == "uv":
             return subprocess.CompletedProcess(argv, 1, stdout="1 failed, 9 passed\n")
         if program == "codex":
@@ -493,6 +527,7 @@ def test_execute_removes_worktree_when_pytest_cannot_start(tmp_path, monkeypatch
 
 
 def test_execute_refuses_to_overwrite_recorded_output(tmp_path, monkeypatch) -> None:
+    """Trust is verified first (D-18 SA-01), so some git calls happen, but never a worktree."""
     run = _tmp_run(tmp_path, monkeypatch)
     run.output(".last.json").parent.mkdir(parents=True)
     run.output(".last.json").write_text("recorded")
@@ -500,7 +535,7 @@ def test_execute_refuses_to_overwrite_recorded_output(tmp_path, monkeypatch) -> 
 
     with pytest.raises(FileExistsError):
         execute(run, command_runner=fake)
-    assert fake.calls == []
+    assert not any(call[:3] == ["git", "worktree", "add"] for call in fake.calls)
     assert run.output(".last.json").read_text() == "recorded"
 
 
@@ -523,9 +558,12 @@ def test_cli_requires_exactly_one_trust_flag(flags: tuple) -> None:
 
 
 # Owner decision 2026-10-22 (owner-approved round 3, resolves
-# bm:dbe1b7f56bdd:CR-01 = codex:dbe1b7f56bdd:a1:F001 and bm:dbe1b7f56bdd:WR-02):
-# Codex is not run for untrusted heads at all until the harness is hardened.
-# The record shows "Codex: PENDING — untrusted source" and CI results are used.
+# bm:dbe1b7f56bdd:CR-01 = codex:dbe1b7f56bdd:a1:F001 and bm:dbe1b7f56bdd:WR-02),
+# amended 2026-10-27 (D-07 amendment, interim rule): Codex is not run for
+# untrusted (bot or fork) heads at all until Phase 85.1 delivers the isolated
+# review. --untrusted issues no command of any kind and instead records a
+# permanent INCOMPLETE result (review_mode "untrusted-refused"); CI plus an
+# owner-approved fallback (D-16) covers that head in the interim.
 
 
 def _forbid_everything(monkeypatch) -> None:
@@ -536,29 +574,84 @@ def _forbid_everything(monkeypatch) -> None:
     monkeypatch.setattr(runner.tempfile, "mkdtemp", _forbidden)
 
 
-@pytest.mark.parametrize("extra", [(), ("--dry-run",)])
-def test_main_refuses_untrusted_and_writes_nothing(monkeypatch, capsys, extra: tuple) -> None:
+def test_main_refuses_untrusted_and_records_incomplete(tmp_path, monkeypatch, capsys) -> None:
+    import json as _json
+
+    _forbid_everything(monkeypatch)
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    (tmp_path / PHASE_DIR).mkdir(parents=True)
+    run = _run(attempt=1, trusted=False)
+
+    assert main(_cli(PHASE_DIR, "--untrusted")) == 2
+
+    out = capsys.readouterr().out
+    assert runner.UNTRUSTED_REFUSAL in out
+
+    written = {suffix for suffix in runner.OUTPUT_SUFFIXES if run.output(suffix).exists()}
+    assert written == {".meta.json", ".status.json"}
+
+    meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
+    assert meta["meta_version"] == 2
+    assert meta["review_mode"] == "untrusted-refused"
+    assert meta["trusted"] is False
+    assert meta["trust_verification"] is None
+    assert meta["test_evidence_source"] is None
+    assert meta["head"] == H and meta["base"] == B and meta["label"] == "explicit" and meta["attempt"] == 1
+
+    status = _json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any(
+        "refused until Phase 85.1" in reason and "owner-approved fallback (D-16)" in reason
+        for reason in status["reasons"]
+    )
+
+
+def test_main_dry_run_untrusted_writes_nothing(monkeypatch, capsys) -> None:
     _forbid_everything(monkeypatch)
     run = _run(attempt=1, trusted=False)
     before = {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES}
 
-    assert main([*_cli(PHASE_DIR, "--untrusted"), *extra]) == 2
+    assert main([*_cli(PHASE_DIR, "--untrusted"), "--dry-run"]) == 2
 
     out = capsys.readouterr().out
-    assert "Codex: PENDING — untrusted source" in out
-    assert "CI results" in out
-    for choice in ("wait", "retry later", "fallback"):
-        assert choice in out
+    assert str(run.output(".meta.json")) in out
+    assert str(run.output(".status.json")) in out
+    assert runner.UNTRUSTED_REFUSAL in out
     assert {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES} == before
 
 
+def test_main_untrusted_refuses_when_output_already_exists(tmp_path, monkeypatch, capsys) -> None:
+    _forbid_everything(monkeypatch)
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    run = _run(attempt=1, trusted=False)
+    run.out_base.parent.mkdir(parents=True)
+    run.output(".status.json").write_text("recorded")
+
+    assert main(_cli(PHASE_DIR, "--untrusted")) == 2
+
+    out = capsys.readouterr().out
+    assert "already exist" in out
+    assert not run.output(".meta.json").exists()
+    assert run.output(".status.json").read_text() == "recorded"
+
+
 def test_execute_refuses_untrusted_before_any_work(tmp_path, monkeypatch) -> None:
+    """execute()/verify_trust()/materialize_grader() are never reached for an untrusted run (defense in depth)."""
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
     (tmp_path / PHASE_DIR).mkdir(parents=True)
     run = _run(attempt=1, trusted=False)
     fake = FakeRunner()
 
-    with pytest.raises(runner.RunnerError, match="PENDING"):
+    def _forbidden_verify_trust(*_args, **_kwargs):
+        raise AssertionError("verify_trust must not run for an untrusted ReviewRun")
+
+    def _forbidden_materialize(*_args, **_kwargs):
+        raise AssertionError("materialize_grader must not run for an untrusted ReviewRun")
+
+    monkeypatch.setattr(runner, "verify_trust", _forbidden_verify_trust)
+    monkeypatch.setattr(runner, "materialize_grader", _forbidden_materialize)
+
+    with pytest.raises(runner.RunnerError, match="Phase 85.1"):
         execute(run, command_runner=fake)
     assert fake.calls == []
     assert not (tmp_path / PHASE_DIR / "codex").exists()
@@ -568,6 +661,345 @@ def test_cli_still_requires_an_explicit_trusted_flag() -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(_cli(PHASE_DIR, "--dry-run"))
     assert exc_info.value.code == 2
+
+
+# --- Trust verification (D-18 SA-01): --trusted cannot be merely asserted ----
+# verify_trust() is exercised directly here with small, purpose-built command
+# runners (not the orchestration FakeRunner above) so each PR/local-checkpoint
+# rejection reason is pinned independently of execute()'s worktree/pytest/codex
+# machinery. Any command these runners don't recognize raises AssertionError,
+# which doubles as proof that no git show/worktree/uv/pytest/codex command was
+# ever reached for a refused head.
+
+PR_HEAD = "c" * 40
+PR_BASE = "d" * 40
+PR_NUMBER = "90"
+PR_URL = f"https://github.com/{runner.REPO_SLUG}/pull/{PR_NUMBER}"
+
+
+def _pr_run(**overrides) -> ReviewRun:
+    values = {
+        "head": PR_HEAD,
+        "base": PR_BASE,
+        "label": "explicit",
+        "attempt": 1,
+        "pr_url": PR_URL,
+        "scope": "PR changes",
+        "phase_dir": PHASE_DIR,
+        "trusted": True,
+    }
+    values.update(overrides)
+    return ReviewRun(**values)
+
+
+def _gh_response(**fields) -> dict:
+    import copy as _copy
+
+    data = {
+        "author": {"login": "thejuran", "is_bot": False},
+        "isCrossRepository": False,
+        "headRefOid": PR_HEAD,
+        "baseRefOid": PR_BASE,
+    }
+    data = _copy.deepcopy(data)
+    data.update(fields)
+    return data
+
+
+class _TrustRunner:
+    """A minimal command_runner for verify_trust()'s PR-form unit tests.
+
+    Answers `gh pr view` with *gh_response*/*gh_exit*/*gh_stdout*, and
+    `git merge-base --is-ancestor <base> refs/remotes/origin/main` with
+    *base_on_main_ok*. Anything else raises AssertionError.
+    """
+
+    def __init__(
+        self,
+        gh_response: dict | None = None,
+        gh_exit: int = 0,
+        gh_stdout: str | None = None,
+        base_on_main_ok: bool = True,
+    ) -> None:
+        import json as _json
+
+        self.calls: list[list[str]] = []
+        self.gh_response = gh_response
+        self.gh_exit = gh_exit
+        self.gh_stdout = gh_stdout if gh_stdout is not None else _json.dumps(gh_response or {})
+        self.base_on_main_ok = base_on_main_ok
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        if argv[:2] == ["gh", "pr"]:
+            return subprocess.CompletedProcess(argv, self.gh_exit, stdout=self.gh_stdout)
+        if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return subprocess.CompletedProcess(argv, 0 if self.base_on_main_ok else 1)
+        raise AssertionError(f"unexpected command in a PR trust-verification unit test: {argv}")
+
+
+def test_verify_trust_pr_passes_for_trusted_author() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_response=_gh_response())
+    result = runner.verify_trust(run, fake)
+    assert result == {
+        "method": "gh pr view",
+        "pr_number": int(PR_NUMBER),
+        "author": "thejuran",
+        "commits_checked": None,
+    }
+
+
+def test_verify_trust_pr_rejects_cross_repository() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(
+        gh_response=_gh_response(isCrossRepository=True, author={"login": "outsider", "is_bot": False})
+    )
+    with pytest.raises(runner.RunnerError, match=r"cross-repository \(fork\)"):
+        runner.verify_trust(run, fake)
+
+
+@pytest.mark.parametrize(
+    "author", [{"login": "dependabot[bot]", "is_bot": False}, {"login": "some-bot", "is_bot": True}]
+)
+def test_verify_trust_pr_rejects_bot_author(author: dict) -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_response=_gh_response(author=author))
+    with pytest.raises(runner.RunnerError, match="is a bot; use --untrusted"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_pr_rejects_untrusted_author() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_response=_gh_response(author={"login": "someone-else", "is_bot": False}))
+    with pytest.raises(runner.RunnerError, match="author someone-else is not in TRUSTED_AUTHORS"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_pr_rejects_head_mismatch() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_response=_gh_response(headRefOid="f" * 40))
+    with pytest.raises(runner.RunnerError, match="PR head is"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_pr_rejects_base_mismatch() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_response=_gh_response(baseRefOid="f" * 40))
+    with pytest.raises(runner.RunnerError, match="PR base is"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_pr_rejects_different_repo() -> None:
+    run = _pr_run(pr_url="https://github.com/someone-else/triggarr/pull/1")
+    fake = _TrustRunner()
+    with pytest.raises(runner.RunnerError, match="not this repository"):
+        runner.verify_trust(run, fake)
+    assert fake.calls == []
+
+
+def test_verify_trust_rejects_unrecognized_pr_url() -> None:
+    run = _run(pr_url="not a pr url at all")
+    fake = _TrustRunner()
+    with pytest.raises(runner.RunnerError, match="unrecognized --pr-url form"):
+        runner.verify_trust(run, fake)
+    assert fake.calls == []
+
+
+def test_verify_trust_pr_fails_closed_on_gh_nonzero_exit() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_exit=1, gh_stdout="")
+    with pytest.raises(runner.RunnerError, match="could not verify trust"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_pr_fails_closed_on_unparseable_json() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_stdout="not json")
+    with pytest.raises(runner.RunnerError, match="could not verify trust"):
+        runner.verify_trust(run, fake)
+
+
+LOCAL_HEAD = "1" * 40
+LOCAL_BASE = "2" * 40
+
+
+def _local_run(**overrides) -> ReviewRun:
+    values = {
+        "head": LOCAL_HEAD,
+        "base": LOCAL_BASE,
+        "label": "explicit",
+        "attempt": 1,
+        "pr_url": runner.LOCAL_CHECKPOINT_PR_URL,
+        "scope": "local checkpoint",
+        "phase_dir": PHASE_DIR,
+        "trusted": True,
+    }
+    values.update(overrides)
+    return ReviewRun(**values)
+
+
+class _LocalTrustRunner:
+    """A minimal command_runner for verify_trust()'s local-checkpoint unit tests.
+
+    *commit_subjects* maps a commit SHA to its reflog subject; a SHA absent
+    from the map has no reflog entry at all. Anything else raises
+    AssertionError.
+    """
+
+    def __init__(
+        self,
+        *,
+        base: str,
+        head: str,
+        commits: list[str] | None = None,
+        commit_subjects: dict[str, str] | None = None,
+        ancestor_of_head: bool = True,
+        on_local_branch: bool = True,
+        base_on_main: bool = True,
+        branches: tuple[str, ...] = ("refs/heads/some-branch",),
+    ) -> None:
+        self.calls: list[list[str]] = []
+        self.base = base
+        self.head = head
+        self.commits = commits if commits is not None else [head]
+        self.commit_subjects = commit_subjects or {}
+        self.ancestor_of_head = ancestor_of_head
+        self.on_local_branch = on_local_branch
+        self.base_on_main = base_on_main
+        self.branches = branches
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
+            target = argv[4]
+            if target == self.head:
+                return subprocess.CompletedProcess(argv, 0 if self.ancestor_of_head else 1)
+            if target == "refs/remotes/origin/main":
+                return subprocess.CompletedProcess(argv, 0 if self.base_on_main else 1)
+            raise AssertionError(f"unexpected merge-base target: {argv}")
+        if argv[:3] == ["git", "for-each-ref", "--contains"]:
+            stdout = "refs/heads/some-branch\n" if self.on_local_branch else ""
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout)
+        if argv[:2] == ["git", "rev-list"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="".join(f"{sha}\n" for sha in self.commits))
+        if argv[:2] == ["git", "for-each-ref"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="".join(f"{branch}\n" for branch in self.branches))
+        if argv[:3] == ["git", "reflog", "show"]:
+            lines = "".join(f"{sha}\t{subject}\n" for sha, subject in self.commit_subjects.items())
+            return subprocess.CompletedProcess(argv, 0, stdout=lines)
+        raise AssertionError(f"unexpected command in a local-checkpoint trust-verification unit test: {argv}")
+
+
+def test_verify_trust_local_passes_when_every_commit_was_committed_here() -> None:
+    run = _local_run()
+    fake = _LocalTrustRunner(base=LOCAL_BASE, head=LOCAL_HEAD, commit_subjects={LOCAL_HEAD: "commit: fix"})
+    result = runner.verify_trust(run, fake)
+    assert result == {"method": "local reflog", "pr_number": None, "author": None, "commits_checked": 1}
+
+
+@pytest.mark.parametrize(
+    "subject",
+    ["cherry-pick: abc", "rebase (pick): abc", "reset: moving to abc", "branch: Created from FETCH_HEAD"],
+)
+def test_verify_trust_local_rejects_non_commit_reflog_subjects(subject: str) -> None:
+    run = _local_run()
+    fake = _LocalTrustRunner(base=LOCAL_BASE, head=LOCAL_HEAD, commit_subjects={LOCAL_HEAD: subject})
+    with pytest.raises(runner.RunnerError, match="local checkpoint origin not established"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_local_rejects_commit_with_no_reflog_entry_at_all() -> None:
+    run = _local_run()
+    fake = _LocalTrustRunner(base=LOCAL_BASE, head=LOCAL_HEAD, commit_subjects={})
+    with pytest.raises(runner.RunnerError, match=f"{LOCAL_HEAD[:12]} was not committed on this machine"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_local_never_consults_email() -> None:
+    """A commit's author/committer email is never read for trust -- only its own reflog subject."""
+    run = _local_run()
+    fake = _LocalTrustRunner(
+        base=LOCAL_BASE, head=LOCAL_HEAD, commit_subjects={LOCAL_HEAD: "branch: Created from FETCH_HEAD"}
+    )
+    with pytest.raises(runner.RunnerError, match="was not committed on this machine"):
+        runner.verify_trust(run, fake)
+    assert not any("email" in str(part) for call in fake.calls for part in call)
+
+
+def test_verify_trust_local_rejects_head_not_on_local_branch() -> None:
+    run = _local_run()
+    fake = _LocalTrustRunner(base=LOCAL_BASE, head=LOCAL_HEAD, on_local_branch=False)
+    with pytest.raises(runner.RunnerError, match="not on a local branch"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_local_rejects_base_not_ancestor_of_head() -> None:
+    run = _local_run()
+    fake = _LocalTrustRunner(base=LOCAL_BASE, head=LOCAL_HEAD, ancestor_of_head=False)
+    with pytest.raises(runner.RunnerError, match="base is not an ancestor of head"):
+        runner.verify_trust(run, fake)
+
+
+@pytest.mark.parametrize("is_pr", [True, False])
+def test_verify_trust_rejects_base_not_on_origin_main_before_any_execution_command(is_pr: bool) -> None:
+    """checker B13: no PR-supplied base is ever executed -- applies to both forms."""
+    if is_pr:
+        run = _pr_run()
+        fake: object = _TrustRunner(gh_response=_gh_response(), base_on_main_ok=False)
+    else:
+        run = _local_run()
+        fake = _LocalTrustRunner(
+            base=LOCAL_BASE, head=LOCAL_HEAD, commit_subjects={LOCAL_HEAD: "commit: fix"}, base_on_main=False
+        )
+    with pytest.raises(runner.RunnerError, match="base is not on origin/main") as exc_info:
+        runner.verify_trust(run, fake)
+    assert "git fetch origin main" in str(exc_info.value)
+    # Neither fake answers git show/uv/pytest/codex/worktree at all; reaching
+    # any of them would raise AssertionError here instead of RunnerError.
+
+
+def test_same_fork_commit_refused_through_both_trust_paths() -> None:
+    """checker B05 regression: the same commit can't launder itself from fork-PR to local-checkpoint trust."""
+    fork_sha = "f" * 40
+    base_sha = "e" * 40
+
+    pr_run = _pr_run(head=fork_sha, base=base_sha)
+    pr_fake = _TrustRunner(
+        gh_response=_gh_response(
+            isCrossRepository=True,
+            author={"login": "outsider", "is_bot": False},
+            headRefOid=fork_sha,
+            baseRefOid=base_sha,
+        )
+    )
+    with pytest.raises(runner.RunnerError, match=r"cross-repository \(fork\)"):
+        runner.verify_trust(pr_run, pr_fake)
+
+    local_run = _local_run(head=fork_sha, base=base_sha)
+    local_fake = _LocalTrustRunner(
+        base=base_sha, head=fork_sha, commit_subjects={fork_sha: "branch: Created from FETCH_HEAD"}
+    )
+    with pytest.raises(runner.RunnerError, match="local checkpoint origin not established"):
+        runner.verify_trust(local_run, local_fake)
+
+    all_calls = pr_fake.calls + local_fake.calls
+    assert not any(call and call[0] in ("uv", "codex") for call in all_calls)
+    assert not any(call[:3] == ["git", "worktree", "add"] for call in all_calls)
+
+
+def test_execute_refuses_dependabot_pr_before_any_work(tmp_path, monkeypatch) -> None:
+    """Acceptance: a dependabot[bot] PR under --trusted produces no output files and no worktree command."""
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    (tmp_path / PHASE_DIR).mkdir(parents=True)
+    run = ReviewRun(PR_HEAD, PR_BASE, "explicit", 1, PR_URL, "scope", PHASE_DIR, True)
+    fake = _TrustRunner(gh_response=_gh_response(author={"login": "dependabot[bot]", "is_bot": False}))
+
+    with pytest.raises(runner.RunnerError, match="is a bot"):
+        execute(run, command_runner=fake)
+
+    assert not any(call[:3] == ["git", "worktree", "add"] for call in fake.calls)
+    assert not any(run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES)
 
 
 def test_contract_documents_untrusted_sources() -> None:
@@ -1144,7 +1576,7 @@ def test_meta_write_failure_after_reservation_writes_status_stub(tmp_path, monke
     real_dumps = runner.json.dumps
 
     def _dumps(obj, *args, **kwargs):
-        if isinstance(obj, dict) and obj.get("meta_version") == 1:
+        if isinstance(obj, dict) and obj.get("meta_version") == 2:
             raise exc
         return real_dumps(obj, *args, **kwargs)
 
