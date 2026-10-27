@@ -65,3 +65,22 @@ carry-forward record.
 
 - **Card-template text-matching refactor** (quick WR-01 / bm IN-01). `cycle_grade.html` classifies reason rows by matching `outcome.py`'s rendered display strings instead of a structured "kind" field; correct for every row today but only coupled through wording.
 - **Craft-skill `code-reviewer` sticky accept pending.** The owner answered "Accept sticky (persist for bm-code-reviewer)" for the catalog's `code-reviewer` skill (`github.com/Jeffallan/claude-skills`, pinned at `1be15d8064f88fc25216442406d40add8fd23b53`, MIT, trust tier A), but it was never inserted — no local checkout exists at that pin. Needs a separate owner approval of the clone step plus cloning the third-party code at the pin before it can take effect.
+
+### Phase 85 code review iteration 3 follow-ups (owner decision 2026-10-27)
+
+Recorded, not fixed, by owner decision. Source: `85-REVIEW.md` iteration 3 (reviewed head `8bd286c`).
+
+- **SA-04: a PR that changes the Codex runner can certify its own base cross-grade.** If a PR changes `tests/codex_review_run.py`, the changed runner can write its own "complete" `.base-status.json` with the right head and base, without ever running the unchanged base checker. Readiness cannot tell. Runner changes are already sensitive-class, and CI and owner acceptance are unaffected. Fix: make the base cross-grade independent of the runner being reviewed, e.g. readiness re-grades the Codex output with the base commit's checker itself (about half a day).
+- **SA-05: the no-skip checks do not look inside reusable workflows or local actions.** A required job that calls a reusable workflow (job-level `uses:`) or a local action (`uses: ./...`) could hide a skip condition there. The pytest guard `tests/test_required_jobs_no_skip.py` forbids both in required jobs today, so this only matters if one is ever wanted. Fix at that point: extend the guard to read the called workflow or action, or document the boundary in `docs/review-classification-policy.md`.
+- **IN-01:** `docs/os-scan-policy.md` says the scanned image ID is verified; the job only checks the checksum. Reword, or add a `docker load` plus image-ID check.
+- **IN-02:** the `os-scan` job's checkout keeps the job token in `.git/config` while Trivy runs; add `persist-credentials: false`.
+- **IN-03:** `acceptance-readiness.cjs` and `review-register.cjs` read and write the review registers in whatever repository the current directory is; pass `--repo` to `gh variable get/set`.
+- **IN-04:** a failed `gh variable set` in `review-register.cjs` surfaces as a raw stack trace; wrap the write calls like the read calls.
+- **IN-05:** the Docker build pulls an unpinned `hatchling` and an unhashed `uv`; pin them with hashes or record this as an accepted risk.
+- **IN-06:** the Codex hollow-report guard accepts a report whose only command was something like `ls`; require a command naming the reviewed range, or soften the docstring.
+- **IN-07:** readiness's CodeQL fallback match is unlikely to fire (filters on one app slug, takes only the newest run); require every matching run to succeed and match the app that actually posts them.
+- **IN-08:** the readiness dry run uses the gate script at HEAD, not the pinned gate commit the acceptance job runs; load the pinned version, or test that the two are identical.
+- **IN-09:** fallback records still accept hollow nested values (empty summary, findings with no id or severity, impossible dates, a confusing message for `pr: "5"`); tighten those checks.
+- **IN-10:** the fallback `validate` command now requires `--base` to equal the Codex evidence's recorded base (done with WR-02, `63b0b3d`); it still does not compute the merge-base itself, so the operator must pass the right one.
+- **IN-11:** `docs/owner-cli-acceptance.md` does not say readiness must run from the repository root after fetching both the PR head and main (it now runs `git merge-base`); add that line.
+- **IN-12:** the fallback reviewer-name denylist misses run-together and model-only names (`ClaudeCode`, `BMcodereviewer`, `sonnet`, look-alike letters); also match names with separators removed, add model names, and reject non-ASCII names.
