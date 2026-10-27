@@ -52,6 +52,7 @@ test('guard: other subagent type, flag unset -> exit 0 (untouched)', () => {
 test('guard: unparseable stdin, flag unset -> exit 2 (fail closed)', () => {
   const r = runGuard('not json', undefined);
   assert.equal(r.status, 2);
+  assert.match(r.stderr, /could not parse PreToolUse input/);
 });
 
 test('guard: valid JSON, no tool_input/subagent_type -> exit 0', () => {
