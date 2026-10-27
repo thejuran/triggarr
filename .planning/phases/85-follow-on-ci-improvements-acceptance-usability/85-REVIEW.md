@@ -1,11 +1,11 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-reviewed: 2026-10-27T19:51:31Z
-reviewed_head: 8bd286c2ddb65232150be1c67cdb2a480b3e710e
+reviewed: 2026-10-27T21:54:52Z
+reviewed_head: eae6d34386c873ed631e83ecbecdd624c73272ff
 diff_base: 091d8ed
-iteration: 3
+iteration: 4
 depth: standard
-files_reviewed: 48
+files_reviewed: 49
 files_reviewed_list:
   - .github/dependabot.yml
   - .github/os-scan-exceptions.json
@@ -54,268 +54,241 @@ files_reviewed_list:
   - tests/test_image_lock_consistency.py
   - tests/test_review_checkpoint_record.py
   - tests/test_review_machinery_lists.py
+  - tests/test_required_jobs_no_skip.py
   - uv.lock
 findings:
-  critical: 2
-  warning: 2
-  info: 12
-  total: 16
+  critical: 1
+  warning: 3
+  info: 13
+  total: 17
 status: issues_found
 ---
 
-# Phase 85: Code Review Report (iteration 3)
+# Phase 85: Code Review Report (iteration 4)
 
-**Reviewed:** 2026-10-27T19:51:31Z (head `8bd286c2ddb65232150be1c67cdb2a480b3e710e`, diff base `091d8ed`)
+**Reviewed:** 2026-10-27T21:54:52Z (head `eae6d34386c873ed631e83ecbecdd624c73272ff`, diff base `091d8ed`)
 **Depth:** standard
-**Files Reviewed:** 48 (uv.lock skimmed only)
+**Files Reviewed:** 49 (uv.lock skimmed only)
 **Status:** issues_found
 
 ## Summary
 
-This is a fresh re-review of the whole phase scope at head `8bd286c`, after fix round 2:
-- `75ebe6f`: CR-01, the structural `if` reader;
-- `ebdd76c`: WR-01, the merge-base rule;
-- `b05ced4`: WR-02, status-file binding;
-- `e44b818`: WR-03, the reviewer token denylist.
+This is a fresh review of the whole phase at head `eae6d34`, after fix round 3:
+- `7178836`: CR-01, the new PyYAML guard `tests/test_required_jobs_no_skip.py`;
+- `dbb4443`: CR-02, the job-set cross-checks;
+- `ea31695`: WR-01, pinning the allowlisted step to the evidence upload;
+- `63b0b3d`: WR-02, binding the fallback to the reviewed base;
+- `bb4df1a`: the backlog record.
 
-`ae8e4b2` is the merge of origin/main. `git diff 40ddadf ae8e4b2` is empty, so the merge brings in no content. Since iteration 2, only six files in scope changed: the readiness, skip-detector and fallback scripts and their tests. The other 42 files are unchanged from the iteration-2 review.
+**Owner rule applied to severity (round 3):** the PyYAML pytest guard is the authoritative no-skip check, and the Node detector is a secondary line. A bypass counts as a blocker only if it passes the pytest guard and CI's pytest run while disabling a required check.
 
 Baseline at this head:
-- `node --test .github/scripts/*.test.cjs` plus the planchk-router test: 406/406 pass.
-- The phase's targeted pytest files (11 files): 421/421 pass.
+- `node --test .github/scripts/*.test.cjs` plus the planchk-router test: 415/415 pass.
+- The 12 phase pytest files, including the new guard: 479/479 pass.
 - `ruff check triggarr/ tests/ .github/scripts/` is clean.
 - `actionlint` exits 0.
 
-### Status of the iteration-2 findings
+Every mutation below was applied to a detached worktree of `eae6d34`. For each one I ran:
+- `actionlint`;
+- the 6 workflow and guard pytest files (153 tests);
+- the full Node suite;
+- `findSkipConditions` on both workflows.
 
-I checked each fix with crafted inputs of my own, not only with the fixer's tests.
+For the CR-01 job-level case I also ran the full `pytest tests/` suite: 2627 passed. The worktree has since been removed. No source file was modified.
+
+### Does the guard run inside the required CI test job?
+
+**Yes, but CI enforces its result only through a step that the guard itself protects.**
+- `ci.yml:52` runs `pytest tests/`, which collects the guard. `pyproject.toml` has no `addopts`, and `tests/conftest.py` only ignores `e2e`.
+- An import or collection error exits non-zero, so that case fails closed.
+- The pytest step deliberately exits 0 (`ci.yml:50-58`). A failure, including a guard failure, only fails the job through "Fail if tests failed" (`ci.yml:88-95`).
+
+So a mutation that neutralises that step neutralises the guard's own CI verdict as well. See CR-01 and WR-01.
+
+### Status of the iteration-3 findings
+
+I checked each fix with my own crafted inputs.
 
 | Prior | Verdict | Evidence |
 |-------|---------|----------|
-| CR-01 step `if` spellings | **Fixed for step and job `if` keys that the detector reaches** | Each of these applied to the real `ci.yml` is reported, either as a specific `if` or as "cannot be parsed": `if : false`, `"if" : false`, `-   if:` (whole step re-indented), a bare `-` followed by `if :`, a single-line or multi-line flow-mapping step, an anchored step (`- &s`), a tagged value (`!!str false`), `if:` placed after a `run: \|` block, `if:` with the value on the next line, an alias step, `? if`, `<<: *x`, and `"i\x66"`. `IF:` (upper case) is not detected, but actionlint rejects it as an unknown key, so it cannot reach GitHub through CI. Both real workflows still return `[]`, so the reader adds no false positives. **However**, two bypasses outside the new reader remain: the `continue-on-error` check (CR-01 below) and `parseJobs`'s job boundaries (CR-02 below). The iteration-2 report itself named the `continue-on-error` regex as the fail-closed model to copy, which was wrong. |
-| WR-01 merge-base | **Fixed** | `codexStatusFor` with `reviewedBase` set to the merge-base and `base` set to a newer main tip accepts evidence whose `meta.base` is the merge-base, and rejects evidence whose `meta.base` is `baseRefOid`. A merge-base that is missing or not a SHA fails closed (exit 1). The audited-input diff is recomputed over the same range, `mergeBase..head`. I found no fail-open path: criss-cross merge-bases and a stale local `origin/main` both produce a mismatch, so they block. **Regression:** the fallback path still pins `base` to `baseRefOid` (WR-02 below). |
-| WR-02 binding | **Fixed (minimum form)** | A complete `status` or required `baseStatus` whose `inspected_head`/`inspected_base` differ from this head and the reviewed base is blocked. `inspected_head` comes from the Codex report and is checked by the checker against `--expected-head` (`codex_report_status.py:407-429`), so binding to it is meaningful. For the residual, see SA-04. |
-| WR-03 denylist | **Fixed for every name listed** | `bm-code-reviewer`, `Claude Code`, `Buildomator`, `codex_review_run.py`, and `bm<U+200B>-code-reviewer` (with a zero-width space) are all rejected. Names that still pass are listed in IN-12. |
-
-### Residual WR-02 gap: is the fixer's description accurate?
-
-The fixer limits the gap to "diffs that change the runner itself". That limit is correct.
-- Step 0 of the contract refuses to run unless the checkout's HEAD is the reviewed head, so the runner that executes is always the head's runner.
-- `materialize_grader` takes the checker and schema from base-commit git objects. A diff that changes only the checker, the schema or the contract is therefore still cross-graded by code the diff did not write.
-- The runner imports only stdlib modules, so no unaudited helper can change its behaviour.
-
-The fixer understates how the gap works. The fix report says "the runner chooses what it passes to that checker". In fact, a changed `tests/codex_review_run.py` controls all three files readiness reads. It can write `.base-status.json` directly, with `inspected_head`/`inspected_base` set to the right SHAs, and never invoke the base checker. The new binding check only compares values that the same runner supplies, so it adds nothing in this case.
-
-The gap stays limited to runner changes, which `docs/review-classification-policy.md:14` already classifies as sensitive. I have recorded it as SA-04 for the owner's ruling, not as a defect.
+| CR-01 quoted or escaped `continue-on-error` | **Fixed (the guard detects it)** | Putting `'continue-on-error': true` on "Fail if tests failed" makes the guard report 10 failures. The Node detector still returns `[]`; that gap is accepted by the owner. **However**, in CI that guard failure is swallowed by the very `continue-on-error` it detects (WR-01). |
+| CR-02 column-0 comments and header spellings | **Fixed** | The guard reports each of these: the column-0 comment followed by a step `if` in `ci-ready` (4 failures), the same after the acceptance gate step (8 failures), and every header spelling the fixer tested. The cross-check of `needs` against `ALL_JOBS`, and the rule that review-acceptance.yml holds exactly one job, both work. |
+| WR-01 allowlist keyed by name | **Fixed in both checks** | Renaming the browser gate to "Upload browser failure evidence" with the allowlisted condition is caught by the guard (7 failures) and by the Node detector (it reports the name appearing twice, the step not using `upload-artifact`, and the step having `run:`). A `uses:` with leading whitespace that would make a local action invisible is rejected by actionlint and by the guard. |
+| WR-02 fallback base | **Fixed. No fail-open path, and no over-tightening found.** | `codexStatusFor` hands `validateFallback` the `expectedBase`, after already checking that it matches `HEAD_RE` and equals `meta.base`. A `reviewedBase` of `null` gives `expectedBase` null, which fails `HEAD_RE`, so that case blocks. `record.base` and `scope.base` are required fields, so leaving one out cannot skip the comparison. The `validate` CLI checks `--base` against `HEAD_RE` and requires it to equal `meta.base`; a meta with no `base` is rejected. `validateFallback` has no other caller (the GitHub gate does not use it), so readiness and the gate cannot disagree. The trusted PR runner pins `--base` to `baseRefOid` (`codex_review_run.py:505`), and untrusted-refused metas also record `base`, so valid records still pass. The remaining gap, that the CLI does not compute the merge-base itself, is IN-10 (carried, narrowed). |
 
 ### New in this iteration
 
-- **CR-01:** `continue-on-error` is still found by one line regex. A quoted or escaped key disables "Fail if tests failed", or the whole `ci-ready` job, with every test, actionlint and Python check still green.
-- **CR-02:** `parseJobs` stops reading at any column-0 comment and silently drops job headers it does not recognise. Verified end to end:
-  - In `ci.yml`, the `ci-ready` validation step can be skipped.
-  - In `review-acceptance.yml`, the gate step can be skipped.
-- **WR-01:** the step-`if` allowlist is keyed only by step name. Renaming the browser-suite completeness gate to the allowlisted evidence-upload name, with the same condition, disables the gate undetected.
-- **WR-02:** a regression from the WR-01 fix. A fallback record must now name a different base than the Codex evidence it stands in for.
+- **CR-01:** the guard does not look at the `shell:` or `defaults: run: shell:` keys, which control how a step runs. Setting `shell: true {0}` neutralises a required gate step, and every static check stays green.
+- **WR-01:** the guard is authoritative only locally. In CI, its failure is reported only through "Fail if tests failed", the step it protects, so the iteration-3 CR-01 case still turns "CI ready" green. Under a strict grade-by-effect reading this would be a blocker. It is a warning only because of the owner's round-3 rule (see the note in the finding).
+- **WR-02:** the `ci-ready` gate step is pinned by its heredoc body only. Hardcoding the `RESULTS` env, or the `TEST_EXIT` env on "Fail if tests failed", passes every check.
+- **WR-03:** a job in another workflow file can produce a second "CI ready" or "Review acceptance" check run. Readiness picks the check run with the highest id by name alone.
+- **IN-13:** the classification policy still names the Node detector as "the" no-skip test, and does not classify the authoritative guard as sensitive.
 
-IN-01 to IN-11 and SA-01 to SA-03 are carried forward unchanged and labelled as carried.
+IN-01 to IN-12, SA-04 and SA-05 are owner-recorded follow-ups in `.planning/backlog/MAINTENANCE.md`, and I carry them forward as such. Two were changed by round 3: SA-05 (now forbidden by the guard) and IN-10 (narrowed); both are annotated. SA-01 to SA-03 are carried unchanged.
+
+## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: `continue-on-error` written as a quoted or escaped key is not detected, so "Fail if tests failed" or the whole `ci-ready` job can be neutralised
+### CR-01: The guard ignores `shell:` and `defaults: run: shell:`, so a one-line `shell: true {0}` neutralises `ci-ready` or "Fail if tests failed" with every check green
 
-**File:** `.github/scripts/ci-job-consistency.cjs:702` (also `aggregateCanPassWith`, `:800`)
-**Issue:** The check is `job.lines.some(line => /\bcontinue-on-error\s*:/.test(line))`. A quoted key puts the closing quote between the key and the colon, so the regex does not match. A YAML escape removes the literal text altogether. Round 2 moved `if` onto the structural reader but left this regex in place.
+**File:** `tests/test_required_jobs_no_skip.py:118-171` (`job_problems`); affects `.github/workflows/ci.yml:88-95` and `:423-444`
+**Issue:**
+- **How it works:** GitHub Actions accepts a custom shell template, `command … {0}`, at three levels: on a step (`shell:`), on a job (`defaults.run.shell`), and on the whole workflow (`defaults.run.shell`). With `true {0}`, the runner executes `/usr/bin/true <script>`, which exits 0 without running the script. That neutralises a step as completely as `continue-on-error`.
+- **What the guard misses:** it checks `if`, `continue-on-error`, `uses` and `steps`. It never looks at `shell` or `defaults`. The Node detector does not either.
+- **Current usage:** no workflow in this repo uses `shell:` or `defaults:` today (I searched for both), so forbidding them costs nothing.
 
-I applied each of these to the real `ci.yml`:
+I applied each edit to the real `ci.yml`:
 
-| Edit | `findSkipConditions` | actionlint | PyYAML value |
-|------|----------------------|------------|--------------|
-| `"continue-on-error": true` on "Fail if tests failed" | `[]` | exit 0 | `True` |
-| `'continue-on-error': true` on the same step | `[]` | exit 0 | `True` |
-| `"continue-on-error": true` on the same step | `[]` | exit 0 | `True` |
-| `'continue-on-error': true` at job level on `ci-ready` | `[]` (and `aggregateCanPassWith` returns `false`) | exit 0 | `True` |
+| Edit | actionlint | Guard and workflow pytest (153) | Node suite | `findSkipConditions` |
+|------|-----------|-------------------------------|-----------|----------------------|
+| `ci-ready`: `defaults: {run: {shell: true {0}}}` at job level | exit 0 | 153 pass (full `pytest tests/`: 2627 pass) | 404/404 | `[]` |
+| `ci-ready` gate step: `shell: true {0}` placed after its `env:` block | exit 0 | 153 pass | 404/404 | `[]` |
+| "Fail if tests failed": `shell: true {0}` | exit 0 | 153 pass | 404/404 | `[]` |
 
-With the escaped variant in a full copy of the repo:
-- the whole node suite passes (395/395);
-- `test_github_workflows.py`, `test_ci_followon_wiring.py` and `test_ci_gate.py` pass (64/64).
+(If `shell:` is placed directly after the gate step's `name:` line, three Node tests fail. That is only because a text anchor in those tests stops matching; moving the key one line down avoids it.)
 
-The Python substring guards (`test_ci_followon_wiring.py:174, 258`) cover only `os-scan` and `actionlint`, not `test` or `ci-ready`.
+**Effect:**
+- **First row (`ci-ready`):** the "Require every mandatory job to succeed" script never runs. "CI ready", the required check in the ruleset (`docs/buildomator-greptile-pilot.md:28`), is green whatever `test`, `docker`, `os-scan` and the other needed jobs concluded. Readiness (`acceptance-readiness.cjs:135-139`) checks only "CI ready", so it reports CI as ok. Release preflight checks every job (`release-policy.cjs:3`), so a release would still be blocked. A merge would not.
+- **Third row ("Fail if tests failed"):** the `test` job succeeds even when pytest fails, so neither CI ready nor the release preflight sees the failure. Only the manual coverage-provenance step at the checkpoint (`docs/review-checkpoint-record.md:159`, `test_exit_code !== 0`) would catch it.
+- **Severity:** this passes the guard and CI's pytest run, and it disables a required check, so it meets the owner's blocker bar. It is the same "neutralise" class as `continue-on-error`, and the guard's docstring says it covers that class ("no job … can be skipped or neutralised").
 
-Effect: pytest's step exits 0 by design, and "Fail if tests failed" is what turns a failing pytest into a failed job. With that step set to continue on error, the `test` job succeeds whatever pytest returns. With `ci-ready` set to continue on error at job level, "CI ready" reports success even when its validation script exits non-zero. Either way, the release preflight and readiness accept a red build as green. This is the same consequence as iteration-2 CR-01, through a different key.
+**Fix:** In the guard, forbid execution-control overrides for every required job and the workflow itself:
+```python
+# in ci_problems / acceptance_problems, after loading:
+if "defaults" in doc:
+    problems.append(f"{path_name} sets workflow-level defaults: (a run.shell override can neutralise every run step)")
 
-**Fix:** Check for `continue-on-error` with the reader you already have, not with a line regex. Also add an independent cross-check that uses a real YAML parser.
-```js
-// in findSkipConditions, after readJobBody(job.lines):
-const coeAt = entries => entries.some(e => e.key === 'continue-on-error');
-const stepCoe = body.steps.some(s => s.keys && coeAt(s.keys)); // expose all keys from readStepItem
-if (coeAt(body.jobKeys) || stepCoe || job.lines.some(l => /continue-on-|\\u|\\x/.test(l) && /:/.test(l))) {
-  problems.push(isAggregate ? `aggregate job "${id}" sets continue-on-error` : `required job "${id}" sets continue-on-error`);
-}
+# in job_problems:
+if "defaults" in job:
+    problems.append(f"{prefix} sets defaults: (run.shell can neutralise its run steps)")
+...
+# per step:
+if "shell" in step:
+    problems.append(f"{prefix} {label} sets shell: {step['shell']!r}")
 ```
-To do that, `readJobBody` must return every key of each step, not only `name` and `if`. Use the same reader in `aggregateCanPassWith`.
-
-Then add a pytest that loads `ci.yml` and `review-acceptance.yml` with `yaml.safe_load` (a real YAML parser). For every required job, it should assert:
-- no `continue-on-error` at job or step level;
-- no job-level `if`, except `ci-ready: always()`;
-- every step `if` is on the allowlist.
-
-That one test removes the whole class of spelling bypasses, because PyYAML decides the key and not a regex. Add regression tests for the four rows above.
-
-### CR-02: `parseJobs` stops at any column-0 comment and silently drops job headers it does not recognise, so the detector never sees the steps or jobs that follow
-
-**File:** `.github/scripts/ci-job-consistency.cjs:43` (`if (/^\S/.test(line)) break;`) and `:45` (`/^  ([A-Za-z0-9_.-]+):\s*$/`)
-**Issue:** The new reader only reads the job lines that `parseJobs` gives it, and `parseJobs` has two problems:
-
-1. **Line 43** treats any non-indented line as the start of the next top-level key. A comment at column 0 is legal YAML anywhere, including inside a job's `steps:` list or after a block scalar. Every line after it is dropped from that job, and every later job disappears from the parse.
-2. **Line 45** recognises a job header only in the exact form `  id:`. These are all valid YAML for the same job:
-   - a header with a trailing comment (`  acceptance: # gate`);
-   - a quoted id (`  "acceptance":`);
-   - an explicit key (`? acceptance`);
-   - a flow-mapping job;
-   - the whole `jobs:` block indented 4 spaces.
-
-   An unrecognised header is either merged into the previous job or, before the first job, discarded. When `aggregateJobId` is `null` (review-acceptance.yml), the required jobs are "whatever `parseJobs` found", so a discarded job is simply never checked.
-
-Verified end to end. Each case passes `findSkipConditions` with `[]`, passes the full node suite (395/395), passes actionlint (exit 0), and PyYAML reads the condition:
-
-- **ci.yml, `ci-ready` (the last job).** Insert a column-0 comment after the validation heredoc, then a step-level condition:
-  ```yaml
-            PY
-  # reviewed
-          if: github.run_attempt == '0'
-  ```
-  PyYAML gives `ci-ready.steps[0].if == "github.run_attempt == '0'"`. The pytest workflow files (95 tests) also pass. The "Require every mandatory job to succeed" step is skipped, `ci-ready` succeeds, and "CI ready" is green whatever the needed jobs concluded. The same placement hides `continue-on-error: true`.
-- **review-acceptance.yml.** Append `# end of gate` at column 0, then `        if: github.run_attempt == '0'`, after the `script: |` block. The github-script gate step is skipped, and the "Review acceptance" check succeeds without running `assess()` against the dispositions or blockers. Only the environment approval remains.
-- **Other variants in review-acceptance.yml.** The header-comment, quoted-id, explicit-key and 4-space-indented-jobs forms also return `[]` with a job-level `if:`. These four happen to turn existing mutation tests red: those tests inject into a job the parser no longer sees. That is a side effect, and the failure messages would be misleading.
-
-When the comment or header sits in a job other than the last in `ci.yml`, the result is "Aggregate job ci-ready not found". That fails closed, but a harmless section-divider comment breaks CI with a confusing error.
-
-**Fix:**
-- At `:43`, skip comment lines and end the section only at a real top-level key: `if (/^#/.test(line) || /^\s*$/.test(line)) { if (current) current.lines.push(line); continue; } if (/^\S/.test(line)) break;`
-- At `:45`, parse the header with `parseMappingKey(line.slice(2))` when the indent is exactly 2. Then throw (fail closed) for any non-blank, non-comment line at indent 2 or less inside `jobs:` that is not a readable `id:` header with an empty or comment-only value. Do not merge it into a job or drop it.
-- Require at least one job, and throw if `jobs:` is not followed by 2-space job keys.
-- The PyYAML cross-check in CR-01 also catches this: compare `set(yaml jobs)` with the ids `parseJobs` returns, and fail on any difference.
-- Add regression tests for the two end-to-end cases above, plus the header-comment, quoted-id and re-indented forms.
+Also:
+- Add `"shell"` and `"defaults"` to `WATCHED_KEYS`, so case variants are caught too.
+- Add regression tests for the three rows above, plus workflow-level `defaults`.
+- If a future step genuinely needs a shell, allowlist the exact `(job, step name, shell)` the way step `if` is allowlisted, and accept only the built-in names (`bash`, `sh`, `python`, `pwsh`).
+- **Hardening (I did not test it):** consider also rejecting `BASH_ENV`/`ENV` in workflow, job and step `env:`. Non-interactive bash sources `BASH_ENV` before the script, so it could inject an early `exit 0` if it points at a file that an earlier step wrote.
 
 ## Warnings
 
-### WR-01: The step-`if` allowlist is keyed by step name only, so renaming the browser-suite completeness gate disables it undetected
+### WR-01: The authoritative guard's CI verdict is enforced only by "Fail if tests failed", the step it protects, so the iteration-3 CR-01 case still turns "CI ready" green
 
-**File:** `.github/scripts/ci-job-consistency.cjs:504-509, 727-731`; `.github/workflows/ci.yml:339, 376`
-**Issue:** A step condition is allowed when `STEP_IF_ALLOWLIST["<job>::<step name>"]` equals it. Nothing checks:
-- that only one step has that name;
-- that the step is the evidence upload (`uses: actions/upload-artifact@…`).
+**File:** `.github/workflows/ci.yml:47-58, 88-95`; `tests/test_required_jobs_no_skip.py` (where it runs); `.github/scripts/ci-job-consistency.cjs` (the `continue-on-error` line regex)
+**Issue:** The pytest step captures pytest's exit status and always exits 0. The job fails only when "Fail if tests failed" sees `TEST_EXIT != 0`.
 
-Test: in `browser-e2e`, rename "Require a complete browser-suite result" to "Upload browser failure evidence" and give it the allowlisted `failure() && hashFiles(…) != '' && hashFiles(…) != ''` condition. `findSkipConditions` returns `[]`. The completeness gate then runs only after a failure, so a run where every browser test is skipped (pytest exits 0) passes `browser-e2e`. That is exactly what that gate exists to reject.
+Consider the iteration-3 CR-01 edit: `'continue-on-error': true` on "Fail if tests failed". Verified results:
+- actionlint: exit 0.
+- Node suite: 404/404 pass, and `findSkipConditions` returns `[]` (the accepted Node gap).
+- The guard: 10 failures.
 
-The same trick on the `test` job ("Upload test evidence" plus `always()`) is harmless, because `always()` still runs the step.
+In CI, that means:
+1. pytest exits 1, and `test_exit=1` is recorded.
+2. "Fail if tests failed" exits 1, but `continue-on-error` gives it the conclusion `success`.
+3. The `test` job result is `success`, `ci-ready` sees `success`, and "CI ready" is green.
 
-The edit is a visible rename inside a sensitive-class file, so this is a warning rather than a blocker. Still, the allowlist is presented as "the one place a required job may skip a step", and it does not actually pin a specific step.
-**Fix:** Key each allowlist entry on more than the name. For example, `{name, condition, uses: 'actions/upload-artifact@<sha>'}`, and require exactly one step per job with that name. Report any allowlisted name that appears more than once in a job. Add a test with the rename described above.
+The guard's failure appears only in the step log and annotations. The release preflight also passes, because every job concluded success. The only thing that would show it is the manual coverage-provenance check.
 
-### WR-02: A fallback record must name `baseRefOid` while the Codex evidence it backs must name the merge-base (regression from the WR-01 fix)
+The owner downgraded the Node detector's parse gaps because "the pytest guard is authoritative". For this exact case, the guard does not gate CI. It gates only local runs.
 
-**File:** `.github/scripts/codex-fallback.cjs:138-144`; `.github/scripts/acceptance-readiness.cjs:112`
-**Issue:** After WR-01, `codexStatusFor` requires `meta.base === mergeBase`. It still passes `base: baseSha` (the PR base) to `validateFallback`, which requires `record.base` and `scope.base` to equal it and states "fallback must review the full base..head diff".
+**Severity note:** the guard does flag this edit, and CI's pytest exits non-zero. So under the owner's round-3 rule it is graded WARNING. By effect it is blocker-level: the required check is green while tests, including the guard, fail. The owner may want to rule whether "CI's pytest run" in that rule means "pytest exits non-zero" or "CI goes red".
+**Fix:** Do both of the following.
+1. Make the swallowed failure machine-visible. Have readiness, and the release preflight, download the run's `coverage-<run_id>-<attempt>` artifact and run `coverage-provenance.cjs check`, which already rejects `test_exit_code !== 0` (`coverage-provenance.cjs:192`). This turns the existing manual checkpoint step into a gate that does not depend on the `test` job's own step conclusions.
+2. Close the one Node gap that matters here. The Node step runs before pytest and is not behind "Fail if tests failed". Make its `continue-on-error` check fail closed: flag any job line where a key contains `continue` and `error` in any quoting, or contains a `\x`/`\u` escape, and report it as unreadable. A false positive only costs a reword. A false negative costs the gate.
 
-Reproduced with `codexStatusFor` (`reviewedBase: D`, `base: B`, incomplete status, an otherwise valid fallback):
-- fallback `base: D` (the merge-base, which is the range actually reviewed) gives `{ok: false, detail: "fallback scope base does not match the PR base"}`;
-- fallback `base: B` gives `{ok: true}`.
+Another option is to run `pytest tests/test_required_jobs_no_skip.py tests/test_ci_gate.py -q` as a plain step, without `set +e`, in a second required job (for example `lint`). Then a single neutralised step no longer hides the guard.
 
-When `main` has moved past the fork point (the case WR-01 was fixed for), a fallback reviewer who follows the record's own rule reviews `B..H` as a two-dot diff. That compares trees, so it includes `main`'s unrelated changes in reverse. Otherwise the record has to claim a base that was not the reviewed range.
+### WR-02: The `ci-ready` gate step and the `test` job's failure check are pinned only by their script bodies; hardcoding their `env:` inputs passes every check
 
-Untrusted heads (Dependabot or fork PRs) always need a fallback, so this path is used routinely.
+**File:** `.github/workflows/ci.yml:430-433` (`RESULTS: ${{ toJSON(needs) }}`), `:89-90` (`TEST_EXIT: ${{ steps.pytest.outputs.test_exit }}`); `tests/test_ci_gate.py:33-50` (extracts and tests only the heredoc)
+**Issue:** `test_ci_gate.py` executes the real heredoc against synthetic `needs` results, which is good. Nothing checks where the script's input comes from. I verified both edits:
 
-Before round 2, both checks used `baseRefOid` and agreed. Round 2 made them disagree. IN-10 (the `validate` CLI does not bind `--base`) is the same misalignment seen from the CLI side.
-**Fix:** Pass the reviewed base to the validator, `validateFallback(fallback, {pr, head, base: reviewedBase ?? base, …})`. Change the message to "does not match the reviewed base (merge-base)". In the `validate` CLI, compute the merge-base the same way and also bind `meta.base`, which resolves IN-10. Add a test where `baseRefOid` is ahead of the merge-base and the fallback names the merge-base.
+| Edit | actionlint | Guard and workflow pytest | Node suite | Detector |
+|------|-----------|-----------------------|-----------|----------|
+| `RESULTS: '{"test":{"result":"success"}, …all 9…}'` (a literal) | exit 0 | 153 pass | 404/404 | `[]` |
+| "Fail if tests failed": `TEST_EXIT: "0"` (a literal) | exit 0 | 153 pass | 404/404 | `[]` |
+
+The first makes "CI ready" green whatever the needed jobs concluded. The second makes the `test` job green whatever pytest returned.
+
+(Prepending `exit 0` to the `ci-ready` run block is caught by actionlint/shellcheck as unreachable code, so that variant is not open.)
+
+These edits change the gate's input values, not how it executes, which is why I graded this as a warning rather than with CR-01. They are visible in a sensitive-class diff. But the `ci-ready` job is tiny, and it is the one required check, so pinning it exactly is cheap.
+**Fix:** In the guard, assert the exact structure of the two gate steps:
+- `jobs["ci-ready"]["steps"]` has length 1.
+- `step["env"] == {"RESULTS": "${{ toJSON(needs) }}"}`.
+- `step["run"]` equals the text that `test_ci_gate._extract_ci_ready_script` wraps (`python3 - <<'PY'\n…\nPY\n`), and nothing else.
+- The step has no `shell`, `working-directory` or `timeout-minutes` override.
+- For "Fail if tests failed": `env == {"TEST_EXIT": "${{ steps.pytest.outputs.test_exit }}"}`, and the step with `id: pytest` writes `test_exit=$status`.
+
+Add the two edits above as regression tests.
+
+### WR-03: Another workflow can publish a second "CI ready" or "Review acceptance" check run, and readiness picks the check run with the highest id by name alone
+
+**File:** `.github/scripts/acceptance-readiness.cjs:122-126` (`latestCheck`), `:134-139`; `tests/test_required_jobs_no_skip.py` (reads only `ci.yml` and `review-acceptance.yml`)
+**Issue:** `latestCheck` keeps check runs whose `name` matches and whose `head_sha` is the head, then takes the highest `id`. It does not check which workflow file, or which app, produced the run.
+
+I verified the static side. A new file, `.github/workflows/mirror.yml`, on `pull_request` to main, with one job `name: CI ready` that runs `echo ok`, gives:
+- actionlint: exit 0;
+- the guard and workflow pytest files: 153 pass;
+- the Node suite: 404/404 pass.
+
+The guard and the Node detector only ever read `ci.yml` and `review-acceptance.yml`. (A second "CI ready" job inside `ci.yml` is caught: 4 pytest failures.)
+
+If the mirror job is delayed (for example `needs:` on a job that sleeps), its check run is created after the real one, so readiness reports CI ready "ok" from the mirror. The ruleset requires "CI ready" and "Review acceptance" from their "expected apps". Every workflow posts as the GitHub Actions app, so that pin does not tell the two apart. I did not verify how GitHub's ruleset resolves two same-named check runs from the same app on one commit. Readiness's behaviour is proven from the code.
+**Fix:**
+- Add a guard test that loads every `.github/workflows/*.yml` and asserts that "CI ready" and "Review acceptance" are each the `name` (or id, when no name is set) of exactly one job, in `ci.yml` and `review-acceptance.yml` respectively.
+- In readiness, bind the check to its workflow. Fetch the check suite's workflow run (`GET /repos/{o}/{r}/actions/runs?check_suite_id=…`), require `path == '.github/workflows/ci.yml'`, and block when more than one check run named "CI ready" exists for the head.
 
 ## Info
 
-### IN-12: The reviewer-name denylist misses concatenated and model-only names (new)
-**File:** `.github/scripts/codex-fallback.cjs:22, 59-67`
-**Issue:** Tokens are split on non-alphanumeric characters, so names with no separator, or with only a model name, are accepted. These pass with `kind: other-independent`:
-- `BMcodereviewer`, `ClaudeCode`, `codexreviewrun`;
-- `Cl<U+0430>ude` (Cyrillic small a), `Claudé`;
-- `opus 4 review`, `sonnet`.
+### IN-13: The classification policy still names the Node detector as the no-skip test, and does not list the authoritative guard as sensitive (new)
+**File:** `docs/review-classification-policy.md:3, 14`
+**Issue:**
+- Line 3 says "a permanent no-skip test (`.github/scripts/ci-job-consistency.cjs`) fails CI…". Since round 3, `tests/test_required_jobs_no_skip.py` is the authoritative check, and no document says so.
+- The sensitive row lists `.github/scripts/**` and the Codex review machinery. It does not list the guard, or `tests/test_ci_gate.py`, whose `ALL_JOBS` the guard imports.
 
-The name is self-declared and the owner approves the record, so the effect is limited to a misleading "independent reviewer" label.
-**Fix:** Also reject a name when the lowercased name, with separators removed, contains `claude`, `buildomator`, `codexreviewrun` or `bmcode`. Add `opus`, `sonnet`, `haiku` and `anthropic` as tokens. Normalise with NFKD and reject any name that is not ASCII.
+So a PR that only weakens the guard (for example widening `STEP_IF_ALLOWLIST`) is classified "code" rather than sensitive. The code class still gets the full review, so the effect is the missing RISK-01 note.
+**Fix:**
+- Name both checks on line 3, and say the pytest guard is authoritative.
+- Add `tests/test_required_jobs_no_skip.py` and `tests/test_ci_gate.py` to the sensitive row.
+- Optionally add both to `tests/test_review_machinery_lists.py`'s drift guard.
 
-### IN-09 (carried): Fallback records still accept hollow nested values
-**File:** `.github/scripts/codex-fallback.cjs` (result, findings and `decided_at` checks)
-**Issue:** An empty `result.summary`, findings without `id` or `severity`, impossible `decided_at` dates, and a misleading message for `pr: "5"` are all still accepted. Unchanged.
-**Fix:** As in iteration 2.
+### IN-01 to IN-12 (carried, owner-recorded follow-ups, MAINTENANCE.md "Still open after Phase 85")
+These are unchanged from iteration 3 and recorded by owner decision on 2026-10-27:
+- IN-01: the OS-scan image-ID wording.
+- IN-02: `persist-credentials` on the `os-scan` checkout.
+- IN-03: `--repo` on the register reads and writes.
+- IN-04: the raw `gh variable set` trace.
+- IN-05: the build-time packages (`hatchling`, `uv`).
+- IN-06: the hollow-report guard.
+- IN-07: the CodeQL fallback match.
+- IN-08: the readiness dry run uses HEAD's gate.
+- IN-09: hollow nested values in fallback records.
+- IN-10: **narrowed by `63b0b3d`**. The CLI now binds `--base` to `meta.base`, but it still does not compute the merge-base itself.
+- IN-11: the readiness prerequisites are not in the docs.
+- IN-12: the reviewer-name denylist misses run-together and model-only names. `63b0b3d` and `e44b818` did not touch the denylist, so it is unchanged.
 
-### IN-10 (carried): The `validate` CLI binds the Codex meta to `--head` but not to `--base`
-**File:** `.github/scripts/codex-fallback.cjs:258-289`
-**Issue:** Unchanged. WR-02 above now widens the same misalignment.
-**Fix:** Return `meta.base` and compare it with the reviewed base (see WR-02).
-
-### IN-11 (carried): The acceptance procedure does not document the new readiness prerequisites
-**File:** `docs/owner-cli-acceptance.md:15, 19`
-**Issue:** Readiness now also runs `git merge-base`. It needs both PR commits fetched and must be run from the repository root. Unchanged.
-**Fix:** "Run from the repository root after `git fetch origin main pull/<N>/head`."
-
-### IN-01 (carried): The OS-scan policy claims image-ID verification that the job does not perform
-**File:** `docs/os-scan-policy.md` (Scope paragraph) vs the `os-scan` job in `.github/workflows/ci.yml`
-**Issue:** The job runs only `sha256sum -c`. Unchanged.
-**Fix:** Say "checksum-verified", or add a `docker load` plus image-ID comparison.
-
-### IN-02 (carried): The `os-scan` checkout persists the job token in `.git/config`
-**File:** the `os-scan` job's `actions/checkout` step in `.github/workflows/ci.yml`
-**Issue:** There is no `persist-credentials: false`, while Trivy runs in that workspace. Unchanged.
-**Fix:** Add `with: { persist-credentials: false }`.
-
-### IN-03 (carried): Register reads and writes depend on the current directory's repository
-**File:** `.github/scripts/acceptance-readiness.cjs:386-387`; `.github/scripts/review-register.cjs:167, 176`
-**Issue:** `gh variable get/set` run without `--repo REPO`. Unchanged.
-**Fix:** Pass `'--repo', REPO`.
-
-### IN-04 (carried): `review-register.cjs` lets a failed `gh variable set` escape as a raw stack trace
-**File:** `.github/scripts/review-register.cjs:212, 256`
-**Issue:** Unchanged.
-**Fix:** Wrap the `writeRegister` calls the same way the `readRegister` calls are wrapped.
-
-### IN-05 (carried): Build-time packages outside the locked set
-**File:** `Dockerfile:16, 33, 55`
-**Issue:** An unpinned `hatchling` is used under build isolation, and `uv==0.12.17` is installed without a hash. Unchanged.
-**Fix:** Use `--no-build-isolation` with a hash-pinned `hatchling`, or document this as an accepted risk.
-
-### IN-06 (carried): The hollow-report guard is easy to sidestep
-**File:** `tests/codex_report_status.py` (`TRIVIAL_COMMANDS`)
-**Issue:** A report that ran only `ls` passes the guard. Unchanged.
-**Fix:** Require a recorded command naming the reviewed range, or soften the docstring.
-
-### IN-07 (carried): The CodeQL readiness fallback match is unlikely to fire
-**File:** `.github/scripts/acceptance-readiness.cjs:140-150`
-**Issue:** It filters on the `github-advanced-security` app slug and takes only the newest run. Unchanged.
-**Fix:** Require every matching analysis run to succeed, and match on the app that actually posts them.
-
-### IN-08 (carried): The readiness dry run uses HEAD's gate, not the pinned gate the job runs
-**File:** `.github/scripts/acceptance-readiness.cjs:11`; `.github/workflows/review-acceptance.yml:28`
-**Issue:** Unchanged.
-**Fix:** Load the gate from the pinned blob, or test that the pinned blob equals HEAD's.
+**Fix:** As recorded in the backlog.
 
 ## Set aside (needs ruling)
 
-### SA-04: Residual of WR-02, where a diff that changes `tests/codex_review_run.py` can certify its own base cross-grade (new; the fixer asked for a ruling)
-**Where:** `tests/codex_review_run.py:943-985` (`_run_base_grader`) and Invocation step 0 in the contract; `.github/scripts/acceptance-readiness.cjs:73-82`
-**Why excluded:** The fixer stated this residual and deferred it to the owner. My assessment of the fixer's description is in the Summary: the scope is correct (runner changes only), but the mechanism is understated. A changed runner can write a bound "complete" `.base-status.json` directly, without running the base checker, and the binding check cannot detect that.
-**Effect if left as is:** For a PR that changes the Codex runner, a "complete" Codex item in readiness rests on the changed runner's own honesty. CI and owner acceptance are unaffected, and runner changes are already sensitive-class.
-**Needs:** An owner ruling.
-- (a) Accept, with the classification policy as the control. If so, have readiness print "Codex runner changed in this diff: base cross-grade is self-reported" so the owner sees it at acceptance.
-- (b) Have readiness re-grade `<OUT>.last.json` with the base commit's checker itself.
+### SA-04 (carried, owner-recorded follow-up): A PR that changes `tests/codex_review_run.py` can certify its own base cross-grade
+**Where:** `tests/codex_review_run.py` (`_run_base_grader`); `.github/scripts/acceptance-readiness.cjs:80-88`
+**Why excluded:** The owner decided on 2026-10-27 to record it rather than fix it. Round 3 did not change it.
+**Effect if left as is:** For a PR that changes the runner, a "complete" Codex item rests on the changed runner's honesty.
+**Needs:** None this round (recorded). Revisit when the backlog item is scheduled.
 
-### SA-05: Detector scope ends at this file (new)
-**Where:** `.github/scripts/ci-job-consistency.cjs` (`findSkipConditions`)
-**Why excluded:** This is a design boundary, not a defect in the code as written.
-**Effect if left as is:** A required job or step that calls a reusable workflow (job-level `uses:`) or a local composite action (`uses: ./.github/actions/…`) can hold step conditions or `continue-on-error` the detector never reads. Today, no required job does this.
-**Needs:** An owner ruling.
-- Either forbid job-level `uses:` and local `./` actions in required jobs (one more fail-closed check),
-- or accept the boundary and say so in `docs/review-classification-policy.md`.
+### SA-05 (carried, owner-recorded follow-up; changed by round 3): The checks do not look inside reusable workflows or local actions
+**Where:** `tests/test_required_jobs_no_skip.py:129-130, 151-153`
+**Why excluded:** Recorded by the owner. Round 3 now forbids both in required jobs. I verified that a job-level `uses:`, `./`, `../` and `/` actions, and a `" ./…"` spelling (rejected by actionlint) are all caught. The residual applies only if the owner ever wants one of them.
+**Effect if left as is:** None today.
+**Needs:** None this round.
 
 ### SA-01 (carried): This PR's acceptance runs on the gate it introduces
-**Where:** `.github/workflows/review-acceptance.yml:23-28`
+**Where:** `.github/workflows/review-acceptance.yml:20-30`
 **Why excluded:** It is disclosed in the workflow, and it is a governance choice.
 **Effect if left as is:** A defect in the schema-2 gate would also admit this PR.
 **Needs:** An owner ruling.
@@ -334,7 +307,7 @@ The name is self-declared and the owner approves the record, so the effect is li
 
 ---
 
-_Reviewed: 2026-10-27T19:51:31Z_
+_Reviewed: 2026-10-27T21:54:52Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
-_Iteration: 3_
+_Iteration: 4_
