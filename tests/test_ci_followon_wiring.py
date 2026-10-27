@@ -246,6 +246,73 @@ def test_os_scan_gate_step_uses_exceptions_file_and_summary() -> None:
     assert '--summary "$GITHUB_STEP_SUMMARY"' in gate_run
 
 
+def test_actionlint_job_is_unconditional() -> None:
+    """CIMAINT-04: a skip can never fake a pass -- the job always runs."""
+    job = _ci_workflow()["jobs"]["actionlint"]
+
+    assert "needs" not in job
+    assert "if" not in job
+    assert job["timeout-minutes"] <= 5
+
+    block = _job_raw_block(CI_WORKFLOW, "actionlint")
+    assert "continue-on-error" not in block
+
+
+def test_actionlint_installs_pinned_checksummed_binary() -> None:
+    """actionlint is a pinned, checksum-verified binary, never a wrapper Action."""
+    job = _ci_workflow()["jobs"]["actionlint"]
+    env = job.get("env", {})
+
+    assert env.get("ACTIONLINT_VERSION") == _tool_pin("ACTIONLINT_VERSION")
+    actionlint_sha256 = env.get("ACTIONLINT_SHA256")
+    assert re.fullmatch(r"[0-9a-f]{64}", str(actionlint_sha256))
+    assert actionlint_sha256 == _tool_pin("ACTIONLINT_SHA256")
+
+    steps = job["steps"]
+    assert any("sha256sum -c" in str(step.get("run", "")) for step in steps)
+    for step in steps:
+        assert "actionlint" not in str(step.get("uses", ""))
+
+
+def test_actionlint_requires_shellcheck_and_lints_all_workflows() -> None:
+    """A missing shellcheck fails the job rather than silently skipping run-step checks."""
+    job = _ci_workflow()["jobs"]["actionlint"]
+    steps = job["steps"]
+
+    shellcheck_step = next(step for step in steps if "command -v shellcheck" in str(step.get("run", "")))
+    shellcheck_run = str(shellcheck_step.get("run", ""))
+    assert "exit 1" in shellcheck_run
+
+    lint_step = next(step for step in steps if re.search(r"(^|\s)\./actionlint(\s|$)", str(step.get("run", ""))))
+    lint_run = str(lint_step.get("run", "")).strip()
+    assert "-ignore" not in lint_run
+    assert ".yml" not in lint_run
+    assert ".yaml" not in lint_run
+
+
+def test_new_required_jobs_in_all_three_lists() -> None:
+    """os-scan and actionlint join ci-ready's needs, its Python required set, and REQUIRED_JOBS together."""
+    ci_ready = _ci_workflow()["jobs"]["ci-ready"]
+    needs = ci_ready["needs"]
+    assert "os-scan" in needs
+    assert "actionlint" in needs
+
+    block = _job_raw_block(CI_WORKFLOW, "ci-ready")
+    required_match = re.search(r"required = \{([^}]*)\}", block)
+    assert required_match, "ci-ready's Python required set not found"
+    required_set = required_match.group(1)
+    assert '"os-scan"' in required_set
+    assert '"actionlint"' in required_set
+
+    release_policy_text = (REPO_ROOT / ".github" / "scripts" / "release-policy.cjs").read_text()
+    match = re.search(r"const REQUIRED_JOBS = \[(.*?)\];", release_policy_text)
+    assert match, "REQUIRED_JOBS not found in release-policy.cjs"
+    jobs_list = [item.strip().strip("'\"") for item in match.group(1).split(",")]
+    assert "os-scan" in jobs_list
+    assert "actionlint" in jobs_list
+    assert jobs_list[-1] == "CI ready"
+
+
 def _locked_packaging_version() -> str:
     match = re.search(r'name = "packaging"\nversion = "([^"]+)"', UV_LOCK)
     assert match, "packaging version not found in uv.lock"
