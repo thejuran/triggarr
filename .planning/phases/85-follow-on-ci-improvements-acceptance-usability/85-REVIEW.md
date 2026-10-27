@@ -1,10 +1,11 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-reviewed: 2026-10-27T00:00:00Z
-reviewed_head: b4a47b6c575447d6bffde778d0e00ba51f0b2613
+reviewed: 2026-10-27T19:27:45Z
+reviewed_head: 252fe61410b776d1ff170047ab172f26555ce361
 diff_base: 091d8ed
+iteration: 2
 depth: standard
-files_reviewed: 47
+files_reviewed: 48
 files_reviewed_list:
   - .github/dependabot.yml
   - .github/os-scan-exceptions.json
@@ -55,206 +56,238 @@ files_reviewed_list:
   - tests/test_review_machinery_lists.py
   - uv.lock
 findings:
-  critical: 2
-  warning: 4
-  info: 8
-  total: 14
+  critical: 1
+  warning: 3
+  info: 11
+  total: 15
 status: issues_found
 ---
 
-# Phase 85: Code Review Report
+# Phase 85: Code Review Report (iteration 2)
 
-**Reviewed:** 2026-10-27 (head `b4a47b6c575447d6bffde778d0e00ba51f0b2613`, diff base `091d8ed`)
+**Reviewed:** 2026-10-27T19:27:45Z (head `252fe61410b776d1ff170047ab172f26555ce361`, diff base `091d8ed`)
 **Depth:** standard
-**Files Reviewed:** 47 (uv.lock skimmed only)
+**Files Reviewed:** 48 (uv.lock skimmed only)
 **Status:** issues_found
 
 ## Summary
 
-I reviewed the Phase 85 CI follow-on and acceptance-usability changes: the keyed acceptance register and draft check, the release least-privilege split, the Docker lockfile install and image/lock consistency check, the Trivy OS-scan gate, coverage provenance, the skip-condition detector, the Codex fallback validator, the readiness CLI, and the Codex runner's trust and signal handling.
+This is a re-review after the fix round. It covers the whole phase scope at head `252fe61`, and looks hardest at the six fix commits `fb01095..e89c534`.
 
-Baseline checks pass at this head. `node --test .github/scripts/*.test.cjs` passed 315/315. The phase's pytest files passed 416/416. `ruff check triggarr/ tests/ .github/scripts/` is clean. The BM convention checker returned no findings.
+Baseline at this head:
+- `node --test .github/scripts/*.test.cjs` plus the planchk-router test: 356/356 pass.
+- The phase's targeted pytest files (runner, report status, wiring, acceptance docs, machinery lists): 322/322 pass.
+- `ruff check triggarr/ tests/ .github/scripts/` is clean.
 
-Several parts hold up under probing:
-- **Acceptance gate:** it uses `Object.hasOwn` slice lookups, retires schema 1 explicitly, and rejects drafts. Its pinned commit `8df9eaf` holds the same `review-acceptance.cjs` as HEAD, and that commit will reach main because the repo uses merge commits.
-- **Release workflow:** only the tag-only `github-release` job holds `contents: write`.
-- **Docker image:** it installs the hash-checked locked export with `--no-deps`.
-- **OS-scan gate:** it fails closed on a hollow or malformed report and on a bad exceptions file.
+### Status of the iteration-1 findings
 
-Two controls this phase was meant to deliver fail open when probed with concrete inputs:
-1. **Fallback validator (CR-01):** `codex-fallback.cjs` accepts a record with an empty `owner_decision`, `result`, `reviewer` and `scope`, and with a different PR number. The contract says only an explicit `approve-fallback` that names the head may satisfy the Codex prerequisite.
-2. **Skip detector (CR-02):** the ACCEPT-03 detector misses a step-level `if:` written as the first key of a step (`- if: false`). That is a common YAML form, and with it the test job's "Fail if tests failed" step can be silently disabled while every check stays green.
+I checked each fix with crafted inputs, not only with the fixer's own tests.
 
-The warnings cover the remaining gaps:
-- **WR-01:** the readiness CLI trusts metadata written by the head's own runner.
-- **WR-02:** the fallback is not bound to the Codex output it was checked against.
-- **WR-03:** an empty `--test-exit` is recorded as a passing test run.
-- **WR-04:** a termination signal outside the Codex step leaves a reserved attempt with no status file.
+| Prior | Verdict | Evidence |
+|-------|---------|----------|
+| CR-01 fallback validator | **Fixed** | The iteration-1 reproduction (empty sub-objects, `pr: 999`) now returns 13 reasons, including "fallback is for a different PR" and "owner_decision.decision must be approve-fallback". `decision: 'nope'` is rejected. Residual gaps are in WR-03 and IN-09. |
+| CR-02 skip detector `- if:` | **Partially fixed. Still bypassable (see CR-01 below)** | `- if: false` is now reported. `if : false`, `-   if: false`, and a flow-mapping step `- {name: …, if: …}` applied to the real `ci.yml` still return `[]`. |
+| WR-01 readiness trusts runner meta | **Fixed as specified, with a regression and a residual** | A meta that claims no audited change is now overridden by the recomputed `git diff`, and a missing `meta.head` blocks. However, the now-mandatory `meta.base === baseRefOid` rejects valid local-checkpoint evidence (WR-01 below), and the status files are still not bound to the head (WR-02 below). |
+| WR-02 fallback not bound to its Codex output | **Fixed** | A record naming `…-a2` checked against a codexStatus for `…-a3` is rejected. The `validate` CLI exits 1 with "Codex output is for a different head" when meta names another head. |
+| WR-03 empty `--test-exit` | **Fixed** | `intArg` accepts only `^\d+$`. The CI producer (`ci.yml:56-57`) always emits integers, so valid runs are not over-rejected. |
+| WR-04 signal outside the Codex step | **Fixed** | `execute()` now has an `except BaseException` branch that writes a stub only if `.status.json` is missing, then re-raises unchanged. The guard test confirms that a base-grader interrupt does not overwrite the head status. The documented residual window (between `reserve_outputs` and the `try`) is acceptable. |
+
+### New in this iteration
+
+- **CR-01:** the CR-02 fix closed only one YAML spelling. Three other valid spellings still let a step-level condition disable "Fail if tests failed" without being detected, and actionlint does not catch a non-constant always-false condition.
+- **WR-01:** a regression from the WR-01 fix that blocks this phase's own acceptance path.
+- **WR-02:** the remaining self-certification gap in readiness.
+- **WR-03:** a gap in the fallback reviewer denylist that the first pass missed.
+
+IN-01 to IN-08 and SA-01 to SA-03 are carried forward unchanged, by owner decision, and are labelled as carried.
 
 ## Critical Issues
 
-### CR-01: Fallback validator accepts a record with no owner approval, no reviewer, no result, and the wrong PR
+### CR-01: The skip-condition detector (ACCEPT-03) still misses step `if:` written as `if :`, with extra spaces after the dash, or in a flow mapping (the CR-02 fix is incomplete)
 
-**File:** `.github/scripts/codex-fallback.cjs:53-158`
-**Issue:** `validateFallback` only checks that the nine top-level keys exist. It never requires the nested fields, so:
-- `owner_decision.decision` only fails when it equals `wait` or `retry-later`. A missing decision, or any other string such as `"nope"`, passes.
-- `owner_decision.verbatim`, `owner_decision.decided_at`, `result.status`, `reviewer.name`, `reviewer.kind` and `scope.diff` are each checked only `if (Object.hasOwn(...))`. If a field is absent, it is not checked at all.
-- `context.pr` is never destructured (line 54), and `record.pr` is never compared with it.
-- `result.findings` entries that are not objects are skipped with `continue` instead of rejected.
+**File:** `.github/scripts/ci-job-consistency.cjs:345-379` (`extractStepIfs`)
+**Issue:** The fix widened the match to `^(?:      - |        )(?:if|"if"|'if'):`. That still requires:
+- exactly one space after `-`;
+- the colon immediately after the key;
+- a block-mapping step.
 
-Reproduced at HEAD: the record `{schema:1, pr:999, head:H, base:B, codex_out:'.planning/phases/x/codex/<H12>-r-a2', reviewer:{}, scope:{}, result:{}, owner_decision:{}}` validated against PR 5 with a trusted head at attempt 2 returns `{ok: true, reasons: []}`. The same record with `owner_decision: {decision: 'nope'}` also returns `ok: true`.
+All three of these are valid YAML for the same `if` key. PyYAML parses each to `{'if': False, …}`:
 
-The file header (lines 5-8) and `docs/codex-adversarial-review-contract.md:118` both state that only `approve-fallback`, with verbatim words naming the head, satisfies the prerequisite. `acceptance-readiness.cjs:68` relies on this function to turn the Codex line to "ok". So an incomplete or fabricated fallback record makes the readiness checklist report "Ready to request approval" while Codex never completed and the owner never approved a fallback. The tests (`codex-fallback.test.cjs:186-216`) only mutate a fully valid record, so this path is never exercised.
-
-**Fix:** Require the nested fields and allowlist the decision. Compare the PR.
-```js
-const {pr, head, base, prAuthor, headTrust, codexStatus} = context;
-if (Object.hasOwn(record, 'pr') && record.pr !== pr) reasons.push('fallback is for a different PR');
-
-const requireFields = (obj, fields, prefix) => {
-  for (const f of fields) if (!isPlainObject(obj) || !Object.hasOwn(obj, f)) reasons.push(`missing required field ${prefix}.${f}`);
-};
-requireFields(record.reviewer, REVIEWER_FIELDS, 'reviewer');
-requireFields(record.scope, SCOPE_FIELDS, 'scope');
-requireFields(record.result, RESULT_FIELDS, 'result');
-requireFields(record.owner_decision, OWNER_DECISION_FIELDS, 'owner_decision');
-
-if (record.owner_decision?.decision !== 'approve-fallback') {
-  // keep the specific wait / retry-later messages, else:
-  reasons.push('owner_decision.decision must be approve-fallback');
-}
-if (typeof record.reviewer?.name !== 'string' || !record.reviewer.name.trim()) reasons.push('reviewer.name is required');
-if (!Array.isArray(record.result?.findings)) reasons.push('result.findings must be an array');
-// and reject non-object findings instead of `continue`
-```
-Add negative tests that start from `{}` sub-objects and from a wrong `pr`, not only from mutations of the valid fixture.
-
-### CR-02: Skip-condition detector (ACCEPT-03) misses `- if:` as the first key of a step
-
-**File:** `.github/scripts/ci-job-consistency.cjs:339-372`
-**Issue:** `extractStepIfs` treats any `^      - ` line as a step start. It then looks for `if:` only on 8-space lines (`/^        if:/`, line 356). When a step is written with `if:` as its first key, the condition sits on the step-start line itself and is never captured:
 ```yaml
-      - if: false
-        name: Fail if tests failed
+      - name: Fail if tests failed
+        if : false                 # space before the colon
+      -   if: false                # extra spaces after the dash
+          name: Fail if tests failed
+      - {name: Fail if tests failed, if: false, run: exit 1}   # flow mapping
 ```
-I reproduced this by applying that edit to the real `ci.yml`. `findSkipConditions({workflowText, aggregateJobId: 'ci-ready', triggerContract: TRIGGER_CONTRACTS['ci.yml']})` returns `[]`, while the equivalent 8-space form is correctly reported. With that edit, the `test` job passes whatever pytest returns, because the pytest step itself `exit 0`s and relies on this later step. `CI ready` then goes green and the release preflight accepts the run.
 
-This detector is the phase's mechanism for "no skip condition may let a required check pass" (D-01/D-02). The same blind spot applies to `- continue-on-error:` only by luck: that check scans every line with `\bcontinue-on-error\s*:`, so the `if` path is the exposed one.
-**Fix:** Match `if:` on the step-start line too, and fail closed on unparseable step keys:
-```js
-const ifMatch = line.match(/^        if:\s*(.+?)\s*$/) || line.match(/^      - if:\s*(.+?)\s*$/);
-```
-Apply the same handling to the folded-block continuation indent (`^          `) and to `name:`. Add regression tests for `- if: false`, `- if: >-` and `- if: ${{ false }}` against the real `ci.yml` and `review-acceptance.yml`.
+I applied each edit to the real `.github/workflows/ci.yml` (`test` job, "Fail if tests failed") and ran `findSkipConditions({workflowText, aggregateJobId: 'ci-ready', triggerContract: TRIGGER_CONTRACTS['ci.yml']})`:
+
+| Variant | Result |
+|---------|--------|
+| `- if: false` (the fixed case) | reported |
+| `if : false` | `[]` |
+| `-   if: false` (re-indented step) | `[]` |
+| flow-mapping step | `[]` |
+
+actionlint does not cover the gap. It flags only the constant `false`. With a non-constant always-false condition such as `if : github.run_attempt == '0'` (or the same condition in a flow mapping), actionlint exits 0.
+
+The pytest step `exit 0`s by design and relies on "Fail if tests failed". With that step disabled, the `test` job passes whatever pytest returns, `CI ready` goes green, and the release preflight accepts the run. This is the same consequence as the iteration-1 BLOCKER. Only the spelling differs.
+
+The same parser is used for `review-acceptance.yml` (`aggregateJobId: null`), so that workflow is exposed in the same way.
+
+**Fix:** Stop matching `if` as one exact spelling. Fail closed on any `if` key inside a required job's step region, the way `continue-on-error` is already handled (`/\bcontinue-on-error\s*:/` on every line). For example:
+- Treat any line in the job's `steps:` region that matches `/(^|[\s{,])["']?if["']?\s*:/` as a condition.
+- Treat any step-start line that is not `^      - (name|uses|run|id|env|with|shell|working-directory|timeout-minutes|if)\b` (that is, a flow mapping `- {`, an alias `- *`, or irregular indentation) as an unparseable step, and report it.
+
+Add regression tests for `if :`, `-   if:`, `- {…, if: …}`, and `- *alias`, run against both real workflows.
 
 ## Warnings
 
-### WR-01: Readiness trusts the reviewed head's own runner output to decide whether base cross-grading was needed
+### WR-01: Mandatory `meta.base === baseRefOid` rejects valid local-checkpoint Codex evidence, including this phase's own (regression from the WR-01 fix)
 
-**File:** `.github/scripts/acceptance-readiness.cjs:37-56` (also `.github/scripts/codex-fallback.cjs:215-227`)
-**Issue:** `codexStatusFor` reports Codex "complete" when `meta.review_mode === 'trusted-local-tests'`, `status.status === 'complete'`, and `meta.audited_inputs_changed_in_diff` is empty. All three values are written by `tests/codex_review_run.py` and `tests/codex_report_status.py` as they exist at the reviewed head, which is the checkout the runner executes from (`HARNESS_ROOT`). A diff that changes the runner can therefore record `audited_inputs_changed_in_diff: []` and skip the base cross-grade, and readiness accepts it.
+**File:** `.github/scripts/acceptance-readiness.cjs:54-56` and `382` (two-dot recompute)
+**Issue:** Readiness now blocks with "Codex evidence is for a different base" unless `meta.base` equals the PR's current `baseRefOid`, the tip of `main`. The contract (`docs/codex-adversarial-review-contract.md`, Invocation step 1) tells the operator to use `BASE_SHA = git merge-base origin/main HEAD` for a phase-scope local checkpoint. The project workflow runs that local pass before the end-of-phase push, so that is the evidence normally presented at acceptance.
 
-D-18 exists to make the grader unable to self-certify. The head binding is also optional: line 38 compares `meta.head` with the head only `if Object.hasOwn(meta, 'head')`, so a meta file without `head` skips the check. The trust model limits who can author such a diff, but the main risk here is an agent-authored change weakening the grader without anyone noticing.
-**Fix:** In `runCli`, recompute the audited-input change set yourself with `git diff --name-only <base>..<head> -- <AUDITED_INPUTS>` (argument array, no shell). Require a `complete` `.base-status.json` whenever that set is non-empty, whatever `meta` says. Make `meta.head === head` (and `meta.base === base`) mandatory rather than conditional.
+This repo merges with merge commits, so `main`'s tip moves to a new merge commit whenever any PR lands. It does not match a branch's merge-base unless the branch was cut from that exact tip.
 
-### WR-02: A fallback record is never bound to the Codex output it is validated against
+Concrete case: this branch. `git merge-base origin/main HEAD` is `b07e532` (the phase-83 tip). `origin/main` is `decd5f1` (the PR #35 merge commit). Both have identical trees. When this phase's PR is opened against `decd5f1`:
+- The post-fix Codex pass that CLAUDE.md requires, run as a local checkpoint per the contract, records `base: b07e532`, so readiness reports BLOCKED.
+- The PR form of the runner cannot fix this either. `verify_trust` refuses because `decd5f1` is not an ancestor of the head (`codex_review_run.py:513-518`).
 
-**File:** `.github/scripts/codex-fallback.cjs:164-189, 322-337`; `.github/scripts/acceptance-readiness.cjs:59-68`
-**Issue:** `codexOutMatchesHead` checks only that `record.codex_out`'s basename starts with the head prefix. It never compares `record.codex_out` with `codexStatus.out`, meaning the `--codex-out` whose `.meta.json`/`.status.json` were actually read to get `attempt` and `reviewMode`.
+The only way through is to merge `main` into the branch. That creates a new head and invalidates the BM review, the Codex review, CI, and any vibe-check. The check fails closed, but it rejects correct evidence for a review whose scope (merge-base..head) is exactly right.
 
-In the `validate` CLI, `meta.head` is never compared with `--head` at all. Attempt 2 of a different head's Codex run, or a later complete attempt, can therefore supply the "attempt ≥ 2 and incomplete" evidence for a fallback whose `codex_out` string merely names the right head. Readiness passes `out` in `codexStatus`, but `validateFallback` ignores it.
-**Fix:** Add `if (record.codex_out !== codexStatus?.out) reasons.push('fallback codex_out does not match the Codex output checked')`. In `codexStatusFromOutput`, return `meta.head` and reject when it differs from `--head`.
+There is a second problem. The recompute at line 382 uses a two-dot `git diff ${base}..${head}` against `baseRefOid`. When `main` has moved, that compares trees, so audited inputs changed on `main` (not in this PR) are counted as changed in this PR. That demands a base cross-grade the runner never performed.
 
-### WR-03: Empty `--test-exit` is recorded as a passing test run
+**Fix:**
+- Accept `meta.base` when it equals `baseRefOid` or `git merge-base <baseRefOid> <head>`, computed by readiness with an argument array.
+- Compute the audited-input set over the same range the evidence covers: `git diff --name-only <meta.base>..<head>` once `meta.base` is verified to be one of those two values, or `<baseRefOid>...<head>` (three dots).
+- Show both SHAs in the checklist ("Full base SHA" vs "Reviewed base SHA").
+- Add a test where `baseRefOid` is a merge commit ahead of the branch's merge-base.
 
-**File:** `.github/scripts/coverage-provenance.cjs:269, 290`
-**Issue:** `Number(requireArg(args, 'test-exit'))` turns `''` into `0`. `requireArg` only rejects `undefined` or a bare flag. The CI step passes `--test-exit "$TEST_EXIT"` from `steps.pytest.outputs.test_exit`, which is empty if that output was never written (for example, the step was edited or its output name drifted).
+### WR-02: Readiness still accepts status files that are not bound to this head or base, and that the reviewed runner wrote itself (residual of iteration-1 WR-01)
 
-Reproduced: `runCli(['write', ..., '--test-exit', '', '--test-seconds', '', ...])` exits 0 and writes `test_exit_code: 0`. `checkEvidence` then accepts the report as evidence from a passing run. The CI job still fails through "Fail if tests failed" (`"" != "0"`), but the uploaded provenance file says the tests passed, and that file is what vibe-check consumes.
-**Fix:** Parse strictly and fail closed:
-```js
-function intArg(args, name) {
-  const raw = requireArg(args, name);
-  if (!/^\d+$/.test(raw)) throw new Error(`--${name} must be a non-negative integer, got ${JSON.stringify(raw)}`);
-  return Number(raw);
-}
-```
+**File:** `.github/scripts/acceptance-readiness.cjs:60-61`; `tests/codex_review_run.py:1165-1196, 946-984`
+**Issue:** Readiness now forces a base cross-grade whenever an audited input changed. It then accepts that cross-grade on `baseStatus?.status === 'complete'` alone. It never compares `status.inspected_head` / `inspected_base`, or `baseStatus.inspected_head` / `inspected_base`, with the PR head and base, even though the checker emits those fields (`codex_report_status.py:537-539`).
 
-### WR-04: A termination signal outside the Codex step leaves a reserved attempt with no status file
+Reproduced with `codexStatusFor`:
+- `meta` correct for head `H` / base `B`;
+- recomputed audited change `['tests/codex_review_run.py']`;
+- `status` and `baseStatus` both `{status: 'complete', inspected_head: O, inspected_base: O}` for an unrelated commit `O`.
 
-**File:** `tests/codex_review_run.py:1076-1133` (`execute` / `_execute_reserved`), `186-191` (`_handle_termination_signal`)
-**Issue:** The signal handler raises `SystemExit`, which is a `BaseException`. Only the Codex step is wrapped in `try/finally: _finalize_raw_outputs(...)`, and only that function writes a status stub for a `SystemExit`. If SIGTERM or SIGHUP (or Ctrl-C, which raises `KeyboardInterrupt`) arrives at another point, nothing records a status, because `except RunnerError` and `except Exception` in both functions do not catch it. Those points are:
-- during the up-to-30-minute pytest run (`_run_pytest`, line 1111);
-- during `git worktree add`;
-- after the reservation but before the scratch directory exists;
-- during the base grader.
+Result: `{ok: true, detail: 'complete'}`.
 
-The attempt is left with `.prompt.txt` and `.meta.json` but no `.status.json`, which contradicts the `execute` comment "never leave it without a status". The effect still fails closed, because readiness errors with "could not read Codex status file". It also blocks the fallback path: `codexStatusFromOutput` throws for that attempt, so the operator must burn another attempt and cannot record the interrupted one as the incomplete attempt the fallback rule needs.
-**Fix:** In `execute`, catch `BaseException` after `reserve_outputs`. Write a stub that names `_RECEIVED_SIGNAL`, or `KeyboardInterrupt`, if `.status.json` does not exist yet, then re-raise. Alternatively, move the "status must exist" guarantee into one outer `try/finally` that covers the whole reserved section.
+The deeper problem is that when `tests/codex_review_run.py` itself changes, `.base-status.json` is still written by the changed runner (`_run_base_grader` runs inside the head's harness and passes it the head's `checker_tail`). So the recompute forces a file to exist, but the code under review writes that file. D-18's goal ("the grader cannot self-certify") still does not hold for a runner change.
+
+**Fix:**
+- Minimum: require `status.inspected_head === head && status.inspected_base === meta.base`, and the same for `baseStatus` whenever a base grade is required.
+- Stronger: when the recomputed set is non-empty, readiness itself materializes `git show <base>:tests/codex_report_status.py` and the schema into a temp dir, re-grades `<OUT>.last.json` with `--expected-head/--expected-base`, and ignores `.base-status.json`.
+
+### WR-03: The fallback reviewer denylist does not include BM's own reviewer agent or common Claude names
+
+**File:** `.github/scripts/codex-fallback.cjs:17, 92-97`
+**Issue:** `DISALLOWED_REVIEWERS` is an exact-match list: `bm`, `bm code review`, `buildomator`, `claude`, `gsd-code-reviewer`, `codex_review_run`. BM's reviewer agent in this project is `bm-code-reviewer`, which is the name this report is signed with. It is not on the list.
+
+Probed with a record whose other fields are all valid:
+- `reviewer: {name: 'bm-code-reviewer', kind: 'other-independent'}` returns `ok: true`;
+- `reviewer: {name: 'Claude Code', …}` returns `ok: true`.
+
+The contract says BM and Claude are not independent fallback reviewers. A fallback by the same agent that did the BM review would therefore satisfy the Codex prerequisite in readiness. Owner approval is still required. However, the validator's "independent reviewer" claim is what the owner is shown, and here it is false.
+
+This was missed in iteration 1.
+
+**Fix:** Normalize the name (lowercase, collapse `[-_\s]+` to one space) and reject any name containing the tokens `bm`, `buildomator`, `gsd`, `claude`, or `codex_review_run`, rather than requiring an exact match. Add `bm-code-reviewer` and `claude code` cases to the tests.
 
 ## Info
 
-### IN-01: OS-scan policy claims image-ID verification that the job does not do
+### IN-09: Fallback records still accept hollow nested values (new)
+**File:** `.github/scripts/codex-fallback.cjs:136-155, 175-177, 79-81`
+**Issue:** After the CR-01 fix, these fields are required to exist but are not checked for content:
+- `result.summary` may be `""`.
+- A finding may lack `id` and `severity`; only `disposition` is checked, and the message then reads `finding undefined has no disposition`.
+- `decided_at` passes the regex with impossible values such as `2026-13-45T99:99:99Z`.
+- A string `pr: "5"` is rejected with the misleading message "fallback is for a different PR".
+
+**Fix:** Require a non-blank `summary`; require `id` and `severity` on each finding; check `decided_at` with `!Number.isNaN(Date.parse(v))` plus a round-trip; report a non-integer `pr` as a type error.
+
+### IN-10: The `validate` CLI binds the Codex meta to `--head` but not to `--base` (new)
+**File:** `.github/scripts/codex-fallback.cjs:268-274, 370-373`
+**Issue:** WR-02's fix returns `meta.head` and checks it, but `codexStatusFromOutput` does not return `meta.base`, so the CLI never compares it with `--base`. Readiness does compare them. The two entry points now disagree on what counts as matching Codex evidence.
+**Fix:** Return `base: meta.base` and reject when it differs from `--base`, consistent with however WR-01 above is resolved.
+
+### IN-11: The acceptance procedure does not document the new readiness prerequisites (new)
+**File:** `docs/owner-cli-acceptance.md:15, 19`
+**Issue:** Readiness now:
+- shells out to `git diff`, so it needs the PR base and head fetched locally;
+- must be run from the repo root, because the pathspecs and `--codex-out` are relative to the working directory;
+- fails with "could not compute audited-input changes" or "Codex evidence is for a different base".
+
+The fix report acknowledges that the doc was intentionally left unchanged. The owner sees these messages at acceptance time with no procedure to follow.
+**Fix:** Add one sentence to step 1: "Run from the repository root after `git fetch origin main pull/<N>/head`."
+
+### IN-01 (carried): The OS-scan policy claims image-ID verification that the job does not perform
 **File:** `docs/os-scan-policy.md` (Scope paragraph) vs `.github/workflows/ci.yml:405-407`
-**Issue:** The policy says the image is "scanned only after its checksum and image ID are verified". The `os-scan` job runs `sha256sum -c` only. The checksum is sufficient, because Trivy scans the same tar, but the document overstates what the job checks.
-**Fix:** Change the doc to "checksum-verified", or add a `docker load` + image-ID comparison step like the one in `image-smoke`.
+**Issue:** The job runs `sha256sum -c` only. The doc says it verifies the checksum and the image ID. Unchanged.
+**Fix:** Say "checksum-verified", or add a `docker load` plus image-ID comparison.
 
-### IN-02: `os-scan` checkout persists the job token in `.git/config`
+### IN-02 (carried): The `os-scan` checkout persists the job token in `.git/config`
 **File:** `.github/workflows/ci.yml:398`
-**Issue:** The new `actionlint` and `secrets` jobs set `persist-credentials: false`, but `os-scan` does not, even though it runs a third-party binary (Trivy) in the same workspace. The token is read-only, so the impact is low.
-**Fix:** Add `with: { persist-credentials: false }` to the `os-scan` checkout.
+**Issue:** There is no `persist-credentials: false`, while a third-party binary (Trivy) runs in that workspace. Unchanged.
+**Fix:** Add `with: { persist-credentials: false }`.
 
-### IN-03: Register reads and writes depend on the current directory's repository
-**File:** `.github/scripts/acceptance-readiness.cjs:339-340`; `.github/scripts/review-register.cjs:167, 176`
-**Issue:** `gh variable get/set` run without `--repo`, while every other call in these scripts pins `REPO = 'thejuran/triggarr'`. If either script runs from a fork clone or a different remote default, it reads or overwrites another repository's variables.
-**Fix:** Pass `'--repo', REPO` on every `gh variable` call.
+### IN-03 (carried): Register reads and writes depend on the current directory's repository
+**File:** `.github/scripts/acceptance-readiness.cjs:356-357`; `.github/scripts/review-register.cjs:167, 176`
+**Issue:** `gh variable get/set` run without `--repo REPO`. Unchanged (the line numbers moved).
+**Fix:** Pass `'--repo', REPO`.
 
-### IN-04: `review-register.cjs` lets a failed `gh variable set` escape as a raw stack trace
+### IN-04 (carried): `review-register.cjs` lets a failed `gh variable set` escape as a raw stack trace
 **File:** `.github/scripts/review-register.cjs:212, 256`
-**Issue:** `writeRegister` is the only `gh` call in the CLI without a try/catch. A failure (auth, network, or size limit) throws out of `runCli` with a Node stack trace instead of the plain message and exit code 1 that every other path uses.
-**Fix:** Wrap it the same way `readRegister` calls are wrapped.
+**Issue:** The `writeRegister` calls are not wrapped in a try/catch. Unchanged.
+**Fix:** Wrap them the same way the `readRegister` calls are wrapped.
 
-### IN-05: Build-time packages outside the locked set
+### IN-05 (carried): Build-time packages outside the locked set
 **File:** `Dockerfile:16, 33, 55`
-**Issue:** The final stage's `pip install --no-deps .` uses build isolation, which fetches an unpinned `hatchling` from PyPI and runs it during the image build. The `deps` stage installs `uv==0.12.17` without a hash. None of this ships in the image, and the image/lock consistency check proves what does ship, but these build steps run unpinned code.
-**Fix:** Consider `--no-build-isolation` with a hash-pinned `hatchling` in the locked export, or document this as an accepted build-time risk.
+**Issue:** The build uses an unpinned `hatchling` under build isolation, and `uv==0.12.17` is installed without a hash. Unchanged.
+**Fix:** Use `--no-build-isolation` with a hash-pinned `hatchling`, or document this as an accepted risk.
 
-### IN-06: Hollow-report guard is easy to sidestep
+### IN-06 (carried): The hollow-report guard is easy to sidestep
 **File:** `tests/codex_report_status.py` (`TRIVIAL_COMMANDS`)
-**Issue:** A report that records only `ls` or `cat README.md` with exit code 0 passes the D-18 hollow-report guard. That is acceptable for a heuristic, but the docstring says the guard proves the diff was inspected.
-**Fix:** Consider also requiring at least one recorded command that names the reviewed range (`git diff <base>..<head>`), or soften the wording.
+**Issue:** A report that ran only `ls` passes the guard. Unchanged.
+**Fix:** Require a recorded command naming the reviewed range, or soften the docstring.
 
-### IN-07: The CodeQL readiness fallback match is unlikely to fire
-**File:** `.github/scripts/acceptance-readiness.cjs:96-107`
-**Issue:** When there is no `CodeQL` check run, the fallback looks for `Analyze*` runs from the `github-advanced-security` app. Default-setup `Analyze (<lang>)` runs come from the `github-actions` app, and the fallback also takes only the single newest run. A failing analysis for one language could be hidden behind a passing one.
-**Fix:** Require every matching analysis run on the head to succeed, and match on the app that actually posts them.
+### IN-07 (carried): The CodeQL readiness fallback match is unlikely to fire
+**File:** `.github/scripts/acceptance-readiness.cjs:113-124`
+**Issue:** The fallback filters on the `github-advanced-security` app slug and takes only the single newest run. Unchanged.
+**Fix:** Require every matching analysis run to succeed, and match on the app that actually posts them.
 
-### IN-08: The readiness dry run uses HEAD's gate, not the pinned gate the job runs
+### IN-08 (carried): The readiness dry run uses HEAD's gate, not the pinned gate the job runs
 **File:** `.github/scripts/acceptance-readiness.cjs:11`; `.github/workflows/review-acceptance.yml:28`
-**Issue:** Readiness `require`s the local `review-acceptance.cjs`, while the acceptance job checks out `8df9eaf…`. Both are identical today. Once either moves, "ready" can disagree with the real gate, which is the failure D-20 is meant to prevent.
-**Fix:** Have readiness load the gate with `git show <pinned-sha>:.github/scripts/review-acceptance.cjs` (pin read from the workflow file), or add a test asserting that the pinned blob equals HEAD's.
+**Issue:** Readiness loads the local `review-acceptance.cjs`, while the job runs the pin `8df9eaf…`. Unchanged.
+**Fix:** Load the gate from the pinned blob, or test that the pinned blob equals HEAD's.
 
 ## Set aside (needs ruling)
 
-### SA-01: This PR's acceptance runs on the gate it introduces
+### SA-01 (carried): This PR's acceptance runs on the gate it introduces
 **Where:** `.github/workflows/review-acceptance.yml:23-28`
-**Why excluded:** It is disclosed in the workflow comment, and the effect is a governance choice rather than a code defect.
-**Effect if left as is:** The schema-2 keyed gate checks its own introduction. If it has a defect that admits a bad register, that defect also admits this PR.
-**Needs:** An owner ruling: accept as disclosed, or require the independent Codex/vibe-check pass to explicitly clear `review-acceptance.cjs` before approval.
+**Why excluded:** It is disclosed in the workflow, and it is a governance choice.
+**Effect if left as is:** A defect in the schema-2 gate would also admit this PR.
+**Needs:** An owner ruling: accept as disclosed, or require the independent pass to clear `review-acceptance.cjs` explicitly.
 
-### SA-02: Register schema cutover strands other open PRs
-**Where:** `.github/scripts/review-acceptance.cjs:9-11`; `.github/scripts/review-register.cjs:95-112`
-**Why excluded:** This is an operational ordering question, not a code bug.
-**Effect if left as is:** Until the variables are migrated, this PR's acceptance fails with "Missing blocker register". After migration, any other open PR still using the old pin (`25f1ecd`, schema 1) fails acceptance until it rebases. Schema-1 dispositions are archived and not carried forward, so in-flight PRs need their dispositions re-entered.
-**Needs:** An owner ruling on migration timing relative to other open PRs (including Dependabot).
+### SA-02 (carried): The register schema cutover strands other open PRs
+**Where:** `.github/scripts/review-acceptance.cjs:10-12`; `.github/scripts/review-register.cjs:95-112`
+**Why excluded:** It is an operational ordering question.
+**Effect if left as is:** In-flight PRs need their dispositions re-entered after migration. (`gh pr list` shows no open PRs today.)
+**Needs:** An owner ruling on migration timing.
 
-### SA-03: Dependabot `uv` ecosystem has no cooldown
+### SA-03 (carried): The Dependabot `uv` ecosystem has no cooldown
 **Where:** `.github/dependabot.yml:23-31`
-**Why excluded:** Cooldown is a policy choice. The comment explains the restriction for docker/actions but not why `uv` has none.
-**Effect if left as is:** Monthly `uv` PRs can pick up a release published minutes earlier, so there is less buffer against a malicious or yanked package than for actions/docker.
-**Needs:** An owner ruling: add a `cooldown` for `uv`, or accept as is.
+**Why excluded:** It is a policy choice.
+**Effect if left as is:** There is less buffer against a malicious or yanked PyPI release than for actions/docker.
+**Needs:** An owner ruling: add a `cooldown`, or accept as is.
 
 ---
 
-_Reviewed: 2026-10-27_
+_Reviewed: 2026-10-27T19:27:45Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
+_Iteration: 2_
