@@ -142,6 +142,16 @@ None - no external service configuration required.
 - The CIMAINT-07 live-publish verification above is the one open item before this requirement can be called fully closed; it is a post-merge, real-GitHub-run check, not a blocker to merging this plan's own changes.
 - Post-wave integration run (`uv run pytest tests/ -x -q` plus the full `node --test` glob) is deliberately NOT run as part of this plan, per the plan's own `<verification>` note that it is a wave-level gate run once after every plan in wave 1 has finished (same-wave plans may hold intentionally failing RED tests mid-wave).
 
+## Self-Check: PASSED
+
+- FOUND: .github/workflows/release.yml
+- FOUND: .github/scripts/artifact-promotion.test.cjs
+- FOUND: tests/test_github_workflows.py
+- FOUND: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-10-SUMMARY.md
+- FOUND commit: 90705a7 (test(85-10): add failing least-privilege and no-dist release tests)
+- FOUND commit: 30cc961 (ci(85-10): split release permissions and drop Python distribution assets)
+- FOUND commit: 2f518e5 (docs(85-10): record split release permissions plan summary)
+
 ---
 *Phase: 85-follow-on-ci-improvements-acceptance-usability*
 *Completed: 2026-10-27*
