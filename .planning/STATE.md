@@ -4,7 +4,7 @@ milestone: v2.13
 milestone_name: CI & Review Workflow
 status: executing
 stopped_at: "Phase 85 planned; next: /bm:execute-phase 85"
-last_updated: "2026-10-27T13:50:39.138Z"
+last_updated: "2026-10-27T14:13:46.052Z"
 last_activity: 2026-10-27 -- Phase 85 execution started
 progress:
   total_phases: 7
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 85 (Follow-on CI improvements & acceptance usability) — EXECUTING
-Plan: 14 of 19 done (Waves 1-2 complete: 85-01..85-14)
+Plan: 16 of 19 done (Waves 1-3 complete: 85-01..85-16)
 Status: Executing Phase 85
 Last activity: 2026-10-27 -- Phase 85 execution started
 
