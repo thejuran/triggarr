@@ -1,6 +1,6 @@
 # Codex adversarial review contract
 
-Template version: 5. Adopted in Phase 83 (v2.13). Version 2 (2026-10-22) adds the working-copy read restriction to the prompt and a second secret check before raw output is committed (83-REVIEW.md WR-05). Version 3 (2026-10-22, owner decision on durable Codex completeness) scopes the review diff by rule, gives Codex harness-produced test evidence, and has Codex state completeness in the report schema v2 fields `review_complete` and `incomplete_reasons` instead of in free text. Version 4 (2026-10-22, owner-approved second fix round) takes everything under `.planning/` out of review scope, leaving planning markdown as background Codex may read on demand. Version 5 (2026-10-22, owner-approved third fix round) narrows that exclusion to planning markdown, raw review transcripts and generated review artifacts, so `.planning/config.json` (BM configuration, sensitive under `docs/review-classification-policy.md`) and every other non-markdown, non-codex file under `.planning/` stay in the review diff.
+Template version: 6. Adopted in Phase 83 (v2.13). Version 2 (2026-10-22) adds the working-copy read restriction to the prompt and a second secret check before raw output is committed (83-REVIEW.md WR-05). Version 3 (2026-10-22, owner decision on durable Codex completeness) scopes the review diff by rule, gives Codex harness-produced test evidence, and has Codex state completeness in the report schema v2 fields `review_complete` and `incomplete_reasons` instead of in free text. Version 4 (2026-10-22, owner-approved second fix round) takes everything under `.planning/` out of review scope, leaving planning markdown as background Codex may read on demand. Version 5 (2026-10-22, owner-approved third fix round) narrows that exclusion to planning markdown, raw review transcripts and generated review artifacts, so `.planning/config.json` (BM configuration, sensitive under `docs/review-classification-policy.md`) and every other non-markdown, non-codex file under `.planning/` stay in the review diff. Version 6 (2026-10-26, Phase 85 D-17) adds a second, positive diff for `.planning/**/*-PLAN.md`: phase plan files are agent instructions BM executors follow, so they are review scope even though other planning markdown stays excluded.
 
 This is the only prompt and invocation used for the independent Codex code-review pass paired with every BM code-review run in this repository: phase execution, quick task, explicit `/bm:code-review`, and review after fixes (D-06).
 
@@ -24,12 +24,16 @@ Everything else under `.planning/` stays in the review diff. In particular `.pla
 
 The fixed prompt's diff command carries these as the `':(exclude,glob).planning/**/codex/**'`, `':(exclude,glob).planning/**/*.jsonl'` and `':(exclude,glob).planning/**/*.md'` pathspecs, and `tests/codex_review_run.py` uses the same list. Planning docs are background context Codex may read on demand to understand intent; they are not review scope, and not having read them never makes a review incomplete. Planning-only changes get the focused consistency review in `docs/review-classification-policy.md` instead.
 
-## Fixed prompt (version 5)
+Phase plan files (`.planning/phases/**/*-PLAN.md`) are the exception: `docs/review-classification-policy.md` classifies them as sensitive, since they are agent instructions BM executors follow, not planning prose. A git pathspec cannot re-include a path an exclude already matches, so the blanket `.planning/**/*.md` exclusion above cannot be narrowed to let PLAN files back in. Instead, a second, positive diff — `git diff {{BASE_SHA}}..{{HEAD_SHA}} -- ':(glob).planning/**/*-PLAN.md'` — brings every `*-PLAN.md` file into review scope regardless of the first diff's exclusions. The review's effective scope is the union of both diffs.
+
+## Fixed prompt (version 6)
 
 ```
 Independently review {{PR_URL}} at head {{HEAD_SHA}} against base {{BASE_SHA}}. Scope: {{SCOPE}}.
 
 Review the full in-scope diff git diff {{BASE_SHA}}..{{HEAD_SHA}} -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md', including tests and relevant surrounding code. Planning markdown, raw review transcripts and generated review artifacts under .planning/ are excluded from the review scope; other files under .planning/, such as .planning/config.json, are in scope. You may read planning markdown on demand as background on intent; it is not review scope, and not reading it never makes the review incomplete.
+
+Also review the phase plan files changed in this range with git diff {{BASE_SHA}}..{{HEAD_SHA}} -- ':(glob).planning/**/*-PLAN.md'. Plan files are agent instructions that executors follow; they are in review scope.
 
 First run git rev-parse HEAD and report it as inspected_head_sha. Report {{BASE_SHA}} as inspected_base_sha only after confirming git cat-file -e {{BASE_SHA}} succeeds.
 

@@ -95,7 +95,7 @@ GRADER_FILES = (
 REPO_SLUG = "thejuran/triggarr"
 TRUSTED_AUTHORS = frozenset({"thejuran"})
 
-TEMPLATE_HEADING = "## Fixed prompt (version 5)"
+TEMPLATE_HEADING = "## Fixed prompt (version 6)"
 PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDENCE"})
 
 # Planning markdown, raw review transcripts and generated review artifacts are
@@ -108,6 +108,12 @@ EXCLUDE_PATHSPECS = (
     ":(exclude,glob).planning/**/*.jsonl",
     ":(exclude,glob).planning/**/*.md",
 )
+
+# D-17 (Phase 85): phase plan files are agent instructions BM executors
+# follow, so they are brought back into review scope through a second,
+# positive diff -- a git pathspec cannot re-include a path EXCLUDE_PATHSPECS'
+# blanket .planning/**/*.md already matches. Must match the fixed prompt.
+PLAN_PATHSPECS = (":(glob).planning/**/*-PLAN.md",)
 
 OUTPUT_SUFFIXES = (
     ".prompt.txt",
@@ -353,6 +359,11 @@ def prompt_values(run: ReviewRun) -> dict[str, str]:
 
 def diff_argv(base: str, head: str) -> list[str]:
     return ["git", "diff", f"{base}..{head}", "--", ".", *EXCLUDE_PATHSPECS]
+
+
+def plan_diff_argv(base: str, head: str) -> list[str]:
+    """The second, positive diff that brings *-PLAN.md files back into review scope (D-17)."""
+    return ["git", "diff", f"{base}..{head}", "--", *PLAN_PATHSPECS]
 
 
 def worktree_add_argv(worktree: Path, head: str) -> list[str]:
@@ -1196,6 +1207,9 @@ def dry_run(run: ReviewRun) -> int:
     print("# Rendered prompt (sent on stdin to codex exec)")
     print(prompt)
     print("# Commands")
+    print("# the two diff commands codex is instructed to run itself (D-17)")
+    print(shlex.join(diff_argv(run.base, run.head)))
+    print(shlex.join(plan_diff_argv(run.base, run.head)))
     print("# trust verification (D-18 SA-01)")
     for command in _trust_preview_commands(run):
         print(command)

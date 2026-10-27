@@ -163,9 +163,15 @@ def test_exclude_pathspecs_are_narrow() -> None:
 
 
 def _policy_sensitive_planning_paths() -> list[str]:
+    """Concrete sensitive files named directly under .planning/ in the policy's sensitive row.
+
+    Excludes bare directory references (trailing "/", e.g. the D-17
+    `.planning/phases/` mention that qualifies the separate `*-PLAN.md`
+    glob) -- this helper names files the fixture below can actually create.
+    """
     policy = (REPO_ROOT / "docs" / "review-classification-policy.md").read_text(encoding="utf-8")
     row = next(line for line in policy.splitlines() if line.startswith("| sensitive |"))
-    return sorted(set(re.findall(r"`(\.planning/[^`*]+)`", row)))
+    return sorted({path for path in re.findall(r"`(\.planning/[^`*]+)`", row) if not path.endswith("/")})
 
 
 def test_policy_names_planning_config_as_sensitive() -> None:
@@ -1263,7 +1269,7 @@ def test_execute_records_provenance(tmp_path, monkeypatch) -> None:
     execute(run, command_runner=FakeRunner())
 
     meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
-    assert meta["template_version"] == "5"
+    assert meta["template_version"] == "6"
     assert meta["head"] == H and meta["base"] == B
     assert meta["harness_head"] == H
     assert meta["trusted"] is True
