@@ -59,19 +59,32 @@ env override, and either side of that could change.
 That load-line check only proves `register.js` (the module hook) still loads — it
 says nothing about whether `guard.mjs` (the classic hook) still blocks when the
 module gate is off. Re-run the negative (fail-closed) check too, after every update,
-the same way the activation evidence did it: without editing
-`.claude/settings.local.json`, sideload the plugin for one disposable session from a
-throwaway directory with no `.claude/` of its own, with
-`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` left unset:
+without editing `.claude/settings.local.json`. From the Triggarr root, force the flag
+off for one disposable session with a command-line settings override (command-line
+settings take precedence over `settings.local.json`; verified live 2026-10-26), so the
+real local registration is what gets tested:
+
+```bash
+cd /path/to/triggarr
+claude --debug hooks --settings '{"env":{"CLAUDE_CODE_ENABLE_FUNCTION_HOOKS":"0"}}' \
+  -p "<prompt that spawns a bm:bm-plan-checker agent>"
+```
+
+The `--debug hooks` log for that session should say hooks modules are not turned on
+(the router did not load). Alternative, outside Triggarr: from a throwaway directory
+with no `.claude/` of its own, sideload the plugin directory itself (not its
+marketplace parent) with the flag unset:
 
 ```bash
 cd /path/to/some/throwaway/dir
-claude --plugin-dir /path/to/triggarr/.claude/plugins -p "<prompt that spawns a bm:bm-plan-checker agent>"
+env -u CLAUDE_CODE_ENABLE_FUNCTION_HOOKS claude --plugin-dir /path/to/triggarr/.claude/plugins/planchk-router \
+  -p "<prompt that spawns a bm:bm-plan-checker agent>"
 ```
 
-Confirm the spawn is refused: a non-zero exit and the
-`planchk-router: refusing bm:bm-plan-checker spawn` message on stderr (or in the
-`--debug hooks` log). If that message does not appear, the guard has stopped firing
+Confirm the spawn is refused: the session output (the Agent call's hook error) or
+the `--debug hooks` log contains `planchk-router: refusing bm:bm-plan-checker spawn`,
+and no checker model appears in the session's model usage. The `claude -p` process
+itself still exits 0; the refusal is reported inside the session, not as an exit code. If that message does not appear, the guard has stopped firing
 and the plugin can no longer fail closed — stop and investigate before relying on it
 again.
 
