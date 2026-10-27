@@ -245,6 +245,128 @@ partial change breaks the second). Downstream jobs (`docker`, `image-smoke`,
 `browser-e2e`) are skipped, and `CI ready` fails. Restore the same way:
 `gh pr close <number> --delete-branch`.
 
+## Recipe 4: image disagrees with uv.lock (gate enforcement evidence, kind ii)
+
+**Purpose:** proves CIMAINT-01's "Check image dependencies match uv.lock" step
+in the `docker` job turns `CI ready` red when the running image's resolved
+`idna` version diverges from the lockfile, through a real CI run on this
+phase's own pull request — not a throwaway pull request.
+
+**Owner go-ahead required at the time of the push (D-10):** this document
+does not supply that go-ahead. It is requested and recorded as part of Plan
+85-19's hand-off, immediately before the push happens.
+
+**Mutation:** append one line to the Dockerfile's production stage, directly
+after the existing locked, hash-checked install step:
+
+```
+RUN pip install --no-cache-dir --no-deps "idna==3.4"
+```
+
+`3.4` is a real released PyPI version of `idna`, different from the
+lockfile's pinned `3.15` (the same version pair Plan 85-08 already proved
+locally). This reintroduces, inside the production stage only, exactly the
+version-mismatch class the hash-checked install was built to close.
+
+**Expected failing job and specific failure text:** the `docker` job fails at
+its "Check image dependencies match uv.lock" step. `image_lock_consistency.py`
+prints and exits non-zero on:
+
+```
+version mismatch: idna lock 3.15 image 3.4
+```
+
+**Expected skipped jobs:** `image-smoke`, `browser-e2e` and `os-scan` each
+`needs: [docker]`, so once `docker` fails GitHub reports them skipped rather
+than run. `CI ready` fails because a skipped required job never counts as a
+success.
+
+**Evidence fields:** PR head SHA, PR base SHA, tested SHA with a
+reconciliation line against the PR head/base, run URL, run ID and attempt,
+and the job conclusions for `docker`, `image-smoke`, `browser-e2e`, `os-scan`
+and `CI ready`.
+
+**Restore:** `git revert --no-edit <demo commit>`, pushed to the same PR
+branch. History is kept; this is never a force push and never a branch
+deletion.
+
+**Repeat when (D-09):** the Dockerfile's production-stage install,
+`image_lock_consistency.py`'s comparison logic, or the `docker` job's "Check
+image dependencies match uv.lock" step changes.
+
+## Recipe 5: workflow lint failure (gate enforcement evidence, kind ii)
+
+**Purpose:** proves CIMAINT-04's unconditional `actionlint` job turns
+`CI ready` red when a workflow file is invalid, through a real CI run on this
+phase's own pull request — not a throwaway pull request.
+
+**Owner go-ahead required at the time of the push (D-10):** this document
+does not supply that go-ahead. It is requested and recorded as part of Plan
+85-19's hand-off, immediately before the push happens.
+
+**Mutation:** add a new file `.github/workflows/demo-actionlint-negative.yml`:
+
+```yaml
+name: Demo Actionlint Negative
+
+on:
+  workflow_dispatch:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reference an undefined step output
+        run: echo "${{ steps.missing.outputs.value }}"
+```
+
+The workflow's only trigger is `workflow_dispatch`, so nothing ever causes it
+to actually run as part of this push or the pull request's own CI event —
+`actionlint` lints the file's syntax and expression types regardless of
+whether the workflow itself ever executes.
+
+**Expected failing job and specific failure text:** the `actionlint` job
+fails. `actionlint`'s output on `demo-actionlint-negative.yml` contains:
+
+```
+property "missing" is not defined in object type {} [expression]
+```
+
+for the `steps.missing.outputs.value` expression.
+
+**Expected skipped jobs:** none. `actionlint` has no `needs`, no `if` and no
+`continue-on-error`, so it always runs and fails under its own evaluation;
+nothing else depends on it, so nothing else is skipped. `CI ready` fails
+because `actionlint` is one of its required jobs.
+
+**Evidence fields:** PR head SHA, PR base SHA, tested SHA with a
+reconciliation line, run URL, run ID and attempt, and the job conclusions for
+`actionlint` and `CI ready`.
+
+**Restore:** `git revert --no-edit <demo commit>`, pushed to the same PR
+branch. History is kept; this is never a force push and never a branch
+deletion.
+
+**Repeat when (D-09):** the `actionlint` job's wiring, its pinned binary
+version, or its unconditional-run guarantee changes.
+
+## Where and how these run
+
+Both Recipe 4's and Recipe 5's mutations ship as **one commit**, pushed to
+the phase's own pull request branch after that phase's normal end-of-phase
+push — never a separate or throwaway pull request (Phase 85 D-02; one PR per
+phase), never to `main`, and never as a tag. The push is never forced. Once
+both checks' failure evidence is captured, a **restore push** follows with
+`git revert --no-edit <demo commit>` on the same branch, which keeps history
+intact and needs no force push. The broken head is never marked approved, and
+its `review-acceptance` run is never approved. CI, the paired BM + Codex
+review, the checkpoint record, and owner acceptance are all taken fresh on
+the restored head — never carried over from the broken head or from any
+earlier head. Greptile may automatically review both the negative head and
+the restored head while its free credits last; the go-ahead request and the
+recorded evidence disclose this (D-03), rather than treating it as a reason
+to decline.
+
 ## When to repeat a demonstration (D-09)
 
 - **Repeat Recipe 1** whenever the `Dockerfile`, `entrypoint.sh`, the smoke
