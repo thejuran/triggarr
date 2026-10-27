@@ -68,12 +68,28 @@ function codexStatusFor({
 
   const claimed = Array.isArray(meta.audited_inputs_changed_in_diff) ? meta.audited_inputs_changed_in_diff : [];
   const auditedChanged = [...new Set([...claimed, ...(Array.isArray(recomputed) ? recomputed : [])])];
-  const baseOk = auditedChanged.length === 0 || baseStatus?.status === 'complete';
-  const headSideComplete = meta?.review_mode === 'trusted-local-tests' && status?.status === 'complete';
+  const baseRequired = auditedChanged.length > 0;
+  const claimsComplete = meta?.review_mode === 'trusted-local-tests' && status?.status === 'complete';
 
-  if (headTrust === 'untrusted' && headSideComplete) {
+  if (headTrust === 'untrusted' && claimsComplete) {
     return {ok: false, detail: 'Codex evidence claims complete for an untrusted head; untrusted runs are refused until Phase 85.1'};
   }
+
+  // A checker verdict counts only for the commits it graded (WR-02, iteration
+  // 2): the inspected head and base it reports must be this head and the
+  // reviewed base, for the head-side status and for any required base grade.
+  const boundHere = graded => graded?.inspected_head === head && graded?.inspected_base === meta.base;
+  if (status?.status === 'complete' && !boundHere(status)) {
+    return {ok: false, detail: 'Codex status file is not bound to this head and base (inspected_head/inspected_base differ)'};
+  }
+  if (claimsComplete && baseRequired && baseStatus?.status === 'complete' && !boundHere(baseStatus)) {
+    return {
+      ok: false,
+      detail: 'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)',
+    };
+  }
+  const baseOk = !baseRequired || baseStatus?.status === 'complete';
+  const headSideComplete = claimsComplete;
 
   if (headTrust === 'trusted' && headSideComplete && !baseOk) {
     return {ok: false, detail: "grader changed in this diff: the base commit's checker did not confirm completeness"};

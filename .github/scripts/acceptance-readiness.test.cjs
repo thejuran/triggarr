@@ -34,7 +34,7 @@ function baseline() {
     dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
     blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
     codex: {
-      status: {status: 'complete'},
+      status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
       baseStatus: null,
       meta: {
         meta_version: 2,
@@ -230,7 +230,7 @@ test('Codex status incomplete with no fallback blocks with the standard message'
 test('Codex complete but a changed grader with an incomplete base-status blocks with the grader-changed detail', () => {
   const input = baseline();
   input.codex = {
-    status: {status: 'complete'},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
     baseStatus: {status: 'incomplete'},
     meta: {
       meta_version: 2,
@@ -284,7 +284,7 @@ for (const variant of UNTRUSTED_VARIANTS) {
 test('an untrusted head whose Codex files claim complete is blocked even with a fallback present', () => {
   const input = untrustedBaseline(UNTRUSTED_VARIANTS[0]);
   input.codex.meta = {...input.codex.meta, review_mode: 'trusted-local-tests'};
-  input.codex.status = {status: 'complete'};
+  input.codex.status = {status: 'complete', inspected_head: HEAD, inspected_base: BASE};
   input.fallback = validFallback({codex_out: untrustedRefusalOut()});
   const result = readiness(input);
   const i = item(result, 'Codex');
@@ -373,7 +373,7 @@ test('headTrustFor: the repository owner on the home repo is trusted', () => {
 
 test('codexStatusFor: trusted + complete + no audited changes is ok', () => {
   const result = codexStatusFor({
-    status: {status: 'complete'},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
     baseStatus: null,
     meta: {head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
     out: CODEX_OUT,
@@ -477,7 +477,7 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
-    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
@@ -513,7 +513,7 @@ test('runCli blocks "CI ready" when a page-2 match has a different head_sha', ()
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
-    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
@@ -542,7 +542,7 @@ test('runCli fails closed on unparseable check-runs slurp output', () => {
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
-    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
@@ -575,7 +575,7 @@ test('runCli fails closed on a non-array comments slurp output', () => {
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
-    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
@@ -610,7 +610,7 @@ test('runCli: a fully ready PR exits 0 and the output never contains the string 
     [gitDiffKey()]: '',
   });
   const readFile = fileTable({
-    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
     }),
@@ -649,7 +649,7 @@ test('AUDITED_INPUTS mirrors tests/codex_review_run.py AUDITED_INPUTS', () => {
 
 test('codexStatusFor: a recomputed audited change overrides a meta that claims none', () => {
   const result = codexStatusFor({
-    status: {status: 'complete'},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
     baseStatus: null,
     meta: {head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
     auditedChanged: ['tests/codex_report_status.py'],
@@ -662,7 +662,7 @@ test('codexStatusFor: a recomputed audited change overrides a meta that claims n
 test('codexStatusFor: a meta without head is never complete', () => {
   const meta = {base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []};
   const result = codexStatusFor({
-    status: {status: 'complete'}, baseStatus: null, meta, auditedChanged: [],
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE}, baseStatus: null, meta, auditedChanged: [],
     out: CODEX_OUT, head: HEAD, base: BASE, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
   });
   assert.equal(result.ok, false);
@@ -675,7 +675,7 @@ test('codexStatusFor: a meta for a different base (or none) is never complete', 
     {head: HEAD, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
   ]) {
     const result = codexStatusFor({
-      status: {status: 'complete'}, baseStatus: null, meta, auditedChanged: [],
+      status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE}, baseStatus: null, meta, auditedChanged: [],
       out: CODEX_OUT, head: HEAD, base: BASE, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
     });
     assert.equal(result.ok, false);
@@ -704,7 +704,7 @@ function readyCliFixture(gitDiffOutput) {
   table[mergeBaseKey()] = `${BASE}\n`;
   if (gitDiffOutput !== undefined) table[gitDiffKey()] = gitDiffOutput;
   const readFile = fileTable({
-    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests',
       audited_inputs_changed_in_diff: [],
@@ -760,7 +760,7 @@ function movedMainFixture({metaBase, mergeBaseOutput = `${BASE}\n`, diffs}) {
   if (mergeBaseOutput !== null) table[mergeBaseKey(MAIN_TIP)] = mergeBaseOutput; // null: git cannot answer
   for (const [base, output] of Object.entries(diffs || {})) table[gitDiffKey(base)] = output;
   const readFile = fileTable({
-    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete'}),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
       meta_version: 2, head: HEAD, base: metaBase, attempt: 1, review_mode: 'trusted-local-tests',
       audited_inputs_changed_in_diff: [],
@@ -822,11 +822,79 @@ test('runCli fails closed when the merge-base cannot be computed or is not a com
 test('codexStatusFor checks meta.base against the reviewed base when one is given', () => {
   const meta = {head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []};
   const common = {
-    status: {status: 'complete'}, baseStatus: null, meta, auditedChanged: [],
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE}, baseStatus: null, meta, auditedChanged: [],
     out: CODEX_OUT, head: HEAD, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
   };
   assert.equal(codexStatusFor({...common, base: MAIN_TIP, reviewedBase: BASE}).ok, true);
   const wrong = codexStatusFor({...common, base: BASE, reviewedBase: MAIN_TIP});
   assert.equal(wrong.ok, false);
   assert.ok(wrong.detail.includes('Codex evidence is for a different base'), wrong.detail);
+});
+
+// --- Iteration-2 WR-02 regressions: status files must be bound to this head/base ---
+
+const UNRELATED = 'f'.repeat(40);
+
+function statusArgs({status, baseStatus, auditedChanged = []}) {
+  return {
+    status, baseStatus,
+    meta: {head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: []},
+    auditedChanged,
+    out: CODEX_OUT, head: HEAD, base: BASE, pr: PR, prAuthor: 'thejuran', headTrust: 'trusted', fallback: null,
+  };
+}
+
+const BOUND = {status: 'complete', inspected_head: HEAD, inspected_base: BASE};
+
+test("codexStatusFor: the reviewer's reproduction (status and base-status for an unrelated commit) is blocked", () => {
+  const unrelated = {status: 'complete', inspected_head: UNRELATED, inspected_base: UNRELATED};
+  const result = codexStatusFor(statusArgs({
+    status: unrelated, baseStatus: unrelated, auditedChanged: ['tests/codex_review_run.py'],
+  }));
+  assert.equal(result.ok, false);
+  assert.ok(result.detail.includes('Codex status file is not bound to this head and base'), result.detail);
+});
+
+test('codexStatusFor: a complete status for another head, another base, or with no inspected SHAs is blocked', () => {
+  for (const status of [
+    {status: 'complete', inspected_head: UNRELATED, inspected_base: BASE},
+    {status: 'complete', inspected_head: HEAD, inspected_base: UNRELATED},
+    {status: 'complete'},
+    {status: 'complete', inspected_head: null, inspected_base: null},
+  ]) {
+    const result = codexStatusFor(statusArgs({status, baseStatus: null}));
+    assert.equal(result.ok, false, JSON.stringify(status));
+    assert.ok(result.detail.includes('Codex status file is not bound to this head and base'), result.detail);
+  }
+});
+
+test('codexStatusFor: a required base-status that is complete but for another head or base is blocked', () => {
+  for (const baseStatus of [
+    {status: 'complete', inspected_head: UNRELATED, inspected_base: BASE},
+    {status: 'complete', inspected_head: HEAD, inspected_base: UNRELATED},
+    {status: 'complete'},
+  ]) {
+    const result = codexStatusFor(statusArgs({status: BOUND, baseStatus, auditedChanged: ['tests/codex_report_status.py']}));
+    assert.equal(result.ok, false, JSON.stringify(baseStatus));
+    assert.ok(result.detail.includes('base checker status is not bound to this head and base'), result.detail);
+  }
+});
+
+test('codexStatusFor: bound status and bound base-status with a changed grader is complete', () => {
+  const result = codexStatusFor(statusArgs({status: BOUND, baseStatus: BOUND, auditedChanged: ['tests/codex_report_status.py']}));
+  assert.equal(result.ok, true, result.detail);
+});
+
+test('runCli blocks Codex when the status file was graded for a different head', () => {
+  const {exec} = readyCliFixture('');
+  const readFile = fileTable({
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: UNRELATED, inspected_base: BASE}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests',
+      audited_inputs_changed_in_diff: [],
+    }),
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.equal(exitCode, 1);
+  assert.ok(logs.join('\n').includes('Codex status file is not bound to this head and base'), logs.join('\n'));
 });
