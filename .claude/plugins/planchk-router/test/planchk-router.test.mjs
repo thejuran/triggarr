@@ -144,8 +144,8 @@ test('hooks.json: wires register.js as a module and guards Agent|Task via PreToo
 
 // Preload that drives the guard's own process.stdin deterministically: once
 // guard.mjs has registered its listeners, deliver a non-checker payload (which
-// alone would exit 0), then a stream error, then 'end'. The real stdin stays
-// open until the parent closes it, so only these emitted events reach the guard.
+// alone would exit 0), then a stream error, then 'end'. The parent never closes
+// the real stdin, so the guard must exit on its own (no hang after an error).
 const STDIN_ERROR_PRELOAD =
   'data:text/javascript,' +
   encodeURIComponent(`
@@ -158,19 +158,21 @@ const t = setInterval(() => {
 }, 5);
 `);
 
-test('guard: stdin error then end -> stays exit 2, refusal on stderr (no later exit 0)', async () => {
+test('guard: stdin error then end -> exits 2 on its own, refusal on stderr', { timeout: 5000 }, async () => {
   const env = { ...process.env };
   delete env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS;
   const child = spawn(process.execPath, ['--import', STDIN_ERROR_PRELOAD, GUARD_PATH], { env });
   let stderr = '';
   child.stderr.setEncoding('utf8');
+  child.stdin.on('error', () => {});
   child.stderr.on('data', (chunk) => {
     stderr += chunk;
-    if (stderr.includes('stdin error')) {
-      child.stdin.end();
-    }
   });
+  // A hung guard is killed so the test fails cleanly instead of hanging the runner.
+  const killer = setTimeout(() => child.kill('SIGKILL'), 3000);
   const code = await new Promise((resolve) => child.on('close', resolve));
+  clearTimeout(killer);
+  child.stdin.destroy();
   assert.equal(code, 2);
   assert.match(stderr, /planchk-router: stdin error while reading PreToolUse input/);
 });

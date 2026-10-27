@@ -14,11 +14,14 @@ process.stdin.on('error', () => {
   // Stream-level error (broken pipe, ECONNRESET, etc.) -- fail closed rather than
   // let Node's uncaught-exception path pick an exit code outside this script's
   // deliberate contract (0 or 2).
-  process.stderr.write(
-    'planchk-router: stdin error while reading PreToolUse input; refusing Agent spawn so the Codex route cannot silently fail. Stop and report.\n'
-  );
   refused = true;
   process.exitCode = 2;
+  // Exit from the write callback: the message is flushed first, and the process
+  // cannot hang on a stdin handle the caller never closes after the error.
+  process.stderr.write(
+    'planchk-router: stdin error while reading PreToolUse input; refusing Agent spawn so the Codex route cannot silently fail. Stop and report.\n',
+    () => process.exit(2)
+  );
 });
 process.stdin.on('end', () => {
   if (refused) {
