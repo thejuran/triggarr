@@ -104,10 +104,34 @@ def test_identity_step_passes_values_through_env_not_interpolation() -> None:
     assert "${{" not in identity_step["with"]["script"]
 
 
-def test_release_job_permissions_unchanged() -> None:
-    """Adding the identity gate must not widen the release job's permissions."""
-    release_job = _workflow()["jobs"]["release"]
-    assert release_job["permissions"] == {"packages": "write", "contents": "write", "actions": "read"}
+def test_only_github_release_job_holds_contents_write() -> None:
+    """Only the tag-only github-release job may hold contents: write (CIMAINT-07)."""
+    jobs = _workflow()["jobs"]
+    assert jobs["release"]["permissions"] == {"packages": "write", "contents": "read", "actions": "read"}
+    assert jobs["github-release"]["permissions"] == {"contents": "write"}
+    for job_name, job in jobs.items():
+        if job_name == "github-release":
+            continue
+        permissions = job.get("permissions") or {}
+        assert permissions.get("contents") != "write", f"{job_name} holds contents: write"
+
+
+def test_github_release_job_is_tag_only_and_needs_release() -> None:
+    """github-release only runs on a release tag push and needs both preflight and release."""
+    job = _workflow()["jobs"]["github-release"]
+    assert _normalize_expression(job["if"]) == _normalize_expression(TAG_ONLY_IF)
+    assert job["needs"] == ["preflight", "release"]
+
+
+def test_release_workflow_has_no_python_distributions() -> None:
+    """D-14: releases ship the Docker image only -- no Python distribution handling remains."""
+    for forbidden in ("python-dist", "dist/*", ".whl", "tar.gz"):
+        assert forbidden not in RELEASE_WORKFLOW, f"release.yml still references {forbidden!r}"
+    for step_name in (
+        "Download exact successful CI Python distributions",
+        "Verify distribution artifacts before any publication",
+    ):
+        assert f"name: {step_name}" not in RELEASE_WORKFLOW, f"release.yml still has step {step_name!r}"
 
 
 def _is_publication_step(step: dict) -> bool:
@@ -176,6 +200,32 @@ def publication_bypass_violations(workflow: dict) -> list[str]:
         if gate_if != _normalize_expression(TAG_ONLY_IF):
             violations.append(f"release.{gate_name}: gate step if-condition is not tag-only")
 
+    # CIMAINT-07: only the tag-only github-release job may hold contents: write.
+    for job_name, job in jobs.items():
+        if job_name == "github-release":
+            continue
+        permissions = job.get("permissions") or {}
+        if permissions.get("contents") == "write":
+            violations.append(f"{job_name}: holds contents: write (only github-release may)")
+
+    github_release_job = jobs.get("github-release")
+    github_release_steps = (github_release_job or {}).get("steps", [])
+    create_release_step = next((s for s in github_release_steps if s.get("name") == "Create GitHub Release"), None)
+    if github_release_job is None or create_release_step is None:
+        violations.append("github-release: Create GitHub Release step missing")
+    else:
+        job_if = _normalize_expression(str(github_release_job.get("if", "")))
+        if job_if != _normalize_expression(TAG_ONLY_IF):
+            violations.append("github-release: job if-condition is not tag-only")
+        needs = github_release_job.get("needs") or []
+        needs_list = [needs] if isinstance(needs, str) else list(needs)
+        if "preflight" not in needs_list or "release" not in needs_list:
+            violations.append("github-release: needs must include preflight and release")
+        if _has_status_bypass(create_release_step.get("if")):
+            violations.append(
+                "github-release.Create GitHub Release: publication step if-condition has a status-function bypass"
+            )
+
     for job_name, job in jobs.items():
         if job_name == "release":
             continue
@@ -196,11 +246,12 @@ def publication_bypass_violations(workflow: dict) -> list[str]:
     if on_triggers != expected_on:
         violations.append("on: workflow triggers differ from the expected workflow_run/push set")
 
-    create_release_idx = step_index_by_name.get("Create GitHub Release")
-    if create_release_idx is not None:
-        create_release_if = _normalize_expression(str(release_steps[create_release_idx].get("if", "")))
-        if create_release_if != _normalize_expression(TAG_ONLY_IF):
-            violations.append("release.Create GitHub Release: if-condition is not tag-only")
+    # D-14: no Python distribution assets may be attached to a release.
+    for job in jobs.values():
+        for step in job.get("steps", []):
+            run_text = str(step.get("run", ""))
+            if "dist/" in run_text or ".whl" in run_text:
+                violations.append("release: Python distribution assets are attached (dropped per D-14)")
 
     meta_idx = step_index_by_name.get("Extract metadata")
     if meta_idx is not None:
@@ -226,7 +277,7 @@ def _mutate_publish_always(wf: dict) -> None:
 
 
 def _mutate_create_release_not_cancelled(wf: dict) -> None:
-    _step_by_name(wf["jobs"]["release"]["steps"], "Create GitHub Release")["if"] = "!cancelled()"
+    _step_by_name(wf["jobs"]["github-release"]["steps"], "Create GitHub Release")["if"] = "!cancelled()"
 
 
 def _mutate_dockerhub_login_bypass(wf: dict) -> None:
@@ -285,6 +336,23 @@ def _enable_latest_unconditionally(wf: dict) -> None:
     )
 
 
+def _mutate_release_job_contents_write(wf: dict) -> None:
+    wf["jobs"]["release"]["permissions"]["contents"] = "write"
+
+
+def _mutate_github_release_not_tag_only(wf: dict) -> None:
+    wf["jobs"]["github-release"]["if"] = "always()"
+
+
+def _mutate_github_release_without_needs_release(wf: dict) -> None:
+    wf["jobs"]["github-release"]["needs"] = ["preflight"]
+
+
+def _mutate_dist_assets_readded(wf: dict) -> None:
+    step = _step_by_name(wf["jobs"]["github-release"]["steps"], "Create GitHub Release")
+    step["run"] = str(step.get("run", "")) + " dist/*"
+
+
 BYPASS_MUTATIONS = [
     ("publish-step-always", _mutate_publish_always),
     ("create-release-not-cancelled", _mutate_create_release_not_cancelled),
@@ -297,6 +365,10 @@ BYPASS_MUTATIONS = [
     ("mirror-job-needs-release-but-always", _mutate_mirror_job_needs_release_but_always),
     ("workflow-dispatch-trigger-added", _mutate_workflow_dispatch_added),
     ("latest-tag-enabled-unconditionally", _enable_latest_unconditionally),
+    ("release-job-contents-write", _mutate_release_job_contents_write),
+    ("github-release-not-tag-only", _mutate_github_release_not_tag_only),
+    ("github-release-without-needs-release", _mutate_github_release_without_needs_release),
+    ("dist-assets-readded", _mutate_dist_assets_readded),
 ]
 
 
