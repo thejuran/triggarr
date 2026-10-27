@@ -448,3 +448,64 @@ test('runCli rejects an invalid --pr before any file read', () => {
   assert.equal(exitCode, 2);
   assert.equal(readCalled, false);
 });
+
+// --- WR-02 regressions: the fallback is bound to the Codex output it was checked against ---
+
+test('a fallback whose codex_out names the head but is not the Codex output checked is rejected', () => {
+  const record = validRecord({codex_out: `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task1-a3`});
+  const {ok, reasons} = validateFallback(record, validContext());
+  assert.equal(ok, false);
+  assert.ok(reasons.includes('fallback codex_out does not match the Codex output checked'), JSON.stringify(reasons));
+});
+
+test('a missing codexStatus.out never matches a fallback codex_out', () => {
+  const context = validContext({codexStatus: {complete: false, attempt: 2, reviewMode: 'trusted-local-tests'}});
+  const {ok, reasons} = validateFallback(validRecord(), context);
+  assert.equal(ok, false);
+  assert.ok(reasons.includes('fallback codex_out does not match the Codex output checked'));
+});
+
+function cliFiles(metaOverrides = {}) {
+  return {
+    '/tmp/fallback.json': JSON.stringify(validRecord()),
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'incomplete', reasons: ['x']}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 2, review_mode: 'trusted-local-tests',
+      audited_inputs_changed_in_diff: [], ...metaOverrides,
+    }),
+  };
+}
+
+function runValidate(files) {
+  const errors = [];
+  const io = {
+    readFileSync: p => {
+      if (!Object.hasOwn(files, p)) throw new Error(`ENOENT: no such file: ${p}`);
+      return files[p];
+    },
+    log: () => {},
+    error: (...args) => errors.push(args.join(' ')),
+  };
+  const exitCode = runCli(
+    ['validate', '--file', '/tmp/fallback.json', '--pr', '90', '--head', HEAD, '--base', BASE,
+      '--pr-author', 'thejuran', '--head-trust', 'trusted', '--codex-out', CODEX_OUT],
+    io
+  );
+  return {exitCode, errors};
+}
+
+test('runCli validate rejects Codex output whose meta is for a different head', () => {
+  const {exitCode, errors} = runValidate(cliFiles({head: 'c'.repeat(40)}));
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('Codex output is for a different head')), errors.join('\n'));
+});
+
+test('runCli validate rejects Codex output whose meta names no head', () => {
+  const files = cliFiles();
+  const meta = JSON.parse(files[`${CODEX_OUT}.meta.json`]);
+  delete meta.head;
+  files[`${CODEX_OUT}.meta.json`] = JSON.stringify(meta);
+  const {exitCode, errors} = runValidate(files);
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('Codex output is for a different head')), errors.join('\n'));
+});

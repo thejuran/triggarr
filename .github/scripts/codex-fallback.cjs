@@ -199,6 +199,12 @@ function validateFallback(record, context = {}) {
   const codexOutBasename = basename(record.codex_out);
   const codexOutMatchesHead = Boolean(headPrefix) && codexOutBasename.startsWith(headPrefix);
 
+  // The record must name the exact Codex output whose status/meta supplied
+  // codexStatus, so another attempt's evidence cannot stand in for it.
+  if (Object.hasOwn(record, 'codex_out') && record.codex_out !== codexStatus?.out) {
+    reasons.push('fallback codex_out does not match the Codex output checked');
+  }
+
   if (codexStatus && codexStatus.complete === true) {
     // Fallback is reserved for runs that actually stayed incomplete.
     if (headTrust === 'untrusted') {
@@ -264,6 +270,7 @@ function codexStatusFromOutput(codexOutPrefix, readFileSync) {
     attempt: meta.attempt,
     out: codexOutPrefix,
     reviewMode: meta.review_mode,
+    head: meta.head,
   };
 }
 
@@ -358,6 +365,10 @@ function runCli(argv, io = {}) {
     codexStatus = codexStatusFromOutput(opts.codexOut, readFileSync);
   } catch (err) {
     error(err.message);
+    return 1;
+  }
+  if (codexStatus.head !== opts.head) {
+    error(`Codex output is for a different head: ${opts.codexOut} records ${JSON.stringify(codexStatus.head)}`);
     return 1;
   }
 
