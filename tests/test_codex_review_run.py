@@ -2287,3 +2287,87 @@ def test_sighup_mid_codex_redacts_partial_outputs(tmp_path: Path, monkeypatch) -
     import signal
 
     _assert_signal_mid_codex_redacts_partial_outputs(tmp_path, monkeypatch, signal.SIGHUP)
+
+
+# --- WR-04: a termination outside the Codex step still leaves a status ---
+#
+# The signal handler raises SystemExit and Ctrl-C raises KeyboardInterrupt;
+# neither is an Exception, so before this fix only an interruption inside the
+# Codex step (via _finalize_raw_outputs) recorded a status for the reserved
+# attempt. These simulate the handler's effect at the other reserved points.
+
+
+def _simulated_signal(sig: int):
+    def _raise(*_args, **_kwargs):
+        runner._RECEIVED_SIGNAL = sig
+        raise SystemExit(128 + sig)
+
+    return _raise
+
+
+@pytest.mark.parametrize(
+    ("target", "sig_name"),
+    [("_run_pytest", "SIGTERM"), ("_add_worktree", "SIGHUP")],
+)
+def test_signal_outside_codex_step_writes_status_stub(tmp_path, monkeypatch, target: str, sig_name: str) -> None:
+    import signal
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    sig = getattr(signal, sig_name)
+    monkeypatch.setattr(runner, "_RECEIVED_SIGNAL", None)
+    monkeypatch.setattr(runner, target, _simulated_signal(sig))
+
+    with pytest.raises(SystemExit) as exc_info:
+        execute(run, command_runner=fake)
+    assert exc_info.value.code == 128 + sig
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert sig_name in status
+    assert _removed(fake)
+
+
+def test_signal_before_scratch_dir_exists_writes_status_stub(tmp_path, monkeypatch) -> None:
+    import signal
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(runner, "_RECEIVED_SIGNAL", None)
+    monkeypatch.setattr(runner.tempfile, "mkdtemp", _simulated_signal(signal.SIGTERM))
+
+    with pytest.raises(SystemExit):
+        execute(run, command_runner=FakeRunner())
+    assert run.output(".meta.json").exists()
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "SIGTERM" in status
+
+
+def test_keyboard_interrupt_during_pytest_writes_status_stub(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(runner, "_RECEIVED_SIGNAL", None)
+
+    def _interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner, "_run_pytest", _interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        execute(run, command_runner=FakeRunner())
+    status = run.output(".status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "KeyboardInterrupt" in status
+
+
+def test_signal_after_status_written_keeps_the_checker_status(tmp_path, monkeypatch) -> None:
+    """A signal during the base grader must not overwrite the head checker's recorded status."""
+    import signal
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    monkeypatch.setattr(runner, "_RECEIVED_SIGNAL", None)
+    monkeypatch.setattr(runner, "audited_inputs_changed", lambda *_a, **_k: ["tests/codex_report_status.py"])
+    monkeypatch.setattr(runner, "_run_base_grader", _simulated_signal(signal.SIGTERM))
+
+    with pytest.raises(SystemExit):
+        execute(run, command_runner=fake)
+    assert run.output(".status.json").read_text(encoding="utf-8") == '{"status": "incomplete"}\n'

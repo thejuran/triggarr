@@ -1085,6 +1085,22 @@ def execute(
         if not run.output(".status.json").exists():
             _write_status_stub(run, reason)
         raise RunnerError(reason) from exc
+    except BaseException as exc:
+        # SystemExit from the SIGTERM/SIGHUP handler, or KeyboardInterrupt,
+        # anywhere outside the Codex step (pytest, worktree add, before the
+        # scratch directory exists, the base grader): still never leave the
+        # reserved attempt without a status, then let it propagate unchanged
+        # so the exit status is unaffected.
+        if not run.output(".status.json").exists():
+            if isinstance(exc, SystemExit) and _RECEIVED_SIGNAL is not None:
+                cause = signal.Signals(_RECEIVED_SIGNAL).name
+            else:
+                cause = type(exc).__name__
+            try:
+                _write_status_stub(run, f"interrupted by {cause} after reserving the output")
+            except OSError as write_exc:
+                print(f"warning: could not record the interrupted status: {type(write_exc).__name__}")
+        raise
 
 
 def _execute_reserved(
