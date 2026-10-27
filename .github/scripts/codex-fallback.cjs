@@ -41,6 +41,15 @@ function unknownFieldProblems(obj, allowed, pathPrefix) {
     .map(key => `unknown field ${pathPrefix ? `${pathPrefix}.${key}` : key}`);
 }
 
+// Reports each required nested field that is absent. A non-object parent is
+// reported separately ("<x> must be an object"), so it is skipped here.
+function missingNestedFields(obj, fields, pathPrefix) {
+  if (!isPlainObject(obj)) return [];
+  return fields
+    .filter(field => !Object.hasOwn(obj, field))
+    .map(field => `missing required field ${pathPrefix}.${field}`);
+}
+
 function basename(path) {
   const str = typeof path === 'string' ? path : '';
   const idx = str.lastIndexOf('/');
@@ -51,7 +60,7 @@ function basename(path) {
 // context: {pr, head, base, prAuthor, headTrust: 'trusted'|'untrusted',
 //           codexStatus: {complete, attempt, out, reviewMode}}
 function validateFallback(record, context = {}) {
-  const {head, base, prAuthor, headTrust, codexStatus} = context;
+  const {pr, head, base, prAuthor, headTrust, codexStatus} = context;
   const reasons = [];
 
   if (!isPlainObject(record)) {
@@ -67,11 +76,19 @@ function validateFallback(record, context = {}) {
     reasons.push('unsupported fallback schema');
   }
 
+  if (Object.hasOwn(record, 'pr') && record.pr !== pr) {
+    reasons.push('fallback is for a different PR');
+  }
+
   // reviewer
   if (Object.hasOwn(record, 'reviewer')) {
     const reviewer = record.reviewer;
     if (isPlainObject(reviewer)) {
       reasons.push(...unknownFieldProblems(reviewer, REVIEWER_FIELDS, 'reviewer'));
+      reasons.push(...missingNestedFields(reviewer, REVIEWER_FIELDS, 'reviewer'));
+      if (Object.hasOwn(reviewer, 'name') && (typeof reviewer.name !== 'string' || !reviewer.name.trim())) {
+        reasons.push('reviewer.name is required');
+      }
       const nameRaw = reviewer.name;
       const nameNorm = typeof nameRaw === 'string' ? nameRaw.trim().toLowerCase() : '';
       const authorNorm = typeof prAuthor === 'string' ? prAuthor.trim().toLowerCase() : '';
@@ -90,6 +107,7 @@ function validateFallback(record, context = {}) {
   if (Object.hasOwn(record, 'scope')) {
     if (isPlainObject(record.scope)) {
       reasons.push(...unknownFieldProblems(record.scope, SCOPE_FIELDS, 'scope'));
+      reasons.push(...missingNestedFields(record.scope, SCOPE_FIELDS, 'scope'));
     } else {
       reasons.push('scope must be an object');
     }
@@ -115,12 +133,21 @@ function validateFallback(record, context = {}) {
     const result = record.result;
     if (isPlainObject(result)) {
       reasons.push(...unknownFieldProblems(result, RESULT_FIELDS, 'result'));
+      reasons.push(...missingNestedFields(result, RESULT_FIELDS, 'result'));
       if (Object.hasOwn(result, 'status') && result.status !== 'complete') {
         reasons.push('fallback review is not complete');
       }
+      if (Object.hasOwn(result, 'findings') && !Array.isArray(result.findings)) {
+        reasons.push('result.findings must be an array');
+      }
       if (Array.isArray(result.findings)) {
         for (const finding of result.findings) {
-          if (!isPlainObject(finding)) continue;
+          if (!isPlainObject(finding)) {
+            if (!reasons.includes('result.findings entries must be objects')) {
+              reasons.push('result.findings entries must be objects');
+            }
+            continue;
+          }
           reasons.push(...unknownFieldProblems(finding, FINDING_FIELDS, 'result.findings[]'));
           if (!FINDING_DISPOSITIONS.includes(finding.disposition)) {
             reasons.push(`finding ${finding.id} has no disposition`);
@@ -137,11 +164,7 @@ function validateFallback(record, context = {}) {
     const ownerDecision = record.owner_decision;
     if (isPlainObject(ownerDecision)) {
       reasons.push(...unknownFieldProblems(ownerDecision, OWNER_DECISION_FIELDS, 'owner_decision'));
-      if (ownerDecision.decision === 'wait') {
-        reasons.push('owner chose wait: wait blocks acceptance');
-      } else if (ownerDecision.decision === 'retry-later') {
-        reasons.push('owner chose retry later: retry later blocks acceptance');
-      }
+      reasons.push(...missingNestedFields(ownerDecision, OWNER_DECISION_FIELDS, 'owner_decision'));
       if (Object.hasOwn(ownerDecision, 'verbatim')) {
         const verbatim = typeof ownerDecision.verbatim === 'string' ? ownerDecision.verbatim : '';
         const headPrefix = typeof head === 'string' ? head.slice(0, 12) : '';
@@ -155,6 +178,17 @@ function validateFallback(record, context = {}) {
     } else {
       reasons.push('owner_decision must be an object');
     }
+  }
+
+  // Only an explicit approve-fallback satisfies the prerequisite; anything else
+  // (absent, blank, misspelled, or another type) blocks.
+  const decision = isPlainObject(record.owner_decision) ? record.owner_decision.decision : undefined;
+  if (decision === 'wait') {
+    reasons.push('owner chose wait: wait blocks acceptance');
+  } else if (decision === 'retry-later') {
+    reasons.push('owner chose retry later: retry later blocks acceptance');
+  } else if (decision !== 'approve-fallback') {
+    reasons.push('owner_decision.decision must be approve-fallback');
   }
 
   // Head trust and Codex status -- fail closed when trust is not established.

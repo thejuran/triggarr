@@ -307,6 +307,64 @@ test('an unsupported fallback schema is rejected', () => {
   assert.ok(reasons.includes('unsupported fallback schema'));
 });
 
+// --- CR-01 regressions: records built from empty sub-objects, not mutations of the valid fixture ---
+
+test('a record with empty reviewer/scope/result/owner_decision and the wrong PR is never ok', () => {
+  const record = {
+    schema: 1, pr: 999, head: HEAD, base: BASE, codex_out: CODEX_OUT,
+    reviewer: {}, scope: {}, result: {}, owner_decision: {},
+  };
+  const {ok, reasons} = validateFallback(record, validContext({pr: 5}));
+  assert.equal(ok, false);
+  assert.ok(reasons.includes('fallback is for a different PR'), JSON.stringify(reasons));
+  assert.ok(reasons.includes('owner_decision.decision must be approve-fallback'), JSON.stringify(reasons));
+  for (const field of ['reviewer.name', 'reviewer.kind', 'scope.base', 'scope.head', 'scope.diff',
+    'result.status', 'result.summary', 'result.findings',
+    'owner_decision.decision', 'owner_decision.verbatim', 'owner_decision.decided_at']) {
+    assert.ok(reasons.includes(`missing required field ${field}`), `expected missing ${field}, got ${JSON.stringify(reasons)}`);
+  }
+});
+
+test('an owner decision outside approve-fallback is rejected', () => {
+  for (const decision of ['nope', '', 'APPROVE-FALLBACK', 42]) {
+    const record = validRecord();
+    record.owner_decision = {...record.owner_decision, decision};
+    const {ok, reasons} = validateFallback(record, validContext());
+    assert.equal(ok, false, `decision ${JSON.stringify(decision)} must not pass`);
+    assert.ok(reasons.includes('owner_decision.decision must be approve-fallback'), JSON.stringify(reasons));
+  }
+});
+
+test('a fallback for a different PR is rejected', () => {
+  const {ok, reasons} = validateFallback(validRecord({pr: 91}), validContext());
+  assert.equal(ok, false);
+  assert.ok(reasons.includes('fallback is for a different PR'));
+});
+
+test('a blank reviewer name is rejected', () => {
+  const record = validRecord();
+  record.reviewer = {...record.reviewer, name: '   '};
+  const {ok, reasons} = validateFallback(record, validContext());
+  assert.equal(ok, false);
+  assert.ok(reasons.includes('reviewer.name is required'));
+});
+
+test('result.findings that is not an array is rejected', () => {
+  const record = validRecord();
+  record.result = {...record.result, findings: 'none'};
+  const {ok, reasons} = validateFallback(record, validContext());
+  assert.equal(ok, false);
+  assert.ok(reasons.includes('result.findings must be an array'));
+});
+
+test('a non-object finding entry is rejected, not skipped', () => {
+  const record = validRecord();
+  record.result = {...record.result, findings: ['F001 fixed', null]};
+  const {ok, reasons} = validateFallback(record, validContext());
+  assert.equal(ok, false);
+  assert.ok(reasons.includes('result.findings entries must be objects'));
+});
+
 test('runCli validates a valid fallback file and exits 0', () => {
   const logs = [];
   const errors = [];
