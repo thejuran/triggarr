@@ -30,6 +30,11 @@ For each required job it asserts:
   ``if``, ``continue-on-error``, ``uses``, ``steps``, ``shell`` or
   ``defaults``.
 
+It also scans every workflow file and asserts that "CI ready" and "Review
+acceptance" are each the check name (job ``name:``, or job id when it has no
+name) of exactly one job, the one in ``ci.yml`` or ``review-acceptance.yml``
+(review iteration 4 WR-03).
+
 It also cross-checks the job sets, so a job dropped from a required check
 fails: ``ci-ready``'s ``needs`` must equal ``ALL_JOBS`` from
 ``tests/test_ci_gate.py``, and ``review-acceptance.yml`` must hold exactly the
@@ -52,12 +57,19 @@ from tests.test_ci_gate import ALL_JOBS
 REPO_ROOT = Path(__file__).parent.parent
 CI_PATH = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 ACCEPTANCE_PATH = REPO_ROOT / ".github" / "workflows" / "review-acceptance.yml"
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 CI_TEXT = CI_PATH.read_text()
 ACCEPTANCE_TEXT = ACCEPTANCE_PATH.read_text()
 
 AGGREGATE_JOB = "ci-ready"
 AGGREGATE_IF = "always()"
 ACCEPTANCE_JOBS = frozenset({"acceptance"})
+# Each required check name and the only (workflow file, job id) allowed to
+# publish it (review iteration 4 WR-03).
+REQUIRED_CHECK_OWNERS = {
+    "CI ready": ("ci.yml", AGGREGATE_JOB),
+    "Review acceptance": ("review-acceptance.yml", "acceptance"),
+}
 WATCHED_KEYS = frozenset({"if", "continue-on-error", "uses", "steps", "shell", "defaults"})
 
 BROWSER_EVIDENCE_CONDITION = (
@@ -239,6 +251,43 @@ def acceptance_problems(text: str) -> list[str]:
         problems.append(f"review-acceptance.yml jobs {list(doc['jobs'])!r} must be exactly {sorted(ACCEPTANCE_JOBS)!r}")
     for job_id, job in doc["jobs"].items():
         problems.extend(job_problems(str(job_id), job, allowed_if=None))
+    return problems
+
+
+def workflow_texts() -> dict[str, str]:
+    """Every workflow file in .github/workflows, keyed by file name."""
+    paths = [*WORKFLOWS_DIR.glob("*.yml"), *WORKFLOWS_DIR.glob("*.yaml")]
+    return {path.name: path.read_text() for path in sorted(paths)}
+
+
+def required_check_name_problems(texts: dict[str, str]) -> list[str]:
+    """Each required check name must be published by exactly its owning job.
+
+    A job's check-run name is its ``name:``, or its id when it has no name.
+    Names are compared after trimming and case-folding, so a near spelling
+    also counts. A workflow that cannot be loaded fails the scan closed.
+    """
+    problems: list[str] = []
+    publishers: dict[str, list[tuple[str, str]]] = {name: [] for name in REQUIRED_CHECK_OWNERS}
+    wanted = {name.strip().casefold(): name for name in REQUIRED_CHECK_OWNERS}
+    for filename, text in sorted(texts.items()):
+        try:
+            doc = load_workflow(text)
+        except (yaml.YAMLError, ValueError) as exc:
+            problems.append(f"{filename} cannot be loaded: {exc}")
+            continue
+        jobs = doc.get("jobs")
+        if not isinstance(jobs, dict):
+            continue
+        for job_id, job in jobs.items():
+            name = job.get("name") if isinstance(job, dict) and "name" in job else job_id
+            check = wanted.get(str(name).strip().casefold())
+            if check is not None:
+                publishers[check].append((filename, str(job_id)))
+    for check, owner in REQUIRED_CHECK_OWNERS.items():
+        if publishers[check] != [owner]:
+            found = ", ".join(f"{f}:{j}" for f, j in publishers[check]) or "none"
+            problems.append(f'check name "{check}" must be published only by {owner[0]}:{owner[1]}, found {found}')
     return problems
 
 
@@ -616,3 +665,63 @@ def test_gate_renamed_and_real_upload_renamed_away_is_rejected() -> None:
 def test_test_job_gate_renamed_to_the_allowlisted_upload_is_rejected() -> None:
     mutated = _mutate(CI_TEXT, FAIL_STEP, "      - name: Upload test evidence\n        if: always()\n")
     assert any("allowlisted step name appears 2 times" in p for p in ci_problems(mutated))
+
+
+# --- WR-03 (iteration 4): a required check name is published by one job only --
+# Readiness picks the newest check run by name, and every workflow posts as the
+# GitHub Actions app, so a second job named "CI ready" in any workflow file
+# could stand in for the real one.
+
+MIRROR_WORKFLOW = """name: Mirror
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  mirror:
+    name: CI ready
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+"""
+
+
+def test_real_workflows_publish_each_required_check_name_once() -> None:
+    assert required_check_name_problems(workflow_texts()) == []
+
+
+def test_workflow_scan_covers_every_workflow_file() -> None:
+    assert {"ci.yml", "review-acceptance.yml", "release.yml"} <= set(workflow_texts())
+
+
+@pytest.mark.parametrize("filename", ["mirror.yml", "mirror.yaml"])
+def test_ci_ready_job_in_another_workflow_is_rejected(filename: str) -> None:
+    texts = {**workflow_texts(), filename: MIRROR_WORKFLOW}
+    problems = required_check_name_problems(texts)
+    assert any(p.startswith('check name "CI ready"') and f"{filename}:mirror" in p for p in problems)
+
+
+def test_unnamed_job_whose_id_is_the_check_name_is_rejected() -> None:
+    mirror = MIRROR_WORKFLOW.replace("  mirror:\n    name: CI ready\n", '  "CI ready":\n')
+    texts = {**workflow_texts(), "mirror.yml": mirror}
+    assert any(p.startswith('check name "CI ready"') for p in required_check_name_problems(texts))
+
+
+def test_second_ci_ready_name_inside_ci_yml_is_rejected() -> None:
+    texts = {**workflow_texts(), "ci.yml": _mutate(CI_TEXT, "  lint:\n", "  lint:\n    name: CI ready\n")}
+    assert any(p.startswith('check name "CI ready"') for p in required_check_name_problems(texts))
+
+
+def test_ci_ready_name_moved_off_the_aggregate_job_is_rejected() -> None:
+    texts = {**workflow_texts(), "ci.yml": _mutate(CI_TEXT, CI_READY_NAME, "    name: CI gate\n")}
+    assert any(p.startswith('check name "CI ready"') for p in required_check_name_problems(texts))
+
+
+def test_review_acceptance_job_in_another_workflow_is_rejected() -> None:
+    mirror = MIRROR_WORKFLOW.replace("name: CI ready", "name: Review acceptance")
+    texts = {**workflow_texts(), "mirror.yml": mirror}
+    assert any(p.startswith('check name "Review acceptance"') for p in required_check_name_problems(texts))
+
+
+def test_unloadable_workflow_fails_the_scan_closed() -> None:
+    texts = {**workflow_texts(), "broken.yml": "jobs: [\n"}
+    assert any(p.startswith("broken.yml cannot be loaded") for p in required_check_name_problems(texts))
