@@ -1,0 +1,29 @@
+diff --git a/.github/workflows/demo-actionlint-negative.yml b/.github/workflows/demo-actionlint-negative.yml
+new file mode 100644
+index 0000000..a6b86c2
+--- /dev/null
++++ b/.github/workflows/demo-actionlint-negative.yml
+@@ -0,0 +1,11 @@
++name: Demo Actionlint Negative
++
++on:
++  workflow_dispatch:
++
++jobs:
++  demo:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Reference an undefined step output
++        run: echo "${{ steps.missing.outputs.value }}"
+diff --git a/Dockerfile b/Dockerfile
+index 78352e0..d2f196b 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -48,6 +48,7 @@ WORKDIR /app
+ COPY --from=deps /build/requirements-locked.txt /tmp/requirements-locked.txt
+ RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements-locked.txt \
+     && rm /tmp/requirements-locked.txt
++RUN pip install --no-cache-dir --no-deps "idna==3.4"
+ 
+ COPY pyproject.toml .
+ COPY triggarr/ triggarr/
