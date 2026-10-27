@@ -1,158 +1,148 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-fixed_at: 2026-10-27T19:20:04Z
+fixed_at: 2026-10-27T19:41:24Z
 review_path: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md
-iteration: 1
-findings_in_scope: 6
-fixed: 6
+iteration: 2
+findings_in_scope: 4
+fixed: 4
 skipped: 0
 rejected: 0
 status: all_fixed
 ---
 
-# Phase 85: Code Review Fix Report
+# Phase 85: Code Review Fix Report (iteration 2)
 
-**Fixed at:** 2026-10-27T19:20:04Z
-**Source review:** .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md (reviewed head `b4a47b6`)
-**Iteration:** 1
+**Fixed at:** 2026-10-27T19:41:24Z
+**Source review:** .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md (iteration 2, reviewed head `252fe61`)
+**Iteration:** 2
 
 **Summary:**
-- Findings in scope: 6 (CR-01, CR-02, WR-01, WR-02, WR-03, WR-04 — the scope the owner approved on 2026-10-27)
-- Fixed: 6
+- Findings in scope: 4 (CR-01, WR-01, WR-02, WR-03, the scope the owner approved on 2026-10-27, round 2)
+- Fixed: 4
 - Skipped: 0
 - Rejected: 0
-- Out of scope (not touched, as the owner instructed): IN-01 to IN-08, SA-01 to SA-03
+- Out of scope (not touched, as the owner instructed): IN-01 to IN-11, SA-01 to SA-03
 
-Method for each finding: first a regression test was added and confirmed to fail at the pre-fix code, then the fix was applied, then the relevant suites were run. Each finding is one commit containing its test and its fix. Work was done directly on branch `ci-followon` in the main working tree. Nothing was pushed.
+Method for each finding: first regression tests were added and confirmed to fail on the pre-fix code, then the fix was applied, then the relevant suites were run. Each finding is one commit containing its tests and its fix. The work was done directly on branch `ci-followon` in the main working tree, on top of `ae8e4b2` (the origin/main merge). Nothing was pushed.
 
 ## Fixed Issues
 
-### CR-01: Fallback validator accepts a record with no owner approval, no reviewer, no result, and the wrong PR
-
-**Files modified:** `.github/scripts/codex-fallback.cjs`, `.github/scripts/codex-fallback.test.cjs`
-**Commit:** fb01095
-**Applied fix:** `validateFallback` now:
-- reports every missing nested field of `reviewer`, `scope`, `result` and `owner_decision`;
-- compares `record.pr` with the context PR ("fallback is for a different PR");
-- accepts only `approve-fallback` as the owner decision. `wait` and `retry-later` keep their specific messages, and any other value, including a missing one, gives "owner_decision.decision must be approve-fallback";
-- requires a non-blank `reviewer.name`;
-- requires `result.findings` to be an array, and rejects non-object entries instead of skipping them.
-
-**Regression tests (6, all failed before the fix):**
-- the reviewer's reproduction: empty sub-objects plus a wrong PR;
-- decisions `nope`, `''`, `APPROVE-FALLBACK` and `42`;
-- a wrong PR;
-- a blank reviewer name;
-- non-array findings;
-- non-object finding entries.
-
-**Status:** fixed: requires human verification (logic/validation change)
-
-### CR-02: Skip-condition detector (ACCEPT-03) misses `- if:` as the first key of a step
+### CR-01: The skip-condition detector still misses `if :`, extra spaces after the dash, and flow-mapping steps
 
 **Files modified:** `.github/scripts/ci-job-consistency.cjs`, `.github/scripts/ci-job-consistency.test.cjs`
-**Commit:** c96bdb7
-**Applied fix:** `extractStepIfs` now finds `if:` in all of these forms:
-- on its own 8-space line, as before;
-- on the step-start line (`      - if: …`);
-- as a quoted key (`"if":` / `'if':`).
+**Commit:** 75ebe6f
+**Applied fix:** The single-spelling regexes are gone. The detector now uses a small YAML reader for the parts it needs, still with no dependencies. It reads keys at a known column in any spelling: plain, `"if"`, `'if'`, or with a space before the colon. It reads a step's keys whether they start on the dash line after any number of spaces, or on the line after a bare `-`. It also reads flow-mapping steps (`- {name: …, if: …}`), including ones that span lines. Values are read as the inline text plus all more-indented lines, so `if:` with its value on the next line is caught too. Text inside `run:`/`script:` blocks and nested `with:` values is never mistaken for a step key.
 
-An `if:` with an empty value (the scalar sits on the next lines) is read like a folded block. If nothing parseable follows, it is recorded as an empty condition, which is not on the allowlist, so it is reported (fails closed). `name:` on the step-start line was already handled.
+The reader reports any shape it cannot read. It does not treat such a step as having no condition (fail closed). This covers:
+- an alias, anchor or tag where a step or key should be (`- *x`, `- &x`, `- !!map …`);
+- an explicit `? if` key, or a merge `<<:` key;
+- a quoted key JSON cannot decode (`"i\x66"`);
+- an unterminated flow mapping, or text after one;
+- `steps:` written as a flow sequence or an alias;
+- a job body not indented by 4 spaces, or other unexpected indentation;
+- more than one `steps:` key or job-level `if`.
 
-**Regression tests (6, all failed before the fix):** `- if: false`, `- if: ${{ false }}` and `- if: >-` (folded), each applied to the real `ci.yml` ("Fail if tests failed" in the `test` job) and to the real `review-acceptance.yml`.
+The new message is `required job "<id>" cannot be parsed for skip conditions: <reason>`. A step can have more than one `if` entry, and each one is checked against the allowlist.
+
+**Related gap closed in the same fix.** Job-level `if` had the same spelling gap: `    if : false`, `    "if": false`, and `    if:` with the value on the next line all returned `[]` before this fix. In `review-acceptance.yml`, the required check is the job itself, so a job skipped this way would count as passing. `extractJobIf` now uses the same reader, which also affects `requiredJobsFor` and the release.yml if-equality test. This is a widening of the review's scope. I included it because it is the same defect in the same detector.
+
+**Regression tests (25 new; 23 failed before the fix, 2 are guards that already passed).** Every variant is applied to the real `ci.yml` ("Fail if tests failed" in the `test` job, or the `lint` job), and the main ones also to the real `review-acceptance.yml`:
+- `if : false`;
+- `if : github.run_attempt == '0'` (actionlint passes this one);
+- `"if" : false`;
+- `-   if: false`, with the whole step re-indented;
+- flow mapping with `if: false`, and with `if : github.run_attempt == '0'`;
+- alias step, `? if` explicit key, `<<: *x` merge key, `"i\x66"` key, unterminated flow mapping, flow-sequence `steps:`;
+- job-level `if :`, `"if":`, and `if:` with the value on the next line, on both workflows;
+- a job body re-indented away from 4 spaces.
+
+The guards are: `if:` with the value on the next line at step level, and an `if:` nested under `with:` together with the real files' run/script blocks (no problems reported).
+
+Both real workflows still report `[]`. The two allowlisted step conditions (`test::Upload test evidence` `always()`, and the folded `browser-e2e::Upload browser failure evidence`) still pass. I also checked by hand that a tab after the dash, a tag, an anchor, a bare `-` followed by `if :`, a multi-line flow step, a JSON-style `{"if":false}` step, a `'if' :` key, and a compact `steps:` list at the job-key column are each either reported or read correctly.
 
 **Status:** fixed: requires human verification (parser logic change)
 
-### WR-01: Readiness trusts the reviewed head's own runner output to decide whether base cross-grading was needed
+### WR-01: Mandatory `meta.base === baseRefOid` rejected valid local-checkpoint Codex evidence
 
 **Files modified:** `.github/scripts/acceptance-readiness.cjs`, `.github/scripts/acceptance-readiness.test.cjs`
-**Commit:** 27eb566
-**Applied fix:**
-- `runCli` recomputes the audited-input change set itself. It runs `git diff --name-only <base>..<head> -- <AUDITED_INPUTS>` as an argument array with no shell, after checking that both SHAs are 40-hex. If git cannot answer (for example, the commits are not fetched locally), readiness stops with exit 1 rather than continuing (fails closed).
-- `codexStatusFor` combines that recomputed set with the meta's claim, so the head's runner can no longer talk the base cross-grade away.
-- `meta.head === head` and `meta.base === base` are now mandatory, not conditional.
-- A new `AUDITED_INPUTS` constant is exported, and a drift test pins it to `tests/codex_review_run.py`.
-- Existing readiness fixtures gained `meta.base`, and the CLI exec tables gained the git-diff call.
+**Commit:** ebdd76c
+**Applied fix:** Readiness now runs `git merge-base <baseRefOid> <head>` itself, as an argument array with no shell. It requires `meta.base` to equal that merge-base. If git fails, or returns something other than a 40-hex SHA, readiness stops with exit 1 and "could not compute the merge-base" (fails closed). The audited-input diff is recomputed over the same range, `<merge-base>..<head>`, so audited files that changed only on main after the fork point no longer force a cross-grade. The checklist now shows `Reviewed base SHA (merge-base): …` under `Full base SHA: …`.
 
-**Regression tests (6, all failed before the fix):**
-- the drift test;
-- a recomputed change overrides a meta that claims none;
-- a meta without `head` is never complete;
-- a meta with a wrong or missing `base` is never complete;
-- the CLI blocks when meta hid a changed grader;
-- the CLI fails closed when the diff cannot be computed.
+**Why this rule, and why it is the narrowest one.** It is narrower than the review's suggestion, which was to accept either `baseRefOid` or the merge-base:
+- *PR checkpoint:* the runner's `verify_trust` refuses a PR base that is not an ancestor of the head. So any PR-checkpoint base the runner can record already equals `merge-base(baseRefOid, head)`.
+- *Local phase checkpoint:* the contract's `git merge-base origin/main HEAD` is the branch's fork point (or its last merge of main). That stays the merge-base with the current `baseRefOid` when main moves forward. This is the case that was being rejected.
+- So one exact value covers both contract rules. A `baseRefOid` that is *not* an ancestor of the head is no longer accepted, because no runner reviews that two-dot range. Accepting it would have been the only new acceptance path in the review's suggestion, and it is not needed.
+- For direct callers of `codexStatusFor`/`readiness` that pass no merge-base, the PR base itself is still required (the previous, stricter rule). Every `runCli` path passes the merge-base.
 
-**Operational note:** readiness now needs the PR's base and head commits in the local clone, because `git diff` must be able to resolve both. If they are missing, it fails closed with "could not compute audited-input changes". `docs/owner-cli-acceptance.md` does not mention this yet, and a doc update was left out to keep the change narrow.
+**Not changed:** the fallback validator still checks a fallback record's `base` against the PR base. That is unchanged behaviour, and the IN-10 alignment was out of scope.
 
-The reviewer also cited `codex-fallback.cjs:215-227` here. No change was needed there for WR-01: in that CLI a meta that falsely claims "complete" only blocks the fallback ("Codex is complete; a fallback is not used"), so it cannot be used to get past the check.
+**On this branch now:** after the `ae8e4b2` merge, `git merge-base origin/main HEAD` equals `origin/main` (`decd5f1`). A post-fix local Codex pass will therefore record a base that readiness accepts under both the old and the new rule.
+
+**Regression tests (5 new; 4 failed before the fix, 1 guard already passed):**
+- main moved to a merge commit ahead of the fork point, with meta.base equal to the merge-base, is ready (exit 0). This includes an audited file changed only on main, which must not count;
+- meta.base equal to a `baseRefOid` that is not an ancestor of the head is blocked;
+- meta.base that is neither value is blocked (guard);
+- merge-base missing, empty, or not a SHA fails closed;
+- `codexStatusFor` uses `reviewedBase` when it is given.
+
+The existing CLI exec tables gained the `git merge-base` call.
 
 **Status:** fixed: requires human verification (trust/logic change)
 
-### WR-02: A fallback record is never bound to the Codex output it is validated against
+### WR-02: Readiness accepted status files not bound to this head or base
+
+**Files modified:** `.github/scripts/acceptance-readiness.cjs`, `.github/scripts/acceptance-readiness.test.cjs`
+**Commit:** b05ced4
+**Applied fix:** This is the review's "minimum" fix. A checker verdict of `complete` now counts only if its `inspected_head` equals the PR head and its `inspected_base` equals the verified `meta.base`:
+- in the head-side `.status.json`;
+- in `.base-status.json`, whenever a base cross-grade is required.
+
+Otherwise readiness blocks with "Codex status file is not bound to this head and base", or for the base grade, "grader changed in this diff: the base checker status is not bound to this head and base". I confirmed that the base checker on `origin/main` already emits both fields, so a real cross-grade is not over-rejected. The untrusted-head "claims complete" block still fires first, unchanged. The existing readiness fixtures now carry bound statuses.
+
+**Regression tests (5 new; 4 failed before the fix):**
+- the reviewer's reproduction (status and base-status both complete for an unrelated commit, with a recomputed audited change) is blocked;
+- a complete status with the wrong head, the wrong base, or no or null inspected SHAs is blocked;
+- a required base-status that is complete but unbound is blocked;
+- bound status plus bound base-status is ok (guard);
+- the CLI blocks a status file graded for another head.
+
+**Residual, needs an owner ruling.** The review's "stronger" option is not implemented: readiness would itself materialize the base commit's checker and re-grade `<OUT>.last.json`, ignoring `.base-status.json`. So when `tests/codex_review_run.py` itself changes, `.base-status.json` is still written by the changed runner. A runner change could make it write a bound, "complete" base status. The base checker *code* still comes from the base commit, but the runner chooses what it passes to that checker. The two options:
+- *(a) Keep as is.* No added code. The residual is limited to diffs that change the runner itself. Those diffs are already sensitive-class under the classification policy, and the owner must accept them in any case.
+- *(b) Implement the stronger re-grade in readiness.* Readiness would gain a Python subprocess and a temp-dir materialization, plus the need for the `.last.json` report and the Codex exit code to be present locally. That is roughly half a day with tests, and it adds acceptance-time failure modes.
+
+My recommendation is (a) for this phase, with (b) recorded as a follow-up if runner changes become frequent.
+
+**Status:** fixed: requires human verification (trust/logic change; residual above)
+
+### WR-03: Fallback reviewer denylist missed `bm-code-reviewer` and `Claude Code`
 
 **Files modified:** `.github/scripts/codex-fallback.cjs`, `.github/scripts/codex-fallback.test.cjs`
-**Commit:** f818fb3
-**Applied fix:**
-- `validateFallback` now rejects a record whose `codex_out` is not exactly `codexStatus.out` ("fallback codex_out does not match the Codex output checked"). A missing `codexStatus.out` never matches.
-- `codexStatusFromOutput` now returns `meta.head`.
-- The `validate` CLI exits 1 with "Codex output is for a different head" when that value is not `--head`, including when it is absent.
-- On the readiness side, the head binding is covered by WR-01's mandatory `meta.head` check.
+**Commit:** e44b818
+**Applied fix:** The exact list (`DISALLOWED_REVIEWERS`, still exported) is kept. In addition, the reviewer name is lowercased and split on every run of non-alphanumeric characters. The name is rejected as not independent when any token is `bm`, `buildomator`, `gsd` or `claude`, or when the token sequence `codex review run` appears.
 
-**Regression tests (4, all failed before the fix):**
-- a `codex_out` that names the right head but a different attempt;
-- a missing `codexStatus.out`;
-- CLI meta for a different head;
-- CLI meta with no head.
+Matching is by token, not substring, so `submarine` is not caught by `bm`. A human reviewer whose name contains the word "Claude" would be rejected. That errs on the safe side, and they can be recorded under another name.
 
-**Status:** fixed: requires human verification (logic change)
-
-### WR-03: Empty `--test-exit` is recorded as a passing test run
-
-**Files modified:** `.github/scripts/coverage-provenance.cjs`, `.github/scripts/coverage-provenance.test.cjs`
-**Commit:** d6d83d0
-**Applied fix:** A new `intArg` helper accepts only `^\d+$`. Both `write` and `write-local` use it for `--test-exit` and `--test-seconds`, so an empty value (an unset step output), `abc`, `-1`, `1.5`, ` 0` or `0x0` now fails with exit 1 and no provenance file is written.
-
-**Behaviour change in CI:** if `steps.pytest.outputs.test_exit` is ever empty, the "write provenance" step itself now fails instead of uploading a file that says the tests passed. A real non-zero pytest exit is still written as evidence, as before.
-
-**Regression tests (8, all failed before the fix):** six bad `--test-exit` values on `write`, an empty `--test-seconds` on `write`, and an empty `--test-exit` on `write-local`.
+**Regression tests (15 new; 10 failed before the fix):**
+- rejected: `bm-code-reviewer`, `Claude Code`, `Claude (bm-code-reviewer)`, `claude-opus`, `BM_code_review`, `GSD code reviewer`, `gsd-code-fixer`, `Buildomator review agent`, `codex_review_run.py`, `Codex Review Run`, and `  BM  ` (a guard that already passed);
+- still accepted: `vibe-check deep review (owner-run)`, `manual Codex inspection session`, `independent human reviewer`, `submarine review`.
 
 **Status:** fixed
 
-### WR-04: A termination signal outside the Codex step leaves a reserved attempt with no status file
-
-**Files modified:** `tests/codex_review_run.py`, `tests/test_codex_review_run.py`
-**Commit:** e89c534
-**Applied fix:** After the reservation, `execute()` now also has an `except BaseException` branch. It catches `SystemExit` raised by the SIGTERM/SIGHUP handler, and `KeyboardInterrupt`. If no `.status.json` exists yet, it writes an incomplete stub, "interrupted by <SIGNAME|KeyboardInterrupt> after reserving the output", then re-raises the original exception unchanged, so the exit code is unaffected. A failed stub write only prints a warning, so it cannot replace the original exit.
-
-`tests/codex_review_run.py` is an audited Codex input. The owner allowed this edit. `tests/codex_report_status.py` was not changed.
-
-**Regression tests (5):**
-- a signal during pytest (SIGTERM) and during `git worktree add` (SIGHUP);
-- a signal before the scratch directory exists;
-- `KeyboardInterrupt` during pytest;
-- a guard that a signal during the base grader does not overwrite the head checker's recorded status.
-
-The first four failed before the fix. The guard passed before and after, as intended.
-
-**Residual:** there is a very small window, between `reserve_outputs()` returning and the `try` being entered, that this does not cover. `reserve_outputs` cannot go inside the `try`, because a `FileExistsError` there belongs to another run's reservation and must not get a stub. A signal during the base grader still leaves no `.base-status.json`. That case already fails closed: a missing base status is treated as incomplete, and `.status.json` exists, so the fallback path still works.
-
-**Status:** fixed
-
-## Final gate (run after all six fix commits, at e89c534)
+## Final gate (run after all four fix commits, at e44b818)
 
 | Command | Result |
 |---------|--------|
 | `uv run pytest tests/ -x -q` | 2569 passed, 0 failed (38 warnings, pre-existing) |
 | `uv run ruff check triggarr/ tests/ .github/scripts/` | All checks passed |
-| `FORCE_COLOR=0 node --test --test-reporter=tap .github/scripts/*.test.cjs .claude/plugins/planchk-router/test/planchk-router.test.mjs` | 356 tests, 356 pass, 0 fail |
+| `FORCE_COLOR=0 node --test --test-reporter=tap .github/scripts/*.test.cjs .claude/plugins/planchk-router/test/planchk-router.test.mjs` | 406 tests, 406 pass, 0 fail (356 at the start of iteration 1, 381 after CR-01, 386 after WR-01, 391 after WR-02) |
 | `actionlint` | exit 0, no findings |
 
-Working tree is clean apart from this report, which is left for the orchestrator to commit. Nothing was pushed.
+The working tree is clean apart from this report, which is left for the orchestrator to commit. Nothing was pushed, no `--no-verify` was used, and no stash was used.
 
-**Review-workflow note:** these fixes change the commit under review, from `b4a47b6` to `e89c534`. Under the project's review workflow (CLAUDE.md), the post-fix BM review and its paired independent Codex pass must run on the new head. The Codex/vibe-check evidence recorded for `b4a47b6` does not cover these commits.
+**Review-workflow note:** these fixes change the commit under review from `ae8e4b2` to `e44b818`. Under the project's review workflow (CLAUDE.md), the post-fix BM review and its paired independent Codex pass must run on the new head. Evidence recorded for earlier heads does not cover these commits. `tests/codex_review_run.py` and `tests/codex_report_status.py` were not changed in this round, so the Codex audited inputs are unchanged by these fixes.
 
 ---
 
-_Fixed: 2026-10-27T19:20:04Z_
+_Fixed: 2026-10-27T19:41:24Z_
 _Fixer: Claude (bm-code-fixer)_
-_Iteration: 1_
+_Iteration: 2_
