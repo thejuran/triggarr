@@ -1,8 +1,8 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-fixed_at: 2026-10-27T19:41:24Z
+fixed_at: 2026-10-27T21:43:16Z
 review_path: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md
-iteration: 2
+iteration: 3
 findings_in_scope: 4
 fixed: 4
 skipped: 0
@@ -10,139 +10,146 @@ rejected: 0
 status: all_fixed
 ---
 
-# Phase 85: Code Review Fix Report (iteration 2)
+# Phase 85: Code Review Fix Report (iteration 3)
 
-**Fixed at:** 2026-10-27T19:41:24Z
-**Source review:** .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md (iteration 2, reviewed head `252fe61`)
-**Iteration:** 2
+**Fixed at:** 2026-10-27T21:43:16Z
+**Source review:** .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md (iteration 3, reviewed head `8bd286c`)
+**Iteration:** 3
+**Fix head:** `bb4df1ae2c77073996e640be2642f13b6809d42f`
 
 **Summary:**
-- Findings in scope: 4 (CR-01, WR-01, WR-02, WR-03, the scope the owner approved on 2026-10-27, round 2)
+- Findings in scope: 4 (CR-01, CR-02, WR-01, WR-02; owner-approved scope, 2026-10-27, round 3)
 - Fixed: 4
 - Skipped: 0
 - Rejected: 0
-- Out of scope (not touched, as the owner instructed): IN-01 to IN-11, SA-01 to SA-03
+- Recorded, not fixed (owner decision): SA-04, SA-05 and IN-01 to IN-12. They were added to `.planning/backlog/MAINTENANCE.md` under "Still open after Phase 85" (`bb4df1a`). SA-01 to SA-03 were not touched.
 
-Method for each finding: first regression tests were added and confirmed to fail on the pre-fix code, then the fix was applied, then the relevant suites were run. Each finding is one commit containing its tests and its fix. The work was done directly on branch `ci-followon` in the main working tree, on top of `ae8e4b2` (the origin/main merge). Nothing was pushed.
+Method: each code fix has regression tests. For WR-01 and WR-02, the tests were run and failed before the fix was applied. For CR-01 and CR-02 the fix is itself a new test file. As the regression evidence, I confirmed that the existing Node detector returns `[]` for the reviewed mutations: a quoted job-level `continue-on-error` on `ci-ready`, and the column-0 comment cases in both workflows. The new guard rejects all of them. There is one commit per finding. The work was done directly on `ci-followon` in the main working tree. Nothing was pushed.
+
+## The pytest guard is authoritative
+
+`tests/test_required_jobs_no_skip.py` is now the authoritative no-skip check for the jobs behind required checks. It loads the real `ci.yml` and `review-acceptance.yml` with PyYAML, a real YAML parser, using a SafeLoader subclass that rejects duplicate and unhashable keys. That means the parser decides what each key and value is, and the spelling tricks behind CR-01 and CR-02 cannot hide a key from it.
+
+The Node detector `.github/scripts/ci-job-consistency.cjs` stays as a secondary line. As instructed, it received only the WR-01 change and no further YAML-parsing hardening, so the parse gaps the review describes in CR-01 and CR-02 still exist there. Where the two checks disagree, the pytest guard decides. The guard runs in CI's `test` job with the rest of `tests/`.
 
 ## Fixed Issues
 
-### CR-01: The skip-condition detector still misses `if :`, extra spaces after the dash, and flow-mapping steps
+### CR-01: `continue-on-error` written as a quoted or escaped key is not detected
 
-**Files modified:** `.github/scripts/ci-job-consistency.cjs`, `.github/scripts/ci-job-consistency.test.cjs`
-**Commit:** 75ebe6f
-**Applied fix:** The single-spelling regexes are gone. The detector now uses a small YAML reader for the parts it needs, still with no dependencies. It reads keys at a known column in any spelling: plain, `"if"`, `'if'`, or with a space before the colon. It reads a step's keys whether they start on the dash line after any number of spaces, or on the line after a bare `-`. It also reads flow-mapping steps (`- {name: …, if: …}`), including ones that span lines. Values are read as the inline text plus all more-indented lines, so `if:` with its value on the next line is caught too. Text inside `run:`/`script:` blocks and nested `with:` values is never mistaken for a step key.
+**Files modified:** `tests/test_required_jobs_no_skip.py` (new)
+**Commit:** 7178836
+**Applied fix:** This commit adds the guard. For every required job (in `ci.yml`, each job in `ci-ready`'s `needs` plus `ci-ready`; in `review-acceptance.yml`, every job), it checks:
+- `continue-on-error` at job or step level is rejected whatever its value: true, false, or an expression. This is stricter than "truthy or expression" because no required job needs the key at all.
+- A job-level `if` is rejected, except on `ci-ready`, where it must be exactly the string `always()`. A missing `if` on `ci-ready`, `${{ always() }}`, and `success() || failure()` are all rejected.
+- Every step `if` must match an allowlist entry keyed by (job, step name, exact condition). The two entries are the same as before.
+- PyYAML loads the bare key `on` as `True`. `workflow_triggers` accepts either form and requires exactly one of them.
 
-The reader reports any shape it cannot read. It does not treat such a step as having no condition (fail closed). This covers:
-- an alias, anchor or tag where a step or key should be (`- *x`, `- &x`, `- !!map …`);
-- an explicit `? if` key, or a merge `<<:` key;
-- a quoted key JSON cannot decode (`"i\x66"`);
-- an unterminated flow mapping, or text after one;
-- `steps:` written as a flow sequence or an alias;
-- a job body not indented by 4 spaces, or other unexpected indentation;
-- more than one `steps:` key or job-level `if`.
+Negative tests build mutated YAML in memory from the real files. Each mutation helper asserts that its anchor text occurs exactly once, so no test can pass without its mutation being applied. The cases:
+- quoted, single-quoted, `\x72`-escaped, `-`-escaped and space-before-colon `continue-on-error`;
+- `continue-on-error` as an expression, and set to `false`;
+- job-level `continue-on-error` on `ci-ready` and on `acceptance`;
+- job-level `if` written as `if :`, `"if":`, `!!str`, or with the value on the next line;
+- step `if` as `if :`, as an escaped `"i\x66"`, after a bare `-`, and as one-line or multi-line flow-mapping steps;
+- a merge key `<<: {if: …}`;
+- an alias pulling a condition from an anchor in another job;
+- an anchored step reused through an alias;
+- a duplicate `if` key, which plain PyYAML would silently resolve to the last value;
+- an allowlisted name with a different condition.
 
-The new message is `required job "<id>" cannot be parsed for skip conditions: <reason>`. A step can have more than one `if` entry, and each one is checked against the allowlist.
+**Status:** fixed: requires human verification (new guard logic)
 
-**Related gap closed in the same fix.** Job-level `if` had the same spelling gap: `    if : false`, `    "if": false`, and `    if:` with the value on the next line all returned `[]` before this fix. In `review-acceptance.yml`, the required check is the job itself, so a job skipped this way would count as passing. `extractJobIf` now uses the same reader, which also affects `requiredJobsFor` and the release.yml if-equality test. This is a widening of the review's scope. I included it because it is the same defect in the same detector.
+### CR-02: `parseJobs` stops at column-0 comments and drops unrecognised job headers
 
-**Regression tests (25 new; 23 failed before the fix, 2 are guards that already passed).** Every variant is applied to the real `ci.yml` ("Fail if tests failed" in the `test` job, or the `lint` job), and the main ones also to the real `review-acceptance.yml`:
-- `if : false`;
-- `if : github.run_attempt == '0'` (actionlint passes this one);
-- `"if" : false`;
-- `-   if: false`, with the whole step re-indented;
-- flow mapping with `if: false`, and with `if : github.run_attempt == '0'`;
-- alias step, `? if` explicit key, `<<: *x` merge key, `"i\x66"` key, unterminated flow mapping, flow-sequence `steps:`;
-- job-level `if :`, `"if":`, and `if:` with the value on the next line, on both workflows;
-- a job body re-indented away from 4 spaces.
+**Files modified:** `tests/test_required_jobs_no_skip.py`
+**Commit:** dbb4443
+**Applied fix:** PyYAML reads the whole document, so a column-0 comment or an unusual header spelling no longer hides anything from the guard. This commit adds cross-checks so that a dropped job also fails:
+- `ci-ready`'s `needs` must equal `ALL_JOBS`, imported from `tests/test_ci_gate.py`.
+- `review-acceptance.yml` must contain exactly the `acceptance` job.
+- A missing `ci-ready` is reported.
+- Non-string keys, and case variants of `if`, `continue-on-error`, `uses` or `steps`, are rejected.
+- SA-05 is forbidden for today: a required job may not call a reusable workflow (job-level `uses:`), and a required step may not use a local action (`uses:` starting with `.` or `/`).
 
-The guards are: `if:` with the value on the next line at step level, and an `if:` nested under `with:` together with the real files' run/script blocks (no problems reported).
+Negative tests:
+- both of the review's end-to-end cases. A column-0 comment followed by a step `if` in `ci-ready`, and the same in the acceptance gate step, each produce exactly one problem. The `ci-ready` case also hides `continue-on-error`.
+- `acceptance` headers written with a trailing comment, double-quoted, single-quoted with a space before the colon, and as an explicit `? acceptance` key;
+- a `jobs:` block re-indented by 4 spaces. The unmodified re-indented file still passes, so the guard adds no false positive.
+- a job dropped from `needs`, and `needs` reduced to a single string;
+- the acceptance job renamed, or an extra job added;
+- a reusable workflow, and local actions in both workflows.
 
-Both real workflows still report `[]`. The two allowlisted step conditions (`test::Upload test evidence` `always()`, and the folded `browser-e2e::Upload browser failure evidence`) still pass. I also checked by hand that a tab after the dash, a tag, an anchor, a bare `-` followed by `if :`, a multi-line flow step, a JSON-style `{"if":false}` step, a `'if' :` key, and a compact `steps:` list at the job-key column are each either reported or read correctly.
+**Status:** fixed: requires human verification (new guard logic)
 
-**Status:** fixed: requires human verification (parser logic change)
+### WR-01: The step-`if` allowlist is keyed by step name only
 
-### WR-01: Mandatory `meta.base === baseRefOid` rejected valid local-checkpoint Codex evidence
+**Files modified:** `tests/test_required_jobs_no_skip.py`, `.github/scripts/ci-job-consistency.cjs`, `.github/scripts/ci-job-consistency.test.cjs`
+**Commit:** ea31695
+**Applied fix:** Both allowlist entries are evidence uploads. In both the pytest guard and the Node detector, a step that carries an allowlisted (job, name, condition) must now also:
+- be the only step with that name in its job;
+- use `actions/upload-artifact@`;
+- have no `run:`.
 
-**Files modified:** `.github/scripts/acceptance-readiness.cjs`, `.github/scripts/acceptance-readiness.test.cjs`
-**Commit:** ebdd76c
-**Applied fix:** Readiness now runs `git merge-base <baseRefOid> <head>` itself, as an argument array with no shell. It requires `meta.base` to equal that merge-base. If git fails, or returns something other than a 40-hex SHA, readiness stops with exit 1 and "could not compute the merge-base" (fails closed). The audited-input diff is recomputed over the same range, `<merge-base>..<head>`, so audited files that changed only on main after the fork point no longer force a cross-grade. The checklist now shows `Reviewed base SHA (merge-base): …` under `Full base SHA: …`.
+The Node change is small. The step reader now also returns `uses` and `hasRun`, and `findSkipConditions` adds these three checks after an allowlist match.
 
-**Why this rule, and why it is the narrowest one.** It is narrower than the review's suggestion, which was to accept either `baseRefOid` or the merge-base:
-- *PR checkpoint:* the runner's `verify_trust` refuses a PR base that is not an ancestor of the head. So any PR-checkpoint base the runner can record already equals `merge-base(baseRefOid, head)`.
-- *Local phase checkpoint:* the contract's `git merge-base origin/main HEAD` is the branch's fork point (or its last merge of main). That stays the merge-base with the current `baseRefOid` when main moves forward. This is the case that was being rejected.
-- So one exact value covers both contract rules. A `baseRefOid` that is *not* an ancestor of the head is no longer accepted, because no runner reviews that two-dot range. Accepting it would have been the only new acceptance path in the review's suggestion, and it is not needed.
-- For direct callers of `codexStatusFor`/`readiness` that pass no merge-base, the PR base itself is still required (the previous, stricter rule). Every `runCli` path passes the merge-base.
+Regression tests, all confirmed failing before the fix:
+- the review's case: the browser gate renamed to "Upload browser failure evidence" with the allowlisted condition;
+- the same rename after the real upload is renamed away and loses its condition, so the name is unique again;
+- the `test`-job variant.
 
-**Not changed:** the fallback validator still checks a fallback record's `base` against the PR base. That is unchanged behaviour, and the IN-10 alignment was out of scope.
+The same-name/different-condition case was already rejected and is also tested. There are two new Node tests.
 
-**On this branch now:** after the `ae8e4b2` merge, `git merge-base origin/main HEAD` equals `origin/main` (`decd5f1`). A post-fix local Codex pass will therefore record a base that readiness accepts under both the old and the new rule.
+**Status:** fixed: requires human verification (logic change)
 
-**Regression tests (5 new; 4 failed before the fix, 1 guard already passed):**
-- main moved to a merge commit ahead of the fork point, with meta.base equal to the merge-base, is ready (exit 0). This includes an audited file changed only on main, which must not count;
-- meta.base equal to a `baseRefOid` that is not an ancestor of the head is blocked;
-- meta.base that is neither value is blocked (guard);
-- merge-base missing, empty, or not a SHA fails closed;
-- `codexStatusFor` uses `reviewedBase` when it is given.
+### WR-02: A fallback record had to name `baseRefOid` while its Codex evidence names the merge-base
 
-The existing CLI exec tables gained the `git merge-base` call.
+**Files modified:** `.github/scripts/acceptance-readiness.cjs`, `.github/scripts/acceptance-readiness.test.cjs`, `.github/scripts/codex-fallback.cjs`, `.github/scripts/codex-fallback.test.cjs`, `docs/codex-adversarial-review-contract.md`
+**Commit:** 63b0b3d
+**Applied fix:** `codexStatusFor` now passes `validateFallback` the same reviewed base it has already checked against the Codex meta's `base` (`expectedBase`: the merge-base when readiness computes one). Before, it passed the PR base. The fallback record, its `scope.base` and the Codex evidence therefore all have to name one base: the range that was actually reviewed.
 
-**Status:** fixed: requires human verification (trust/logic change)
+The reviewer's suggested fix also covered the `validate` CLI, and I applied that part. Without it, the CLI and readiness would still disagree:
+- The CLI now requires `--base` to equal the Codex meta's recorded `base`, and rejects a meta that has no base.
+- The validator's message now reads "does not match the reviewed base (merge-base)".
+- The contract's fallback `base` field now says it is the reviewed base, the one the Codex output records, and that `--base` must equal it.
 
-### WR-02: Readiness accepted status files not bound to this head or base
+**No fail-open path:**
+- The fallback base is still pinned to exactly one SHA.
+- That SHA has already been checked to equal both the merge-base readiness computed itself and the meta's `base`. A merge-base that cannot be computed still blocks (exit 1, unchanged).
+- Direct callers that pass no reviewed base keep the PR-base rule, which is tested.
+- A fallback that names the moved PR base, or whose record base and scope base disagree, is rejected.
 
-**Files modified:** `.github/scripts/acceptance-readiness.cjs`, `.github/scripts/acceptance-readiness.test.cjs`
-**Commit:** b05ced4
-**Applied fix:** This is the review's "minimum" fix. A checker verdict of `complete` now counts only if its `inspected_head` equals the PR head and its `inspected_base` equals the verified `meta.base`:
-- in the head-side `.status.json`;
-- in `.base-status.json`, whenever a base cross-grade is required.
+**Regression tests:**
+- Readiness, 4 new: a fallback that names the merge-base is accepted; one that names the moved PR base is rejected; a record base and scope base that disagree are rejected; the PR-base rule without a reviewed base still holds.
+- CLI, 3 new: a meta base different from `--base` is rejected; a meta with no base is rejected; a matching base is accepted.
+- Changed tests: two older CLI fixtures had no `meta.base`, so I added `base: BASE` to them. Two message assertions were updated to the new wording.
 
-Otherwise readiness blocks with "Codex status file is not bound to this head and base", or for the base grade, "grader changed in this diff: the base checker status is not bound to this head and base". I confirmed that the base checker on `origin/main` already emits both fields, so a real cross-grade is not over-rejected. The untrusted-head "claims complete" block still fires first, unchanged. The existing readiness fixtures now carry bound statuses.
+**IN-10 effect:** the `validate` CLI now binds the meta's `base`, which covers IN-10's binding gap. It still does not compute the merge-base itself, so IN-10 remains in the backlog with that narrower remainder.
 
-**Regression tests (5 new; 4 failed before the fix):**
-- the reviewer's reproduction (status and base-status both complete for an unrelated commit, with a recomputed audited change) is blocked;
-- a complete status with the wrong head, the wrong base, or no or null inspected SHAs is blocked;
-- a required base-status that is complete but unbound is blocked;
-- bound status plus bound base-status is ok (guard);
-- the CLI blocks a status file graded for another head.
+**Status:** fixed: requires human verification (logic change)
 
-**Residual, needs an owner ruling.** The review's "stronger" option is not implemented: readiness would itself materialize the base commit's checker and re-grade `<OUT>.last.json`, ignoring `.base-status.json`. So when `tests/codex_review_run.py` itself changes, `.base-status.json` is still written by the changed runner. A runner change could make it write a bound, "complete" base status. The base checker *code* still comes from the base commit, but the runner chooses what it passes to that checker. The two options:
-- *(a) Keep as is.* No added code. The residual is limited to diffs that change the runner itself. Those diffs are already sensitive-class under the classification policy, and the owner must accept them in any case.
-- *(b) Implement the stronger re-grade in readiness.* Readiness would gain a Python subprocess and a temp-dir materialization, plus the need for the `.last.json` report and the Codex exit code to be present locally. That is roughly half a day with tests, and it adds acceptance-time failure modes.
+## Backlog (not code fixes)
 
-My recommendation is (a) for this phase, with (b) recorded as a follow-up if runner changes become frequent.
+`bb4df1a` (`docs(85)`, added with `git add -f`) appends SA-04, SA-05 and IN-01 to IN-12 to `.planning/backlog/MAINTENANCE.md` under "Still open after Phase 85", in plain language:
+- SA-04: a PR that changes `tests/codex_review_run.py` can write its own complete `.base-status.json`. The fix is to make the base cross-grade independent of the runner being reviewed (about half a day).
+- SA-05: the checks do not inspect reusable workflows or local actions. The new guard forbids both in required jobs today.
 
-**Status:** fixed: requires human verification (trust/logic change; residual above)
-
-### WR-03: Fallback reviewer denylist missed `bm-code-reviewer` and `Claude Code`
-
-**Files modified:** `.github/scripts/codex-fallback.cjs`, `.github/scripts/codex-fallback.test.cjs`
-**Commit:** e44b818
-**Applied fix:** The exact list (`DISALLOWED_REVIEWERS`, still exported) is kept. In addition, the reviewer name is lowercased and split on every run of non-alphanumeric characters. The name is rejected as not independent when any token is `bm`, `buildomator`, `gsd` or `claude`, or when the token sequence `codex review run` appears.
-
-Matching is by token, not substring, so `submarine` is not caught by `bm`. A human reviewer whose name contains the word "Claude" would be rejected. That errs on the safe side, and they can be recorded under another name.
-
-**Regression tests (15 new; 10 failed before the fix):**
-- rejected: `bm-code-reviewer`, `Claude Code`, `Claude (bm-code-reviewer)`, `claude-opus`, `BM_code_review`, `GSD code reviewer`, `gsd-code-fixer`, `Buildomator review agent`, `codex_review_run.py`, `Codex Review Run`, and `  BM  ` (a guard that already passed);
-- still accepted: `vibe-check deep review (owner-run)`, `manual Codex inspection session`, `independent human reviewer`, `submarine review`.
-
-**Status:** fixed
-
-## Final gate (run after all four fix commits, at e44b818)
+## Full gate (at `bb4df1a`)
 
 | Command | Result |
-|---------|--------|
-| `uv run pytest tests/ -x -q` | 2569 passed, 0 failed (38 warnings, pre-existing) |
-| `uv run ruff check triggarr/ tests/ .github/scripts/` | All checks passed |
-| `FORCE_COLOR=0 node --test --test-reporter=tap .github/scripts/*.test.cjs .claude/plugins/planchk-router/test/planchk-router.test.mjs` | 406 tests, 406 pass, 0 fail (356 at the start of iteration 1, 381 after CR-01, 386 after WR-01, 391 after WR-02) |
-| `actionlint` | exit 0, no findings |
+|---|---|
+| `uv run pytest tests/ -x -q` | 2627 passed, 0 failed (38 warnings), exit 0 |
+| `uv run ruff check triggarr/ tests/ .github/scripts/` | All checks passed, exit 0 |
+| `FORCE_COLOR=0 node --test --test-reporter=tap .github/scripts/*.test.cjs .claude/plugins/planchk-router/test/planchk-router.test.mjs` | 415 tests, 415 pass, 0 fail |
+| `actionlint` | exit 0 |
 
-The working tree is clean apart from this report, which is left for the orchestrator to commit. Nothing was pushed, no `--no-verify` was used, and no stash was used.
+The new guard file on its own: 58 passed.
 
-**Review-workflow note:** these fixes change the commit under review from `ae8e4b2` to `e44b818`. Under the project's review workflow (CLAUDE.md), the post-fix BM review and its paired independent Codex pass must run on the new head. Evidence recorded for earlier heads does not cover these commits. `tests/codex_review_run.py` and `tests/codex_report_status.py` were not changed in this round, so the Codex audited inputs are unchanged by these fixes.
+## Not done / for the owner
+
+- The Node detector still has the parse gaps in CR-01 and CR-02 (the quoted job-level `continue-on-error`, column-0 comments, header spellings). As instructed, it was not hardened further. The pytest guard covers those cases and is authoritative.
+- Per the project's review workflow, this fix round needs a fresh BM code review of the new head, with its paired Codex pass on the exact commit.
+- REVIEW-FIX.md is not committed. The orchestrator handles that.
 
 ---
 
-_Fixed: 2026-10-27T19:41:24Z_
+_Fixed: 2026-10-27T21:43:16Z_
 _Fixer: Claude (bm-code-fixer)_
-_Iteration: 2_
+_Iteration: 3_
