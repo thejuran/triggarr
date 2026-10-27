@@ -29,16 +29,33 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Test release safety policy
-        run: node --test .github/scripts/*.test.cjs
-
-      - name: Compile and package
+      - name: Test CI policy scripts and plugin hooks
         run: |
-          uv run --no-sync python -m compileall -q triggarr
-          uv build --no-sources
+          node -e "
+            const major = Number(process.versions.node.split('.')[0]);
+            console.log('Node ' + process.versions.node);
+            if (major < 20) {
+              console.error('Node >= 20 required for node:test and --import');
+              process.exit(1);
+            }
+          "
+          node --test .github/scripts/*.test.cjs .claude/plugins/planchk-router/test/planchk-router.test.mjs
 
-      - name: Run tests
-        run: uv run --no-sync pytest tests/ -q --junitxml=test-results.xml
+      - name: Compile
+        run: uv run --no-sync python -m compileall -q triggarr
+
+      - name: Run tests with branch coverage
+        id: pytest
+        run: |
+          set +e
+          start_seconds=$(date +%s)
+          uv run --no-sync pytest tests/ -q --junitxml=test-results.xml --cov=triggarr --cov-branch --cov-report=xml:coverage.xml
+          status=$?
+          end_seconds=$(date +%s)
+          set -e
+          echo "test_exit=$status" >> "$GITHUB_OUTPUT"
+          echo "test_seconds=$((end_seconds - start_seconds))" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Upload test evidence
         if: always()
@@ -49,13 +66,33 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Save built Python distributions
+      - name: Write coverage provenance
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TEST_EXIT: ${{ steps.pytest.outputs.test_exit }}
+          TEST_SECONDS: ${{ steps.pytest.outputs.test_seconds }}
+        run: |
+          node .github/scripts/coverage-provenance.cjs write --coverage coverage.xml --test-exit "$TEST_EXIT" --test-seconds "$TEST_SECONDS" --out coverage-provenance.json
+
+      - name: Upload coverage evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: python-dist
-          path: dist/*
+          name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            coverage.xml
+            coverage-provenance.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
+
+      - name: Fail if tests failed
+        env:
+          TEST_EXIT: ${{ steps.pytest.outputs.test_exit }}
+        run: |
+          if [ "$TEST_EXIT" != "0" ]; then
+            echo "pytest failed (exit $TEST_EXIT); coverage collection did not change this result" >&2
+            exit 1
+          fi
 
   lint:
     timeout-minutes: 20
@@ -116,6 +153,11 @@ jobs:
           docker run --rm --entrypoint python triggarr:ci-test -m pip freeze --all --exclude triggarr > image-requirements.txt
           test -s image-requirements.txt
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Check image dependencies match uv.lock
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file requirements-locked.txt
+          docker run --rm -v "$PWD/.github/scripts:/check:ro" --entrypoint python triggarr:ci-test /check/image_lock_consistency.py --dump-environment > image-environment.json
+          uv run --no-project --with packaging==26.0 python .github/scripts/image_lock_consistency.py --locked requirements-locked.txt --freeze image-requirements.txt --environment image-environment.json
       - name: Check image dependency vulnerabilities
         run: uvx --from pip-audit==2.10.1 pip-audit --strict --no-deps --disable-pip -r image-requirements.txt
 
