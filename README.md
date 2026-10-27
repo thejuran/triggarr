@@ -100,18 +100,13 @@ When `TRIGGARR_CONFIG_DIR` is unset, Triggarr uses `/config`, so `triggarr.toml`
 
 ### Standalone (pip)
 
-Requires Python 3.11+. Go to the [latest release page](https://github.com/thejuran/triggarr/releases/latest), download the `.whl` asset, and install it:
+Requires Python 3.11+. Install directly from a tagged release of the source repository:
 
 ```bash
-pip install /path/to/triggarr-<version>-py3-none-any.whl
+pip install "git+https://github.com/thejuran/triggarr@vX.Y.Z"
 ```
 
-Or derive the download URL at runtime using the GitHub releases API (requires `curl` and Python 3.11+):
-
-```bash
-pip install "$(curl -s https://api.github.com/repos/thejuran/triggarr/releases/latest \
-  | python3 -c 'import sys,json; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".whl")))')"
-```
+Replace `vX.Y.Z` with the release tag you want (see the [releases page](https://github.com/thejuran/triggarr/releases)). From the next release on, GitHub releases publish the Docker image only; Python wheel/sdist files are no longer attached (earlier releases keep theirs).
 
 Set an absolute config directory before starting Triggarr:
 
