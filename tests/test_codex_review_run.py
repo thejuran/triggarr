@@ -998,6 +998,146 @@ def test_execute_refuses_dependabot_pr_before_any_work(tmp_path, monkeypatch) ->
     assert not any(run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES)
 
 
+# --- Audited-inputs-changed and base-commit grader (D-18 WR-03/ARCH-03/impact-001, checker B13) ---
+# A diff that changes the checker/schema/prompt/runner it is graded by must
+# not be the only grader of its own PR: when AUDITED_INPUTS changed between
+# base and head, the base commit's own checker cross-grades the same report.
+
+
+def _is_base_checker(argv) -> bool:
+    """The base-commit grader's checker invocation (materialized under a codex-base-grader-* temp dir)."""
+    return any("base-grader" in str(part) for part in argv) and "--report" in argv
+
+
+def test_audited_inputs_changed_empty_diff_means_no_base_grading(tmp_path, monkeypatch) -> None:
+    import json as _json
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()  # default `git diff --name-only` answers empty
+
+    assert execute(run, command_runner=fake) == 1  # unchanged from the default head-side "incomplete"
+    assert not run.output(".base-status.json").exists()
+    assert not any(_is_base_checker(call) for call in fake.calls)
+    assert not any(call[:2] == ["git", "show"] for call in fake.calls)
+
+    meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
+    assert meta["audited_inputs_changed_in_diff"] == []
+    assert meta["base_grader_ref"] == run.base
+    assert meta["base_grader_source"] == "base"
+
+
+def _changed_grader_spy(fake: FakeRunner, *, changed_files: str, base_checker_stdout: str, base_checker_exit: int,
+                         head_checker_stdout: str = '{"status": "complete"}\n', head_checker_exit: int = 0,
+                         show_fails: set[str] | None = None):
+    show_fails = show_fails or set()
+    base_calls: list[list[str]] = []
+    show_calls: list[list[str]] = []
+
+    def _spy(argv, **kwargs):
+        if argv[:2] == ["git", "diff"] and "--name-only" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout=changed_files)
+        if argv[:2] == ["git", "show"]:
+            show_calls.append(list(argv))
+            _, _, relpath = argv[2].partition(":")
+            if relpath in show_fails:
+                return subprocess.CompletedProcess(argv, 128, stdout="")
+            return subprocess.CompletedProcess(argv, 0, stdout="# fake grader content\n")
+        if _is_base_checker(argv):
+            base_calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, base_checker_exit, stdout=base_checker_stdout)
+        if _is_checker(argv):
+            return subprocess.CompletedProcess(argv, head_checker_exit, stdout=head_checker_stdout)
+        return fake(argv, **kwargs)
+
+    return _spy, base_calls, show_calls
+
+
+def test_changed_grader_both_complete_exits_clean(tmp_path, monkeypatch) -> None:
+    import json as _json
+
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    spy, base_calls, show_calls = _changed_grader_spy(
+        fake,
+        changed_files="tests/codex_report_status.py\n",
+        base_checker_stdout='{"status": "complete"}\n',
+        base_checker_exit=0,
+    )
+
+    assert execute(run, command_runner=spy) == 0
+    assert run.output(".base-status.json").read_text(encoding="utf-8") == '{"status": "complete"}\n'
+    assert len(base_calls) == 1
+    # The base grader is always materialized exactly at run.base (checker B13).
+    assert all(argv[2].startswith(f"{run.base}:") for argv in show_calls)
+
+    meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
+    assert meta["audited_inputs_changed_in_diff"] == ["tests/codex_report_status.py"]
+
+
+def test_changed_grader_base_incomplete_fails_the_run(tmp_path, monkeypatch, capsys) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    spy, base_calls, _ = _changed_grader_spy(
+        fake,
+        changed_files="tests/codex_review_run.py\n",
+        base_checker_stdout='{"status": "incomplete"}\n',
+        base_checker_exit=1,
+    )
+
+    assert execute(run, command_runner=spy) == 1
+    assert run.output(".base-status.json").read_text(encoding="utf-8") == '{"status": "incomplete"}\n'
+    assert len(base_calls) == 1
+    out = capsys.readouterr().out
+    assert "grader changed in this diff: the base commit's checker did not confirm completeness" in out
+
+
+def test_changed_grader_base_commit_missing_checker_is_incomplete(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    fake = FakeRunner()
+    spy, base_calls, _ = _changed_grader_spy(
+        fake,
+        changed_files="tests/codex_report_status.py\n",
+        base_checker_stdout="",
+        base_checker_exit=1,
+        show_fails={"tests/codex_report_status.py"},
+    )
+
+    assert execute(run, command_runner=spy) == 1
+    assert base_calls == []  # never reached: materialize_grader already failed
+    status = run.output(".base-status.json").read_text(encoding="utf-8")
+    assert '"status": "incomplete"' in status
+    assert "grader changed in this diff and the base commit has no checker to cross-grade it" in status
+
+
+def test_output_suffixes_include_base_status() -> None:
+    assert ".base-status.json" in runner.OUTPUT_SUFFIXES
+
+
+def test_rerun_refused_when_base_status_already_exists(tmp_path, monkeypatch) -> None:
+    run = _tmp_run(tmp_path, monkeypatch)
+    run.output(".base-status.json").parent.mkdir(parents=True, exist_ok=True)
+    run.output(".base-status.json").write_text("recorded")
+    fake = FakeRunner()
+
+    with pytest.raises(FileExistsError):
+        execute(run, command_runner=fake)
+    assert run.output(".base-status.json").read_text() == "recorded"
+
+
+def test_untrusted_never_reaches_materialize_grader(tmp_path, monkeypatch) -> None:
+    """checker B13: the untrusted path never materializes a grader of any kind."""
+    _forbid_everything(monkeypatch)
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    (tmp_path / PHASE_DIR).mkdir(parents=True)
+
+    def _forbidden_materialize(*_args, **_kwargs):
+        raise AssertionError("materialize_grader must not run for an untrusted ReviewRun")
+
+    monkeypatch.setattr(runner, "materialize_grader", _forbidden_materialize)
+
+    assert main(_cli(PHASE_DIR, "--untrusted")) == 2
+
+
 def test_contract_documents_untrusted_sources() -> None:
     text = runner.CONTRACT_PATH.read_text(encoding="utf-8")
     assert "--untrusted" in text and "--trusted" in text
