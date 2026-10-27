@@ -1176,14 +1176,15 @@ def test_contract_documents_untrusted_sources() -> None:
     text = runner.CONTRACT_PATH.read_text(encoding="utf-8")
     assert "--untrusted" in text and "--trusted" in text
     assert "Dependabot" in text
-    assert "Codex: PENDING — untrusted source" in text
-    assert "Phase 85" in text
-    assert "CI results" in text
+    assert "untrusted-refused" in text
+    assert "Phase 85.1" in text
+    assert "CI still runs" in text
 
 
 def test_record_documents_untrusted_pending() -> None:
     record = (REPO_ROOT / "docs" / "review-checkpoint-record.md").read_text(encoding="utf-8")
-    assert "Codex: PENDING — untrusted source" in record
+    assert "untrusted-refused" in record
+    assert "Phase 85.1" in record
 
 
 def test_prompt_covers_untrusted_evidence() -> None:
