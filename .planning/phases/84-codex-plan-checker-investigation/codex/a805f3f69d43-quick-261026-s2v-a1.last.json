@@ -1,0 +1,89 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "a805f3f69d439ce2ab874bc0c08a5356f251d732",
+  "inspected_base_sha": "cbec881f9f0cb4d523bef67a376396f12da31ccb",
+  "pr_url": "none",
+  "scope": "Full specified diff: seven files under .claude/plugins/.",
+  "verdict": "findings",
+  "summary": "One documentation defect affects the required negative upgrade check. All 11 plugin tests passed; harness evidence reports 2,432 pytest tests passed at the inspected head.",
+  "coverage": [
+    "Inspected all seven changed files, including marketplace registration, plugin manifest, README, both hooks, dispatch configuration, and tests.",
+    "Traced flag unset/0/1 behavior, unrelated agents, malformed input, stdin errors, model rewriting, and downstream rejection propagation.",
+    "Checked local activation boundaries, ignore behavior, shared settings, and existing CI test commands.",
+    "Reviewed test assertions: behavior tests pass, but mocked registration does not establish real Claude dispatch; wiring assertions do not validate command execution or plugin loading.",
+    "Read relevant research excerpts as intent background only."
+  ],
+  "exclusions": [
+    "Planning markdown, raw review transcripts, and generated review artifacts excluded as requested.",
+    "No files outside the working copy were read."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e cbec881f9f0cb4d523bef67a376396f12da31ccb",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff cbec881f9f0cb4d523bef67a376396f12da31ccb..a805f3f69d439ce2ab874bc0c08a5356f251d732 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect entire scoped diff."
+    },
+    {
+      "command": "git status --short; rg --files --hidden -g '!\\.git' -g '!.planning/**' -g '*package.json' -g '*settings*' -g '*test*' -g '*AGENTS*' -g '*pyproject*'; cat .codex-review-evidence/pytest.txt; cat .claude/settings.json; cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Inspect workspace status, test evidence, settings, and test configuration."
+    },
+    {
+      "command": "rg -n --hidden 'planchk-router|agent.spawn|ENABLE_FUNCTION_HOOKS|model-gateway|bm-plan-checker' .claude .github tests .gitignore; node --version; node --test .claude/plugins/planchk-router/test/planchk-router.test.mjs",
+      "exit_code": 0,
+      "purpose": "Find integration references and run plugin tests; Node v25.9.0, 11 passed."
+    },
+    {
+      "command": "rg --files .planning/quick | rg '261026-s2v'; cat .gitignore; rg -n 'node --test|planchk|pytest' .github/workflows; git diff --stat cbec881f9f0cb4d523bef67a376396f12da31ccb..a805f3f69d439ce2ab874bc0c08a5356f251d732 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Check scope inventory, ignore rules, and CI coverage; quick-task search returned no matches."
+    },
+    {
+      "command": "rg --files --hidden .planning | rg 's2v|RESEARCH.md$' | head -40; git check-ignore .claude/settings.local.json; git ls-files .claude; sed -n '1,65p' .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Locate intent background and confirm local settings are ignored and CI does not invoke plugin tests."
+    },
+    {
+      "command": "rg -n -C 3 'plugin-dir|fail.closed|modules|guard|scope|flag' .planning/phases/84-codex-plan-checker-investigation/84-RESEARCH.md",
+      "exit_code": 0,
+      "purpose": "Inspect relevant routing and sideloading intent."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "low",
+      "title": "Negative upgrade check points at the marketplace instead of the plugin",
+      "file": ".claude/plugins/planchk-router/README.md",
+      "line_start": 69,
+      "line_end": 69,
+      "trigger": "Follow the documented negative check after a Claude Code update from a throwaway directory.",
+      "execution_path": "The command passes .claude/plugins to --plugin-dir, but that directory contains the marketplace manifest. The plugin manifest and hooks are under .claude/plugins/planchk-router.",
+      "consequence": "The check can fail to load the guard being tested, producing a misleading upgrade failure and preventing the documented procedure from validating fail-closed behavior.",
+      "evidence": "The changed tree places plugin.json and hooks below planchk-router; the repository's research example also specifies --plugin-dir pointed directly at that plugin directory. Existing tests load hook files directly and cannot catch this README error.",
+      "suggested_fix": "Use --plugin-dir /path/to/triggarr/.claude/plugins/planchk-router and verify the disposable session actually exposes the intended BM checker before testing refusal.",
+      "reproduced": false,
+      "reproduction_command": null,
+      "hypothesis": "Claude's direct plugin loader will not load the nested router when given only its marketplace parent. Live CLI execution was not performed."
+    }
+  ],
+  "limitations": [
+    "Did not rerun pytest in the read-only sandbox; relied on the supplied exact-head harness evidence.",
+    "Did not execute Claude Code or model-gateway integration; actual module loading, model availability, and fallback behavior remain unverified.",
+    "The guard proves only the environment flag value, not successful module registration. The README acknowledges residual routing verification.",
+    "Plugin tests are not invoked by the inspected CI commands.",
+    "Command entries containing multiple shell commands report the overall shell exit code."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

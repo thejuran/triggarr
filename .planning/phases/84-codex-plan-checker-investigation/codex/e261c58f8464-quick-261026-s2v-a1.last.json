@@ -1,0 +1,89 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "e261c58f8464ad3e634ec88bb854d64ad707aa9a",
+  "inspected_base_sha": "cbec881f9f0cb4d523bef67a376396f12da31ccb",
+  "pr_url": "none",
+  "scope": "Full requested diff: seven added files under .claude/plugins/.",
+  "verdict": "findings",
+  "summary": "One operational documentation defect: disabling the plugin also disables its guard, contrary to the documented fail-closed behavior. All nine plugin tests passed. Harness evidence reports 2,432 Python tests passed at the inspected head.",
+  "coverage": [
+    "Inspected all seven changed files, including manifests, hook registration, guard, routing handler, documentation, and tests.",
+    "Checked guard flag states, malformed input, unrelated agents, model rewriting, and rejection propagation.",
+    "Inspected shared Claude settings, routing intent, and CI test selection.",
+    "Reviewed activation, disabling, upgrade assumptions, and acceptance-policy implications. No shared CI or publication policy was changed.",
+    "Tests exercise the handler through a fake registrar; they do not establish actual host loading, gateway routing, incomplete-output handling, or plugin-disable behavior. Existing CI commands do not select the new Node tests."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md",
+    "Files outside the working copy"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e cbec881f9f0cb4d523bef67a376396f12da31ccb",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff cbec881f9f0cb4d523bef67a376396f12da31ccb..e261c58f8464ad3e634ec88bb854d64ad707aa9a -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete scoped diff."
+    },
+    {
+      "command": "rg --files --hidden -g '!.git' -g '!uv.lock' -g '!*.jsonl' -g '!*.md' .claude .codex-review-evidence tests .github",
+      "exit_code": 0,
+      "purpose": "Locate surrounding configuration and tests."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; git status --short; rg -n --hidden -g '!.git' -g '!.planning/**' 'planchk|agent.spawn|FUNCTION_HOOKS|bm-plan-checker' .",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and locate routing references."
+    },
+    {
+      "command": "node --test .claude/plugins/planchk-router/test/planchk-router.test.mjs",
+      "exit_code": 0,
+      "purpose": "Run plugin regression tests; all nine passed."
+    },
+    {
+      "command": "cat .claude/settings.json; sed -n '220,270p' docs/bm-greptile-codex-blueprint.md; rg -n 'node|pytest|planchk' .github/workflows/ci.yml pyproject.toml; rg --files .planning/quick | rg '261026-s2v'; git diff --check cbec881f9f0cb4d523bef67a376396f12da31ccb..e261c58f8464ad3e634ec88bb854d64ad707aa9a",
+      "exit_code": 0,
+      "purpose": "Inspect intent, shared settings, test integration, and diff formatting. Quick-task path search returned no matches."
+    },
+    {
+      "command": "nl -ba .claude/plugins/planchk-router/README.md | sed -n '55,76p'; nl -ba .claude/plugins/planchk-router/hooks/guard.mjs; sed -n '1,65p' .github/workflows/ci.yml; sed -n '35,65p' pyproject.toml; git diff --name-only cbec881f9f0cb4d523bef67a376396f12da31ccb..e261c58f8464ad3e634ec88bb854d64ad707aa9a -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Confirm finding location, CI selection, and full changed-file coverage."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Disable instructions incorrectly promise that the guard remains active",
+      "file": ".claude/plugins/planchk-router/README.md",
+      "line_start": 61,
+      "line_end": 63,
+      "trigger": "An operator follows the documented disable command expecting subsequent checker spawns to be blocked.",
+      "execution_path": "The plugin owns both the agent.spawn module and the classic PreToolUse guard in hooks/hooks.json. Disabling the plugin removes both registrations in subsequent sessions; shared .claude/settings.json contains no independent guard.",
+      "consequence": "BM checker spawns can proceed with their ordinary model while the operator believes the documented fail-closed block is active.",
+      "evidence": "README lines 61–63 equate disabling the entire plugin with removing the module-gate environment key. These differ: removing the gate can leave the enabled plugin's classic guard active, whereas disabling its owner removes that guard too. Tests invoke guard.mjs directly and cannot detect this lifecycle discrepancy.",
+      "suggested_fix": "Document that disabling the plugin restores ordinary BM checking. For a blocking mode, keep the plugin enabled and unset the module gate, or register an independent guard if blocking must survive plugin disablement.",
+      "reproduced": false,
+      "reproduction_command": null,
+      "hypothesis": "On a fresh session after plugin disablement, neither plugin hook loads and BM uses its original checker model. This follows from registration ownership but was not exercised against a live Claude runtime."
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; inspected harness evidence reporting exit 0 and 2,432 passing tests on the exact head.",
+    "Live Claude plugin lifecycle, external BM callers, and model-gateway behavior could not be verified using only this working copy.",
+    "The guard checks an environment flag, not successful module registration. Passing unit tests therefore do not prove fail-closed behavior after host-loading failures or runtime upgrades."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
