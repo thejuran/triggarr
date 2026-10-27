@@ -219,7 +219,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 
 - [x] **Phase 82: CI Tests What We Ship** - Shipped-image startup, browser regression, and release-version checks join the required gate
 - [x] **Phase 83: Paired BM + Codex Review & Risk-Based Depth** - A gated BM update, then every BM review gets an independent Codex pass plus a high-risk vibe-check recommendation (merged 2026-10-23, PR #35)
-- [ ] **Phase 84: Codex Plan-Checker Investigation** - Record whether a narrowly scoped hook can route only the plan checker, and how it compares on the original Phase 81 plans — separately gated, nothing activated without approval
+- [x] **Phase 84: Codex Plan-Checker Investigation** - Record whether a narrowly scoped hook can route only the plan checker, and how it compares on the original Phase 81 plans — separately gated, nothing activated without approval (verified 2026-10-26: hook routing proven; blind comparison invalid — input was post-review, not original; owner chose to adopt anyway, activation is a separate quick task)
 - [ ] **Phase 85: Follow-on CI Improvements & Acceptance Usability** - Dependency/image/lint/coverage/permissions hardening plus an acceptance register usable under real PR traffic
 - [ ] **Phase 86: Pilot & Reference Record** - 3-5 real PRs run the paired workflow; the owner records a retirement decision and reusable guidance is written
 
@@ -287,9 +287,9 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] 84-02-PLAN.md — matched-run harness, pilot exercises through BM's checker loop, fail-closed negatives and disable test
 - [x] 84-03-PLAN.md — evidence-based cutoff, Phase 81 input recovery and freeze, Time Machine owner gate, ORIGINAL/PARTIAL/RECONSTRUCTED label
 - [x] 84-04-PLAN.md — evaluator-only answer key, locked adoption criteria with owner acknowledgment, blind packet with contamination check
-- [ ] 84-05-PLAN.md — 2+2 matched blind runs, arm-blind fresh-session adjudication, locked-rule scoring, owner spot-check
-- [ ] 84-06-PLAN.md — revised snapshot freeze, shared feedback, 1+1 revision runs and blind adjudication
-- [ ] 84-07-PLAN.md — adoption evaluation, Triggarr isolation proof, investigated-vs-deferred closeout, owner decision
+- [x] 84-05-PLAN.md — 2+2 matched blind runs, arm-blind fresh-session adjudication, locked-rule scoring, owner spot-check
+- [ ] 84-06-PLAN.md — revised snapshot freeze, shared feedback, 1+1 revision runs and blind adjudication — NOT PERFORMED (comparison input invalid; owner ruling 2026-10-26)
+- [x] 84-07-PLAN.md — adoption evaluation, Triggarr isolation proof, investigated-vs-deferred closeout, owner decision
 
 ### Phase 85: Follow-on CI Improvements & Acceptance Usability
 
@@ -334,7 +334,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 81. Correct Sonarr Grab Attribution + v5 Compatibility | 14/14 | Complete (multi-season pack and alternate series order unverified-live under D-12) | 2026-10-21 |
 | 82. CI Tests What We Ship | 9/9 | Complete | 2026-10-22 |
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
-| 84. Codex Plan-Checker Investigation | 4/7 | In progress | - |
+| 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
 | 85. Follow-on CI Improvements & Acceptance Usability | 0/TBD | Not started | - |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 

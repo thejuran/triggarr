@@ -59,9 +59,9 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 
 ### Codex plan-checker investigation
 
-- [ ] **PLANCHK-01**: Whether the installed Claude Code runtime supports an `agent.spawn` hook that changes only `bm:bm-plan-checker`'s model through model-gateway is verified and recorded (fields, model selection, permissions, resume). Any needed runtime update is proposed separately, not applied silently.
-- [ ] **PLANCHK-02**: If supported, a scratch-project pilot routes only the plan checker, proves the routed backend from gateway metadata while other agents stay on their models, and exercises initial check, a known-defective plan, revision/recheck and post-bounce checks. Unavailable gateway/model or incomplete output leaves the check incomplete with an explicit error. Nothing is activated in this repository without owner approval.
-- [ ] **PLANCHK-03**: The blind comparison on the original Phase 81 plans runs per the blueprint (recovered, hashed inputs; matched sessions; withheld answer key; separate revision round), or is recorded as unavailable if exact originals cannot be recovered. Adoption criteria are set before the runs.
+- [x] **PLANCHK-01**: Whether the installed Claude Code runtime supports an `agent.spawn` hook that changes only `bm:bm-plan-checker`'s model through model-gateway is verified and recorded (fields, model selection, permissions, resume). Any needed runtime update is proposed separately, not applied silently.
+- [x] **PLANCHK-02**: If supported, a scratch-project pilot routes only the plan checker, proves the routed backend from gateway metadata while other agents stay on their models, and exercises initial check, a known-defective plan, revision/recheck and post-bounce checks. Unavailable gateway/model or incomplete output leaves the check incomplete with an explicit error. Nothing is activated in this repository without owner approval.
+- [x] **PLANCHK-03**: The blind comparison on the original Phase 81 plans runs per the blueprint (recovered, hashed inputs; matched sessions; withheld answer key; separate revision round), or is recorded as unavailable if exact originals cannot be recovered. Adoption criteria are set before the runs.
 
 ### Pilot and reference record
 
@@ -112,9 +112,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REVIEW-08 | Phase 83 | Pending |
 | RISK-01 | Phase 83 | Pending |
 | RISK-02 | Phase 83 | Pending |
-| PLANCHK-01 | Phase 84 | Pending |
-| PLANCHK-02 | Phase 84 | Pending |
-| PLANCHK-03 | Phase 84 | Pending |
+| PLANCHK-01 | Phase 84 | Complete (verified-present on 2.1.281; needs early-access CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1) |
+| PLANCHK-02 | Phase 84 | Complete (routing + fail-closed proven; full BM loop partially validated — revise/recheck not exercised) |
+| PLANCHK-03 | Phase 84 | Complete via recorded-unavailable route (true originals not recovered; recovered set was post-review; comparison invalid/not measurable) |
 | CIMAINT-01 | Phase 85 | Pending |
 | CIMAINT-02 | Phase 85 | Pending |
 | CIMAINT-03 | Phase 85 | Pending |
