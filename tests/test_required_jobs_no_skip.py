@@ -21,10 +21,14 @@ For each required job it asserts:
 - no ``continue-on-error`` at job or step level, whatever its value;
 - every step ``if`` is on the reviewed allowlist, keyed by job, step name and
   exact condition;
+- no ``shell:`` on any step and no ``defaults:`` on the job or the workflow
+  (a custom shell such as ``true {0}`` runs instead of the script, review
+  iteration 4 CR-01);
 - no reusable workflow (job-level ``uses:``) and no local action
   (``uses: ./...``), whose steps this guard cannot see (review SA-05);
 - every job and step key is a string, and no key is a case variant of
-  ``if``, ``continue-on-error``, ``uses`` or ``steps``.
+  ``if``, ``continue-on-error``, ``uses``, ``steps``, ``shell`` or
+  ``defaults``.
 
 It also cross-checks the job sets, so a job dropped from a required check
 fails: ``ci-ready``'s ``needs`` must equal ``ALL_JOBS`` from
@@ -54,7 +58,7 @@ ACCEPTANCE_TEXT = ACCEPTANCE_PATH.read_text()
 AGGREGATE_JOB = "ci-ready"
 AGGREGATE_IF = "always()"
 ACCEPTANCE_JOBS = frozenset({"acceptance"})
-WATCHED_KEYS = frozenset({"if", "continue-on-error", "uses", "steps"})
+WATCHED_KEYS = frozenset({"if", "continue-on-error", "uses", "steps", "shell", "defaults"})
 
 BROWSER_EVIDENCE_CONDITION = (
     "failure() && hashFiles('e2e-artifacts/credential/scan-complete.json') != '' && "
@@ -135,6 +139,8 @@ def job_problems(job_id: str, job: Any, *, allowed_if: str | None) -> list[str]:
         return [f"{prefix} is not a mapping"]
 
     problems = _key_problems(prefix, job)
+    if "defaults" in job:
+        problems.append(f"{prefix} sets defaults: (a run.shell override can neutralise its run steps)")
     if "uses" in job:
         problems.append(f"{prefix} calls a reusable workflow (job-level uses: {job['uses']!r})")
     if "continue-on-error" in job:
@@ -162,6 +168,8 @@ def job_problems(job_id: str, job: Any, *, allowed_if: str | None) -> list[str]:
             problems.append(f"{prefix} {label} uses a local or unreadable action: {uses!r}")
         if "continue-on-error" in step:
             problems.append(f"{prefix} {label} sets continue-on-error")
+        if "shell" in step:
+            problems.append(f"{prefix} {label} sets shell: {step['shell']!r}")
         if "if" not in step:
             continue
         if (job_id, step.get("name"), step["if"]) not in STEP_IF_ALLOWLIST:
@@ -186,7 +194,13 @@ def _load_problem(path_name: str, text: str) -> tuple[dict[Any, Any] | None, lis
     jobs = doc.get("jobs")
     if not isinstance(jobs, dict) or not jobs:
         return None, [f"{path_name} jobs: is not a non-empty mapping"]
-    return doc, []
+    problems = []
+    for key in doc:
+        if key == "defaults":
+            problems.append(f"{path_name} sets workflow-level defaults: (run.shell can neutralise every run step)")
+        elif isinstance(key, str) and key.lower() == "defaults":
+            problems.append(f"{path_name} has a case variant of a watched key: {key!r}")
+    return doc, problems
 
 
 def _needs(job: Any) -> list[Any]:
@@ -376,6 +390,81 @@ def test_allowlisted_name_with_a_different_condition_is_rejected() -> None:
         "      - name: Upload test evidence\n        if: success()\n",
     )
     assert any("if: not on the reviewed allowlist: 'success()'" in p for p in ci_problems(mutated))
+
+
+# --- CR-01 (iteration 4): shell: and defaults: overrides ---------------------
+# A custom shell template such as ``true {0}`` runs /usr/bin/true instead of
+# the script, so a step "succeeds" without running. No workflow uses shell: or
+# defaults: today, so every placement is forbidden.
+
+SHELL_OVERRIDE = "true {0}"
+GATE_ENV = "        env:\n          RESULTS: ${{ toJSON(needs) }}\n"
+
+
+def test_ci_ready_job_level_defaults_shell_is_rejected() -> None:
+    defaults = f"    defaults:\n      run:\n        shell: {SHELL_OVERRIDE}\n"
+    mutated = _mutate(CI_TEXT, CI_READY_NAME, f"{CI_READY_NAME}{defaults}")
+    assert any(p.startswith('required job "ci-ready" sets defaults:') for p in ci_problems(mutated))
+
+
+def test_ci_ready_gate_step_shell_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, GATE_ENV, f"{GATE_ENV}        shell: {SHELL_OVERRIDE}\n")
+    assert any(
+        p.startswith('required job "ci-ready" step 0 "Require every mandatory job to succeed" sets shell:')
+        for p in ci_problems(mutated)
+    )
+
+
+def test_fail_if_tests_failed_step_shell_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, FAIL_STEP, f"{FAIL_STEP}        shell: {SHELL_OVERRIDE}\n")
+    assert any(
+        p.startswith('required job "test" step 10 "Fail if tests failed" sets shell:') for p in ci_problems(mutated)
+    )
+
+
+@pytest.mark.parametrize("shell", ["bash", "sh"])
+def test_even_a_builtin_step_shell_is_rejected(shell: str) -> None:
+    mutated = _mutate(CI_TEXT, FAIL_STEP, f"{FAIL_STEP}        shell: {shell}\n")
+    problems = ci_problems(mutated)
+    assert any(p.startswith('required job "test" step 10 "Fail if tests failed" sets shell:') for p in problems)
+
+
+def test_ci_workflow_level_defaults_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, "\njobs:\n", f"\ndefaults:\n  run:\n    shell: {SHELL_OVERRIDE}\n\njobs:\n")
+    assert any(p.startswith("ci.yml sets workflow-level defaults:") for p in ci_problems(mutated))
+
+
+def test_acceptance_workflow_level_defaults_is_rejected() -> None:
+    mutated = _mutate(ACCEPTANCE_TEXT, "\njobs:\n", f"\ndefaults:\n  run:\n    shell: {SHELL_OVERRIDE}\njobs:\n")
+    problems = acceptance_problems(mutated)
+    assert any(p.startswith("review-acceptance.yml sets workflow-level defaults:") for p in problems)
+
+
+def test_acceptance_job_defaults_and_step_shell_are_rejected() -> None:
+    with_defaults = _mutate(
+        ACCEPTANCE_TEXT, ACCEPTANCE_NAME, f"{ACCEPTANCE_NAME}    defaults:\n      run:\n        shell: bash\n"
+    )
+    assert any(p.startswith('required job "acceptance" sets defaults:') for p in acceptance_problems(with_defaults))
+    with_shell = ACCEPTANCE_TEXT + f"        shell: {SHELL_OVERRIDE}\n"
+    assert any(
+        p.startswith('required job "acceptance" step') and "sets shell:" in p for p in acceptance_problems(with_shell)
+    )
+
+
+@pytest.mark.parametrize("key", ["Shell", "SHELL"])
+def test_case_variant_of_step_shell_is_rejected(key: str) -> None:
+    mutated = _mutate(CI_TEXT, FAIL_STEP, f"{FAIL_STEP}        {key}: {SHELL_OVERRIDE}\n")
+    assert any("case variant of a watched key" in p for p in ci_problems(mutated))
+
+
+def test_case_variant_of_job_defaults_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, CI_READY_NAME, f"{CI_READY_NAME}    Defaults:\n      run:\n        shell: bash\n")
+    assert any("case variant of a watched key" in p for p in ci_problems(mutated))
+
+
+def test_case_variant_of_workflow_defaults_is_rejected() -> None:
+    mutated = _mutate(CI_TEXT, "\njobs:\n", "\nDefaults:\n  run:\n    shell: bash\n\njobs:\n")
+    assert any(p.startswith("ci.yml has a case variant of a watched key") for p in ci_problems(mutated))
 
 
 # --- CR-02: comments and header spellings cannot hide a step or a job --------
