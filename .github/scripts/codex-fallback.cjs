@@ -15,6 +15,12 @@ const FALLBACK_FIELDS = Object.freeze([
 ]);
 const REVIEWER_KINDS = Object.freeze(['vibe-check-deep-review', 'manual-codex-inspection-session', 'other-independent']);
 const DISALLOWED_REVIEWERS = Object.freeze(['bm', 'bm code review', 'buildomator', 'claude', 'gsd-code-reviewer', 'codex_review_run']);
+// WR-03 (iteration 2): BM, its agents (bm-code-reviewer, gsd-*), Claude and the
+// Codex runner are never independent, however the name is spelled. The name is
+// lowercased and split on every non-alphanumeric run; a name is rejected when
+// any of these tokens appears, or the runner's token sequence appears.
+const DISALLOWED_REVIEWER_TOKENS = Object.freeze(['bm', 'buildomator', 'gsd', 'claude']);
+const DISALLOWED_REVIEWER_TOKEN_SEQUENCES = Object.freeze([Object.freeze(['codex', 'review', 'run'])]);
 const OWNER_DECISIONS = Object.freeze(['approve-fallback', 'wait', 'retry-later']);
 
 const REVIEWER_FIELDS = ['name', 'kind'];
@@ -48,6 +54,16 @@ function missingNestedFields(obj, fields, pathPrefix) {
   return fields
     .filter(field => !Object.hasOwn(obj, field))
     .map(field => `missing required field ${pathPrefix}.${field}`);
+}
+
+function reviewerNameIsDisallowed(name) {
+  const lowered = name.trim().toLowerCase();
+  if (DISALLOWED_REVIEWERS.includes(lowered)) return true;
+  const tokens = lowered.split(/[^a-z0-9]+/).filter(Boolean);
+  if (tokens.some(token => DISALLOWED_REVIEWER_TOKENS.includes(token))) return true;
+  return DISALLOWED_REVIEWER_TOKEN_SEQUENCES.some(sequence =>
+    tokens.some((_, start) => sequence.every((token, offset) => tokens[start + offset] === token))
+  );
 }
 
 function basename(path) {
@@ -92,7 +108,7 @@ function validateFallback(record, context = {}) {
       const nameRaw = reviewer.name;
       const nameNorm = typeof nameRaw === 'string' ? nameRaw.trim().toLowerCase() : '';
       const authorNorm = typeof prAuthor === 'string' ? prAuthor.trim().toLowerCase() : '';
-      if (nameNorm && (DISALLOWED_REVIEWERS.includes(nameNorm) || (authorNorm && nameNorm === authorNorm))) {
+      if (nameNorm && (reviewerNameIsDisallowed(nameNorm) || (authorNorm && nameNorm === authorNorm))) {
         reasons.push(`reviewer is not independent: ${nameRaw}`);
       }
       if (Object.hasOwn(reviewer, 'kind') && !REVIEWER_KINDS.includes(reviewer.kind)) {

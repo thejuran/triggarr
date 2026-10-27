@@ -509,3 +509,41 @@ test('runCli validate rejects Codex output whose meta names no head', () => {
   assert.equal(exitCode, 1);
   assert.ok(errors.some(e => e.includes('Codex output is for a different head')), errors.join('\n'));
 });
+
+// --- Iteration-2 WR-03 regressions: BM/Claude names in any spelling are not independent ---
+
+for (const name of [
+  'bm-code-reviewer',
+  'Claude Code',
+  'Claude (bm-code-reviewer)',
+  'claude-opus',
+  'BM_code_review',
+  'GSD code reviewer',
+  'gsd-code-fixer',
+  'Buildomator review agent',
+  'codex_review_run.py',
+  'Codex Review Run',
+  '  BM  ',
+]) {
+  test(`reviewer name ${JSON.stringify(name)} is not independent`, () => {
+    const record = validRecord();
+    record.reviewer = {name, kind: 'other-independent'};
+    const {ok, reasons} = validateFallback(record, validContext());
+    assert.equal(ok, false);
+    assert.ok(reasons.includes(`reviewer is not independent: ${name}`), JSON.stringify(reasons));
+  });
+}
+
+for (const name of [
+  'vibe-check deep review (owner-run)',
+  'manual Codex inspection session',
+  'independent human reviewer',
+  'submarine review', // contains "bm" only inside a word, not as a token
+]) {
+  test(`reviewer name ${JSON.stringify(name)} stays acceptable`, () => {
+    const record = validRecord();
+    record.reviewer = {name, kind: 'other-independent'};
+    const {ok, reasons} = validateFallback(record, validContext());
+    assert.equal(ok, true, JSON.stringify(reasons));
+  });
+}
