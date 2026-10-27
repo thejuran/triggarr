@@ -91,3 +91,11 @@ Accepted, not fixed. Source: `85-REVIEW.md` iteration 4 (reviewed head `eae6d34`
 
 - **WR-01:** `continue-on-error` on "Fail if tests failed" would swallow the no-skip guard's own CI failure and leave "CI ready" green; covered today by sensitive classification, BM + paired Codex review and exact-commit owner acceptance. Possible future hardening: move the gate logic into a tested script (or run the guard in a second required job without `set +e`).
 - **WR-02:** hard-coded `RESULTS` (ci-ready gate) or `TEST_EXIT` ("Fail if tests failed") inputs would make the gate always see success; covered the same way. Possible future hardening: move the gate logic into a tested script whose inputs the guard pins exactly.
+
+### Phase 85 code review iteration 5 follow-ups (recorded 2026-10-27)
+
+Source: `85-REVIEW.md` iteration 5 (reviewed head `1f8e339`, status clean).
+
+- **IN-14:** a job whose `name:` is an expression (`${{ 'CI ready' }}`, `format(...)`, a matrix value) evades the static "CI ready" uniqueness check yet publishes a "CI ready" check at run time; deliberate, sensitive-class edit (accepted class). Pairs with the deferred item below.
+- **WR-03 readiness half (deferred in round 4):** `acceptance-readiness.cjs` picks the newest "CI ready" check by name only; make it accept only the run produced by `ci.yml`'s `ci-ready` job (workflow path + job), so a same-named check from another workflow cannot satisfy readiness.
+- **Codex local trust vs worktree execution:** `tests/codex_review_run.py --trusted` local-checkpoint mode refuses any phase executed with BM parallel worktrees (plan commits arrive via `merge worktree-agent-…` reflog entries; worker reflogs are deleted). Either teach the runner to accept this machine's own worktree merges safely, or run phase checkpoints sequentially / by PR URL. Phase 85 used the PR-URL path (owner decision 2026-10-27).

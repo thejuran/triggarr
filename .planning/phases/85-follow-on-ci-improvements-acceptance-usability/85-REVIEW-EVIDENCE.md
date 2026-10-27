@@ -356,6 +356,13 @@ pass, and needs the owner's acceptance of the exact commit. Possible future
 hardening (backlog, `.planning/backlog/MAINTENANCE.md`): move the gate logic
 into a tested script so its inputs and outcome can be checked directly.
 
+## Post-plan review record (2026-10-27)
+
+- **BM phase-execution review (standard depth):** iteration 1 at `b4a47b6` (2 critical, 4 warning); owner-approved fix rounds 1-4 with fresh BM reviews at `252fe61`, `094028e`, `eae6d34`; iteration 5 at `1f8e339` **clean** under the owner's stopping rule (no critical/warning outside the accepted class). Reports: `85-REVIEW.iter1.md` .. `85-REVIEW.iter4.md`, `85-REVIEW.md` (iteration 5), `85-REVIEW-FIX.md` (round 4).
+- `ae8e4b2` merges `origin/main` (`decd5f1`, PR #35 merge commit) into the branch with no content change, so `origin/main` is an ancestor of the phase head (PR base / runner PR mode / readiness merge-base rule).
+- **Paired Codex pass — local checkpoint refused (not run, nothing recorded):** `tests/codex_review_run.py --trusted` on `b4a47b6` exited 2 before reserving an output: "local checkpoint origin not established: 2948f9880466 was not committed on this machine". Cause: Plan 85-13's local-origin rule accepts only `commit:` reflog entries, but BM's parallel worktree execution lands plan commits through `merge worktree-agent-…` entries and deletes the worker branches (and their reflogs). Every worktree-executed phase therefore fails the local trust check by design. This is **not** a clean or complete Codex result.
+- **Owner decision (2026-10-27, live):** run the paired Codex pass by PR URL after the end-of-phase push (`--trusted --pr-url <PR URL>`, trust established via GitHub for the owner's same-repo PR). Codex for this phase is **PENDING** until then; acceptance still requires a complete Codex pass on the final head. Follow-up recorded below.
+
 ## Hand-off after the last plan
 
 Every step below is marked **not performed by any plan** — this plan writes
