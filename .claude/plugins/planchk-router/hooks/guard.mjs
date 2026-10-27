@@ -8,6 +8,15 @@ let raw = '';
 process.stdin.on('data', (chunk) => {
   raw += chunk;
 });
+process.stdin.on('error', () => {
+  // Stream-level error (broken pipe, ECONNRESET, etc.) -- fail closed rather than
+  // let Node's uncaught-exception path pick an exit code outside this script's
+  // deliberate contract (0 or 2).
+  process.stderr.write(
+    'planchk-router: stdin error while reading PreToolUse input; refusing Agent spawn so the Codex route cannot silently fail. Stop and report.\n'
+  );
+  process.exitCode = 2;
+});
 process.stdin.on('end', () => {
   let input;
   try {
