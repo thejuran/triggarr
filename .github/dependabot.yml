@@ -1,0 +1,55 @@
+# Monthly grouped version updates per Phase 85 D-04/D-05.
+#
+# Each ecosystem groups its minor and patch bumps into one PR; a major-version
+# bump matches no group, so it opens its own, individual PR. open-pull-requests-limit
+# on every ecosystem bounds how many PRs can be open at once so a backlog can't
+# pile up. Security updates are ungrouped (groups apply only to version-updates)
+# and open outside this monthly schedule -- that is GitHub's default Dependabot
+# security-update behavior, triggered by advisory disclosure, not schedule.interval
+# (D-06); repository-level Dependabot security updates are confirmed enabled.
+#
+# There is no auto-merge anywhere in this repository. Every Dependabot PR is
+# classified by content like any other PR and gets CI, BM review and exact-commit
+# owner acceptance (D-07). Until Phase 85.1 delivers the isolated Codex review for
+# untrusted (bot/fork) heads, a bot PR's Codex pass is recorded INCOMPLETE and an
+# owner-approved fallback review is used instead, per
+# docs/codex-adversarial-review-contract.md.
+#
+# docker and github-actions only accept cooldown.default-days -- any other,
+# per-bump-type cooldown key silently disables ALL version updates
+# repository-wide, not just that block.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    groups:
+      uv-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 5
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
