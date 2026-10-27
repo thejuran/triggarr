@@ -29,6 +29,7 @@ dependencies = [
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio",
+    "pytest-cov>=7.1.0",
     "pytailwindcss",
     "ruff",
     "playwright>=1.60",
