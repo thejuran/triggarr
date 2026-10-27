@@ -597,6 +597,53 @@ describe('ACCEPT-03 no-skip detector', () => {
     assert.ok(problems.some(p => p.includes('Upload test evidence')));
   });
 
+  // CR-02 regressions: `if:` written as the first key of a step sits on the
+  // step-start line itself and must be captured like the 8-space form.
+  const FIRST_KEY_IF_VARIANTS = [
+    {label: '- if: false', ifLines: '      - if: false\n', expect: 'false'},
+    {label: '- if: ${{ false }}', ifLines: '      - if: ${{ false }}\n', expect: '${{ false }}'},
+    {label: '- if: >- folded block', ifLines: '      - if: >-\n          github.event_name ==\n          \'never\'\n', expect: "github.event_name == 'never'"},
+  ];
+
+  for (const variant of FIRST_KEY_IF_VARIANTS) {
+    test(`ci.yml: a first-key step ${variant.label} on "Fail if tests failed" is reported`, () => {
+      const mutated = mutate(
+        ciText,
+        '      - name: Fail if tests failed\n',
+        `${variant.ifLines}        name: Fail if tests failed\n`
+      );
+      const problems = findSkipConditions({
+        workflowText: mutated,
+        aggregateJobId: 'ci-ready',
+        triggerContract: TRIGGER_CONTRACTS['ci.yml'],
+      });
+      assert.ok(
+        problems.includes(
+          `required job "test" step if: not on the reviewed allowlist: "Fail if tests failed": ${variant.expect}`
+        ),
+        JSON.stringify(problems)
+      );
+    });
+
+    test(`review-acceptance.yml: a first-key step ${variant.label} is reported`, () => {
+      const mutated = mutate(
+        acceptanceText,
+        '      - uses: actions/github-script@',
+        `${variant.ifLines}        uses: actions/github-script@`
+      );
+      const problems = findSkipConditions({
+        workflowText: mutated,
+        aggregateJobId: null,
+        triggerContract: TRIGGER_CONTRACTS['review-acceptance.yml'],
+      });
+      assert.ok(
+        problems.some(p => p.startsWith('required job "acceptance" step if: not on the reviewed allowlist:') &&
+          p.endsWith(`: ${variant.expect}`)),
+        JSON.stringify(problems)
+      );
+    });
+  }
+
   test('STEP_IF_ALLOWLIST pins exactly the two currently reviewed entries', () => {
     assert.deepEqual(new Set(Object.keys(STEP_IF_ALLOWLIST)), new Set([
       'test::Upload test evidence',

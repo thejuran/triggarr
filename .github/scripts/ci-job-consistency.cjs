@@ -353,10 +353,14 @@ function extractStepIfs(jobLines) {
       continue;
     }
 
-    const ifMatch = line.match(/^        if:\s*(.+?)\s*$/);
+    // `if:` is a step key either on its own 8-space line or as the first key
+    // on the step-start line (`      - if: false`); a quoted key is the same
+    // key to YAML. An empty value (scalar on the following lines) is read
+    // like a block so it can never slip past as "no condition".
+    const ifMatch = line.match(/^(?:      - |        )(?:if|"if"|'if'):(?:\s+(.*?))?\s*$/);
     if (ifMatch && current.condition === null) {
-      const value = ifMatch[1];
-      if (/^[>|][-+]?$/.test(value)) {
+      const value = ifMatch[1] || '';
+      if (value === '' || /^[>|][-+]?$/.test(value)) {
         const collected = [];
         for (let j = i + 1; j < jobLines.length; j++) {
           const continuation = jobLines[j];
