@@ -581,7 +581,7 @@ create-github-release:
 ### Pitfall 7: `exit_code` is not disambiguated between "vulnerabilities found" and "scanner/DB error" by `trivy`'s default behavior
 **What goes wrong:** A naive `if [ $? -ne 0 ]; then echo "vulnerabilities found"` treats a DB-download failure identically to "found a blocking CVE" — which is actually fine for D-12's fail-closed intent (both should fail the job) but is the wrong signal if the job ever needs to distinguish the two cases (e.g., to post a different, more actionable error message, or to retry only on transient DB errors).
 **Why it happens:** Trivy's `--exit-code` flag only affects the "vulnerabilities found" case; DB/network/parse errors always exit `1` regardless of the requested exit code.
-**How to avoid:** If the distinction matters to the design (D-12 doesn't strictly require it — "fail closed" covers both), request a non-default `--exit-code` value (e.g. `100`) for the findings case and treat any other non-zero exit as the ambiguous "scanner error" bucket.
+**How to avoid:** If the distinction matters to the design (D-12 doesn't strictly require it — "fail closed" covers both), request a non-default `--exit-code` value (e.g. `100`) for the findings case and treat any other non-zero exit as the ambiguous "scanner error" bucket. (Planning resolution: no retry on DB errors is adopted — see Open Questions 3, RESOLVED; every non-zero Trivy exit fails the job.)
 **Warning signs:** A job failure message that says "vulnerabilities found, see summary" when the actual cause was a registry rate-limit on the vulnerability DB mirror.
 
 ### Pitfall 8: SIGTERM/SIGHUP to `tests/codex_review_run.py` bypasses its own cleanup (D-18, confirmed present)
@@ -698,22 +698,27 @@ except (KeyError, OSError) as exc:
 
 **If this table is empty:** N/A — see entries above. None of these assumptions block planning; all are either low-risk or already have a built-in verification step in the recommended design (e.g. A6 is proven by CIMAINT-01's own required negative demonstration).
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All three questions below were resolved at planning time (2026-10-26/27). The resolutions are what Plans 85-01, 85-12 and 85-15 implement; the original analysis is kept for context.
 
 1. **Where should the written OS-scan policy (D-10) live — a new `docs/os-scan-policy.md`, or a new "Supply chain / CI scanning" section in the existing root `SECURITY.md`?**
    - What we know: `SECURITY.md` already exists and documents the *application's* security model (auth, CSRF, SSRF, etc.); it's a natural home for a scanning policy but currently has no "build pipeline" content at all. `docs/` already hosts the review/acceptance policy docs this phase extends.
    - What's unclear: whether the owner considers CI/supply-chain policy "security policy" (→ `SECURITY.md`) or "operations/process policy" (→ `docs/`).
    - Recommendation: default to a new `docs/os-scan-policy.md` (consistent with how `docs/review-classification-policy.md` and `docs/codex-adversarial-review-contract.md` already house this phase's other written policies), and cross-link it from `SECURITY.md`'s existing structure. Low-cost either way; the planner can decide without blocking.
+   - **RESOLVED:** `docs/os-scan-policy.md`, cross-linked from `SECURITY.md` (Plan 85-01 Task 2). It is committed before the gate is enforced (Plan 85-15 depends on 85-01), as D-10 requires.
 
 2. **Should the OS-scan job additionally gate on Trivy's own misconfiguration/secret scanners, or stay narrowly scoped to `--pkg-types os` vulnerabilities only?**
    - What we know: D-12 explicitly says "must not duplicate pip-audit's Python coverage as a second equivalent gate," and this repo already has a dedicated `secrets` job (gitleaks). Trivy's misconfiguration scanner would overlap with neither existing job, but was not asked for by any CIMAINT-03 criterion.
    - What's unclear: whether "one OS-package scanner" in D-12 is read strictly (vulnerabilities only) or loosely (whatever Trivy finds in the image, scoped to non-Python).
    - Recommendation: scope strictly to `--pkg-types os` vulnerability scanning only, per the literal CIMAINT-03 wording ("shipped image's OS packages are scanned"). Flag misconfiguration/secret-in-image scanning as a possible future backlog item, not in this phase.
+   - **RESOLVED:** strict scope — `--scanners vuln --pkg-types os` against the exact audited image artifact (Plan 85-15 Task 1); the policy states misconfiguration and secret scanning are out of scope (Plan 85-01). No backlog item is created by this phase.
 
 3. **Does the owner want Trivy's DB downloaded fresh on every CI run, or cached across runs (with a staleness check) to reduce both runtime and dependency on Trivy's DB-distribution registries during the exact window this phase is implemented (so soon after the March 2026 compromise)?**
    - What we know: a cached-DB approach reduces per-run network dependency and runtime, but needs its own staleness guard (one 2026 report found Trivy prints no warning when scanning with a deliberately stale cached DB and `--skip-db-update`).
    - What's unclear: whether the ~5-minute added-PR-time budget (Phase 82 D-14/D-15) makes a fresh DB download per run acceptable, or whether caching is needed to stay inside it.
-   - Recommendation: start with a fresh `--download-db-only` step with retry/backoff across the known mirror registries (mirror.gcr.io, ghcr.io, public.ecr.aws) as a separate step before the scan step, measure actual added time in the first real run, and only add caching if the measured overhead threatens the 5-minute budget.
+   - Original recommendation (superseded): a separate `--download-db-only` step with retry/backoff across mirror registries.
+   - **RESOLVED:** fresh DB download on every run, no cache, no `--skip-db-update`/`--offline-scan`, no custom mirror list, and **no in-step retry or backoff** (Plan 85-15 Task 1; Plan 85-01 policy). Reconciliation with the retry idea above: D-12 makes scanner errors — including a DB download failure — fail closed, and Phase 82 D-15 forbids retries that turn a failure into a pass. A DB download failure therefore fails the `os-scan` job and `CI ready`; the remedy is a visible re-run of the job (a new, recorded run attempt), never an automatic retry inside the step. Runtime is measured locally in Plan 85-12 and on the phase PR's CI run (85-19 pending item P1); if the added time exceeds the ~5-minute target, the tradeoff (including caching with a staleness guard) goes to the owner before anything is changed (Phase 82 D-14).
 
 ## Environment Availability
 

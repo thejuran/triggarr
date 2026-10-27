@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "planning -- Phase 85 context gathered (branch ci-followon); next: /bm:plan-phase 85"
-stopped_at: "Phase 85 context gathered (85-CONTEXT.md, D-01..D-20: full checks always, monthly grouped updates, Critical/High-with-fix OS scan, wheel/sdist dropped, three Phase 83 carry-forward groups folded); next: /bm:plan-phase 85"
-last_updated: "2026-10-27T02:18:55.000Z"
-last_activity: "2026-10-26 -- Phase 84 verified passed (4/4): agent.spawn hook routes only bm-plan-checker to codex (early-access flag required); blind comparison invalid (Phase 81 input post-review, R1-R6 markers); adoption not recommended per D-15, owner override to adopt; activation deferred to a quick task (Triggarr only, stop-and-report on failure)"
+status: "ready to execute -- Phase 85 planned (19 plans, 5 waves, plan checker passed); Phase 85.1 inserted for untrusted-PR Codex review"
+stopped_at: "Phase 85 planned 2026-10-27: 19 plans / 5 waves; plan checker passed after 3 rounds + 1 owner-authorized extra round + 85.1 split; next: /bm:execute-phase 85"
+last_updated: "2026-10-27T12:37:41.000Z"
+last_activity: "2026-10-27 -- Phase 85 planned (research, patterns, 19 plans; owner split untrusted-PR isolated Codex review into inserted Phase 85.1, interim per-PR owner-approved fallback for bot/fork PRs, D-07 amendment). 2026-10-26 -- Phase 84 verified passed (4/4): agent.spawn hook routes only bm-plan-checker to codex (early-access flag required); blind comparison invalid (Phase 81 input post-review, R1-R6 markers); adoption not recommended per D-15, owner override to adopt; activation deferred to a quick task (Triggarr only, stop-and-report on failure)"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 3
-  total_plans: 26
+  total_plans: 45
   completed_plans: 25
-  percent: 60
+  percent: 50
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85 (Follow-on CI improvements & acceptance usability) — context gathered 2026-10-26 on branch `ci-followon`, not yet planned. Phase 84 closed and verified 2026-10-26; Phase 83 merged
-Plan: 6 of 7 done, 84-06 not performed by owner ruling (84-01..05, 84-07; Phase 84 planned 2026-10-23; owner checkpoints in 84-01 D-02 conditional update, 84-03 Time Machine/Full Disk Access, 84-04 criteria lock, 84-05 spot-check, 84-07 adoption decision)
-Status: Phase 84 planned 2026-10-23 (7 plans, 6 waves; plan-checker passed iteration 3 after 2 revision rounds; research found agent.spawn present in installed CLI 2.1.281, so the D-02 update is likely unneeded; Phase 81 originals 81-08/09 need Time Machine, which requires Full Disk Access). Earlier: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
+Phase: 85 (Follow-on CI improvements & acceptance usability) — planned 2026-10-27 on branch `ci-followon` (19 plans, 5 waves), ready to execute. Phase 85.1 (isolated Codex review for untrusted PRs) inserted after it. Phase 84 closed and verified 2026-10-26; Phase 83 merged
+Plan: 0 of 19 done (85-01..85-19). Owner checkpoints during execution: 85-01 README install wording; 85-12 only if the baseline OS scan finds blocking findings; the on-PR broken demonstration push in the 85-19 hand-off needs a separate go-ahead
+Status: Phase 85 planned 2026-10-27 (research + pattern map; plan checker 12 → 7 → 4 issues over 3 rounds, an owner-authorized extra round found 4 new blockers in the untrusted-PR container boundary; owner split that work into Phase 85.1 and kept D-07 as its goal; the confirming check on the remaining 19 plans passed with 0 issues). Interim rule: bot/fork PRs get an INCOMPLETE Codex result plus a per-PR owner-approved fallback review (D-16) until 85.1.
 Last activity: 2026-10-22 -- Plans 01-08 done. Quick path (261022-l7h, head a7995ba) and explicit /bm:code-review path (head d501a68) recorded in 83-REVIEW-EVIDENCE.md with paired Codex; 6 negative demos in 83-DEMONSTRATIONS.md. Owner rulings 2026-10-22: red Failed cards keep "failure reason(s)"; mixed code+sensitive PRs get both review classes. Craft-skill code-reviewer: owner accepted sticky but not inserted (no checkout; needs separate approval as a settings change beyond REVIEW-01). Next: plan 09 batched fix. 2026-10-23 -- Plan 09 done: 4 owner-approved fix rounds (D-08 overridden by owner), durable Codex completeness (schema v2, harness pytest evidence, runner, template v5, untrusted heads blocked until Phase 85); final head 36eaa67c2976 BM standard 0 blockers/6 info, Codex final complete 0 findings, 2400 tests on clean checkout. OPEN before push: owner decision on home-directory path inside committed codex .jsonl/.last.json files; disclosed deviations (gitleaks order slip; hook-block tool switch in bf4fb5f). 2026-10-23 -- Plan 10 done (PR #35 draft pushed at 49ded1e by owner choice); BM phase-execution review + paired Codex on 49ded1e; owner-approved local fix rounds 5-7 each with fresh BM + paired Codex (final heads 385baa7, d90c1c1: Codex complete, 0 findings); vibe-check passes at b19e7b2 and 385baa7. Verification 17/17 must-haves, human_needed: end-of-phase push + PR ready, Greptile/CI on final head, owner acceptance. Phase 85 carry-forward in .planning/backlog/MAINTENANCE.md. 2026-10-23 -- Owner accepted PR #35 at b07e532 (Review acceptance run 40033787485 success) and it merged as decd5f1. 2026-10-26 -- Quick 261026-s2v: Codex-routed plan checker activated for Triggarr (local switch), final head 4d7e677 BM + paired Codex clean.
 
 ### v2.13 milestone shape
@@ -243,8 +243,8 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-27T02:18:55.000Z
-Stopped at: Phase 85 context gathered; next: /bm:plan-phase 85
+Last session: 2026-10-27T12:37:41.000Z
+Stopped at: Phase 85 planned; next: /bm:execute-phase 85
 Resume file: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-CONTEXT.md
 
 ## Operator Next Steps

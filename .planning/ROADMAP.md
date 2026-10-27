@@ -221,6 +221,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] **Phase 83: Paired BM + Codex Review & Risk-Based Depth** - A gated BM update, then every BM review gets an independent Codex pass plus a high-risk vibe-check recommendation (merged 2026-10-23, PR #35)
 - [x] **Phase 84: Codex Plan-Checker Investigation** - Record whether a narrowly scoped hook can route only the plan checker, and how it compares on the original Phase 81 plans — separately gated, nothing activated without approval (verified 2026-10-26: hook routing proven; blind comparison invalid — input was post-review, not original; owner chose to adopt anyway, activation is a separate quick task)
 - [ ] **Phase 85: Follow-on CI Improvements & Acceptance Usability** - Dependency/image/lint/coverage/permissions hardening plus an acceptance register usable under real PR traffic
+- [ ] **Phase 85.1: Isolated Codex Review for Untrusted PRs** (INSERTED) - Bot/fork PRs get the paired Codex review through an enforced isolation boundary instead of the interim per-PR fallback
 - [ ] **Phase 86: Pilot & Reference Record** - 3-5 real PRs run the paired workflow; the owner records a retirement decision and reusable guidance is written
 
 ### Phase 82: CI Tests What We Ship
@@ -304,7 +305,39 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   5. The CI pytest run produces a branch-coverage `coverage.xml` bound to the exact tested full commit SHA and run (PR head distinguished from the synthetic merge commit) without a percentage gate or masked test failures, discoverable by vibe-check's test-sufficiency lane; a wrong-commit or missing report is rejected as evidence, and test-runtime overhead is recorded. (Instruction-enforced discovery; GitHub-enforced artifact generation)
   6. Before final owner approval is requested, the PR is marked ready with visible machine-checkable prerequisites (SHA binding unchanged) so avoidable repeat approvals aren't needed; and the acceptance register is shown to handle concurrent PRs without one PR's update erasing another's evidence or satisfying another PR's gate, or — until that is shown — final acceptance updates are serialized with the rule documented. (Instruction-enforced)
   7. GitHub's required checks honor Phase 83's review classification without weakening protection for code or control changes. The mechanism is designed and verified with an ordinary-docs PR, a sensitive-docs PR, a mixed docs-and-code PR, and a misclassified PR (claims ordinary docs but contains a consequential change) that still gets the full checks. Required checks are never disabled ad hoc, and exact-commit owner acceptance stays required for every PR. Until this is verified, existing protections are preserved and any review still running automatically on docs-only PRs is disclosed. (GitHub-enforced)
-**Plans**: TBD
+**Plans**: 19 plans
+
+- [ ] 85-01-PLAN.md — Record owner decisions D-01/D-14 in requirements/roadmap; written OS-scan policy before enforcement; README standalone install (owner choice)
+- [ ] 85-02-PLAN.md — TDD: ACCEPT-03 no-skip detector over required workflows with four classification fixtures
+- [ ] 85-03-PLAN.md — Codex runner: SIGTERM/SIGHUP cleanup, bounded drain, evidence-dir cleanup, getpass warning, raw-output redaction
+- [ ] 85-04-PLAN.md — TDD: hollow-report guard rejects null exit codes and trivial-only commands
+- [ ] 85-05-PLAN.md — Acceptance register keyed by PR + head, draft rejection, read-back writer, gate pin bootstrap
+- [ ] 85-06-PLAN.md — Grouped, bounded monthly Dependabot updates with a config contract test
+- [ ] 85-07-PLAN.md — TDD: OS-package scan gate with expiring owner-approved exceptions, fail-closed scanner errors
+- [ ] 85-08-PLAN.md — Dockerfile installs runtime deps from uv.lock (hash-checked); image/lockfile consistency checker
+- [ ] 85-09-PLAN.md — TDD: pytest-cov and coverage provenance writer/checker (PR head vs synthetic merge)
+- [ ] 85-10-PLAN.md — Release: drop Python distributions; only tag-only github-release job holds contents: write
+- [ ] 85-11-PLAN.md — CI wiring: branch coverage with provenance, planchk-router tests, lock consistency, no dist build
+- [ ] 85-12-PLAN.md — Verify Trivy/actionlint pins with checksums; local OS-scan baseline; owner decision on blocking findings
+- [ ] 85-13-PLAN.md — Codex runner: verified-origin --trusted, base-checker cross-grade from main; --untrusted runs nothing and records INCOMPLETE (interim until 85.1)
+- [ ] 85-14-PLAN.md — TDD: owner-approved fallback validator and read-only acceptance readiness check (D-12 checklist, gate's own logic; bot/fork heads need the fallback until 85.1)
+- [ ] 85-15-PLAN.md — Required os-scan and actionlint jobs in CI ready and REQUIRED_JOBS; all workflows lint clean
+- [ ] 85-16-PLAN.md — Review-machinery drift guard; PLAN files sensitive and in Codex scope (prompt v6); D-01 policy status
+- [ ] 85-17-PLAN.md — Docs: owner-approved Codex fallback, keyed register and serialized updates, readiness and coverage procedures
+- [ ] 85-18-PLAN.md — Prepare the on-PR negative demonstration (mismatched image, bad workflow): recipes, patch, evidence skeleton; push is a hand-off step
+- [ ] 85-19-PLAN.md — Phase verification, pending GitHub evidence, backlog resolution, classification, RISK-01 and hand-off
+
+### Phase 85.1: Isolated Codex Review for Untrusted PRs (INSERTED)
+
+**Goal**: Deliver Phase 85 D-07's normal paired review for bot (Dependabot) and fork PRs. Codex reviews the untrusted head through an enforced isolation boundary: inert input, a grader from trusted main, and a deterministically checked disposable container. The head's code never runs with access to host secrets.
+**Depends on**: Phase 85 (main's checker must know the inspection-only mode; the D-16 fallback definition covers the interim)
+**Requirements**: none new; completes Phase 85 D-07 for untrusted heads (owner split decision 2026-10-27)
+**Interim**: until this phase ships, bot and fork PRs get CI plus a per-PR owner-approved fallback review (D-16). Untrusted Codex runs are recorded INCOMPLETE, never clean.
+**Success Criteria** (what must be TRUE):
+  1. An untrusted head is reviewed by Codex without being checked out or executed. The grader comes only from fresh `origin/main`, and a fork-controlled base is rejected before any of its code runs.
+  2. The isolation boundary is verified deterministically on every run (container configuration, mounts, environment, and output ingestion that can't follow a symlink or FIFO). Behavioral probes are only supplementary.
+  3. A live end-to-end review of a real PR completes. Any incomplete outcome blocks and is escalated, never reported clean.
+**Plans**: TBD (carry-in: `.planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CARRY-IN.md`)
 
 ### Phase 86: Pilot & Reference Record
 
@@ -335,7 +368,8 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 82. CI Tests What We Ship | 9/9 | Complete | 2026-10-22 |
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
-| 85. Follow-on CI Improvements & Acceptance Usability | 0/TBD | Not started | - |
+| 85. Follow-on CI Improvements & Acceptance Usability | 0/19 | Planned | - |
+| 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 0/TBD | Not started | - |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
 ## Following milestone: Reliability

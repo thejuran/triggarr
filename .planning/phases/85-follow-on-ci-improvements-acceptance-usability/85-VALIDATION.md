@@ -73,7 +73,7 @@ Filled in by the planner per task (each task's `<automated>` verify). Requiremen
 |----------|-------------|------------|-------------------|
 | Grouped Dependabot PRs actually open | CIMAINT-02 | Only GitHub runs Dependabot | After merge, observe first scheduled/manually-triggered run; record PRs |
 | `:main`/`:dev` publish under narrowed permissions | CIMAINT-07 | GitHub-enforced permission claim needs a real run | Record the main-push release run after merge (run ID, job permissions, success) |
-| Deliberately mismatched lockfile / bad workflow fail the gate on GitHub | CIMAINT-01, CIMAINT-04 | Gate-enforcement claim (Phase 82 D-07); each broken push needs owner go-ahead (D-10) | Isolated draft branch push after owner go-ahead; record per Phase 82 D-06 |
+| Deliberately mismatched lockfile / bad workflow fail the gate on GitHub | CIMAINT-01, CIMAINT-04 | Gate-enforcement claim (Phase 82 D-07); each broken push needs owner go-ahead (D-10) | One negative checkpoint push on the phase PR after the end-of-phase push, with the owner's go-ahead at push time, then a restore push and fresh final-head review (85-18 prepares, 85-19 hand-off performs); record per Phase 82 D-06/D-34 |
 | vibe-check test-sufficiency discovers coverage.xml | CIMAINT-06 | Plugin consumption is a local review run | Run the selected vibe-check on the phase head with the matching CI coverage artifact; record discovery |
 
 ---

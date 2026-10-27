@@ -49,6 +49,7 @@ The phase also absorbs the owner-selected carry-forward items listed in D-16..D-
 
   Each group holds the minor/patch bumps. A major-version bump gets its own PR. Set an open-PR limit so a backlog can't pile up. No auto-merge, ever.
 - **D-06:** **Security updates open right away as separate PRs**, outside the monthly cycle.
+- **D-07 amendment (owner, 2026-10-27, during planning):** The isolated Codex review for untrusted heads (bot and fork PRs) is split into **Phase 85.1**, because its security boundary kept failing plan checks on paper. Until 85.1 ships, an untrusted-mode Codex run is refused and recorded INCOMPLETE (never clean), and a bot PR gets CI plus a per-PR owner-approved fallback review under D-16. D-07 below remains the goal; 85.1 delivers it.
 - **D-07:** **Bot PRs get no special review lane.** They are classified by content like any PR. A runtime dependency, Actions or base-image change is consequential, so it gets CI plus the paired BM + Codex review and exact-commit owner acceptance. Before choosing exact configuration, recheck current Dependabot ecosystem support for uv, github-actions with SHA pins, and docker, plus grouping and cooldown behavior (per the CI baseline plan).
 
 ### OS-image security scan (CIMAINT-03)
