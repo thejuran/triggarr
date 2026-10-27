@@ -203,6 +203,238 @@ restored head are all **PENDING**, to be filled in during the hand-off (step
 9-11), never performed by this plan. `85-DEMONSTRATIONS.md` already carries
 the full PENDING skeleton for this evidence.
 
+## Phase PR classification — head 4f4783398e912 (pre-review)
+
+```json
+{"schema":1,"head":"4f4783398e912d0a7c4f37197462505382449d5e","classification":"code","classes_present":["code","sensitive","ordinary-docs"],"rationale":"Full range BASE b07e532dfd16a701b7631c6d7a3da6382960557d..HEAD 4f4783398e912d0a7c4f37197462505382449d5e (git diff --name-only, ~160 files). Sensitive files: .github/workflows/ci.yml, .github/workflows/release.yml, .github/workflows/review-acceptance.yml; .github/scripts/*.cjs (ci-job-consistency, release-policy, review-acceptance, review-register, codex-fallback, acceptance-readiness, coverage-provenance, os-scan-gate, artifact-promotion); .github/dependabot.yml; .github/os-scan-exceptions.json; tests/codex_review_run.py and tests/codex_report_status.py (the Codex harness and its schema/checker); docs/codex-adversarial-review-contract.md, docs/review-checkpoint-record.md, docs/review-classification-policy.md, docs/owner-cli-acceptance.md, docs/buildomator-greptile-pilot.md (review/acceptance/release policy); .claude/plugins/planchk-router/** (agent-routing hook); every *-PLAN.md phase/quick-task plan file under .planning/phases/ and .planning/quick/ (agent instructions BM executors follow, per Phase 85 D-17). Code files: Dockerfile, pyproject.toml, uv.lock, tests/test_*.py (test_image_lock_consistency, test_dependabot_config, test_ci_followon_wiring, test_github_workflows, test_acceptance_docs, test_review_checkpoint_record, test_review_machinery_lists, test_codex_review_contract, test_ci_gate). Ordinary-docs files: every *-SUMMARY.md, *-CONTEXT.md, *-RESEARCH.md, *-PATTERNS.md, *-DISCUSSION-LOG.md, *-VALIDATION.md, *-REVIEW*.md and this 85-REVIEW-EVIDENCE.md itself; README.md, SECURITY.md, docs/os-scan-policy.md, docs/ci-negative-demonstrations.md; .planning/PROJECT.md, .planning/STATE.md, .planning/ROADMAP.md, .planning/REQUIREMENTS.md, .planning/backlog/MAINTENANCE.md; the unpushed Phase 84 records, the quick 261026-s2v planning docs, and the raw Codex evidence artifacts under .planning/**/codex/** carried on this branch since before Phase 85 (excluded from the Codex review diff itself by the contract's own pathspecs, but still ordinary-docs for classification purposes). Per docs/review-classification-policy.md's Mixed changes rule, a PR with both code and sensitive content is classified code and still carries the full sensitive-content risk assessment; ordinary-docs content never dilutes either.","supersedes_head":null}
+```
+
+This record is reclassified on every new head (D-18): the hand-off's H1, H2
+and H3 each need their own classification JSON against their own exact SHA,
+not a copy of this one.
+
+## RISK-01 note (pre-review)
+
+- **Scope:** repository `thejuran/triggarr`, full range `BASE
+  b07e532dfd16a701b7631c6d7a3da6382960557d .. HEAD
+  4f4783398e912d0a7c4f37197462505382449d5e`. Affected behavior: every GitHub
+  required-check job (`test`, `lint`, `docker`, `secrets`, `dependencies`,
+  `image-smoke`, `browser-e2e`, `os-scan`, `actionlint`, `CI ready`); the
+  Docker image's runtime dependency install path; `release.yml`'s publish
+  permissions and the new tag-only `github-release` job; the acceptance
+  gate's code (`review-acceptance.cjs`/`.yml`) and its pinned gate commit;
+  the acceptance register's schema (1 → 2) and its migration; the Codex
+  harness (`tests/codex_review_run.py`, `tests/codex_report_status.py`), its
+  fixed prompt (now version 6), and its trust boundary. This review covers
+  the whole PR, not a follow-up diff.
+- **Risk: HIGH.** Per the blueprint's own risk table (`docs/bm-greptile-codex-blueprint.md`,
+  "changes to safeguards/publication" row), this range changes exactly that
+  category — CI required-job wiring, release publish permissions, the
+  acceptance gate's pinned code, and the review-machinery that grades its
+  own PR. This assessment is not adjusted downward to fit a smaller number
+  — the actual content drives it high, not line count or file count.
+  Concrete failure scenarios:
+  1. **A silent required-job regression.** If the new `os-scan`/`actionlint`
+     wiring (or the edited `test`/`docker` steps) introduced an unnoticed
+     `continue-on-error` or an evaluable `if:`, a PR could pass `CI ready`
+     while one of these checks never actually ran — exactly what
+     `findSkipConditions` exists to prevent, but a defect in that detector
+     itself would go unnoticed without independent review.
+  2. **Unscanned image publication.** If `os-scan`'s `needs: [docker]` wiring
+     were wrong, or the gate's exception-matching logic had an off-by-one in
+     expiry math, a Critical/High vulnerability with a fix available could
+     reach `:main`/`:dev` without blocking, defeating CIMAINT-03's whole
+     purpose.
+  3. **Broken `:main`/`:dev` publishing under narrowed permissions.** If the
+     `release` job's narrowed `contents: read` actually needed `contents:
+     write` for some step not yet exercised locally, the first real
+     main-push Release run (P3) could fail outright, or — worse — fail
+     silently in a way that still reports success.
+  4. **The changed Codex grader accepting a hollow report.** Since this diff
+     changes `tests/codex_report_status.py`, `tests/codex_review_run.py`,
+     the schema, and the contract prompt together, a defect in the new
+     base-commit cross-grade (`audited_inputs_changed_in_diff` /
+     `materialize_grader`) could let a self-graded "complete" result through
+     without the base checker's independent confirmation — exactly the
+     self-grading risk this phase's D-18 work is meant to close.
+  5. **Acceptance register migration ordering.** If the schema-1→2
+     migration (hand-off step 12) ran against a register that still had a
+     pending schema-1 write in flight, or ran before the gate code
+     (`8df9eaf...`) actually merged to main, a later `assess()` call could
+     reject a legitimate acceptance request or, worse, silently treat a
+     missing slice as satisfied.
+- **Recommended review:** BM **deep**, with a specialist focus on the
+  review/acceptance machinery itself (not just the application code), plus
+  the CI workflow files and the Dockerfile. Full-PR scope, not a targeted
+  follow-up — the changes are too interconnected (e.g. CIMAINT-01's Dockerfile
+  change and CIMAINT-06's coverage step both live inside the same `test`/
+  `docker` jobs) to review piecemeal with confidence.
+- **Required evidence:** the paired Codex pass (with its base-commit
+  cross-grade recorded, since this diff changes grader files); the real
+  phase-PR CI run (P1); the CIMAINT-01/CIMAINT-04 negative demonstrations on
+  this exact PR (P6); and, after merge, the real Release run (P3) and the
+  real Dependabot run (P4) — none of which this note can substitute for.
+- **What this recommendation cannot establish:** that the amd64-specific
+  behavior of the Docker/Trivy/actionlint steps matches what this plan
+  observed on arm64 (see Deviations) — only a real GitHub Actions run on an
+  actual x86_64 runner settles that; that the acceptance register migration
+  will run cleanly against the live repository variables (untested outside
+  this plan's unit fixtures); and that no human has yet seen the actual
+  phase PR's diff rendered on GitHub, which can surface formatting or
+  ordering issues no local check catches.
+
+### RISK-02
+
+**Recommendation:** vibe-check on the reviewed head (H1, per the hand-off),
+full-PR scope, given the HIGH risk assessment above — specifically because
+this range changes release-publish permissions and the review/acceptance
+machinery's own grading code, the two categories the blueprint's risk table
+names as the clearest HIGH-risk triggers. The owner's decision on whether to
+run it is recorded in the checkpoint record after BM's review, per the
+hand-off (step 4) — not here; this note only makes the recommendation.
+
+## Disclosures
+
+1. **The phase PR is graded by its own changed Codex grader and prompt.**
+   This diff changes `tests/codex_report_status.py`, `tests/codex_review_run.py`,
+   the schema, and `docs/codex-adversarial-review-contract.md` (now template
+   version 6). Per Plan 85-13's `audited_inputs_changed_in_diff` mechanism,
+   the runner records which of these changed and cross-grades the resulting
+   report with the base commit's own (unchanged) checker, saved as a
+   `.base-status.json`; the run reports complete only if both the head-side
+   checker and the base checker agree. This is disclosed, not hidden, in the
+   checkpoint record for every head in the hand-off.
+2. **The PR changes the acceptance gate's pinned commit to a commit this
+   same PR introduces.** `review-acceptance.yml` is now pinned to
+   `8df9eaf9d68ad0e5fce469ef8393d05bb4ba3fc3` (Plan 85-05), a commit on this
+   branch, not yet on `main`. This PR's own eventual `review-acceptance` run
+   therefore uses the new gate code it is itself introducing. Independent
+   inspection by the paired Codex pass (and Greptile, when it runs) is
+   required precisely because of this; it is not treated as self-evidently
+   safe merely because the unit tests pass.
+3. **Greptile reviews this PR automatically while free credits last (D-03).**
+   This is disclosed per the standing rule, not treated as unnecessary or as
+   a reason to decline anything.
+4. **The phase PR will carry one deliberately broken negative checkpoint
+   head and one restore head (Plan 85-18).** Each is pushed only with the
+   owner's separate go-ahead at execution time (Phase 82 D-10), never
+   inferred from this document. Greptile may automatically review the first,
+   broken, and restored heads (up to three reviews total on this PR) while
+   its free credits last; this is disclosed here per D-03, and is not a
+   reason to decline the demonstration. Acceptance applies only to the
+   restored final head (H3), never to the deliberately broken one (H2).
+5. **D-07 for bot and outside-contributor PRs is not yet delivered by this
+   phase.** Until Phase 85.1 ships the isolated review, a bot or fork PR
+   gets CI, an INCOMPLETE Codex record (`--untrusted` runs nothing; no
+   PR-supplied base code is ever executed), and a per-PR owner-approved
+   fallback review under D-16 (owner decision 2026-10-27, `85-CONTEXT.md`
+   D-07 amendment). No part of this evidence record, or any other document
+   in this phase, describes an untrusted head's Codex review as complete.
+
+## Hand-off after the last plan
+
+Every step below is marked **not performed by any plan** — this plan writes
+the sequence; it does not execute any of it. Head names used throughout: H1
+= the final local head after BM review and any fix round; H2 = H1 plus the
+demonstration commit; H3 = H2 plus its revert and the evidence commit (the
+restored final head).
+
+1. **Not performed by any plan.** Exact-head coverage before the review
+   snapshot (checker B09): on a clean checkout of H1, generate coverage and
+   run `coverage-provenance.cjs write-local --head <H1>` and `check
+   --expected-head <H1>` — the exact procedure this plan proved above on its
+   own head. Keep `coverage.xml` ready for the vibe-check worktree root. If a
+   later fix round changes the head, redo this for the new head (or reuse
+   only if `check --expected-head <new head>` passes on measured-source
+   equivalence).
+2. **Not performed by any plan.** `execute-phase`'s `code_review_gate` runs
+   BM's phase-execution review on H1.
+3. **Not performed by any plan.** `git fetch origin main` (the runner
+   requires `BASE` on `origin/main`), then the paired Codex pass on H1 per
+   the contract (`--trusted --pr-url "none (local checkpoint, not pushed)"`,
+   label `phase`); expect `audited_inputs_changed_in_diff` to list the
+   changed grader files and a `.base-status.json` to be written. One
+   automatic retry; if it stays INCOMPLETE/PENDING, the owner chooses
+   wait/retry-later (both block) or an owner-approved fallback recorded and
+   validated with `.github/scripts/codex-fallback.cjs`.
+4. **Not performed by any plan.** Present the RISK-02 vibe-check
+   recommendation above and record the owner's decision; if selected, the
+   owner runs vibe-check locally on H1 with the step-1 coverage.xml at the
+   worktree root, before the push.
+5. **Not performed by any plan.** Offer `/deep-review` before pushing
+   (`CLAUDE.md`).
+6. **Not performed by any plan.** Any confirmed defect: one batched fix
+   round, then steps 1-4 again on the new head (re-bump the
+   `review-acceptance` pin if `review-acceptance.cjs` changed again); that
+   new head becomes H1.
+7. **Not performed by any plan.** The end-of-phase push of `ci-followon` at
+   H1 (never `--force`, never `main`) and `gh pr create` ready for review
+   (not draft) with the classification, risk level and disclosures above
+   (including the planned negative/restore pushes and Greptile) in the body,
+   ending with the Claude Code attribution line.
+8. **Not performed by any plan.** Post H1's checkpoint comment per
+   `docs/review-checkpoint-record.md` (Codex/BM/vibe-check results from the
+   local checkpoint, labelled with H1; PR head must equal H1). Record **P1**
+   for H1's CI run (positive cases, ~5-minute budget check) and **P2** for
+   H1's CI coverage artifact as separate CI evidence — it is not added to
+   H1's own review.
+9. **Not performed by any plan.** Negative demonstration (**P6**, Phase 82
+   D-10): present the go-ahead request already written in
+   `85-DEMONSTRATIONS.md` and record the owner's verbatim answer. Only on
+   go-ahead: `git apply 85-DEMO-NEGATIVE.patch` on H1, commit "demo(85): DEMO
+   ONLY — deliberate lockfile mismatch and bad workflow (reverted next
+   push)", push (= H2; never `--force`, never `main`, never a tag). Watch
+   the CI run; record PR head, PR base, tested SHA + reconciliation, run
+   URL/ID/attempt, job conclusions and the specific failure lines — require
+   the docker consistency step's `version mismatch: idna lock 3.15 image
+   3.4`, actionlint's `property "missing" is not defined in object type {}
+   [expression]`, `CI ready` failed, and no Release run. Never approve H2's
+   `review-acceptance` run. If any expectation is not met, stop and report
+   to the owner — no further push without a new owner decision. If the
+   owner declines, record "not demonstrated on GitHub (owner declined on
+   <date>); local evidence only" in `85-DEMONSTRATIONS.md` as a local commit
+   that is held, not pushed (docs-only commits ride with the next
+   substantive push), skip steps 10-11, and continue at step 12 with H1 as
+   the final head: H1's review and checkpoint from steps 2-8 stand, and P1
+   for H1 must be complete.
+10. **Not performed by any plan.** Restore push: `git revert --no-edit <demo
+    commit>`, commit the filled `85-DEMONSTRATIONS.md` evidence, push once
+    (= H3; never `--force`). Record any Greptile reviews of H2/H3 in the
+    disclosure.
+11. **Not performed by any plan.** Fresh review of the restored final head
+    H3 (nothing carried over from H1 or H2): wait for H3's CI run (P1 for
+    H3: all jobs green, budget); prepare coverage for H3 (its CI artifact if
+    `check --expected-head <H3>` passes, otherwise exact-head local
+    coverage) before the review snapshot; BM review of H3; paired Codex pass
+    on H3 by PR URL after `git fetch origin main` (`--trusted --pr-url <PR
+    URL>`; owner-authored same-repo PR whose head and base match GitHub)
+    with the same retry/fallback rules as step 3; present a fresh RISK-02
+    vibe-check recommendation for H3 and record the owner's decision; post
+    H3's checkpoint comment with its own classification.
+12. **Not performed by any plan.** Owner go-ahead (a safeguard change to the
+    live registers), then run `node .github/scripts/review-register.cjs
+    migrate --kind dispositions --apply` and `--kind blockers --apply` after
+    saving the current schema-1 values into this file.
+13. **Not performed by any plan.** Write the final head's register slices
+    (H3, or H1 if the demonstration was declined) with `review-register.cjs`,
+    run `acceptance-readiness.cjs` for that head (with `--fallback` only if a
+    validated fallback exists), and only when it reports ready present the
+    D-12 checklist and follow `docs/owner-cli-acceptance.md` — never infer
+    or submit approval without the owner's explicit words.
+14. **Not performed by any plan.** Merge is the owner's decision and must
+    use a merge commit (not squash), so the pinned gate commit stays on
+    `main`.
+15. **Not performed by any plan.** After merge, complete **P3**, **P4** and
+    **P5** and update STATE/ROADMAP truthfully.
+
+### Confirmation: nothing autonomous happened in this plan
+
+This plan made no `git push`, no `gh pr create`, no `gh variable set`, and no
+`pending_deployments` call of any kind. The only `gh api` calls made were the
+three read-only GET requests recorded under "Read-only GitHub checks" above
+(ruleset, code-scanning default-setup, `allow_auto_merge`) — none of them
+wrote anything. This is also stated in this plan's own SUMMARY.md.
+
 ## Deviations from Plan
 
 ### Auto-fixed Issues
