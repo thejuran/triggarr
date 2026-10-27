@@ -1,9 +1,9 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-reviewed: 2026-10-27T19:27:45Z
-reviewed_head: 252fe61410b776d1ff170047ab172f26555ce361
+reviewed: 2026-10-27T19:51:31Z
+reviewed_head: 8bd286c2ddb65232150be1c67cdb2a480b3e710e
 diff_base: 091d8ed
-iteration: 2
+iteration: 3
 depth: standard
 files_reviewed: 48
 files_reviewed_list:
@@ -56,198 +56,229 @@ files_reviewed_list:
   - tests/test_review_machinery_lists.py
   - uv.lock
 findings:
-  critical: 1
-  warning: 3
-  info: 11
-  total: 15
+  critical: 2
+  warning: 2
+  info: 12
+  total: 16
 status: issues_found
 ---
 
-# Phase 85: Code Review Report (iteration 2)
+# Phase 85: Code Review Report (iteration 3)
 
-**Reviewed:** 2026-10-27T19:27:45Z (head `252fe61410b776d1ff170047ab172f26555ce361`, diff base `091d8ed`)
+**Reviewed:** 2026-10-27T19:51:31Z (head `8bd286c2ddb65232150be1c67cdb2a480b3e710e`, diff base `091d8ed`)
 **Depth:** standard
 **Files Reviewed:** 48 (uv.lock skimmed only)
 **Status:** issues_found
 
 ## Summary
 
-This is a re-review after the fix round. It covers the whole phase scope at head `252fe61`, and looks hardest at the six fix commits `fb01095..e89c534`.
+This is a fresh re-review of the whole phase scope at head `8bd286c`, after fix round 2:
+- `75ebe6f`: CR-01, the structural `if` reader;
+- `ebdd76c`: WR-01, the merge-base rule;
+- `b05ced4`: WR-02, status-file binding;
+- `e44b818`: WR-03, the reviewer token denylist.
+
+`ae8e4b2` is the merge of origin/main. `git diff 40ddadf ae8e4b2` is empty, so the merge brings in no content. Since iteration 2, only six files in scope changed: the readiness, skip-detector and fallback scripts and their tests. The other 42 files are unchanged from the iteration-2 review.
 
 Baseline at this head:
-- `node --test .github/scripts/*.test.cjs` plus the planchk-router test: 356/356 pass.
-- The phase's targeted pytest files (runner, report status, wiring, acceptance docs, machinery lists): 322/322 pass.
+- `node --test .github/scripts/*.test.cjs` plus the planchk-router test: 406/406 pass.
+- The phase's targeted pytest files (11 files): 421/421 pass.
 - `ruff check triggarr/ tests/ .github/scripts/` is clean.
+- `actionlint` exits 0.
 
-### Status of the iteration-1 findings
+### Status of the iteration-2 findings
 
-I checked each fix with crafted inputs, not only with the fixer's own tests.
+I checked each fix with crafted inputs of my own, not only with the fixer's tests.
 
 | Prior | Verdict | Evidence |
 |-------|---------|----------|
-| CR-01 fallback validator | **Fixed** | The iteration-1 reproduction (empty sub-objects, `pr: 999`) now returns 13 reasons, including "fallback is for a different PR" and "owner_decision.decision must be approve-fallback". `decision: 'nope'` is rejected. Residual gaps are in WR-03 and IN-09. |
-| CR-02 skip detector `- if:` | **Partially fixed. Still bypassable (see CR-01 below)** | `- if: false` is now reported. `if : false`, `-   if: false`, and a flow-mapping step `- {name: …, if: …}` applied to the real `ci.yml` still return `[]`. |
-| WR-01 readiness trusts runner meta | **Fixed as specified, with a regression and a residual** | A meta that claims no audited change is now overridden by the recomputed `git diff`, and a missing `meta.head` blocks. However, the now-mandatory `meta.base === baseRefOid` rejects valid local-checkpoint evidence (WR-01 below), and the status files are still not bound to the head (WR-02 below). |
-| WR-02 fallback not bound to its Codex output | **Fixed** | A record naming `…-a2` checked against a codexStatus for `…-a3` is rejected. The `validate` CLI exits 1 with "Codex output is for a different head" when meta names another head. |
-| WR-03 empty `--test-exit` | **Fixed** | `intArg` accepts only `^\d+$`. The CI producer (`ci.yml:56-57`) always emits integers, so valid runs are not over-rejected. |
-| WR-04 signal outside the Codex step | **Fixed** | `execute()` now has an `except BaseException` branch that writes a stub only if `.status.json` is missing, then re-raises unchanged. The guard test confirms that a base-grader interrupt does not overwrite the head status. The documented residual window (between `reserve_outputs` and the `try`) is acceptable. |
+| CR-01 step `if` spellings | **Fixed for step and job `if` keys that the detector reaches** | Each of these applied to the real `ci.yml` is reported, either as a specific `if` or as "cannot be parsed": `if : false`, `"if" : false`, `-   if:` (whole step re-indented), a bare `-` followed by `if :`, a single-line or multi-line flow-mapping step, an anchored step (`- &s`), a tagged value (`!!str false`), `if:` placed after a `run: \|` block, `if:` with the value on the next line, an alias step, `? if`, `<<: *x`, and `"i\x66"`. `IF:` (upper case) is not detected, but actionlint rejects it as an unknown key, so it cannot reach GitHub through CI. Both real workflows still return `[]`, so the reader adds no false positives. **However**, two bypasses outside the new reader remain: the `continue-on-error` check (CR-01 below) and `parseJobs`'s job boundaries (CR-02 below). The iteration-2 report itself named the `continue-on-error` regex as the fail-closed model to copy, which was wrong. |
+| WR-01 merge-base | **Fixed** | `codexStatusFor` with `reviewedBase` set to the merge-base and `base` set to a newer main tip accepts evidence whose `meta.base` is the merge-base, and rejects evidence whose `meta.base` is `baseRefOid`. A merge-base that is missing or not a SHA fails closed (exit 1). The audited-input diff is recomputed over the same range, `mergeBase..head`. I found no fail-open path: criss-cross merge-bases and a stale local `origin/main` both produce a mismatch, so they block. **Regression:** the fallback path still pins `base` to `baseRefOid` (WR-02 below). |
+| WR-02 binding | **Fixed (minimum form)** | A complete `status` or required `baseStatus` whose `inspected_head`/`inspected_base` differ from this head and the reviewed base is blocked. `inspected_head` comes from the Codex report and is checked by the checker against `--expected-head` (`codex_report_status.py:407-429`), so binding to it is meaningful. For the residual, see SA-04. |
+| WR-03 denylist | **Fixed for every name listed** | `bm-code-reviewer`, `Claude Code`, `Buildomator`, `codex_review_run.py`, and `bm<U+200B>-code-reviewer` (with a zero-width space) are all rejected. Names that still pass are listed in IN-12. |
+
+### Residual WR-02 gap: is the fixer's description accurate?
+
+The fixer limits the gap to "diffs that change the runner itself". That limit is correct.
+- Step 0 of the contract refuses to run unless the checkout's HEAD is the reviewed head, so the runner that executes is always the head's runner.
+- `materialize_grader` takes the checker and schema from base-commit git objects. A diff that changes only the checker, the schema or the contract is therefore still cross-graded by code the diff did not write.
+- The runner imports only stdlib modules, so no unaudited helper can change its behaviour.
+
+The fixer understates how the gap works. The fix report says "the runner chooses what it passes to that checker". In fact, a changed `tests/codex_review_run.py` controls all three files readiness reads. It can write `.base-status.json` directly, with `inspected_head`/`inspected_base` set to the right SHAs, and never invoke the base checker. The new binding check only compares values that the same runner supplies, so it adds nothing in this case.
+
+The gap stays limited to runner changes, which `docs/review-classification-policy.md:14` already classifies as sensitive. I have recorded it as SA-04 for the owner's ruling, not as a defect.
 
 ### New in this iteration
 
-- **CR-01:** the CR-02 fix closed only one YAML spelling. Three other valid spellings still let a step-level condition disable "Fail if tests failed" without being detected, and actionlint does not catch a non-constant always-false condition.
-- **WR-01:** a regression from the WR-01 fix that blocks this phase's own acceptance path.
-- **WR-02:** the remaining self-certification gap in readiness.
-- **WR-03:** a gap in the fallback reviewer denylist that the first pass missed.
+- **CR-01:** `continue-on-error` is still found by one line regex. A quoted or escaped key disables "Fail if tests failed", or the whole `ci-ready` job, with every test, actionlint and Python check still green.
+- **CR-02:** `parseJobs` stops reading at any column-0 comment and silently drops job headers it does not recognise. Verified end to end:
+  - In `ci.yml`, the `ci-ready` validation step can be skipped.
+  - In `review-acceptance.yml`, the gate step can be skipped.
+- **WR-01:** the step-`if` allowlist is keyed only by step name. Renaming the browser-suite completeness gate to the allowlisted evidence-upload name, with the same condition, disables the gate undetected.
+- **WR-02:** a regression from the WR-01 fix. A fallback record must now name a different base than the Codex evidence it stands in for.
 
-IN-01 to IN-08 and SA-01 to SA-03 are carried forward unchanged, by owner decision, and are labelled as carried.
+IN-01 to IN-11 and SA-01 to SA-03 are carried forward unchanged and labelled as carried.
 
 ## Critical Issues
 
-### CR-01: The skip-condition detector (ACCEPT-03) still misses step `if:` written as `if :`, with extra spaces after the dash, or in a flow mapping (the CR-02 fix is incomplete)
+### CR-01: `continue-on-error` written as a quoted or escaped key is not detected, so "Fail if tests failed" or the whole `ci-ready` job can be neutralised
 
-**File:** `.github/scripts/ci-job-consistency.cjs:345-379` (`extractStepIfs`)
-**Issue:** The fix widened the match to `^(?:      - |        )(?:if|"if"|'if'):`. That still requires:
-- exactly one space after `-`;
-- the colon immediately after the key;
-- a block-mapping step.
+**File:** `.github/scripts/ci-job-consistency.cjs:702` (also `aggregateCanPassWith`, `:800`)
+**Issue:** The check is `job.lines.some(line => /\bcontinue-on-error\s*:/.test(line))`. A quoted key puts the closing quote between the key and the colon, so the regex does not match. A YAML escape removes the literal text altogether. Round 2 moved `if` onto the structural reader but left this regex in place.
 
-All three of these are valid YAML for the same `if` key. PyYAML parses each to `{'if': False, …}`:
+I applied each of these to the real `ci.yml`:
 
-```yaml
-      - name: Fail if tests failed
-        if : false                 # space before the colon
-      -   if: false                # extra spaces after the dash
-          name: Fail if tests failed
-      - {name: Fail if tests failed, if: false, run: exit 1}   # flow mapping
+| Edit | `findSkipConditions` | actionlint | PyYAML value |
+|------|----------------------|------------|--------------|
+| `"continue-on-error": true` on "Fail if tests failed" | `[]` | exit 0 | `True` |
+| `'continue-on-error': true` on the same step | `[]` | exit 0 | `True` |
+| `"continue-on-error": true` on the same step | `[]` | exit 0 | `True` |
+| `'continue-on-error': true` at job level on `ci-ready` | `[]` (and `aggregateCanPassWith` returns `false`) | exit 0 | `True` |
+
+With the escaped variant in a full copy of the repo:
+- the whole node suite passes (395/395);
+- `test_github_workflows.py`, `test_ci_followon_wiring.py` and `test_ci_gate.py` pass (64/64).
+
+The Python substring guards (`test_ci_followon_wiring.py:174, 258`) cover only `os-scan` and `actionlint`, not `test` or `ci-ready`.
+
+Effect: pytest's step exits 0 by design, and "Fail if tests failed" is what turns a failing pytest into a failed job. With that step set to continue on error, the `test` job succeeds whatever pytest returns. With `ci-ready` set to continue on error at job level, "CI ready" reports success even when its validation script exits non-zero. Either way, the release preflight and readiness accept a red build as green. This is the same consequence as iteration-2 CR-01, through a different key.
+
+**Fix:** Check for `continue-on-error` with the reader you already have, not with a line regex. Also add an independent cross-check that uses a real YAML parser.
+```js
+// in findSkipConditions, after readJobBody(job.lines):
+const coeAt = entries => entries.some(e => e.key === 'continue-on-error');
+const stepCoe = body.steps.some(s => s.keys && coeAt(s.keys)); // expose all keys from readStepItem
+if (coeAt(body.jobKeys) || stepCoe || job.lines.some(l => /continue-on-|\\u|\\x/.test(l) && /:/.test(l))) {
+  problems.push(isAggregate ? `aggregate job "${id}" sets continue-on-error` : `required job "${id}" sets continue-on-error`);
+}
 ```
+To do that, `readJobBody` must return every key of each step, not only `name` and `if`. Use the same reader in `aggregateCanPassWith`.
 
-I applied each edit to the real `.github/workflows/ci.yml` (`test` job, "Fail if tests failed") and ran `findSkipConditions({workflowText, aggregateJobId: 'ci-ready', triggerContract: TRIGGER_CONTRACTS['ci.yml']})`:
+Then add a pytest that loads `ci.yml` and `review-acceptance.yml` with `yaml.safe_load` (a real YAML parser). For every required job, it should assert:
+- no `continue-on-error` at job or step level;
+- no job-level `if`, except `ci-ready: always()`;
+- every step `if` is on the allowlist.
 
-| Variant | Result |
-|---------|--------|
-| `- if: false` (the fixed case) | reported |
-| `if : false` | `[]` |
-| `-   if: false` (re-indented step) | `[]` |
-| flow-mapping step | `[]` |
+That one test removes the whole class of spelling bypasses, because PyYAML decides the key and not a regex. Add regression tests for the four rows above.
 
-actionlint does not cover the gap. It flags only the constant `false`. With a non-constant always-false condition such as `if : github.run_attempt == '0'` (or the same condition in a flow mapping), actionlint exits 0.
+### CR-02: `parseJobs` stops at any column-0 comment and silently drops job headers it does not recognise, so the detector never sees the steps or jobs that follow
 
-The pytest step `exit 0`s by design and relies on "Fail if tests failed". With that step disabled, the `test` job passes whatever pytest returns, `CI ready` goes green, and the release preflight accepts the run. This is the same consequence as the iteration-1 BLOCKER. Only the spelling differs.
+**File:** `.github/scripts/ci-job-consistency.cjs:43` (`if (/^\S/.test(line)) break;`) and `:45` (`/^  ([A-Za-z0-9_.-]+):\s*$/`)
+**Issue:** The new reader only reads the job lines that `parseJobs` gives it, and `parseJobs` has two problems:
 
-The same parser is used for `review-acceptance.yml` (`aggregateJobId: null`), so that workflow is exposed in the same way.
+1. **Line 43** treats any non-indented line as the start of the next top-level key. A comment at column 0 is legal YAML anywhere, including inside a job's `steps:` list or after a block scalar. Every line after it is dropped from that job, and every later job disappears from the parse.
+2. **Line 45** recognises a job header only in the exact form `  id:`. These are all valid YAML for the same job:
+   - a header with a trailing comment (`  acceptance: # gate`);
+   - a quoted id (`  "acceptance":`);
+   - an explicit key (`? acceptance`);
+   - a flow-mapping job;
+   - the whole `jobs:` block indented 4 spaces.
 
-**Fix:** Stop matching `if` as one exact spelling. Fail closed on any `if` key inside a required job's step region, the way `continue-on-error` is already handled (`/\bcontinue-on-error\s*:/` on every line). For example:
-- Treat any line in the job's `steps:` region that matches `/(^|[\s{,])["']?if["']?\s*:/` as a condition.
-- Treat any step-start line that is not `^      - (name|uses|run|id|env|with|shell|working-directory|timeout-minutes|if)\b` (that is, a flow mapping `- {`, an alias `- *`, or irregular indentation) as an unparseable step, and report it.
+   An unrecognised header is either merged into the previous job or, before the first job, discarded. When `aggregateJobId` is `null` (review-acceptance.yml), the required jobs are "whatever `parseJobs` found", so a discarded job is simply never checked.
 
-Add regression tests for `if :`, `-   if:`, `- {…, if: …}`, and `- *alias`, run against both real workflows.
+Verified end to end. Each case passes `findSkipConditions` with `[]`, passes the full node suite (395/395), passes actionlint (exit 0), and PyYAML reads the condition:
+
+- **ci.yml, `ci-ready` (the last job).** Insert a column-0 comment after the validation heredoc, then a step-level condition:
+  ```yaml
+            PY
+  # reviewed
+          if: github.run_attempt == '0'
+  ```
+  PyYAML gives `ci-ready.steps[0].if == "github.run_attempt == '0'"`. The pytest workflow files (95 tests) also pass. The "Require every mandatory job to succeed" step is skipped, `ci-ready` succeeds, and "CI ready" is green whatever the needed jobs concluded. The same placement hides `continue-on-error: true`.
+- **review-acceptance.yml.** Append `# end of gate` at column 0, then `        if: github.run_attempt == '0'`, after the `script: |` block. The github-script gate step is skipped, and the "Review acceptance" check succeeds without running `assess()` against the dispositions or blockers. Only the environment approval remains.
+- **Other variants in review-acceptance.yml.** The header-comment, quoted-id, explicit-key and 4-space-indented-jobs forms also return `[]` with a job-level `if:`. These four happen to turn existing mutation tests red: those tests inject into a job the parser no longer sees. That is a side effect, and the failure messages would be misleading.
+
+When the comment or header sits in a job other than the last in `ci.yml`, the result is "Aggregate job ci-ready not found". That fails closed, but a harmless section-divider comment breaks CI with a confusing error.
+
+**Fix:**
+- At `:43`, skip comment lines and end the section only at a real top-level key: `if (/^#/.test(line) || /^\s*$/.test(line)) { if (current) current.lines.push(line); continue; } if (/^\S/.test(line)) break;`
+- At `:45`, parse the header with `parseMappingKey(line.slice(2))` when the indent is exactly 2. Then throw (fail closed) for any non-blank, non-comment line at indent 2 or less inside `jobs:` that is not a readable `id:` header with an empty or comment-only value. Do not merge it into a job or drop it.
+- Require at least one job, and throw if `jobs:` is not followed by 2-space job keys.
+- The PyYAML cross-check in CR-01 also catches this: compare `set(yaml jobs)` with the ids `parseJobs` returns, and fail on any difference.
+- Add regression tests for the two end-to-end cases above, plus the header-comment, quoted-id and re-indented forms.
 
 ## Warnings
 
-### WR-01: Mandatory `meta.base === baseRefOid` rejects valid local-checkpoint Codex evidence, including this phase's own (regression from the WR-01 fix)
+### WR-01: The step-`if` allowlist is keyed by step name only, so renaming the browser-suite completeness gate disables it undetected
 
-**File:** `.github/scripts/acceptance-readiness.cjs:54-56` and `382` (two-dot recompute)
-**Issue:** Readiness now blocks with "Codex evidence is for a different base" unless `meta.base` equals the PR's current `baseRefOid`, the tip of `main`. The contract (`docs/codex-adversarial-review-contract.md`, Invocation step 1) tells the operator to use `BASE_SHA = git merge-base origin/main HEAD` for a phase-scope local checkpoint. The project workflow runs that local pass before the end-of-phase push, so that is the evidence normally presented at acceptance.
+**File:** `.github/scripts/ci-job-consistency.cjs:504-509, 727-731`; `.github/workflows/ci.yml:339, 376`
+**Issue:** A step condition is allowed when `STEP_IF_ALLOWLIST["<job>::<step name>"]` equals it. Nothing checks:
+- that only one step has that name;
+- that the step is the evidence upload (`uses: actions/upload-artifact@…`).
 
-This repo merges with merge commits, so `main`'s tip moves to a new merge commit whenever any PR lands. It does not match a branch's merge-base unless the branch was cut from that exact tip.
+Test: in `browser-e2e`, rename "Require a complete browser-suite result" to "Upload browser failure evidence" and give it the allowlisted `failure() && hashFiles(…) != '' && hashFiles(…) != ''` condition. `findSkipConditions` returns `[]`. The completeness gate then runs only after a failure, so a run where every browser test is skipped (pytest exits 0) passes `browser-e2e`. That is exactly what that gate exists to reject.
 
-Concrete case: this branch. `git merge-base origin/main HEAD` is `b07e532` (the phase-83 tip). `origin/main` is `decd5f1` (the PR #35 merge commit). Both have identical trees. When this phase's PR is opened against `decd5f1`:
-- The post-fix Codex pass that CLAUDE.md requires, run as a local checkpoint per the contract, records `base: b07e532`, so readiness reports BLOCKED.
-- The PR form of the runner cannot fix this either. `verify_trust` refuses because `decd5f1` is not an ancestor of the head (`codex_review_run.py:513-518`).
+The same trick on the `test` job ("Upload test evidence" plus `always()`) is harmless, because `always()` still runs the step.
 
-The only way through is to merge `main` into the branch. That creates a new head and invalidates the BM review, the Codex review, CI, and any vibe-check. The check fails closed, but it rejects correct evidence for a review whose scope (merge-base..head) is exactly right.
+The edit is a visible rename inside a sensitive-class file, so this is a warning rather than a blocker. Still, the allowlist is presented as "the one place a required job may skip a step", and it does not actually pin a specific step.
+**Fix:** Key each allowlist entry on more than the name. For example, `{name, condition, uses: 'actions/upload-artifact@<sha>'}`, and require exactly one step per job with that name. Report any allowlisted name that appears more than once in a job. Add a test with the rename described above.
 
-There is a second problem. The recompute at line 382 uses a two-dot `git diff ${base}..${head}` against `baseRefOid`. When `main` has moved, that compares trees, so audited inputs changed on `main` (not in this PR) are counted as changed in this PR. That demands a base cross-grade the runner never performed.
+### WR-02: A fallback record must name `baseRefOid` while the Codex evidence it backs must name the merge-base (regression from the WR-01 fix)
 
-**Fix:**
-- Accept `meta.base` when it equals `baseRefOid` or `git merge-base <baseRefOid> <head>`, computed by readiness with an argument array.
-- Compute the audited-input set over the same range the evidence covers: `git diff --name-only <meta.base>..<head>` once `meta.base` is verified to be one of those two values, or `<baseRefOid>...<head>` (three dots).
-- Show both SHAs in the checklist ("Full base SHA" vs "Reviewed base SHA").
-- Add a test where `baseRefOid` is a merge commit ahead of the branch's merge-base.
+**File:** `.github/scripts/codex-fallback.cjs:138-144`; `.github/scripts/acceptance-readiness.cjs:112`
+**Issue:** After WR-01, `codexStatusFor` requires `meta.base === mergeBase`. It still passes `base: baseSha` (the PR base) to `validateFallback`, which requires `record.base` and `scope.base` to equal it and states "fallback must review the full base..head diff".
 
-### WR-02: Readiness still accepts status files that are not bound to this head or base, and that the reviewed runner wrote itself (residual of iteration-1 WR-01)
+Reproduced with `codexStatusFor` (`reviewedBase: D`, `base: B`, incomplete status, an otherwise valid fallback):
+- fallback `base: D` (the merge-base, which is the range actually reviewed) gives `{ok: false, detail: "fallback scope base does not match the PR base"}`;
+- fallback `base: B` gives `{ok: true}`.
 
-**File:** `.github/scripts/acceptance-readiness.cjs:60-61`; `tests/codex_review_run.py:1165-1196, 946-984`
-**Issue:** Readiness now forces a base cross-grade whenever an audited input changed. It then accepts that cross-grade on `baseStatus?.status === 'complete'` alone. It never compares `status.inspected_head` / `inspected_base`, or `baseStatus.inspected_head` / `inspected_base`, with the PR head and base, even though the checker emits those fields (`codex_report_status.py:537-539`).
+When `main` has moved past the fork point (the case WR-01 was fixed for), a fallback reviewer who follows the record's own rule reviews `B..H` as a two-dot diff. That compares trees, so it includes `main`'s unrelated changes in reverse. Otherwise the record has to claim a base that was not the reviewed range.
 
-Reproduced with `codexStatusFor`:
-- `meta` correct for head `H` / base `B`;
-- recomputed audited change `['tests/codex_review_run.py']`;
-- `status` and `baseStatus` both `{status: 'complete', inspected_head: O, inspected_base: O}` for an unrelated commit `O`.
+Untrusted heads (Dependabot or fork PRs) always need a fallback, so this path is used routinely.
 
-Result: `{ok: true, detail: 'complete'}`.
-
-The deeper problem is that when `tests/codex_review_run.py` itself changes, `.base-status.json` is still written by the changed runner (`_run_base_grader` runs inside the head's harness and passes it the head's `checker_tail`). So the recompute forces a file to exist, but the code under review writes that file. D-18's goal ("the grader cannot self-certify") still does not hold for a runner change.
-
-**Fix:**
-- Minimum: require `status.inspected_head === head && status.inspected_base === meta.base`, and the same for `baseStatus` whenever a base grade is required.
-- Stronger: when the recomputed set is non-empty, readiness itself materializes `git show <base>:tests/codex_report_status.py` and the schema into a temp dir, re-grades `<OUT>.last.json` with `--expected-head/--expected-base`, and ignores `.base-status.json`.
-
-### WR-03: The fallback reviewer denylist does not include BM's own reviewer agent or common Claude names
-
-**File:** `.github/scripts/codex-fallback.cjs:17, 92-97`
-**Issue:** `DISALLOWED_REVIEWERS` is an exact-match list: `bm`, `bm code review`, `buildomator`, `claude`, `gsd-code-reviewer`, `codex_review_run`. BM's reviewer agent in this project is `bm-code-reviewer`, which is the name this report is signed with. It is not on the list.
-
-Probed with a record whose other fields are all valid:
-- `reviewer: {name: 'bm-code-reviewer', kind: 'other-independent'}` returns `ok: true`;
-- `reviewer: {name: 'Claude Code', …}` returns `ok: true`.
-
-The contract says BM and Claude are not independent fallback reviewers. A fallback by the same agent that did the BM review would therefore satisfy the Codex prerequisite in readiness. Owner approval is still required. However, the validator's "independent reviewer" claim is what the owner is shown, and here it is false.
-
-This was missed in iteration 1.
-
-**Fix:** Normalize the name (lowercase, collapse `[-_\s]+` to one space) and reject any name containing the tokens `bm`, `buildomator`, `gsd`, `claude`, or `codex_review_run`, rather than requiring an exact match. Add `bm-code-reviewer` and `claude code` cases to the tests.
+Before round 2, both checks used `baseRefOid` and agreed. Round 2 made them disagree. IN-10 (the `validate` CLI does not bind `--base`) is the same misalignment seen from the CLI side.
+**Fix:** Pass the reviewed base to the validator, `validateFallback(fallback, {pr, head, base: reviewedBase ?? base, …})`. Change the message to "does not match the reviewed base (merge-base)". In the `validate` CLI, compute the merge-base the same way and also bind `meta.base`, which resolves IN-10. Add a test where `baseRefOid` is ahead of the merge-base and the fallback names the merge-base.
 
 ## Info
 
-### IN-09: Fallback records still accept hollow nested values (new)
-**File:** `.github/scripts/codex-fallback.cjs:136-155, 175-177, 79-81`
-**Issue:** After the CR-01 fix, these fields are required to exist but are not checked for content:
-- `result.summary` may be `""`.
-- A finding may lack `id` and `severity`; only `disposition` is checked, and the message then reads `finding undefined has no disposition`.
-- `decided_at` passes the regex with impossible values such as `2026-13-45T99:99:99Z`.
-- A string `pr: "5"` is rejected with the misleading message "fallback is for a different PR".
+### IN-12: The reviewer-name denylist misses concatenated and model-only names (new)
+**File:** `.github/scripts/codex-fallback.cjs:22, 59-67`
+**Issue:** Tokens are split on non-alphanumeric characters, so names with no separator, or with only a model name, are accepted. These pass with `kind: other-independent`:
+- `BMcodereviewer`, `ClaudeCode`, `codexreviewrun`;
+- `Cl<U+0430>ude` (Cyrillic small a), `Claudé`;
+- `opus 4 review`, `sonnet`.
 
-**Fix:** Require a non-blank `summary`; require `id` and `severity` on each finding; check `decided_at` with `!Number.isNaN(Date.parse(v))` plus a round-trip; report a non-integer `pr` as a type error.
+The name is self-declared and the owner approves the record, so the effect is limited to a misleading "independent reviewer" label.
+**Fix:** Also reject a name when the lowercased name, with separators removed, contains `claude`, `buildomator`, `codexreviewrun` or `bmcode`. Add `opus`, `sonnet`, `haiku` and `anthropic` as tokens. Normalise with NFKD and reject any name that is not ASCII.
 
-### IN-10: The `validate` CLI binds the Codex meta to `--head` but not to `--base` (new)
-**File:** `.github/scripts/codex-fallback.cjs:268-274, 370-373`
-**Issue:** WR-02's fix returns `meta.head` and checks it, but `codexStatusFromOutput` does not return `meta.base`, so the CLI never compares it with `--base`. Readiness does compare them. The two entry points now disagree on what counts as matching Codex evidence.
-**Fix:** Return `base: meta.base` and reject when it differs from `--base`, consistent with however WR-01 above is resolved.
+### IN-09 (carried): Fallback records still accept hollow nested values
+**File:** `.github/scripts/codex-fallback.cjs` (result, findings and `decided_at` checks)
+**Issue:** An empty `result.summary`, findings without `id` or `severity`, impossible `decided_at` dates, and a misleading message for `pr: "5"` are all still accepted. Unchanged.
+**Fix:** As in iteration 2.
 
-### IN-11: The acceptance procedure does not document the new readiness prerequisites (new)
+### IN-10 (carried): The `validate` CLI binds the Codex meta to `--head` but not to `--base`
+**File:** `.github/scripts/codex-fallback.cjs:258-289`
+**Issue:** Unchanged. WR-02 above now widens the same misalignment.
+**Fix:** Return `meta.base` and compare it with the reviewed base (see WR-02).
+
+### IN-11 (carried): The acceptance procedure does not document the new readiness prerequisites
 **File:** `docs/owner-cli-acceptance.md:15, 19`
-**Issue:** Readiness now:
-- shells out to `git diff`, so it needs the PR base and head fetched locally;
-- must be run from the repo root, because the pathspecs and `--codex-out` are relative to the working directory;
-- fails with "could not compute audited-input changes" or "Codex evidence is for a different base".
-
-The fix report acknowledges that the doc was intentionally left unchanged. The owner sees these messages at acceptance time with no procedure to follow.
-**Fix:** Add one sentence to step 1: "Run from the repository root after `git fetch origin main pull/<N>/head`."
+**Issue:** Readiness now also runs `git merge-base`. It needs both PR commits fetched and must be run from the repository root. Unchanged.
+**Fix:** "Run from the repository root after `git fetch origin main pull/<N>/head`."
 
 ### IN-01 (carried): The OS-scan policy claims image-ID verification that the job does not perform
-**File:** `docs/os-scan-policy.md` (Scope paragraph) vs `.github/workflows/ci.yml:405-407`
-**Issue:** The job runs `sha256sum -c` only. The doc says it verifies the checksum and the image ID. Unchanged.
+**File:** `docs/os-scan-policy.md` (Scope paragraph) vs the `os-scan` job in `.github/workflows/ci.yml`
+**Issue:** The job runs only `sha256sum -c`. Unchanged.
 **Fix:** Say "checksum-verified", or add a `docker load` plus image-ID comparison.
 
 ### IN-02 (carried): The `os-scan` checkout persists the job token in `.git/config`
-**File:** `.github/workflows/ci.yml:398`
-**Issue:** There is no `persist-credentials: false`, while a third-party binary (Trivy) runs in that workspace. Unchanged.
+**File:** the `os-scan` job's `actions/checkout` step in `.github/workflows/ci.yml`
+**Issue:** There is no `persist-credentials: false`, while Trivy runs in that workspace. Unchanged.
 **Fix:** Add `with: { persist-credentials: false }`.
 
 ### IN-03 (carried): Register reads and writes depend on the current directory's repository
-**File:** `.github/scripts/acceptance-readiness.cjs:356-357`; `.github/scripts/review-register.cjs:167, 176`
-**Issue:** `gh variable get/set` run without `--repo REPO`. Unchanged (the line numbers moved).
+**File:** `.github/scripts/acceptance-readiness.cjs:386-387`; `.github/scripts/review-register.cjs:167, 176`
+**Issue:** `gh variable get/set` run without `--repo REPO`. Unchanged.
 **Fix:** Pass `'--repo', REPO`.
 
 ### IN-04 (carried): `review-register.cjs` lets a failed `gh variable set` escape as a raw stack trace
 **File:** `.github/scripts/review-register.cjs:212, 256`
-**Issue:** The `writeRegister` calls are not wrapped in a try/catch. Unchanged.
-**Fix:** Wrap them the same way the `readRegister` calls are wrapped.
+**Issue:** Unchanged.
+**Fix:** Wrap the `writeRegister` calls the same way the `readRegister` calls are wrapped.
 
 ### IN-05 (carried): Build-time packages outside the locked set
 **File:** `Dockerfile:16, 33, 55`
-**Issue:** The build uses an unpinned `hatchling` under build isolation, and `uv==0.12.17` is installed without a hash. Unchanged.
+**Issue:** An unpinned `hatchling` is used under build isolation, and `uv==0.12.17` is installed without a hash. Unchanged.
 **Fix:** Use `--no-build-isolation` with a hash-pinned `hatchling`, or document this as an accepted risk.
 
 ### IN-06 (carried): The hollow-report guard is easy to sidestep
@@ -256,38 +287,54 @@ The fix report acknowledges that the doc was intentionally left unchanged. The o
 **Fix:** Require a recorded command naming the reviewed range, or soften the docstring.
 
 ### IN-07 (carried): The CodeQL readiness fallback match is unlikely to fire
-**File:** `.github/scripts/acceptance-readiness.cjs:113-124`
-**Issue:** The fallback filters on the `github-advanced-security` app slug and takes only the single newest run. Unchanged.
+**File:** `.github/scripts/acceptance-readiness.cjs:140-150`
+**Issue:** It filters on the `github-advanced-security` app slug and takes only the newest run. Unchanged.
 **Fix:** Require every matching analysis run to succeed, and match on the app that actually posts them.
 
 ### IN-08 (carried): The readiness dry run uses HEAD's gate, not the pinned gate the job runs
 **File:** `.github/scripts/acceptance-readiness.cjs:11`; `.github/workflows/review-acceptance.yml:28`
-**Issue:** Readiness loads the local `review-acceptance.cjs`, while the job runs the pin `8df9eaf…`. Unchanged.
+**Issue:** Unchanged.
 **Fix:** Load the gate from the pinned blob, or test that the pinned blob equals HEAD's.
 
 ## Set aside (needs ruling)
+
+### SA-04: Residual of WR-02, where a diff that changes `tests/codex_review_run.py` can certify its own base cross-grade (new; the fixer asked for a ruling)
+**Where:** `tests/codex_review_run.py:943-985` (`_run_base_grader`) and Invocation step 0 in the contract; `.github/scripts/acceptance-readiness.cjs:73-82`
+**Why excluded:** The fixer stated this residual and deferred it to the owner. My assessment of the fixer's description is in the Summary: the scope is correct (runner changes only), but the mechanism is understated. A changed runner can write a bound "complete" `.base-status.json` directly, without running the base checker, and the binding check cannot detect that.
+**Effect if left as is:** For a PR that changes the Codex runner, a "complete" Codex item in readiness rests on the changed runner's own honesty. CI and owner acceptance are unaffected, and runner changes are already sensitive-class.
+**Needs:** An owner ruling.
+- (a) Accept, with the classification policy as the control. If so, have readiness print "Codex runner changed in this diff: base cross-grade is self-reported" so the owner sees it at acceptance.
+- (b) Have readiness re-grade `<OUT>.last.json` with the base commit's checker itself.
+
+### SA-05: Detector scope ends at this file (new)
+**Where:** `.github/scripts/ci-job-consistency.cjs` (`findSkipConditions`)
+**Why excluded:** This is a design boundary, not a defect in the code as written.
+**Effect if left as is:** A required job or step that calls a reusable workflow (job-level `uses:`) or a local composite action (`uses: ./.github/actions/…`) can hold step conditions or `continue-on-error` the detector never reads. Today, no required job does this.
+**Needs:** An owner ruling.
+- Either forbid job-level `uses:` and local `./` actions in required jobs (one more fail-closed check),
+- or accept the boundary and say so in `docs/review-classification-policy.md`.
 
 ### SA-01 (carried): This PR's acceptance runs on the gate it introduces
 **Where:** `.github/workflows/review-acceptance.yml:23-28`
 **Why excluded:** It is disclosed in the workflow, and it is a governance choice.
 **Effect if left as is:** A defect in the schema-2 gate would also admit this PR.
-**Needs:** An owner ruling: accept as disclosed, or require the independent pass to clear `review-acceptance.cjs` explicitly.
+**Needs:** An owner ruling.
 
 ### SA-02 (carried): The register schema cutover strands other open PRs
 **Where:** `.github/scripts/review-acceptance.cjs:10-12`; `.github/scripts/review-register.cjs:95-112`
 **Why excluded:** It is an operational ordering question.
-**Effect if left as is:** In-flight PRs need their dispositions re-entered after migration. (`gh pr list` shows no open PRs today.)
+**Effect if left as is:** In-flight PRs need their dispositions re-entered after migration.
 **Needs:** An owner ruling on migration timing.
 
 ### SA-03 (carried): The Dependabot `uv` ecosystem has no cooldown
 **Where:** `.github/dependabot.yml:23-31`
 **Why excluded:** It is a policy choice.
-**Effect if left as is:** There is less buffer against a malicious or yanked PyPI release than for actions/docker.
-**Needs:** An owner ruling: add a `cooldown`, or accept as is.
+**Effect if left as is:** There is less buffer against a malicious or yanked PyPI release.
+**Needs:** An owner ruling.
 
 ---
 
-_Reviewed: 2026-10-27T19:27:45Z_
+_Reviewed: 2026-10-27T19:51:31Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
-_Iteration: 2_
+_Iteration: 3_
