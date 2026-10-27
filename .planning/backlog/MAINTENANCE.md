@@ -84,3 +84,10 @@ Recorded, not fixed, by owner decision. Source: `85-REVIEW.md` iteration 3 (revi
 - **IN-10:** the fallback `validate` command now requires `--base` to equal the Codex evidence's recorded base (done with WR-02, `63b0b3d`); it still does not compute the merge-base itself, so the operator must pass the right one.
 - **IN-11:** `docs/owner-cli-acceptance.md` does not say readiness must run from the repository root after fetching both the PR head and main (it now runs `git merge-base`); add that line.
 - **IN-12:** the fallback reviewer-name denylist misses run-together and model-only names (`ClaudeCode`, `BMcodereviewer`, `sonnet`, look-alike letters); also match names with separators removed, add model names, and reject non-ASCII names.
+
+### Phase 85 code review iteration 4 accepted residual risk (owner decision 2026-10-27)
+
+Accepted, not fixed. Source: `85-REVIEW.md` iteration 4 (reviewed head `eae6d34`); see `85-REVIEW-EVIDENCE.md` "Accepted residual risk".
+
+- **WR-01:** `continue-on-error` on "Fail if tests failed" would swallow the no-skip guard's own CI failure and leave "CI ready" green; covered today by sensitive classification, BM + paired Codex review and exact-commit owner acceptance. Possible future hardening: move the gate logic into a tested script (or run the guard in a second required job without `set +e`).
+- **WR-02:** hard-coded `RESULTS` (ci-ready gate) or `TEST_EXIT` ("Fail if tests failed") inputs would make the gate always see success; covered the same way. Possible future hardening: move the gate logic into a tested script whose inputs the guard pins exactly.

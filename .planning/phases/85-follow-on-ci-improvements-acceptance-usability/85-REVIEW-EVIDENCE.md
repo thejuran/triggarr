@@ -331,6 +331,31 @@ hand-off (step 4) — not here; this note only makes the recommendation.
    D-07 amendment). No part of this evidence record, or any other document
    in this phase, describes an untrusted head's Codex review as complete.
 
+## Accepted residual risk (owner decision 2026-10-27)
+
+Source: `85-REVIEW.md` iteration 4 (reviewed head `eae6d34`), WR-01 and WR-02.
+The owner chose "Close cheap gaps, then stop": these two are recorded, not
+fixed.
+
+The static no-skip guard (`tests/test_required_jobs_no_skip.py`, with the
+Node detector as a secondary line) is built to catch accidental and obvious
+ways a required check could be skipped or switched off. It cannot rule out
+someone deliberately tampering with the gate steps themselves:
+
+- **WR-01:** adding `continue-on-error` to the "Fail if tests failed" step.
+  The guard does report this, but in CI its own failure is reported through
+  that same step, so the change would swallow the guard's failure and "CI
+  ready" would still go green.
+- **WR-02:** replacing the gate steps' inputs with hard-coded values
+  (`RESULTS` on the `ci-ready` gate step, `TEST_EXIT` on "Fail if tests
+  failed"), so the gate always sees success.
+
+Both are covered by process rather than by a static check: every workflow
+change is classified sensitive, gets BM code review with its paired Codex
+pass, and needs the owner's acceptance of the exact commit. Possible future
+hardening (backlog, `.planning/backlog/MAINTENANCE.md`): move the gate logic
+into a tested script so its inputs and outcome can be checked directly.
+
 ## Hand-off after the last plan
 
 Every step below is marked **not performed by any plan** — this plan writes
