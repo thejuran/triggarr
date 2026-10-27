@@ -1,6 +1,6 @@
 # Triggarr maintenance
 
-Updated 2026-10-21. Small ongoing work and change-time rules; not a separate development milestone. Confirm existing implementation and current need before acting.
+Updated 2026-10-27. Small ongoing work and change-time rules; not a separate development milestone. Confirm existing implementation and current need before acting.
 
 ## Change-time rules
 
@@ -25,23 +25,43 @@ After v2.12 closes, present [the review-workflow proposal](../../docs/bm-greptil
 
 After v2.12 also present [the CI reference-baseline plan](../../docs/ci-reference-baseline-plan.md) alongside the review blueprint. Goal: make Triggarr the model for other repositories, starting with tests of the shipped image, browser regressions, and version consistency. Owner-approved CLI submission was separately activated on 2026-10-18; follow [the active procedure](../../docs/owner-cli-acceptance.md), requiring explicit approval of the exact commit. All CI and reviewer changes remain deferred; preserve current checks and protected acceptance.
 
-## Phase 83 carry-forward to Phase 85
+## Resolved in Phase 85 (2026-10-26 … 2026-10-27)
 
-Owner-ruled nonblocking debt from Phase 83's BM reviews, paired Codex passes, and vibe-check deep-review (rounds 4-7; see `.planning/phases/83-paired-bm-codex-review-risk-based-depth/83-REVIEW-EVIDENCE.md`). Recorded here, not fixed in Phase 83, per the owner's 2026-10-23 dispositions.
+Items folded into Phase 85 from "Phase 83 carry-forward to Phase 85" and
+"Quick 261026-s2v carry-forward to Phase 85" (D-15, D-16, D-17, D-18, D-13),
+each resolved by the named plan and commit. Verified against the plans'
+SUMMARY.md files by Plan 85-19; not re-verified against a pushed/merged head
+(see `85-REVIEW-EVIDENCE.md`).
 
-- **Checker/runner/schema grade their own PR** (WR-03 / ARCH-03 / impact-001). A PR that changes `tests/codex_report_status.py`, `tests/codex_review_run.py`, the schema, or the contract prompt is graded by its own changed grader; no base-checker run or `audited_inputs_changed_in_diff` record exists today.
-- **Raw Codex `.jsonl`/`.last.json` home-path redaction for future runs** (WR-04; owner published the already-committed raw evidence as-is). `redact_local_paths`'s docstring overclaims that local paths "never appear"; the event stream itself is never redacted.
-- **`--trusted` is operator-declared, not verified** (SA-01). The flag that decides whether the harness runs a head's own tests is a caller-supplied boolean with no independent check.
-- **Planning-file (`*-PLAN.md`) classification** (SA-03). The Codex review diff excludes all `.planning/**/*.md` by extension, but the classification policy is content-based and PLAN.md files are agent instructions that BM executors follow.
-- **External SIGTERM/SIGHUP leaves Codex/pytest running** (round-6 WR-01, impact-1) **and post-kill drain is unbounded** (bugs-002/impact-2). The round-6 fix moved pytest/codex into their own process group and kills it on a Python-visible exception, but a signal whose default action ends the process without running Python code (SIGTERM, SIGHUP) still leaves the child group orphaned; separately, the post-kill output drain has no time limit and can hang if a descendant holds stdout open.
-- **Approved-fallback definition for an INCOMPLETE/PENDING Codex pass** (round-7 WR-01), **including Dependabot PRs blocked at acceptance until then** — the contract's only named fallback example (vibe-check) is exactly what the checkpoint record says never substitutes for Codex, and the record has no field to record one. Two related wording gaps: the contract/checkpoint-record documents don't themselves state that "wait" or "retry later" blocks acceptance (IN-01 contract/record wording), and the pilot checklist's approval precondition still omits the paired Codex review (IN-02 pilot step 4 missing Codex).
+- **Checker/runner/schema grade their own PR** (WR-03 / ARCH-03 / impact-001) — resolved by Plan 85-13 (`fc34da2`): `audited_inputs_changed_in_diff` records which grader files changed, and a diff that changes one is cross-graded with the unchanged base-commit checker before it can report complete.
+- **Raw Codex `.jsonl`/`.last.json` home-path redaction for future runs** (WR-04) — resolved by Plan 85-03 (`6ce9d49`): `_finalize_raw_outputs` redacts local absolute paths on every exit path before grading, and the overclaiming docstring is corrected. Already-committed raw evidence stays published as written (owner decision), per the contract's historical-evidence exception.
+- **`--trusted` is operator-declared, not verified** (SA-01) — resolved by Plan 85-13 (`dcf0b13`): `verify_trust()` independently checks GitHub PR ownership (`gh pr view`) or, for a local checkpoint, every commit's own `commit`-prefixed reflog entry on this machine; the flag alone never establishes trust.
+- **Planning-file (`*-PLAN.md`) classification** (SA-03) — resolved by Plan 85-16 (`695e7de`, `7cdb651`): `docs/review-classification-policy.md` classifies `*-PLAN.md` phase plan files as sensitive, and the Codex contract's fixed prompt (version 6) adds a second, positive diff that brings them into review scope despite the blanket `.planning/**/*.md` exclusion.
+- **External SIGTERM/SIGHUP leaves Codex/pytest running** (round-6 WR-01, impact-1) **and post-kill drain is unbounded** (bugs-002/impact-2) — resolved by Plan 85-03 (`f17eae7`): a signal handler kills the tracked process group on SIGTERM/SIGHUP, and the post-kill output drain is bounded by `DRAIN_TIMEOUT_SECONDS`.
+- **Approved-fallback definition for an INCOMPLETE/PENDING Codex pass** (round-7 WR-01) **and the two related wording gaps** (IN-01 wait/retry-later wording, IN-02 pilot step 4 missing Codex) — resolved by Plan 85-17 (`faa4387`, `e72e971`): the Codex contract's "Owner-approved fallback" section defines the schema (`codex-fallback.cjs`'s `FALLBACK_FIELDS`/`OWNER_DECISIONS`), both the contract and the checkpoint record now state verbatim that wait/retry-later blocks acceptance, and the pilot checklist's Routine BM workflow step 4 now requires the paired Codex review before approval. Dependabot PRs are not unblocked by this fix alone — see "moved to Phase 85.1" below for their actual Codex status.
+- **`getpass.getuser()` silent redaction skip** (compliance-002) — resolved by Plan 85-03 (`6ce9d49`): `redact_local_paths()` now prints a warning naming the exception type instead of silently defaulting to no username substitution.
+- **Empty directory left on `os.open()` failure** (rm-001) — resolved by Plan 85-03 (`6ce9d49`): `_write_evidence_copy` removes the directory it just created when the evidence file's `os.open()` fails.
+- **Three hand-kept review-machinery lists drift guard** (arch-1) — resolved by Plan 85-16 (`d0b2b75`): `tests/test_review_machinery_lists.py` pins exact agreement between the classification policy's sensitive row, the Codex scope (`AUDITED_INPUTS`/`EXCLUDE_PATHSPECS`), and the acceptance checklist's Codex line, with majority-vote attribution naming whichever list drifted.
+- **Null `exit_code` / trivial command still counts as evidence** — resolved by Plan 85-04 (`4a9a67a`): `TRIVIAL_COMMANDS` plus a null-exit-code check in the hollow-report guard reject a `commands_run` entry whose only command has no recorded exit code or is trivially uninformative (echo/pwd/true/etc).
+- **Run the planchk-router plugin tests in CI** (quick 261026-s2v carry-forward; owner decision 2026-10-26) — resolved by Plan 85-11 (`8a5f48a`): `node --test .github/scripts/*.test.cjs .claude/plugins/planchk-router/test/planchk-router.test.mjs` runs in `ci.yml`'s `test` job behind a Node >= 20 guard, by explicit file path (no directory recursion).
+
+**Moved to Phase 85.1, not resolved here:** the isolated Codex review for
+untrusted (bot and fork) PRs — part of the SA-01/D-07 carry-forward above —
+is **not** delivered by Phase 85. Owner decision 2026-10-27 split it into
+Phase 85.1 because its security boundary kept failing plan checks on paper
+(`.planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CARRY-IN.md`).
+Until Phase 85.1 ships, the interim rule applies (Plans 85-13/85-14/85-17):
+`--untrusted` runs nothing and records an INCOMPLETE `untrusted-refused`
+result; CI still runs in full; a per-PR owner-approved D-16 fallback is the
+only way to satisfy acceptance for such a head; a diff that changes a Codex
+grader file is cross-graded only by the base checker on `origin/main`, never
+by an untrusted head's own code. D-07 for untrusted heads remains the goal,
+delivered by Phase 85.1.
+
+## Still open after Phase 85
+
+Items the owner did not fold into Phase 85 (D-15); unchanged from the prior
+carry-forward record.
+
 - **Card-template text-matching refactor** (quick WR-01 / bm IN-01). `cycle_grade.html` classifies reason rows by matching `outcome.py`'s rendered display strings instead of a structured "kind" field; correct for every row today but only coupled through wording.
-- **`getpass.getuser()` silent redaction skip** (compliance-002). A `KeyError`/`OSError` from `getpass.getuser()` in `redact_local_paths()` is caught and silently defaults to no username substitution, with no log.
-- **Empty directory left on `os.open()` failure** (rm-001). `_write_evidence_copy`'s `directory.mkdir()` succeeds before `os.open()` can fail, leaving an empty directory for the caller's `finally`/`shutil.rmtree` to clean up rather than the function cleaning up its own failure path.
-- **Three hand-kept review-machinery lists drift guard** (arch-1). The classification policy's sensitive row, the Codex scope exclusions, and the acceptance-prerequisite list each separately enumerate the review-machinery files by hand, with no single test asserting the three lists agree with each other.
-- **Null `exit_code` / trivial command still counts as evidence**. A `commands_run` entry with a non-blank command but a `null` exit_code, or any non-blank command string regardless of content, still counts toward the hollow-report guard; the round-6 fix only rejects all-blank entries.
 - **Craft-skill `code-reviewer` sticky accept pending.** The owner answered "Accept sticky (persist for bm-code-reviewer)" for the catalog's `code-reviewer` skill (`github.com/Jeffallan/claude-skills`, pinned at `1be15d8064f88fc25216442406d40add8fd23b53`, MIT, trust tier A), but it was never inserted — no local checkout exists at that pin. Needs a separate owner approval of the clone step plus cloning the third-party code at the pin before it can take effect.
-
-## Quick 261026-s2v carry-forward to Phase 85
-
-- **Run the planchk-router plugin tests in CI** (owner decision 2026-10-26: "add tests to CI in Phase 85"). `node --test .claude/plugins/planchk-router/test/planchk-router.test.mjs` (11 tests) is not in `.github/workflows/ci.yml` today; CI's Node step only globs `.github/scripts/*.test.cjs`. Editing the workflow is a sensitive change and gets the full review path. Note `node --test <dir>/` does not recurse on Node v25.9.0; pass the file or a glob.
