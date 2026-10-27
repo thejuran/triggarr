@@ -18,7 +18,23 @@ RUN pip install --no-cache-dir pytailwindcss \
     && tailwindcss -i triggarr/static/css/input.css -o triggarr/static/css/output.css --minify
 
 
-# ---- Stage 2: Production image ----
+# ---- Stage 2: Locked dependency export ----
+# Build-only stage: pins uv to export pyproject.toml's resolved, hash-pinned
+# dependency set from uv.lock. Neither uv nor this stage ships in the final
+# image -- only the exported requirements-locked.txt file is copied out.
+FROM python:3.13-slim AS deps
+
+ENV UV_VERSION=0.12.17
+
+WORKDIR /build
+
+COPY pyproject.toml uv.lock ./
+
+RUN pip install --no-cache-dir "uv==${UV_VERSION}" \
+    && uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file requirements-locked.txt
+
+
+# ---- Stage 3: Production image ----
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -26,10 +42,17 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Install exactly the locked, hash-checked dependency set -- never
+# pyproject.toml's loose constraints -- so the image can't silently
+# diverge from the lockfile CI already audited (CIMAINT-01).
+COPY --from=deps /build/requirements-locked.txt /tmp/requirements-locked.txt
+RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements-locked.txt \
+    && rm /tmp/requirements-locked.txt
+
 COPY pyproject.toml .
 COPY triggarr/ triggarr/
 COPY CHANGELOG.md .
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --no-deps .
 
 # Pull compiled CSS from the builder stage
 COPY --from=builder /build/triggarr/static/css/output.css triggarr/static/css/output.css
