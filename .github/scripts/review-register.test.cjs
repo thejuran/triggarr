@@ -162,7 +162,7 @@ test('CLI upsert --apply reads, writes, and verifies via injected exec', () => {
       calls.push([cmd, ...args]);
       if (cmd !== 'gh') throw new Error('unexpected command');
       if (args[0] === 'variable' && args[1] === 'get') return currentValue;
-      if (args[0] === 'variable' && args[1] === 'set') { currentValue = args[3]; return ''; }
+      if (args[0] === 'variable' && args[1] === 'set') { currentValue = args[4]; return ''; }
       throw new Error(`unexpected gh invocation: ${args.join(' ')}`);
     };
     const exitCode = runCli(
