@@ -99,3 +99,12 @@ Source: `85-REVIEW.md` iteration 5 (reviewed head `1f8e339`, status clean).
 - **IN-14:** a job whose `name:` is an expression (`${{ 'CI ready' }}`, `format(...)`, a matrix value) evades the static "CI ready" uniqueness check yet publishes a "CI ready" check at run time; deliberate, sensitive-class edit (accepted class). Pairs with the deferred item below.
 - **WR-03 readiness half (deferred in round 4):** `acceptance-readiness.cjs` picks the newest "CI ready" check by name only; make it accept only the run produced by `ci.yml`'s `ci-ready` job (workflow path + job), so a same-named check from another workflow cannot satisfy readiness.
 - **Codex local trust vs worktree execution:** `tests/codex_review_run.py --trusted` local-checkpoint mode refuses any phase executed with BM parallel worktrees (plan commits arrive via `merge worktree-agent-…` reflog entries; worker reflogs are deleted). Either teach the runner to accept this machine's own worktree merges safely, or run phase checkpoints sequentially / by PR URL. Phase 85 used the PR-URL path (owner decision 2026-10-27).
+
+### Phase 85 PR #36 Codex follow-ups (owner decision 2026-10-28)
+
+Source: Codex by PR URL on `5a97e1f` (attempts a1/a2, both INCOMPLETE for diff size; owner chose a full vibe-check deep-review fallback). Recorded, not fixed on PR #36, so the reviewed head does not move.
+
+- **Readiness dead end (a1 F001, medium, reproduced):** `acceptance-readiness.cjs` `codexStatusFor` returns blocked when the head-side checker says complete but the base checker says incomplete (grader changed in the diff), before `validateFallback` runs, while `codex-fallback.cjs validate` accepts the fallback for the same evidence. Treat base disagreement as incomplete and fall through to the fallback (or make the CLI refuse the same case). Same root as the deep-review pass-1 bugs-002/003 and arch-001 notes (two copies of the completeness rule).
+- **Hollow-report guard (a2 F001, low, reproduced):** `tests/codex_report_status.py` accepts no-op-only command evidence such as `env true`, and can wrongly mark a legitimate compound inspection command starting with `echo` as hollow.
+- **Codex scope vs PR size:** four attempts on two heads never finished the full PR diff (27 plans, tests, docs, `uv.lock`). Consider smaller phase PRs or a chunked Codex review mode.
+- **IN-04 (BM iteration 8):** `test_post_kill_drain_keeps_partial_text_output` gives the child 1.0 s to print; raise to ~3 s if it flakes on CI.
