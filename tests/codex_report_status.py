@@ -32,6 +32,11 @@ Completeness by schema version (owner decision 2026-10-22):
   flag. The v1 schema is derived from the current schema by removing the
   two v2 fields, so it cannot drift into a second hand-maintained copy.
 
+The caller declares which rules to grade under via ``--review-mode``
+(``trusted``, the default, or ``inspection-only`` for a review of an
+untrusted head that by design runs no commands and reproduces nothing);
+the mode is never inferred from the report itself.
+
 Run as `uv run python tests/codex_report_status.py ...` (invoked by
 docs/codex-adversarial-review-contract.md, Invocation step 4.6, via
 tests/codex_review_run.py). This
@@ -106,6 +111,7 @@ class Assessment:
     finding_count: int
     inspected_head: str | None
     inspected_base: str | None
+    review_mode: str = "trusted"
 
 
 def _load_schema() -> dict:
@@ -383,32 +389,32 @@ def assess_report(
 
     if read_error is not None:
         reasons.append(f"unreadable report: {read_error}")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     if report_text is None or not report_text.strip():
         reasons.append("missing report")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     try:
         report = json.loads(report_text, object_pairs_hook=_reject_duplicate_keys)
     except _DuplicateKeyError as exc:
         reasons.append(f"unparseable: duplicate key {exc.key}")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
     except RecursionError:
         reasons.append("unparseable: report is nested too deeply")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
     except json.JSONDecodeError:
         reasons.append("unparseable: report is not valid JSON")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
     except ValueError:
         # After the two ValueError subclasses above: for example an integer
         # longer than Python's int-string conversion limit.
         reasons.append("unparseable: report is not valid JSON")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     if not isinstance(report, dict):
         reasons.append("unparseable: report is not a JSON object")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     v1_rules = _uses_v1_rules(report, legacy_v1)
     if report.get("schema_version") == "1" and not v1_rules:
@@ -517,6 +523,7 @@ def assess_report(
         finding_count=finding_count,
         inspected_head=inspected_head,
         inspected_base=inspected_base,
+        review_mode=review_mode,
     )
 
 
@@ -556,6 +563,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Re-assess an already recorded schema v1 report under the v1 rules (never used for new runs)",
     )
+    parser.add_argument(
+        "--review-mode",
+        choices=REVIEW_MODES,
+        default="trusted",
+        help=(
+            "Grading rules: trusted (default) or inspection-only (untrusted head reviewed "
+            "from inert text; declared by the runner, never by the report)"
+        ),
+    )
     return parser
 
 
@@ -567,6 +583,7 @@ def _assessment_to_dict(assessment: Assessment) -> dict:
         "finding_count": assessment.finding_count,
         "inspected_head": assessment.inspected_head,
         "inspected_base": assessment.inspected_base,
+        "review_mode": assessment.review_mode,
     }
 
 
@@ -593,6 +610,7 @@ def main(argv: list[str] | None = None) -> int:
         source=args.source,
         read_error=read_error,
         legacy_v1=args.legacy_v1,
+        review_mode=args.review_mode,
     )
 
     print(json.dumps(_assessment_to_dict(assessment)))
