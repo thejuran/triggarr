@@ -337,7 +337,20 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   1. An untrusted head is reviewed by Codex without being checked out or executed. The grader comes only from fresh `origin/main`, and a fork-controlled base is rejected before any of its code runs.
   2. The isolation boundary is verified deterministically on every run (container configuration, mounts, environment, and output ingestion that can't follow a symlink or FIFO). Behavioral probes are only supplementary.
   3. A live end-to-end review of a real PR completes. Any incomplete outcome blocks and is escalated, never reported clean.
-**Plans**: TBD (carry-in: `.planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CARRY-IN.md`)
+**Plans**: 11 plans (waves 1-6 build and test, wave 7 pre-merge evidence, wave 8 post-merge live run)
+
+Plans:
+- [ ] 85.1-01-PLAN.md — TDD: checker `--review-mode inspection-only` (no commands, no reproduced findings; trusted guard unchanged)
+- [ ] 85.1-02-PLAN.md — TDD: acceptance gate counts a COMPLETE inspection-only result for bot/fork heads; fallback stays for INCOMPLETE; shared predicate + parity test (D-12)
+- [ ] 85.1-03-PLAN.md — Pinned review image (digest base, sha256 Codex binary, non-root); classified sensitive; egress backlog item (D-05)
+- [ ] 85.1-04-PLAN.md — Contract: inspection-only prompt v1; docs state open egress, sign-in copy, residual risk, refresh handling (D-04/D-06/D-07/D-11)
+- [ ] 85.1-05-PLAN.md — TDD: inert input from git objects, PR/CI preconditions, trusted-main provenance with harness-at-main rule (B13, D-02)
+- [ ] 85.1-06-PLAN.md — TDD: inspection-only orchestration behind a fail-closed boundary gate and launch seam; event audit; main-only grading
+- [ ] 85.1-07-PLAN.md — TDD: container builders, read-only hash-checked schema mount (B17), docker-inspect and canary checks with split env sets (B16)
+- [ ] 85.1-08-PLAN.md — TDD: sign-in copy custody and refresh detection (D-06/D-11), safe output reads (B15), deterministic boundary + container launch
+- [ ] 85.1-09-PLAN.md — TDD: per-attempt completion gate (B18), `--verify-boundary [--with-probes]`, full-suite integration
+- [ ] 85.1-10-PLAN.md — Pre-merge evidence: deterministic results + live boundary verification against the built image (checkpoint)
+- [ ] 85.1-11-PLAN.md — Post-merge: owner merges; live inspection-only review of PR #47 on main's grader must pass the completion gate (checkpoint)
 
 ### Phase 86: Pilot & Reference Record
 
@@ -369,7 +382,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
 | 85. Follow-on CI Improvements & Acceptance Usability | 19/19 | Complete (merged PR #36; Codex incomplete for size, owner-approved vibe-check fallback; UAT P5 at next release) | 2026-10-28 |
-| 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 0/TBD | Not started | - |
+| 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 0/11 | Planned | - |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
 ## Following milestone: Reliability
