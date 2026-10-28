@@ -526,6 +526,13 @@ for (const name of [
   'codex_review_run.py',
   'Codex Review Run',
   '  BM  ',
+  // A separator inside the short token itself must not split it away.
+  'B.M. Code Review',
+  'B M',
+  'b/m',
+  'G.S.D. reviewer',
+  'C l a u d e',
+  'c.o.d.e.x review run',
 ]) {
   test(`reviewer name ${JSON.stringify(name)} is not independent`, () => {
     const record = validRecord();
@@ -541,6 +548,7 @@ for (const name of [
   'manual Codex inspection session',
   'independent human reviewer',
   'submarine review', // contains "bm" only inside a word, not as a token
+  'J. R. independent reviewer', // initials that do not spell a disallowed token
 ]) {
   test(`reviewer name ${JSON.stringify(name)} stays acceptable`, () => {
     const record = validRecord();

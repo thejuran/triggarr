@@ -56,14 +56,40 @@ function missingNestedFields(obj, fields, pathPrefix) {
     .map(field => `missing required field ${pathPrefix}.${field}`);
 }
 
-function reviewerNameIsDisallowed(name) {
-  const lowered = name.trim().toLowerCase();
-  if (DISALLOWED_REVIEWERS.includes(lowered)) return true;
-  const tokens = lowered.split(/[^a-z0-9]+/).filter(Boolean);
+// A separator placed inside a short token ("B.M.", "B M", "G-S-D") splits it
+// into single letters that never equal "bm"/"gsd". Each run of adjacent
+// single-character tokens is re-joined into one token, so "B.M." is checked
+// as "bm" exactly as "BM" is.
+function collapseSingleCharRuns(tokens) {
+  const collapsed = [];
+  let run = '';
+  for (const token of tokens) {
+    if (token.length === 1) {
+      run += token;
+      continue;
+    }
+    if (run) {
+      collapsed.push(run);
+      run = '';
+    }
+    collapsed.push(token);
+  }
+  if (run) collapsed.push(run);
+  return collapsed;
+}
+
+function tokensAreDisallowed(tokens) {
   if (tokens.some(token => DISALLOWED_REVIEWER_TOKENS.includes(token))) return true;
   return DISALLOWED_REVIEWER_TOKEN_SEQUENCES.some(sequence =>
     tokens.some((_, start) => sequence.every((token, offset) => tokens[start + offset] === token))
   );
+}
+
+function reviewerNameIsDisallowed(name) {
+  const lowered = name.trim().toLowerCase();
+  if (DISALLOWED_REVIEWERS.includes(lowered)) return true;
+  const tokens = lowered.split(/[^a-z0-9]+/).filter(Boolean);
+  return tokensAreDisallowed(tokens) || tokensAreDisallowed(collapseSingleCharRuns(tokens));
 }
 
 function basename(path) {
