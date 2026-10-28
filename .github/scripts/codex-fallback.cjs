@@ -9,6 +9,12 @@
 
 const fs = require('node:fs');
 
+// The review mode an isolated-container, inspection-only run of an untrusted
+// (bot/fork) head records in its .meta.json (D-07, D-12). A COMPLETE result in
+// this mode satisfies the Codex acceptance item directly; an INCOMPLETE one
+// still needs the owner-approved fallback below.
+const INSPECTION_REVIEW_MODE = 'inspection-only-ci-evidence';
+
 const FALLBACK_SCHEMA_VERSION = 1;
 const FALLBACK_FIELDS = Object.freeze([
   'schema', 'pr', 'head', 'base', 'codex_out', 'reviewer', 'scope', 'result', 'owner_decision',
@@ -298,11 +304,14 @@ function validateFallback(record, context = {}) {
 
   if (codexStatus && codexStatus.complete === true) {
     // Fallback is reserved for runs that actually stayed incomplete.
-    if (headTrust === 'untrusted') {
-      reasons.push('Codex evidence claims complete for an untrusted head; untrusted runs are refused until Phase 85.1');
-    } else {
-      reasons.push('Codex is complete for this head; a fallback is not used');
-    }
+    reasons.push('Codex is complete for this head; a fallback is not used');
+  } else if (codexStatus && codexStatus.invalidEvidence === true) {
+    // T-85.1-07b: an anomalous "complete" claim with invalid evidence (e.g. no
+    // verified boundary) is never rescued, at any attempt (PC-06). Checked
+    // before the attempt-number rules below so no attempt can launder it.
+    reasons.push(
+      'Codex evidence claims completion but is not valid for this head and attempt; a fallback cannot rescue invalid evidence — rerun the inspection-only review'
+    );
   } else if (headTrust === 'trusted') {
     const attempt = codexStatus?.attempt;
     if (!codexOutMatchesHead || !(typeof attempt === 'number' && attempt >= 2)) {
@@ -313,9 +322,21 @@ function validateFallback(record, context = {}) {
     if (codexStatus?.reviewMode === 'untrusted-refused') {
       reasons.push('an untrusted-mode refusal does not open the fallback for a trusted head; run the trusted Codex pass');
     }
+    if (codexStatus?.reviewMode === INSPECTION_REVIEW_MODE) {
+      reasons.push('an inspection-only result does not open the fallback for a trusted head; run the trusted Codex pass');
+    }
   } else if (headTrust === 'untrusted') {
-    if (!(codexStatus?.reviewMode === 'untrusted-refused' && codexOutMatchesHead)) {
-      reasons.push('untrusted head needs its recorded INCOMPLETE Codex refusal for this head');
+    const attempt = codexStatus?.attempt;
+    const legitimateIncompleteInspection =
+      codexStatus?.reviewMode === INSPECTION_REVIEW_MODE &&
+      codexOutMatchesHead &&
+      typeof attempt === 'number' &&
+      attempt >= 2;
+    const historicalRefusal = codexStatus?.reviewMode === 'untrusted-refused' && codexOutMatchesHead;
+    if (!(legitimateIncompleteInspection || historicalRefusal)) {
+      reasons.push(
+        'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+      );
     }
   }
 
@@ -327,9 +348,61 @@ function readJson(readFileSync, path) {
   return JSON.parse(text);
 }
 
-// Reads the Codex status/meta files under the OUT prefix to build the
-// codexStatus object validateFallback expects, implementing the same
-// completeness contract as acceptance-readiness.cjs's codexStatusFor().
+// inspectionOnlyCompleteness({meta, status, baseStatus, boundary, head, baseRequired})
+// -> {complete, invalidEvidence, reasons}
+//
+// The single completeness rule for an inspection-only (isolated-container)
+// review of an untrusted head (D-07, D-12, T-85.1-07). Shared by
+// codexStatusFromOutput() below and acceptance-readiness.cjs's
+// codexStatusFor() -- both must call this, never re-implement it, so the two
+// scripts cannot drift (T-85.1-07).
+//
+// invalidEvidence is true only when the status file claims "complete" but the
+// completeness checks fail (an anomalous completion claim, T-85.1-04/07b); a
+// status that is honestly "incomplete" is never invalid evidence, whatever
+// the boundary says -- that is a legitimate INCOMPLETE result.
+function inspectionOnlyCompleteness({meta, status, baseStatus, boundary, head, baseRequired}) {
+  if (status?.status !== 'complete') {
+    return {complete: false, invalidEvidence: false, reasons: ['Codex status is incomplete']};
+  }
+
+  const reasons = [];
+
+  const boundHere = status?.inspected_head === head && status?.inspected_base === meta?.base;
+  if (!boundHere) {
+    reasons.push('inspection-only status is not bound to this head and base (inspected_head/inspected_base differ)');
+  }
+
+  const boundaryValid =
+    isPlainObject(boundary) &&
+    boundary.verdict === 'verified' &&
+    boundary.head === head &&
+    boundary.attempt === meta?.attempt;
+  if (!boundaryValid) {
+    reasons.push('inspection-only result has no verified isolation boundary for this head and attempt');
+  }
+
+  if (baseRequired) {
+    if (!isPlainObject(baseStatus)) {
+      reasons.push("grader changed in this diff: the trusted-main checker's base-status is missing");
+    } else if (baseStatus.status !== 'complete') {
+      reasons.push('grader changed in this diff: the trusted-main checker did not confirm completeness');
+    } else if (!(baseStatus.inspected_head === head && baseStatus.inspected_base === meta?.base)) {
+      reasons.push(
+        'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)'
+      );
+    }
+  }
+
+  const complete = reasons.length === 0;
+  return {complete, invalidEvidence: !complete, reasons};
+}
+
+// Reads the Codex status/meta/boundary files under the OUT prefix to build
+// the codexStatus object validateFallback expects, implementing the same
+// completeness contract as acceptance-readiness.cjs's codexStatusFor() --
+// both call inspectionOnlyCompleteness() for the inspection-only mode so the
+// two scripts cannot drift (T-85.1-07).
 function codexStatusFromOutput(codexOutPrefix, readFileSync) {
   let status;
   let meta;
@@ -352,12 +425,34 @@ function codexStatusFromOutput(codexOutPrefix, readFileSync) {
       baseStatus = null;
     }
   }
-  const complete =
-    meta.review_mode === 'trusted-local-tests' &&
-    status?.status === 'complete' &&
-    (auditedChanged.length === 0 || baseStatus?.status === 'complete');
+
+  let complete;
+  let invalidEvidence = false;
+  let boundaryVerdict;
+  if (meta.review_mode === INSPECTION_REVIEW_MODE) {
+    let boundary = null;
+    try {
+      boundary = readJson(readFileSync, `${codexOutPrefix}.boundary.json`);
+    } catch {
+      boundary = null;
+    }
+    boundaryVerdict = isPlainObject(boundary) ? boundary.verdict : undefined;
+    const result = inspectionOnlyCompleteness({
+      meta, status, baseStatus, boundary, head: meta.head, baseRequired: auditedChanged.length > 0,
+    });
+    complete = result.complete;
+    invalidEvidence = result.invalidEvidence;
+  } else {
+    complete =
+      meta.review_mode === 'trusted-local-tests' &&
+      status?.status === 'complete' &&
+      (auditedChanged.length === 0 || baseStatus?.status === 'complete');
+  }
+
   return {
     complete,
+    invalidEvidence,
+    boundaryVerdict,
     attempt: meta.attempt,
     out: codexOutPrefix,
     reviewMode: meta.review_mode,
@@ -498,6 +593,9 @@ module.exports = {
   REVIEWER_KINDS,
   DISALLOWED_REVIEWERS,
   OWNER_DECISIONS,
+  INSPECTION_REVIEW_MODE,
+  inspectionOnlyCompleteness,
+  codexStatusFromOutput,
   validateFallback,
   runCli,
 };
