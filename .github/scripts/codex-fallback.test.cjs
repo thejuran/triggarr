@@ -6,6 +6,9 @@ const {
   REVIEWER_KINDS,
   DISALLOWED_REVIEWERS,
   OWNER_DECISIONS,
+  INSPECTION_REVIEW_MODE,
+  inspectionOnlyCompleteness,
+  codexStatusFromOutput,
   validateFallback,
   runCli,
 } = require('./codex-fallback.cjs');
@@ -253,12 +256,35 @@ test('trusted head: an untrusted-mode refusal record never opens the fallback', 
   ));
 });
 
+test('trusted head: an inspection-only result never opens the fallback', () => {
+  const record = validRecord();
+  const context = validContext({
+    codexStatus: {complete: false, attempt: 2, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE},
+  });
+  const {reasons} = validateFallback(record, context);
+  assert.ok(reasons.includes(
+    'an inspection-only result does not open the fallback for a trusted head; run the trusted Codex pass'
+  ));
+});
+
 test('valid untrusted-head record with its recorded refusal is ok', () => {
   const refusalOut = `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task1-a1`;
   const record = validRecord({codex_out: refusalOut});
   const context = validContext({
     headTrust: 'untrusted',
     codexStatus: {complete: false, attempt: 1, out: refusalOut, reviewMode: 'untrusted-refused'},
+  });
+  const result = validateFallback(record, context);
+  assert.deepEqual(result, {ok: true, reasons: []});
+});
+
+test('untrusted head with a legitimate INCOMPLETE inspection-only result at attempt 2 is ok', () => {
+  const record = validRecord();
+  const context = validContext({
+    headTrust: 'untrusted',
+    codexStatus: {
+      complete: false, invalidEvidence: false, attempt: 2, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE,
+    },
   });
   const result = validateFallback(record, context);
   assert.deepEqual(result, {ok: true, reasons: []});
@@ -271,20 +297,49 @@ test('untrusted head without its recorded refusal needs one', () => {
     codexStatus: {complete: false, attempt: 1, out: CODEX_OUT, reviewMode: undefined},
   });
   const {reasons} = validateFallback(record, context);
-  assert.ok(reasons.includes('untrusted head needs its recorded INCOMPLETE Codex refusal for this head'));
+  assert.ok(reasons.includes(
+    'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+  ));
+});
+
+test('untrusted head whose only record is a trusted-mode incomplete still needs the inspection-only result', () => {
+  const record = validRecord();
+  const context = validContext({
+    headTrust: 'untrusted',
+    codexStatus: {complete: false, attempt: 2, out: CODEX_OUT, reviewMode: 'trusted-local-tests'},
+  });
+  const {reasons} = validateFallback(record, context);
+  assert.ok(reasons.includes(
+    'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+  ));
 });
 
 test('untrusted head whose Codex record claims complete is never ok', () => {
   const record = validRecord();
   const context = validContext({
     headTrust: 'untrusted',
-    codexStatus: {complete: true, attempt: 1, out: CODEX_OUT, reviewMode: 'trusted-local-tests'},
+    codexStatus: {complete: true, attempt: 1, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE},
   });
   const {ok, reasons} = validateFallback(record, context);
   assert.equal(ok, false);
-  assert.ok(reasons.includes(
-    'Codex evidence claims complete for an untrusted head; untrusted runs are refused until Phase 85.1'
-  ));
+  assert.ok(reasons.includes('Codex is complete for this head; a fallback is not used'));
+});
+
+test('test_invalid_evidence_never_opens_fallback: invalid evidence is never rescued, at attempt 2 or attempt 3', () => {
+  for (const attempt of [2, 3]) {
+    const record = validRecord();
+    const context = validContext({
+      headTrust: 'untrusted',
+      codexStatus: {
+        complete: false, invalidEvidence: true, attempt, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE,
+      },
+    });
+    const {ok, reasons} = validateFallback(record, context);
+    assert.equal(ok, false, `attempt ${attempt} must not pass`);
+    assert.ok(reasons.includes(
+      'Codex evidence claims completion but is not valid for this head and attempt; a fallback cannot rescue invalid evidence — rerun the inspection-only review'
+    ), JSON.stringify(reasons));
+  }
 });
 
 test('missing head trust fails closed', () => {
@@ -305,6 +360,200 @@ test('an unsupported fallback schema is rejected', () => {
   const record = validRecord({schema: 2});
   const {reasons} = validateFallback(record, validContext());
   assert.ok(reasons.includes('unsupported fallback schema'));
+});
+
+// --- D-07/D-12: inspectionOnlyCompleteness, the shared completeness predicate ---
+
+function inspectionStatus(overrides = {}) {
+  return {status: 'complete', inspected_head: HEAD, inspected_base: BASE, ...overrides};
+}
+
+function inspectionMeta(overrides = {}) {
+  return {
+    meta_version: 2, head: HEAD, base: BASE, attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
+    audited_inputs_changed_in_diff: [], ...overrides,
+  };
+}
+
+function verifiedBoundary(overrides = {}) {
+  return {
+    boundary_version: 1, verdict: 'verified', reasons: [], head: HEAD, label: 'task1', attempt: 2,
+    checked_at: DECIDED_AT, image_ref: 'codex-review:local', image_id: `sha256:${'a'.repeat(64)}`,
+    codex_version: '0.153.4', credential_mode: 'copied-login', network: 'default', mounts: [],
+    env_names: [], canary: 'ok', schema_sha256: 'b'.repeat(64), ...overrides,
+  };
+}
+
+test('inspectionOnlyCompleteness: complete status, bound, verified boundary, no base required is complete', () => {
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: false,
+  });
+  assert.deepEqual(result, {complete: true, invalidEvidence: false, reasons: []});
+});
+
+test('inspectionOnlyCompleteness: an incomplete status is a legitimate incomplete, never invalid evidence', () => {
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: {status: 'incomplete', reasons: ['boundary unverified']}, baseStatus: null,
+    boundary: null, head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, false);
+  assert.ok(result.reasons.includes('Codex status is incomplete'));
+});
+
+test('inspectionOnlyCompleteness: a missing boundary makes a complete claim invalid evidence', () => {
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: null,
+    head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+  assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head and attempt'));
+});
+
+test('inspectionOnlyCompleteness: an unverified, wrong-head, or wrong-attempt boundary is invalid evidence', () => {
+  for (const boundary of [
+    verifiedBoundary({verdict: 'unverified'}),
+    verifiedBoundary({head: 'f'.repeat(40)}),
+    verifiedBoundary({attempt: 1}),
+  ]) {
+    const result = inspectionOnlyCompleteness({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(boundary));
+    assert.equal(result.invalidEvidence, true, JSON.stringify(boundary));
+    assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head and attempt'));
+  }
+});
+
+test('inspectionOnlyCompleteness: a missing required base-status blocks with the grader-changed reason', () => {
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: true,
+  });
+  assert.equal(result.complete, false);
+  assert.ok(result.reasons.includes("grader changed in this diff: the trusted-main checker's base-status is missing"));
+});
+
+test('inspectionOnlyCompleteness: an incomplete required base-status blocks with the grader-changed reason', () => {
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: {status: 'incomplete'}, boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: true,
+  });
+  assert.equal(result.complete, false);
+  assert.ok(result.reasons.includes('grader changed in this diff: the trusted-main checker did not confirm completeness'));
+});
+
+test('inspectionOnlyCompleteness: a complete but unbound required base-status blocks with the grader-changed reason', () => {
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(),
+    baseStatus: {status: 'complete', inspected_head: 'f'.repeat(40), inspected_base: BASE},
+    boundary: verifiedBoundary(), head: HEAD, baseRequired: true,
+  });
+  assert.equal(result.complete, false);
+  assert.ok(result.reasons.includes(
+    'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)'
+  ));
+});
+
+test('inspectionOnlyCompleteness: a complete and bound required base-status is complete', () => {
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: inspectionStatus(), boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: true,
+  });
+  assert.deepEqual(result, {complete: true, invalidEvidence: false, reasons: []});
+});
+
+// --- D-07/D-12: codexStatusFromOutput end-to-end over inspection-only output files ---
+
+function inspectionOutputFiles(overrides = {}) {
+  const out = overrides.out || CODEX_OUT;
+  const files = {
+    [`${out}.status.json`]: JSON.stringify(overrides.status || inspectionStatus()),
+    [`${out}.meta.json`]: JSON.stringify(overrides.meta || inspectionMeta()),
+  };
+  if (overrides.boundary !== undefined) {
+    if (overrides.boundary !== null) files[`${out}.boundary.json`] = JSON.stringify(overrides.boundary);
+  } else {
+    files[`${out}.boundary.json`] = JSON.stringify(verifiedBoundary());
+  }
+  return files;
+}
+
+function stubReadFile(files) {
+  return path => {
+    if (!Object.hasOwn(files, path)) throw new Error(`ENOENT: no such file: ${path}`);
+    return files[path];
+  };
+}
+
+test('codexStatusFromOutput: a complete claim with a missing boundary.json is invalid evidence, at attempt 2', () => {
+  const files = inspectionOutputFiles({boundary: null});
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+
+  const {ok, reasons} = validateFallback(validRecord({codex_out: CODEX_OUT}), validContext({
+    headTrust: 'untrusted', codexStatus: result,
+  }));
+  assert.equal(ok, false);
+  assert.ok(reasons.includes(
+    'Codex evidence claims completion but is not valid for this head and attempt; a fallback cannot rescue invalid evidence — rerun the inspection-only review'
+  ), JSON.stringify(reasons));
+});
+
+test('codexStatusFromOutput: a genuinely incomplete inspection-only result at attempt 1 still needs attempt 2 or a historical refusal', () => {
+  const files = inspectionOutputFiles({
+    status: {status: 'incomplete', reasons: ['boundary unverified']},
+    meta: inspectionMeta({attempt: 1}),
+    boundary: null,
+  });
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, false);
+
+  const {ok, reasons} = validateFallback(validRecord({codex_out: CODEX_OUT}), validContext({
+    headTrust: 'untrusted', codexStatus: result,
+  }));
+  assert.equal(ok, false);
+  assert.ok(reasons.includes(
+    'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+  ), JSON.stringify(reasons));
+});
+
+test('codexStatusFromOutput: a complete, bound, verified-boundary inspection-only result is complete', () => {
+  const files = inspectionOutputFiles();
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, true);
+  assert.equal(result.invalidEvidence, false);
+  assert.equal(result.boundaryVerdict, 'verified');
+});
+
+test('codexStatusFromOutput: trusted-local-tests records never carry invalidEvidence', () => {
+  const files = {
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests',
+      audited_inputs_changed_in_diff: [],
+    }),
+  };
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, true);
+  assert.equal(result.invalidEvidence, false);
+});
+
+test('codexStatusFromOutput: untrusted-refused records never carry invalidEvidence', () => {
+  const files = {
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'incomplete', reasons: ['refused']}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'untrusted-refused',
+      audited_inputs_changed_in_diff: [],
+    }),
+  };
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, false);
 });
 
 // --- CR-01 regressions: records built from empty sub-objects, not mutations of the valid fixture ---
