@@ -209,9 +209,17 @@ def _is_text_mode(kwargs: dict) -> bool:
 
 
 def _with_drain_marker(output: str | bytes | None, *, text_mode: bool) -> str | bytes:
+    # A TimeoutExpired raised by communicate() carries the partial output as
+    # raw bytes even in text mode, so normalize it to the caller's mode
+    # before appending the marker (decoded as UTF-8 with replacement, like
+    # every other captured output).
     marker = f"\n[drain timed out after {DRAIN_TIMEOUT_SECONDS}s; output truncated]\n"
     if text_mode:
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
         return (output or "") + marker
+    if isinstance(output, str):
+        output = output.encode("utf-8")
     return (output or b"") + marker.encode()
 
 

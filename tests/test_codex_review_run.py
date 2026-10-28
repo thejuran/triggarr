@@ -2076,6 +2076,64 @@ def test_post_kill_drain_is_bounded(tmp_path: Path) -> None:
                 os.kill(grandchild, signal.SIGKILL)
 
 
+_PRINTS_THEN_FORKS_DETACHED_GRANDCHILD = """
+import subprocess, sys, time
+grandchild = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True)
+with open(sys.argv[1], "w") as handle:
+    handle.write(str(grandchild.pid))
+print("pytest progress", flush=True)
+time.sleep(30)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are not available on Windows")
+def test_post_kill_drain_keeps_partial_text_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Codex F001 (fb8da6e a1/a2): the drain's TimeoutExpired carries bytes even
+    # in text mode, so appending the str marker raised TypeError.
+    import os
+    import signal
+    import time
+
+    monkeypatch.setattr(runner, "DRAIN_TIMEOUT_SECONDS", 0.5)
+    pid_file = tmp_path / "grandchild.pid"
+    argv = [sys.executable, "-c", _PRINTS_THEN_FORKS_DETACHED_GRANDCHILD, str(pid_file)]
+    grandchild: int | None = None
+    try:
+        with pytest.raises(subprocess.TimeoutExpired) as exc_info:
+            runner.run_command(
+                argv,
+                start_new_session=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=1.0,
+            )
+        stdout = exc_info.value.stdout
+        assert isinstance(stdout, str)
+        assert "pytest progress" in stdout
+        assert stdout.endswith(f"\n[drain timed out after {runner.DRAIN_TIMEOUT_SECONDS}s; output truncated]\n")
+    finally:
+        for _ in range(100):
+            text = pid_file.read_text().strip() if pid_file.exists() else ""
+            if text:
+                grandchild = int(text)
+                break
+            time.sleep(0.05)
+        if grandchild is not None:
+            import contextlib
+
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(grandchild, signal.SIGKILL)
+
+
+def test_drain_marker_normalizes_output_type() -> None:
+    marker = f"\n[drain timed out after {runner.DRAIN_TIMEOUT_SECONDS}s; output truncated]\n"
+    assert runner._with_drain_marker(b"partial \xff", text_mode=True) == "partial �" + marker
+    assert runner._with_drain_marker("partial", text_mode=False) == b"partial" + marker.encode()
+    assert runner._with_drain_marker(None, text_mode=True) == marker
+    assert runner._with_drain_marker(None, text_mode=False) == marker.encode()
+
+
 # --- D-18, round-6 WR-01: main() restores the previous handlers on return ----
 
 
