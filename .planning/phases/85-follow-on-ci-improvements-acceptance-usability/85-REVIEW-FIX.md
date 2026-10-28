@@ -1,133 +1,53 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-fixed_at: 2026-10-27T22:13:35Z
+fixed_at: 2026-10-28T18:46:16Z
 review_path: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md
-iteration: 4
-findings_in_scope: 4
+iteration: 1
+findings_in_scope: 2
 fixed: 2
 skipped: 0
 rejected: 0
-accepted_residual_risk: 2
-status: partial
+status: all_fixed
 ---
 
-# Phase 85: Code Review Fix Report (iteration 4)
+# Phase 85: Code Review Fix Report
 
-**Fixed at:** 2026-10-27T22:13:35Z
-**Source review:** .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md (iteration 4, reviewed head `eae6d34`)
-**Iteration:** 4. This is the last fix round, by owner decision on 2026-10-27 ("Close cheap gaps, then stop").
+**Fixed at:** 2026-10-28T18:46:16Z
+**Source review:** .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW.md (review iteration 6, head d7889b8)
+**Iteration:** 1 (fix run against review iteration 6; the round-4 fix report is preserved as 85-REVIEW-FIX.iter4.md)
 
 **Summary:**
-- Findings in scope (critical and warning): 4 (CR-01, WR-01, WR-02, WR-03)
-- Fixed: 2 (CR-01, WR-03)
-- Not fixed, recorded as owner-accepted residual risk: 2 (WR-01, WR-02)
+- Findings in scope: 2 (WR-01, WR-02; owner direction: IN-01/IN-02 out of scope)
+- Fixed: 2
 - Skipped: 0
 - Rejected: 0
-- Also fixed because the owner put it in scope: IN-13 (info)
 
-All work is on branch `ci-followon` in the main working tree. Nothing was pushed.
+**Verification (on 684ae13):**
+- `.venv/bin/python -m pytest tests/test_codex_review_run.py -x -q`: 151 passed
+- `node --test .github/scripts/codex-fallback.test.cjs`: 86 passed
+- `.venv/bin/ruff check tests/`: clean
+- Extra: `node --test .github/scripts/*.test.cjs`: 433 passed
 
 ## Fixed Issues
 
-### CR-01: The guard ignores `shell:` and `defaults: run: shell:`
+### WR-01: `--dry-run` no longer lists every command PR-form trust verification runs
 
-**Files modified:** `tests/test_required_jobs_no_skip.py`
-**Commit:** 1527d4a
-**Applied fix:**
-- The authoritative guard now rejects these in `ci.yml` and `review-acceptance.yml`:
-  - `shell:` on any step of a required job;
-  - `defaults:` on a required job;
-  - `defaults:` at workflow level.
-- It reports the value, so `shell: true {0}` shows up as `sets shell: 'true {0}'`.
-- `shell` and `defaults` were added to `WATCHED_KEYS`, so case variants are caught too (`Shell`, `SHELL`, `Defaults`). Workflow-level `Defaults` is caught as well.
-- Built-in shells such as `bash` and `sh` are also rejected, since no workflow uses `shell:` today. If one is ever needed, it should be allowlisted the way step `if:` is.
-- **Regression tests, written first and failing (12 of them):**
-  - the three placements the review reproduced: job-level `defaults` on `ci-ready`, step `shell` on the `ci-ready` gate step after its `env:` block, and step `shell` on "Fail if tests failed";
-  - workflow-level `defaults` in both files;
-  - `defaults` and `shell` in the acceptance job;
-  - built-in shells;
-  - the case variants above.
-- The real workflow files still pass. The Node detector was not touched, as instructed.
-- I did not add the reviewer's untested `BASH_ENV`/`ENV` hardening idea; it was outside the owner's scope.
+**Files modified:** `tests/codex_review_run.py`, `tests/test_codex_review_run.py`
+**Commit:** 06ac793
+**Applied fix:** `_trust_preview_commands` now lists the PR-form commands in the order `_verify_trust_pr` runs them: `gh pr view ...`, then `git merge-base <baseRefOid-from-gh> <head>  # must equal --base <base>`, then the base-on-origin/main check. The placeholder is a module constant, `_PR_BASE_PLACEHOLDER`. New parity test: `test_pr_trust_preview_lists_exactly_the_commands_verify_trust_runs`. It runs `verify_trust` against `_TrustRunner` in the main-moved-on case, where the gh base differs from `--base`, so swapping the placeholder in cannot hide a wrong argument. It maps the gh-reported base to the placeholder and asserts that the preview's argv lists equal `fake.calls`, in order and with nothing extra. The old preview fails this test because it lists 2 commands and 3 run. The contract doc already promises "every command", so it needed no change.
 
-### WR-03: Another workflow can publish a second "CI ready" check run
+### WR-02: The split-letter check makes `B M 2` stricter than `BM2`, and leaves `ClaudeCode` accepted
 
-**Files modified:** `tests/test_required_jobs_no_skip.py`
-**Commit:** a69c082
-**Applied fix:**
-- `required_check_name_problems` loads every `.github/workflows/*.yml` and `*.yaml` file with the strict SafeLoader.
-- It checks that "CI ready" is the check name of exactly one job across all of them: `ci.yml`'s `ci-ready`.
-- A job's check name is its `name:`, or its id when it has no name. Names are compared after trimming and case-folding.
-- A workflow file that cannot be loaded fails the scan closed.
-- **Scope note:** the same table also pins "Review acceptance" to `review-acceptance.yml`'s `acceptance` job. The owner's instruction named only "CI ready". I added this because the finding names both required checks, the gap is identical, and it is one extra table entry. The real files pass.
-- **Regression tests, written first and failing (9 of them):**
-  - a mirror workflow with `.yml` and with `.yaml`;
-  - an unnamed job whose id is "CI ready";
-  - a second "CI ready" name inside `ci.yml`;
-  - the name moved off `ci-ready`;
-  - a "Review acceptance" mirror;
-  - an unloadable workflow;
-  - a test that the scan covers every workflow file;
-  - the real files pass.
-- **Not done:** the readiness-side half of the review's fix (binding the check run to its workflow run in `acceptance-readiness.cjs`). The owner scoped this round to the static guard.
-
-### IN-13: The policy names the Node detector as the no-skip test (info; fixed because the owner put it in scope)
-
-**Files modified:** `docs/review-classification-policy.md`, `tests/test_review_instructions.py`
-**Commit:** d160083
-**Applied fix:**
-- The policy's status line now names `tests/test_required_jobs_no_skip.py` as the authoritative no-skip test. The Node detector `.github/scripts/ci-job-consistency.cjs` is named as a secondary line of defence, and the pytest guard wins when the two disagree.
-- The sensitive row now lists "the required-check safeguard tests (`tests/test_required_jobs_no_skip.py`, `tests/test_ci_gate.py`)".
-- That entry sits outside the "review machinery (...)" list. Because of that:
-  - the three-list drift guard (`tests/test_review_machinery_lists.py`) needed no change;
-  - the Codex scope (`AUDITED_INPUTS`) and the acceptance checklist line did not need to change either.
-- No other place in the policy lists safeguard tests.
-- **Regression tests, written first and failing (2 of them, in `tests/test_review_instructions.py`):** one pins both safeguard tests in the sensitive row and checks they exist; the other pins the authoritative/secondary wording on the status line.
-
-## Not fixed: owner-accepted residual risk
-
-### WR-01: The guard's CI verdict is enforced only by "Fail if tests failed", the step it protects
-
-**File:** `.github/workflows/ci.yml:47-58, 88-95`
-**Disposition:** Not fixed. The owner accepted this as residual risk on 2026-10-27.
-**Where it is recorded:** commit 4ae24c1:
-- `85-REVIEW-EVIDENCE.md`, section "Accepted residual risk (owner decision 2026-10-27)";
-- `.planning/backlog/MAINTENANCE.md`, under "Still open after Phase 85". The possible future hardening listed there is to move the gate logic into a tested script, or run the guard in a second required job.
-
-**Original issue:** Adding `continue-on-error` to "Fail if tests failed" swallows the guard's own CI failure, so "CI ready" goes green.
-
-### WR-02: The gate steps are pinned only by their script bodies; hard-coded `env:` inputs pass every check
-
-**File:** `.github/workflows/ci.yml:430-433, 89-90`
-**Disposition:** Not fixed. The owner accepted this as residual risk on 2026-10-27, recorded in the same commit (4ae24c1) and the same two places.
-**Original issue:** A hard-coded `RESULTS` on the `ci-ready` gate step, or `TEST_EXIT` on "Fail if tests failed", makes the gate always see success.
-
-**Why this is acceptable:** Both are deliberate tampering with the gate steps themselves, which a static guard cannot rule out. They are covered by:
-- the sensitive classification of every workflow change;
-- BM code review plus the paired Codex pass;
-- the owner's acceptance of the exact commit.
-
-## Full gate (after all commits, head 4ae24c1)
-
-| Check | Result |
-|-------|--------|
-| `uv run pytest tests/ -x -q` | 2650 passed, 0 failed (38 warnings) |
-| `uv run ruff check triggarr/ tests/ .github/scripts/` | All checks passed |
-| `FORCE_COLOR=0 node --test --test-reporter=tap .github/scripts/*.test.cjs .claude/plugins/planchk-router/test/planchk-router.test.mjs` | 415 tests, 415 pass, 0 fail |
-| `actionlint` | exit 0 |
-
-**Commits this round:**
-- `1527d4a` CR-01
-- `a69c082` WR-03
-- `d160083` IN-13
-- `4ae24c1` docs(85): residual-risk record
-
-This report is not committed.
-
-**Next step under the review workflow:** these fixes changed the head. The fresh BM code review and its paired Codex pass must run on the new head before this round can be reported as clean.
+**Files modified:** `.github/scripts/codex-fallback.cjs`, `.github/scripts/codex-fallback.test.cjs`
+**Commit:** 684ae13
+**Status:** fixed: requires human verification (this is a logic change to the independence rule)
+**Applied fix:** Added `reviewerTokens(name)`. Before lowercasing, it splits camelCase (`ClaudeCode`), acronym-then-word (`GSDReviewer`) and letter/digit boundaries in both directions (`BM2`, `2BM`). It then tokenizes as before, and every existing token, collapsed-run and substring check now runs on those tokens. Making this work needed one more change the review did not mention. `validateFallback` lowercased the name before calling `reviewerNameIsDisallowed`, which erased the case boundaries, so the call now passes the raw name. The function lowercases internally, and the exact-match and PR-author checks still use the lowercased name. The acronym split goes slightly past the review's snippet. It fits the owner-approved camelCase scope and catches `GSDReviewer`, which the plain camelCase rule misses.
+**Regression tests:**
+- Now rejected: `BM2`, `B.M2`, `GSD2 agent`, `claude2`, `ClaudeCode`, `GSDReviewer`, `2BM`, `CodexReviewRun`.
+- Still accepted: every previously allowed name ('vibe-check deep review (owner-run)', 'manual Codex inspection session', 'independent human reviewer', 'submarine review', 'J. R. independent reviewer'), plus the new cases `Submarine Review`, `McAllister independent review` and `reviewer 2`.
 
 ---
 
-_Fixed: 2026-10-27T22:13:35Z_
+_Fixed: 2026-10-28T18:46:16Z_
 _Fixer: Claude (bm-code-fixer)_
-_Iteration: 4_
+_Iteration: 1_
