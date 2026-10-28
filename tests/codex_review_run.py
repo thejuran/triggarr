@@ -467,6 +467,27 @@ def _require_base_on_main(run: ReviewRun, command_runner: CommandRunner) -> None
 _GH_PR_VIEW_FIELDS = "author,isCrossRepository,headRefOid,baseRefOid"
 
 
+def _pr_merge_base(pr_base: str, head: str, command_runner: CommandRunner) -> str:
+    """Return ``git merge-base <pr_base> <head>``, failing closed on any error."""
+    try:
+        result = command_runner(
+            ["git", "merge-base", pr_base, head],
+            cwd=HARNESS_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not verify trust: git merge-base could not run ({type(exc).__name__})") from exc
+    merge_base = (result.stdout or "").strip()
+    if result.returncode != 0 or not _SHA_RE.fullmatch(merge_base):
+        raise RunnerError(
+            f"could not verify trust: no merge-base of PR base {pr_base[:12]} and head {head[:12]};"
+            " run `git fetch origin` and retry"
+        )
+    return merge_base
+
+
 def _verify_trust_pr(run: ReviewRun, command_runner: CommandRunner, match: re.Match[str]) -> dict[str, object]:
     slug, number = match.group(1), match.group(2)
     if slug != REPO_SLUG:
@@ -501,8 +522,20 @@ def _verify_trust_pr(run: ReviewRun, command_runner: CommandRunner, match: re.Ma
         raise RunnerError(f"author {login} is not in TRUSTED_AUTHORS")
     if data.get("headRefOid") != run.head:
         raise RunnerError(f"PR head is {data.get('headRefOid')}, not --head {run.head}")
-    if data.get("baseRefOid") != run.base:
-        raise RunnerError(f"PR base is {data.get('baseRefOid')}, not --base {run.base}")
+    pr_base = data.get("baseRefOid")
+    if not isinstance(pr_base, str) or not _SHA_RE.fullmatch(pr_base):
+        raise RunnerError(f"could not verify trust: gh pr view returned no valid baseRefOid ({pr_base!r})")
+    # The reviewed base is the merge-base of the PR base and the head, the same
+    # rule acceptance-readiness.cjs applies to meta.base. It equals the PR base
+    # while the branch is up to date with it, and stays the branch's fork point
+    # after main moves on, so the base..head diff never includes main-only
+    # changes in reverse.
+    reviewed_base = _pr_merge_base(pr_base, run.head, command_runner)
+    if reviewed_base != run.base:
+        raise RunnerError(
+            f"--base {run.base} is not the reviewed base: the merge-base of PR base {pr_base} and head"
+            f" {run.head} is {reviewed_base}; pass that merge-base as --base"
+        )
     _require_base_on_main(run, command_runner)
     return {"method": "gh pr view", "pr_number": int(number), "author": login, "commits_checked": None}
 
@@ -580,8 +613,9 @@ def verify_trust(run: ReviewRun, command_runner: CommandRunner) -> dict[str, obj
     """Verify --trusted against a boundary the operator cannot simply assert (D-18 SA-01).
 
     A PR is trusted only if GitHub itself reports it as same-repository,
-    non-bot, authored by someone in TRUSTED_AUTHORS, with the given --head
-    and --base. A local checkpoint is trusted only if this machine's own
+    non-bot, authored by someone in TRUSTED_AUTHORS, with the given --head,
+    and --base is the merge-base of the PR base and that head (the reviewed
+    base acceptance readiness requires). A local checkpoint is trusted only if this machine's own
     commit operations created every commit in scope: fetched, cherry-picked,
     rebased or reset-to commits fail closed, and the remedy is to push and
     review by PR URL instead (owner-authored PRs pass the PR check).

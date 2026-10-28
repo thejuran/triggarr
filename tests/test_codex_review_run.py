@@ -739,9 +739,12 @@ def _gh_response(**fields) -> dict:
 class _TrustRunner:
     """A minimal command_runner for verify_trust()'s PR-form unit tests.
 
-    Answers `gh pr view` with *gh_response*/*gh_exit*/*gh_stdout*, and
+    Answers `gh pr view` with *gh_response*/*gh_exit*/*gh_stdout*,
     `git merge-base --is-ancestor <base> refs/remotes/origin/main` with
-    *base_on_main_ok*. Anything else raises AssertionError.
+    *base_on_main_ok*, and `git merge-base <pr-base> <head>` with
+    *merge_base* (default: the PR base itself, i.e. a branch up to date with
+    it) or a failure when *merge_base_exit* is non-zero. Anything else raises
+    AssertionError.
     """
 
     def __init__(
@@ -750,6 +753,8 @@ class _TrustRunner:
         gh_exit: int = 0,
         gh_stdout: str | None = None,
         base_on_main_ok: bool = True,
+        merge_base: str | None = None,
+        merge_base_exit: int = 0,
     ) -> None:
         import json as _json
 
@@ -758,6 +763,8 @@ class _TrustRunner:
         self.gh_exit = gh_exit
         self.gh_stdout = gh_stdout if gh_stdout is not None else _json.dumps(gh_response or {})
         self.base_on_main_ok = base_on_main_ok
+        self.merge_base = merge_base
+        self.merge_base_exit = merge_base_exit
 
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
@@ -765,6 +772,11 @@ class _TrustRunner:
             return subprocess.CompletedProcess(argv, self.gh_exit, stdout=self.gh_stdout)
         if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
             return subprocess.CompletedProcess(argv, 0 if self.base_on_main_ok else 1)
+        if argv[:2] == ["git", "merge-base"] and len(argv) == 4:
+            if self.merge_base_exit:
+                return subprocess.CompletedProcess(argv, self.merge_base_exit, stdout="")
+            answer = self.merge_base if self.merge_base is not None else argv[2]
+            return subprocess.CompletedProcess(argv, 0, stdout=f"{answer}\n")
         raise AssertionError(f"unexpected command in a PR trust-verification unit test: {argv}")
 
 
@@ -816,8 +828,44 @@ def test_verify_trust_pr_rejects_head_mismatch() -> None:
 def test_verify_trust_pr_rejects_base_mismatch() -> None:
     run = _pr_run()
     fake = _TrustRunner(gh_response=_gh_response(baseRefOid="f" * 40))
-    with pytest.raises(runner.RunnerError, match="PR base is"):
+    with pytest.raises(runner.RunnerError, match="is not the reviewed base"):
         runner.verify_trust(run, fake)
+
+
+# The reviewed base is the merge-base of the PR base and the head, the rule
+# acceptance-readiness.cjs applies to meta.base. A branch behind main (main
+# moved from its fork point A to B) is reviewed against A, not B.
+def test_verify_trust_pr_accepts_merge_base_when_main_moved_on() -> None:
+    moved_main = "e" * 40
+    run = _pr_run(base=PR_BASE)
+    fake = _TrustRunner(gh_response=_gh_response(baseRefOid=moved_main), merge_base=PR_BASE)
+    result = runner.verify_trust(run, fake)
+    assert result["method"] == "gh pr view"
+    assert ["git", "merge-base", moved_main, PR_HEAD] in fake.calls
+
+
+def test_verify_trust_pr_rejects_moved_pr_base_that_is_not_the_merge_base() -> None:
+    """Passing the moved PR base B would review main-only changes in reverse; readiness rejects it too."""
+    moved_main = "e" * 40
+    run = _pr_run(base=moved_main)
+    fake = _TrustRunner(gh_response=_gh_response(baseRefOid=moved_main), merge_base=PR_BASE)
+    with pytest.raises(runner.RunnerError, match="is not the reviewed base"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_pr_fails_closed_when_merge_base_cannot_be_computed() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_response=_gh_response(), merge_base_exit=1)
+    with pytest.raises(runner.RunnerError, match="could not verify trust: no merge-base"):
+        runner.verify_trust(run, fake)
+
+
+def test_verify_trust_pr_rejects_invalid_base_ref_oid() -> None:
+    run = _pr_run()
+    fake = _TrustRunner(gh_response=_gh_response(baseRefOid="--output=/tmp/x"))
+    with pytest.raises(runner.RunnerError, match="no valid baseRefOid"):
+        runner.verify_trust(run, fake)
+    assert not any(call[:2] == ["git", "merge-base"] for call in fake.calls)
 
 
 def test_verify_trust_pr_rejects_different_repo() -> None:
