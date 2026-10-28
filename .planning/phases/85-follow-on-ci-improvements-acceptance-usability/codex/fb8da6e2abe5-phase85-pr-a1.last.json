@@ -1,0 +1,167 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "fb8da6e2abe505add73ebfff5b04a5e64f81cf13",
+  "inspected_base_sha": "decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/36",
+  "scope": "Phase 85 PR #36 full range, including changed *-PLAN.md files. Inspection was partial.",
+  "verdict": "findings",
+  "summary": "One reproduced medium-severity timeout-handling defect. The full review is incomplete: several test files, plans, and lockfile changes remain uninspected. Harness evidence records 2,686 passing pytest tests on the requested head.",
+  "coverage": [
+    "Confirmed HEAD matches the requested commit and the base object exists.",
+    "Inspected CI, release, and acceptance workflow changes; Docker dependency locking; Dependabot configuration.",
+    "Inspected acceptance-readiness, review-register, fallback validation, coverage provenance, image-lock consistency, OS-scan policy, and CI-job consistency implementations.",
+    "Inspected runner changes and traced the reproduced timeout failure through _run_pytest and _execute_reserved.",
+    "Inspected the plan-checker plugin, its guard and routing tests.",
+    "Inspected selected workflow, acceptance, documentation, and report-completeness regression tests.",
+    "Confirmed the pinned acceptance implementation has no differences from the reviewed head.",
+    "Read harness test evidence without treating it as approval."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning Markdown other than the explicitly included *-PLAN.md files."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Request full implementation diff; output was truncated."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Request changed plans; output was truncated."
+    },
+    {
+      "command": "git diff --stat decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory implementation scope."
+    },
+    {
+      "command": "git diff --name-only decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory 27 changed plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- .github/workflows Dockerfile .github/dependabot.yml pyproject.toml .gitignore .github/scripts/review-acceptance.cjs .github/scripts/release-policy.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect workflow, build, and acceptance changes."
+    },
+    {
+      "command": "cat .github/scripts/acceptance-readiness.cjs .github/scripts/review-register.cjs .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance tooling; subsequently reread the truncated register implementation."
+    },
+    {
+      "command": "cat .github/scripts/review-register.cjs .github/scripts/os-scan-gate.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect register writes and OS vulnerability classification."
+    },
+    {
+      "command": "cat .github/scripts/coverage-provenance.cjs .github/scripts/image_lock_consistency.py",
+      "exit_code": 0,
+      "purpose": "Inspect coverage binding and image dependency comparison."
+    },
+    {
+      "command": "cat .github/scripts/ci-job-consistency.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect required-job and skip-condition checks."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- tests/codex_review_run.py tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect harness and grading changes; supplement truncated output with targeted reads."
+    },
+    {
+      "command": "sed -n '490,655p' tests/codex_review_run.py\nsed -n '740,930p' tests/codex_review_run.py\nsed -n '1,190p' tests/test_required_jobs_no_skip.py",
+      "exit_code": 0,
+      "purpose": "Inspect trust verification, evidence handling, and authoritative workflow guard."
+    },
+    {
+      "command": "rg -n 'drain|with_drain|TimeoutExpired|write-local|stale|coverage' tests/test_codex_review_run.py .github/scripts/coverage-provenance.test.cjs docs/review-checkpoint-record.md\nsed -n '680,748p' tests/codex_review_run.py\nsed -n '1940,2100p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace timeout callers and inspect regression coverage."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport subprocess, sys\nfrom tests import codex_review_run as r\nr.DRAIN_TIMEOUT_SECONDS = 0.05\nchild = \"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(0.5)'],start_new_session=True); print('pytest progress',flush=True); time.sleep(0.5)\"\ntry:\n    r.run_command([sys.executable, '-c', child], start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=0.15)\nexcept Exception as exc:\n    print(type(exc).__name__ + ': ' + str(exc))\n    assert isinstance(exc, TypeError)\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt reproduction; shell rejected heredoc temporary-file creation before Python ran."
+    },
+    {
+      "command": "python3 -B -c 'import subprocess,sys; from tests import codex_review_run as r; r.DRAIN_TIMEOUT_SECONDS=0.05; child=\"import subprocess,sys,time; subprocess.Popen([sys.executable,\\\"-c\\\",\\\"import time; time.sleep(0.5)\\\"],start_new_session=True); print(\\\"pytest progress\\\",flush=True); time.sleep(0.5)\"; r.run_command([sys.executable,\"-c\",child],start_new_session=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=0.15)'",
+      "exit_code": 1,
+      "purpose": "Reproduce TypeError in the bounded timeout-drain handler without writing files."
+    },
+    {
+      "command": "git diff --stat decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- ':(glob).planning/**/*-PLAN.md'\ngit diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- README.md SECURITY.md docs .github/os-scan-exceptions.json .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-DEMO-NEGATIVE.patch",
+      "exit_code": 0,
+      "purpose": "Inspect documentation and negative demonstration changes; output was truncated."
+    },
+    {
+      "command": "sed -n '1,75p' tests/codex_review_run.py\nsed -n '1140,1240p' tests/codex_review_run.py\nsed -n '190,340p' tests/test_required_jobs_no_skip.py\ncat .github/workflows/review-acceptance.yml\nsed -n '1,210p' .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Trace failure consequences and inspect surrounding workflow safeguards."
+    },
+    {
+      "command": "sed -n '120,190p' .claude/plugins/planchk-router/test/planchk-router.test.mjs\ncat docs/os-scan-policy.md\ngit diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Complete plugin test inspection and inspect scan/review policy."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- .github/scripts/artifact-promotion.test.cjs .github/scripts/review-acceptance.test.cjs tests/test_acceptance_docs.py tests/test_ci_gate.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_dependabot_config.py tests/test_github_workflows.py tests/test_review_checkpoint_record.py tests/test_review_instructions.py",
+      "exit_code": 0,
+      "purpose": "Inspect selected changed regression tests."
+    },
+    {
+      "command": "git diff 8df9eaf9d68ad0e5fce469ef8393d05bb4ba3fc3..fb8da6e2abe505add73ebfff5b04a5e64f81cf13 -- .github/scripts/review-acceptance.cjs\nsed -n '1,240p' .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-13-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Compare pinned acceptance policy and inspect runner-hardening plan; plan output was truncated."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Decode captured timeout bytes before appending the drain marker",
+      "file": "tests/codex_review_run.py",
+      "line_start": 211,
+      "line_end": 215,
+      "trigger": "A test subprocess prints output, times out, and leaves a detached descendant holding stdout open beyond DRAIN_TIMEOUT_SECONDS.",
+      "execution_path": "_run_pytest -> run_command -> second communicate() timeout -> _with_drain_marker(drain_exc.stdout, text_mode=True). TimeoutExpired.stdout contains bytes even when Popen uses text=True.",
+      "consequence": "Appending the string marker raises TypeError. _run_pytest cannot preserve the timeout evidence; _execute_reserved records a generic harness failure and aborts before the Codex review starts.",
+      "evidence": "The file-free subprocess reproduction raised TypeError: can't concat str to bytes at line 214. test_post_kill_drain_is_bounded uses a child that prints nothing, leaving stdout as None; its empty-output case passes without exercising the incompatible concatenation.",
+      "suggested_fix": "Normalize captured timeout output to the requested text/bytes representation before appending the marker. Extend the regression fixture to print and flush output, then assert TimeoutExpired retains that output and the truncation marker.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'import subprocess,sys; from tests import codex_review_run as r; r.DRAIN_TIMEOUT_SECONDS=0.05; child=\"import subprocess,sys,time; subprocess.Popen([sys.executable,\\\"-c\\\",\\\"import time; time.sleep(0.5)\\\"],start_new_session=True); print(\\\"pytest progress\\\",flush=True); time.sleep(0.5)\"; r.run_command([sys.executable,\"-c\",child],start_new_session=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=0.15)'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox. Harness evidence reports exit 0, 2,686 passed, and 38 warnings on the exact requested head.",
+    "The focused reproduction ran on locally available Python 3.14; the harness pytest run used Python 3.13.",
+    "No live GitHub, Docker build, scanner download, or publication operations were performed.",
+    "No files were edited, committed, pushed, or published."
+  ],
+  "review_complete": false,
+  "incomplete_reasons": [
+    "Inspection stopped before the entire requested scope was covered. Large initial diff outputs were truncated, and not every omitted section was subsequently inspected.",
+    "The 27 changed plans were not fully inspected: Phase 84 plans 01–07, Phase 85 plans 01–19, and the 261026-s2v quick-task plan.",
+    "These changed test files were not fully inspected: .github/scripts/acceptance-readiness.test.cjs, ci-job-consistency.test.cjs, codex-fallback.test.cjs, coverage-provenance.test.cjs, os-scan-gate.test.cjs, review-register.test.cjs; tests/test_ci_followon_wiring.py, test_codex_review_run.py, test_image_lock_consistency.py, test_required_jobs_no_skip.py, test_review_machinery_lists.py.",
+    "uv.lock changes and the remaining truncated portion of docs/ci-negative-demonstrations.md were not fully inspected."
+  ]
+}

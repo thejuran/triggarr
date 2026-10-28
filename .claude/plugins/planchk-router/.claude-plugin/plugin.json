@@ -1,0 +1,6 @@
+{
+  "name": "planchk-router",
+  "version": "1.0.0",
+  "author": { "name": "thejuran" },
+  "description": "Triggarr only: route bm:bm-plan-checker to the model-gateway Codex model (fail-closed)."
+}

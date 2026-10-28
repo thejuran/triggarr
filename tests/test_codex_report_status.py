@@ -650,6 +650,57 @@ def test_blank_commands_mixed_with_a_real_command_stay_complete() -> None:
     assert result.reasons == ()
 
 
+# D-18 hollow-report guard: a null exit code or a report whose only commands
+# are trivially uninformative (echo/pwd/true and similar) is no evidence the
+# diff was inspected, even though commands_run is non-empty and non-blank.
+@pytest.mark.parametrize(
+    ("commands", "expected_status", "reason_substring"),
+    [
+        (
+            [{"command": "git diff A..B", "exit_code": None, "purpose": "diff the change"}],
+            "incomplete",
+            "no command with a recorded exit code",
+        ),
+        (
+            [
+                {"command": "echo reviewed", "exit_code": 0, "purpose": "announce"},
+                {"command": "pwd", "exit_code": 0, "purpose": "locate"},
+            ],
+            "incomplete",
+            "only trivial commands",
+        ),
+        (
+            [{"command": "FOO=1 true", "exit_code": 0, "purpose": "noop with an env prefix"}],
+            "incomplete",
+            "only trivial commands",
+        ),
+        (
+            [
+                {"command": "echo x", "exit_code": 0, "purpose": "announce"},
+                {"command": "git diff A..B -- .", "exit_code": 0, "purpose": "diff the change"},
+            ],
+            "complete",
+            None,
+        ),
+        (
+            [{"command": "uv run pytest tests/test_x.py", "exit_code": 1, "purpose": "run a failing test"}],
+            "complete",
+            None,
+        ),
+    ],
+    ids=["null-exit", "trivial-only", "env-prefixed-true", "trivial-plus-real", "failing-real"],
+)
+def test_hollow_report_guard(commands: list, expected_status: str, reason_substring: str | None) -> None:
+    report = _valid_report()
+    report["commands_run"] = commands
+    result = _assess(report)
+    assert result.status == expected_status
+    if reason_substring is None:
+        assert result.reasons == ()
+    else:
+        assert any(reason_substring in r for r in result.reasons)
+
+
 def test_cli_whitespace_only_commands_run_exits_one(tmp_path, capsys) -> None:
     report = _valid_report()
     report["commands_run"] = [{"command": "   ", "exit_code": None, "purpose": ""}]

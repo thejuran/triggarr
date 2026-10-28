@@ -17,7 +17,17 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
-ALL_JOBS = ("test", "lint", "docker", "secrets", "dependencies", "image-smoke", "browser-e2e")
+ALL_JOBS = (
+    "test",
+    "lint",
+    "docker",
+    "secrets",
+    "dependencies",
+    "image-smoke",
+    "browser-e2e",
+    "os-scan",
+    "actionlint",
+)
 
 
 def _extract_ci_ready_script() -> str:

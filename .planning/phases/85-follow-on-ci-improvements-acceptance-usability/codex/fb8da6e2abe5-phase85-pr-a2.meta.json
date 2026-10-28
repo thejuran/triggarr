@@ -1,0 +1,45 @@
+{
+  "meta_version": 2,
+  "head": "fb8da6e2abe505add73ebfff5b04a5e64f81cf13",
+  "base": "decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+  "label": "phase85-pr",
+  "attempt": 2,
+  "trusted": true,
+  "review_mode": "trusted-local-tests",
+  "template_version": "6",
+  "harness_head": "fb8da6e2abe505add73ebfff5b04a5e64f81cf13",
+  "allow_stale_head": false,
+  "inputs": {
+    "docs/codex-adversarial-review-contract.md": {
+      "sha256": "a5453196009996418505dc4b204559911ff5e8e691262b0e9a2066b862aaa126",
+      "committed_unchanged": true
+    },
+    ".claude/schemas/codex-review-findings.schema.json": {
+      "sha256": "24e387cdc778c93c12f8dc6b8ad6bc36c5c1fe158e21dfe09227120ab872302b",
+      "committed_unchanged": true
+    },
+    "tests/codex_report_status.py": {
+      "sha256": "0d7d0dac48210721da5478fbb91be0730c9207c1c5ba60d19f7a3fc8ab9ae3f8",
+      "committed_unchanged": true
+    },
+    "tests/codex_review_run.py": {
+      "sha256": "20cbe05459812845609829e8eab7334352b40097d5c833b92ef97b83d40d05b6",
+      "committed_unchanged": true
+    }
+  },
+  "codex_timeout_seconds": 1800,
+  "trust_verification": {
+    "method": "gh pr view",
+    "pr_number": 36,
+    "author": "thejuran",
+    "commits_checked": null
+  },
+  "test_evidence_source": "harness-local-pytest",
+  "audited_inputs_changed_in_diff": [
+    "docs/codex-adversarial-review-contract.md",
+    "tests/codex_report_status.py",
+    "tests/codex_review_run.py"
+  ],
+  "base_grader_ref": "decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+  "base_grader_source": "base"
+}

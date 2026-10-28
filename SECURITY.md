@@ -57,6 +57,10 @@ Triggarr is a single-process automation daemon that connects to configured Radar
 - **Minimal Linux capabilities** -- the recommended compose configuration drops all capabilities except those required for startup ownership and privilege setup.
 - **Health check** -- a built-in Docker HEALTHCHECK verifies the application is responsive.
 
+## Build Pipeline
+
+- **OS-package scanning** -- the shipped Docker image's OS packages are scanned in CI under the [OS-package scan policy](docs/os-scan-policy.md).
+
 ## Deployment Recommendations
 
 - Keep the Docker port bound to localhost (`127.0.0.1:8484:8484`) unless Triggarr is behind Tailscale, a VPN, or a reverse proxy.

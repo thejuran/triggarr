@@ -20,9 +20,12 @@ jobs:
       # The protected environment requires owner approval. Never execute PR code.
       # Gate code is pinned to the reviewed policy commit. Updating this pin
       # is a safeguard change requiring independent inspection before approval.
+      # Pinned in Phase 85 to the schema-2 keyed gate (registers keyed by PR and
+      # head). This PR's own acceptance run uses this pin, so the gate change is
+      # disclosed and independently inspected.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: 25f1ecdea87db0596d316f1a275be938e14f7f2c
+          ref: 8df9eaf9d68ad0e5fce469ef8393d05bb4ba3fc3
           persist-credentials: false
           sparse-checkout: .github/scripts
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -39,7 +42,7 @@ jobs:
             const head = eventPR.head.sha;
             const checks = await github.paginate(github.rest.checks.listForRef,{owner,repo,ref:head,filter:'all',per_page:100});
             const comments = await github.paginate(github.rest.pulls.listReviewComments,{owner,repo,pull_number:pr.number,per_page:100});
-            const {findings, greptile} = assess({head,currentHead:pr.head.sha,checks,comments,
+            const {findings, greptile} = assess({prNumber:pr.number,draft:pr.draft,head,currentHead:pr.head.sha,checks,comments,
               dispositions:JSON.parse(process.env.DISPOSITIONS),blockers:JSON.parse(process.env.BLOCKERS)});
             const review = greptile === 'success' ? 'Greptile reviewed this head.' : 'No Greptile review for this head (optional).';
-            await core.summary.addHeading('Review acceptance').addRaw(`Owner approved ${head}. ${review} ${findings} Greptile findings have current verification evidence. CI remains separately required.`).write();
+            await core.summary.addHeading('Review acceptance').addRaw(`Owner approved PR #${pr.number} at ${head}. ${review} ${findings} Greptile findings have current verification evidence. CI remains separately required.`).write();

@@ -1,6 +1,6 @@
 # Codex adversarial review contract
 
-Template version: 5. Adopted in Phase 83 (v2.13). Version 2 (2026-10-22) adds the working-copy read restriction to the prompt and a second secret check before raw output is committed (83-REVIEW.md WR-05). Version 3 (2026-10-22, owner decision on durable Codex completeness) scopes the review diff by rule, gives Codex harness-produced test evidence, and has Codex state completeness in the report schema v2 fields `review_complete` and `incomplete_reasons` instead of in free text. Version 4 (2026-10-22, owner-approved second fix round) takes everything under `.planning/` out of review scope, leaving planning markdown as background Codex may read on demand. Version 5 (2026-10-22, owner-approved third fix round) narrows that exclusion to planning markdown, raw review transcripts and generated review artifacts, so `.planning/config.json` (BM configuration, sensitive under `docs/review-classification-policy.md`) and every other non-markdown, non-codex file under `.planning/` stay in the review diff.
+Template version: 6. Adopted in Phase 83 (v2.13). Version 2 (2026-10-22) adds the working-copy read restriction to the prompt and a second secret check before raw output is committed (83-REVIEW.md WR-05). Version 3 (2026-10-22, owner decision on durable Codex completeness) scopes the review diff by rule, gives Codex harness-produced test evidence, and has Codex state completeness in the report schema v2 fields `review_complete` and `incomplete_reasons` instead of in free text. Version 4 (2026-10-22, owner-approved second fix round) takes everything under `.planning/` out of review scope, leaving planning markdown as background Codex may read on demand. Version 5 (2026-10-22, owner-approved third fix round) narrows that exclusion to planning markdown, raw review transcripts and generated review artifacts, so `.planning/config.json` (BM configuration, sensitive under `docs/review-classification-policy.md`) and every other non-markdown, non-codex file under `.planning/` stay in the review diff. Version 6 (2026-10-26, Phase 85 D-17) adds a second, positive diff for `.planning/**/*-PLAN.md`: phase plan files are agent instructions BM executors follow, so they are review scope even though other planning markdown stays excluded.
 
 This is the only prompt and invocation used for the independent Codex code-review pass paired with every BM code-review run in this repository: phase execution, quick task, explicit `/bm:code-review`, and review after fixes (D-06).
 
@@ -24,12 +24,16 @@ Everything else under `.planning/` stays in the review diff. In particular `.pla
 
 The fixed prompt's diff command carries these as the `':(exclude,glob).planning/**/codex/**'`, `':(exclude,glob).planning/**/*.jsonl'` and `':(exclude,glob).planning/**/*.md'` pathspecs, and `tests/codex_review_run.py` uses the same list. Planning docs are background context Codex may read on demand to understand intent; they are not review scope, and not having read them never makes a review incomplete. Planning-only changes get the focused consistency review in `docs/review-classification-policy.md` instead.
 
-## Fixed prompt (version 5)
+Phase plan files (`.planning/phases/**/*-PLAN.md`) are the exception: `docs/review-classification-policy.md` classifies them as sensitive, since they are agent instructions BM executors follow, not planning prose. A git pathspec cannot re-include a path an exclude already matches, so the blanket `.planning/**/*.md` exclusion above cannot be narrowed to let PLAN files back in. Instead, a second, positive diff — `git diff {{BASE_SHA}}..{{HEAD_SHA}} -- ':(glob).planning/**/*-PLAN.md'` — brings every `*-PLAN.md` file into review scope regardless of the first diff's exclusions. The review's effective scope is the union of both diffs.
+
+## Fixed prompt (version 6)
 
 ```
 Independently review {{PR_URL}} at head {{HEAD_SHA}} against base {{BASE_SHA}}. Scope: {{SCOPE}}.
 
 Review the full in-scope diff git diff {{BASE_SHA}}..{{HEAD_SHA}} -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md', including tests and relevant surrounding code. Planning markdown, raw review transcripts and generated review artifacts under .planning/ are excluded from the review scope; other files under .planning/, such as .planning/config.json, are in scope. You may read planning markdown on demand as background on intent; it is not review scope, and not reading it never makes the review incomplete.
+
+Also review the phase plan files changed in this range with git diff {{BASE_SHA}}..{{HEAD_SHA}} -- ':(glob).planning/**/*-PLAN.md'. Plan files are agent instructions that executors follow; they are in review scope.
 
 First run git rev-parse HEAD and report it as inspected_head_sha. Report {{BASE_SHA}} as inspected_base_sha only after confirming git cat-file -e {{BASE_SHA}} succeeds.
 
@@ -50,10 +54,12 @@ When the checkpoint has no PR yet (a local checkpoint, not pushed), fill `{{PR_U
 
 ## Invocation
 
-1. Freeze the head: `HEAD_SHA=$(git rev-parse HEAD)`. `BASE_SHA` is the PR base for a PR checkpoint, or for a local checkpoint the parent of the first commit in scope (quick task) or `git merge-base origin/main HEAD` (phase scope). Record which rule produced `BASE_SHA`.
-2. Decide the source's trust (owner decisions, 2026-10-22). The harness runs the head's test suite and checks the head out on the operator's machine, so it reviews only this repository's own branches: pass `--trusted` for those. Dependabot and outside-contributor PRs are untrusted sources: Codex is not run for them until the harness is hardened in Phase 85. `--untrusted` makes the runner refuse (exit 2) before it runs any command or writes any file. The checkpoint record shows `Codex: PENDING — untrusted source`, test evidence for that head comes from the PR's CI results, and the owner chooses, as in the Failure rule: wait, retry later (after Phase 85), or approve a fallback. The flag is required; there is no default.
+1. Freeze the head: `HEAD_SHA=$(git rev-parse HEAD)`. `BASE_SHA` is the reviewed base: for a PR checkpoint, the merge-base of the PR base and the head (`git merge-base <PR baseRefOid> "$HEAD_SHA"`, which equals the PR base while the branch is up to date with it and stays the fork point after main moves on), or for a local checkpoint the parent of the first commit in scope (quick task) or `git merge-base origin/main HEAD` (phase scope). Record which rule produced `BASE_SHA`.
+2. Decide the source's trust. `--trusted` is allowed only for a verified origin, which the runner checks itself and fails closed: a PR URL must be a same-repository PR by an author in `TRUSTED_AUTHORS` (the owner) whose current head is `HEAD_SHA` and whose current base has `BASE_SHA` as its merge-base with `HEAD_SHA` (the same reviewed-base rule acceptance readiness applies); a local checkpoint must have every commit in `BASE..HEAD` created on this machine by a commit operation (a `commit` reflog entry; fetched, cherry-picked or rebased commits are refused). In both forms `BASE` must already be on `origin/main` (run `git fetch origin main` first), so a changed grader is only ever cross-graded by a checker that landed on main; author or committer email, and branch names, never establish trust on their own.
+
+   Until Phase 85.1 delivers the isolated review, untrusted heads (bot and fork PRs) get an INCOMPLETE Codex result plus a per-PR owner-approved fallback review (D-16); CI still runs. D-07 still says bot PRs — such as a Dependabot update PR, or an outside contributor's fork — get no special lane and should get the same paired review; running Codex safely on an untrusted head needs isolation from the operator's credentials, which is being built in Phase 85.1. Until then, `--untrusted` runs nothing — no checkout, no fetch, no tests, no Codex — and only records `$OUT.meta.json` (`review_mode` `untrusted-refused`) and an incomplete `$OUT.status.json`, exiting 2; that record is never clean or complete. The owner then decides per PR: approve an independent fallback review recorded and validated as in "Owner-approved fallback" below (with `--head-trust untrusted`), or wait (blocks acceptance). The flag is required; there is no default.
 3. Preview the run: `uv run python tests/codex_review_run.py --head "$HEAD_SHA" --base "$BASE_SHA" --label <label> --attempt N --pr-url "<PR URL or none (local checkpoint, not pushed)>" --scope "<scope>" --phase-dir .planning/phases/<phase-dir> --trusted|--untrusted --dry-run` renders the prompt and prints every command without running any of them or writing any file.
-4. Run the same command without `--dry-run`. The runner (stdlib only; every command is an argument list, never a shell string) does the following, in order:
+4. Run the same command without `--dry-run`. These steps (the worktree, pytest, the fixed prompt version 6, grading) apply to trusted mode only; the interim untrusted refusal in step 2 performs none of them. The runner (stdlib only; every command is an argument list, never a shell string) does the following, in order:
    0. Refuses to start if `HEAD_SHA` is not the checkout's current HEAD, because such a run can only be assessed stale; `--allow-stale-head` overrides this, for example to finish an earlier head's automatic retry, and is recorded in `$OUT.meta.json`. Also refuses to start if `docs/codex-adversarial-review-contract.md`, `.claude/schemas/codex-review-findings.schema.json`, `tests/codex_report_status.py` or `tests/codex_review_run.py` has uncommitted changes (`git status --porcelain`), so every run uses committed inputs. It then saves the exact rendered prompt as `$OUT.prompt.txt` and the provenance record as `$OUT.meta.json`, before any other work.
    1. Creates a detached worktree of `HEAD_SHA` in a fresh temp directory: `git worktree add --detach "$WT" "$HEAD_SHA"`.
    2. Runs `uv run --extra dev pytest tests/ -q` inside that worktree, outside the Codex sandbox, and saves the combined stdout/stderr and exit code as `$OUT.pytest.txt`. (pytest is in the project's `dev` extra, so a fresh worktree needs `--extra dev`.) Local absolute paths in the evidence text (the temp worktree and temp directory, the main checkout, the system temp directory, the home directory) are replaced by `<worktree>`, `<scratch>`, `<repo>`, `<tmp>` and `~`, the username in pytest's `pytest-of-<user>` temp directory is replaced by `<user>`, and an identical copy is placed, untracked, in the worktree at `.codex-review-evidence/pytest.txt` so the prompt never names a path outside the working copy. Because the reviewed head decides what the worktree contains, the runner refuses (an `incomplete` status stub, no Codex run) when anything already exists at `.codex-review-evidence` (a directory, a file or a symlink); it creates that directory fresh and the file with `O_CREAT|O_EXCL|O_NOFOLLOW`, so the write never follows a link out of the worktree.
@@ -68,16 +74,19 @@ The report schema is version 2. A version 2 report is incomplete if `review_comp
 
 ## Raw output storage
 
-The full, unedited raw Codex output is preserved (D-11). Store it at `OUT=.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>`, keeping:
+The raw Codex output is preserved (D-11) with one pre-grading redaction stage (Phase 85 D-18, WR-04): after Codex exits and before the checker runs, the runner replaces local absolute paths (home, worktree, scratch, repository and temp directories) in `.jsonl` and `.last.json` with neutral markers and changes nothing else; the checker grades the redacted report. Store it at `OUT=.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>`, keeping:
 
 - `.prompt.txt` — the exact prompt sent to Codex on stdin
 - `.meta.json` — the run's provenance: template version, the sha256 of the contract, schema, checker and runner, whether each was committed unchanged (always true: the runner refuses to start otherwise), the harness checkout's HEAD, whether `--allow-stale-head` was used, and whether the source was trusted
-- `.jsonl` — the full, unedited event stream
-- `.last.json` — the final structured report
+- `.jsonl` — the full event stream, redacted as above
+- `.last.json` — the final structured report, redacted as above
 - `.status.json` — the checker's assessment of that report
 - `.pytest.txt` — the harness's `pytest` run on the same head, given to Codex as evidence
+- `.base-status.json` — written when an audited input changed between base and head (trusted mode): the base commit's own checker's assessment of the same report
 
-None of these files are ever edited after being written. Earlier heads' files are kept for comparison after a fix. `--sandbox read-only` limits writes, not reads, and the `.jsonl` stream records the output of every command Codex ran, so two secret checks run on the codex directory before the files are committed with `git add -f`:
+An `untrusted-refused` record (the interim rule above) consists of only `.meta.json` and an incomplete `.status.json` — it runs nothing, so it has none of the other files above, and it is never complete.
+
+After the pre-grading redaction every file is immutable: none is edited after the checker has run; a new attempt number is used instead. Historical evidence committed before Phase 85 was published as written (owner decision) and is not rewritten. Earlier heads' files are kept for comparison after a fix. `--sandbox read-only` limits writes, not reads, and the `.jsonl` stream records the output of every command Codex ran, so two secret checks run on the codex directory before the files are committed with `git add -f`:
 
 1. `gitleaks detect --no-git --source .planning/phases/<phase-dir>/codex/`
 2. A scan for 32-character lowercase hex strings, the shape of Radarr/Sonarr API keys, which have no prefix and are easy for pattern-based scanners to miss:
@@ -90,6 +99,24 @@ None of these files are ever edited after being written. Earlier heads' files ar
 
 ## Failure rule
 
-On a non-zero exit code, a timeout, or an incomplete checker result, retry once automatically on the same SHA (attempt 2) -- attempt 2 is the last automatic retry. If attempt 2 is also incomplete, record Codex as INCOMPLETE/PENDING with the reasons in plain words and ask the owner to choose: wait, retry later, or approve a fallback such as vibe-check (D-09). An owner-approved "retry later" produces attempt 3 (or higher); it never runs automatically, and is recorded in the checkpoint record with its own attempt number (`--attempt 3`, qualified IDs `a3`). Never describe a missing, failed, skipped, stale, or wrong-commit report as clean or as reviewed.
+On a non-zero exit code, a timeout, or an incomplete checker result, retry once automatically on the same SHA (attempt 2) -- attempt 2 is the last automatic retry. If attempt 2 is also incomplete, record Codex as INCOMPLETE/PENDING with the reasons in plain words and ask the owner to choose: wait, retry later, or approve a fallback (see Owner-approved fallback; D-09). Wait and retry later both block acceptance until a later attempt completes or the owner approves a fallback. An owner-approved "retry later" produces attempt 3 (or higher); it never runs automatically, and is recorded in the checkpoint record with its own attempt number (`--attempt 3`, qualified IDs `a3`). Never describe a missing, failed, skipped, stale, or wrong-commit report as clean or as reviewed.
+
+### Owner-approved fallback
+
+For a trusted head, this fallback applies only when the Codex pass stays INCOMPLETE/PENDING after its one automatic retry (attempt 2 or later is incomplete) — never to a run that has not been attempted. For an untrusted head (interim rule above), it applies to the recorded `untrusted-refused` INCOMPLETE result for that exact head (attempt 1; retrying a refusal is pointless), checked with `--head-trust untrusted`; an `untrusted-refused` record never opens the fallback for a trusted head.
+
+The owner may then approve an independent review of exactly that head, recorded as `.planning/phases/<dir>/codex/<head12>-fallback.json` in the format defined by `.github/scripts/codex-fallback.cjs` and checked with its `validate` command. The record has these fields:
+
+- `schema` — the fallback record schema version
+- `pr` — the PR number
+- `head` — the full head SHA this fallback covers
+- `base` — the full reviewed base SHA: the same `BASE_SHA` the Codex output records (its meta `base`), which readiness requires to be the merge-base of the PR base and the head. The `validate` command's `--base` must equal it.
+- `codex_out` — the Codex output prefix this is a fallback for
+- `reviewer` — `{name, kind}`: the independent reviewer — never BM, never Claude's own review, never the Codex runner, never the PR author — for example a vibe-check deep review, or a manual Codex session that receives the diff only as text, with no checkout of the head and no tools. Never a session opened inside a checkout of an untrusted head, and never run on the operator's machine with the untrusted head's code.
+- `scope` — `{base, head, diff: "full"}`: the fallback reviews the full base..head diff, never a partial one
+- `result` — `{status: "complete", summary, findings}`: every finding carries a disposition
+- `owner_decision` — `{decision, verbatim, decided_at}`: `wait` or `retry-later` is recorded too, and blocks acceptance; only `approve-fallback`, with the owner's verbatim words naming the head, satisfies the prerequisite
+
+A fallback never turns Codex into "complete": the record keeps Codex INCOMPLETE/PENDING plus the Fallback row.
 
 Placeholders above are template slots, not executable approval or publication instructions.

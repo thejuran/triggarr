@@ -89,6 +89,25 @@ def test_policy_sensitive_row_names_the_review_machinery() -> None:
         assert (REPO_ROOT / path).is_file(), f"{path} is named as sensitive but does not exist"
 
 
+# The required-check no-skip safeguards are sensitive too (review iteration 4 IN-13).
+SAFEGUARD_TESTS = ("tests/test_required_jobs_no_skip.py", "tests/test_ci_gate.py")
+
+
+def test_policy_sensitive_row_names_the_required_check_safeguards() -> None:
+    covers = _sensitive_covers_cell()
+    for path in SAFEGUARD_TESTS:
+        assert f"`{path}`" in covers, f"the sensitive row's 'What it covers' must name {path}"
+        assert (REPO_ROOT / path).is_file(), f"{path} is named as sensitive but does not exist"
+
+
+def test_policy_names_the_pytest_guard_as_the_authoritative_no_skip_test() -> None:
+    status = next(line for line in _read(POLICY_DOC).splitlines() if line.startswith("Status:"))
+    assert "`tests/test_required_jobs_no_skip.py`" in status
+    assert "authoritative" in status
+    assert "`.github/scripts/ci-job-consistency.cjs`" in status
+    assert "secondary" in status
+
+
 def _acceptance_step(number: int) -> str:
     prefix = f"{number}. "
     return next(line for line in _read(ACCEPTANCE_DOC).splitlines() if line.startswith(prefix))

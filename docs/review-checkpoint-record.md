@@ -64,7 +64,7 @@ Reconciliation: <one line explaining any difference among the fields above, or "
 
 - **Routine vibe-check status:** <whether routine vibe-check ran for this code change, while the owner keeps that standing rule>
 
-Vibe-check never substitutes for Codex or Greptile, never waives a finding and never reduces required coverage.
+Vibe-check never substitutes for a complete Codex pass, is never counted or recorded as Codex, never waives a finding and never reduces required coverage. When Codex stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or another independent reviewer) as the recorded fallback for that exact head (docs/codex-adversarial-review-contract.md, Owner-approved fallback).
 
 ### BM review
 
@@ -82,9 +82,10 @@ Vibe-check never substitutes for Codex or Greptile, never waives a finding and n
 
 | Field | Value |
 |---|---|
-| Status | complete \| INCOMPLETE/PENDING, with reasons \| `PENDING — untrusted source` (see Rules) |
+| Status | complete, only for a trusted-mode run whose `.status.json` is complete and, when `audited_inputs_changed_in_diff` is non-empty, whose `.base-status.json` is complete \| INCOMPLETE/PENDING, with reasons \| an `untrusted-refused` record (bot or fork head, until Phase 85.1) is always INCOMPLETE |
+| Fallback | none \| owner-approved fallback record `<head12>-fallback.json`, validated by `node .github/scripts/codex-fallback.cjs validate …` (independent reviewer, exact-head full-diff scope, completed result with dispositions, owner's `approve-fallback` decision naming the head); Codex stays INCOMPLETE/PENDING |
 | Attempts | 1 \| 2 \| N (owner-approved retry beyond 2, recorded with its own attempt number) |
-| Raw output paths | `.prompt.txt`, `.meta.json`, `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt` under `.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>` |
+| Raw output paths | `.prompt.txt`, `.meta.json`, `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt`, `.base-status.json` under `.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>` |
 | Review complete | `review_complete` and `incomplete_reasons` as reported (report schema v2; a v1 report records "v1 report, assessed under v1 rules") |
 | Coverage | <as reported> |
 | Exclusions | <as reported> |
@@ -125,7 +126,8 @@ Findings:
 - Evidence from an earlier head never counts for a later head (REVIEW-06). A new head needs its own BM review, its own Codex pass, and (when applicable) its own Greptile review and vibe-check.
 - The head stays frozen while independent reviews run — no further commits land on that SHA while BM, Codex, Greptile, or vibe-check are still assessing it.
 - When BM cannot invoke Codex, or Codex has not yet returned a report, the record shows `Codex: PENDING, requested for FULL_SHA` until a report arrives (REVIEW-03). This is never written as "clean," "skipped and fine," or any other status that could be read as complete.
-- For an untrusted source (a Dependabot or outside-contributor PR), Codex is not run until the harness is hardened in Phase 85 (owner decision, 2026-10-22; `docs/codex-adversarial-review-contract.md` Invocation step 2). The record shows `Codex: PENDING — untrusted source` for that head, the CI section carries the PR's CI results as its test evidence, and the owner chooses: wait, retry later, or approve a fallback. Like any PENDING status, it is never written as clean or reviewed.
+- Until Phase 85.1 delivers the isolated review, untrusted heads (bot and fork PRs) get an INCOMPLETE Codex result plus a per-PR owner-approved fallback review (D-16); CI still runs. `--untrusted` runs nothing and records `untrusted-refused` (INCOMPLETE, never clean); the checkpoint records Codex INCOMPLETE/PENDING plus the Fallback row for that PR's head; the readiness check accepts it only through a validated fallback (`--head-trust untrusted`); never record an untrusted head's Codex review as complete. D-07 is delivered for untrusted heads by Phase 85.1.
+- Wait and retry later block acceptance.
 - The risk note is refreshed whenever a revision changes the SHA or materially changes the risk (RISK-01) — it is not reused unchanged across heads.
 
 ## Before any re-review
@@ -150,6 +152,15 @@ When Codex (or BM) reports findings (D-08):
 - There is no automatic cross-agent fix loop beyond this one batched revision and its one fresh round of reviews.
 - The owner sees the original Codex report plus the dispositions before acceptance — dispositions never replace the original report in what the owner is shown.
 
+## Coverage evidence for vibe-check
+
+Coverage is prepared before the review snapshot, from one of two sources, and recorded with the review. There is no percentage gate.
+
+1. **CI artifact for this exact head**, when a CI run exists: `gh run download <run_id> -n coverage-<run_id>-<run_attempt>`, then `node .github/scripts/coverage-provenance.cjs check --provenance coverage-provenance.json --coverage coverage.xml --expected-head <full head> --expected-run-id <run_id>`. Synthetic-merge coverage (a `pull_request`-triggered run's `GITHUB_SHA`, not the PR head) passes only when the measured source (`triggarr`, `tests`, `pyproject.toml`, `uv.lock`) is identical between the tested commit and the head — measured-source equivalence, not just a matching SHA.
+2. **Exact-head local coverage**, when no usable CI artifact exists (for example a pre-push review): on a clean checkout of exactly that head, run `uv run pytest tests/ -q --cov=triggarr --cov-branch --cov-report=xml:coverage.xml`, then `node .github/scripts/coverage-provenance.cjs write-local --head <full head> --coverage coverage.xml --test-exit <n> --test-seconds <n> --out coverage-provenance.json` and `check --expected-head <full head>`.
+
+Only after the `check` command passes is `coverage.xml` copied to the vibe-check review worktree root, and the source used (CI artifact or local) is recorded with the review. A wrong-commit, missing, merge-SHA-confused, measured-source-mismatched, or failed-run report is recorded as "coverage evidence unavailable" and not used. Evidence is never added to a review that has already run: a CI artifact that arrives later is validated and recorded as separate CI evidence for that head, and a review that should use it is a fresh review.
+
 ## Owner acceptance checklist
 
 At acceptance time, the owner gets one checklist message in the CLI:
@@ -163,9 +174,11 @@ Full base SHA: <full 40-char sha>
 Review status on this head:
 - BM: <status, requested vs. actual depth>
 - Codex: <status, from docs/codex-adversarial-review-contract.md Invocation (tests/codex_review_run.py → tests/codex_report_status.py)>
+- Codex fallback (only if Codex is INCOMPLETE/PENDING): <path to <head12>-fallback.json and the validator's output>
 - Greptile: <status, or "did not run on this head">
 - Vibe-check: <status, or "not selected for this checkpoint">
 - CI: <status>
+- Readiness check: <output of acceptance-readiness.cjs for this head>
 
 Findings and dispositions:
 - <qualified ID>: <decision> — <evidence>

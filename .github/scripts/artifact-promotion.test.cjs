@@ -4,15 +4,15 @@ const fs=require('node:fs');
 const path=require('node:path');
 const release=fs.readFileSync(path.join(__dirname,'../workflows/release.yml'),'utf8');
 const ci=fs.readFileSync(path.join(__dirname,'../workflows/ci.yml'),'utf8');
-test('both exact-run artifacts are downloaded and checked before publication',()=>{
+test('the exact-run image artifact is downloaded and checked before publication',()=>{
+ const runIdLines=(release.match(/run-id: \$\{\{ steps.recheck.outputs.run_id \}\}/g)||[]).length;
+ assert.equal(runIdLines,1,'expected exactly 1 exact-run run-id line (image only)');
  const publish=release.indexOf('      - name: Publish audited image');
  assert.ok(publish>0);
- for(const name of ['Download exact successful CI image','Verify and load audited image',
- 'Download exact successful CI Python distributions','Verify distribution artifacts before any publication']) {
+ for(const name of ['Download exact successful CI image','Verify and load audited image']) {
    const pos=release.indexOf(`      - name: ${name}`);
    assert.ok(pos>=0 && pos<publish,`${name} must precede publishing`);
  }
- assert.equal((release.match(/run-id: \$\{\{ steps.recheck.outputs.run_id \}\}/g)||[]).length,2);
  assert.doesNotMatch(release,/docker\/build-push-action|python -m build|docker build/);
 });
 test('CI sets immutable provenance labels before auditing and saving the image',()=>{

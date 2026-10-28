@@ -3,10 +3,13 @@ complete, current review of a specific commit (REVIEW-03, REVIEW-04,
 REVIEW-06).
 
 A missing report, a non-zero or unknown Codex exit code, unparseable
-JSON, a schema violation, a wrong inspected head or base SHA, and a
-report whose head is no longer the current head are each reported as a
-distinct, plain-language reason. The only two status words this module
-ever emits are "complete" and "incomplete" -- a missing, failed,
+JSON, a schema violation, a wrong inspected head or base SHA, a report
+whose head is no longer the current head, a commands_run list with no
+entry that has a recorded integer exit code, and a commands_run list
+whose every entry runs only a trivially uninformative command (echo,
+pwd, true and similar -- D-18 hollow-report guard) are each reported as
+a distinct, plain-language reason. The only two status words this
+module ever emits are "complete" and "incomplete" -- a missing, failed,
 skipped, stale, or wrong-commit report is never described as anything
 else (D-09). Required field names are loaded from
 .claude/schemas/codex-review-findings.schema.json at runtime rather than
@@ -44,6 +47,7 @@ import argparse
 import copy
 import json
 import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -52,6 +56,37 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = REPO_ROOT / ".claude" / "schemas" / "codex-review-findings.schema.json"
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
+
+# Commands that carry no evidence of diff inspection on their own (D-18
+# hollow-report guard). Deliberately short and explicitly named: a report
+# whose every recorded command is one of these is treated the same as a
+# report with no commands at all. Extending this set is a sensitive
+# review-machinery change and needs its own review.
+TRIVIAL_COMMANDS = frozenset({"echo", "printf", "true", ":", "pwd", "whoami", "date", "sleep", "exit"})
+
+# A leading NAME=value token (e.g. "FOO=1 true") is an environment
+# assignment, not the program being run, so it is skipped when classifying
+# a command as trivial.
+_ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _first_program(command: str) -> str:
+    """Return the basename of the first non-assignment token in *command*.
+
+    Tokenizes with a POSIX shlex split so quoting is respected; falls back
+    to a plain whitespace split if the command cannot be tokenized (for
+    example unbalanced quotes). Leading NAME=value environment assignments
+    are skipped so "FOO=1 true" is still classified by "true".
+    """
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        tokens = command.split()
+    for token in tokens:
+        if _ENV_ASSIGNMENT_RE.match(token):
+            continue
+        return Path(token).name
+    return ""
 
 
 @dataclass(frozen=True)
@@ -417,10 +452,32 @@ def assess_report(
             reasons.append("blank coverage entry")
     commands = report.get("commands_run")
     # Entries with a blank command are no evidence, so a list of only those counts as empty.
-    if isinstance(commands, list) and not any(
+    any_non_blank_command = isinstance(commands, list) and any(
         isinstance(entry, dict) and _non_blank(entry.get("command")) for entry in commands
-    ):
+    )
+    if isinstance(commands, list) and not any_non_blank_command:
         reasons.append("no commands run: the report gives no evidence the diff was inspected")
+    elif isinstance(commands, list):
+        # D-18 hollow-report guard: a command with a null exit code, or a
+        # report whose every command is trivially uninformative (echo, pwd,
+        # true and similar), is no evidence the diff was inspected either.
+        recorded = [
+            entry
+            for entry in commands
+            if isinstance(entry, dict)
+            and _non_blank(entry.get("command"))
+            and isinstance(entry.get("exit_code"), int)
+            and not isinstance(entry.get("exit_code"), bool)
+        ]
+        if not recorded:
+            reasons.append(
+                "no command with a recorded exit code: the report gives no evidence the diff was inspected"
+            )
+        elif all(_first_program(entry["command"]) in TRIVIAL_COMMANDS for entry in recorded):
+            reasons.append(
+                "only trivial commands run (echo/pwd/true and similar): "
+                "the report gives no evidence the diff was inspected"
+            )
 
     status: Literal["complete", "incomplete"] = "incomplete" if reasons else "complete"
     return Assessment(

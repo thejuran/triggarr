@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "in review -- Phase 83 executed (10/10 plans, verification human_needed); owner decision pending on PR #35 (branch paired-review)"
-stopped_at: "Phase 83 end-of-phase push + PR #35 ready for review; Greptile/CI then owner exact-commit acceptance"
-last_updated: "2026-10-23T22:25:30.000Z"
-last_activity: "2026-10-23 -- Phase 83 executed; rounds 5-7 + vibe-check passes; verification 17/17 must-haves (human_needed)"
+status: "Phase 85 executed, in review -- unpushed; BM review clean after 4 owner-approved fix rounds; paired Codex pending by PR URL after push; verification human_needed (8 items)"
+stopped_at: "Phase 85 executed 2026-10-27 (19/19 plans) at af08d2a; next: owner vibe-check decision + /deep-review offer, then end-of-phase push/PR and Codex by PR URL"
+last_updated: "2026-10-27T22:31:35Z"
+last_activity: "2026-10-27 -- Phase 85 executed (19/19 plans, 5 waves); BM phase review clean at iteration 5 after 4 owner-approved fix rounds; local Codex refused (worktree vs local-origin trust), owner chose Codex by PR URL after push; verification human_needed"
 progress:
-  total_phases: 5
-  completed_phases: 1
-  total_plans: 19
-  completed_plans: 19
-  percent: 20
+  total_phases: 7
+  completed_phases: 3
+  total_plans: 45
+  completed_plans: 26
+  percent: 43
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.13 CI & Review Workflow -- roadmap created (Phases 82-86); Phase 82 (CI Tests What We Ship) planned, ready to execute
+**Current focus:** Phase 85 — Follow-on CI improvements & acceptance usability
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. v2.12 shipped 2026-10-21 as v2.12.0 (tag on `dbb38fa`).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 83 (paired BM + Codex review) — In review, owner decision pending; Phase 82 merged
-Plan: 10 of 10 (all done; phase in review)
-Status: Phase 83 planned (10 plans, 7 waves; plan-checker passed). Plan 01 stops at the REVIEW-01 owner gate. Closeout note: the phase-execution review path (REVIEW-02) is only finished after BM's post-plan code_review_gate plus the handed-off Codex pass on the pushed head — confirm before treating ROADMAP criterion 2 as met.
-Last activity: 2026-10-22 -- Plans 01-08 done. Quick path (261022-l7h, head a7995ba) and explicit /bm:code-review path (head d501a68) recorded in 83-REVIEW-EVIDENCE.md with paired Codex; 6 negative demos in 83-DEMONSTRATIONS.md. Owner rulings 2026-10-22: red Failed cards keep "failure reason(s)"; mixed code+sensitive PRs get both review classes. Craft-skill code-reviewer: owner accepted sticky but not inserted (no checkout; needs separate approval as a settings change beyond REVIEW-01). Next: plan 09 batched fix. 2026-10-23 -- Plan 09 done: 4 owner-approved fix rounds (D-08 overridden by owner), durable Codex completeness (schema v2, harness pytest evidence, runner, template v5, untrusted heads blocked until Phase 85); final head 36eaa67c2976 BM standard 0 blockers/6 info, Codex final complete 0 findings, 2400 tests on clean checkout. OPEN before push: owner decision on home-directory path inside committed codex .jsonl/.last.json files; disclosed deviations (gitleaks order slip; hook-block tool switch in bf4fb5f). 2026-10-23 -- Plan 10 done (PR #35 draft pushed at 49ded1e by owner choice); BM phase-execution review + paired Codex on 49ded1e; owner-approved local fix rounds 5-7 each with fresh BM + paired Codex (final heads 385baa7, d90c1c1: Codex complete, 0 findings); vibe-check passes at b19e7b2 and 385baa7. Verification 17/17 must-haves, human_needed: end-of-phase push + PR ready, Greptile/CI on final head, owner acceptance. Phase 85 carry-forward in .planning/backlog/MAINTENANCE.md.
+Phase: 85 (Follow-on CI improvements & acceptance usability) — EXECUTED, IN REVIEW (unpushed)
+Plan: 19 of 19 done; BM review iteration 5 clean at 1f8e339 (rounds 1-4 owner-approved); verification human_needed (85-VERIFICATION.md, 85-HUMAN-UAT.md: P1-P6, paired Codex by PR URL, register schema-2 migration)
+Status: Phase 85 executed, in review -- next: owner vibe-check decision and /deep-review offer, then end-of-phase push + ready PR, Codex by PR URL, hand-off steps in 85-REVIEW-EVIDENCE.md
+Last activity: 2026-10-27 -- Phase 85 executed and verified locally (human_needed); see 85-REVIEW-EVIDENCE.md post-plan review record
 
 ### v2.13 milestone shape
 
@@ -227,6 +227,7 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 |------|------|---------|
 | 2026-05-19 | Address Dependabot alerts and PR | Merged PR #19 (idna 3.11→3.15, squash cc61133). Closes alert #12 (CVE-2026-45409, IDNA encoding bypass, medium). |
 | 2026-10-22 | 261022-l7h: Fix card reasons label for skip-only rows (Phase 83 quick-task review demo, `--full`) | Verified. Test `7da265f`, fix `e0e72ba`; skip-only → "Show N skipped record(s)", 0-failure with unevaluated queue → "Show N detail(s)", real failures unchanged. BM quick review: 0 blockers, 2 warnings. Paired Codex pass recorded in 83-REVIEW-EVIDENCE.md. [261022-l7h](./quick/261022-l7h-fix-card-reasons-label-for-skip-only-row/) |
+| 2026-10-26 | 261026-s2v: Activate the Codex-routed plan checker for Triggarr only (`--full`) | Needs Review (verifier human_needed item since fixed: README disable semantics). Plugin under `.claude/plugins/planchk-router` (router `agent.spawn` hook + fail-closed PreToolUse guard), switched on only in gitignored `settings.local.json`. Live smoke: checker → codex `gpt-6-astra`, orchestrator → anthropic; guard refusal proven from real registration. Final head `4d7e677`: BM quick 0 blockers, Codex complete 0 findings; records in 84-REVIEW-EVIDENCE.md. [261026-s2v](./quick/261026-s2v-activate-the-codex-routed-plan-checker-f/) |
 
 ### Reference Artifacts
 
@@ -242,9 +243,9 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-22T17:38:03.118Z
-Stopped at: Phase 83 context gathered
-Resume file: .planning/phases/83-paired-bm-codex-review-risk-based-depth/83-CONTEXT.md
+Last session: 2026-10-27T12:37:41.000Z
+Stopped at: Phase 85 planned; next: /bm:execute-phase 85
+Resume file: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-CONTEXT.md
 
 ## Operator Next Steps
 
