@@ -64,6 +64,18 @@ ACCEPTANCE_TEXT = ACCEPTANCE_PATH.read_text()
 AGGREGATE_JOB = "ci-ready"
 AGGREGATE_IF = "always()"
 ACCEPTANCE_JOBS = frozenset({"acceptance"})
+# review-acceptance.yml's reviewed trigger contract. Mirrors
+# TRIGGER_CONTRACTS['review-acceptance.yml'] in ci-job-consistency.cjs; types
+# must be exactly these four (GitHub's default omits ready_for_review).
+ACCEPTANCE_TRIGGER_CONTRACT = {
+    "pull_request": {
+        "branches": ("main",),
+        "types": ("opened", "ready_for_review", "reopened", "synchronize"),
+    },
+}
+# Trigger keys that let a PR skip the workflow entirely. Mirrors
+# TRIGGER_FILTER_KEYS in ci-job-consistency.cjs.
+TRIGGER_FILTER_KEYS = frozenset({"paths", "paths-ignore", "branches-ignore", "tags-ignore"})
 # Each required check name and the only (workflow file, job id) allowed to
 # publish it (review iteration 4 WR-03).
 REQUIRED_CHECK_OWNERS = {
@@ -243,10 +255,46 @@ def ci_problems(text: str) -> list[str]:
     return problems
 
 
+def acceptance_trigger_problems(triggers: Any) -> list[str]:
+    """Check review-acceptance.yml's parsed ``on:`` block against its contract.
+
+    Mirrors TRIGGER_CONTRACTS['review-acceptance.yml'] in ci-job-consistency.cjs,
+    but on the PyYAML-parsed mapping, so a quoted key (``"paths":``) is the same
+    key as a bare one and cannot hide a filter (review pass 2).
+    """
+    prefix = "review-acceptance.yml on:"
+    if not isinstance(triggers, dict):
+        return [f"{prefix} must be a mapping with exactly {sorted(ACCEPTANCE_TRIGGER_CONTRACT)!r}"]
+    problems = []
+    if set(triggers) != set(ACCEPTANCE_TRIGGER_CONTRACT):
+        expected_triggers = sorted(ACCEPTANCE_TRIGGER_CONTRACT)
+        problems.append(f"{prefix} triggers {list(triggers)!r} must be exactly {expected_triggers!r}")
+    for name, contract in ACCEPTANCE_TRIGGER_CONTRACT.items():
+        if name not in triggers:
+            continue
+        spec = triggers[name]
+        where = f"{prefix} {name}"
+        if not isinstance(spec, dict):
+            problems.append(f"{where} must be a mapping, got {spec!r}")
+            continue
+        for key in spec:
+            if key in TRIGGER_FILTER_KEYS:
+                problems.append(f"{where}.{key} lets a PR skip required jobs")
+            elif key not in contract:
+                problems.append(f"{where} has unsupported key {key!r}")
+        for key, expected in contract.items():
+            value = spec.get(key)
+            exact = isinstance(value, list) and len(value) == len(expected)
+            if not exact or sorted(map(str, value)) != sorted(expected):
+                problems.append(f"{where}.{key} {value!r} must be exactly {list(expected)!r}")
+    return problems
+
+
 def acceptance_problems(text: str) -> list[str]:
     doc, problems = _load_problem("review-acceptance.yml", text)
     if doc is None:
         return problems
+    problems.extend(acceptance_trigger_problems(workflow_triggers(doc)))
     if set(doc["jobs"]) != ACCEPTANCE_JOBS:
         problems.append(f"review-acceptance.yml jobs {list(doc['jobs'])!r} must be exactly {sorted(ACCEPTANCE_JOBS)!r}")
     for job_id, job in doc["jobs"].items():
@@ -313,6 +361,47 @@ def test_bare_on_key_loads_as_true_and_is_still_found() -> None:
     assert "pull_request" in workflow_triggers(doc)
     quoted = load_workflow(_mutate(ACCEPTANCE_TEXT, "\non:\n", '\n"on":\n'))
     assert "pull_request" in workflow_triggers(quoted)
+
+
+# --- review pass 2: review-acceptance.yml's trigger contract -----------------
+
+ACCEPTANCE_BRANCHES = "    branches: [main]\n"
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["paths", '"paths"', "'paths'", "paths-ignore", '"paths-ignore"', "branches-ignore", "'tags-ignore'"],
+)
+def test_acceptance_trigger_filter_in_any_spelling_is_rejected(key: str) -> None:
+    mutated = _mutate(ACCEPTANCE_TEXT, ACCEPTANCE_BRANCHES, f'{ACCEPTANCE_BRANCHES}    {key}: ["triggarr/**"]\n')
+    bare = key.strip("\"'")
+    assert f"review-acceptance.yml on: pull_request.{bare} lets a PR skip required jobs" in acceptance_problems(
+        mutated
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (ACCEPTANCE_BRANCHES, "    branches: [main, release]\n"),
+        (ACCEPTANCE_BRANCHES, ""),
+        (", ready_for_review]", "]"),
+        ("    types: [opened, synchronize, reopened, ready_for_review]\n", ""),
+        (", ready_for_review]", ", ready_for_review, closed]"),
+    ],
+)
+def test_acceptance_trigger_branches_and_types_must_be_exact(old: str, new: str) -> None:
+    problems = acceptance_problems(_mutate(ACCEPTANCE_TEXT, old, new))
+    assert any(p.startswith("review-acceptance.yml on: pull_request.") and "must be exactly" in p for p in problems)
+
+
+def test_acceptance_extra_trigger_or_unknown_key_is_rejected() -> None:
+    extra = _mutate(ACCEPTANCE_TEXT, "\non:\n", "\non:\n  workflow_dispatch:\n")
+    assert any(p.startswith("review-acceptance.yml on: triggers") for p in acceptance_problems(extra))
+    renamed = _mutate(ACCEPTANCE_TEXT, "  pull_request:\n", "  pull_request_target:\n")
+    assert any(p.startswith("review-acceptance.yml on: triggers") for p in acceptance_problems(renamed))
+    unknown = _mutate(ACCEPTANCE_TEXT, ACCEPTANCE_BRANCHES, f"{ACCEPTANCE_BRANCHES}    branch: [dev]\n")
+    assert "review-acceptance.yml on: pull_request has unsupported key 'branch'" in acceptance_problems(unknown)
 
 
 # --- CR-01: continue-on-error in any spelling --------------------------------

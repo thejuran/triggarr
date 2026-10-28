@@ -380,6 +380,23 @@ describe('ACCEPT-03 no-skip detector', () => {
     }
   });
 
+  for (const key of ['"paths"', "'paths'", '"paths-ignore"', "'branches-ignore'"]) {
+    test(`a quoted ${key} filter on review-acceptance.yml fails on the specific reason`, () => {
+      const mutated = mutate(
+        acceptanceText,
+        '    branches: [main]\n',
+        `    branches: [main]\n    ${key}: ['triggarr/**']\n`
+      );
+      const problems = findSkipConditions({
+        workflowText: mutated,
+        aggregateJobId: null,
+        triggerContract: TRIGGER_CONTRACTS['review-acceptance.yml'],
+      });
+      const bare = key.slice(1, -1);
+      assert.ok(problems.some(p => p.includes(`on.pull_request.${bare} lets a PR or push skip required jobs`)));
+    });
+  }
+
   test('a push paths filter fails on the specific reason', () => {
     const mutated = mutate(
       ciText,

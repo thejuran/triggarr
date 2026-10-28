@@ -586,9 +586,13 @@ function parseOnBlock(text) {
     }
 
     if (currentTrigger) {
-      const keyMatch = line.match(/^    ([A-Za-z0-9_-]+):\s*(.*)$/);
+      // A key may be bare, 'single-quoted' or "double-quoted": YAML reads all
+      // three as the same key, so a quoted `"paths":` must not slip past the
+      // filter-key check (review pass 2).
+      const keyMatch = line.match(/^    (?:"([A-Za-z0-9_-]+)"|'([A-Za-z0-9_-]+)'|([A-Za-z0-9_-]+))\s*:\s*(.*)$/);
       if (keyMatch) {
-        triggers[currentTrigger][keyMatch[1]] = keyMatch[2];
+        const key = keyMatch[1] ?? keyMatch[2] ?? keyMatch[3];
+        triggers[currentTrigger][key] = keyMatch[4];
       }
     }
   }
