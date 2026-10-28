@@ -1,0 +1,131 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "0385e717049cf90a82c6e23b04fa53d4a83b19e9",
+  "inspected_base_sha": "030931395f558a7dde7170fd2244902e9335b6e4",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/44",
+  "scope": "Full requested diff for PR #44, including changed phase plans; no phase plans changed.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. All 87 CI consistency tests passed both normally and with simulated action-pin updates. All four relocated tool pins match CI. Harness evidence reports 2,688 Python tests passing at the inspected head.",
+  "coverage": [
+    "Inspected all changes in .github/scripts/ci-job-consistency.test.cjs, .github/tool-pins.env, and tests/test_ci_followon_wiring.py.",
+    "Checked mutation anchors, non-vacuous mutation assertions, and specific detector-error assertions.",
+    "Simulated updated checkout and Buildx SHAs and version comments in memory; all 87 tests passed without skips.",
+    "Inspected tool-pin consumers and verified all four values against ci.yml; the wiring module no longer references .planning.",
+    "Reviewed relevant CI, acceptance, Dependabot, no-skip detector, and sensitive-change classification context.",
+    "Confirmed the phase-plan diff is empty."
+  ],
+  "exclusions": [
+    "Planning markdown other than phase plans, .planning/**/codex/** artifacts, and planning JSONL files, as requested.",
+    "Files outside this working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 030931395f558a7dde7170fd2244902e9335b6e4",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 030931395f558a7dde7170fd2244902e9335b6e4..0385e717049cf90a82c6e23b04fa53d4a83b19e9 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect entire scoped diff."
+    },
+    {
+      "command": "git diff 030931395f558a7dde7170fd2244902e9335b6e4..0385e717049cf90a82c6e23b04fa53d4a83b19e9 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check changed phase plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness evidence."
+    },
+    {
+      "command": "cat tests/test_ci_followon_wiring.py",
+      "exit_code": 0,
+      "purpose": "Inspect wiring tests and pin consumers."
+    },
+    {
+      "command": "sed -n '1,65p' .github/scripts/ci-job-consistency.test.cjs\nsed -n '480,660p' .github/scripts/ci-job-consistency.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect mutation helpers and surrounding tests."
+    },
+    {
+      "command": "cat .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Inspect CI callers and tool installation."
+    },
+    {
+      "command": "cat .github/workflows/review-acceptance.yml",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance boundary and checkout anchor."
+    },
+    {
+      "command": "rg -n 'findSkipConditions|sensitive|tool-pins|planning' .github/scripts/ci-job-consistency.cjs .github/scripts/review-policy.cjs .github/scripts/review-acceptance.cjs .github/dependabot.yml",
+      "exit_code": 2,
+      "purpose": "Locate relevant policy code; review-policy.cjs does not exist."
+    },
+    {
+      "command": "sed -n '550,635p' .github/scripts/ci-job-consistency.test.cjs\nsed -n '600,705p' .github/scripts/ci-job-consistency.cjs",
+      "exit_code": 0,
+      "purpose": "Trace modified negative tests through detector."
+    },
+    {
+      "command": "rg -n 'sensitive|SENSITIVE|workflows/' .github/scripts/release-policy.cjs\ncat .github/dependabot.yml\nsed -n '1,65p' .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Inspect update configuration and test invocation."
+    },
+    {
+      "command": "node --test --test-reporter=dot .github/scripts/ci-job-consistency.test.cjs",
+      "exit_code": 0,
+      "purpose": "Run CI consistency regression tests."
+    },
+    {
+      "command": "git diff --stat 030931395f558a7dde7170fd2244902e9335b6e4..0385e717049cf90a82c6e23b04fa53d4a83b19e9\nrg -n '2688 passed|exit_code:|head:' .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Cross-check scope and extract untruncated evidence summary."
+    },
+    {
+      "command": "node <<'JS'\nconst fs = require('node:fs');\nconst original = fs.readFileSync;\nfs.readFileSync = function(file, ...args) {\n  let result = original.call(this, file, ...args);\n  if (typeof file === 'string' && /workflows\\/(ci|review-acceptance)\\.yml$/.test(file)) {\n    result = result.replace(/(actions\\/checkout|docker\\/setup-buildx-action)@[0-9a-f]{40}[^\\n]*/g, '$1@' + 'a'.repeat(40) + ' # v99');\n  }\n  return result;\n};\nrequire('./.github/scripts/ci-job-consistency.test.cjs');\nJS",
+      "exit_code": 1,
+      "purpose": "Attempt in-memory pin-update simulation; shell heredoc temporary-file creation was blocked."
+    },
+    {
+      "command": "python3 -B <<'PY'\nimport ast, pathlib, re\nroot = pathlib.Path.cwd()\nsource = (root / 'tests/test_ci_followon_wiring.py').read_text()\ntree = ast.parse(source)\nfn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_tool_pin')\nns = {'re': re, 'REPO_ROOT': root, 'TOOL_PINS_PATH': root / '.github/tool-pins.env'}\nexec(compile(ast.Module(body=[fn], type_ignores=[]), '<pin-helper>', 'exec'), ns)\nworkflow = (root / '.github/workflows/ci.yml').read_text()\nfor name in ('TRIVY_VERSION', 'TRIVY_LINUX_64BIT_SHA256', 'ACTIONLINT_VERSION', 'ACTIONLINT_SHA256'):\n    value = ns['_tool_pin'](name)\n    key = 'TRIVY_SHA256' if name == 'TRIVY_LINUX_64BIT_SHA256' else name\n    assert f'{key}: \"{value}\"' in workflow\nassert '.planning' not in source\nprint('All four pins match CI; wiring module has no planning-directory reference.')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt pin-helper check; shell heredoc temporary-file creation was blocked."
+    },
+    {
+      "command": "sed -n '705,750p' .github/scripts/ci-job-consistency.cjs\nrg -n 'sensitive|\\.github/workflows' docs/change-classification.md docs/review-policy.md .github/scripts/*class*",
+      "exit_code": 1,
+      "purpose": "Inspect detector checks; subsequent search failed on unmatched shell glob."
+    },
+    {
+      "command": "node -e 'const fs = require('\\''node:fs'\\'');\nconst original = fs.readFileSync;\nfs.readFileSync = function(file, ...args) {\n let result = original.call(this, file, ...args);\n if (typeof file === '\\''string'\\'' && /workflows\\/(ci|review-acceptance)\\.yml$/.test(file)) {\n result = result.replace(/(actions\\/checkout|docker\\/setup-buildx-action)@[0-9a-f]{40}[^\\n]*/g, '\\''$1@'\\'' + '\\''a'\\''.repeat(40) + '\\'' # v99'\\'');\n }\n return result;\n};\nrequire('\\''./.github/scripts/ci-job-consistency.test.cjs'\\'');'",
+      "exit_code": 0,
+      "purpose": "Successfully run all 87 tests with simulated action-pin updates."
+    },
+    {
+      "command": "python3 -B -c 'import ast, pathlib, re\nroot = pathlib.Path.cwd()\nsource = (root / '\\''tests/test_ci_followon_wiring.py'\\'').read_text()\nfn = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == '\\''_tool_pin'\\'')\nns = {'\\''re'\\'': re, '\\''REPO_ROOT'\\'': root, '\\''TOOL_PINS_PATH'\\'': root / '\\''.github/tool-pins.env'\\''}\nexec(compile(ast.Module(body=[fn], type_ignores=[]), '\\''<pin-helper>'\\'', '\\''exec'\\''), ns)\nworkflow = (root / '\\''.github/workflows/ci.yml'\\'').read_text()\nfor name in ('\\''TRIVY_VERSION'\\'', '\\''TRIVY_LINUX_64BIT_SHA256'\\'', '\\''ACTIONLINT_VERSION'\\'', '\\''ACTIONLINT_SHA256'\\''):\n value = ns['\\''_tool_pin'\\''](name)\n key = '\\''TRIVY_SHA256'\\'' if name == '\\''TRIVY_LINUX_64BIT_SHA256'\\'' else name\n assert f'\\''{key}: \"{value}\"'\\'' in workflow\nassert '\\''.planning'\\'' not in source\nprint('\\''All four pins match CI; no planning-directory reference.'\\'')\n'",
+      "exit_code": 0,
+      "purpose": "Execute actual pin helper and verify CI equality and absence of planning references."
+    },
+    {
+      "command": "rg -n 'sensitive|\\.github/workflows' docs .github/scripts --glob '*class*' --glob '*policy*'",
+      "exit_code": 0,
+      "purpose": "Verify sensitive-change classification context."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently rerun pytest in the read-only sandbox; relied on supplied exact-head harness evidence for the full Python suite.",
+    "Did not execute GitHub-hosted workflows or download tool binaries.",
+    "Initial heredoc checks were blocked by sandbox temporary-file restrictions; both checks subsequently completed using inline commands."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
