@@ -10,6 +10,7 @@ Updated 2026-10-27. Small ongoing work and change-time rules; not a separate dev
 
 ## Small follow-ups
 
+- **Restrict review-container egress to the OpenAI endpoint (Phase 85.1 D-05, recorded 2026-10-28):** the untrusted-head Codex review container uses Docker's default bridge network with no published ports, and its egress is not restricted to the model endpoint (D-04). Add an allowlisting proxy or an internal network so the container can reach only the OpenAI API. Not built in Phase 85.1 by owner decision; until then the accepted residual risk in docs/codex-adversarial-review-contract.md (D-07) applies.
 - Revalidate the README screenshot and CI action-runtime tasks in [TODO.md](../../TODO.md). Close already-delivered work rather than repeating it; update only remaining discrepancies.
 - Recheck the old v2.9 Retry-Connection button behavior and bug-report version options; fix confirmed user-facing problems while touching those areas. URL-validation deduplication is optional local cleanup, not its own plan.
 - **Card reasons label (found in the Phase 80 walkthrough, 2026-10-18):** the dashboard card's expandable list reads "Show N failure reasons" even when nothing failed (e.g. a Partial cycle with "0 failed" whose only rows are malformed-record skips). Reword the label so skip-only rows are not called failures; keep the row text and grade colors unchanged.

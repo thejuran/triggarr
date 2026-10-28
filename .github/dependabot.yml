@@ -10,10 +10,10 @@
 #
 # There is no auto-merge anywhere in this repository. Every Dependabot PR is
 # classified by content like any other PR and gets CI, BM review and exact-commit
-# owner acceptance (D-07). Until Phase 85.1 delivers the isolated Codex review for
-# untrusted (bot/fork) heads, a bot PR's Codex pass is recorded INCOMPLETE and an
-# owner-approved fallback review is used instead, per
-# docs/codex-adversarial-review-contract.md.
+# owner acceptance (D-07). Untrusted (bot/fork) heads get an inspection-only Codex review run
+# in a disposable, configuration-checked container (Phase 85.1); if that review
+# stays INCOMPLETE, an owner-approved fallback review (D-16) is used instead,
+# per docs/codex-adversarial-review-contract.md.
 #
 # docker and github-actions only accept cooldown.default-days -- any other,
 # per-bump-type cooldown key silently disables ALL version updates
