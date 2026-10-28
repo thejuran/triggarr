@@ -533,6 +533,14 @@ for (const name of [
   'G.S.D. reviewer',
   'C l a u d e',
   'c.o.d.e.x review run',
+  // Review pass 2: an adjacent letter must not absorb the split name.
+  'X B.M.',
+  'B.M.X review',
+  'A G.S.D.',
+  'C.l.a.u.d.e.X',
+  'B.M. / G.S.D. reviewer',
+  'B M 2',
+  'c o d e x r e v i e w r u n',
 ]) {
   test(`reviewer name ${JSON.stringify(name)} is not independent`, () => {
     const record = validRecord();

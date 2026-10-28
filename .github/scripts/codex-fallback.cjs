@@ -85,11 +85,40 @@ function tokensAreDisallowed(tokens) {
   );
 }
 
+// Review pass 2: a whole-run comparison misses a split name sitting next to
+// another letter ("X B.M." collapses to "xbm", "B M 2" to "bm2", "B.M. /
+// G.S.D." to "bmgsd"). Every contiguous sub-run of a single-character run is
+// checked, which for single letters means a substring test of the joined run.
+// The runner's sequence is checked joined, for a fully letter-split spelling.
+const DISALLOWED_RUN_SUBSTRINGS = Object.freeze([
+  ...DISALLOWED_REVIEWER_TOKENS,
+  ...DISALLOWED_REVIEWER_TOKEN_SEQUENCES.map(sequence => sequence.join('')),
+]);
+
+function singleCharRunsAreDisallowed(tokens) {
+  const runs = [];
+  let run = '';
+  for (const token of tokens) {
+    if (token.length === 1) {
+      run += token;
+      continue;
+    }
+    if (run) runs.push(run);
+    run = '';
+  }
+  if (run) runs.push(run);
+  return runs.some(joined => DISALLOWED_RUN_SUBSTRINGS.some(disallowed => joined.includes(disallowed)));
+}
+
 function reviewerNameIsDisallowed(name) {
   const lowered = name.trim().toLowerCase();
   if (DISALLOWED_REVIEWERS.includes(lowered)) return true;
   const tokens = lowered.split(/[^a-z0-9]+/).filter(Boolean);
-  return tokensAreDisallowed(tokens) || tokensAreDisallowed(collapseSingleCharRuns(tokens));
+  return (
+    tokensAreDisallowed(tokens) ||
+    tokensAreDisallowed(collapseSingleCharRuns(tokens)) ||
+    singleCharRunsAreDisallowed(tokens)
+  );
 }
 
 function basename(path) {
