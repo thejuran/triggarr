@@ -1,0 +1,153 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "5a97e1f98982b47672ba108e357a024e0f2a44e2",
+  "inspected_base_sha": "decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/36",
+  "scope": "Phase 85 PR #36 full range, including changed *-PLAN.md files.",
+  "verdict": "findings",
+  "summary": "Incomplete review. One low-severity validator defect reproduced. All 216 targeted Node tests passed; harness evidence records 2,688 passing pytest tests on the requested head. Substantial portions of the full diff remain uninspected.",
+  "coverage": [
+    "Confirmed requested HEAD and existence of the base commit; reconfirmed HEAD at completion.",
+    "Inspected workflow, Dockerfile, Dependabot, dependency declaration, and gitignore changes.",
+    "Inspected acceptance readiness, register updates, acceptance gate, fallback validation, coverage provenance, image dependency consistency, OS-scan policy implementation, and CI consistency helpers.",
+    "Inspected review runner trust verification, subprocess handling, evidence handling, and portions of cross-grading implementation.",
+    "Inspected the report-status change and its added regression tests; reproduced shell-command classification errors.",
+    "Ran four targeted Node suites: 216 passed, zero failed.",
+    "Read harness test evidence identifying this exact head and pytest exit code 0."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than changed *-PLAN.md files.",
+    "No external files or live GitHub state were read."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Identify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..5a97e1f98982b47672ba108e357a024e0f2a44e2 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Retrieve scoped diff; output was truncated."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..5a97e1f98982b47672ba108e357a024e0f2a44e2 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Retrieve changed plans; output was truncated."
+    },
+    {
+      "command": "git diff --stat decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git diff --name-only decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..HEAD -- ':(glob).planning/**/*-PLAN.md'; cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inventory scope and inspect harness evidence."
+    },
+    {
+      "command": "git diff decd5f1..HEAD -- .github/workflows Dockerfile pyproject.toml .github/dependabot.yml .gitignore",
+      "exit_code": 0,
+      "purpose": "Inspect CI, publication, and build changes."
+    },
+    {
+      "command": "cat .github/scripts/acceptance-readiness.cjs .github/scripts/review-register.cjs; git diff decd5f1..HEAD -- .github/scripts/review-acceptance.cjs .github/scripts/release-policy.cjs",
+      "exit_code": 0,
+      "purpose": "Trace acceptance prerequisites and register handling."
+    },
+    {
+      "command": "cat .github/scripts/coverage-provenance.cjs .github/scripts/os-scan-gate.cjs .github/scripts/image_lock_consistency.py",
+      "exit_code": 0,
+      "purpose": "Inspect coverage and dependency audit implementations."
+    },
+    {
+      "command": "cat .github/scripts/codex-fallback.cjs; git diff decd5f1..HEAD -- tests/codex_report_status.py tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect fallback and review machinery; output was truncated."
+    },
+    {
+      "command": "rg -n 'write-local|coverage-provenance|pytest' docs/review-checkpoint-record.md docs/codex-adversarial-review-contract.md; sed -n '1,240p' .github/scripts/ci-job-consistency.cjs",
+      "exit_code": 0,
+      "purpose": "Check coverage instructions and CI parsing."
+    },
+    {
+      "command": "sed -n '1,310p' tests/codex_review_run.py; sed -n '570,870p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect subprocess lifecycle, trust, and evidence handling."
+    },
+    {
+      "command": "sed -n '240,760p' .github/scripts/ci-job-consistency.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect required-job skip detection."
+    },
+    {
+      "command": "git diff decd5f1..HEAD -- tests/codex_report_status.py; sed -n '310,570p' tests/codex_review_run.py; sed -n '760,900p' .github/scripts/ci-job-consistency.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect report classification, PR trust verification, and CI simulation."
+    },
+    {
+      "command": "sed -n '1,220p' tests/test_codex_report_status.py; sed -n '1,160p' .github/scripts/coverage-provenance.test.cjs; cat .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Inspect validator fixtures, coverage assertions, and publication callers."
+    },
+    {
+      "command": "node --test .github/scripts/os-scan-gate.test.cjs .github/scripts/coverage-provenance.test.cjs .github/scripts/codex-fallback.test.cjs .github/scripts/acceptance-readiness.test.cjs",
+      "exit_code": 0,
+      "purpose": "Run targeted policy suites: 216 tests passed."
+    },
+    {
+      "command": "git diff decd5f1..HEAD -- tests/test_codex_report_status.py; rg -n 'first_program|trivial|echo|printf' tests/test_codex_report_status.py; sed -n '1,100p' .claude/schemas/codex-review-findings.schema.json",
+      "exit_code": 0,
+      "purpose": "Check hollow-report regression coverage and report shape."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'\nimport json\nfrom tests.codex_report_status import assess_report\nh, b = 'a'*40, 'b'*40\nr = dict(schema_version='2', inspected_head_sha=h, inspected_base_sha=b, pr_url='none (local checkpoint, not pushed)', scope='full diff', verdict='no-findings', summary='Reviewed', coverage=['full diff'], exclusions=[], findings=[], limitations=[], review_complete=True, incomplete_reasons=[])\nfor command in ['true', 'env true', 'command true', 'echo inspecting; git diff HEAD~1..HEAD']:\n    r['commands_run'] = [dict(command=command, exit_code=0, purpose='review')]\n    a = assess_report(json.dumps(r), exit_code=0, expected_head=h, expected_base=b, current_head=h, attempt=1)\n    print(command, a.status, a.reasons)\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt reproduction; shell could not create its heredoc temporary file."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -c 'import json; from tests.codex_report_status import assess_report\nh, b = \"a\"*40, \"b\"*40\nr = dict(schema_version=\"2\", inspected_head_sha=h, inspected_base_sha=b, pr_url=\"none (local checkpoint, not pushed)\", scope=\"full diff\", verdict=\"no-findings\", summary=\"Reviewed\", coverage=[\"full diff\"], exclusions=[], findings=[], limitations=[], review_complete=True, incomplete_reasons=[])\nfor command in [\"true\", \"env true\", \"command true\", \"echo inspecting; git diff HEAD~1..HEAD\"]:\n r[\"commands_run\"] = [dict(command=command, exit_code=0, purpose=\"review\")]\n a = assess_report(json.dumps(r), exit_code=0, expected_head=h, expected_base=b, current_head=h, attempt=1)\n print(command, a.status, a.reasons)'",
+      "exit_code": 0,
+      "purpose": "Reproduce wrapped no-op acceptance and compound inspection rejection."
+    },
+    {
+      "command": "nl -ba tests/codex_report_status.py | sed -n '68,89p'; git rev-parse HEAD; git status --short; git diff --name-only decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Locate finding, reconfirm snapshot, and inventory outstanding scope."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "low",
+      "title": "Classifying only the first shell token misgrades review evidence",
+      "file": "tests/codex_report_status.py",
+      "line_start": 81,
+      "line_end": 88,
+      "trigger": "A report records a wrapped no-op such as `env true`, or a compound inspection command beginning with `echo`.",
+      "execution_path": "assess_report filters commands with integer exit codes, calls _first_program, and compares only that first program against TRIVIAL_COMMANDS. Its status is consumed by the review runner and acceptance readiness.",
+      "consequence": "The new hollow-report guard accepts no-op-only evidence as complete, while legitimate compound inspection commands can incorrectly make a review incomplete.",
+      "evidence": "An otherwise valid report returned incomplete for `true`, complete for both `env true` and `command true`, and incomplete for `echo inspecting; git diff HEAD~1..HEAD`. Added tests cover simple commands and environment assignments, but neither wrappers nor compound shell commands.",
+      "suggested_fix": "Account for common execution wrappers and compound shell commands, or require structured per-command evidence. Add regression cases for both wrapped no-ops and compound commands containing actual inspection.",
+      "reproduced": true,
+      "reproduction_command": "PYTHONDONTWRITEBYTECODE=1 python3 -c 'import json; from tests.codex_report_status import assess_report\nh, b = \"a\"*40, \"b\"*40\nr = dict(schema_version=\"2\", inspected_head_sha=h, inspected_base_sha=b, pr_url=\"none (local checkpoint, not pushed)\", scope=\"full diff\", verdict=\"no-findings\", summary=\"Reviewed\", coverage=[\"full diff\"], exclusions=[], findings=[], limitations=[], review_complete=True, incomplete_reasons=[])\nfor command in [\"true\", \"env true\", \"command true\", \"echo inspecting; git diff HEAD~1..HEAD\"]:\n r[\"commands_run\"] = [dict(command=command, exit_code=0, purpose=\"review\")]\n a = assess_report(json.dumps(r), exit_code=0, expected_head=h, expected_base=b, current_head=h, attempt=1)\n print(command, a.status, a.reasons)'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; relied on the supplied exact-head harness evidence for its 2,688 passing tests.",
+    "Did not execute Docker builds, GitHub Actions, live acceptance operations, or publication.",
+    "The reproduction exercised the report validator directly, not a live acceptance run.",
+    "No files were edited, committed, pushed, or published."
+  ],
+  "review_complete": false,
+  "incomplete_reasons": [
+    "The initial full diff and plan diff exceeded output limits. This run ended without recovering and inspecting all truncated content.",
+    "All 27 changed *-PLAN.md files remain incompletely inspected: Phase 84 plans 01–07, Phase 85 plans 01–19, and the 261026-s2v activation plan.",
+    "Full inspection remains outstanding for the changed JavaScript tests, the plugin test tail, and Python tests other than the added test_codex_report_status.py cases. Passing targeted tests does not substitute for inspecting their assertions.",
+    "Full inspection remains outstanding for portions of tests/codex_review_run.py and surrounding release-policy.cjs implementation.",
+    "Full inspection remains outstanding for README.md, SECURITY.md, changed docs/*.md, uv.lock, .github/os-scan-exceptions.json, and .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-DEMO-NEGATIVE.patch."
+  ]
+}

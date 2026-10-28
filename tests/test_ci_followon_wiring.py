@@ -10,13 +10,7 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 CI_WORKFLOW = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
 UV_LOCK = (REPO_ROOT / "uv.lock").read_text()
-TOOL_PINS_TEXT = (
-    REPO_ROOT
-    / ".planning"
-    / "phases"
-    / "85-follow-on-ci-improvements-acceptance-usability"
-    / "85-TOOL-PINS-AND-BASELINE.md"
-).read_text()
+TOOL_PINS_PATH = REPO_ROOT / ".github" / "tool-pins.env"
 
 
 def _ci_workflow() -> dict:
@@ -132,10 +126,13 @@ def test_node_tests_include_planchk_router_by_explicit_path() -> None:
 
 
 def _tool_pin(name: str) -> str:
-    """Reads a pinned version/checksum from 85-TOOL-PINS-AND-BASELINE.md, so a value
-    change there (or in ci.yml) without touching the other fails this test."""
-    match = re.search(rf"^{name}=(\S+)$", TOOL_PINS_TEXT, re.MULTILINE)
-    assert match, f"{name} not found in 85-TOOL-PINS-AND-BASELINE.md"
+    """Reads a pinned version/checksum from .github/tool-pins.env, so a value
+    change there (or in ci.yml) without touching the other fails this test.
+
+    Read lazily, and from a tracked non-planning file, so archiving a phase's
+    planning directory can never break collection of this required suite."""
+    match = re.search(rf"^{name}=(\S+)$", TOOL_PINS_PATH.read_text(), re.MULTILINE)
+    assert match, f"{name} not found in {TOOL_PINS_PATH.relative_to(REPO_ROOT)}"
     return match.group(1)
 
 

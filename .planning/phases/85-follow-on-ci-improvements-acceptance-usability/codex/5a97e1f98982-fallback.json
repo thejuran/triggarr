@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "pr": 36,
+  "head": "5a97e1f98982b47672ba108e357a024e0f2a44e2",
+  "base": "decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+  "codex_out": ".planning/phases/85-follow-on-ci-improvements-acceptance-usability/codex/5a97e1f98982-phase85-pr-a2",
+  "reviewer": {
+    "name": "vibe-check deep review (owner-run)",
+    "kind": "vibe-check-deep-review"
+  },
+  "scope": {
+    "base": "decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+    "head": "5a97e1f98982b47672ba108e357a024e0f2a44e2",
+    "diff": "full"
+  },
+  "result": {
+    "status": "complete",
+    "summary": "vibe-check /deep-review of PR #36 at 5a97e1f over the Codex contract in-scope diff decd5f1..5a97e1f (58 code/workflow/doc/test files, 27 *-PLAN.md files, uv.lock); 8 lanes (bugs, security, architecture, impact, compliance, language-typescript, language-python, framework-skill). Every in-scope file was fully read by at least one lane (compliance: all 58 code files + uv.lock; architecture: all 27 plans; security/impact/bugs: all non-test code and workflows). No critical/warning; 2 medium (Dependabot-vs-hardcoded-SHA tests, readiness-vs-pinned-gate drift) and 23 sub-threshold. No safeguard weakened, no injection/secret/permission defect.",
+    "findings": [
+      {
+        "id": "bugs:bugs-001",
+        "severity": "medium",
+        "disposition": "deferred",
+        "note": ".github/scripts/acceptance-readiness.cjs:146 \u2014 CodeQL readiness fallback accepts one successful Analyze run while other language analyses failed [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-002",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/ci-job-consistency.cjs:592 \u2014 Node trigger reader silently drops trigger keys at any indent other than 4 spaces, or after a column-0 comment [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-003",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/ci-job-consistency.cjs:713 \u2014 continue-on-error detection misses quoted-key spellings that the new YAML key reader handles [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-004",
+        "severity": "low",
+        "disposition": "accepted",
+        "note": "tests/codex_review_run.py:145 \u2014 Local-checkpoint trust check rejects ordinary `git merge` and `git pull` merge commits made on this machine [accepted: fails closed / sensitive area with no demonstrated defect / intentional]"
+      },
+      {
+        "id": "bugs:bugs-005",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": "tests/codex_review_run.py:521 \u2014 A null author login from gh crashes trust verification with AttributeError instead of RunnerError [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-006",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": "tests/codex_review_run.py:1225 \u2014 Base-commit cross-grade reuses the head checker's CLI flags, so any new checker flag makes cross-grading always fail [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-007",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/coverage-provenance.cjs:216 \u2014 checkEvidence dereferences provenance.measured_trees without a guard [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-008",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/os-scan-gate.cjs:142 \u2014 A null entry in Trivy Results crashes classifyFindings outside any try [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-009",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/codex-fallback.cjs:346 \u2014 codexStatusFromOutput dereferences parsed meta without an object check [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "bugs:bugs-010",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/review-register.cjs:59 \u2014 upsertSlice can write a blockers register without global_open, which assess then treats as missing [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "security:sec-001",
+        "severity": "low",
+        "disposition": "accepted",
+        "note": "tests/codex_review_run.py:391 \u2014 LLM review-integrity risk: Codex reads attacker-influenceable diff content it is told to self-fetch [accepted: fails closed / sensitive area with no demonstrated defect / intentional]"
+      },
+      {
+        "id": "security:sec-002",
+        "severity": "low",
+        "disposition": "accepted",
+        "note": ".claude/plugins/planchk-router/hooks/register.js:274 \u2014 New local agent.spawn hook reroutes a BM subagent's model/backend \u2014 sensitive area, no demonstrated defect [accepted: fails closed / sensitive area with no demonstrated defect / intentional]"
+      },
+      {
+        "id": "architecture:arch-001",
+        "severity": "medium",
+        "disposition": "deferred",
+        "note": ".github/scripts/acceptance-readiness.cjs:11 \u2014 Readiness runs the working-tree gate, not the pinned gate commit, and no test ties the two together [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "architecture:arch-002",
+        "severity": "medium",
+        "disposition": "deferred",
+        "note": "tests/test_ci_followon_wiring.py:13 \u2014 Permanent CI test reads live tool pins from a phase planning evidence file at import time [fix before archiving the v2.13 milestone]"
+      },
+      {
+        "id": "architecture:arch-003",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": "tests/codex_review_run.py:1234 \u2014 Base-commit cross-grade re-runs only the checker, using arguments and a report produced by the head's own runner and prompt [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "architecture:arch-004",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": "docs/codex-adversarial-review-contract.md:40 \u2014 Fixed prompt v6 still describes a Codex run on untrusted sources, contradicting the interim refusal rule [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "architecture:arch-005",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/acceptance-readiness.cjs:17 \u2014 TRUSTED_AUTHORS is copied from the Python runner with no drift test, unlike AUDITED_INPUTS in the same file [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "architecture:arch-006",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".github/scripts/coverage-provenance.cjs:27 \u2014 MEASURED_PATHS is exported as a mutable array; plan 85-09 asked for it to be frozen [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "architecture:arch-007",
+        "severity": "low",
+        "disposition": "deferred",
+        "note": ".planning/quick/261026-s2v-activate-the-codex-routed-plan-checker-f/261026-s2v-PLAN.md:141 \u2014 Quick-task verify runs node --test on a directory, the form D-13 records as not recursing [backlog: .planning/backlog/MAINTENANCE.md]"
+      },
+      {
+        "id": "impact:impact-001",
+        "severity": "medium",
+        "disposition": "deferred",
+        "note": ".github/scripts/ci-job-consistency.test.cjs:564 \u2014 No-skip detector tests hardcode action commit SHAs, so every Dependabot actions bump of checkout or setup-buildx turns CI red [fix before the first Dependabot github-actions PR]"
+      },
+      {
+        "id": "impact:impact-002",
+        "severity": "medium",
+        "disposition": "deferred",
+        "note": "tests/test_ci_followon_wiring.py:13 \u2014 Required CI test reads a phase-85 planning file at import time, so archiving the v2.13 milestone breaks pytest collection [fix before archiving the v2.13 milestone]"
+      },
+      {
+        "id": "impact:impact-003",
+        "severity": "low",
+        "disposition": "accepted",
+        "note": "tests/test_ci_followon_wiring.py:349 \u2014 Hard-coded packaging==26.0 in ci.yml is locked to uv.lock's packaging version, so a lock refresh that moves packaging fails CI until ci.yml is edited [accepted: fails closed / sensitive area with no demonstrated defect / intentional]"
+      },
+      {
+        "id": "impact:impact-004",
+        "severity": "low",
+        "disposition": "accepted",
+        "note": ".github/workflows/ci.yml:417 \u2014 Required os-scan job downloads the Trivy database on every run with no cache, so a registry outage or rate-limit fails CI ready and blocks releases [accepted: fails closed / sensitive area with no demonstrated defect / intentional]"
+      },
+      {
+        "id": "impact:impact-005",
+        "severity": "low",
+        "disposition": "accepted",
+        "note": ".claude/plugins/planchk-router/hooks/guard.mjs:50 \u2014 Guard treats the env flag as proof that the routing hook loaded; the README admits the server-side gate can still leave the checker unrouted [accepted: fails closed / sensitive area with no demonstrated defect / intentional]"
+      },
+      {
+        "id": "compliance:compliance-001",
+        "severity": "low",
+        "disposition": "accepted",
+        "note": ".github/scripts/image_lock_consistency.py:25 \u2014 New script prints directly instead of using Loguru, citing a CLAUDE.md scope exception not stated in CLAUDE.md itself [accepted: fails closed / sensitive area with no demonstrated defect / intentional]"
+      }
+    ]
+  },
+  "owner_decision": {
+    "decision": "approve-fallback",
+    "verbatim": "Approve the vibe-check deep-review fallback for PR #36 at head 5a97e1f98982.",
+    "decided_at": "2026-10-28T19:37:04Z"
+  }
+}

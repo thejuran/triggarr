@@ -1,0 +1,199 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "5a97e1f98982b47672ba108e357a024e0f2a44e2",
+  "inspected_base_sha": "decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/36",
+  "scope": "Phase 85 PR #36 full requested range, including changed *-PLAN.md files. Inspection was partial.",
+  "verdict": "findings",
+  "summary": "One reproduced acceptance-readiness defect. Review incomplete: the full diff was not inspected. The 146 targeted Node tests passed; harness evidence reports 2,688 pytest tests passed on the requested head.",
+  "coverage": [
+    "Verified HEAD and existence of the requested base.",
+    "Inspected acceptance-readiness, fallback validation, register management, and acceptance gate implementation.",
+    "Inspected workflow changes for CI, release, and review acceptance, plus Dockerfile and Dependabot changes.",
+    "Inspected coverage provenance, OS-scan policy implementation, and image-lock comparison logic.",
+    "Inspected substantial portions of the review runner, report checker changes, and CI consistency detector.",
+    "Inspected selected acceptance/fallback regression tests and reproduced disagreement between fallback validation and readiness using injected evidence.",
+    "Read 85-14-PLAN.md in full and selected related plan passages.",
+    "Ran 146 acceptance-readiness and fallback tests successfully."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Raw review transcripts and generated review artifacts under .planning/**/codex/**.",
+    ".planning/**/*.jsonl.",
+    "Files outside this working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e decd5f1e6f1e649d3da79e6cd6db398d11aa1df9",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..5a97e1f98982b47672ba108e357a024e0f2a44e2 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read requested non-plan diff; output was truncated."
+    },
+    {
+      "command": "git diff decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..5a97e1f98982b47672ba108e357a024e0f2a44e2 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read changed plans; output was truncated."
+    },
+    {
+      "command": "git diff --stat decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory non-plan scope."
+    },
+    {
+      "command": "git diff --stat decd5f1e6f1e649d3da79e6cd6db398d11aa1df9..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory plan scope."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "git diff decd5f1..HEAD -- .github/workflows .github/dependabot.yml Dockerfile pyproject.toml .gitignore .github/scripts/review-acceptance.cjs .github/scripts/release-policy.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect workflow, dependency, packaging, and gate changes."
+    },
+    {
+      "command": "cat .github/scripts/acceptance-readiness.cjs .github/scripts/review-register.cjs",
+      "exit_code": 0,
+      "purpose": "Trace readiness and register operations."
+    },
+    {
+      "command": "cat .github/scripts/codex-fallback.cjs .github/scripts/os-scan-gate.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect fallback and vulnerability policy validation."
+    },
+    {
+      "command": "cat .github/scripts/coverage-provenance.cjs .github/scripts/image_lock_consistency.py",
+      "exit_code": 0,
+      "purpose": "Inspect provenance and image dependency checks; combined tool output was truncated."
+    },
+    {
+      "command": "git diff decd5f1..HEAD -- .github/scripts/ci-job-consistency.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect skip detection changes; combined tool output was truncated."
+    },
+    {
+      "command": "rg -n 'write-local|coverage|validateFallback|fallback' docs/review-checkpoint-record.md docs/codex-adversarial-review-contract.md docs/ci-negative-demonstrations.md .github/scripts/coverage-provenance.test.cjs",
+      "exit_code": 0,
+      "purpose": "Check documented evidence and fallback requirements."
+    },
+    {
+      "command": "git diff decd5f1..HEAD -- tests/codex_report_status.py tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect review machinery changes; output was truncated."
+    },
+    {
+      "command": "sed -n '1,260p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner configuration and subprocess handling."
+    },
+    {
+      "command": "sed -n '261,570p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect command construction and PR trust checks."
+    },
+    {
+      "command": "sed -n '571,930p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect local trust, redaction, evidence, and metadata."
+    },
+    {
+      "command": "sed -n '1160,1245p' tests/codex_review_run.py; sed -n '435,505p' tests/codex_report_status.py; sed -n '140,247p' .github/scripts/image_lock_consistency.py",
+      "exit_code": 0,
+      "purpose": "Trace cross-grading, report completeness, and image comparison."
+    },
+    {
+      "command": "cat .github/workflows/review-acceptance.yml; cat .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding acceptance and publication workflow."
+    },
+    {
+      "command": "sed -n '1,220p' .github/scripts/codex-fallback.test.cjs; sed -n '108,121p' docs/codex-adversarial-review-contract.md; rg -n 'finding|summary|severity|note' .github/scripts/codex-fallback.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect fallback fixtures and validation assertions."
+    },
+    {
+      "command": "sed -n '1,105p' .github/scripts/acceptance-readiness.test.cjs; sed -n '300,375p' .github/scripts/codex-fallback.test.cjs; nl -ba .github/scripts/codex-fallback.cjs | sed -n '238,270p'",
+      "exit_code": 0,
+      "purpose": "Inspect readiness fixtures and nested record validation."
+    },
+    {
+      "command": "rg -n 'base checker|baseStatus|cross.grad|grader changed' .github/scripts/acceptance-readiness.test.cjs docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Locate cross-grade regression coverage."
+    },
+    {
+      "command": "node <<'NODE'\nconst {runCli}=require('./.github/scripts/codex-fallback.cjs');\nconst {codexStatusFor}=require('./.github/scripts/acceptance-readiness.cjs');\nconst head='a'.repeat(40), base='b'.repeat(40);\nconst out='.planning/phases/85-example/codex/aaaaaaaaaaaa-task-a2';\nconst fallback={schema:1,pr:90,head,base,codex_out:out,reviewer:{name:'vibe-check deep review',kind:'vibe-check-deep-review'},scope:{head,base,diff:'full'},result:{status:'complete',summary:'Independent review of the full range completed.',findings:[]},owner_decision:{decision:'approve-fallback',verbatim:'I approve the fallback for '+head,decided_at:'2026-10-28T12:00:00Z'}};\nconst meta={head,base,attempt:2,review_mode:'trusted-local-tests',audited_inputs_changed_in_diff:['tests/codex_report_status.py']};\nconst status={status:'complete',inspected_head:head,inspected_base:base};\nconst baseStatus={status:'incomplete',reasons:['base checker could not run: OSError']};\nconst files={'fallback.json':fallback,[out+'.meta.json']:meta,[out+'.status.json']:status,[out+'.base-status.json']:baseStatus};\nconst exit=runCli(['validate','--file','fallback.json','--pr','90','--head',head,'--base',base,'--pr-author','thejuran','--head-trust','trusted','--codex-out',out],{readFileSync:p=>JSON.stringify(files[p]),log:console.log,error:console.error});\nconsole.log('fallback validator exit:',exit);\nconsole.log('readiness:',codexStatusFor({head,base,pr:90,prAuthor:'thejuran',headTrust:'trusted',meta,status,baseStatus,out,fallback}));\nNODE",
+      "exit_code": 1,
+      "purpose": "Attempt reproduction; shell could not create heredoc temporary file."
+    },
+    {
+      "command": "sed -n '220,255p' .github/scripts/acceptance-readiness.test.cjs; nl -ba .github/scripts/acceptance-readiness.cjs | sed -n '92,117p'; node --test .github/scripts/acceptance-readiness.test.cjs .github/scripts/codex-fallback.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect premature return and run targeted tests: 146 passed."
+    },
+    {
+      "command": "node -e 'const {runCli}=require(\"./.github/scripts/codex-fallback.cjs\"); const {codexStatusFor}=require(\"./.github/scripts/acceptance-readiness.cjs\"); const head=\"a\".repeat(40),base=\"b\".repeat(40),out=\".planning/phases/85-example/codex/aaaaaaaaaaaa-task-a2\"; const fallback={schema:1,pr:90,head,base,codex_out:out,reviewer:{name:\"vibe-check deep review\",kind:\"vibe-check-deep-review\"},scope:{head,base,diff:\"full\"},result:{status:\"complete\",summary:\"Independent review of the full range completed.\",findings:[]},owner_decision:{decision:\"approve-fallback\",verbatim:\"I approve the fallback for \"+head,decided_at:\"2026-10-28T12:00:00Z\"}}; const meta={head,base,attempt:2,review_mode:\"trusted-local-tests\",audited_inputs_changed_in_diff:[\"tests/codex_report_status.py\"]},status={status:\"complete\",inspected_head:head,inspected_base:base},baseStatus={status:\"incomplete\",reasons:[\"base checker could not run: OSError\"]}; const files={\"fallback.json\":fallback,[out+\".meta.json\"]:meta,[out+\".status.json\"]:status,[out+\".base-status.json\"]:baseStatus}; console.log(\"validator exit:\",runCli([\"validate\",\"--file\",\"fallback.json\",\"--pr\",\"90\",\"--head\",head,\"--base\",base,\"--pr-author\",\"thejuran\",\"--head-trust\",\"trusted\",\"--codex-out\",out],{readFileSync:p=>JSON.stringify(files[p]),log:console.log,error:console.error})); console.log(\"readiness:\",codexStatusFor({head,base,pr:90,prAuthor:\"thejuran\",headTrust:\"trusted\",meta,status,baseStatus,out,fallback}));'",
+      "exit_code": 0,
+      "purpose": "Reproduce validator success and readiness rejection for identical evidence."
+    },
+    {
+      "command": "rg -n 'fallback|base.checker|cross.grad' .planning/phases/85*/*-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Check plan intent; output was truncated."
+    },
+    {
+      "command": "git diff --name-only decd5f1..HEAD -- ':(glob).planning/**/*-PLAN.md'; git status --short",
+      "exit_code": 0,
+      "purpose": "Inventory changed plans and verify working-copy status."
+    },
+    {
+      "command": "cat .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-14-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Read complete fallback/readiness plan and confirm shared-validator requirement."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Allow validated fallback after an incomplete base cross-grade",
+      "file": ".github/scripts/acceptance-readiness.cjs",
+      "line_start": 96,
+      "line_end": 98,
+      "trigger": "A trusted review reaches attempt 2 with the head-side checker complete but the required base checker incomplete, followed by a valid owner-approved independent fallback for that same head and base.",
+      "execution_path": "The runner returns failure when the base cross-grade fails. codex-fallback.cjs computes the combined review as incomplete and accepts its fallback. acceptance-readiness.cjs calls codexStatusFor(), which returns at lines 96–98 before reaching validateFallback().",
+      "consequence": "The documented recovery path remains blocked even after successful fallback validation and owner approval. A base-checker execution failure or incompatible checker upgrade can prevent acceptance indefinitely.",
+      "evidence": "An in-memory reproduction using a bound head-side complete status, attempt 2, a base-side incomplete status, and a valid fallback printed 'fallback valid' with validator exit 0, then readiness returned ok:false with 'the base commit’s checker did not confirm completeness'. Plan 85-14 requires incomplete trusted runs to use the shared fallback validator. The existing changed-grader test supplies no fallback, so all 146 targeted tests pass without detecting this case.",
+      "suggested_fix": "Treat a missing or incomplete required base grade as combined incompleteness and continue into fallback validation. Preserve rejection of mismatched evidence identities. Add a regression asserting that the validator and readiness agree for attempt 2 with an incomplete base grade and valid fallback, while no fallback still blocks.",
+      "reproduced": true,
+      "reproduction_command": "node -e 'const {runCli}=require(\"./.github/scripts/codex-fallback.cjs\"); const {codexStatusFor}=require(\"./.github/scripts/acceptance-readiness.cjs\"); const head=\"a\".repeat(40),base=\"b\".repeat(40),out=\".planning/phases/85-example/codex/aaaaaaaaaaaa-task-a2\"; const fallback={schema:1,pr:90,head,base,codex_out:out,reviewer:{name:\"vibe-check deep review\",kind:\"vibe-check-deep-review\"},scope:{head,base,diff:\"full\"},result:{status:\"complete\",summary:\"Independent review of the full range completed.\",findings:[]},owner_decision:{decision:\"approve-fallback\",verbatim:\"I approve the fallback for \"+head,decided_at:\"2026-10-28T12:00:00Z\"}}; const meta={head,base,attempt:2,review_mode:\"trusted-local-tests\",audited_inputs_changed_in_diff:[\"tests/codex_report_status.py\"]},status={status:\"complete\",inspected_head:head,inspected_base:base},baseStatus={status:\"incomplete\",reasons:[\"base checker could not run: OSError\"]}; const files={\"fallback.json\":fallback,[out+\".meta.json\"]:meta,[out+\".status.json\"]:status,[out+\".base-status.json\"]:baseStatus}; console.log(\"validator exit:\",runCli([\"validate\",\"--file\",\"fallback.json\",\"--pr\",\"90\",\"--head\",head,\"--base\",base,\"--pr-author\",\"thejuran\",\"--head-trust\",\"trusted\",\"--codex-out\",out],{readFileSync:p=>JSON.stringify(files[p]),log:console.log,error:console.error})); console.log(\"readiness:\",codexStatusFor({head,base,pr:90,prAuthor:\"thejuran\",headTrust:\"trusted\",meta,status,baseStatus,out,fallback}));'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; relied on harness evidence tied to the requested head.",
+    "Reproduction used injected in-memory evidence and performed no GitHub writes.",
+    "Did not exercise live GitHub Actions, container builds, scanner downloads, or release publication.",
+    "No files were edited, committed, pushed, or published."
+  ],
+  "review_complete": false,
+  "incomplete_reasons": [
+    "Initial full-diff outputs were truncated, and file-by-file inspection of the entire 58-file non-plan scope and 27-plan scope was not completed.",
+    "Only 85-14-PLAN.md was read completely; the other 26 changed plans were not fully inspected.",
+    "Changed Python regression suites and most changed Node test files were not fully inspected; selected acceptance/fallback tests were inspected and executed.",
+    "The CI consistency detector and review runner/checker changes were inspected substantially but not exhaustively after truncated diff output.",
+    "Remaining documentation diffs, uv.lock, the negative demonstration patch, and the complete plugin test diff were not fully inspected."
+  ]
+}

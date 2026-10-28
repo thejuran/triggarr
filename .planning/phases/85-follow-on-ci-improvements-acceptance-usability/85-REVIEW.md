@@ -1,48 +1,51 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-reviewed: 2026-10-28T19:09:46Z
-reviewed_head: 2f2e8fceb11bb603c9f85aef3694d6d68feb106f
-diff_base: 7ee594a3caf19c1bebff923c69b09b821bdd212f
-iteration: 8
+reviewed: 2026-10-28T20:12:00Z
+reviewed_head: 3b3713b7eebe288c702a2c0d4fb4e50398e013c3
+diff_base: 030931395f558a7dde7170fd2244902e9335b6e4
+iteration: 9
 depth: standard
-files_reviewed: 2
+files_reviewed: 3
 files_reviewed_list:
-  - tests/codex_review_run.py
-  - tests/test_codex_review_run.py
+  - .github/scripts/ci-job-consistency.test.cjs
+  - .github/tool-pins.env
+  - tests/test_ci_followon_wiring.py
 findings:
   critical: 0
   warning: 0
-  info: 4
-  total: 4
+  info: 5
+  total: 5
 status: issues_found
 ---
 
-# Phase 85: Code Review Report (iteration 8, confirming the Codex F001 fix)
+# Phase 85: Code Review Report (iteration 9, post-merge CI-trap fixes)
 
-**Reviewed:** 2026-10-28T19:09:46Z (head `2f2e8fceb11bb603c9f85aef3694d6d68feb106f`, diff base `7ee594a3caf19c1bebff923c69b09b821bdd212f`)
+**Reviewed:** 2026-10-28T20:12:00Z (head `3b3713b7eebe288c702a2c0d4fb4e50398e013c3`, diff base `030931395f558a7dde7170fd2244902e9335b6e4`)
 **Depth:** standard
-**Files Reviewed:** 2
+**Files Reviewed:** 3
 **Status:** issues_found (info only; no new blocker or warning)
 
 ## Summary
 
-Scope: `git diff 7ee594a..2f2e8fc`, which is commit 2f2e8fc only. It changes `_with_drain_marker` in `tests/codex_review_run.py` and adds two tests. I read `run_command`, `_run_pytest` and `_run_codex` in full for context.
+Scope: `git diff 0309313..3b3713b -- .github/ tests/`, which is commits b0e1ee4 and 3b3713b. The other commits on `ci-traps` (8c58da6, d2ca91b, ece43ab, 42a6529, db57caa, 5213f02) change `.planning/` only and are out of scope.
 
 Verification on this tree:
-- `uv run pytest tests/test_codex_review_run.py -q`: 153 passed
-- `-k drain` run 5 times in a row: 3 passed every time (about 12 s each)
+- `node --test .github/scripts/ci-job-consistency.test.cjs`: 87 passed
+- `uv run pytest tests/test_ci_followon_wiring.py -q`: 18 passed
 - `uv run ruff check tests/`: clean
-- `gsd-tools verify conventions --check` on both files: no findings
-- **Proof that the tests catch the bug:** I copied the new test file onto a worktree at 7ee594a (the code before the fix). Both new tests fail there with `TypeError: can't concat str to bytes` at `codex_review_run.py:214`. The older `test_post_kill_drain_is_bounded` passes on both versions. Its child prints nothing, so `drain_exc.stdout` is `None` and the faulty concatenation never ran. That explains how F001 got past the earlier tests.
+- `gsd-tools verify conventions --check` on all three files: no findings
 
-**Codex F001 is fixed.** The cause was this: CPython's `communicate()` builds `TimeoutExpired.output` from raw byte chunks even in text mode. Before the fix, any text-mode drain timeout that had captured some output raised `TypeError` from inside run_command's `except` handler. `_run_pytest` catches only `TimeoutExpired` and `OSError`, so the runner crashed instead of writing pytest evidence that says "timed out". Now the bytes are decoded first, and the result is the caller's type in all four combinations (bytes or str or None, text or binary mode). The new end-to-end test uses a child that prints and then leaves behind a detached grandchild holding the pipe. That is the real F001 trigger, and the test passes.
+**b0e1ee4 (regex anchors): fixed, and both negative tests still catch what they should.**
+- `mutate()` still asserts that `from` is in the text and that the text changed. `findAnchor()` returns the literal matched text, so `from` is built from real file content and the `includes` check passes only if the step is really there. If the anchor regex stops matching (for example a pin moves to a bare tag), `findAnchor` fails loudly. It cannot quietly do nothing.
+- I simulated a Dependabot bump. I replaced both pinned SHAs with dummy 40-hex values and changed the checkout comment to `# v6.1.0`, then ran the same anchor and mutation logic. The anchors matched, the mutated text differed from the original, and `findSkipConditions` reported exactly the expected reasons: `required job "acceptance" sets continue-on-error`, and `required job "docker" step if: not on the reviewed allowlist: "Check PR title"`. The unmutated real files return `[]` (tests at lines 237 and 244). So each assertion depends on the mutation.
+- The mutations hit the right steps. `review-acceptance.yml` has one `actions/checkout` step, at line 26 inside job `acceptance`, followed directly by `with:`. In `ci.yml`, the `Set up Docker Buildx` step name appears only once, inside job `docker` (line 122-123). The inserted step goes right after it, so it stays inside `docker`.
+- `String.prototype.replace` with a string pattern reads `$&`, `$1` and similar in the replacement string as special codes. Neither anchor nor either inserted step contains a `$`, so this cannot happen here.
 
-Regression checks on the timeout paths:
-- **First timeout, drain succeeds:** unchanged. `exc.stdout` comes from the second `communicate()`, which decodes it correctly. The partial output the first call had already read is kept, because CPython stores it on the Popen object, so the drain returns everything. The new test confirms this: `"pytest progress"` is printed before the kill and still appears in the result.
-- **First timeout, drain times out:** `exc.stdout` is now `str` in text mode, so `_run_pytest`'s `isinstance(captured, bytes)` branch is no longer needed but still safe. The original `exc` is re-raised, so callers still see the first timeout's `timeout` value.
-- **`_run_codex`:** passes `stdout=events` (a file), so `drain_exc.stdout` is `None`. It gets the marker only and ignores it. No change in behavior.
-- **`BaseException` branch and `Popen.__exit__`:** not touched. `__exit__`'s unbounded `wait()` comes after the group kill, so it only waits for the already-killed direct child, not the detached grandchild. No new hang.
-- **Binary-mode branch** (`str` → encoded): no current caller can reach it. It is harmless and covered by the unit test.
+**3b3713b (pins file): fixed, and the values match.**
+- The four values in `.github/tool-pins.env` are identical to `ci.yml` (`TRIVY_VERSION` 0.76.1 / `TRIVY_SHA256` c7cbe313…39d9c0 at lines 395-396; `ACTIONLINT_VERSION` 1.7.12 / `ACTIONLINT_SHA256` 8aca8db9…49a3d8 at lines 214-215). They are also identical to the evidence key=value lines in `85-TOOL-PINS-AND-BASELINE.md` lines 8-11.
+- The file is no longer read at import time: `_tool_pin` reads it inside the call. Nothing else in the repo still reads `85-TOOL-PINS-AND-BASELINE.md`, so moving the phase-85 directory cannot break collection or these tests.
+- The regex `^{name}=(\S+)$` with MULTILINE cannot match the `#` comment lines. A CRLF-saved file would fail loudly rather than return a value that includes `\r`.
+- Editing only one of `ci.yml` or `tool-pins.env` still fails the test, so a pin bump must change both. Because it changes `ci.yml`, the PR is still classed as sensitive, as the file header says.
 
 ## Structural Findings (fallow)
 
@@ -52,22 +55,21 @@ No structural findings were provided for this run.
 
 ## Info
 
-### IN-03: The drain-timeout fallback decodes as UTF-8 and ignores the caller's `encoding`, `errors` and newline handling
+### IN-05: The pins file header points to evidence in a phase folder that will be archived, and nothing checks its "checked" date
 
-**File:** `tests/codex_review_run.py:211-222`
-**Issue:** When the drain succeeds, Python decodes the output with the caller's `encoding` (default: the locale encoding) and `errors`, and converts `\r\n` to `\n`. When the drain times out, the new fallback always decodes as UTF-8 with `errors="replace"` and keeps `\r\n` as is. So the same pytest output can come out slightly differently depending on which path ran. The code comment says "like every other captured output", which is true for `_run_pytest` (`errors="replace"`, and the locale is UTF-8 on the macOS and Linux runners), but not in general. Today this has no effect: the only text-mode caller with a pipe is `_run_pytest`, its output is close to ASCII, and a stray `\r` only affects how the evidence file looks.
-**Fix:** Pass the caller's settings through so the fallback matches what `communicate()` would have returned, or narrow the comment:
-```python
-encoding = kwargs.get("encoding") or "utf-8"
-errors = kwargs.get("errors") or "replace"
-output = output.decode(encoding, errors).replace("\r\n", "\n").replace("\r", "\n")
-```
+**File:** `.github/tool-pins.env:1-5`
+**Issue:** The header names `.planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-TOOL-PINS-AND-BASELINE.md` as the evidence and says "checked 2026-10-27". The commit's own purpose is that the phase folder will be archived, and once it is, this pointer leads nowhere. Also, a later pin bump only has to change the two value lines to pass the test. The header (date and evidence pointer) can stay stale, and the file would still call values "verified" that nobody re-checked. The test only proves that `ci.yml` and the file agree. It cannot prove that anyone verified the values. The test docstring states this correctly, but the header implies more. There is no runtime effect.
+**Fix:** Change the header to point at something that survives archiving, and say what a bump must record. For example: `# Evidence for each bump: the PR that changes these lines must link the release page and checksum source. Original verification: Phase 85 plan 85-12 (archived with milestone v2.13).` Alternatively, add a `TOOL_PINS_CHECKED=YYYY-MM-DD` key and have the pin-bump checklist require updating it.
 
-### IN-04: The new end-to-end test assumes the child prints within one second
+### IN-03 (carried from iteration 8): The drain-timeout fallback decodes as UTF-8 and ignores the caller's `encoding`, `errors` and newline handling
 
-**File:** `tests/test_codex_review_run.py:2079-2111`
-**Issue:** `timeout=1.0` has to cover three things before the kill: the child interpreter starting, the child's `Popen` of the grandchild, and the print. Locally this takes well under the limit (5 of 5 runs passed). On a heavily loaded CI runner, two Python start-ups can get close to a second. If they do, `"pytest progress"` is missing and the test fails even though the code is fine. The test still catches the F001 regression either way, because the `TypeError` needs the child to have printed something.
-**Fix:** Print before starting the grandchild, and/or raise `timeout` to about 3 s. The drain is already limited to 0.5 s, so the test's run time barely changes.
+**File:** `tests/codex_review_run.py:211-222` (not in this round's scope)
+**Issue:** Recorded as in iteration 8. Not re-raised.
+
+### IN-04 (carried from iteration 8): The new end-to-end test assumes the child prints within one second
+
+**File:** `tests/test_codex_review_run.py:2079-2111` (not in this round's scope)
+**Issue:** Recorded as in iteration 8. Not re-raised.
 
 ### IN-01 (carried from iteration 7, owner left out of scope): The Node detector's quoted-key support misses YAML escape spellings
 
@@ -88,19 +90,30 @@ output = output.decode(encoding, errors).replace("\r\n", "\n").replace("\r", "\n
 
 ## Set aside (needs ruling)
 
-### SA-07: When stderr is not captured, `exc.stderr` gets a made-up drain marker
+### SA-08: The same archive trap exists for phase 83's recorded Codex evidence
 
-**Where:** `tests/codex_review_run.py:262`
-**Why excluded:** This was already the behavior before this commit, and nothing reads the value. With `stderr=subprocess.STDOUT` (pytest) or no stderr pipe (codex), `drain_exc.stderr` is `None`, and `_with_drain_marker` turns it into a bare marker string.
-**Effect if left as is:** None today. A future caller that checks `exc.stderr` would see a "truncated" message for a stream that was never captured.
-**Needs:** No ruling needed unless the owner wants it tidied. The fix is to apply the marker only when the stream was piped: `if drain_exc.stderr is not None or kwargs.get("stderr") == subprocess.PIPE`.
+**Where:** `tests/test_codex_report_status.py:483-494`, `tests/test_codex_review_run.py:41`
+**Why excluded:** These files are outside this round's file scope. Commit 5213f02 already records the trap in `.planning/backlog/MAINTENANCE.md:114`. `_CODEX_DIR` is only a path at import time, and the file is read inside `_assess_recorded`. So archiving phase 83 makes those tests fail at run time, not at collection, and the failure is loud.
+**Effect if left as is:** Archiving milestone v2.13 before the fixtures move turns `test` red on main. Every PR, including Dependabot's, would then fail until someone fixes it. This is the same kind of harm b0e1ee4 just fixed.
+**Needs:** Owner ruling on timing. My recommendation is to move the fixtures to `tests/fixtures/` before the milestone archive step, as the backlog item says.
+
+### SA-09: `.github/tool-pins.env` is not on the sensitive-path list
+
+**Where:** `docs/review-classification-policy.md:14` (lists `.github/workflows/**` and `.github/scripts/**`, not the other files under `.github/`)
+**Why excluded:** Today a real pin change has to touch `ci.yml`, so the PR is classed as sensitive anyway, and an edit to the pins file alone fails CI. No gap exists today.
+**Effect if left as is:** None, as long as the cross-check test exists. If that test were ever removed or weakened, a pins-file-only PR could be classed as ordinary.
+**Needs:** No ruling needed unless the owner wants the policy to name `.github/tool-pins.env` (and `.github/os-scan-exceptions.json`, `.github/dependabot.yml`) explicitly.
+
+### SA-07 (carried from iteration 8): When stderr is not captured, `exc.stderr` gets a made-up drain marker
+
+Unchanged from `85-REVIEW.iter8.md`.
 
 ### SA-01 to SA-06 (carried from iteration 7)
 
-Unchanged from `85-REVIEW.iter7.md`: SA-01 (acceptance runs on the gate it introduces), SA-02 (register schema cutover strands open PRs), SA-03 (Dependabot `uv` has no cooldown), SA-04 (a runner-changing PR can certify its own base cross-grade; owner-recorded follow-up), SA-05 (reusable workflows and local actions are not inspected; owner-recorded follow-up), SA-06 (digit splitting creates initial-like false positives; inside the accepted residual). This commit does not touch any of them.
+Unchanged from `85-REVIEW.iter7.md`: SA-01 (acceptance runs on the gate it introduces), SA-02 (register schema cutover strands open PRs), SA-03 (Dependabot `uv` has no cooldown), SA-04 (a runner-changing PR can certify its own base cross-grade; owner-recorded follow-up), SA-05 (reusable workflows and local actions are not inspected; owner-recorded follow-up), SA-06 (digit splitting creates initial-like false positives; inside the accepted residual). These commits do not touch any of them.
 
 ---
 
-_Reviewed: 2026-10-28T19:09:46Z_
+_Reviewed: 2026-10-28T20:12:00Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
