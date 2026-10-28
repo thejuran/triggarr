@@ -23,7 +23,7 @@ jobs:
       # Pinned in Phase 85 to the schema-2 keyed gate (registers keyed by PR and
       # head). This PR's own acceptance run uses this pin, so the gate change is
       # disclosed and independently inspected.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: 8df9eaf9d68ad0e5fce469ef8393d05bb4ba3fc3
           persist-credentials: false
