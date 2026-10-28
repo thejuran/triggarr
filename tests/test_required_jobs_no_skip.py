@@ -35,6 +35,11 @@ acceptance" are each the check name (job ``name:``, or job id when it has no
 name) of exactly one job, the one in ``ci.yml`` or ``review-acceptance.yml``
 (review iteration 4 WR-03).
 
+It also checks each workflow's parsed ``on:`` block against its reviewed
+trigger contract (``CI_TRIGGER_CONTRACT`` and ``ACCEPTANCE_TRIGGER_CONTRACT``):
+exactly the contracted triggers, branches and types, and no ``paths``,
+``paths-ignore``, ``branches-ignore`` or ``tags-ignore`` in any spelling.
+
 It also cross-checks the job sets, so a job dropped from a required check
 fails: ``ci-ready``'s ``needs`` must equal ``ALL_JOBS`` from
 ``tests/test_ci_gate.py``, and ``review-acceptance.yml`` must hold exactly the
@@ -75,6 +80,14 @@ ACCEPTANCE_TRIGGER_CONTRACT = {
         "branches": ("main",),
         "types": ("opened", "ready_for_review", "reopened", "synchronize"),
     },
+}
+# ci.yml's reviewed trigger contract: exactly what ci.yml declares today. Same
+# triggers and branches as TRIGGER_CONTRACTS['ci.yml'] in ci-job-consistency.cjs,
+# but stricter: ci.yml sets no types:, so GitHub's default types apply, and any
+# types: key is rejected here (Node accepts one that includes the defaults).
+CI_TRIGGER_CONTRACT = {
+    "push": {"branches": ("main",)},
+    "pull_request": {"branches": ("main",)},
 }
 # Trigger keys that let a PR skip the workflow entirely. Mirrors
 # TRIGGER_FILTER_KEYS in ci-job-consistency.cjs.
@@ -245,6 +258,7 @@ def ci_problems(text: str) -> list[str]:
     if AGGREGATE_JOB not in jobs:
         return [f'ci.yml aggregate job "{AGGREGATE_JOB}" not found']
 
+    problems.extend(trigger_problems("ci.yml", workflow_triggers(doc), CI_TRIGGER_CONTRACT))
     needs = _needs(jobs[AGGREGATE_JOB])
     if sorted(map(str, needs)) != sorted(ALL_JOBS):
         problems.append(f"ci.yml {AGGREGATE_JOB} needs {needs!r} must be exactly {sorted(ALL_JOBS)!r}")
@@ -269,14 +283,22 @@ def acceptance_trigger_problems(triggers: Any) -> list[str]:
     PyYAML-parsed mapping, so a quoted key (``"paths":``) is the same key as a
     bare one and cannot hide a filter (review pass 2).
     """
-    prefix = "review-acceptance.yml on:"
+    return trigger_problems("review-acceptance.yml", triggers, ACCEPTANCE_TRIGGER_CONTRACT)
+
+
+def trigger_problems(path_name: str, triggers: Any, contracts: dict[str, dict[str, tuple[str, ...]]]) -> list[str]:
+    """Check a workflow's parsed ``on:`` block against a trigger contract.
+
+    ``contracts`` maps each allowed trigger to its required keys and their exact
+    values. Any other trigger, any other key, and any filter key are problems.
+    """
+    prefix = f"{path_name} on:"
     if not isinstance(triggers, dict):
-        return [f"{prefix} must be a mapping with exactly {sorted(ACCEPTANCE_TRIGGER_CONTRACT)!r}"]
+        return [f"{prefix} must be a mapping with exactly {sorted(contracts)!r}"]
     problems = []
-    if set(triggers) != set(ACCEPTANCE_TRIGGER_CONTRACT):
-        expected_triggers = sorted(ACCEPTANCE_TRIGGER_CONTRACT)
-        problems.append(f"{prefix} triggers {list(triggers)!r} must be exactly {expected_triggers!r}")
-    for name, contract in ACCEPTANCE_TRIGGER_CONTRACT.items():
+    if set(triggers) != set(contracts):
+        problems.append(f"{prefix} triggers {list(triggers)!r} must be exactly {sorted(contracts)!r}")
+    for name, contract in contracts.items():
         if name not in triggers:
             continue
         spec = triggers[name]
@@ -409,6 +431,38 @@ def test_acceptance_extra_trigger_or_unknown_key_is_rejected() -> None:
     assert any(p.startswith("review-acceptance.yml on: triggers") for p in acceptance_problems(renamed))
     unknown = _mutate(ACCEPTANCE_TEXT, ACCEPTANCE_BRANCHES, f"{ACCEPTANCE_BRANCHES}    branch: [dev]\n")
     assert "review-acceptance.yml on: pull_request has unsupported key 'branch'" in acceptance_problems(unknown)
+
+
+# --- review pass 3: ci.yml's trigger contract ---------------------------------
+
+CI_PUSH = "  push:\n    branches: [main]\n"
+CI_PULL_REQUEST = "  pull_request:\n    branches: [main]\n"
+
+
+def test_real_ci_workflow_triggers_match_the_contract() -> None:
+    assert trigger_problems("ci.yml", workflow_triggers(load_workflow(CI_TEXT)), CI_TRIGGER_CONTRACT) == []
+
+
+@pytest.mark.parametrize(("anchor", "trigger"), [(CI_PUSH, "push"), (CI_PULL_REQUEST, "pull_request")])
+@pytest.mark.parametrize("key", ["paths", '"paths"', "'paths'", "paths-ignore", "branches-ignore", '"tags-ignore"'])
+def test_ci_trigger_filter_in_any_spelling_is_rejected(anchor: str, trigger: str, key: str) -> None:
+    mutated = _mutate(CI_TEXT, anchor, f'{anchor}    {key}: ["triggarr/**"]\n')
+    bare = key.strip("\"'")
+    assert f"ci.yml on: {trigger}.{bare} lets a PR skip required jobs" in ci_problems(mutated)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        (CI_PUSH, "  push:\n    branches: [main, dev]\n", "ci.yml on: push.branches"),
+        (CI_PULL_REQUEST, "  pull_request:\n", "ci.yml on: pull_request"),
+        (CI_PULL_REQUEST, f"{CI_PULL_REQUEST}    types: [opened]\n", "ci.yml on: pull_request has unsupported key"),
+        (CI_PUSH, "", "ci.yml on: triggers"),
+        (CI_PUSH, f"{CI_PUSH}  workflow_dispatch:\n", "ci.yml on: triggers"),
+    ],
+)
+def test_ci_trigger_contract_must_be_exact(old: str, new: str, expected: str) -> None:
+    assert any(p.startswith(expected) for p in ci_problems(_mutate(CI_TEXT, old, new)))
 
 
 # --- CR-01: continue-on-error in any spelling --------------------------------
