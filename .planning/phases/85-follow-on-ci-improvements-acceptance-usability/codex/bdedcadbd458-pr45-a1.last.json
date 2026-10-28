@@ -1,0 +1,113 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "bdedcadbd458b9cd2cc7759c534c551420730471",
+  "inspected_base_sha": "5592e4ef6e137c713d792754e99fb4785e9fdd6f",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/45",
+  "scope": "PR #45: Phase 85 follow-up (archive-safe Codex runner/checker tests), including the requested scoped diff and changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. Inspected all seven changed files; no phase plans changed. All five report fixtures match their originals byte-for-byte. Seven recorded-report tests passed independently; exact-head harness evidence records 2,688 passed.",
+  "coverage": [
+    "Full in-scope diff, recovering initially truncated content through subsequent reads.",
+    "Recorded-report fixture contents, byte identity, legacy-v1 opt-in, and complete/incomplete assessment assertions.",
+    "Per-test phase-directory creation, monkeypatch restoration, output naming, checker arguments, and archive independence.",
+    "Untrusted-source refusal, overwrite protection, fake-runner orchestration, subprocess import paths, signal handling, and partial-output cleanup.",
+    "Security and policy implications: no production runner, checker, CI, acceptance, or publication policy changed.",
+    "Confirmed requested head and base existence; final checkout head remained unchanged."
+  ],
+  "exclusions": [
+    ".planning/**/codex/** generated artifacts excluded from review scope; original reports were read solely for fixture byte comparisons.",
+    ".planning/**/*.jsonl and planning markdown excluded, except changed *-PLAN.md files, of which there were none.",
+    "Historical findings embedded in fixtures were treated as test data, not current review findings or approval."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e 5592e4ef6e137c713d792754e99fb4785e9fdd6f",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 5592e4ef6e137c713d792754e99fb4785e9fdd6f..bdedcadbd458b9cd2cc7759c534c551420730471 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect scoped diff; truncated sections recovered subsequently."
+    },
+    {
+      "command": "git diff 5592e4ef6e137c713d792754e99fb4785e9fdd6f..bdedcadbd458b9cd2cc7759c534c551420730471 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Confirm no changed phase plans."
+    },
+    {
+      "command": "git diff --stat 5592e4ef6e137c713d792754e99fb4785e9fdd6f..bdedcadbd458b9cd2cc7759c534c551420730471 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory seven changed files."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; sed -n '1,380p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and runner tests; truncated sections recovered later."
+    },
+    {
+      "command": "sed -n '470,620p' tests/test_codex_report_status.py; rg -n 'REPO_ROOT|HARNESS_ROOT|def checker_argv|def main|def execute' tests/codex_review_run.py; rg -n 'REPO_ROOT|PHASE_DIR|subprocess|cwd=' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace fixture assessments and root-path consumers."
+    },
+    {
+      "command": "sed -n '1,240p' tests/test_codex_review_run.py; sed -n '380,710p' tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect fixtures, dry runs, orchestration, and refusal assertions."
+    },
+    {
+      "command": "cat tests/fixtures/codex-recorded/322afc50367d-postfix-a2.last.json tests/fixtures/codex-recorded/a7995baf187e-quick-a1.last.json",
+      "exit_code": 0,
+      "purpose": "Inspect added report fixtures."
+    },
+    {
+      "command": "cat tests/fixtures/codex-recorded/d501a68316b2-explicit-a1.last.json",
+      "exit_code": 0,
+      "purpose": "Inspect legacy incomplete-report fixture."
+    },
+    {
+      "command": "cat tests/fixtures/codex-recorded/d501a68316b2-explicit-a2.last.json",
+      "exit_code": 0,
+      "purpose": "Inspect v2 fixture; final lines recovered subsequently."
+    },
+    {
+      "command": "sed -n '1938,2040p' tests/test_codex_review_run.py; sed -n '2290,2425p' tests/test_codex_review_run.py; sed -n '280,325p' tests/codex_review_run.py; sed -n '412,440p' tests/codex_review_run.py; sed -n '1380,1435p' tests/codex_review_run.py; tail -n 20 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Trace signal subprocesses, directory validation, checker paths, and harness result."
+    },
+    {
+      "command": "sed -n '240,380p' tests/test_codex_review_run.py; sed -n '1938,2004p' tests/test_codex_review_run.py; tail -n 12 tests/fixtures/codex-recorded/d501a68316b2-explicit-a2.last.json; sed -n '1,240p' tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Recover remaining excerpts and inspect schema/legacy validation."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -m pytest tests/test_codex_report_status.py -q -s -p no:cacheprovider -k recorded",
+      "exit_code": 0,
+      "purpose": "Independently verify recorded fixtures: seven passed, 120 deselected."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -c 'from pathlib import Path; import hashlib; root=Path(\".planning/phases/83-paired-bm-codex-review-risk-based-depth/codex\"); files=sorted(Path(\"tests/fixtures/codex-recorded\").glob(\"*.json\")); assert len(files)==5; [(print(p.name, hashlib.sha256(p.read_bytes()).hexdigest(), \"identical\"), None if p.read_bytes()==(root/p.name).read_bytes() else (_ for _ in ()).throw(AssertionError(p.name))) for p in files]'",
+      "exit_code": 0,
+      "purpose": "Verify all five fixtures are byte-identical to their original reports."
+    },
+    {
+      "command": "git diff 5592e4ef6e137c713d792754e99fb4785e9fdd6f..bdedcadbd458b9cd2cc7759c534c551420730471 -- tests/test_codex_review_run.py tests/test_codex_report_status.py; git status --short; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Reconcile every test-code change and confirm unchanged head; only supplied evidence directory is untracked."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently rerun the full suite or runner tests requiring writable temporary directories under the read-only sandbox.",
+    "Full-suite result is harness-produced evidence for the exact requested head: exit 0, 2,688 passed, 38 warnings.",
+    "Archive removal and concurrent pytest workers were assessed through code inspection rather than executed.",
+    "No live Codex, GitHub, or publication operations were performed; no files were edited."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
