@@ -541,6 +541,16 @@ for (const name of [
   'B.M. / G.S.D. reviewer',
   'B M 2',
   'c o d e x r e v i e w r u n',
+  // Review pass 4 (WR-02): case and letter/digit boundaries split tokens, so
+  // the unsplit spelling is rejected exactly as the split one is.
+  'BM2',
+  'B.M2',
+  'GSD2 agent',
+  'claude2',
+  'ClaudeCode',
+  'GSDReviewer',
+  '2BM',
+  'CodexReviewRun',
 ]) {
   test(`reviewer name ${JSON.stringify(name)} is not independent`, () => {
     const record = validRecord();
@@ -557,6 +567,10 @@ for (const name of [
   'independent human reviewer',
   'submarine review', // contains "bm" only inside a word, not as a token
   'J. R. independent reviewer', // initials that do not spell a disallowed token
+  // Review pass 4 (WR-02): the case and digit splits leave ordinary names alone.
+  'Submarine Review', // a capitalised word is not split inside itself
+  'McAllister independent review', // a case split that spells no disallowed token
+  'reviewer 2', // a digit beside an ordinary word
 ]) {
   test(`reviewer name ${JSON.stringify(name)} stays acceptable`, () => {
     const record = validRecord();

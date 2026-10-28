@@ -110,10 +110,26 @@ function singleCharRunsAreDisallowed(tokens) {
   return runs.some(joined => DISALLOWED_RUN_SUBSTRINGS.some(disallowed => joined.includes(disallowed)));
 }
 
+// Review pass 4 (WR-02): a case or letter/digit boundary also separates tokens,
+// so "ClaudeCode", "GSDReviewer", "BM2" and "claude2" are checked as "claude
+// code", "gsd reviewer", "bm 2" and "claude 2", and "BM2" agrees with "B M 2".
+// The case boundaries are split before lowercasing, so they survive; an
+// all-lowercase word ("submarine") is never split.
+function reviewerTokens(name) {
+  return name.trim()
+    .replace(/([a-z])([A-Z])/g, '$1 $2') // ClaudeCode -> Claude Code
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2') // GSDReviewer -> GSD Reviewer
+    .replace(/([A-Za-z])([0-9])/g, '$1 $2') // BM2 -> BM 2
+    .replace(/([0-9])([A-Za-z])/g, '$1 $2') // 2BM -> 2 BM
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
 function reviewerNameIsDisallowed(name) {
   const lowered = name.trim().toLowerCase();
   if (DISALLOWED_REVIEWERS.includes(lowered)) return true;
-  const tokens = lowered.split(/[^a-z0-9]+/).filter(Boolean);
+  const tokens = reviewerTokens(name);
   return (
     tokensAreDisallowed(tokens) ||
     tokensAreDisallowed(collapseSingleCharRuns(tokens)) ||
@@ -165,7 +181,9 @@ function validateFallback(record, context = {}) {
       const nameRaw = reviewer.name;
       const nameNorm = typeof nameRaw === 'string' ? nameRaw.trim().toLowerCase() : '';
       const authorNorm = typeof prAuthor === 'string' ? prAuthor.trim().toLowerCase() : '';
-      if (nameNorm && (reviewerNameIsDisallowed(nameNorm) || (authorNorm && nameNorm === authorNorm))) {
+      // The raw name goes to the token check: lowercasing first would erase the
+      // case boundaries reviewerTokens() splits on ("ClaudeCode").
+      if (nameNorm && (reviewerNameIsDisallowed(nameRaw) || (authorNorm && nameNorm === authorNorm))) {
         reasons.push(`reviewer is not independent: ${nameRaw}`);
       }
       if (Object.hasOwn(reviewer, 'kind') && !REVIEWER_KINDS.includes(reviewer.kind)) {
