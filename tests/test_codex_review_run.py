@@ -48,7 +48,8 @@ def _placeholder_phase_dir(tmp_path, monkeypatch):
     """Points the runner's output root at a per-test temp dir holding PHASE_DIR,
     so main() finds its --phase-dir without touching the real checkout (no
     shared folder for concurrent runs to race on, and nothing left behind).
-    REPO_ROOT is only the output root; the harness code stays at HARNESS_ROOT."""
+    REPO_ROOT is the output root and the cwd for commands the fake runner
+    intercepts; the harness code itself stays at HARNESS_ROOT."""
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
     (tmp_path / PHASE_DIR).mkdir(parents=True)
 
@@ -2002,7 +2003,7 @@ def _assert_signal_kills_active_process_group(tmp_path: Path, sig: int) -> None:
     pid_file = tmp_path / "pgid.txt"
     child = subprocess.Popen(
         [sys.executable, "-c", _REPORT_ACTIVE_GROUP_THEN_RUN, str(pid_file)],
-        cwd=runner.REPO_ROOT,
+        cwd=runner.HARNESS_ROOT,
     )
     try:
         pgid = int(_wait_for_text(pid_file))
