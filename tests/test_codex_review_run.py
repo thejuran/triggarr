@@ -853,6 +853,25 @@ def test_verify_trust_pr_rejects_moved_pr_base_that_is_not_the_merge_base() -> N
         runner.verify_trust(run, fake)
 
 
+def test_pr_trust_preview_lists_exactly_the_commands_verify_trust_runs() -> None:
+    """WR-01 parity: --dry-run previews every PR-form trust command, in order, and nothing else.
+
+    The PR base is unknown until gh answers, so the preview carries a
+    placeholder for it; the gh-reported base is mapped back to that placeholder
+    before comparing. main has moved on here, so the gh base and --base differ
+    and the substitution can't hide a wrong argument.
+    """
+    moved_main = "e" * 40
+    run = _pr_run(base=PR_BASE)
+    fake = _TrustRunner(gh_response=_gh_response(baseRefOid=moved_main), merge_base=PR_BASE)
+    runner.verify_trust(run, fake)
+
+    placeholder = runner._PR_BASE_PLACEHOLDER
+    ran = [[placeholder if part == moved_main else part for part in call] for call in fake.calls]
+    previewed = [shlex.split(line.split("  #", 1)[0]) for line in runner._trust_preview_commands(run)]
+    assert previewed == ran
+
+
 def test_verify_trust_pr_fails_closed_when_merge_base_cannot_be_computed() -> None:
     run = _pr_run()
     fake = _TrustRunner(gh_response=_gh_response(), merge_base_exit=1)

@@ -1230,6 +1230,9 @@ def _execute_reserved(
     return checker.returncode if base_exit == 0 else 1
 
 
+_PR_BASE_PLACEHOLDER = "<baseRefOid-from-gh>"
+
+
 def _trust_preview_commands(run: ReviewRun) -> list[str]:
     """Commands verify_trust() would run for *run*, without running any of them."""
     base_on_main = shlex.join(["git", "merge-base", "--is-ancestor", run.base, "refs/remotes/origin/main"])
@@ -1244,8 +1247,11 @@ def _trust_preview_commands(run: ReviewRun) -> list[str]:
         ]
     match = _PR_URL_RE.fullmatch(run.pr_url)
     number = match.group(2) if match else "<pr-number>"
+    # Same order as _verify_trust_pr. The PR base is unknown until gh answers,
+    # so the merge-base line carries a placeholder for it.
     return [
         shlex.join(["gh", "pr", "view", number, "--repo", REPO_SLUG, "--json", _GH_PR_VIEW_FIELDS]),
+        f"git merge-base {_PR_BASE_PLACEHOLDER} {shlex.quote(run.head)}  # must equal --base {run.base}",
         base_on_main,
     ]
 
