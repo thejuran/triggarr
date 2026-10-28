@@ -64,9 +64,12 @@ ACCEPTANCE_TEXT = ACCEPTANCE_PATH.read_text()
 AGGREGATE_JOB = "ci-ready"
 AGGREGATE_IF = "always()"
 ACCEPTANCE_JOBS = frozenset({"acceptance"})
-# review-acceptance.yml's reviewed trigger contract. Mirrors
-# TRIGGER_CONTRACTS['review-acceptance.yml'] in ci-job-consistency.cjs; types
-# must be exactly these four (GitHub's default omits ready_for_review).
+# review-acceptance.yml's reviewed trigger contract. Same branches and types as
+# TRIGGER_CONTRACTS['review-acceptance.yml'] in ci-job-consistency.cjs, but
+# stricter: types must be exactly these four (GitHub's default omits
+# ready_for_review), whereas the Node detector only requires that they include
+# them and accepts extras such as closed; a null pull_request: is also rejected
+# here. Do not loosen this to match Node: where the two disagree, this guard wins.
 ACCEPTANCE_TRIGGER_CONTRACT = {
     "pull_request": {
         "branches": ("main",),
@@ -258,9 +261,13 @@ def ci_problems(text: str) -> list[str]:
 def acceptance_trigger_problems(triggers: Any) -> list[str]:
     """Check review-acceptance.yml's parsed ``on:`` block against its contract.
 
-    Mirrors TRIGGER_CONTRACTS['review-acceptance.yml'] in ci-job-consistency.cjs,
-    but on the PyYAML-parsed mapping, so a quoted key (``"paths":``) is the same
-    key as a bare one and cannot hide a filter (review pass 2).
+    Uses the same branches and types as TRIGGER_CONTRACTS['review-acceptance.yml']
+    in ci-job-consistency.cjs, but is stricter than the Node detector: types must
+    match exactly (Node only requires that they include the contract's types and
+    accepts extras), and a null ``pull_request:`` is rejected (Node reads it as an
+    empty spec). Where the two disagree, this guard wins. It works on the
+    PyYAML-parsed mapping, so a quoted key (``"paths":``) is the same key as a
+    bare one and cannot hide a filter (review pass 2).
     """
     prefix = "review-acceptance.yml on:"
     if not isinstance(triggers, dict):
