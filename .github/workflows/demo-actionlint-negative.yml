@@ -1,0 +1,11 @@
+name: Demo Actionlint Negative
+
+on:
+  workflow_dispatch:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reference an undefined step output
+        run: echo "${{ steps.missing.outputs.value }}"

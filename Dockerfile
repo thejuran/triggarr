@@ -48,6 +48,7 @@ WORKDIR /app
 COPY --from=deps /build/requirements-locked.txt /tmp/requirements-locked.txt
 RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements-locked.txt \
     && rm /tmp/requirements-locked.txt
+RUN pip install --no-cache-dir --no-deps "idna==3.4"
 
 COPY pyproject.toml .
 COPY triggarr/ triggarr/
