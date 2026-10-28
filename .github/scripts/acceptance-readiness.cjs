@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const {execFileSync} = require('node:child_process');
 
 const {assess} = require('./review-acceptance.cjs');
-const {validateFallback} = require('./codex-fallback.cjs');
+const {validateFallback, inspectionOnlyCompleteness, INSPECTION_REVIEW_MODE} = require('./codex-fallback.cjs');
 
 const REPO = 'thejuran/triggarr';
 // Mirrors tests/codex_review_run.py TRUSTED_AUTHORS (owner decision 2026-10-22).
@@ -37,13 +37,23 @@ function headTrustFor({isCrossRepository, author}) {
   return 'trusted';
 }
 
-// codexStatusFor implements the completeness contract shared with codex-fallback.cjs
-// and Plan 85-13's runner: complete iff review_mode is "trusted-local-tests" AND
-// the head-side checker says "complete" AND (no audited input changed in the diff,
-// or the base checker also says "complete"). For an untrusted head this never
-// reports complete; a record claiming complete is blocked outright. When
-// incomplete, the single owner-approved-fallback validator decides whether the
-// fallback satisfies the item -- never a local re-implementation of that rule.
+// codexStatusFor implements the completeness contract shared with
+// codex-fallback.cjs (D-07, D-12). A trusted head is complete iff review_mode
+// is "trusted-local-tests" AND the head-side checker says "complete" AND (no
+// audited input changed in the diff, or the base checker also says
+// "complete"). An untrusted (bot/fork) head is complete iff review_mode is
+// "inspection-only-ci-evidence" and the shared inspectionOnlyCompleteness()
+// predicate (exported by codex-fallback.cjs, also used by
+// codexStatusFromOutput() there) says so: the head-side status is complete
+// and bound to this head/base, <OUT>.boundary.json has a verdict of
+// "verified" bound to this head and attempt, and (when an audited input
+// changed) the base checker also confirms completeness. A record claiming
+// trusted-mode completion for an untrusted head, or an inspection-only record
+// that claims "complete" without satisfying the predicate, is blocked
+// outright -- never rescued by a fallback (T-85.1-04/07b, PC-06). When
+// incomplete for a legitimate reason, the single owner-approved-fallback
+// validator decides whether the fallback satisfies the item -- never a local
+// re-implementation of that rule.
 // auditedChanged is readiness's own recomputation of the audited inputs changed
 // in reviewedBase..head; it is unioned with the meta's claim so the head's runner
 // can never talk the base cross-grade away. The meta must name this head and the
@@ -59,6 +69,7 @@ function headTrustFor({isCrossRepository, author}) {
 // Codex evidence must name one base, the range actually reviewed.
 function codexStatusFor({
   status, baseStatus, meta, auditedChanged: recomputed, out, head, base, reviewedBase, pr, prAuthor, headTrust, fallback,
+  boundary,
 }) {
   if (!meta || meta.head !== head) {
     return {ok: false, detail: 'Codex evidence is for a different head'};
@@ -71,10 +82,12 @@ function codexStatusFor({
   const claimed = Array.isArray(meta.audited_inputs_changed_in_diff) ? meta.audited_inputs_changed_in_diff : [];
   const auditedChanged = [...new Set([...claimed, ...(Array.isArray(recomputed) ? recomputed : [])])];
   const baseRequired = auditedChanged.length > 0;
-  const claimsComplete = meta?.review_mode === 'trusted-local-tests' && status?.status === 'complete';
 
-  if (headTrust === 'untrusted' && claimsComplete) {
-    return {ok: false, detail: 'Codex evidence claims complete for an untrusted head; untrusted runs are refused until Phase 85.1'};
+  if (headTrust === 'untrusted' && meta.review_mode === 'trusted-local-tests' && status?.status === 'complete') {
+    return {
+      ok: false,
+      detail: 'Codex evidence claims trusted-mode completion for an untrusted head; untrusted heads are reviewed inspection-only',
+    };
   }
 
   // A checker verdict counts only for the commits it graded (WR-02, iteration
@@ -84,29 +97,51 @@ function codexStatusFor({
   if (status?.status === 'complete' && !boundHere(status)) {
     return {ok: false, detail: 'Codex status file is not bound to this head and base (inspected_head/inspected_base differ)'};
   }
-  if (claimsComplete && baseRequired && baseStatus?.status === 'complete' && !boundHere(baseStatus)) {
-    return {
-      ok: false,
-      detail: 'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)',
-    };
-  }
-  const baseOk = !baseRequired || baseStatus?.status === 'complete';
-  const headSideComplete = claimsComplete;
 
-  if (headTrust === 'trusted' && headSideComplete && !baseOk) {
-    return {ok: false, detail: "grader changed in this diff: the base commit's checker did not confirm completeness"};
+  let complete = false;
+  let completeDetail = 'complete';
+  let invalidEvidence = false;
+
+  if (headTrust === 'untrusted' && meta.review_mode === INSPECTION_REVIEW_MODE) {
+    const predicate = inspectionOnlyCompleteness({meta, status, baseStatus, boundary, head, baseRequired});
+    invalidEvidence = predicate.invalidEvidence;
+    if (predicate.complete) {
+      complete = true;
+      completeDetail = 'complete (inspection-only, isolation boundary verified)';
+    } else if (status?.status === 'complete') {
+      // An anomalous "complete" claim is never rescued by a fallback (PC-06).
+      return {ok: false, detail: predicate.reasons.join('; ')};
+    }
+  } else {
+    const claimsComplete = meta?.review_mode === 'trusted-local-tests' && status?.status === 'complete';
+    if (claimsComplete && baseRequired && baseStatus?.status === 'complete' && !boundHere(baseStatus)) {
+      return {
+        ok: false,
+        detail: 'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)',
+      };
+    }
+    const baseOk = !baseRequired || baseStatus?.status === 'complete';
+
+    if (headTrust === 'trusted' && claimsComplete && !baseOk) {
+      return {ok: false, detail: "grader changed in this diff: the base commit's checker did not confirm completeness"};
+    }
+
+    complete = headTrust === 'trusted' && claimsComplete && baseOk;
   }
 
-  const complete = headTrust === 'trusted' && headSideComplete && baseOk;
   if (complete) {
-    return {ok: true, detail: 'complete'};
+    return {ok: true, detail: completeDetail};
   }
 
-  const codexStatus = {complete: false, attempt: meta?.attempt, out, reviewMode: meta?.review_mode};
+  const codexStatus = {complete: false, invalidEvidence, attempt: meta?.attempt, out, reviewMode: meta?.review_mode};
 
   if (!fallback) {
     if (headTrust === 'untrusted') {
-      return {ok: false, detail: 'untrusted head (bot/fork): Codex review is refused until Phase 85.1; an owner-approved fallback (D-16) is required'};
+      return {
+        ok: false,
+        detail: 'INCOMPLETE/PENDING: no recorded fallback for this untrusted head; an owner-approved fallback (D-16) '
+          + 'is required, or rerun the inspection-only review; wait or retry later blocks acceptance',
+      };
     }
     return {ok: false, detail: 'INCOMPLETE/PENDING: no recorded fallback; wait or retry later blocks acceptance'};
   }
@@ -116,7 +151,7 @@ function codexStatusFor({
     return {ok: false, detail: reasons.join('; ')};
   }
   if (headTrust === 'untrusted') {
-    return {ok: true, detail: `ok (owner-approved fallback for untrusted head: ${fallback.reviewer?.name}; isolated review is Phase 85.1)`};
+    return {ok: true, detail: `ok (owner-approved fallback for untrusted head: ${fallback.reviewer?.name})`};
   }
   return {ok: true, detail: `ok (owner-approved fallback: ${fallback.reviewer?.name})`};
 }
@@ -402,6 +437,7 @@ function runCli(argv, {exec, readFile} = {}) {
     return 1;
   }
   const baseStatus = readJsonIfPresent(readFileFn, `${opts.codexOut}.base-status.json`);
+  const boundary = readJsonIfPresent(readFileFn, `${opts.codexOut}.boundary.json`);
 
   // Recompute the reviewed base and the audited-input change set from git
   // itself (argument arrays, no shell); fail closed when either cannot be
@@ -458,7 +494,7 @@ function runCli(argv, {exec, readFile} = {}) {
     commentsError,
     dispositions,
     blockers,
-    codex: {status, baseStatus, meta, auditedChanged, out: opts.codexOut},
+    codex: {status, baseStatus, meta, auditedChanged, boundary, out: opts.codexOut},
     fallback,
   });
 
