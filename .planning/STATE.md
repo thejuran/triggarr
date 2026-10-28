@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85.1 planned (10 plans, revised after plan check) -- ready to execute; Dependabot #47 held open as the post-merge live proof PR"
+status: "Phase 85.1 executing (10 plans, 7 waves, sequential on branch isolated-codex-review); Dependabot #47 held open as the post-merge live proof PR"
 stopped_at: "Phase 85.1 plans revised 2026-10-28 (10 plans, 7 waves; the post-merge live run on PR #47 is the phase verification gate after the owner merges, not a plan); next: /bm:execute-phase 85.1"
-last_updated: "2026-10-28T22:55:55Z"
-last_activity: "2026-10-28 -- Phase 85.1 plans revised after plan check: 7-day sign-in rule (D-11 amendment), confirmed container cleanup, host-exposure rule, invalid-evidence fallback guard; post-merge live run moved to the verification gate (10 plans)"
+last_updated: "2026-10-28T23:18:41Z"
+last_activity: "2026-10-28 -- Phase 85.1 execution started (/bm:execute-phase 85.1); plans run sequentially on the main tree so the local trusted Codex pass can verify commit origin"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — PLANNED (execute next)
+Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — EXECUTING
 Plan: 0 of 10 (85.1-01..85.1-10; the post-merge live run on PR #47 is the phase verification gate after the owner merges, per the 85.1-10 hand-off)
 Status: Phase 85.1 planned (10 plans in 7 waves; context D-01..D-12 incl. the D-11 7-day amendment); Phase 85 merged via PR #36 (0309313) with follow-ups #44/#45 and rollup #46; next: /bm:execute-phase 85.1
 Last activity: 2026-10-28 -- Phase 85.1 discussed: live end-to-end review runs after merge on main's grader (phase stays open until it is COMPLETE); open egress accepted with a backlog item; owner Codex login copy, residual risk recorded; Dependabot #47 held open as the proof PR
