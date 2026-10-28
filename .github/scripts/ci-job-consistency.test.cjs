@@ -37,6 +37,15 @@ function mutate(text, from, to) {
   return result;
 }
 
+// Returns the first match of *pattern* in *text*, so a mutation can anchor on
+// an action step without spelling its pinned commit SHA: Dependabot rewrites
+// those pins, and a literal SHA here would fail every such update.
+function findAnchor(text, pattern) {
+  const match = text.match(pattern);
+  assert.ok(match, `expected to find ${pattern} in text`);
+  return match[0];
+}
+
 test('real ci.yml and real REQUIRED_JOBS are consistent', () => {
   assert.deepEqual(checkJobListConsistency({workflowText: ciText, requiredJobs: REQUIRED_JOBS}), []);
 });
@@ -559,10 +568,11 @@ describe('ACCEPT-03 no-skip detector', () => {
   });
 
   test('a step-level continue-on-error in any review-acceptance.yml job fails on the specific reason', () => {
+    const checkoutStep = findAnchor(acceptanceText, /      - uses: actions\/checkout@[0-9a-f]{40}[^\n]*\n/);
     const mutated = mutate(
       acceptanceText,
-      '      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6\n        with:\n',
-      '      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6\n        continue-on-error: true\n        with:\n'
+      `${checkoutStep}        with:\n`,
+      `${checkoutStep}        continue-on-error: true\n        with:\n`
     );
     const problems = findSkipConditions({
       workflowText: mutated,
@@ -587,10 +597,14 @@ describe('ACCEPT-03 no-skip detector', () => {
   });
 
   test('a new unallowlisted step if: inside the docker job fails on the specific reason', () => {
+    const buildxStep = findAnchor(
+      ciText,
+      /      - name: Set up Docker Buildx\n        uses: docker\/setup-buildx-action@[0-9a-f]{40}[^\n]*\n/
+    );
     const mutated = mutate(
       ciText,
-      '      - name: Set up Docker Buildx\n        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4\n',
-      "      - name: Set up Docker Buildx\n        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4\n      - name: Check PR title\n        if: github.event.pull_request.title != 'docs'\n        run: echo noop\n"
+      buildxStep,
+      `${buildxStep}      - name: Check PR title\n        if: github.event.pull_request.title != 'docs'\n        run: echo noop\n`
     );
     const problems = findSkipConditions({
       workflowText: mutated,
