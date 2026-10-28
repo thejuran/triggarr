@@ -64,6 +64,15 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 # review-machinery change and needs its own review.
 TRIVIAL_COMMANDS = frozenset({"echo", "printf", "true", ":", "pwd", "whoami", "date", "sleep", "exit"})
 
+# The grading mode is always declared by the caller (the runner) via
+# --review-mode, never inferred from the report body -- same discipline as
+# --legacy-v1. "trusted" is the default and keeps every existing rule,
+# including the D-18 hollow-report guard. "inspection-only" is for a review
+# of an untrusted head that by design runs no commands and reproduces
+# nothing; it relaxes only the hollow-report command guard and adds two
+# rejection rules of its own (D-07, B04-R2).
+REVIEW_MODES = ("trusted", "inspection-only")
+
 # A leading NAME=value token (e.g. "FOO=1 true") is an environment
 # assignment, not the program being run, so it is skipped when classifying
 # a command as trivial.
@@ -348,6 +357,7 @@ def assess_report(
     source: str = "codex",
     read_error: str | None = None,
     legacy_v1: bool = False,
+    review_mode: str = "trusted",
 ) -> Assessment:
     """Decide whether *report_text* is a complete, current Codex review.
 
@@ -356,8 +366,14 @@ def assess_report(
     "incomplete" with a reason explaining why. *read_error* is set by the
     CLI when the report file exists but could not be read. *legacy_v1*
     allows a schema v1 report to be assessed under the v1 rules; it is
-    only for re-assessing reports already recorded under v1.
+    only for re-assessing reports already recorded under v1. *review_mode*
+    is caller-declared (never inferred from the report) and must be one of
+    REVIEW_MODES; an invalid value is a programming error, not a report
+    verdict, so it raises ValueError instead of yielding an assessment.
     """
+    if review_mode not in REVIEW_MODES:
+        raise ValueError(f"review_mode must be one of REVIEW_MODES {REVIEW_MODES}, got {review_mode!r}")
+
     reasons: list[str] = []
 
     if exit_code is None:
@@ -441,6 +457,14 @@ def assess_report(
             reasons.append("verdict says no-findings but findings are listed")
         elif verdict == "findings" and not findings:
             reasons.append("verdict says findings but none are listed")
+        if review_mode == "inspection-only":
+            # An inspection-only review has no access to run anything, so it
+            # cannot have reproduced a finding; a claim otherwise is spoofing
+            # evidence the review never had (T-85.1-03).
+            for finding in findings:
+                if isinstance(finding, dict) and finding.get("reproduced") is True:
+                    fid = finding.get("id")
+                    reasons.append(f"inspection-only review cannot reproduce findings: {fid} claims reproduced")
 
     # Cheap evidence that Codex actually did the work: a report with no
     # commands or blank coverage is hollow, whatever it says about itself.
@@ -451,33 +475,39 @@ def assess_report(
         elif not all(_non_blank(entry) for entry in coverage if isinstance(entry, str)):
             reasons.append("blank coverage entry")
     commands = report.get("commands_run")
-    # Entries with a blank command are no evidence, so a list of only those counts as empty.
-    any_non_blank_command = isinstance(commands, list) and any(
-        isinstance(entry, dict) and _non_blank(entry.get("command")) for entry in commands
-    )
-    if isinstance(commands, list) and not any_non_blank_command:
-        reasons.append("no commands run: the report gives no evidence the diff was inspected")
-    elif isinstance(commands, list):
-        # D-18 hollow-report guard: a command with a null exit code, or a
-        # report whose every command is trivially uninformative (echo, pwd,
-        # true and similar), is no evidence the diff was inspected either.
-        recorded = [
-            entry
-            for entry in commands
-            if isinstance(entry, dict)
-            and _non_blank(entry.get("command"))
-            and isinstance(entry.get("exit_code"), int)
-            and not isinstance(entry.get("exit_code"), bool)
-        ]
-        if not recorded:
-            reasons.append(
-                "no command with a recorded exit code: the report gives no evidence the diff was inspected"
-            )
-        elif all(_first_program(entry["command"]) in TRIVIAL_COMMANDS for entry in recorded):
-            reasons.append(
-                "only trivial commands run (echo/pwd/true and similar): "
-                "the report gives no evidence the diff was inspected"
-            )
+    if review_mode == "trusted":
+        # Entries with a blank command are no evidence, so a list of only those counts as empty.
+        any_non_blank_command = isinstance(commands, list) and any(
+            isinstance(entry, dict) and _non_blank(entry.get("command")) for entry in commands
+        )
+        if isinstance(commands, list) and not any_non_blank_command:
+            reasons.append("no commands run: the report gives no evidence the diff was inspected")
+        elif isinstance(commands, list):
+            # D-18 hollow-report guard: a command with a null exit code, or a
+            # report whose every command is trivially uninformative (echo, pwd,
+            # true and similar), is no evidence the diff was inspected either.
+            recorded = [
+                entry
+                for entry in commands
+                if isinstance(entry, dict)
+                and _non_blank(entry.get("command"))
+                and isinstance(entry.get("exit_code"), int)
+                and not isinstance(entry.get("exit_code"), bool)
+            ]
+            if not recorded:
+                reasons.append(
+                    "no command with a recorded exit code: the report gives no evidence the diff was inspected"
+                )
+            elif all(_first_program(entry["command"]) in TRIVIAL_COMMANDS for entry in recorded):
+                reasons.append(
+                    "only trivial commands run (echo/pwd/true and similar): "
+                    "the report gives no evidence the diff was inspected"
+                )
+    elif isinstance(commands, list) and commands:
+        # Inspection-only review: the guard above is skipped entirely (the
+        # review runs no commands by design); running any is itself the
+        # violation (T-85.1-03).
+        reasons.append(f"inspection-only review must not run commands: commands_run has {len(commands)} entries")
 
     status: Literal["complete", "incomplete"] = "incomplete" if reasons else "complete"
     return Assessment(
