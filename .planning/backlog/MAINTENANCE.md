@@ -114,3 +114,9 @@ Source: Codex by PR URL on `5a97e1f` (attempts a1/a2, both INCOMPLETE for diff s
 - **FIXED on archive-safe-fixtures, was: Same archive trap, phase 83:** `tests/test_codex_report_status.py:485` and `tests/test_codex_review_run.py:41` read recorded Codex evidence under `.planning/phases/83-paired-bm-codex-review-risk-based-depth/`; archiving the v2.13 milestone breaks them too. Move those fixtures under `tests/fixtures/` before archiving.
 - **Next release (v2.13.x), UAT P5:** the release's CHANGELOG entry must state that Python wheel/sdist files are no longer attached to GitHub Releases (install with `pip install git+https://github.com/thejuran/triggarr@vX.Y.Z` or use the image) — Phase 85 D-14/CIMAINT-05. Record the result in `85-HUMAN-UAT.md` item 5. Also roll in open Dependabot PRs per the release rule (#41 updates shipped runtime deps).
 - **SA-11 (BM iteration 11/12):** no test covers `main()` refusing a `--phase-dir` that does not exist (`tests/codex_review_run.py` parser.error path). Pre-existing gap; add a one-case test with the next change to the runner.
+
+### Dependency rollup follow-ups (BM iteration 13, 2026-10-28)
+
+- **SA-12 (owner call):** FastAPI 0.162 adds opt-in OpenTelemetry auto-configure. If a user's container environment sets `FASTAPI_OTEL_AUTO_CONFIGURE=true` plus an OTLP endpoint (e.g. a stack-wide compose `environment:` block), the web UI now fails at startup with a clear error; unset (the normal case) nothing changes and nothing is exported. Options: accept (current), ignore the variable in triggarr, or document telemetry export as unsupported.
+- **IN-11:** Starlette 1.10 deprecates its test client on `httpx` in favour of `httpx2`; a future Starlette release may break the auth tests. Tests only.
+- **SA-03 instance:** the uv group jumped FastAPI 26 minor versions in one bump; consider a uv cooldown in `.github/dependabot.yml`.
