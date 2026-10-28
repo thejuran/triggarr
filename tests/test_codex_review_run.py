@@ -38,7 +38,25 @@ from tests.codex_review_run import (
 
 H = "a" * 40
 B = "b" * 40
-PHASE_DIR = Path(".planning/phases/83-paired-bm-codex-review-risk-based-depth")
+# A placeholder phase folder, never a real one: main() requires --phase-dir to
+# exist, and a real phase folder disappears when its milestone is archived.
+PHASE_DIR = Path(".planning/phases/00-codex-runner-test-fixture")
+
+
+@pytest.fixture(autouse=True)
+def _placeholder_phase_dir():
+    """Creates PHASE_DIR under the real repo for tests that run main() against it,
+    and removes it afterwards when this fixture created it."""
+    import shutil
+
+    path = REPO_ROOT / PHASE_DIR
+    created = not path.exists()
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        yield
+    finally:
+        if created:
+            shutil.rmtree(path, ignore_errors=True)
 
 
 def _run(**overrides) -> ReviewRun:
