@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85 complete -- merged via PR #36 (0309313) with follow-ups #44/#45 and the Dependabot rollup #46; next: discuss Phase 85.1"
-stopped_at: "Phase 85 merged and verified 2026-10-28 (UAT P1-P4, P6 pass; P5 at the next release); next: /bm:discuss-phase 85.1"
-last_updated: "2026-10-28T21:43:00Z"
-last_activity: "2026-10-28 -- Phase 85 merged (PR #36, accepted at 5a97e1f with an owner-approved vibe-check fallback for the incomplete Codex pass); follow-ups #44 (Dependabot-safe tests, archive-safe tool pins) and #45 (archive-safe Codex test fixtures) merged with complete Codex passes; Dependabot #37-#42 rolled up and merged as #46"
+status: "Phase 85.1 context gathered -- ready to plan; Dependabot #47 held open as the post-merge live proof PR"
+stopped_at: "Phase 85.1 context gathered 2026-10-28; next: /bm:plan-phase 85.1"
+last_updated: "2026-10-28T23:30:00Z"
+last_activity: "2026-10-28 -- Phase 85.1 context gathered: live test after merge on main's grader, open egress accepted (backlog item), owner Codex login copy (residual risk recorded), Dependabot #47 held as proof PR"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 85.1 — Isolated Codex review for untrusted PRs (discuss next)
+**Current focus:** Phase 85.1 — Isolated Codex review for untrusted PRs (plan next)
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. v2.12 shipped 2026-10-21 as v2.12.0 (tag on `dbb38fa`).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — NOT STARTED (discuss next)
-Plan: TBD (carry-in: 85.1-CARRY-IN.md, DRAFT-85-20, DRAFT-85-21)
-Status: Phase 85 complete -- merged via PR #36 (0309313) on 2026-10-28; follow-ups #44 (5592e4e), #45 (9978b7f) and Dependabot rollup #46 (05b24fe) merged; next: /bm:discuss-phase 85.1
-Last activity: 2026-10-28 -- Phase 85 verified: UAT P1-P4 and P6 pass, P5 deferred to the next release (CHANGELOG wording); register on schema 2; first Release runs on the narrowed permissions and the new actions passed
+Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — CONTEXT GATHERED (plan next)
+Plan: TBD (85.1-CONTEXT.md; carry-in: 85.1-CARRY-IN.md, DRAFT-85-20, DRAFT-85-21)
+Status: Phase 85.1 context gathered (85.1-CONTEXT.md, D-01..D-10); Phase 85 merged via PR #36 (0309313) with follow-ups #44/#45 and rollup #46; next: /bm:plan-phase 85.1
+Last activity: 2026-10-28 -- Phase 85.1 discussed: live end-to-end review runs after merge on main's grader (phase stays open until it is COMPLETE); open egress accepted with a backlog item; owner Codex login copy, residual risk recorded; Dependabot #47 held open as the proof PR
 
 ### v2.13 milestone shape
 
@@ -244,12 +244,12 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 ## Session Continuity
 
 Last session: 2026-10-28T21:43:00Z
-Stopped at: Phase 85 merged and verified; next: /bm:discuss-phase 85.1
-Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CARRY-IN.md
+Stopped at: Phase 85.1 context gathered; next: /bm:plan-phase 85.1
+Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CONTEXT.md
 
 ## Operator Next Steps
 
-- `/bm:discuss-phase 85.1` -- isolated Codex review for untrusted (bot/fork) PRs, from 85.1-CARRY-IN.md
+- `/bm:plan-phase 85.1` -- isolated Codex review for untrusted (bot/fork) PRs, from 85.1-CONTEXT.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot PRs per the release rule
 - Decide SA-12 (FastAPI 0.162 opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - `/bm:plan-phase 82` -- plan Phase 82 (CI Tests What We Ship) from 82-CONTEXT.md
