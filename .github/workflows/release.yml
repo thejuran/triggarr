@@ -30,7 +30,7 @@ jobs:
     outputs:
       sha: ${{ steps.policy.outputs.sha }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
@@ -65,7 +65,7 @@ jobs:
 
     steps:
       # A valid run can become stale while waiting for the publishing queue.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
@@ -85,7 +85,7 @@ jobs:
             const version = parseReleaseTag(context.ref);
             core.info(`Release tag format accepted: ${version}`);
       - name: Download exact successful CI image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: audited-image
           path: image
@@ -118,7 +118,7 @@ jobs:
             const {releaseIdentityGate} = require('./.github/scripts/release-policy.cjs');
             await releaseIdentityGate({github, context, core, sha: process.env.RELEASE_SHA, imageVersion: process.env.IMAGE_VERSION});
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -140,7 +140,7 @@ jobs:
 
       - name: Login to Docker Hub
         if: steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
