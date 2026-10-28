@@ -38,7 +38,20 @@ from tests.codex_review_run import (
 
 H = "a" * 40
 B = "b" * 40
-PHASE_DIR = Path(".planning/phases/83-paired-bm-codex-review-risk-based-depth")
+# A placeholder phase folder, never a real one: main() requires --phase-dir to
+# exist, and a real phase folder disappears when its milestone is archived.
+PHASE_DIR = Path(".planning/phases/00-codex-runner-test-fixture")
+
+
+@pytest.fixture(autouse=True)
+def _placeholder_phase_dir(tmp_path, monkeypatch):
+    """Points the runner's output root at a per-test temp dir holding PHASE_DIR,
+    so main() finds its --phase-dir without touching the real checkout (no
+    shared folder for concurrent runs to race on, and nothing left behind).
+    REPO_ROOT is the output root and the cwd for commands the fake runner
+    intercepts; the harness code itself stays at HARNESS_ROOT."""
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    (tmp_path / PHASE_DIR).mkdir(parents=True)
 
 
 def _run(**overrides) -> ReviewRun:
@@ -221,7 +234,7 @@ def test_pathspecs_keep_planning_config_and_drop_planning_docs(tmp_path: Path) -
 
 def test_output_base_naming() -> None:
     run = _run()
-    assert run.out_base == REPO_ROOT / PHASE_DIR / "codex" / f"{H[:12]}-explicit-a2"
+    assert run.out_base == runner.REPO_ROOT / PHASE_DIR / "codex" / f"{H[:12]}-explicit-a2"
 
 
 @pytest.mark.parametrize(
@@ -288,7 +301,9 @@ def test_codex_argv_is_read_only_and_schema_bound() -> None:
     ]
 
 
-def test_checker_argv() -> None:
+def test_checker_argv(monkeypatch) -> None:
+    # The checker path is built from REPO_ROOT; check it against the real checkout.
+    monkeypatch.setattr(runner, "REPO_ROOT", REPO_ROOT)
     run = _run()
     argv = checker_argv(run, exit_code=0, current_head=H)
     assert argv[1:] == [
@@ -315,7 +330,6 @@ def test_checker_argv_never_requests_the_legacy_v1_path(tmp_path, monkeypatch) -
     from tests import codex_report_status
 
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    (tmp_path / PHASE_DIR).mkdir(parents=True)
     run = _run(attempt=1)
     report = {
         "schema_version": "1",
@@ -480,7 +494,6 @@ class FakeRunner:
 
 def _tmp_run(tmp_path: Path, monkeypatch) -> ReviewRun:
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    (tmp_path / PHASE_DIR).mkdir(parents=True)
 
     def _mkdtemp(prefix: str = "") -> str:
         # "codex-review-" keeps the long-established "scratch" name every
@@ -613,7 +626,6 @@ def test_main_refuses_untrusted_and_records_incomplete(tmp_path, monkeypatch, ca
 
     _forbid_everything(monkeypatch)
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    (tmp_path / PHASE_DIR).mkdir(parents=True)
     run = _run(attempt=1, trusted=False)
 
     assert main(_cli(PHASE_DIR, "--untrusted")) == 2
@@ -672,7 +684,6 @@ def test_main_untrusted_refuses_when_output_already_exists(tmp_path, monkeypatch
 def test_execute_refuses_untrusted_before_any_work(tmp_path, monkeypatch) -> None:
     """execute()/verify_trust() are never reached for an untrusted run (defense in depth)."""
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    (tmp_path / PHASE_DIR).mkdir(parents=True)
     run = _run(attempt=1, trusted=False)
     fake = FakeRunner()
 
@@ -1088,7 +1099,6 @@ def test_same_fork_commit_refused_through_both_trust_paths() -> None:
 def test_execute_refuses_dependabot_pr_before_any_work(tmp_path, monkeypatch) -> None:
     """Acceptance: a dependabot[bot] PR under --trusted produces no output files and no worktree command."""
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    (tmp_path / PHASE_DIR).mkdir(parents=True)
     run = ReviewRun(PR_HEAD, PR_BASE, "explicit", 1, PR_URL, "scope", PHASE_DIR, True)
     fake = _TrustRunner(gh_response=_gh_response(author={"login": "dependabot[bot]", "is_bot": False}))
 
@@ -1229,7 +1239,6 @@ def test_untrusted_never_reaches_materialize_grader(tmp_path, monkeypatch) -> No
     """checker B13: the untrusted path never materializes a grader of any kind."""
     _forbid_everything(monkeypatch)
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    (tmp_path / PHASE_DIR).mkdir(parents=True)
 
     def _forbidden_materialize(*_args, **_kwargs):
         raise AssertionError("materialize_grader must not run for an untrusted ReviewRun")
@@ -1994,7 +2003,7 @@ def _assert_signal_kills_active_process_group(tmp_path: Path, sig: int) -> None:
     pid_file = tmp_path / "pgid.txt"
     child = subprocess.Popen(
         [sys.executable, "-c", _REPORT_ACTIVE_GROUP_THEN_RUN, str(pid_file)],
-        cwd=runner.REPO_ROOT,
+        cwd=runner.HARNESS_ROOT,
     )
     try:
         pgid = int(_wait_for_text(pid_file))
@@ -2309,7 +2318,7 @@ pid_file_path = sys.argv[4]
 calls_path = Path(sys.argv[5])
 
 runner.REPO_ROOT = tmp_root
-(tmp_root / PHASE_DIR).mkdir(parents=True)
+(tmp_root / PHASE_DIR).mkdir(parents=True, exist_ok=True)
 (tmp_root / "scratch").mkdir()
 runner.tempfile.mkdtemp = lambda prefix="codex-review-": str(tmp_root / "scratch")
 

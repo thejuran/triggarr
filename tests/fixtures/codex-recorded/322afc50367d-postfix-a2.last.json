@@ -1,0 +1,291 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "322afc50367d4cf7e2610eb6f8852bb8c9302457",
+  "inspected_base_sha": "6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+  "pr_url": "none",
+  "scope": "Phase 83 changes after the batched fix: 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..322afc50367d4cf7e2610eb6f8852bb8c9302457, excluding .planning/**/codex/** and .planning/**/*.jsonl.",
+  "verdict": "findings",
+  "summary": "Reviewed the full in-scope diff and reproduced one low-severity disclosure-label defect. A Failed cycle containing both malformed records and an unevaluated queue incorrectly labels all details as skipped records. Focused verification passed 109 tests; supplied harness evidence reports 2,334 passing tests on the inspected head.",
+  "coverage": [
+    "Inspected all 57 in-scope changed files, including tests and planning markdown; recovered content truncated in initial command output through subsequent reads.",
+    "Traced cycle classification and reason generation through queue screening, tag resolution, CycleTally, cycle_view, route context construction, and template rendering.",
+    "Checked regression coverage for malformed-only, unevaluated-only, mixed-reason, Partial, and Failed disclosure states.",
+    "Reviewed report schemas, validation, checkpoint records, review runner behavior, commit identity checks, failure handling, and output preservation.",
+    "Reviewed classification, acceptance, audit, publication, and owner-verification policy changes for weakened boundaries.",
+    "Ran 109 focused tests successfully and reproduced the mixed Failed-state defect using production tally, view, and template code.",
+    "Read the supplied exact-head pytest evidence: 2,334 passed, 38 warnings, exit code 0.",
+    "Verified diff whitespace checks and a clean working tree."
+  ],
+  "exclusions": [
+    ".planning/**/codex/** raw review transcripts and generated artifacts, except the explicitly authorized external pytest evidence file.",
+    ".planning/**/*.jsonl."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm the inspected checkout identity."
+    },
+    {
+      "command": "git cat-file -e 6f3841aaae4f2511efe6796f7f5c7ad50b423f90",
+      "exit_code": 0,
+      "purpose": "Confirm the requested base exists."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..322afc50367d4cf7e2610eb6f8852bb8c9302457 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl'",
+      "exit_code": 0,
+      "purpose": "Inspect the scoped diff; subsequently recover truncated sections."
+    },
+    {
+      "command": "git diff --stat 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl'",
+      "exit_code": 0,
+      "purpose": "Inventory changed files."
+    },
+    {
+      "command": "cat /Users/julianamacbook/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a2.pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read authorized exact-head test evidence."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect report validation."
+    },
+    {
+      "command": "cat tests/run_codex_review.py",
+      "exit_code": 1,
+      "purpose": "Attempt to locate the runner; filename was incorrect."
+    },
+    {
+      "command": "cat tests/codex_review_run.py docs/codex-adversarial-review-contract.md docs/review-classification-policy.md docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Inspect runner and review contracts."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- CLAUDE.md docs/buildomator-greptile-pilot.md docs/owner-cli-acceptance.md .planning/config.json tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Inspect policy and application regression-test changes."
+    },
+    {
+      "command": "cat docs/review-classification-policy.md docs/review-checkpoint-record.md docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Read complete review contracts."
+    },
+    {
+      "command": "rg -n 'malformed_by_queue|unevaluated|def .*cycle|failure_reasons' triggarr/web/routes.py triggarr/search* triggarr/state.py tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Locate cycle-state producers and consumers."
+    },
+    {
+      "command": "cat tests/test_codex_review_contract.py",
+      "exit_code": 0,
+      "purpose": "Inspect contract tests."
+    },
+    {
+      "command": "cat tests/test_codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner regression tests."
+    },
+    {
+      "command": "cat triggarr/search/outcome.py",
+      "exit_code": 0,
+      "purpose": "Trace cycle classification and presentation."
+    },
+    {
+      "command": "cat tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect report-validator regression coverage."
+    },
+    {
+      "command": "sed -n '115,175p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Recover validator-test content omitted by output truncation."
+    },
+    {
+      "command": "rg -n 'cycle_view|record_malformed' triggarr/web triggarr/search/engine.py",
+      "exit_code": 0,
+      "purpose": "Locate callers connecting engine outcomes to rendered cards."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B - <<'PY'\nfrom jinja2 import Environment, FileSystemLoader\nfrom triggarr.search.outcome import CycleTally, cycle_view\nt = CycleTally()\nt.record_malformed('missing', 1)\nt.mark_unevaluated('cutoff', \"tag 'x' not found\")\nr = t.to_record(active_queues=['missing', 'cutoff'], finished_at='2026-10-22T00:00:00Z')\nv = cycle_view(r, 'Radarr')\nenv = Environment(loader=FileSystemLoader('triggarr/templates'))\nenv.filters['timeago'] = lambda x: x\nhtml = env.get_template('partials/cycle_grade.html').render(app={'last_cycle': v})\nprint('grade:', r['grade'])\nprint('reasons:', v['reasons'])\nprint('\\n'.join(line.strip() for line in html.splitlines() if '<summary' in line))\nassert 'Show 1 skipped record' in html\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt an in-memory reproduction; shell heredoc required a prohibited temporary file."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -c 'from jinja2 import Environment, FileSystemLoader; from triggarr.search.outcome import CycleTally, cycle_view; t=CycleTally(); t.record_malformed(\"missing\",1); t.mark_unevaluated(\"cutoff\",\"tag x not found\"); r=t.to_record(active_queues=[\"missing\",\"cutoff\"],finished_at=\"2026-10-22T00:00:00Z\"); v=cycle_view(r,\"Radarr\"); env=Environment(loader=FileSystemLoader(\"triggarr/templates\")); env.filters[\"timeago\"]=lambda x:x; html=env.get_template(\"partials/cycle_grade.html\").render(app={\"last_cycle\":v}); print(\"grade:\",r[\"grade\"]); print(\"reasons:\",v[\"reasons\"]); print([line.strip() for line in html.splitlines() if \"<summary\" in line]); assert \"Show 1 skipped record\" in html'",
+      "exit_code": 1,
+      "purpose": "Retry reproduction without temporary files; identify missing template-filter setup."
+    },
+    {
+      "command": "git diff 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..HEAD -- CLAUDE.md .planning/config.json .planning/STATE.md",
+      "exit_code": 0,
+      "purpose": "Inspect complete policy, configuration, and state changes."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -c 'from jinja2 import Environment, FileSystemLoader; from triggarr.search.outcome import CycleTally, cycle_view; t=CycleTally(); t.record_malformed(\"missing\",1); t.mark_unevaluated(\"cutoff\",\"tag x not found\"); r=t.to_record(active_queues=[\"missing\",\"cutoff\"],finished_at=\"2026-10-22T00:00:00Z\"); v=cycle_view(r,\"Radarr\"); env=Environment(loader=FileSystemLoader(\"triggarr/templates\")); env.filters.update(exact_time=str,relative_time=str); html=env.get_template(\"partials/cycle_grade.html\").render(app={\"last_cycle\":v}); print(\"grade:\",r[\"grade\"]); print(\"reasons:\",v[\"reasons\"]); print([line.strip() for line in html.splitlines() if \"<summary\" in line]); assert \"Show 1 skipped record\" in html'",
+      "exit_code": 0,
+      "purpose": "Reproduce the Failed mixed-reason disclosure-label defect."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-CONTEXT.md .planning/phases/83-*/83-DISCUSSION-LOG.md .planning/phases/83-*/83-REVIEW-FIX.md",
+      "exit_code": 0,
+      "purpose": "Read phase intent and recorded fixes."
+    },
+    {
+      "command": "wc -c .planning/phases/83-*/*md .planning/quick/261022-l7h-*/*md docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Size planning documents for complete inspection."
+    },
+    {
+      "command": "sed -n '160,205p' triggarr/search/engine.py; sed -n '820,900p' triggarr/search/engine.py; sed -n '1080,1155p' triggarr/search/engine.py; sed -n '370,410p' triggarr/web/routes.py; nl -ba triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Trace the concrete failure path and identify template line numbers."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -m pytest -p no:cacheprovider -s tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_checkpoint_record.py tests/test_review_instructions.py -k 'not recorded and not cli' -q",
+      "exit_code": 0,
+      "purpose": "Run read-only-compatible focused checks: 109 passed, 9 deselected."
+    },
+    {
+      "command": "cat docs/bm-review-baseline-2026-10-22.md",
+      "exit_code": 0,
+      "purpose": "Inspect the documented review baseline."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-01-PLAN.md .planning/phases/83-*/83-01-SUMMARY.md .planning/phases/83-*/83-config-before.json",
+      "exit_code": 0,
+      "purpose": "Inspect plan 01, implementation summary, and prior configuration."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-02-PLAN.md .planning/phases/83-*/83-02-SUMMARY.md .planning/phases/83-*/83-03-PLAN.md .planning/phases/83-*/83-03-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Inspect plans 02–03 and implementation summaries."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-02-SUMMARY.md .planning/phases/83-*/83-04-PLAN.md .planning/phases/83-*/83-04-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Recover the complete plan 02 summary and inspect plan 04."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-05-PLAN.md .planning/phases/83-*/83-05-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Inspect plan 05 and implementation summary."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-06-PLAN.md .planning/phases/83-*/83-06-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Inspect plan 06 and implementation summary."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-07-PLAN.md .planning/phases/83-*/83-07-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Inspect plan 07 and implementation summary."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-08-PLAN.md .planning/phases/83-*/83-08-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Inspect plan 08 and implementation summary."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-09-PLAN.md .planning/phases/83-*/83-10-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect remaining phase plans."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-DEMONSTRATIONS.md .planning/phases/83-*/83-QUICK-PROPOSAL.md .planning/phases/83-*/83-VALIDATION.md",
+      "exit_code": 0,
+      "purpose": "Inspect demonstrations, proposed behavior, and validation requirements."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-PATTERNS.md",
+      "exit_code": 0,
+      "purpose": "Inspect documented implementation patterns."
+    },
+    {
+      "command": "sed -n '1,250p' .planning/phases/83-*/83-RESEARCH.md",
+      "exit_code": 0,
+      "purpose": "Inspect the first portion of phase research."
+    },
+    {
+      "command": "sed -n '251,501p' .planning/phases/83-*/83-RESEARCH.md",
+      "exit_code": 0,
+      "purpose": "Inspect the remainder of phase research."
+    },
+    {
+      "command": "cat .planning/phases/83-*/83-REVIEW.md; cmp .planning/phases/83-*/83-REVIEW.md .planning/phases/83-*/83-REVIEW-dcfb5a5081ea.md",
+      "exit_code": 0,
+      "purpose": "Inspect review planning markdown and confirm the archived copy is identical."
+    },
+    {
+      "command": "sed -n '1,215p' .planning/phases/83-*/83-REVIEW-EVIDENCE.md",
+      "exit_code": 0,
+      "purpose": "Inspect the first portion of recorded intent and evidence."
+    },
+    {
+      "command": "sed -n '216,429p' .planning/phases/83-*/83-REVIEW-EVIDENCE.md",
+      "exit_code": 0,
+      "purpose": "Inspect remaining recorded intent and evidence, including Failed-card expectations."
+    },
+    {
+      "command": "cat .planning/quick/261022-l7h-*/*CONTEXT.md .planning/quick/261022-l7h-*/*PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect disclosure-label task context and plan."
+    },
+    {
+      "command": "cat .planning/quick/261022-l7h-*/*RESEARCH.md .planning/quick/261022-l7h-*/*REVIEW.md",
+      "exit_code": 0,
+      "purpose": "Inspect disclosure-label research and review background."
+    },
+    {
+      "command": "cat .planning/quick/261022-l7h-*/*SUMMARY.md .planning/quick/261022-l7h-*/*VERIFICATION.md",
+      "exit_code": 0,
+      "purpose": "Inspect disclosure-label implementation and verification claims."
+    },
+    {
+      "command": "sed -n '175,210p' tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Finish recovering validator-test content omitted by output truncation."
+    },
+    {
+      "command": "cat docs/owner-cli-acceptance.md docs/buildomator-greptile-pilot.md CLAUDE.md",
+      "exit_code": 0,
+      "purpose": "Complete inspection of acceptance and publication policies."
+    },
+    {
+      "command": "git diff --check 6f3841aaae4f2511efe6796f7f5c7ad50b423f90..322afc50367d4cf7e2610eb6f8852bb8c9302457 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl'",
+      "exit_code": 0,
+      "purpose": "Check scoped diff whitespace."
+    },
+    {
+      "command": "git status --short",
+      "exit_code": 0,
+      "purpose": "Confirm the working tree remains clean."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "low",
+      "title": "Failed mixed-reason cards incorrectly use the skipped-record label",
+      "file": "triggarr/templates/partials/cycle_grade.html",
+      "line_start": 33,
+      "line_end": 34,
+      "trigger": "An active missing queue contains one malformed record, the active cutoff queue cannot be evaluated because its configured tag is unresolved, and no searches are accepted.",
+      "execution_path": "Queue screening records the malformed item; tag resolution marks the cutoff queue unevaluated. CycleTally.to_record produces grade 'failed', and cycle_view produces two reason rows. The template bypasses the neutral-details branch because the grade is Failed, then enters the malformed-record branch because that branch does not exclude unevaluated rows.",
+      "consequence": "The red Failed card displays 'Show 1 skipped record' for a disclosure containing two reasons, including an entire unevaluated queue. This misstates both the contents and count and obscures the configuration failure until expanded.",
+      "evidence": "An in-memory reproduction using production CycleTally, cycle_view, and the actual template produced grade 'failed', a cutoff-queue-not-evaluated row, a malformed-record row, and summary 'Show 1 skipped record'. The recorded SA-01 expectation requires failure wording for Failed cards with unevaluated queues. Existing tests cover Failed unevaluated-only and Partial mixed states, but omit this Failed mixed state.",
+      "suggested_fix": "Require ns.unevaluated == 0 in the skipped-record branch. Add a regression case built from CycleTally with malformed missing records and an unevaluated cutoff queue, asserting 'Show 2 failure reasons' and preservation of both rows. Preserve the existing malformed-only behavior.",
+      "reproduced": true,
+      "reproduction_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -B -c 'from jinja2 import Environment, FileSystemLoader; from triggarr.search.outcome import CycleTally, cycle_view; t=CycleTally(); t.record_malformed(\"missing\",1); t.mark_unevaluated(\"cutoff\",\"tag x not found\"); r=t.to_record(active_queues=[\"missing\",\"cutoff\"],finished_at=\"2026-10-22T00:00:00Z\"); v=cycle_view(r,\"Radarr\"); env=Environment(loader=FileSystemLoader(\"triggarr/templates\")); env.filters.update(exact_time=str,relative_time=str); html=env.get_template(\"partials/cycle_grade.html\").render(app={\"last_cycle\":v}); print(\"grade:\",r[\"grade\"]); print(\"reasons:\",v[\"reasons\"]); print([line.strip() for line in html.splitlines() if \"<summary\" in line]); assert \"Show 1 skipped record\" in html'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently rerun the full pytest suite because the read-only sandbox prevents writable test fixtures. Read the authorized harness evidence for the exact inspected head and independently ran 109 read-only-compatible focused tests.",
+    "Nine focused-test cases were deselected to avoid historical review-artifact reads and CLI tests requiring writable fixtures.",
+    "The defect was reproduced through production tally, view, and template code; no live browser or external *arr service was exercised.",
+    "External Buildomator installation behavior, hosted CI, Docker deployment, and publication workflows were inspected through repository code and documentation rather than executed."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

@@ -480,13 +480,10 @@ def test_v2_limitation_alone_does_not_make_incomplete() -> None:
 
 # --- Recorded history keeps its v1 assessment ------------------------------
 
-_CODEX_DIR = (
-    Path(__file__).resolve().parent.parent
-    / ".planning"
-    / "phases"
-    / "83-paired-bm-codex-review-risk-based-depth"
-    / "codex"
-)
+# Byte-identical copies of Phase 83's recorded reports
+# (.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/), kept
+# under tests/ so archiving a milestone's phase folders cannot break this suite.
+_CODEX_DIR = Path(__file__).resolve().parent / "fixtures" / "codex-recorded"
 
 
 def _assess_recorded(name: str, *, legacy_v1: bool = False) -> object:
