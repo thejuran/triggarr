@@ -5,6 +5,7 @@ const path = require('node:path');
 const {
   readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS,
 } = require('./acceptance-readiness.cjs');
+const {INSPECTION_REVIEW_MODE} = require('./codex-fallback.cjs');
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -122,6 +123,46 @@ const UNTRUSTED_VARIANTS = [
   {label: 'cross-repository PR', prAuthor: 'thejuran', prAuthorIsBot: false, isCrossRepository: true},
   {label: 'author outside TRUSTED_AUTHORS', prAuthor: 'someone-else', prAuthorIsBot: false, isCrossRepository: false},
 ];
+
+// --- D-07/D-12: inspection-only (isolated-container) evidence for an untrusted head ---
+
+function verifiedBoundary(overrides = {}) {
+  return {
+    boundary_version: 1, verdict: 'verified', reasons: [], head: HEAD, label: 'task5', attempt: 1,
+    checked_at: DECIDED_AT, image_ref: 'codex-review:local', image_id: `sha256:${'a'.repeat(64)}`,
+    codex_version: '0.153.4', credential_mode: 'copied-login', network: 'default', mounts: [],
+    env_names: [], canary: 'ok', schema_sha256: 'b'.repeat(64), ...overrides,
+  };
+}
+
+function inspectionOnlyOut() {
+  return `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task5-a1`;
+}
+
+function inspectionOnlyBaseline({prAuthor, prAuthorIsBot, isCrossRepository}, overrides = {}) {
+  const input = baseline();
+  input.prAuthor = prAuthor;
+  input.prAuthorIsBot = Boolean(prAuthorIsBot);
+  input.isCrossRepository = Boolean(isCrossRepository);
+  const out = overrides.out || inspectionOnlyOut();
+  const attempt = overrides.attempt ?? 1;
+  input.codex = {
+    status: overrides.status || {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: Object.hasOwn(overrides, 'baseStatus') ? overrides.baseStatus : null,
+    meta: {
+      meta_version: 2,
+      head: HEAD,
+      base: BASE,
+      attempt,
+      review_mode: INSPECTION_REVIEW_MODE,
+      audited_inputs_changed_in_diff: overrides.auditedInputsChangedInDiff || [],
+    },
+    boundary: Object.hasOwn(overrides, 'boundary') ? overrides.boundary : verifiedBoundary({head: HEAD, attempt}),
+    out,
+  };
+  input.fallback = null;
+  return input;
+}
 
 // --- readiness(): all prerequisites present ---
 
@@ -267,7 +308,6 @@ for (const variant of UNTRUSTED_VARIANTS) {
     const i = item(result, 'Codex');
     assert.equal(i.status, 'ok');
     assert.ok(i.detail.includes('owner-approved fallback for untrusted head: vibe-check deep review (owner-run)'));
-    assert.ok(i.detail.includes('isolated review is Phase 85.1'));
   });
 
   test(`untrusted head (${variant.label}) with no fallback is blocked`, () => {
@@ -276,12 +316,13 @@ for (const variant of UNTRUSTED_VARIANTS) {
     const i = item(result, 'Codex');
     assert.equal(i.status, 'blocked');
     assert.ok(i.detail.includes(
-      'untrusted head (bot/fork): Codex review is refused until Phase 85.1; an owner-approved fallback (D-16) is required'
+      'INCOMPLETE/PENDING: no recorded fallback for this untrusted head; an owner-approved fallback (D-16) is required, '
+        + 'or rerun the inspection-only review; wait or retry later blocks acceptance'
     ));
   });
 }
 
-test('an untrusted head whose Codex files claim complete is blocked even with a fallback present', () => {
+test('an untrusted head whose Codex files claim trusted-mode completion is blocked even with a fallback present', () => {
   const input = untrustedBaseline(UNTRUSTED_VARIANTS[0]);
   input.codex.meta = {...input.codex.meta, review_mode: 'trusted-local-tests'};
   input.codex.status = {status: 'complete', inspected_head: HEAD, inspected_base: BASE};
@@ -289,7 +330,120 @@ test('an untrusted head whose Codex files claim complete is blocked even with a 
   const result = readiness(input);
   const i = item(result, 'Codex');
   assert.equal(i.status, 'blocked');
-  assert.ok(i.detail.includes('Codex evidence claims complete for an untrusted head'));
+  assert.ok(i.detail.includes(
+    'Codex evidence claims trusted-mode completion for an untrusted head; untrusted heads are reviewed inspection-only'
+  ));
+});
+
+// --- D-07/D-12: COMPLETE inspection-only evidence counts without a fallback ---
+
+for (const variant of UNTRUSTED_VARIANTS) {
+  test(`untrusted head (${variant.label}) with a COMPLETE inspection-only result and a verified boundary is ok, no fallback`, () => {
+    const input = inspectionOnlyBaseline(variant);
+    const result = readiness(input);
+    const i = item(result, 'Codex');
+    assert.equal(i.status, 'ok');
+    assert.equal(i.detail, 'complete (inspection-only, isolation boundary verified)');
+  });
+}
+
+test('untrusted head: a missing isolation boundary blocks, even at attempt 2 with a valid fallback', () => {
+  for (const attempt of [1, 2]) {
+    const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {attempt, boundary: null, out: CODEX_OUT});
+    input.fallback = validFallback({codex_out: CODEX_OUT});
+    const result = readiness(input);
+    const i = item(result, 'Codex');
+    assert.equal(i.status, 'blocked', `attempt ${attempt}`);
+    assert.ok(i.detail.includes('no verified isolation boundary'), i.detail);
+  }
+});
+
+test('untrusted head: an unverified or wrong-head/attempt boundary blocks the same way', () => {
+  for (const boundary of [
+    verifiedBoundary({verdict: 'unverified'}),
+    verifiedBoundary({head: 'f'.repeat(40)}),
+    verifiedBoundary({attempt: 2}),
+  ]) {
+    const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {boundary});
+    const result = readiness(input);
+    const i = item(result, 'Codex');
+    assert.equal(i.status, 'blocked', JSON.stringify(boundary));
+    assert.ok(i.detail.includes('no verified isolation boundary'), i.detail);
+  }
+});
+
+test('untrusted head: an audited input change with a missing base-status blocks with the grader-changed reason', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    auditedInputsChangedInDiff: ['tests/codex_report_status.py'],
+    baseStatus: null,
+  });
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes("grader changed in this diff: the trusted-main checker's base-status is missing"), i.detail);
+});
+
+test('untrusted head: an audited input change with a complete, bound base-status is ok', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    auditedInputsChangedInDiff: ['tests/codex_report_status.py'],
+    baseStatus: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+  });
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'ok', i.detail);
+});
+
+test('untrusted head: a genuinely incomplete inspection-only result at attempt 2 with no fallback is blocked', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    attempt: 2,
+    status: {status: 'incomplete', reasons: ['boundary unverified']},
+    boundary: null,
+  });
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes(
+    'INCOMPLETE/PENDING: no recorded fallback for this untrusted head; an owner-approved fallback (D-16) is required, '
+      + 'or rerun the inspection-only review; wait or retry later blocks acceptance'
+  ), i.detail);
+});
+
+test('untrusted head: a genuinely incomplete inspection-only result at attempt 2 with a matching fallback is ok', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    attempt: 2,
+    status: {status: 'incomplete', reasons: ['boundary unverified']},
+    boundary: null,
+    out: CODEX_OUT,
+  });
+  input.fallback = validFallback({codex_out: CODEX_OUT});
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'ok', i.detail);
+  assert.ok(i.detail.startsWith('ok (owner-approved fallback for untrusted head:'), i.detail);
+});
+
+test('trusted head with an inspection-only complete record is not complete; a fallback is rejected by the validator', () => {
+  const input = baseline();
+  input.codex = {
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    meta: {
+      meta_version: 2, head: HEAD, base: BASE, attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
+      audited_inputs_changed_in_diff: [],
+    },
+    boundary: verifiedBoundary({attempt: 2}),
+    out: CODEX_OUT,
+  };
+  const noFallback = readiness(input);
+  assert.equal(item(noFallback, 'Codex').status, 'blocked');
+
+  input.fallback = validFallback();
+  const withFallback = readiness(input);
+  const i = item(withFallback, 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes(
+    'an inspection-only result does not open the fallback for a trusted head; run the trusted Codex pass'
+  ), i.detail);
 });
 
 test('a trusted head with only an untrusted-refused record and a fallback is blocked by the validator\'s reason', () => {
@@ -634,6 +788,57 @@ test('runCli rejects an invalid --pr before calling the injected exec', () => {
   assert.equal(exitCode, 2);
   assert.equal(execCalled, false);
   assert.equal(readCalled, false);
+});
+
+function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson}) {
+  const prInfo = JSON.stringify({
+    number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
+    author: {login: authorLogin, is_bot: isBot}, isCrossRepository: false,
+  });
+  const checksPages = JSON.stringify([
+    {total_count: 2, check_runs: [
+      {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+    ]},
+  ]);
+  const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
+  const blockers = {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}};
+  const exec = execTable({
+    [prViewKey()]: prInfo,
+    [checkRunsKey()]: checksPages,
+    [commentsKey()]: JSON.stringify([[]]),
+    [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
+    [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
+    [gitDiffKey()]: '',
+  });
+  const files = {
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: INSPECTION_REVIEW_MODE,
+      audited_inputs_changed_in_diff: [],
+    }),
+  };
+  if (boundaryJson !== undefined) files[`${CODEX_OUT}.boundary.json`] = boundaryJson;
+  return {exec, readFile: fileTable(files)};
+}
+
+test('runCli reads <out>.boundary.json so a COMPLETE inspection-only record for an untrusted head reaches ok', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true, boundaryJson: JSON.stringify(verifiedBoundary({attempt: 1})),
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 0, output);
+  assert.ok(output.includes('Codex: ok'), output);
+});
+
+test('runCli: a missing <out>.boundary.json for an inspection-only record is not an error (readJsonIfPresent)', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({authorLogin: 'dependabot[bot]', isBot: true});
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('no verified isolation boundary'), output);
 });
 
 // --- WR-01 regressions: readiness must not trust the head runner's own meta ---
