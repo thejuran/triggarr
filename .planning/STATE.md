@@ -9,7 +9,7 @@ last_activity: "2026-10-28 -- Phase 85.1 plans revised after plan check: 7-day s
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 45
+  total_plans: 55
   completed_plans: 45
   percent: 57
 ---
