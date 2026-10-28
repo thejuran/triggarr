@@ -775,6 +775,47 @@ def test_inspection_only_bogus_mode_raises_value_error() -> None:
         _assess(_valid_report(), review_mode="bogus")
 
 
+# --- --review-mode CLI flag (D-07, B04-R2, B13 support check) --------------
+
+
+def test_cli_review_mode_inspection_only_exits_zero(tmp_path, capsys) -> None:
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(_inspection_only_report()), encoding="utf-8")
+
+    exit_code = main([*_cli_args(report_path), "--review-mode", "inspection-only"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "complete"
+    assert payload["review_mode"] == "inspection-only"
+
+
+def test_cli_review_mode_default_is_trusted(tmp_path, capsys) -> None:
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(_inspection_only_report()), encoding="utf-8")
+
+    exit_code = main(_cli_args(report_path))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["review_mode"] == "trusted"
+
+
+def test_cli_review_mode_bogus_exits_two() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main([*_cli_args(Path("/nonexistent")), "--review-mode", "bogus"])
+    assert exc_info.value.code == 2
+
+
+def test_cli_help_lists_review_mode(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--help"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "--review-mode" in captured.out
+    assert "inspection-only" in captured.out
+
+
 def test_cli_whitespace_only_commands_run_exits_one(tmp_path, capsys) -> None:
     report = _valid_report()
     report["commands_run"] = [{"command": "   ", "exit_code": None, "purpose": ""}]
