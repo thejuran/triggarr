@@ -1,19 +1,13 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
-reviewed: 2026-10-28T20:39:52Z
-reviewed_head: b272d82fd7679350cebadda1fff8ced30f87147e
-diff_base: 5592e4e
-iteration: 10
+reviewed: 2026-10-28T20:49:04Z
+reviewed_head: 44d34e231b2789f7927c5b89e84e4723a00733bc
+diff_base: b272d82
+iteration: 11
 depth: standard
-files_reviewed: 7
+files_reviewed: 1
 files_reviewed_list:
-  - tests/test_codex_report_status.py
   - tests/test_codex_review_run.py
-  - tests/fixtures/codex-recorded/322afc50367d-postfix-a1.last.json
-  - tests/fixtures/codex-recorded/322afc50367d-postfix-a2.last.json
-  - tests/fixtures/codex-recorded/a7995baf187e-quick-a1.last.json
-  - tests/fixtures/codex-recorded/d501a68316b2-explicit-a1.last.json
-  - tests/fixtures/codex-recorded/d501a68316b2-explicit-a2.last.json
 findings:
   critical: 0
   warning: 1
@@ -22,28 +16,34 @@ findings:
 status: issues_found
 ---
 
-# Phase 85: Code Review Report (iteration 10, post-merge archive-safe fixtures)
+# Phase 85: Code Review Report (iteration 11, confirming the iteration-10 WR-01 fix)
 
-**Reviewed:** 2026-10-28T20:39:52Z (head `b272d82fd7679350cebadda1fff8ced30f87147e`, diff base `5592e4e`)
+**Reviewed:** 2026-10-28T20:49:04Z (head `44d34e231b2789f7927c5b89e84e4723a00733bc`, diff base `b272d82`)
 **Depth:** standard
-**Files Reviewed:** 7
+**Files Reviewed:** 1
 **Status:** issues_found (1 warning, info items; no blocker)
 
 ## Summary
 
-Scope: `git diff 5592e4e..b272d82 -- tests/`, which is commit b272d82. The later commit on `archive-safe-fixtures` (1eb1a67) changes `.planning/` only and is out of scope.
+Scope: `git diff b272d82..44d34e2 -- tests/test_codex_review_run.py`, which is commit 44d34e2.
 
 Verification on this tree:
-- `uv run pytest tests/test_codex_report_status.py tests/test_codex_review_run.py -q`: 280 passed. The placeholder folder is gone after a single run.
-- `uv run ruff check` on both test files: clean.
-- `gsd-tools verify conventions --check` on both test files: no findings.
-- `cmp` of each of the five fixtures against `.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/`: byte-identical.
+- `uv run ruff check tests/test_codex_review_run.py`: clean.
+- `uv run pytest tests/test_codex_review_run.py -k kills_active_process_group`: 2 passed. See WR-02 for why they pass.
+- `.planning/phases/` has no `00-*` folder, and `git status` is clean.
 
-**Fixture copies (test_codex_report_status.py): sound.** `_assess_recorded` takes the head and base from the report itself, so the tests do not depend on the folder name. I re-ran the assessment on each copy. `322afc50367d-postfix-a1` is still `incomplete` for the recorded reasons (it declares itself incomplete in its summary and limitations, and lists files it did not fully read). The two v2 `complete` reports return no reasons. The v1 pair still needs the legacy path. Each recorded-history test still checks real recorded output, not a synthetic copy. No other test in `tests/` or `.github/scripts/` reads a real phase folder. The remaining `.planning/phases/8x-x/...` strings are synthetic pathspec samples.
+**Iteration-10 WR-01: resolved.** The autouse fixture now points `runner.REPO_ROOT` at the test's own `tmp_path` and creates `PHASE_DIR` there with `mkdir(parents=True)`. Nothing is written into the real checkout, and pytest cleans up `tmp_path`, so concurrent runs have no shared folder to race on. I checked how the fixture interacts with the rest of the module:
+- Pytest gives the fixture and the test the same `tmp_path`. All six removed `(tmp_path / PHASE_DIR).mkdir(parents=True)` lines would have raised `FileExistsError`, and all six are gone. No plain `mkdir(parents=True)` of `PHASE_DIR` remains. The child harness now uses `exist_ok=True`. `_tmp_run`'s `scratch` folder and the harness's `tmp_root / "scratch"` do not collide with `.planning/`.
+- `test_output_base_naming` compares against `runner.REPO_ROOT`, so it checks the patched value.
+- `test_checker_argv` pins `runner.REPO_ROOT` back to the real checkout. That keeps the one test that asserts the real `tests/codex_report_status.py` path meaningful.
+- Reads of `docs/` and `tests/codex_report_status.py` (lines 184, 309, 1260, 1396) still go through the imported `REPO_ROOT` constant. The constant was bound at import time and the patch does not change it. `HARNESS_ROOT` hashing (line 1359) and the mid-Codex harness's `cwd=runner.HARNESS_ROOT` (line 2371) are not affected.
+- The redaction tests already used `tmp_path` through `_tmp_run`, so the `(REPO_ROOT, "<repo>")` redaction entry behaves as before.
+- `FakeRunner` intercepts every runner command that uses `cwd=REPO_ROOT` (codex, checker, worktree add and remove). `_real_bytes_for` drops `cwd` before running its real child. No real `git` command now runs in a `tmp_path` that is not a repository.
+- The dry-run test's `"tests/codex_report_status.py" in out` check now matches `<tmp_path>/tests/codex_report_status.py`. That is a substring check. The real path is still covered by `test_checker_argv`.
 
-**Placeholder phase folder (test_codex_review_run.py): works for one run at a time, but writes into the real checkout (WR-01).** No test writes output files into `REPO_ROOT / PHASE_DIR`. Every test that calls `main()` against the real `REPO_ROOT` is a dry run or exits on an argument error (lines 398, 418, 606, 666, 710). The two dry-run tests compare before and after for every output suffix. Every test that writes output first moves `runner.REPO_ROOT` to `tmp_path`. The subprocess harness at line 2329 does the same. Before this commit, the dry-run tests checked `.planning/phases/83-.../codex/` for `aaaaaaaaaaaa-*` files. Now they check an empty folder, which is an equal or stronger guarantee.
+**Regression found (WR-02):** `_assert_signal_kills_active_process_group` still starts its child with `cwd=runner.REPO_ROOT`. The iteration-10 fix note asked for this line to be checked, and it was not changed. It now runs in `tmp_path`, and it only passes because of the editable install's `.pth` file.
 
-xdist is not installed or configured (`pyproject.toml` has no `-n`), so a single CI run cannot race itself. Two pytest runs in the same checkout can, though. I started three runs of this module at once, three times: one of nine runs failed, and the placeholder folder was left behind afterwards. See WR-01. I removed the empty leftover folder after the probe; `git status` is clean.
+**IN-06 and IN-07 (iteration 10): resolved.** The `rmtree` teardown and the function-local `import shutil` were removed along with the old fixture.
 
 ## Structural Findings (fallow)
 
@@ -53,45 +53,37 @@ No structural findings were provided for this run.
 
 ## Warnings
 
-### WR-01: The per-test placeholder folder in the real checkout races between pytest runs and can be left behind permanently
+### WR-02: The SIGTERM/SIGHUP process-group test now imports the runner from wherever the venv's editable install points, not from the checkout under test
 
-**File:** `tests/test_codex_review_run.py:46-59`
-**Issue:** The autouse fixture is function-scoped. It creates and deletes `<repo>/.planning/phases/00-codex-runner-test-fixture` around each of the module's 153 tests, and `created = not path.exists()` decides who owns the cleanup. If two pytest runs share one checkout (for example, an agent running the full suite in the background while another runs a targeted test, or two terminals), the following happens:
-1. Run A sees no folder and owns it. Run B sees A's folder (`created = False`). A's teardown removes the folder while B is between `path.mkdir`'s internal steps, or while B's test is inside `main()`. I reproduced this: `ERROR at setup of test_contract_documents_untrusted_sources`, `FileExistsError` raised from `path.mkdir(parents=True, exist_ok=True)` (pathlib's `mkdir` failed, then its follow-up `is_dir()` saw the folder already removed). If the removal lands during `main()`, the result is a spurious `phase-dir does not exist` exit 2.
-2. The last run to finish may be one that saw `created = False`. It then leaves the folder in place. I reproduced this too. After that, every later run also sees `created = False`, so nothing removes it again. The same happens after a hard kill (`SIGKILL`, a second Ctrl-C) between setup and teardown. The folder is empty, so `git status` does not show it. But BM/GSD phase tooling and the Roadmaps page scan `.planning/phases/`, and they would see a stray "phase 00".
-3. In a read-only checkout, every test in the module now errors at setup. Before this change, this module needed no writes to the repo.
+**File:** `tests/test_codex_review_run.py:2003-2006`
+**Issue:** The child is `python -c _REPORT_ACTIVE_GROUP_THEN_RUN`, and the script starts with `from tests import codex_review_run as runner`. With `-c`, `sys.path[0]` is the working directory. Before 44d34e2 the working directory was the real checkout, so `tests` was always this checkout's package. The autouse fixture now sets `runner.REPO_ROOT` to `tmp_path`, so the child runs in an empty temp folder with no `tests/` in it. The import only works because hatchling's editable install writes `.venv/lib/python3.11/site-packages/_editable_impl_triggarr.pth`, which contains `/Users/julianamacbook/triggarr`. I confirmed that from `/tmp`, `import tests` resolves to `/Users/julianamacbook/triggarr/tests/__init__.py` through that file.
 
-The effect is flaky test failures and leftover state, not wrong results in CI. That is why this is a WARNING, not a BLOCKER.
-**Fix:** Stop writing into the real checkout. Point the runner's output root at `tmp_path` for every test, and create the placeholder there:
+This has two effects:
+1. If the venv's editable install points at a different checkout, the test checks that checkout's `install_signal_handlers` and `run_command`, not the code under review. This happens with a shared `UV_PROJECT_ENVIRONMENT`, a git worktree reusing another checkout's venv, or an agent sandbox copy. The test can pass while the code under review is broken. This is the "test silently stopped exercising the real checkout" case.
+2. In a non-editable install (`uv sync --no-editable`, `pip install .`), the child fails with `ImportError`. The test then reports a 5-second `TimeoutError: pgid.txt was never written`, which hides the real cause.
+
+CI uses `uv sync --locked --extra dev`, which is editable, so CI passes today. That is why this is a WARNING and not a BLOCKER. The sibling harness at line 2371 already uses `cwd=runner.HARNESS_ROOT`, which is the correct pattern.
+**Fix:**
 ```python
-@pytest.fixture(autouse=True)
-def _placeholder_phase_dir(tmp_path, monkeypatch):
-    """main() requires --phase-dir to exist; give every test its own repo root so
-    no test touches the real checkout's .planning/phases/."""
-    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    (tmp_path / PHASE_DIR).mkdir(parents=True)
+    child = subprocess.Popen(
+        [sys.executable, "-c", _REPORT_ACTIVE_GROUP_THEN_RUN, str(pid_file)],
+        cwd=runner.HARNESS_ROOT,
+    )
 ```
-Then:
-- Remove the now-redundant `monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)` / `(tmp_path / PHASE_DIR).mkdir(...)` pairs. If they are kept, change them to `mkdir(parents=True, exist_ok=True)`, because the existing `mkdir(parents=True)` calls would otherwise raise `FileExistsError`.
-- Change line 242 to compare against `runner.REPO_ROOT`, not the imported constant.
-- Keep reading `docs/` and `tests/codex_report_status.py` through the imported `REPO_ROOT` constant (lines 190, 313, 1270, 1406), which the patch does not change.
-- Check `_assert_signal_kills_active_process_group` (line 2015, `cwd=runner.REPO_ROOT`). Under the patch it would run in `tmp_path`, so pin it to the imported `REPO_ROOT` if it needs the repo on its import path.
-
-A smaller alternative is to keep the real-repo folder but make the fixture `scope="module"`, name the folder per process (for example `00-codex-runner-test-fixture-{os.getpid()}`), and always remove it when it is empty. That narrows the race but still writes into the checkout.
 
 ## Info
 
-### IN-06: Teardown uses `rmtree(..., ignore_errors=True)`, which would quietly delete anything a test wrongly wrote there
+### IN-08: The fixture docstring says REPO_ROOT is "only the output root", but the runner also uses it as the git/codex/checker working directory and the checker path
 
-**File:** `tests/test_codex_review_run.py:58-59`
-**Issue:** Before this commit, a regression that wrote real runner output into the phase folder showed up as untracked files under phase 83's `codex/` folder. Now the fixture deletes the whole tree without checking, and ignores errors. The two dry-run tests still check before and after explicitly, so today's coverage holds. But the folder no longer acts as a passive guard for other `main()` tests, and a failed removal is never reported. The cleanup also removes only the leaf folder. If `.planning/phases/` was missing (for example, after a full archive), it creates `.planning/phases/` and leaves it behind.
-**Fix:** This is resolved by the WR-01 fix (use `tmp_path`, so pytest handles cleanup). If the real-repo folder stays, use `path.rmdir()` so a non-empty folder fails loudly, and do not ignore errors.
+**File:** `tests/test_codex_review_run.py:48-51`
+**Issue:** The runner's own comment (`tests/codex_review_run.py:68-69`) says REPO_ROOT is "where outputs are written and git commands run". It is the `cwd` for codex (766), the base and current checkers (1010, 1214), and worktree add and remove (1070, 1186). It is also the source of the checker path (413) and the `<repo>` redaction entry (665). Those uses are safe in tests today only because `FakeRunner` intercepts every such command and `test_checker_argv` re-pins the root. The docstring's "only" invites a future test to run a real command against `runner.REPO_ROOT` and get a temp folder instead of the repo. WR-02 is an example of this.
+**Fix:** Reword it to something like: "Every test sees REPO_ROOT (output root, and cwd for git/codex/checker commands) as its own tmp_path; anything that needs the real checkout must use HARNESS_ROOT or the imported REPO_ROOT constant."
 
-### IN-07: `import shutil` is inside the fixture body
+### IN-09: Seven now-redundant `monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)` lines remain
 
-**File:** `tests/test_codex_review_run.py:51`
-**Issue:** This is minor. The module imports at the top elsewhere, and other tests in this file use function-local imports (`import json as _json`, `import os`) by local habit. It is harmless, and the WR-01 fix removes it.
-**Fix:** Drop it with the WR-01 fix, or move it to the module imports.
+**File:** `tests/test_codex_review_run.py:331, 495, 627, 670, 685, 1100, 1240` (also 2391)
+**Issue:** These lines are harmless, because the fixture already set the same value with the same `tmp_path`. The matching `mkdir` lines were removed. The setattr lines now read as if the test had to opt out of the real checkout, which is no longer true.
+**Fix:** Optional. Remove them, or leave them as explicit documentation. Do not change behavior either way.
 
 ### IN-05 (carried from iteration 9): The pins file header points to evidence in a phase folder that will be archived, and nothing checks its "checked" date
 
@@ -105,7 +97,7 @@ A smaller alternative is to keep the real-repo folder but make the fixture `scop
 
 ### IN-04 (carried from iteration 8): The new end-to-end test assumes the child prints within one second
 
-**File:** `tests/test_codex_review_run.py:2079-2111` (line numbers before b272d82; about +18 after it; not in this round's scope)
+**File:** `tests/test_codex_review_run.py:2079-2111` (line numbers before b272d82; about +10 at 44d34e2; not in this round's scope)
 **Issue:** Recorded as in iteration 8. Not re-raised.
 
 ### IN-01 (carried from iteration 7, owner left out of scope): The Node detector's quoted-key support misses YAML escape spellings
@@ -118,6 +110,12 @@ A smaller alternative is to keep the real-repo folder but make the fixture `scop
 **File:** `.github/scripts/codex-fallback.cjs:63-79, 99-111, 133-137` (not in this round's scope)
 **Issue:** Recorded as in iteration 7. Not re-raised.
 
+## Resolved this iteration (not counted)
+
+- **WR-01 (iteration 10):** The placeholder folder in the real checkout raced between pytest runs and could be left behind. Resolved by 44d34e2, which uses a per-test `tmp_path` root. The orchestrator ran the module 9 times concurrently with 153/153 passing each time, and no folder was left under `.planning/phases`.
+- **IN-06 (iteration 10):** The `rmtree(..., ignore_errors=True)` teardown. Resolved, because the teardown is gone and pytest handles cleanup.
+- **IN-07 (iteration 10):** The function-local `import shutil`. Resolved, because the import was removed with the fixture body.
+
 ## Accepted residuals (carried, not counted)
 
 ### Iteration-7 WR-01: Run-together reviewer names typed in one case (`claudecode`, `bmreviewer`, `gsdagent`, `codexreviewrun`) still pass
@@ -127,17 +125,20 @@ A smaller alternative is to keep the real-repo folder but make the fixture `scop
 
 ## Set aside (needs ruling)
 
+### SA-11: No test covers `main()`'s "phase-dir does not exist" refusal
+
+**Where:** `tests/codex_review_run.py:1391-1392`, `tests/test_codex_review_run.py:46-53`
+**Why excluded:** This gap existed before this commit, and the change did not add it. Now that every test gets an existing `PHASE_DIR`, a test for that branch would have to use a different phase dir or remove the folder first.
+**Effect if left as is:** If a regression dropped the check, `--phase-dir` typos would write outputs under a new, unintended folder without any warning. That is a minor annoyance for whoever runs the harness. It does not affect review results.
+**Needs:** A ruling on whether to add a one-line test (`main(_cli(Path(".planning/phases/does-not-exist"), "--dry-run", "--trusted"))` raises `SystemExit(2)`) in this phase or defer it.
+
+### SA-10 (carried from iteration 10): The fixture copies and the phase-83 originals can drift apart
+
+Unchanged from `85-REVIEW.iter10.md`.
+
 ### SA-08 (carried from iteration 9): resolved by b272d82
 
-**Where:** `tests/test_codex_report_status.py:483-486`, `tests/test_codex_review_run.py:41-59`
-**Status:** Both suites no longer read phase 83's folder. The fixture copies are byte-identical, and the orchestrator ran the suites with phases 82-85 moved away. The placeholder approach has its own problem, recorded as WR-01. No ruling is needed for SA-08 itself.
-
-### SA-10: The fixture copies and the phase-83 originals can drift apart
-
-**Where:** `tests/fixtures/codex-recorded/*.last.json`, `.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/`
-**Why excluded:** The duplication is intentional, and the originals are records that should never change. Nothing checks that the two sets match while both exist. That check would break once the originals are archived, which defeats the purpose.
-**Effect if left as is:** None in practice. If someone edited one copy, the "recorded history" tests could grade text that no longer matches the original record. The comment at lines 483-485 states the origin.
-**Needs:** No ruling needed unless the owner wants a SHA-256 manifest of the five files kept next to the fixtures as a tamper check that survives archiving.
+Unchanged from `85-REVIEW.iter10.md`. The placeholder problem it led to (iteration-10 WR-01) is now resolved too.
 
 ### SA-09 (carried from iteration 9): `.github/tool-pins.env` is not on the sensitive-path list
 
@@ -153,6 +154,6 @@ Unchanged from `85-REVIEW.iter7.md`: SA-01 (acceptance runs on the gate it intro
 
 ---
 
-_Reviewed: 2026-10-28T20:39:52Z_
+_Reviewed: 2026-10-28T20:49:04Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
