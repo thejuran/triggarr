@@ -169,12 +169,46 @@ function isSuccessful(check) {
   return Boolean(check) && check.status === 'completed' && check.conclusion === 'success';
 }
 
-function ciReadyItem(checks, head) {
-  const latest = latestCheck(checks, head, 'CI ready');
+// Mirrors tests/codex_review_run.py ci_evidence() (BM iter-2 WR-02/WR-03; a
+// cross-language parity test pins the two). Only a "CI ready" check run
+// posted by the github-actions app, in a check suite that belongs to a
+// .github/workflows/ci.yml workflow run for this head, counts. If any such
+// run comes from another workflow file, or its workflow cannot be identified,
+// CI ready is blocked: a head-defined workflow could post its own passing
+// "CI ready". Several ci.yml runs (a re-run, or a close/reopen) all count and
+// the latest (highest id) result wins.
+const CI_READY_APP_SLUG = 'github-actions';
+const CI_WORKFLOW_PATH = '.github/workflows/ci.yml';
+
+function ciReadyItem(checks, head, workflowRuns, workflowRunsError) {
+  const ours = (checks || []).filter(c => c && c.head_sha === head && c.name === 'CI ready'
+    && c.app?.slug === CI_READY_APP_SLUG && c.check_suite?.id !== undefined && c.check_suite?.id !== null);
+  if (ours.length > 0) {
+    if (workflowRunsError) {
+      return {name: 'CI ready', status: 'blocked', detail: workflowRunsError};
+    }
+    const pathBySuite = new Map();
+    for (const run of workflowRuns || []) {
+      if (!run || run.head_sha !== head || run.check_suite_id === undefined || run.check_suite_id === null) continue;
+      if (typeof run.path === 'string') pathBySuite.set(String(run.check_suite_id), run.path);
+    }
+    const foreign = [...new Set(ours.map(c => String(c.check_suite.id)))]
+      .filter(suite => pathBySuite.get(suite) !== CI_WORKFLOW_PATH)
+      .sort();
+    if (foreign.length > 0) {
+      return {
+        name: 'CI ready',
+        status: 'blocked',
+        detail: `a "CI ready" check run for this head comes from a workflow other than ${CI_WORKFLOW_PATH}, `
+          + `or one that cannot be identified (check suites ${foreign.join(', ')})`,
+      };
+    }
+  }
+  const latest = ours.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
   if (!isSuccessful(latest)) {
     return {name: 'CI ready', status: 'blocked', detail: 'no successful "CI ready" check run for this head'};
   }
-  return {name: 'CI ready', status: 'ok', detail: 'success'};
+  return {name: 'CI ready', status: 'ok', detail: `success (${CI_WORKFLOW_PATH})`};
 }
 
 function codeQlItem(checks, head) {
@@ -218,7 +252,7 @@ function readiness(input) {
   const {
     pr, prAuthor, prAuthorIsBot, isCrossRepository, draft, open,
     head, baseSha, mergeBase, checks, comments, checksError, commentsError,
-    dispositions, blockers, codex = {}, fallback,
+    workflowRuns, workflowRunsError, dispositions, blockers, codex = {}, fallback,
   } = input;
 
   const items = [];
@@ -239,7 +273,7 @@ function readiness(input) {
     items.push({name: 'CI ready', status: 'blocked', detail: checksError});
     items.push({name: 'CodeQL', status: 'blocked', detail: checksError});
   } else {
-    items.push(ciReadyItem(checks, head));
+    items.push(ciReadyItem(checks, head, workflowRuns, workflowRunsError));
     items.push(codeQlItem(checks, head));
   }
 
@@ -287,7 +321,10 @@ function renderChecklist(result) {
 // on anything that is not the expected shape -- a non-array top level, or,
 // for 'check-runs', a page without its own check_runs array.
 function flattenPages(text, kind) {
-  const errorMessage = kind === 'check-runs' ? 'could not read GitHub check runs' : 'could not read PR comments';
+  const errorMessage = {
+    'check-runs': 'could not read GitHub check runs',
+    'workflow-runs': 'could not read GitHub workflow runs',
+  }[kind] || 'could not read PR comments';
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -301,6 +338,13 @@ function flattenPages(text, kind) {
     for (const page of parsed) {
       if (!page || !Array.isArray(page.check_runs)) throw new Error(errorMessage);
       flat.push(...page.check_runs);
+    }
+    return flat;
+  }
+  if (kind === 'workflow-runs') {
+    for (const page of parsed) {
+      if (!page || !Array.isArray(page.workflow_runs)) throw new Error(errorMessage);
+      flat.push(...page.workflow_runs);
     }
     return flat;
   }
@@ -411,6 +455,19 @@ function runCli(argv, {exec, readFile} = {}) {
     checksError = err.message;
   }
 
+  // The head's workflow runs map each "CI ready" check suite to its workflow
+  // file (BM iter-2 WR-03); read with the same read-only gh api as the runner.
+  let workflowRuns = [];
+  let workflowRunsError = null;
+  try {
+    const runsText = execFn('gh', [
+      'api', `repos/${REPO}/actions/runs?head_sha=${head}&per_page=100`, '--paginate', '--slurp',
+    ]);
+    workflowRuns = flattenPages(runsText, 'workflow-runs');
+  } catch (err) {
+    workflowRunsError = err.message;
+  }
+
   let comments = [];
   let commentsError = null;
   try {
@@ -496,6 +553,8 @@ function runCli(argv, {exec, readFile} = {}) {
     comments,
     checksError,
     commentsError,
+    workflowRuns,
+    workflowRunsError,
     dispositions,
     blockers,
     codex: {status, baseStatus, meta, auditedChanged, boundary, provenance, out: opts.codexOut},
