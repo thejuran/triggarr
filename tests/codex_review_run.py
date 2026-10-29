@@ -3085,7 +3085,12 @@ def completion_gate(out_prefix: Path) -> list[str]:
         except (ValueError, UnicodeDecodeError):
             reasons.append(missing_reason or f"{prefix_text}{suffix} is not valid JSON")
             return None
-        return parsed if isinstance(parsed, dict) else None
+        if not isinstance(parsed, dict):
+            # Valid JSON of the wrong type (null, [], "x", 1, true) is a failure,
+            # never a silent skip of this record's checks (CR-01, fail closed).
+            reasons.append(f"{prefix_text}{suffix} is not a JSON object")
+            return None
+        return parsed
 
     meta = _read(".meta.json") or {}
     if meta.get("review_mode") != "inspection-only-ci-evidence":
