@@ -788,7 +788,7 @@ def _git_bounded(argv: list[str], command_runner: CommandRunner, max_bytes: int)
     return output
 
 
-def flatten_pages(text: str, kind: str) -> list[dict]:
+def flatten_pages(text: str, kind: str, what: str = "check runs") -> list[dict]:
     """Flatten a `gh api --paginate --slurp` array of pages into one list.
 
     *text* must parse as a JSON array; every page must be a dict with a list
@@ -799,13 +799,13 @@ def flatten_pages(text: str, kind: str) -> list[dict]:
     try:
         pages = json.loads(text)
     except ValueError as exc:
-        raise RunnerError(f"could not read GitHub check runs: unparseable JSON ({type(exc).__name__})") from exc
+        raise RunnerError(f"could not read GitHub {what}: unparseable JSON ({type(exc).__name__})") from exc
     if not isinstance(pages, list):
-        raise RunnerError("could not read GitHub check runs: expected a --slurp array of pages")
+        raise RunnerError(f"could not read GitHub {what}: expected a --slurp array of pages")
     items: list[dict] = []
     for page in pages:
         if not isinstance(page, dict) or not isinstance(page.get(kind), list):
-            raise RunnerError(f"could not read GitHub check runs: a page is missing its {kind!r} list")
+            raise RunnerError(f"could not read GitHub {what}: a page is missing its {kind!r} list")
         items.extend(page[kind])
     return items
 
@@ -815,6 +815,10 @@ _CHECK_RUN_FIELDS = ("id", "name", "head_sha", "status", "conclusion", "html_url
 # The GitHub App that posts the `ci-ready` job's check run (.github/workflows/ci.yml,
 # job `ci-ready`, name "CI ready"). Any other app's "CI ready" is ignored (WR-03).
 CI_READY_APP_SLUG = "github-actions"
+# The only workflow file whose "CI ready" counts (BM iter-2 WR-02). Every
+# workflow run (a push, a re-run, a close/reopen) gets its own check suite;
+# the suite is mapped to its workflow file through the head's workflow runs.
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 
 
 def _check_suite_id(run_item: dict) -> object:
@@ -822,22 +826,11 @@ def _check_suite_id(run_item: dict) -> object:
     return suite.get("id") if isinstance(suite, dict) else None
 
 
-def ci_evidence(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
-    """Return the GitHub check-run evidence for exactly --head, requiring a successful CI ready.
-
-    Only "CI ready" check runs posted by the github-actions app
-    (CI_READY_APP_SLUG) and belonging to a check suite count (WR-03). If
-    such runs come from more than one check suite -- i.e. more than one
-    workflow produced a "CI ready" job for this head, which a head-defined
-    workflow file could do -- the evidence is refused outright. Within the
-    single workflow, only the latest (highest id) "CI ready" counts
-    (T-85.1-18): a successful run for another head, or an older successful
-    run superseded by a later failure, is never accepted; a re-run of the
-    same workflow stays in its check suite, so its latest result wins.
-    """
+def _gh_api_pages(endpoint: str, kind: str, what: str, command_runner: CommandRunner) -> list[dict]:
+    """One `gh api --paginate --slurp` read, flattened; any failure is a RunnerError (fail closed)."""
     try:
         proc = command_runner(
-            ["gh", "api", f"repos/{REPO_SLUG}/commits/{run.head}/check-runs", "--paginate", "--slurp"],
+            ["gh", "api", endpoint, "--paginate", "--slurp"],
             cwd=HARNESS_ROOT,
             stdout=subprocess.PIPE,
             text=True,
@@ -845,10 +838,46 @@ def ci_evidence(run: ReviewRun, command_runner: CommandRunner) -> dict[str, obje
             check=False,
         )
     except OSError as exc:
-        raise RunnerError(f"could not read GitHub check runs: gh api could not run ({type(exc).__name__})") from exc
+        raise RunnerError(f"could not read GitHub {what}: gh api could not run ({type(exc).__name__})") from exc
     if proc.returncode != 0:
-        raise RunnerError(f"could not read GitHub check runs: gh api exited {proc.returncode}")
-    runs = flatten_pages(proc.stdout or "", "check_runs")
+        raise RunnerError(f"could not read GitHub {what}: gh api exited {proc.returncode}")
+    return flatten_pages(proc.stdout or "", kind, what)
+
+
+def _workflow_paths_by_suite(run: ReviewRun, command_runner: CommandRunner) -> dict[str, str]:
+    """Map each check-suite id to the workflow file of this head's workflow run that owns it."""
+    workflow_runs = _gh_api_pages(
+        f"repos/{REPO_SLUG}/actions/runs?head_sha={run.head}&per_page=100", "workflow_runs", "workflow runs",
+        command_runner,
+    )
+    paths: dict[str, str] = {}
+    for workflow_run in workflow_runs:
+        if not isinstance(workflow_run, dict) or workflow_run.get("head_sha") != run.head:
+            continue
+        suite_id = workflow_run.get("check_suite_id")
+        path = workflow_run.get("path")
+        if suite_id is not None and isinstance(path, str):
+            paths[str(suite_id)] = path
+    return paths
+
+
+def ci_evidence(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
+    """Return the GitHub check-run evidence for exactly --head, requiring a successful CI ready.
+
+    Only "CI ready" check runs posted by the github-actions app
+    (CI_READY_APP_SLUG) and belonging to a check suite count (WR-03). Each
+    such run's check suite is attributed to its workflow file through the
+    head's workflow runs (BM iter-2 WR-02): if any of them comes from a
+    workflow other than CI_WORKFLOW_PATH -- or its workflow cannot be
+    identified -- the evidence is refused outright, since a head-defined
+    workflow file could post its own passing "CI ready". Several ci.yml
+    runs for one head (a job re-run, or a close/reopen that starts a new
+    workflow run in a new check suite) are all accepted, and only the
+    latest (highest id) "CI ready" counts (T-85.1-18): a successful run for
+    another head, or an older success superseded by a later failure, is
+    never accepted.
+    """
+    runs = _gh_api_pages(f"repos/{REPO_SLUG}/commits/{run.head}/check-runs", "check_runs", "check runs", command_runner)
     raw_for_head = [
         run_item for run_item in runs if isinstance(run_item, dict) and run_item.get("head_sha") == run.head
     ]
@@ -861,12 +890,18 @@ def ci_evidence(run: ReviewRun, command_runner: CommandRunner) -> dict[str, obje
         and run_item["app"].get("slug") == CI_READY_APP_SLUG
         and _check_suite_id(run_item) is not None
     ]
-    suites = {str(_check_suite_id(run_item)) for run_item in raw_ci_ready}
-    if len(suites) > 1:
-        raise RunnerError(
-            f"refused: more than one workflow posted a {CI_READY_CHECK_NAME!r} check run for this exact head"
-            f" (check suites {sorted(suites)}); the CI evidence cannot be attributed to the repository's CI"
+    if raw_ci_ready:
+        paths = _workflow_paths_by_suite(run, command_runner)
+        foreign = sorted(
+            {str(_check_suite_id(item)) for item in raw_ci_ready}
+            - {suite for suite, path in paths.items() if path == CI_WORKFLOW_PATH}
         )
+        if foreign:
+            raise RunnerError(
+                f"refused: a {CI_READY_CHECK_NAME!r} check run for this exact head comes from a workflow other than"
+                f" {CI_WORKFLOW_PATH}, or one that cannot be identified (check suites {foreign}); the CI evidence"
+                " cannot be attributed to the repository's CI"
+            )
     ci_ready_runs = [{field: run_item.get(field) for field in _CHECK_RUN_FIELDS} for run_item in raw_ci_ready]
     latest_ci_ready = max(ci_ready_runs, key=lambda item: item.get("id") or 0, default=None)
     if (
