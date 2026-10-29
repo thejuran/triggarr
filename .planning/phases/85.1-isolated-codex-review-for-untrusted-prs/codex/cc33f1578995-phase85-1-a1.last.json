@@ -1,0 +1,202 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "cc33f15789952be15f5aa71023fe609929f76891",
+  "inspected_base_sha": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 85.1, full-phase independent review paired with BM review at standard depth; inspection incomplete.",
+  "verdict": "findings",
+  "summary": "Two defects reproduced with in-memory inputs: required non-object evidence passes the completion gate, and tool-start events bypass the event audit. The full requested diff inspection was not completed; this is not a clean review.",
+  "coverage": [
+    "Verified the requested HEAD and existence of the base commit.",
+    "Inspected the inspection-only input builder, PR/CI checks, trusted-main provenance, container configuration, credential handling, cleanup, event audit, grading orchestration, and completion gate.",
+    "Inspected acceptance-readiness.cjs and codex-fallback.cjs changes.",
+    "Inspected inspection-only report-checker changes and the Dockerfile.",
+    "Inspected all of tests/test_codex_review_inspection.py and tests/test_codex_review_gate.py, plus lines 1–700 of tests/test_codex_review_container.py.",
+    "Inspected plans 85.1-01, 85.1-02, and 85.1-09; other plan inspection was partial.",
+    "Read harness evidence reporting 3022 passed, 1 skipped, 38 warnings, exit 0 on the requested head.",
+    "Reproduced both reported defects without creating or modifying files."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Generated review artifacts under .planning/**/codex/**.",
+    "Raw .planning/**/*.jsonl transcripts.",
+    "Files outside the working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 05b24feedcfa7933dbbd9aab41c06e89103556da",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scope."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed plans; output was truncated."
+    },
+    {
+      "command": "git status --short; cat .codex-review-evidence/pytest.txt; git diff --name-only 05b24feedcfa7933dbbd9aab41c06e89103556da..HEAD -- ':(glob).planning/**/*-PLAN.md'; rg -n '^def |^class ' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect workspace state, harness evidence, plan inventory, and runner structure; output was truncated."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..HEAD -- .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs tests/codex_report_status.py docker/codex-review/Dockerfile .github/dependabot.yml",
+      "exit_code": 0,
+      "purpose": "Inspect gate, checker, image, and policy changes; output was partially truncated."
+    },
+    {
+      "command": "rg -n '^def |^class ' tests/codex_review_run.py; git diff --name-only 05b24feedcfa7933dbbd9aab41c06e89103556da..HEAD -- ':(glob).planning/**/*-PLAN.md'; tail -n 2 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Recover runner inventory, plan list, and test summary."
+    },
+    {
+      "command": "sed -n '721,1128p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect input construction and provenance."
+    },
+    {
+      "command": "sed -n '1138,1554p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect event audit and isolation verification."
+    },
+    {
+      "command": "sed -n '1555,1867p' tests/codex_review_run.py; sed -n '1868,1962p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect launch, probes, and container arguments."
+    },
+    {
+      "command": "sed -n '1963,2680p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect exposure checks, configuration verification, credentials, and lifecycle."
+    },
+    {
+      "command": "sed -n '2883,3263p' tests/codex_review_run.py; sed -n '3450,3860p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect completion gate and inspection orchestration."
+    },
+    {
+      "command": "sed -n '1,217p' tests/codex_review_run.py; sed -n '1,350p' tests/test_codex_review_gate.py",
+      "exit_code": 0,
+      "purpose": "Inspect constants and completion-gate regression coverage."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport json\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\nmeta = {'head':'a'*40,'base':'b'*40,'attempt':1,'review_mode':'inspection-only-ci-evidence','audited_inputs_changed_in_diff':['tests/codex_report_status.py']}\ndef read(directory, name, **kwargs):\n    return json.dumps(meta).encode() if name.endswith('.meta.json') else b'null'\nwith patch.object(r, 'safe_read_regular_file', side_effect=read):\n    print('null records gate exit:', r._completion_gate_main(Path('.planning/phases/x/codex/aaaaaaaaaaaa-review-a1')))\nstream = '\\n'.join(json.dumps(e) for e in [{'type':'item.started','item':{'id':'tool1','type':'command_execution','command':'id'}}, {'type':'turn.completed'}])\nwith patch.object(Path, 'exists', return_value=True), patch.object(Path, 'read_text', return_value=stream):\n    print('started tool audit:', r.audit_event_types(Path('mock.jsonl')))\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt reproduction; shell could not create the heredoc temporary file."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..HEAD -- .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Read acceptance and fallback changes without truncation."
+    },
+    {
+      "command": "python3 -B -c 'import json\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\nmeta = {\"head\":\"a\"*40,\"base\":\"b\"*40,\"attempt\":1,\"review_mode\":\"inspection-only-ci-evidence\",\"audited_inputs_changed_in_diff\":[\"tests/codex_report_status.py\"]}\ndef read(directory, name, **kwargs):\n    return json.dumps(meta).encode() if name.endswith(\".meta.json\") else b\"null\"\nwith patch.object(r, \"safe_read_regular_file\", side_effect=read):\n    print(\"null records gate exit:\", r._completion_gate_main(Path(\".planning/phases/x/codex/aaaaaaaaaaaa-review-a1\")))\nstream = \"\\n\".join(json.dumps(e) for e in [{\"type\":\"item.started\",\"item\":{\"id\":\"tool1\",\"type\":\"command_execution\",\"command\":\"id\"}}, {\"type\":\"turn.completed\"}])\nwith patch.object(Path, \"exists\", return_value=True), patch.object(Path, \"read_text\", return_value=stream):\n    print(\"started tool audit:\", r.audit_event_types(Path(\"mock.jsonl\")))'",
+      "exit_code": 0,
+      "purpose": "Reproduce non-object evidence acceptance and ignored tool-start events using in-memory mocks."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..HEAD -- tests/codex_review_run.py | sed -n '1,220p'; sed -n '3273,3449p' tests/codex_review_run.py; sed -n '3861,4120p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect initial runner changes, trusted-path comparison, and CLI dispatch."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..HEAD -- .github/dependabot.yml docs/ tests/test_acceptance_docs.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_codex_review_image.py tests/test_codex_review_run.py tests/test_review_checkpoint_record.py tests/test_review_machinery_lists.py",
+      "exit_code": 0,
+      "purpose": "Inspect documentation and remaining small test changes; output was truncated."
+    },
+    {
+      "command": "sed -n '1,520p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect PR, CI, and inert-input tests."
+    },
+    {
+      "command": "sed -n '521,1000p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect provenance, prompt, and event-audit tests."
+    },
+    {
+      "command": "sed -n '1001,1460p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect orchestration regression tests."
+    },
+    {
+      "command": "sed -n '1,240p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance and fallback plan."
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-09-PLAN.md; sed -n '2796,2843p' tests/codex_review_run.py; nl -ba tests/codex_review_run.py | sed -n '1244,1264p;3074,3138p'",
+      "exit_code": 0,
+      "purpose": "Inspect completion-gate intent, stream caller, and finding locations."
+    },
+    {
+      "command": "sed -n '1,700p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container builders, exposure checks, schema staging, and initial verifier fixtures."
+    },
+    {
+      "command": "git diff --unified=0 05b24feedcfa7933dbbd9aab41c06e89103556da..HEAD -- tests/codex_review_run.py | rg '^@@'; sed -n '1129,1137p' tests/codex_review_run.py; git status --short",
+      "exit_code": 0,
+      "purpose": "Check runner hunk inventory, finish support-check function, and confirm workspace state."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Reject non-object JSON in required completion evidence",
+      "file": "tests/codex_review_run.py",
+      "line_start": 3083,
+      "line_end": 3088,
+      "trigger": "A required .status.json, .boundary.json, .grader-provenance.json, or .base-status.json contains valid non-object JSON such as null or [].",
+      "execution_path": "completion_gate._read parses the JSON, returns None without appending a reason, and the caller skips validation under its `if ... is not None` guard. _completion_gate_main consequently returns exit 0 when the remaining checks pass.",
+      "consequence": "The operator's COMPLETE gate can pass without a complete report, verified boundary, established grader provenance, or required cross-grade.",
+      "evidence": "With a matching inspection-only meta record requiring cross-grading and all four required evidence records supplied as `null`, the actual gate printed `{\"gate\":\"pass\",...,\"reasons\":[]}` and returned 0. Existing gate tests exercise missing files and invalid object fields but omit valid JSON of the wrong top-level type.",
+      "suggested_fix": "Append an explicit invalid-record reason whenever parsed JSON is not an object. Add parameterized tests for null, arrays, strings, numbers, and booleans in every required record, asserting CLI exit 3.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'import json; from pathlib import Path; from unittest.mock import patch; from tests import codex_review_run as r; meta={\"head\":\"a\"*40,\"base\":\"b\"*40,\"attempt\":1,\"review_mode\":\"inspection-only-ci-evidence\",\"audited_inputs_changed_in_diff\":[\"tests/codex_report_status.py\"]}; read=lambda directory,name,**kw: json.dumps(meta).encode() if name.endswith(\".meta.json\") else b\"null\"; p=patch.object(r,\"safe_read_regular_file\",side_effect=read); p.start(); print(r._completion_gate_main(Path(\".planning/phases/x/codex/aaaaaaaaaaaa-review-a1\"))); p.stop()'",
+      "hypothesis": null
+    },
+    {
+      "id": "F002",
+      "severity": "medium",
+      "title": "Audit tool types on item-start and item-update events",
+      "file": "tests/codex_review_run.py",
+      "line_start": 1257,
+      "line_end": 1261,
+      "trigger": "The event stream records a disallowed tool in item.started or item.updated without a corresponding item.completed event.",
+      "execution_path": "audit_event_types allows both top-level event types but examines their item types only for item.completed. _execute_inspection proceeds to grading when the returned reasons list is empty.",
+      "consequence": "The mandatory audit does not reject recorded tool activity unless its completion event is also present. If the report and process exit otherwise pass grading, this stream can be treated as an inspection-only review.",
+      "evidence": "Supplying an item.started event containing command_execution followed by turn.completed returned []. All disallowed-item regression fixtures use item.completed, including the orchestration test, so they do not cover this gap. This reproduces the audit defect, not live tool execution.",
+      "suggested_fix": "Validate item.type for every item-bearing event, including started and updated. Add start-only and update-only tool fixtures and an orchestration assertion that grading is never reached for either.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'import json; from pathlib import Path; from unittest.mock import patch; from tests import codex_review_run as r; stream=\"\\n\".join(json.dumps(e) for e in [{\"type\":\"item.started\",\"item\":{\"id\":\"tool1\",\"type\":\"command_execution\",\"command\":\"id\"}},{\"type\":\"turn.completed\"}]); p=patch.object(Path,\"exists\",return_value=True); q=patch.object(Path,\"read_text\",return_value=stream); p.start(); q.start(); print(r.audit_event_types(Path(\"mock.jsonl\"))); q.stop(); p.stop()'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Pytest was not independently run in this read-only sandbox. Harness evidence records a successful exact-head run; it was treated as evidence rather than approval.",
+    "No Docker image build, live container verification, authentication operation, or live Codex invocation was performed.",
+    "Reproductions used the actual Python functions with in-memory filesystem responses; they did not modify evidence files.",
+    "Several large diff outputs were truncated. Only portions subsequently recovered or visibly inspected count toward coverage.",
+    "No files were edited, committed, pushed, or published."
+  ],
+  "review_complete": false,
+  "incomplete_reasons": [
+    "The review stopped before the entire scoped diff had been inspected.",
+    "The changes in .github/scripts/acceptance-readiness.test.cjs, .github/scripts/codex-fallback.test.cjs, and .github/scripts/codex-completeness-parity.test.cjs remain uninspected.",
+    "tests/test_codex_review_container.py lines 701–2963 remain uninspected.",
+    "Plans 85.1-03 through 85.1-08 were not fully inspected, and plan 85.1-10 was only partially inspected because the initial plan diff was truncated.",
+    "Truncated portions of docs/review-checkpoint-record.md, docs/review-classification-policy.md, tests/test_acceptance_docs.py, tests/test_codex_report_status.py, tests/test_codex_review_contract.py, and tests/test_codex_review_image.py were not fully recovered.",
+    "The remaining runner hunks around removal of the interim refusal and trust-dispatch changes were inventoried but not fully inspected."
+  ]
+}
