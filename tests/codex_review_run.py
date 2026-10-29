@@ -1190,6 +1190,16 @@ ALLOWED_EVENT_TYPES = frozenset(
     {"thread.started", "turn.started", "turn.completed", "item.started", "item.updated", "item.completed"}
 )
 
+# Item types outside ALLOWED_ITEM_TYPES that represent an actual tool
+# invocation, as opposed to a non-tool item (e.g. `error`, seen in real
+# Codex streams for a connectivity/backend failure) that is still a
+# violation of ALLOWED_ITEM_TYPES but never ran a tool. Used only to word
+# the supplementary probe's reasons accurately (_probe_tool_use_reasons);
+# every type here still fails closed either way. Extending this set
+# requires a justified tool type actually observed in a real Codex run,
+# recorded in the plan's SUMMARY, never added speculatively.
+KNOWN_TOOL_ITEM_TYPES = frozenset({"command_execution", "file_change", "mcp_tool_call", "web_search"})
+
 
 def inspection_codex_argv(cwd: str = "/work", last_json: str = "/out/last.json") -> list[str]:
     """The inner ``codex exec`` command run inside the disposable review container.
@@ -1676,12 +1686,17 @@ PROBE_PROMPT_TEMPLATE = (
 def _probe_tool_use_reasons(jsonl_path: Path) -> list[str]:
     """Like audit_event_types, phrased for the supplementary probe (T-85.1-40).
 
-    Any item type outside ALLOWED_ITEM_TYPES means the probe used a
-    tool, which can only downgrade the verdict, never confirm it. Never
-    raises: a missing file, an unparseable line or a non-dict event is
-    simply not a finding here -- the probe is supplementary evidence,
-    not the mandatory boundary check, so it fails open on its own
-    malformed input rather than blocking the (already decided) verdict.
+    Any item type outside ALLOWED_ITEM_TYPES is still a reason that
+    downgrades the verdict, never confirms it -- but the wording
+    distinguishes a known tool item type (KNOWN_TOOL_ITEM_TYPES:
+    "probe used a tool: <type>") from anything else ("probe produced an
+    unexpected event: <type>"), since a type like `error` (seen in real
+    streams for a connectivity/backend failure) is a real violation of
+    ALLOWED_ITEM_TYPES but never ran a tool. Never raises: a missing
+    file, an unparseable line or a non-dict event is simply not a
+    finding here -- the probe is supplementary evidence, not the
+    mandatory boundary check, so it fails open on its own malformed
+    input rather than blocking the (already decided) verdict.
     """
     if not jsonl_path.exists():
         return []
@@ -1698,8 +1713,12 @@ def _probe_tool_use_reasons(jsonl_path: Path) -> list[str]:
             continue
         item = event.get("item")
         item_type = item.get("type") if isinstance(item, dict) else None
-        if item_type not in ALLOWED_ITEM_TYPES:
+        if item_type in ALLOWED_ITEM_TYPES:
+            continue
+        if item_type in KNOWN_TOOL_ITEM_TYPES:
             reasons.append(f"probe used a tool: {item_type}")
+        else:
+            reasons.append(f"probe produced an unexpected event: {item_type}")
     return reasons
 
 
