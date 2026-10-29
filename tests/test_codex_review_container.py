@@ -18,6 +18,7 @@ over fixed argv lists and fixture JSON/text, never a live container.
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 
@@ -25,6 +26,8 @@ import pytest
 
 from tests.codex_review_run import (
     CANARY_CHECK_SCRIPT,
+    CANARY_RUNTIME_ENV,
+    CONTAINER_BASE_ENV,
     CONTAINER_TMPFS,
     CONTAINER_USER,
     REVIEW_CODEX_VERSION,
@@ -33,13 +36,17 @@ from tests.codex_review_run import (
     REVIEW_IMAGE_REF,
     SCHEMA_IN_CONTAINER,
     SCHEMA_PATH,
+    ExpectedCanary,
+    ExpectedContainer,
     RunnerError,
     canary_paths,
     container_check_argv,
     container_create_argv,
     host_exposure_problems,
     inspection_codex_argv,
+    parse_canary_check,
     stage_output_schema,
+    verify_container_config,
 )
 
 # Example per-run directories, matching the plan's own must_have example
@@ -429,3 +436,345 @@ def test_review_image_build_argv() -> None:
 def test_review_image_ref_and_label_constants() -> None:
     assert REVIEW_IMAGE_REF == "triggarr-codex-review:" + REVIEW_CODEX_VERSION
     assert REVIEW_IMAGE_LABEL == "org.triggarr.codex-review"
+
+
+# --- verify_container_config -------------------------------------------------
+
+_EXPECTED_IMAGE_ID = "sha256:" + "a" * 64
+_EXPECTED_ENTRYPOINT = ["codex"]
+_EXPECTED_CMD = inspection_codex_argv()[1:]
+
+
+def _base_mounts() -> list[dict[str, object]]:
+    return [
+        {"Type": "bind", "Source": str(_CODEX_HOME_DIR), "Destination": "/codex-home", "RW": True},
+        {"Type": "bind", "Source": str(_OUT_DIR), "Destination": "/out", "RW": True},
+        {"Type": "bind", "Source": str(_SCHEMA_DIR), "Destination": "/schema", "RW": False},
+    ]
+
+
+def _mounts_with_extra(destination: str, *, source: str = "/irrelevant") -> list[dict[str, object]]:
+    return [*_base_mounts(), {"Type": "bind", "Source": source, "Destination": destination, "RW": True}]
+
+
+def _mounts_without(destination: str) -> list[dict[str, object]]:
+    return [m for m in _base_mounts() if m["Destination"] != destination]
+
+
+def _mounts_with_source(destination: str, new_source: str) -> list[dict[str, object]]:
+    return [{**m, "Source": new_source} if m["Destination"] == destination else m for m in _base_mounts()]
+
+
+def _mounts_with_rw(destination: str, rw: bool) -> list[dict[str, object]]:
+    return [{**m, "RW": rw} if m["Destination"] == destination else m for m in _base_mounts()]
+
+
+def _inspect_json(
+    *,
+    user: str = CONTAINER_USER,
+    env: list[str] | None = None,
+    entrypoint: list[str] | None = None,
+    cmd: list[str] | None = None,
+    image: str | None = None,
+    labels: dict[str, str] | None = None,
+    binds: list[str] | None = None,
+    readonly_rootfs: bool = True,
+    cap_drop: list[str] | None = None,
+    cap_add: list[str] | None = None,
+    security_opt: list[str] | None = None,
+    privileged: bool = False,
+    network_mode: str = "bridge",
+    pid_mode: str = "",
+    ipc_mode: str = "private",
+    uts_mode: str = "",
+    userns_mode: str = "",
+    devices: list[object] | None = None,
+    port_bindings: dict[str, object] | None = None,
+    tmpfs: dict[str, str] | None = None,
+    mounts: list[dict[str, object]] | None = None,
+) -> str:
+    """Build a one-element `docker inspect` JSON array for a created (not
+    started) review container, with every security-relevant field at its
+    expected value unless overridden by a keyword argument -- one mutation
+    axis per keyword, so a single-field override exercises exactly one
+    verify_container_config() check at a time."""
+    container = {
+        "Id": "d" * 64,
+        "Config": {
+            "User": user,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME=/home/review",
+                "LANG=C.UTF-8",
+                "CODEX_HOME=/codex-home",
+                *(env or []),
+            ],
+            "Entrypoint": entrypoint if entrypoint is not None else list(_EXPECTED_ENTRYPOINT),
+            "Cmd": cmd if cmd is not None else list(_EXPECTED_CMD),
+            "Labels": labels if labels is not None else {REVIEW_IMAGE_LABEL: REVIEW_CODEX_VERSION},
+        },
+        "Image": image if image is not None else _EXPECTED_IMAGE_ID,
+        "HostConfig": {
+            "Binds": binds,
+            "ReadonlyRootfs": readonly_rootfs,
+            "CapDrop": cap_drop if cap_drop is not None else ["ALL"],
+            "CapAdd": cap_add,
+            "SecurityOpt": security_opt if security_opt is not None else ["no-new-privileges"],
+            "Privileged": privileged,
+            "NetworkMode": network_mode,
+            "PidMode": pid_mode,
+            "IpcMode": ipc_mode,
+            "UTSMode": uts_mode,
+            "UsernsMode": userns_mode,
+            "Devices": devices if devices is not None else [],
+            "PortBindings": port_bindings if port_bindings is not None else {},
+            "Tmpfs": tmpfs if tmpfs is not None else dict(CONTAINER_TMPFS),
+        },
+        "Mounts": mounts if mounts is not None else _base_mounts(),
+    }
+    return json.dumps([container])
+
+
+_EXPECTED = ExpectedContainer(
+    image_id=_EXPECTED_IMAGE_ID,
+    mounts={
+        "/codex-home": (str(_CODEX_HOME_DIR), True),
+        "/out": (str(_OUT_DIR), True),
+        "/schema": (str(_SCHEMA_DIR), False),
+    },
+    tmpfs=frozenset({"/work", "/tmp"}),
+    user=CONTAINER_USER,
+    env_names=CONTAINER_BASE_ENV,
+    entrypoint=list(_EXPECTED_ENTRYPOINT),
+    cmd=list(_EXPECTED_CMD),
+)
+
+_VCC_MUTATIONS = [
+    pytest.param(
+        {"mounts": _mounts_with_extra("/host", source=str(_HOST_HOME))},
+        "unexpected mount: /host",
+        id="extra_host_mount",
+    ),
+    pytest.param({"mounts": _mounts_without("/out")}, "missing mount: /out", id="missing_out_mount"),
+    pytest.param(
+        {"mounts": _mounts_with_source("/codex-home", "/elsewhere")},
+        "mount source mismatch: /codex-home",
+        id="codex_home_source_mismatch",
+    ),
+    pytest.param({"mounts": _mounts_with_rw("/schema", True)}, "schema mount is writable", id="schema_writable"),
+    pytest.param(
+        {"mounts": _mounts_with_extra("/var/run/docker.sock", source="/var/run/docker.sock")},
+        "unexpected mount: /var/run/docker.sock",
+        id="docker_socket_mounted",
+    ),
+    pytest.param({"binds": ["/x:/y"]}, "unexpected bind", id="binds_nonempty"),
+    pytest.param({"tmpfs": {**CONTAINER_TMPFS, "/home": "rw"}}, "unexpected tmpfs", id="tmpfs_extra_home"),
+    pytest.param({"user": ""}, "container user is not 10001:10001", id="user_empty"),
+    pytest.param({"user": "0"}, "container user is not 10001:10001", id="user_zero"),
+    pytest.param({"user": "root"}, "container user is not 10001:10001", id="user_root"),
+    pytest.param({"privileged": True}, "privileged container", id="privileged"),
+    pytest.param({"cap_drop": []}, "capabilities not dropped", id="cap_drop_empty"),
+    pytest.param({"cap_add": ["NET_ADMIN"]}, "capabilities not dropped", id="cap_add_net_admin"),
+    pytest.param({"readonly_rootfs": False}, "root filesystem is writable", id="rootfs_writable"),
+    pytest.param({"security_opt": []}, "no-new-privileges not set", id="no_new_privileges_missing"),
+    pytest.param(
+        {"security_opt": ["no-new-privileges", "seccomp=unconfined"]},
+        "security profile disabled",
+        id="seccomp_unconfined",
+    ),
+    pytest.param(
+        {"security_opt": ["no-new-privileges", "apparmor=unconfined"]},
+        "security profile disabled",
+        id="apparmor_unconfined",
+    ),
+    pytest.param({"network_mode": "host"}, "network mode is not bridge: host", id="network_host"),
+    pytest.param({"port_bindings": {"8080/tcp": []}}, "published ports", id="port_bindings_nonempty"),
+    pytest.param({"pid_mode": "host"}, "host namespace: pid", id="pid_host"),
+    pytest.param({"ipc_mode": "host"}, "host namespace: ipc", id="ipc_host"),
+    pytest.param({"uts_mode": "host"}, "host namespace: uts", id="uts_host"),
+    pytest.param({"userns_mode": "host"}, "host namespace: userns", id="userns_host"),
+    pytest.param({"devices": [{"PathOnHost": "/dev/sda"}]}, "host devices exposed", id="devices_nonempty"),
+    pytest.param({"env": ["GH_TOKEN=secret"]}, "unexpected environment variable: GH_TOKEN", id="env_gh_token"),
+    pytest.param({"env": ["HOSTNAME=abc123"]}, "unexpected environment variable: HOSTNAME", id="env_hostname"),
+    pytest.param({"env": ["PWD=/work"]}, "unexpected environment variable: PWD", id="env_pwd"),
+    pytest.param({"env": ["SHLVL=1"]}, "unexpected environment variable: SHLVL", id="env_shlvl"),
+    pytest.param({"image": "sha256:" + "b" * 64}, "image mismatch", id="image_mismatch"),
+    pytest.param({"entrypoint": ["sh"]}, "container command mismatch", id="entrypoint_mismatch"),
+    pytest.param({"cmd": ["codex", "exec"]}, "container command mismatch", id="cmd_mismatch"),
+]
+
+
+@pytest.mark.parametrize("mutation,expected_substring", _VCC_MUTATIONS)
+def test_verify_container_config_rejects(mutation: dict[str, object], expected_substring: str) -> None:
+    reasons = verify_container_config(_inspect_json(**mutation), _EXPECTED)
+    assert any(expected_substring in r for r in reasons), reasons
+
+
+def test_verify_container_config_clean_fixture_passes() -> None:
+    assert verify_container_config(_inspect_json(), _EXPECTED) == []
+
+
+@pytest.mark.parametrize(
+    "bad_json",
+    [
+        "not json at all",
+        json.dumps([]),
+        json.dumps([{"Config": {}, "Mounts": []}]),
+    ],
+    ids=["not_json", "empty_array", "missing_hostconfig_key"],
+)
+def test_verify_container_config_malformed_input(bad_json: str) -> None:
+    assert verify_container_config(bad_json, _EXPECTED) == ["could not read docker inspect output"]
+
+
+def test_verify_container_config_mount_source_realpath_equivalence(tmp_path: Path) -> None:
+    # Docker Desktop may report /private/var/... for a source given as
+    # /var/...; the comparison must survive that representational
+    # difference for a source that is genuinely the same real path.
+    real_dir = tmp_path / "codex-home"
+    real_dir.mkdir()
+    expected = ExpectedContainer(
+        image_id=_EXPECTED.image_id,
+        mounts={**_EXPECTED.mounts, "/codex-home": (str(real_dir), True)},
+        tmpfs=_EXPECTED.tmpfs,
+        user=_EXPECTED.user,
+        env_names=_EXPECTED.env_names,
+        entrypoint=_EXPECTED.entrypoint,
+        cmd=_EXPECTED.cmd,
+    )
+    mounts = [
+        {"Type": "bind", "Source": str(real_dir) + "/.", "Destination": "/codex-home", "RW": True},
+        {"Type": "bind", "Source": str(_OUT_DIR), "Destination": "/out", "RW": True},
+        {"Type": "bind", "Source": str(_SCHEMA_DIR), "Destination": "/schema", "RW": False},
+    ]
+    assert verify_container_config(_inspect_json(mounts=mounts), expected) == []
+
+
+# --- parse_canary_check ------------------------------------------------------
+
+
+def _clean_canary_expected() -> ExpectedCanary:
+    return ExpectedCanary(
+        paths=tuple(_golden_canary_paths()),
+        schema_sha256=hashlib.sha256(SCHEMA_PATH.read_bytes()).hexdigest(),
+        env_names=CONTAINER_BASE_ENV | CANARY_RUNTIME_ENV,
+    )
+
+
+def _clean_canary_stdout(expected: ExpectedCanary) -> str:
+    lines = [f"absent {path}" for path, _marker in expected.paths]
+    lines.append("work-entries 0")
+    lines.append("codex-home-entry auth.json")
+    lines.append(f"schema-sha256 {expected.schema_sha256}")
+    lines += [f"env {name}" for name in sorted(expected.env_names)]
+    lines.append("canary-done")
+    return "\n".join(lines)
+
+
+def test_parse_canary_check_clean_fixture_passes() -> None:
+    expected = _clean_canary_expected()
+    assert parse_canary_check(_clean_canary_stdout(expected), expected) == []
+
+
+def test_parse_canary_check_present_host_home_rejected() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace(f"absent {_HOST_HOME}", f"present {_HOST_HOME}")
+    reasons = parse_canary_check(text, expected)
+    assert any("canary path visible in container: <HOST_HOME>" in r for r in reasons)
+
+
+def test_parse_canary_check_present_docker_socket_rejected() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace(
+        "absent /var/run/docker.sock", "present /var/run/docker.sock"
+    )
+    reasons = parse_canary_check(text, expected)
+    assert any("canary path visible in container: /var/run/docker.sock" in r for r in reasons)
+
+
+def test_parse_canary_check_work_entries_nonzero_rejected() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace("work-entries 0", "work-entries 1")
+    reasons = parse_canary_check(text, expected)
+    assert any("review working directory not empty" in r for r in reasons)
+
+
+def test_parse_canary_check_extra_codex_home_entry_rejected() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace(
+        "codex-home-entry auth.json", "codex-home-entry auth.json\ncodex-home-entry config.toml"
+    )
+    reasons = parse_canary_check(text, expected)
+    assert any("unexpected /codex-home contents" in r for r in reasons)
+
+
+def test_parse_canary_check_no_codex_home_entry_rejected() -> None:
+    expected = _clean_canary_expected()
+    lines = [line for line in _clean_canary_stdout(expected).splitlines() if not line.startswith("codex-home-entry")]
+    reasons = parse_canary_check("\n".join(lines), expected)
+    assert any("unexpected /codex-home contents" in r for r in reasons)
+
+
+def test_parse_canary_check_schema_hash_mismatch_rejected() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace(expected.schema_sha256, "0" * 64)
+    reasons = parse_canary_check(text, expected)
+    assert any("output schema hash mismatch inside the container" in r for r in reasons)
+
+
+def test_parse_canary_check_unexpected_env_var_rejected() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace("canary-done", "env GH_TOKEN\ncanary-done")
+    reasons = parse_canary_check(text, expected)
+    assert any("unexpected environment variable in container: GH_TOKEN" in r for r in reasons)
+
+
+def test_parse_canary_check_accepts_hostname_and_pwd() -> None:
+    expected = _clean_canary_expected()
+    assert "HOSTNAME" in expected.env_names
+    assert "PWD" in expected.env_names
+    assert parse_canary_check(_clean_canary_stdout(expected), expected) == []
+
+
+def test_parse_canary_check_rejects_shlvl() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace("canary-done", "env SHLVL\ncanary-done")
+    reasons = parse_canary_check(text, expected)
+    assert any("unexpected environment variable in container: SHLVL" in r for r in reasons)
+
+
+def test_parse_canary_check_missing_canary_done_fails_closed() -> None:
+    expected = _clean_canary_expected()
+    lines = [line for line in _clean_canary_stdout(expected).splitlines() if line != "canary-done"]
+    reasons = parse_canary_check("\n".join(lines), expected)
+    assert reasons == ["could not parse canary check output"]
+
+
+def test_parse_canary_check_missing_path_line_fails_closed() -> None:
+    expected = _clean_canary_expected()
+    lines = [line for line in _clean_canary_stdout(expected).splitlines() if line != f"absent {_HOST_HOME}"]
+    reasons = parse_canary_check("\n".join(lines), expected)
+    assert reasons == ["could not parse canary check output"]
+
+
+def test_parse_canary_check_duplicate_line_fails_closed() -> None:
+    expected = _clean_canary_expected()
+    duplicated = _clean_canary_stdout(expected) + "\nwork-entries 0"
+    reasons = parse_canary_check(duplicated, expected)
+    assert reasons == ["could not parse canary check output"]
+
+
+def test_parse_canary_check_unknown_line_fails_closed() -> None:
+    expected = _clean_canary_expected()
+    text = _clean_canary_stdout(expected).replace("canary-done", "mystery-data\ncanary-done")
+    reasons = parse_canary_check(text, expected)
+    assert reasons == ["could not parse canary check output"]
+
+
+# --- CONTAINER_BASE_ENV / CANARY_RUNTIME_ENV constants -----------------------
+
+
+def test_container_base_env_and_canary_runtime_env_constants() -> None:
+    assert frozenset({"PATH", "HOME", "LANG", "CODEX_HOME"}) == CONTAINER_BASE_ENV
+    assert frozenset({"HOSTNAME", "PWD"}) == CANARY_RUNTIME_ENV
+    assert CONTAINER_BASE_ENV.isdisjoint(CANARY_RUNTIME_ENV)
