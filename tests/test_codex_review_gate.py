@@ -263,6 +263,50 @@ def test_completion_gate_provenance_wrong_source(tmp_path: Path, monkeypatch) ->
     assert completion_gate(_gate_prefix(2)) == ["grader provenance not established from origin/main"]
 
 
+# --- Non-object JSON records (CR-01 / Codex F001) ------------------------------
+
+_NON_OBJECT_VALUES = [None, [], "x", 1, True, False]
+
+
+@pytest.mark.parametrize("value", _NON_OBJECT_VALUES, ids=repr)
+@pytest.mark.parametrize(
+    "suffix",
+    [".meta.json", ".status.json", ".boundary.json", ".grader-provenance.json", ".base-status.json"],
+)
+def test_completion_gate_fails_on_non_object_record(
+    tmp_path: Path, monkeypatch, capsys, suffix: str, value: object
+) -> None:
+    """Valid JSON that is not an object never lets a required record's checks be skipped."""
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    changed = ["tests/codex_report_status.py"]
+    _write_full_attempt(
+        codex_dir, 2, meta=_valid_meta(2, audited_changed=changed), base_status=_valid_status()
+    )
+    assert completion_gate(_gate_prefix(2)) == []  # the fixture is otherwise complete
+    _write(codex_dir, _gate_name(2), suffix, value)
+
+    reasons = completion_gate(_gate_prefix(2))
+
+    assert reasons, f"gate passed with {value!r} in {suffix}"
+    assert any("JSON object" in r or "not established" in r for r in reasons), reasons
+    assert main(["--completion-gate", str(_gate_prefix(2))]) == 3
+    capsys.readouterr()
+
+
+def test_completion_gate_all_records_null_fails(tmp_path: Path, monkeypatch, capsys) -> None:
+    """Codex F001's reproduction: inspection meta plus `null` in every other record must fail (exit 3)."""
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    name = _gate_name(2)
+    _write(codex_dir, name, ".meta.json", _valid_meta(2, audited_changed=["tests/codex_report_status.py"]))
+    for suffix in (".status.json", ".boundary.json", ".grader-provenance.json", ".base-status.json"):
+        _write(codex_dir, name, suffix, None)
+
+    assert main(["--completion-gate", str(_gate_prefix(2))]) == 3
+    out = json.loads(capsys.readouterr().out)
+    assert out["gate"] == "fail"
+    assert len(out["reasons"]) == 4
+
+
 # --- Symlink refusal (read through safe_read_regular_file) -------------------
 
 
