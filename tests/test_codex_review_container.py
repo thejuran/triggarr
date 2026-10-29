@@ -113,6 +113,21 @@ _DOCKERFILE_SHA256 = hashlib.sha256(
     (Path(__file__).resolve().parent.parent / "docker" / "codex-review" / "Dockerfile").read_bytes()
 ).hexdigest()
 
+_DOCKERFILE_STATUS_ARGV = [
+    "git",
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+    "--",
+    "docker/codex-review/Dockerfile",
+]
+
+
+def _clean_git_status_runner(argv, **kwargs):
+    assert argv == _DOCKERFILE_STATUS_ARGV, argv
+    return subprocess.CompletedProcess(argv, 0, stdout="")
+
+
 _HOST_HOME = Path("/Users/example-owner")
 # Deliberately not nested under _HOST_HOME, so a mount source mutation can
 # unambiguously target exactly one protected path at a time.
@@ -659,7 +674,7 @@ def test_output_schema_staging_existing_destination_raises(tmp_path: Path) -> No
 def test_review_image_build_argv() -> None:
     # WR-09: the build records the committed Dockerfile's sha256 as a label,
     # so verify_isolation_boundary() can refuse an image built from anything else.
-    assert codex_review_run.review_image_build_argv() == [
+    assert codex_review_run.review_image_build_argv(_clean_git_status_runner) == [
         "docker",
         "build",
         "--label",
@@ -675,7 +690,30 @@ def test_review_image_build_argv() -> None:
 
 def test_review_image_dockerfile_label_constant() -> None:
     assert codex_review_run.REVIEW_IMAGE_DOCKERFILE_LABEL == "org.triggarr.codex-review.dockerfile-sha256"
-    assert codex_review_run.review_image_dockerfile_sha256() == _DOCKERFILE_SHA256
+    assert codex_review_run.review_image_dockerfile_sha256(_clean_git_status_runner) == _DOCKERFILE_SHA256
+
+
+@pytest.mark.parametrize(
+    "porcelain",
+    [" M docker/codex-review/Dockerfile\n", "M  docker/codex-review/Dockerfile\n", " D docker/codex-review/Dockerfile\n"],
+)
+def test_review_image_dockerfile_sha256_refuses_uncommitted_changes(porcelain) -> None:
+    """BM iter-2 WR-01: the fingerprint is of the committed Dockerfile, so an uncommitted edit is refused."""
+
+    def _dirty(argv, **kwargs):
+        assert argv == _DOCKERFILE_STATUS_ARGV, argv
+        return subprocess.CompletedProcess(argv, 0, stdout=porcelain)
+
+    with pytest.raises(RunnerError, match="docker/codex-review/Dockerfile has uncommitted changes"):
+        codex_review_run.review_image_dockerfile_sha256(_dirty)
+
+
+def test_review_image_dockerfile_sha256_fails_closed_when_git_status_fails() -> None:
+    def _broken(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 128, stdout="")
+
+    with pytest.raises(RunnerError):
+        codex_review_run.review_image_dockerfile_sha256(_broken)
 
 
 def test_review_image_ref_and_label_constants() -> None:
@@ -1347,6 +1385,7 @@ class _DockerRunner:
         canary_start_raises: type[BaseException] | None = None,
         dockerfile_sha256: str | None = None,
         dockerfile_label_missing: bool = False,
+        dockerfile_dirty: bool = False,
         review_id: str = "d" * 64,
         review_inspect_json: str | None = None,
         review_start_raises: type[BaseException] | None = None,
@@ -1360,6 +1399,7 @@ class _DockerRunner:
         self.calls: list[list[str]] = []
         self.envs: list[dict | None] = []
         self.dockerfile_sha256 = None if dockerfile_label_missing else (dockerfile_sha256 or _DOCKERFILE_SHA256)
+        self.dockerfile_dirty = dockerfile_dirty
         self.live = set(live or ())
         self.rm_breaks = set(rm_breaks or ())
         self.ps_breaks = set(ps_breaks or ())
@@ -1422,6 +1462,10 @@ class _DockerRunner:
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
         self.envs.append(kwargs.get("env"))
+        if argv == _DOCKERFILE_STATUS_ARGV:
+            # BM iter-2 WR-01: the Dockerfile's committed state is checked with git status.
+            stdout = " M docker/codex-review/Dockerfile\n" if self.dockerfile_dirty else ""
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout)
         if argv[:3] == ["docker", "image", "inspect"]:
             if not self.image_ok:
                 return subprocess.CompletedProcess(argv, 1, stdout="")
@@ -1885,6 +1929,25 @@ def test_verify_isolation_boundary_image_not_built_from_committed_dockerfile(run
     assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
 
 
+def test_verify_isolation_boundary_refuses_an_uncommitted_dockerfile() -> None:
+    """BM iter-2 WR-01: an image built from an uncommitted Dockerfile edit is never trusted."""
+    docker = _DockerRunner(dockerfile_dirty=True)
+    ledger = ContainerLedger(docker)
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=Path("/tmp/does-not-matter-85-1-08"),
+        inner_argv=inspection_codex_argv(),
+        expected_schema_sha256="0" * 64,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("docker/codex-review/Dockerfile has uncommitted changes" in r for r in boundary["reasons"])
+    assert _DOCKERFILE_STATUS_ARGV in docker.calls
+    assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
+
+
 def test_verify_isolation_boundary_records_image_id_and_dockerfile_sha(tmp_path: Path, monkeypatch) -> None:
     fixture = _BoundaryFixture(tmp_path, monkeypatch)
     docker = _clean_docker_runner(fixture)
@@ -2098,6 +2161,8 @@ def test_verify_isolation_boundary_docker_create_oserror(tmp_path: Path, monkeyp
     fixture = _BoundaryFixture(tmp_path, monkeypatch)
 
     def _runner(argv, **kwargs):
+        if argv == _DOCKERFILE_STATUS_ARGV:
+            return subprocess.CompletedProcess(argv, 0, stdout="")
         if argv[:3] == ["docker", "image", "inspect"]:
             labels = {REVIEW_IMAGE_LABEL: REVIEW_CODEX_VERSION, _DOCKERFILE_LABEL: _DOCKERFILE_SHA256}
             image_data = [{"Id": "sha256:" + "a" * 64, "Config": {"Labels": labels}}]
