@@ -28,13 +28,17 @@ Implements docs/codex-adversarial-review-contract.md, Invocation:
    commit's own checker (materialized from git objects only) and saves it
    as ``<OUT>.base-status.json``; the run is complete only if both agree.
 
-Only ``--trusted`` heads (verified by ``verify_trust()``) are reviewed.
-``--untrusted`` (bot or fork PRs) issues no command of any kind and is
-refused (interim rule, D-07 amendment): it records a permanent INCOMPLETE
-result (``<OUT>.meta.json`` and ``<OUT>.status.json``, review_mode
-"untrusted-refused") instead of running anything, until Phase 85.1
-delivers the isolated review. CI plus an owner-approved fallback review
-(D-16) covers that head in the interim.
+``--trusted`` heads (verified by ``verify_trust()``) are reviewed as
+above. ``--untrusted`` (bot or fork PRs) runs a separate inspection-only
+review instead (Phase 85.1, D-07): the head is never checked out, written
+to disk or executed. Its review input is inert text built purely from git
+objects, Codex runs inside a disposable container behind a mandatory,
+fail-closed isolation-boundary gate, and grading always uses the checker
+from a freshly fetched ``origin/main``, never from the reviewed head or
+its base (B13). Until the container checks exist (Plans 85.1-07/08) that
+gate always reports "unverified", so every ``--untrusted`` run still ends
+INCOMPLETE (exit 3) -- but it is reserved, recorded and graded the same
+way a trusted run is, not refused outright.
 
 Every command is an argument list run without a shell; free-text inputs
 (PR URL, scope) only ever reach Codex through the prompt on stdin.
@@ -152,6 +156,12 @@ OUTPUT_SUFFIXES = (
     ".status.json",
     ".pytest.txt",
     ".base-status.json",
+    # Inspection-only outputs (Phase 85.1, D-07): CI evidence for the exact
+    # head, the trusted-main grader provenance record, and the isolation
+    # boundary verdict.
+    ".ci-evidence.json",
+    ".grader-provenance.json",
+    ".boundary.json",
 )
 
 # Where the harness evidence is copied inside the temp worktree (untracked),
@@ -317,8 +327,11 @@ class ReviewRun:
     scope: str
     phase_dir: Path
     # Owner decisions 2026-10-22: only this repository's own branches are
-    # trusted. Dependabot and outside-contributor heads are untrusted, and the
-    # harness refuses to run Codex or their tests for them.
+    # trusted; their tests and Codex run locally against the real head
+    # (execute()). Dependabot and outside-contributor heads are untrusted:
+    # their tests are never run and their code is never checked out, so
+    # they get the separate inspection-only review instead (Phase 85.1,
+    # D-07) -- still Codex, just never on the head's own machine access.
     trusted: bool
 
     def __post_init__(self) -> None:
@@ -456,7 +469,13 @@ def codex_argv(worktree: Path, last_json: Path) -> list[str]:
     ]
 
 
-def checker_argv(run: ReviewRun, *, exit_code: int | None, current_head: str) -> list[str]:
+def checker_argv(
+    run: ReviewRun, *, exit_code: int | None, current_head: str, review_mode: str = "trusted"
+) -> list[str]:
+    """Build the checker invocation. *review_mode* is caller-declared (never
+    inferred from the report), same discipline as --legacy-v1: "trusted"
+    (default) leaves the argv unchanged; "inspection-only" appends
+    --review-mode inspection-only for an untrusted head's review (D-07)."""
     checker = REPO_ROOT / "tests" / "codex_report_status.py"
     argv = [sys.executable, str(checker), "--report", str(run.output(".last.json"))]
     if exit_code is not None:
@@ -471,28 +490,14 @@ def checker_argv(run: ReviewRun, *, exit_code: int | None, current_head: str) ->
         "--attempt",
         str(run.attempt),
     ]
+    if review_mode == "inspection-only":
+        argv += ["--review-mode", "inspection-only"]
     return argv
 
 
 def _pytest_env() -> dict[str, str]:
     # The caller's virtualenv belongs to the main checkout; the worktree gets its own.
     return {key: value for key, value in os.environ.items() if key != "VIRTUAL_ENV"}
-
-
-UNTRUSTED_REFUSAL = (
-    "untrusted head (bot or fork PR): Codex review is refused until Phase 85.1 delivers the isolated"
-    " review; recorded INCOMPLETE. Use CI plus an owner-approved fallback review"
-    " (D-16, .github/scripts/codex-fallback.cjs)"
-)
-
-# The .status.json reason for an --untrusted refusal. Phrased independently
-# from UNTRUSTED_REFUSAL (which stdout always shows verbatim) so the record
-# itself names, word for word, why a review_mode "untrusted-refused" result
-# can never become clean.
-UNTRUSTED_STATUS_REASON = (
-    "refused until Phase 85.1 delivers the isolated review for untrusted (bot or fork) heads;"
-    " use CI plus an owner-approved fallback (D-16) in the interim"
-)
 
 
 def _require_base_on_main(run: ReviewRun, command_runner: CommandRunner) -> None:
@@ -1528,12 +1533,22 @@ def run_meta(
     }
 
 
-def untrusted_refused_meta(run: ReviewRun) -> dict[str, object]:
-    """The minimal provenance record for an --untrusted refusal.
+def inspection_meta(
+    run: ReviewRun,
+    *,
+    harness_head: str,
+    inputs: dict[str, dict[str, object]],
+    audited_inputs_changed_in_diff: list[str],
+    input_stats: dict[str, object],
+) -> dict[str, object]:
+    """The provenance record for an untrusted head's inspection-only review (D-07).
 
-    No command runs to produce this (checker B13/T-85-39b), so it carries
-    none of the harness-derived fields (inputs, harness_head, trust
-    verification) a trusted run's run_meta() records.
+    Carries harness_head and inputs like the trusted run_meta(), but
+    review_mode "inspection-only-ci-evidence", test_evidence_source
+    "GitHub CI check runs" (never local pytest, which never runs for an
+    untrusted head), and inspection_input stats instead of a worktree/pytest
+    record. base_grader_source is always "trusted-origin-main": the
+    inspection-only path's grader never comes from --base (B13).
     """
     return {
         "meta_version": 2,
@@ -1543,9 +1558,18 @@ def untrusted_refused_meta(run: ReviewRun) -> dict[str, object]:
         "attempt": run.attempt,
         "pr_url": run.pr_url,
         "trusted": False,
-        "review_mode": "untrusted-refused",
-        "trust_verification": None,
-        "test_evidence_source": None,
+        "review_mode": "inspection-only-ci-evidence",
+        "inspection_template_version": inspection_template_version(),
+        "harness_head": harness_head,
+        "inputs": inputs,
+        "test_evidence_source": "GitHub CI check runs",
+        "audited_inputs_changed_in_diff": audited_inputs_changed_in_diff,
+        "base_grader_source": "trusted-origin-main",
+        "inspection_input": {
+            "bytes": input_stats["bytes"],
+            "files_included": input_stats["files_included"],
+            "files_omitted": input_stats["files_omitted"],
+        },
     }
 
 
@@ -1588,6 +1612,21 @@ def _write_base_status_stub(run: ReviewRun, reason: str) -> None:
     run.output(".base-status.json").write_text(json.dumps(stub) + "\n", encoding="utf-8")
     print(f"base-status: {run.output('.base-status.json')}")
     print(json.dumps(stub))
+
+
+def _write_json_atomic(path: Path, obj: object) -> None:
+    """Write JSON to *path* via a temp file + os.replace (this repo's atomic write-then-rename convention)."""
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(obj, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def materialize_grader(grader_ref: str, dest: Path, command_runner: CommandRunner) -> None:
@@ -1723,10 +1762,12 @@ def execute(
 
     A head that is not the checkout's HEAD can only be assessed stale, so it
     is refused unless *allow_stale_head* is set (for example, finishing an
-    earlier head's automatic retry).
+    earlier head's automatic retry). An untrusted head (bot or fork PR)
+    dispatches to _execute_untrusted() instead, the inspection-only review
+    (Phase 85.1, D-07); verify_trust() is never called for it.
     """
     if not run.trusted:
-        raise RunnerError(UNTRUSTED_REFUSAL)
+        return _execute_untrusted(run, command_runner)
     # Verified before anything else, including the existing-output check, so
     # nothing is written for a refused head (D-18 SA-01).
     trust_verification = verify_trust(run, command_runner)
@@ -1880,6 +1921,254 @@ def _execute_reserved(
     return checker.returncode if base_exit == 0 else 1
 
 
+# --- Inspection-only orchestration for untrusted (bot/fork) heads (D-07, B14) -
+#
+# execute() dispatches an untrusted ReviewRun to _execute_untrusted(), which
+# gathers everything needed to build the inspection-only prompt purely from
+# read-only git/gh calls, then reserves the output name exactly like the
+# trusted path before writing anything. _execute_inspection() is everything
+# after that reservation: it returns 0 (COMPLETE) or 3 (INCOMPLETE) and never
+# raises except for a BaseException escaping the Codex launch, which
+# _execute_untrusted still turns into a status stub before re-raising.
+
+
+def _ci_evidence_text(ci: dict[str, object]) -> str:
+    """A short textual summary of *ci* for the inspection-only prompt's CI_EVIDENCE placeholder."""
+    ready = ci.get("ci_ready") or {}
+    return (
+        f"GitHub check run {ready.get('name')!r} (id {ready.get('id')}) completed with conclusion"
+        f" {ready.get('conclusion')!r} for this exact head: {ready.get('html_url')}"
+    )
+
+
+def _refetch_head_ref_oid(run: ReviewRun, pr_info: dict[str, object], command_runner: CommandRunner) -> str:
+    """Re-read the PR's headRefOid via a second ``gh pr view`` call after the Codex run.
+
+    Grading must use the head as it is now, not as it was when the
+    inspection input was built: a fast-moving PR could gain new commits
+    during the run (T-85.1-18).
+    """
+    try:
+        result = command_runner(
+            ["gh", "pr", "view", str(pr_info["number"]), "--repo", REPO_SLUG, "--json", "headRefOid"],
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(
+            f"could not confirm the current head: gh pr view could not run ({type(exc).__name__})"
+        ) from exc
+    if result.returncode != 0:
+        raise RunnerError(f"could not confirm the current head: gh pr view exited {result.returncode}")
+    try:
+        data = json.loads(result.stdout or "")
+    except ValueError as exc:
+        raise RunnerError(
+            f"could not confirm the current head: gh pr view returned unparseable JSON ({type(exc).__name__})"
+        ) from exc
+    head_ref_oid = data.get("headRefOid")
+    if not isinstance(head_ref_oid, str) or not _SHA_RE.fullmatch(head_ref_oid):
+        raise RunnerError("could not confirm the current head: gh pr view returned no valid headRefOid")
+    return head_ref_oid
+
+
+def _print_inspection_result(run: ReviewRun, *, complete: bool, reason: str | None) -> None:
+    head12 = run.head[:12]
+    if complete:
+        print(f"Codex COMPLETE for {head12} (inspection-only)")
+        return
+    print(
+        f"Codex INCOMPLETE for {head12}: {reason} Ask the owner to decide whether to retry or investigate;"
+        " do not record this run as clean."
+    )
+
+
+def _inspection_incomplete(run: ReviewRun, reason: str, *, write_stub: bool = True) -> int:
+    """Record (unless *write_stub* is False, when the checker already wrote .status.json), print, and return 3."""
+    if write_stub:
+        _write_status_stub(run, reason)
+    _print_inspection_result(run, complete=False, reason=reason)
+    return 3
+
+
+def _execute_inspection(
+    run: ReviewRun,
+    *,
+    prompt: str,
+    meta: dict[str, object],
+    inputs: dict[str, dict[str, object]],
+    pr_info: dict[str, object],
+    input_stats: dict[str, object],
+    command_runner: CommandRunner,
+) -> int:
+    """Everything after the output name is reserved, for an untrusted head (D-07, B14).
+
+    verify_isolation_boundary() is the mandatory precondition and runs
+    after grader provenance (establish_trusted_main) and before the only
+    launch seam (run_untrusted_codex); a non-"verified" verdict never
+    reaches it (B04-R3). Returns 0 (COMPLETE) or 3 (INCOMPLETE).
+    """
+    if input_stats.get("oversize"):
+        return _inspection_incomplete(run, "inspection input exceeds MAX_INSPECTION_INPUT_BYTES")
+
+    try:
+        provenance = establish_trusted_main(run, command_runner)
+    except RunnerError as exc:
+        _write_json_atomic(run.output(".grader-provenance.json"), {"established": False, "reasons": [str(exc)]})
+        return _inspection_incomplete(run, str(exc))
+    _write_json_atomic(run.output(".grader-provenance.json"), {"established": True, **provenance})
+
+    main_sha = str(provenance["grader_ref"])
+    audited_changed = list(meta["audited_inputs_changed_in_diff"])
+
+    scratch = Path(tempfile.mkdtemp(prefix="codex-inspection-"))
+    try:
+        if audited_changed:
+            grader_dir = scratch / "trusted-main-grader"
+            materialize_grader(main_sha, grader_dir, command_runner)
+            checker_path = grader_dir / "tests" / "codex_report_status.py"
+            if not trusted_main_grader_supports_mode(checker_path, command_runner):
+                return _inspection_incomplete(
+                    run,
+                    f"trusted-main checker at {main_sha[:12]} predates --review-mode inspection-only;"
+                    " cross-grading cannot run",
+                )
+
+        inner_argv = inspection_codex_argv()
+        boundary = verify_isolation_boundary(run, command_runner, scratch=scratch, inner_argv=inner_argv)
+        _write_json_atomic(run.output(".boundary.json"), boundary)
+        if boundary.get("verdict") != "verified":
+            reasons = "; ".join(str(reason) for reason in (boundary.get("reasons") or []))
+            return _inspection_incomplete(
+                run, f"isolation boundary not verified ({reasons}); Codex was not run on the untrusted head"
+            )
+
+        codex_exit: int | None = None
+        problems: list[str] = []
+        try:
+            codex_exit, problems = run_untrusted_codex(
+                run, inner_argv=inner_argv, prompt=prompt, boundary=boundary, command_runner=command_runner
+            )
+        except RunnerError as exc:
+            return _inspection_incomplete(run, f"untrusted Codex launch failed: {exc}")
+        finally:
+            # There is no separate worktree for an untrusted head; the same
+            # scratch dir stands in for both arguments.
+            _finalize_raw_outputs(run, worktree=scratch, scratch=scratch)
+
+        if problems:
+            return _inspection_incomplete(run, "; ".join(problems))
+
+        audit_reasons = audit_event_types(run.output(".jsonl"))
+        if audit_reasons:
+            return _inspection_incomplete(run, "; ".join(audit_reasons))
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    try:
+        current_head = _refetch_head_ref_oid(run, pr_info, command_runner)
+    except RunnerError as exc:
+        return _inspection_incomplete(run, f"could not confirm the current head after the run: {exc}")
+
+    checker_full_argv = checker_argv(
+        run, exit_code=codex_exit, current_head=current_head, review_mode="inspection-only"
+    )
+    try:
+        checker = command_runner(
+            checker_full_argv, cwd=REPO_ROOT, stdout=subprocess.PIPE, text=True, errors="replace"
+        )
+    except OSError as exc:
+        return _inspection_incomplete(run, f"checker could not run: {type(exc).__name__}")
+    if not (checker.stdout or "").strip():
+        return _inspection_incomplete(run, f"checker produced no output (exit {checker.returncode})")
+    run.output(".status.json").write_text(checker.stdout, encoding="utf-8")
+    print(f"status: {run.output('.status.json')}")
+    print(checker.stdout, end="")
+    head_complete = checker.returncode == 0
+
+    base_complete = True
+    if audited_changed:
+        print(f"grader changed in this diff: {audited_changed}; cross-grading with the trusted-main checker")
+        base_exit = _run_base_grader(
+            run, grader_ref=main_sha, checker_tail=checker_full_argv[2:], command_runner=command_runner
+        )
+        base_complete = base_exit == 0
+        if not base_complete:
+            print("grader changed in this diff: the trusted-main checker did not confirm completeness")
+
+    if head_complete and base_complete:
+        _print_inspection_result(run, complete=True, reason=None)
+        return 0
+    return _inspection_incomplete(run, "see .status.json for reasons", write_stub=False)
+
+
+def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
+    """Pre-reservation gathering and reservation for an untrusted head, then _execute_inspection() (D-07).
+
+    Every step up to and including reserve_outputs may raise RunnerError or
+    FileExistsError; nothing is written for a refused or already-claimed
+    head. From the reservation onward, every path writes a status before
+    returning or re-raising, mirroring execute()'s own wrapper for the
+    trusted path (same Exception/BaseException stub-writing pattern).
+    """
+    pr_info = inspect_untrusted_pr(run, command_runner)
+    ci = ci_evidence(run, command_runner)
+    inputs = audit_inputs(command_runner)
+    harness_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
+    audited_changed = audited_inputs_changed(run, command_runner)
+    input_text, input_stats = build_inspection_input(run, command_runner)
+    fence = new_input_fence(input_text)
+    prompt = render_inspection_prompt(run, ci_evidence_text=_ci_evidence_text(ci), input_text=input_text, fence=fence)
+
+    existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
+    if existing:
+        raise FileExistsError(f"review outputs already exist: {existing}")
+
+    meta = inspection_meta(
+        run,
+        harness_head=harness_head,
+        inputs=inputs,
+        audited_inputs_changed_in_diff=audited_changed,
+        input_stats=input_stats,
+    )
+
+    run.out_base.parent.mkdir(parents=True, exist_ok=True)
+    # The reservation is the first write; nothing else is touched if it fails.
+    reserve_outputs(run, prompt)
+    try:
+        run.output(".meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        _write_json_atomic(run.output(".ci-evidence.json"), ci)
+        return _execute_inspection(
+            run,
+            prompt=prompt,
+            meta=meta,
+            inputs=inputs,
+            pr_info=pr_info,
+            input_stats=input_stats,
+            command_runner=command_runner,
+        )
+    except RunnerError:
+        # Every RunnerError raised after the reservation has already written its status.
+        raise
+    except Exception as exc:
+        reason = f"harness failed after reserving the output: {type(exc).__name__}"
+        if not run.output(".status.json").exists():
+            _write_status_stub(run, reason)
+        raise RunnerError(reason) from exc
+    except BaseException as exc:
+        if not run.output(".status.json").exists():
+            if isinstance(exc, SystemExit) and _RECEIVED_SIGNAL is not None:
+                cause = signal.Signals(_RECEIVED_SIGNAL).name
+            else:
+                cause = type(exc).__name__
+            try:
+                _write_status_stub(run, f"interrupted by {cause} after reserving the output")
+            except OSError as write_exc:
+                print(f"warning: could not record the interrupted status: {type(write_exc).__name__}")
+        raise
+
+
 _PR_BASE_PLACEHOLDER = "<baseRefOid-from-gh>"
 
 
@@ -1941,6 +2230,41 @@ def dry_run(run: ReviewRun) -> int:
     return 0
 
 
+def dry_run_untrusted(run: ReviewRun) -> int:
+    """Print the inspection-only prompt and every command without running or writing anything (D-07)."""
+    match = _PR_URL_RE.fullmatch(run.pr_url)
+    number = match.group(2) if match else "<pr-number>"
+    prompt = render_inspection_prompt(
+        run,
+        ci_evidence_text="<CI evidence: built at run time>",
+        input_text="<inert input: built at run time>",
+        fence="<fence: generated per run>",
+    )
+    print("# Rendered inspection-only prompt (sent on stdin to codex exec inside the review container)")
+    print(prompt)
+    print("# Commands")
+    print("# PR and CI preconditions, bound to the exact head (D-09, T-85.1-18)")
+    print(shlex.join(["gh", "pr", "view", number, "--repo", REPO_SLUG, "--json", _GH_PR_VIEW_FIELDS_INSPECTION]))
+    print(shlex.join(["git", "fetch", "--no-tags", "origin", f"pull/{number}/head"]))
+    print(shlex.join(["git", "rev-parse", "--verify", "FETCH_HEAD^{commit}"]))
+    print(shlex.join(["gh", "api", f"repos/{REPO_SLUG}/commits/{run.head}/check-runs", "--paginate", "--slurp"]))
+    print("# the inert review input is built from git objects only, never a checkout")
+    print("# trusted-main grader provenance: the checker always comes from a fresh origin/main (B13, D-02)")
+    print(shlex.join(["git", "fetch", "--no-tags", "origin", f"+refs/heads/main:{TRUSTED_MAIN_REF}"]))
+    print(shlex.join(["git", "merge-base", "--is-ancestor", run.base, TRUSTED_MAIN_REF]))
+    print(f"git status --porcelain --untracked-files=all -- {' '.join(AUDITED_INPUTS)}  # must be empty")
+    print(f"# save the prompt to {shlex.quote(str(run.output('.prompt.txt')))}")
+    print(f"# save provenance to {shlex.quote(str(run.output('.meta.json')))}")
+    print("# the mandatory isolation boundary gate; Codex is launched only if it reports verified (B04-R3)")
+    print(shlex.join(inspection_codex_argv()))
+    print("# always removes the disposable review container, on success and on failure")
+    checker = checker_argv(run, exit_code=0, current_head="<second gh pr view>", review_mode="inspection-only")
+    checker[0] = "uv run python"
+    print(" ".join(shlex.quote(part) if i else part for i, part in enumerate(checker)), end="")
+    print(f" > {shlex.quote(str(run.output('.status.json')))}  # --exit-code is codex's real exit code")
+    return 0
+
+
 def _sha(value: str) -> str:
     if not _SHA_RE.fullmatch(value):
         raise argparse.ArgumentTypeError(f"must be 40 lowercase hex characters, got {value!r}")
@@ -1977,7 +2301,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--untrusted",
         dest="trusted",
         action="store_false",
-        help="Dependabot or outside-contributor head: refused (Codex PENDING, rely on CI results)",
+        help=(
+            "Dependabot or outside-contributor PR: inspection-only Codex review in a verified disposable"
+            " container; the head is never checked out or executed; run from a checkout of the freshly"
+            " fetched origin/main"
+        ),
     )
     parser.add_argument(
         "--allow-stale-head",
@@ -1986,37 +2314,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dry-run", action="store_true", help="Print the prompt and commands only")
     return parser
-
-
-def _untrusted_main(run: ReviewRun, *, dry_run: bool) -> int:
-    """Record the --untrusted refusal as a recorded INCOMPLETE result (interim rule, D-07 amendment).
-
-    Issues no command of any kind -- no gh, git, uv, pytest, docker or codex
-    call; no checkout, fetch or worktree; no `git show`; no grader
-    materialized (checker B13, T-85-39b/T-85-39c). Until Phase 85.1 delivers
-    the isolated review, a bot or fork head's Codex result is always this
-    recorded refusal, never a clean or complete one.
-    """
-    existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
-    if existing:
-        print(f"error: review outputs already exist: {existing}; use the next attempt number")
-        return 2
-    if dry_run:
-        print(f"# would write {run.output('.meta.json')}")
-        print(f"# would write {run.output('.status.json')}")
-        print(f"error: {UNTRUSTED_REFUSAL}")
-        return 2
-    run.out_base.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        fd = os.open(run.output(".meta.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-    except FileExistsError:
-        print(f"error: review outputs already exist: {run.output('.meta.json')}; use the next attempt number")
-        return 2
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(untrusted_refused_meta(run), indent=2) + "\n")
-    _write_status_stub(run, UNTRUSTED_STATUS_REASON)
-    print(f"error: {UNTRUSTED_REFUSAL}")
-    return 2
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2032,10 +2329,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(str(exc))
         if not (REPO_ROOT / run.phase_dir).is_dir():
             parser.error(f"phase-dir does not exist: {run.phase_dir}")
-        if not run.trusted:
-            return _untrusted_main(run, dry_run=args.dry_run)
         if args.dry_run:
-            return dry_run(run)
+            return dry_run(run) if run.trusted else dry_run_untrusted(run)
         try:
             return execute(run, allow_stale_head=args.allow_stale_head)
         except FileExistsError as exc:
