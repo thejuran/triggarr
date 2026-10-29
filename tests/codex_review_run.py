@@ -2013,6 +2013,140 @@ def docker_env(environ: dict[str, str]) -> dict[str, str]:
     return {name: environ[name] for name in DOCKER_ENV_NAMES if name in environ}
 
 
+# --- Confirmed container lifecycle (B15, T-85.1-36) ------------------------
+# A container counts as stopped only once `docker ps -a` no longer lists it
+# after `docker rm -f`; a killed or timed-out `docker start -a` client proves
+# nothing about the container itself. Every review and canary container a
+# run creates is owned by one ContainerLedger; unconfirmed or indeterminate
+# removal is INCOMPLETE and escalated with the exact manual command, never
+# reported clean. Output and credential copies are read only after a
+# confirmed removal (Plan 85.1-08 Task 3).
+
+_CONTAINER_ID_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def remove_container_confirmed(
+    container_id: str, command_runner: CommandRunner, *, kind: str = "review"
+) -> list[str]:
+    """Remove *container_id* and confirm its absence from `docker ps -a` (B15).
+
+    `docker rm -f`'s own exit code is never trusted: a container counts
+    as removed only when a following `docker ps -a -q --no-trunc
+    --filter id=<id>` prints nothing. Any indeterminate outcome (a
+    non-zero or unexpected `docker ps` result, or either command
+    raising) is reported as "could not be confirmed removed" -- never
+    silently treated as clean. *container_id* must already be a full
+    64-lowercase-hex id (as `docker create` returns), validated before
+    any docker call is issued. Never raises.
+    """
+    if not _CONTAINER_ID_RE.fullmatch(container_id):
+        raise RunnerError(f"not a valid container id: {container_id!r}")
+    env = docker_env(os.environ)
+    escalation = (
+        f"{kind} container {container_id[:12]} could not be confirmed removed; remove it manually with"
+        f" `docker rm -f {container_id}` and check `docker ps -a` (escalate; this run is INCOMPLETE)"
+    )
+    try:
+        command_runner(
+            ["docker", "rm", "-f", container_id], env=env, stdout=subprocess.PIPE, text=True, check=False
+        )
+    except OSError:
+        return [escalation]
+    try:
+        ps = command_runner(
+            ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", f"id={container_id}"],
+            env=env,
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return [escalation]
+    if ps.returncode != 0 or (ps.stdout or "").strip():
+        return [escalation]
+    return []
+
+
+class ContainerLedger:
+    """Owns every container (and per-run directory) an untrusted run creates (B15, T-85.1-36).
+
+    register()/register_dir() record what this run created; release()
+    drops a container id once its removal has already been confirmed
+    elsewhere, so close() does not attempt it twice. close() removes
+    every still-registered container with remove_container_confirmed
+    (collecting every problem, continuing after a failure) and every
+    still-registered directory with shutil.rmtree, never raises, and is
+    idempotent (each entry is removed from the registry once handled).
+    As a context manager, __exit__ runs on every path -- normal exit or
+    any BaseException in flight -- and always: (1) calls close() and
+    records the result as self.cleanup_problems; (2) if there are
+    problems, prints each one to stderr prefixed "ESCALATION: " so the
+    warning is visible even if a later write fails; (3) if there are
+    problems and on_cleanup_problems was given, calls it inside
+    try/except Exception so a failing finalizer only warns and never
+    masks the original exception; (4) returns False so an in-flight
+    exception keeps propagating unchanged.
+    """
+
+    def __init__(
+        self,
+        command_runner: CommandRunner,
+        *,
+        on_cleanup_problems: Callable[[list[str], BaseException | None], None] | None = None,
+    ) -> None:
+        self._command_runner = command_runner
+        self._on_cleanup_problems = on_cleanup_problems
+        self._containers: dict[str, str] = {}
+        self._dirs: list[Path] = []
+        self.cleanup_problems: list[str] = []
+
+    def register(self, container_id: str, kind: str) -> None:
+        self._containers[container_id] = kind
+
+    def register_dir(self, path: Path) -> None:
+        self._dirs.append(path)
+
+    def release(self, container_id: str) -> None:
+        self._containers.pop(container_id, None)
+
+    def close(self) -> list[str]:
+        problems: list[str] = []
+        for container_id, kind in list(self._containers.items()):
+            try:
+                problems += remove_container_confirmed(container_id, self._command_runner, kind=kind)
+            except RunnerError as exc:
+                problems.append(f"{kind} container {container_id[:12]} could not be confirmed removed: {exc}")
+            self._containers.pop(container_id, None)
+        for path in list(self._dirs):
+            try:
+                shutil.rmtree(path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                problems.append(f"per-run directory could not be removed: {type(exc).__name__}: {path}")
+            self._dirs.remove(path)
+        return problems
+
+    def __enter__(self) -> ContainerLedger:
+        return self
+
+    def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> bool:
+        problems = self.close()
+        self.cleanup_problems = problems
+        if problems:
+            for problem in problems:
+                print(f"ESCALATION: {problem}", file=sys.stderr)
+            if self._on_cleanup_problems is not None:
+                try:
+                    self._on_cleanup_problems(problems, exc)
+                except Exception as finalizer_exc:
+                    print(
+                        f"warning: cleanup escalation could not be recorded: {type(finalizer_exc).__name__}",
+                        file=sys.stderr,
+                    )
+        return False
+
+
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
     """Replace local absolute paths in harness-written text with neutral markers.
 
