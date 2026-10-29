@@ -271,9 +271,13 @@ function readinessInputFor(row, prefix, meta, fallback) {
     baseSha: BASE,
     mergeBase: BASE,
     checks: [
-      {id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {
+        id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success',
+        app: {slug: 'github-actions'}, check_suite: {id: 100},
+      },
       {id: 2, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
     ],
+    workflowRuns: [{id: 7100, check_suite_id: 100, path: '.github/workflows/ci.yml', head_sha: HEAD}],
     comments: [],
     dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
     blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
@@ -376,5 +380,100 @@ test('cross-language parity: Python completion_gate agrees with JS completeness 
     }
   } finally {
     fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+// --- Cross-language parity (BM iter-2 WR-02/WR-03): "CI ready" -------------
+//
+// acceptance-readiness.cjs's CI ready item and tests/codex_review_run.py's
+// ci_evidence() are the two acceptors of CI evidence for an untrusted head.
+// Both must count only a github-actions "CI ready" whose check suite belongs
+// to a .github/workflows/ci.yml workflow run for this head, refuse one from
+// any other (or an unidentifiable) workflow, and take the latest result.
+const CI_YML = '.github/workflows/ci.yml';
+const OTHER = 'c'.repeat(40);
+
+function ciRun(id, {conclusion = 'success', status = 'completed', slug = 'github-actions', suite = 100, head = HEAD} = {}) {
+  const run = {id, name: 'CI ready', head_sha: head, status, conclusion, html_url: `https://x/${id}`};
+  if (slug !== null) run.app = {slug};
+  if (suite !== null) run.check_suite = {id: suite};
+  return run;
+}
+
+function wfRun(suite, path = CI_YML, head = HEAD) {
+  return {id: 7000 + suite, check_suite_id: suite, path, head_sha: head};
+}
+
+const CI_READY_ROWS = [
+  {label: 'single-ci-yml-success', checks: [ciRun(1)], workflowRuns: [wfRun(100)], ok: true},
+  {label: 'reopen-latest-success', checks: [ciRun(2, {conclusion: 'failure'}), ciRun(5, {suite: 200})], workflowRuns: [wfRun(100), wfRun(200)], ok: true},
+  {label: 'reopen-latest-failure', checks: [ciRun(2), ciRun(5, {conclusion: 'failure', suite: 200})], workflowRuns: [wfRun(100), wfRun(200)], ok: false},
+  {label: 'foreign-workflow-later-success', checks: [ciRun(2, {conclusion: 'failure'}), ciRun(5, {suite: 200})], workflowRuns: [wfRun(100), wfRun(200, '.github/workflows/evil.yml')], ok: false},
+  {label: 'foreign-workflow-only', checks: [ciRun(5, {suite: 200})], workflowRuns: [wfRun(200, '.github/workflows/evil.yml')], ok: false},
+  {label: 'other-app-only', checks: [ciRun(9, {slug: 'some-other-app', suite: 900})], workflowRuns: [], ok: false},
+  {label: 'other-app-later-success-ci-failed', checks: [ciRun(2, {conclusion: 'failure'}), ciRun(9, {slug: 'some-other-app', suite: 900})], workflowRuns: [wfRun(100)], ok: false},
+  {label: 'other-app-ignored-ci-succeeded', checks: [ciRun(2), ciRun(9, {slug: 'some-other-app', suite: 900, conclusion: 'failure'})], workflowRuns: [wfRun(100)], ok: true},
+  {label: 'no-app', checks: [ciRun(1, {slug: null})], workflowRuns: [wfRun(100)], ok: false},
+  {label: 'no-check-suite', checks: [ciRun(1, {suite: null})], workflowRuns: [wfRun(100)], ok: false},
+  {label: 'workflow-unidentified', checks: [ciRun(1)], workflowRuns: [], ok: false},
+  {label: 'workflow-run-for-other-head', checks: [ciRun(1)], workflowRuns: [wfRun(100, CI_YML, OTHER)], ok: false},
+  {label: 'workflow-run-without-path', checks: [ciRun(1)], workflowRuns: [{check_suite_id: 100, head_sha: HEAD}], ok: false},
+  {label: 'workflow-runs-unreadable', checks: [ciRun(1)], workflowRuns: [], workflowRunsError: true, ok: false},
+  {label: 'ci-ready-for-other-head', checks: [ciRun(1, {head: OTHER})], workflowRuns: [wfRun(100)], ok: false},
+  {label: 'latest-still-running', checks: [ciRun(1), ciRun(3, {status: 'in_progress', conclusion: null})], workflowRuns: [wfRun(100)], ok: false},
+  {label: 'no-ci-ready-at-all', checks: [], workflowRuns: [], workflowRunsError: true, ok: false},
+];
+
+function jsCiReadyOk(row) {
+  const input = readinessInputFor(ROWS[0], outPrefix(ROWS[0].label, ROWS[0].attempt), {}, null);
+  input.checks = [...row.checks, {id: 99, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}];
+  input.workflowRuns = row.workflowRuns;
+  if (row.workflowRunsError) input.workflowRunsError = 'could not read GitHub workflow runs';
+  return readiness(input).items.find(i => i.name === 'CI ready').status === 'ok';
+}
+
+const PY_CI = `
+import json, subprocess, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from tests import codex_review_run as runner
+head = sys.argv[2]
+result = {}
+for row in json.loads(sys.argv[3]):
+    def fake(argv, row=row, **kwargs):
+        if argv[2].endswith("/check-runs"):
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps([{"check_runs": row["checks"]}]))
+        if "/actions/runs?" in argv[2]:
+            if row.get("workflowRunsError"):
+                return subprocess.CompletedProcess(argv, 1, stdout="")
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps([{"workflow_runs": row["workflowRuns"]}]))
+        raise AssertionError(argv)
+    run = runner.ReviewRun(head=head, base="b" * 40, label="parity", attempt=1,
+                           pr_url="https://github.com/thejuran/triggarr/pull/90", scope="parity",
+                           phase_dir=Path(".planning/phases/parity"), trusted=False)
+    try:
+        runner.ci_evidence(run, fake)
+        result[row["label"]] = True
+    except runner.RunnerError:
+        result[row["label"]] = False
+print(json.dumps(result))
+`;
+
+for (const row of CI_READY_ROWS) {
+  test(`CI ready rule (JS): ${row.label}`, () => {
+    assert.equal(jsCiReadyOk(row), row.ok);
+  });
+}
+
+test('cross-language parity: Python ci_evidence agrees with the JS "CI ready" item on every row', () => {
+  const proc = spawnSync(
+    'uv', ['run', '--frozen', '--quiet', 'python', '-c', PY_CI, REPO_ROOT, HEAD, JSON.stringify(CI_READY_ROWS)],
+    {cwd: REPO_ROOT, encoding: 'utf8'},
+  );
+  assert.equal(proc.status, 0, `python ci_evidence failed to run: ${proc.stderr || proc.error}`);
+  const python = JSON.parse(proc.stdout);
+  for (const row of CI_READY_ROWS) {
+    assert.equal(python[row.label], row.ok, `${row.label}: python ci_evidence accepted=${python[row.label]}`);
+    assert.equal(jsCiReadyOk(row), python[row.label], `${row.label}: JS and Python disagree`);
   }
 });

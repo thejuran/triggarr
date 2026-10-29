@@ -16,6 +16,14 @@ const CODEX_OUT = `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task3-a2`;
 const DECIDED_AT = '2026-10-27T12:00:00.000Z';
 const PR = 90;
 const REGISTER_KEY = `${PR}:${HEAD}`;
+const CI_WORKFLOW_PATH = '.github/workflows/ci.yml';
+// BM iter-2 WR-03: "CI ready" counts only from the github-actions app in a
+// ci.yml workflow run (its check suite is matched to that workflow run).
+const CI_READY_ORIGIN = Object.freeze({app: {slug: 'github-actions'}, check_suite: {id: 100}});
+
+function ciWorkflowRun(suiteId, path = CI_WORKFLOW_PATH, head = HEAD) {
+  return {id: 7000 + suiteId, check_suite_id: suiteId, path, head_sha: head};
+}
 
 function baseline() {
   return {
@@ -28,9 +36,10 @@ function baseline() {
     head: HEAD,
     baseSha: BASE,
     checks: [
-      {id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
       {id: 2, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
     ],
+    workflowRuns: [ciWorkflowRun(100)],
     comments: [],
     dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
     blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
@@ -217,6 +226,73 @@ test('a successful "CI ready" on a different head does not count', () => {
   input.checks = input.checks.map(c => (c.name === 'CI ready' ? {...c, head_sha: OTHER_HEAD} : c));
   const result = readiness(input);
   assert.equal(item(result, 'CI ready').status, 'blocked');
+});
+
+// --- BM iter-2 WR-03: same "CI ready" rule as the runner's ci_evidence() ----
+
+function ciReady(id, {conclusion = 'success', slug = 'github-actions', suite = 100, head = HEAD} = {}) {
+  return {id, name: 'CI ready', head_sha: head, status: 'completed', conclusion, app: {slug}, check_suite: {id: suite}};
+}
+
+function withCiReady(ciReadyRuns, workflowRuns) {
+  const input = baseline();
+  input.checks = [...input.checks.filter(c => c.name !== 'CI ready'), ...ciReadyRuns];
+  input.workflowRuns = workflowRuns;
+  return input;
+}
+
+test('a "CI ready" from another GitHub App never counts', () => {
+  const input = withCiReady([ciReady(9, {slug: 'some-other-app', suite: 900})], [ciWorkflowRun(100)]);
+  const result = readiness(input);
+  assert.equal(item(result, 'CI ready').status, 'blocked');
+});
+
+test('a "CI ready" with no app or no check suite never counts', () => {
+  const noApp = baseline();
+  noApp.checks = noApp.checks.map(c => (c.name === 'CI ready' ? {...c, app: undefined} : c));
+  assert.equal(item(readiness(noApp), 'CI ready').status, 'blocked');
+  const noSuite = baseline();
+  noSuite.checks = noSuite.checks.map(c => (c.name === 'CI ready' ? {...c, check_suite: undefined} : c));
+  assert.equal(item(readiness(noSuite), 'CI ready').status, 'blocked');
+});
+
+test('a later successful "CI ready" from another workflow file blocks, even when ci.yml failed', () => {
+  const input = withCiReady(
+    [ciReady(2, {conclusion: 'failure', suite: 100}), ciReady(5, {suite: 200})],
+    [ciWorkflowRun(100), ciWorkflowRun(200, '.github/workflows/evil.yml')],
+  );
+  const result = readiness(input);
+  assert.equal(item(result, 'CI ready').status, 'blocked');
+  assert.match(item(result, 'CI ready').detail, /workflow other than \.github\/workflows\/ci\.yml/);
+});
+
+test('a "CI ready" whose workflow run cannot be identified blocks', () => {
+  for (const workflowRuns of [[], [ciWorkflowRun(100, CI_WORKFLOW_PATH, OTHER_HEAD)], [{check_suite_id: 100, head_sha: HEAD}]]) {
+    const result = readiness(withCiReady([ciReady(5)], workflowRuns));
+    assert.equal(item(result, 'CI ready').status, 'blocked', JSON.stringify(workflowRuns));
+  }
+});
+
+test('two ci.yml runs for one head (close/reopen) are accepted; the latest result counts', () => {
+  const ok = readiness(withCiReady(
+    [ciReady(2, {conclusion: 'failure', suite: 100}), ciReady(5, {suite: 200})],
+    [ciWorkflowRun(100), ciWorkflowRun(200)],
+  ));
+  assert.equal(item(ok, 'CI ready').status, 'ok');
+  const failedLater = readiness(withCiReady(
+    [ciReady(2, {suite: 100}), ciReady(5, {conclusion: 'failure', suite: 200})],
+    [ciWorkflowRun(100), ciWorkflowRun(200)],
+  ));
+  assert.equal(item(failedLater, 'CI ready').status, 'blocked');
+});
+
+test('an unreadable workflow-runs list blocks CI ready', () => {
+  const input = baseline();
+  input.workflowRuns = [];
+  input.workflowRunsError = 'could not read GitHub workflow runs';
+  const result = readiness(input);
+  assert.equal(item(result, 'CI ready').status, 'blocked');
+  assert.match(item(result, 'CI ready').detail, /could not read GitHub workflow runs/);
 });
 
 // --- CodeQL ---
@@ -577,6 +653,14 @@ function checkRunsKey(head = HEAD) {
   return JSON.stringify(['gh', 'api', `repos/thejuran/triggarr/commits/${head}/check-runs`, '--paginate', '--slurp']);
 }
 
+function workflowRunsKey(head = HEAD) {
+  return JSON.stringify(['gh', 'api', `repos/thejuran/triggarr/actions/runs?head_sha=${head}&per_page=100`, '--paginate', '--slurp']);
+}
+
+function workflowRunsPages(runs = [ciWorkflowRun(100)]) {
+  return JSON.stringify([{total_count: runs.length, workflow_runs: runs}]);
+}
+
 function commentsKey() {
   return JSON.stringify(['gh', 'api', `repos/thejuran/triggarr/pulls/${PR}/comments`, '--paginate', '--slurp']);
 }
@@ -620,7 +704,7 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
   });
   const checksPages = JSON.stringify([
     {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
-    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN}]},
   ]);
   const commentsPages = JSON.stringify([
     [{id: 1, user: {login: 'greptile-apps[bot]'}}],
@@ -632,6 +716,7 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -652,6 +737,48 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
   assert.ok(output.includes('2'));
 });
 
+test('runCli reads this head\'s workflow runs and blocks a "CI ready" from another workflow file', () => {
+  const prInfo = JSON.stringify({
+    number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
+    author: {login: 'thejuran', is_bot: false}, isCrossRepository: false,
+  });
+  const checksPages = JSON.stringify([
+    {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{
+      id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success',
+      app: {slug: 'github-actions'}, check_suite: {id: 200},
+    }]},
+  ]);
+  const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
+  const blockers = {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}};
+  const calls = [];
+  const table = execTable({
+    [prViewKey()]: prInfo,
+    [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages([ciWorkflowRun(200, '.github/workflows/evil.yml')]),
+    [commentsKey()]: JSON.stringify([[]]),
+    [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
+    [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
+    [gitDiffKey()]: '',
+  });
+  const exec = (cmd, args) => {
+    calls.push(JSON.stringify([cmd, ...args]));
+    return table(cmd, args);
+  };
+  const readFile = fileTable({
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
+    }),
+  });
+
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.equal(exitCode, 1);
+  assert.ok(calls.includes(workflowRunsKey()));
+  assert.ok(logs.join('\n').includes('CI ready: BLOCKED'));
+});
+
 test('runCli blocks "CI ready" when a page-2 match has a different head_sha', () => {
   const prInfo = JSON.stringify({
     number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
@@ -659,7 +786,7 @@ test('runCli blocks "CI ready" when a page-2 match has a different head_sha', ()
   });
   const checksPages = JSON.stringify([
     {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
-    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: OTHER_HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: OTHER_HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN}]},
   ]);
   const commentsPages = JSON.stringify([[]]);
   const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
@@ -668,6 +795,7 @@ test('runCli blocks "CI ready" when a page-2 match has a different head_sha', ()
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -697,6 +825,7 @@ test('runCli fails closed on unparseable check-runs slurp output', () => {
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: 'not json',
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -722,7 +851,7 @@ test('runCli fails closed on a non-array comments slurp output', () => {
   });
   const checksPages = JSON.stringify([
     {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
-    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN}]},
   ]);
   const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
   const blockers = {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}};
@@ -730,6 +859,7 @@ test('runCli fails closed on a non-array comments slurp output', () => {
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify({not: 'an array'}),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -756,7 +886,7 @@ test('runCli: a fully ready PR exits 0 and the output never contains the string 
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
       {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
-      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
     ]},
   ]);
   const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
@@ -765,6 +895,7 @@ test('runCli: a fully ready PR exits 0 and the output never contains the string 
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -806,7 +937,7 @@ function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson, provenanceJ
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
       {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
-      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
     ]},
   ]);
   const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
@@ -814,6 +945,7 @@ function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson, provenanceJ
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -923,12 +1055,13 @@ function readyCliFixture(gitDiffOutput) {
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
       {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
-      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
     ]},
   ]);
   const table = {
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify({schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}}),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify({schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}}),
@@ -979,12 +1112,13 @@ function movedMainFixture({metaBase, mergeBaseOutput = `${BASE}\n`, diffs}) {
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
       {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
-      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
     ]},
   ]);
   const table = {
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify({schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}}),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify({schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}}),
