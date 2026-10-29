@@ -495,6 +495,9 @@ def _build_inspection_script(
         ls_tree_argv = ["git", "--literal-pathspecs", *GIT_SAFE_PREFIX[1:], "ls-tree", "-z", run.head, "--", path]
         script.append((_exact(ls_tree_argv), _ok(stdout=LS_TREE_OUTPUT.get(path, ""))))
         if path in CAT_FILE_CONTENT:
+            # Codex 0aeeeda F001: the blob's size is read before its content.
+            size_argv = [*GIT_SAFE_PREFIX, "cat-file", "-s", f"{run.head}:{path}"]
+            script.append((_exact(size_argv), _ok(stdout=f"{len(CAT_FILE_CONTENT[path])}\n")))
             cat_file_argv = [*GIT_SAFE_PREFIX, "cat-file", "blob", f"{run.head}:{path}"]
             script.append((_exact(cat_file_argv), _ok(stdout=CAT_FILE_CONTENT[path])))
     return script
@@ -577,7 +580,106 @@ def test_build_inspection_input_marks_oversize_without_raising(monkeypatch) -> N
     text, stats = build_inspection_input(run, fake)
 
     assert stats["oversize"] is True
-    assert text
+    # Codex 0aeeeda F001: an oversize input is never handed back to be rendered.
+    assert text == ""
+
+
+# --- Codex 0aeeeda F001: host-side reads of the untrusted head are bounded ----
+
+
+def _blob_fetches(calls: list[list[str]]) -> list[list[str]]:
+    return [call for call in calls if "cat-file" in call and "blob" in call]
+
+
+def test_build_inspection_input_never_fetches_an_oversized_blob() -> None:
+    """A blob over PER_FILE_CONTENT_LIMIT is omitted from its size alone; its content is never read."""
+    run = _run()
+    fake = _ScriptedRunner(_build_inspection_script(run))
+
+    text, stats = build_inspection_input(run, fake)
+
+    assert f"content omitted: {len(BIG_CONTENT)} bytes exceeds PER_FILE_CONTENT_LIMIT" in text
+    assert [*GIT_SAFE_PREFIX, "cat-file", "-s", f"{run.head}:big.txt"] in fake.calls
+    assert [*GIT_SAFE_PREFIX, "cat-file", "blob", f"{run.head}:big.txt"] not in fake.calls
+    assert stats["oversize"] is False
+
+
+def test_build_inspection_input_stops_extracting_once_the_diff_exceeds_the_budget() -> None:
+    """The Codex reproduction: an oversized diff ends extraction; no blob, plan diff or path list is read."""
+    run = _run()
+    fake = _ScriptedRunner(
+        _build_inspection_script(run, full_diff_text="x" * (MAX_INSPECTION_INPUT_BYTES + 1))
+    )
+
+    text, stats = build_inspection_input(run, fake)
+
+    assert stats["oversize"] is True
+    assert text == ""
+    assert len(fake.calls) == 1, fake.calls
+    assert _blob_fetches(fake.calls) == []
+
+
+def test_build_inspection_input_stops_extracting_once_file_sections_exceed_the_budget(monkeypatch) -> None:
+    """The cumulative budget is enforced while file sections are collected, not after all are read."""
+    run = _run()
+    fake = _ScriptedRunner(_build_inspection_script(run))
+    # The fixed headers plus both scripted diffs are 96 bytes; the first
+    # file section ("#### scripts/evil.sh\n...") cannot fit in 100.
+    monkeypatch.setattr(runner, "MAX_INSPECTION_INPUT_BYTES", 100)
+
+    text, stats = build_inspection_input(run, fake)
+
+    assert stats["oversize"] is True
+    assert text == ""
+    assert _blob_fetches(fake.calls) == []
+    assert not any(".githooks/pre-commit" in " ".join(call) for call in fake.calls)
+
+
+def test_build_inspection_input_bounds_every_untrusted_read() -> None:
+    """Every git read whose output size the head controls is given a hard byte bound."""
+    run = _run()
+    bounds: dict[str, object] = {}
+    script = _build_inspection_script(run)
+
+    def _recording(response):
+        def _respond(argv, **kwargs):
+            key = "blob" if "blob" in argv else ("name-status" if "--name-status" in argv else "diff")
+            if "ls-tree" in argv or "-s" in argv:
+                return response(argv, **kwargs)
+            bounds.setdefault(key, []).append(kwargs.get("max_output_bytes"))
+            return response(argv, **kwargs)
+
+        return _respond
+
+    fake = _ScriptedRunner([(matcher, _recording(response)) for matcher, response in script])
+
+    build_inspection_input(run, fake)
+
+    assert set(bounds) == {"diff", "name-status", "blob"}
+    for key, values in bounds.items():
+        for value in values:
+            assert isinstance(value, int), (key, value)
+            assert 0 < value <= MAX_INSPECTION_INPUT_BYTES, (key, value)
+    assert all(value <= PER_FILE_CONTENT_LIMIT for value in bounds["blob"])
+
+
+def test_run_command_stops_reading_at_max_output_bytes() -> None:
+    """The real runner reads at most max_output_bytes + 1 bytes and stops the producer."""
+    argv = [sys.executable, "-c", "import sys\nfor _ in range(200):\n    sys.stdout.write('x' * 65536)"]
+
+    proc = runner.run_command(argv, stdout=subprocess.PIPE, check=False, max_output_bytes=1000)
+
+    assert proc.stdout == b"x" * 1001
+    assert proc.returncode != 0  # stopped early, never ran to completion
+
+
+def test_run_command_bounded_read_returns_short_output_whole() -> None:
+    argv = [sys.executable, "-c", "import sys; sys.stdout.write('hello')"]
+
+    proc = runner.run_command(argv, stdout=subprocess.PIPE, check=False, max_output_bytes=1000)
+
+    assert proc.stdout == b"hello"
+    assert proc.returncode == 0
 
 
 def test_inspection_input_never_checks_out_or_writes_the_head(tmp_path, monkeypatch) -> None:
@@ -1270,6 +1372,31 @@ def test_execute_untrusted_oversize_input_stops_before_provenance(tmp_path, monk
     assert any("exceeds MAX_INSPECTION_INPUT_BYTES" in reason for reason in status["reasons"])
     assert not run.output(".grader-provenance.json").exists()
     assert not run.output(".boundary.json").exists()
+
+
+def test_execute_untrusted_oversize_input_never_renders_or_persists_the_prompt(tmp_path, monkeypatch) -> None:
+    """Codex 0aeeeda F001: an oversize input is recorded INCOMPLETE without rendering the prompt."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    stats = dict(DEFAULT_INPUT_STATS)
+    stats["oversize"] = True
+    _patch_pipeline(monkeypatch, input_text="OVERSIZE-INPUT-MARKER", input_stats=stats)
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("an oversize input must never be rendered into a prompt")
+
+    monkeypatch.setattr(runner, "render_inspection_prompt", _forbidden)
+    monkeypatch.setattr(runner, "new_input_fence", _forbidden)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("exceeds MAX_INSPECTION_INPUT_BYTES" in reason for reason in status["reasons"])
+    prompt = run.output(".prompt.txt").read_text(encoding="utf-8")
+    assert "OVERSIZE-INPUT-MARKER" not in prompt
+    assert "not rendered" in prompt
 
 
 def test_malicious_base_end_to_end(tmp_path, monkeypatch) -> None:
