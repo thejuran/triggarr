@@ -40,6 +40,7 @@ from tests.codex_review_run import (
     REVIEW_IMAGE_REF,
     SCHEMA_IN_CONTAINER,
     SCHEMA_PATH,
+    ContainerLedger,
     ExpectedCanary,
     ExpectedContainer,
     RunnerError,
@@ -55,6 +56,7 @@ from tests.codex_review_run import (
     inspection_codex_argv,
     parse_canary_check,
     prepare_codex_home,
+    remove_container_confirmed,
     safe_read_regular_file,
     stage_output_schema,
     verify_container_config,
@@ -1097,3 +1099,271 @@ def test_docker_env_filters_to_allowed_names() -> None:
         "CODEX_API_KEY": "c",
     }
     assert docker_env(environ) == {"PATH": "p", "HOME": "h", "DOCKER_HOST": "d"}
+
+
+# --- Scripted docker runner for container-lifecycle tests -------------------
+
+
+class _DockerRunner:
+    """Scripted docker runner answering `docker rm -f`/`docker ps -a` for
+    container-lifecycle tests (remove_container_confirmed, ContainerLedger).
+
+    *live* is the set of container IDs `docker ps -a` reports present.
+    *rm_breaks* is the set of IDs whose `docker rm -f` exits 1 without
+    removing the ID from *live* (simulating a removal failure); every
+    other ID is removed from *live* when `docker rm -f` runs, whatever
+    exit code a real docker would report (the exit code is not what the
+    caller trusts). *ps_breaks* is the set of IDs whose `docker ps -a`
+    check exits non-zero (indeterminate) even if already absent from
+    *live*. *raise_on* maps "rm" or "ps" to an exception class to raise
+    instead of answering that command at all. Extended in Plan 85.1-08
+    Task 3 to also answer `docker image inspect`/`docker create`/
+    `docker inspect`/`docker start` for the boundary and launch tests.
+    """
+
+    def __init__(
+        self,
+        *,
+        live: set[str] | None = None,
+        rm_breaks: set[str] | None = None,
+        ps_breaks: set[str] | None = None,
+        raise_on: dict[str, type[BaseException]] | None = None,
+    ) -> None:
+        self.calls: list[list[str]] = []
+        self.envs: list[dict | None] = []
+        self.live = set(live or ())
+        self.rm_breaks = set(rm_breaks or ())
+        self.ps_breaks = set(ps_breaks or ())
+        self.raise_on = raise_on or {}
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        self.envs.append(kwargs.get("env"))
+        if argv[:2] == ["docker", "rm"]:
+            if "rm" in self.raise_on:
+                raise self.raise_on["rm"]("simulated docker rm failure")
+            container_id = argv[3]
+            if container_id in self.rm_breaks:
+                return subprocess.CompletedProcess(argv, 1, stdout="")
+            self.live.discard(container_id)
+            return subprocess.CompletedProcess(argv, 0, stdout="")
+        if argv[:2] == ["docker", "ps"]:
+            if "ps" in self.raise_on:
+                raise self.raise_on["ps"]("simulated docker ps failure")
+            container_id = argv[-1].removeprefix("id=")
+            if container_id in self.ps_breaks:
+                return subprocess.CompletedProcess(argv, 1, stdout="")
+            stdout = container_id + "\n" if container_id in self.live else ""
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout)
+        raise AssertionError(f"unscripted command: {argv}")
+
+
+_ID_A = "a" * 64
+_ID_B = "b" * 64
+
+
+# --- remove_container_confirmed ----------------------------------------------
+
+
+def test_remove_container_confirmed_clean() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    problems = remove_container_confirmed(_ID_A, runner, kind="review")
+    assert problems == []
+    assert runner.calls == [
+        ["docker", "rm", "-f", _ID_A],
+        ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", f"id={_ID_A}"],
+    ]
+    assert all(env == docker_env(os.environ) for env in runner.envs)
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+def test_container_removal_failure(kind: str) -> None:
+    runner = _DockerRunner(live={_ID_A}, rm_breaks={_ID_A})
+    problems = remove_container_confirmed(_ID_A, runner, kind=kind)
+    assert problems == [
+        f"{kind} container {_ID_A[:12]} could not be confirmed removed; remove it manually with"
+        f" `docker rm -f {_ID_A}` and check `docker ps -a` (escalate; this run is INCOMPLETE)"
+    ]
+
+
+def test_remove_container_confirmed_rm_nonzero_but_already_gone() -> None:
+    # rm_breaks simulates `docker rm -f` exiting 1; the id was never in
+    # `live` (already gone before this call), so `docker ps -a` still
+    # reports absence -- confirms rm's own exit code is never trusted.
+    runner = _DockerRunner(live=set(), rm_breaks={_ID_A})
+    assert remove_container_confirmed(_ID_A, runner, kind="review") == []
+
+
+def test_remove_container_confirmed_ps_nonzero_is_indeterminate() -> None:
+    runner = _DockerRunner(live={_ID_A}, ps_breaks={_ID_A})
+    problems = remove_container_confirmed(_ID_A, runner, kind="review")
+    assert len(problems) == 1
+    assert "could not be confirmed removed" in problems[0]
+
+
+def test_remove_container_confirmed_ps_unexpected_output_is_indeterminate() -> None:
+    def _runner(argv, **kwargs):
+        if argv[:2] == ["docker", "rm"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="")
+        if argv[:2] == ["docker", "ps"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="garbage-not-an-id\n")
+        raise AssertionError(argv)
+
+    problems = remove_container_confirmed(_ID_A, _runner, kind="review")
+    assert len(problems) == 1
+    assert "could not be confirmed removed" in problems[0]
+
+
+def test_remove_container_confirmed_rm_raises_oserror() -> None:
+    runner = _DockerRunner(live={_ID_A}, raise_on={"rm": OSError})
+    problems = remove_container_confirmed(_ID_A, runner, kind="review")
+    assert len(problems) == 1
+    assert "could not be confirmed removed" in problems[0]
+
+
+def test_remove_container_confirmed_ps_raises_oserror() -> None:
+    runner = _DockerRunner(live={_ID_A}, raise_on={"ps": OSError})
+    problems = remove_container_confirmed(_ID_A, runner, kind="review")
+    assert len(problems) == 1
+    assert "could not be confirmed removed" in problems[0]
+
+
+def test_remove_container_confirmed_rejects_invalid_id() -> None:
+    def _runner(argv, **kwargs):
+        raise AssertionError("docker must not be called for an invalid id")
+
+    with pytest.raises(RunnerError):
+        remove_container_confirmed("not-a-valid-container-id", _runner, kind="review")
+
+
+# --- ContainerLedger ----------------------------------------------------------
+
+
+def test_ledger_removes_registered_container_on_close() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    ledger = ContainerLedger(runner)
+    ledger.register(_ID_A, "review")
+    assert ledger.close() == []
+    assert _ID_A not in runner.live
+
+
+def test_ledger_release_prevents_double_removal() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    ledger = ContainerLedger(runner)
+    ledger.register(_ID_A, "review")
+    ledger.release(_ID_A)
+    assert ledger.close() == []
+    assert runner.calls == []
+
+
+def test_ledger_register_dir_removed_on_close(tmp_path: Path) -> None:
+    runner = _DockerRunner()
+    directory = tmp_path / "per-run"
+    directory.mkdir()
+    (directory / "f").write_text("x")
+    ledger = ContainerLedger(runner)
+    ledger.register_dir(directory)
+    assert ledger.close() == []
+    assert not directory.exists()
+
+
+def test_ledger_close_is_idempotent() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    ledger = ContainerLedger(runner)
+    ledger.register(_ID_A, "review")
+    assert ledger.close() == []
+    assert ledger.close() == []
+
+
+def test_ledger_cleans_up_on_keyboard_interrupt(tmp_path: Path) -> None:
+    runner = _DockerRunner(live={_ID_A})
+    directory = tmp_path / "per-run"
+    directory.mkdir()
+    (directory / "secret").write_text("x")
+    with pytest.raises(KeyboardInterrupt), ContainerLedger(runner) as ledger:
+        ledger.register(_ID_A, "review")
+        ledger.register_dir(directory)
+        raise KeyboardInterrupt
+    assert any(call[:3] == ["docker", "rm", "-f"] for call in runner.calls)
+    assert any(call[:2] == ["docker", "ps"] for call in runner.calls)
+    assert not directory.exists()
+
+
+def test_ledger_reports_every_failure() -> None:
+    runner = _DockerRunner(live={_ID_A, _ID_B}, rm_breaks={_ID_A})
+    ledger = ContainerLedger(runner)
+    ledger.register(_ID_A, "review")
+    ledger.register(_ID_B, "canary")
+    problems = ledger.close()
+    assert len(problems) == 1
+    assert _ID_B not in runner.live
+
+
+def test_ledger_finalizer_runs_before_reraise(capsys) -> None:
+    runner = _DockerRunner(live={_ID_A}, rm_breaks={_ID_A})
+    events: list[str] = []
+
+    def _on_cleanup(problems, exc):
+        events.append("finalizer")
+        assert len(problems) == 1
+        assert isinstance(exc, KeyboardInterrupt)
+
+    with pytest.raises(KeyboardInterrupt), ContainerLedger(runner, on_cleanup_problems=_on_cleanup) as ledger:
+        ledger.register(_ID_A, "review")
+        events.append("before-raise")
+        raise KeyboardInterrupt
+
+    assert events == ["before-raise", "finalizer"]
+    captured = capsys.readouterr()
+    assert "ESCALATION: " in captured.err
+
+
+@pytest.mark.parametrize("exc_type", [KeyboardInterrupt, SystemExit, RunnerError])
+def test_ledger_finalizer_runs_before_reraise_various_exceptions(exc_type, capsys) -> None:
+    runner = _DockerRunner(live={_ID_A}, rm_breaks={_ID_A})
+    events: list[str] = []
+
+    def _on_cleanup(problems, exc):
+        events.append(type(exc).__name__)
+
+    def _raise():
+        raise exc_type(3) if exc_type is SystemExit else exc_type("boom")
+
+    with pytest.raises(exc_type), ContainerLedger(runner, on_cleanup_problems=_on_cleanup) as ledger:
+        ledger.register(_ID_A, "review")
+        _raise()
+
+    assert events == [exc_type.__name__]
+    captured = capsys.readouterr()
+    assert "ESCALATION: " in captured.err
+
+
+def test_ledger_finalizer_failure_does_not_mask(capsys) -> None:
+    runner = _DockerRunner(live={_ID_A}, rm_breaks={_ID_A})
+
+    def _on_cleanup(problems, exc):
+        raise OSError("finalizer boom")
+
+    with pytest.raises(KeyboardInterrupt), ContainerLedger(runner, on_cleanup_problems=_on_cleanup) as ledger:
+        ledger.register(_ID_A, "review")
+        raise KeyboardInterrupt
+
+    captured = capsys.readouterr()
+    assert "ESCALATION: " in captured.err
+    assert "could not be recorded" in captured.err
+
+
+def test_ledger_finalizer_not_called_when_clean(capsys) -> None:
+    runner = _DockerRunner(live={_ID_A})
+    called = []
+
+    def _on_cleanup(problems, exc):
+        called.append((problems, exc))
+
+    with ContainerLedger(runner, on_cleanup_problems=_on_cleanup) as ledger:
+        ledger.register(_ID_A, "review")
+
+    assert called == []
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert ledger.cleanup_problems == []
