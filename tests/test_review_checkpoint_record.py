@@ -59,15 +59,25 @@ def test_codex_table_has_fallback_row() -> None:
     assert "codex-fallback.cjs" in line
 
 
-# D-16/D-18: the Raw output paths row must include the new .base-status.json
-# output; the Phase 85.1 isolated-review outputs do not exist yet and must
-# not be named anywhere in this record.
+# D-16/D-18/Phase 85.1 D-12: the Raw output paths row must include
+# .base-status.json plus the Phase 85.1 inspection-only outputs
+# (.ci-evidence.json, .grader-provenance.json, .boundary.json), now that
+# those outputs are part of the delivered record.
 def test_raw_output_paths_include_new_outputs() -> None:
     line = _codex_table_line("Raw output paths")
-    assert ".base-status.json" in line
-    text = _read()
-    for not_yet in (".ci-evidence.json", ".grader-provenance.json", ".boundary.json"):
-        assert not_yet not in text, f"{not_yet} is Phase 85.1 work and must not appear yet"
+    for output in (".base-status.json", ".ci-evidence.json", ".grader-provenance.json", ".boundary.json"):
+        assert output in line, f"Raw output paths row must list {output!r}"
+
+
+# Phase 85.1 (D-12, B18): an inspection-only run is complete only when the
+# boundary verdict for that exact head and attempt is "verified", on top of
+# the existing .status.json/.base-status.json completeness rules.
+def test_status_row_defines_inspection_only_completeness() -> None:
+    line = _codex_table_line("Status")
+    assert "inspection-only" in line
+    assert "`.boundary.json`" in line
+    assert "verified" in line
+    assert "`.base-status.json`" in line
 
 
 # D-16/IN-01: "wait" and "retry later" must be stated, in one sentence, as

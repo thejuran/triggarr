@@ -1,11 +1,13 @@
-"""Guard tests for Phase 85 D-16/D-19/D-20 acceptance-doc wording.
+"""Guard tests for Phase 85 D-16/D-19/D-20 and Phase 85.1 D-04/D-06/D-07/D-11
+acceptance-doc wording.
 
 These pin the owner-approved Codex fallback definition, the verified-origin
-trusted mode, the interim untrusted-head rule, the pre-grading redaction
-stage, the keyed-register serialization rule, the acceptance-readiness
-check, and the coverage-evidence procedure for vibe-check -- so the
-acceptance and review docs cannot silently drift from what the code in this
-phase enforces.
+trusted mode, the delivered Phase 85.1 untrusted-head rule (inspection-only
+review, open egress, the credential copy and its accepted residual risk),
+the pre-grading redaction stage, the keyed-register serialization rule, the
+acceptance-readiness check, and the coverage-evidence procedure for
+vibe-check -- so the acceptance and review docs cannot silently drift from
+what the code in this phase enforces.
 """
 
 from __future__ import annotations
@@ -87,39 +89,93 @@ def test_no_doc_says_harness_hardening_pending() -> None:
         assert "Codex is not run for" not in text, f"{path.name} must drop the stale 'Codex is not run for' wording"
 
 
-def test_contract_states_interim_untrusted_rule() -> None:
-    sentence = (
-        "Until Phase 85.1 delivers the isolated review, untrusted heads (bot and fork PRs) "
-        "get an INCOMPLETE Codex result plus a per-PR owner-approved fallback review (D-16); "
-        "CI still runs."
-    )
+# --- Phase 85.1 (D-04/D-06/D-07/D-11/D-12): the delivered inspection-only rule ----
+
+_SENTENCE_S1 = (
+    "Untrusted heads (bot and fork PRs) get an inspection-only Codex review: the head is never "
+    "checked out or executed, Codex runs in a disposable review container whose configuration is "
+    "checked before every run, and the report is graded by the checker from a freshly fetched "
+    "origin/main."
+)
+_SENTENCE_S2 = (
+    "The review container is not network-isolated: it uses Docker's default bridge network with "
+    "no published ports, and its egress is not restricted to the model endpoint."
+)
+_SENTENCE_S3 = (
+    "Accepted residual risk (owner decision, 2026-10-28): the owner's Codex sign-in is inside the "
+    "container and its egress is not restricted, so if both the container boundary and Codex's "
+    "tool-disabling failed, the owner's main Codex session could leak."
+)
+_SENTENCE_S4 = (
+    "OpenAI's guidance discourages copying the Codex sign-in file for public repositories; this "
+    "repository is public, and the owner accepted this on 2026-10-28."
+)
+_SENTENCE_S5 = (
+    "If Codex refreshed the sign-in during the run, the result is INCOMPLETE and the owner must "
+    "re-login with `codex login`; the refreshed copy is deleted and never copied back."
+)
+_SENTENCE_S6 = (
+    "An inspection-only result that stays INCOMPLETE after its one automatic retry still needs the "
+    "owner-approved fallback (D-16); wait and retry later block acceptance."
+)
+_SENTENCE_S7 = (
+    "The container receives a per-run copy of the owner's Codex sign-in file (`auth.json`) as its "
+    "only secret; the host's `~/.codex` is never mounted, and the copy is deleted after every run."
+)
+_SENTENCE_S8 = (
+    "The sign-in is copied only if its `last_refresh` is within the last 7 days; an older sign-in "
+    "stops the run INCOMPLETE before any copy, with a message to run `codex login` (or use Codex on "
+    "the host) first. There is no forced refresh before every run; the before-and-after comparison "
+    "of the copied file is the backstop."
+)
+
+
+def test_docs_state_untrusted_inspection_only_rule() -> None:
     for path in (CONTRACT, RECORD):
         text = _read(path)
-        assert sentence in text, f"{path.name} must state the interim untrusted rule verbatim"
-        assert "--untrusted" in text
-        assert "untrusted-refused" in text
-        assert "--head-trust untrusted" in text
-        assert "runs nothing" in text
-        assert "never clean" in text
+        for sentence in (_SENTENCE_S1, _SENTENCE_S2, _SENTENCE_S6):
+            assert sentence in text, f"{path.name} must state verbatim: {sentence!r}"
+        assert "delivers the isolated review" not in text, f"{path.name} must drop the interim rule"
 
 
-def test_no_doc_overclaims_untrusted_review() -> None:
-    banned_phrases = (
-        "inspection-only",
-        "review container",
-        "disposable container",
-        "isolation boundary",
-        ".boundary.json",
-    )
-    overclaim_re = re.compile(r"bot (and fork )?PRs? (get|receive)s? (a |the )?(complete|normal paired)", re.IGNORECASE)
-    egress_re = re.compile(r"(?<![a-z])egress(?![a-z])", re.IGNORECASE)
+def test_contract_states_credential_and_residual_risk() -> None:
+    text = _read(CONTRACT)
+    for sentence in (_SENTENCE_S3, _SENTENCE_S4, _SENTENCE_S5, _SENTENCE_S7, _SENTENCE_S8):
+        assert sentence in text, f"contract must state verbatim: {sentence!r}"
+
+
+def test_contract_has_no_24_hour_sign_in_rule() -> None:
     for path in (CONTRACT, RECORD):
         text = _read(path)
         lowered = text.lower()
-        for term in banned_phrases:
-            assert term not in lowered, f"{path.name} must not claim {term!r}"
-        assert not egress_re.search(text), f"{path.name} must not claim 'egress' isolation"
-        assert not overclaim_re.search(text), f"{path.name} must not claim bot PRs get a complete/normal paired review"
+        for banned in ("24 hours", "24-hour", "24h"):
+            assert banned not in lowered, f"{path.name} must not state the superseded {banned!r} rule"
+        assert "refreshed on the host right before" not in text, (
+            f"{path.name} must not state the superseded forced-refresh-before-every-run rule"
+        )
+
+
+def test_no_doc_overclaims_untrusted_isolation() -> None:
+    network_isolated_re = re.compile(r"(?<!not )network-isolated")
+    egress_word_re = re.compile(r"(?<![a-z])egress(?![a-z])", re.IGNORECASE)
+    for path in (CONTRACT, RECORD):
+        text = _read(path)
+        lowered = text.lower()
+        for sentence in _sentences(text):
+            if egress_word_re.search(sentence):
+                assert "not restricted" in sentence, (
+                    f"{path.name}: every sentence mentioning 'egress' must say 'not restricted': {sentence!r}"
+                )
+        assert not network_isolated_re.search(text), f"{path.name} must not claim unqualified network isolation"
+        for banned in ("network isolation", "no network access", "air-gapped"):
+            assert banned not in lowered, f"{path.name} must not claim {banned!r}"
+
+
+def test_historical_untrusted_refused_still_documented() -> None:
+    for path in (CONTRACT, RECORD):
+        text = _read(path)
+        assert "untrusted-refused" in text, f"{path.name} must still document historical untrusted-refused records"
+        assert "--head-trust untrusted" in text
 
 
 def test_contract_trusted_requires_verified_origin() -> None:
