@@ -186,6 +186,25 @@ def test_inspect_untrusted_pr_rejects_merged_state() -> None:
         inspect_untrusted_pr(run, fake)
 
 
+@pytest.mark.parametrize("state", [None, "", "open", "DRAFT", "UNKNOWN", 1, ["OPEN"]])
+def test_inspect_untrusted_pr_rejects_any_state_other_than_open(state) -> None:
+    """WR-07: only state == "OPEN" proceeds; a missing, null or unexpected state fails closed."""
+    run = _run()
+    fake = _ScriptedRunner(_pr_script(state=state))
+    with pytest.raises(RunnerError, match="PR is not open"):
+        inspect_untrusted_pr(run, fake)
+    assert not any(call[:2] == ["git", "fetch"] for call in fake.calls)
+
+
+def test_inspect_untrusted_pr_rejects_missing_state() -> None:
+    run = _run()
+    payload = json.loads(_gh_json())
+    del payload["state"]
+    fake = _ScriptedRunner([(("gh", "pr", "view"), _ok(stdout=json.dumps(payload)))])
+    with pytest.raises(RunnerError, match="PR is not open"):
+        inspect_untrusted_pr(run, fake)
+
+
 def test_inspect_untrusted_pr_rejects_head_mismatch() -> None:
     run = _run()
     fake = _ScriptedRunner(_pr_script(headRefOid="9" * 40))
