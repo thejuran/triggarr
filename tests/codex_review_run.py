@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import getpass
 import hashlib
 import json
@@ -63,6 +64,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1812,6 +1814,203 @@ def parse_canary_check(stdout: str, expected: ExpectedCanary) -> list[str]:
         if name not in expected.env_names:
             reasons.append(f"unexpected environment variable in container: {name}")
     return reasons
+
+
+# --- Credential snapshot custody and safe container output reads ---------
+# (Phase 85.1, D-06, D-08, D-11, B15). The container's only secret is a
+# per-run copy of the owner's existing Codex sign-in file, taken after a
+# 7-day freshness preflight (D-11 amendment) and compared by hash after
+# the run as the mandatory backstop (D-08). Container-written output is
+# never read by following a symlink or blocking on a FIFO.
+
+CREDENTIAL_FILENAME = "auth.json"
+# D-11 amendment (owner, 2026-10-28): accept a sign-in refreshed within 7
+# days. RESEARCH A1 puts Codex's own refresh at about 8 days and a review
+# lasts minutes, so a sign-in under 7 days old should not refresh mid-run;
+# credential_outcome() is the backstop if A1 is wrong. No forced refresh
+# before every run.
+CREDENTIAL_MAX_AGE_SECONDS = 7 * 24 * 3600
+CREDENTIAL_FUTURE_SKEW_SECONDS = 300
+CREDENTIAL_MAX_BYTES = 65_536
+LAST_MESSAGE_MAX_BYTES = 1_048_576
+DOCKER_ENV_NAMES = ("PATH", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG")
+
+
+class UnsafeOutputError(RunnerError):
+    """A container-writable path refused a read because it was not a plain, bounded regular file."""
+
+
+def host_credential_path(environ: dict[str, str]) -> Path:
+    """The host's Codex sign-in file: $CODEX_HOME/auth.json, or ~/.codex/auth.json by default."""
+    codex_home = environ.get("CODEX_HOME")
+    if codex_home:
+        return Path(codex_home) / CREDENTIAL_FILENAME
+    return Path.home() / ".codex" / CREDENTIAL_FILENAME
+
+
+def safe_read_regular_file(dir_path: Path, name: str, *, max_bytes: int) -> bytes:
+    """Read *name* inside *dir_path* without ever following a symlink or blocking on a FIFO (B15).
+
+    Opens the directory with O_DIRECTORY|O_NOFOLLOW (refusing a
+    symlinked directory), then *name* relative to that directory fd
+    with O_RDONLY|O_NOFOLLOW|O_NONBLOCK (refusing a symlink with ELOOP,
+    and never blocking on a FIFO that has no writer), checks fstat
+    reports a regular file, and bounds the read by *max_bytes*. A
+    missing file raises FileNotFoundError so callers can treat it as
+    "no report"; every other refusal raises UnsafeOutputError. Both
+    descriptors are always closed.
+    """
+    try:
+        dir_fd = os.open(dir_path, os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise UnsafeOutputError(f"refused: {dir_path} could not be opened safely: {type(exc).__name__}") from exc
+    try:
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+        except FileNotFoundError:
+            raise
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise UnsafeOutputError(f"refused: {name} is a symlink") from exc
+            raise UnsafeOutputError(f"refused: {name} could not be opened safely: {type(exc).__name__}") from exc
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise UnsafeOutputError(f"refused: {name} is not a regular file")
+            if st.st_size > max_bytes:
+                raise UnsafeOutputError(f"refused: {name} exceeds {max_bytes} bytes")
+            with os.fdopen(fd, "rb") as handle:
+                return handle.read()
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+            raise
+    finally:
+        os.close(dir_fd)
+
+
+def credential_preflight(raw: bytes, *, now: datetime) -> dict[str, object]:
+    """Structurally validate a Codex sign-in snapshot without reading or logging any secret value (D-11).
+
+    Checks auth_mode, refresh-token presence and a parseable
+    last_refresh, then applies only the D-11 amendment's 7-day
+    freshness window (CREDENTIAL_MAX_AGE_SECONDS, inclusive); no
+    shorter cutoff is enforced. Every failure message carries only key
+    names, ages and file kinds, reporting age in days with one decimal,
+    and never a token value.
+    """
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise RunnerError(
+            f"Codex sign-in not usable for an untrusted review: could not parse sign-in file ({type(exc).__name__})"
+        ) from exc
+    if not isinstance(data, dict):
+        raise RunnerError("Codex sign-in not usable for an untrusted review: sign-in file is not a JSON object")
+    if data.get("auth_mode") != "chatgpt":
+        raise RunnerError("Codex sign-in not usable for an untrusted review: auth_mode is not chatgpt")
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict) or not tokens.get("refresh_token"):
+        raise RunnerError("Codex sign-in not usable for an untrusted review: no refresh token present")
+    last_refresh_raw = data.get("last_refresh")
+    if not isinstance(last_refresh_raw, str):
+        raise RunnerError("Codex sign-in not usable for an untrusted review: last_refresh is missing")
+    try:
+        last_refresh = datetime.fromisoformat(last_refresh_raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RunnerError(
+            f"Codex sign-in not usable for an untrusted review: last_refresh is unparseable ({type(exc).__name__})"
+        ) from exc
+    if last_refresh.tzinfo is None:
+        last_refresh = last_refresh.replace(tzinfo=UTC)
+    age_seconds = (now - last_refresh).total_seconds()
+    if age_seconds < -CREDENTIAL_FUTURE_SKEW_SECONDS:
+        raise RunnerError("Codex sign-in not usable for an untrusted review: last_refresh is in the future")
+    if age_seconds > CREDENTIAL_MAX_AGE_SECONDS:
+        age_days = age_seconds / 86400
+        raise RunnerError(
+            f"Codex sign-in was last refreshed {age_days:.1f} days ago (limit 7 days); re-login needed: run"
+            " `codex login` (or use Codex on the host) first, then retry"
+        )
+    return {"last_refresh": last_refresh_raw, "age_seconds": age_seconds}
+
+
+def prepare_codex_home(host_auth_path: Path, dest: Path, *, now: datetime) -> tuple[str, dict[str, object]]:
+    """Copy the host's Codex sign-in file into *dest* as the exact snapshot that passed the 7-day preflight.
+
+    Reads the host file exactly once (no symlink following), runs
+    credential_preflight() on those bytes, and only if it passes creates
+    *dest* (mkdir 0o700) holding auth.json (O_CREAT|O_EXCL, mode 0o600)
+    with the same bytes. Re-reads the copy and raises RunnerError
+    (removing *dest*) if its sha256 differs from the snapshot's. The
+    returned hash is the hash of exactly the bytes copied (PC-02) -- the
+    same hash credential_outcome() later compares against. Never writes
+    to the host path. Raises RunnerError, leaving *dest* absent, for a
+    missing or symlinked host file or a stale sign-in; raises RunnerError
+    if *dest* already exists.
+    """
+    try:
+        raw = safe_read_regular_file(host_auth_path.parent, host_auth_path.name, max_bytes=CREDENTIAL_MAX_BYTES)
+    except FileNotFoundError as exc:
+        raise RunnerError(f"Codex sign-in file not found: {host_auth_path}") from exc
+    preflight_info = credential_preflight(raw, now=now)
+    snapshot_sha256 = hashlib.sha256(raw).hexdigest()
+
+    try:
+        os.mkdir(dest, 0o700)
+    except FileExistsError as exc:
+        raise RunnerError(f"Codex sign-in copy destination already exists: {dest}") from exc
+
+    try:
+        fd = os.open(dest / CREDENTIAL_FILENAME, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(raw)
+    except OSError as exc:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise RunnerError(f"could not write the Codex sign-in copy: {type(exc).__name__}") from exc
+
+    copy_bytes = safe_read_regular_file(dest, CREDENTIAL_FILENAME, max_bytes=CREDENTIAL_MAX_BYTES)
+    if hashlib.sha256(copy_bytes).hexdigest() != snapshot_sha256:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise RunnerError("Codex sign-in copy did not match the snapshot read from the host; refusing to proceed")
+
+    return snapshot_sha256, preflight_info
+
+
+def credential_outcome(codex_home_dir: Path, *, before_sha256: str) -> list[str]:
+    """Compare the sign-in copy's sha256 after a run to the hash of the exact snapshot copied (D-08, D-11 backstop).
+
+    Reads only the copy, never the host file. A changed copy means
+    Codex refreshed mid-run and the host's sign-in is likely spent; a
+    missing, symlinked or non-regular copy cannot be confirmed
+    unchanged at all. Either way the run is INCOMPLETE; neither case
+    ever copies anything back to the host.
+    """
+    try:
+        copy_bytes = safe_read_regular_file(codex_home_dir, CREDENTIAL_FILENAME, max_bytes=CREDENTIAL_MAX_BYTES)
+    except FileNotFoundError:
+        return ["could not confirm the Codex sign-in copy was unchanged: the copy is missing"]
+    except UnsafeOutputError as exc:
+        return [f"could not confirm the Codex sign-in copy was unchanged: {exc}"]
+    if hashlib.sha256(copy_bytes).hexdigest() == before_sha256:
+        return []
+    return [
+        "Codex refreshed its sign-in inside the review container; the host login has likely been signed out."
+        " Re-login needed: run `codex login` on the host (D-11). The refreshed copy was deleted and never"
+        " copied back."
+    ]
+
+
+def docker_env(environ: dict[str, str]) -> dict[str, str]:
+    """The environment passed to every docker CLI call (D-06, T-85.1-34).
+
+    Only PATH, HOME, DOCKER_HOST, DOCKER_CONTEXT and DOCKER_CONFIG ever
+    reach the docker client's own process; nothing else in *environ*
+    (API keys, the SSH agent socket, GitHub tokens, ...) is forwarded.
+    """
+    return {name: environ[name] for name in DOCKER_ENV_NAMES if name in environ}
 
 
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
