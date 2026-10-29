@@ -106,6 +106,13 @@ _SCHEMA_DIR = Path("/tmp/x/schema")
 # A fake host identity distinct from this machine's real one, so these
 # tests never depend on (or risk asserting against) the operator's own
 # home directory or checkout path.
+
+# WR-09: the review image must carry the committed Dockerfile's sha256 as a label.
+_DOCKERFILE_LABEL = "org.triggarr.codex-review.dockerfile-sha256"
+_DOCKERFILE_SHA256 = hashlib.sha256(
+    (Path(__file__).resolve().parent.parent / "docker" / "codex-review" / "Dockerfile").read_bytes()
+).hexdigest()
+
 _HOST_HOME = Path("/Users/example-owner")
 # Deliberately not nested under _HOST_HOME, so a mount source mutation can
 # unambiguously target exactly one protected path at a time.
@@ -650,15 +657,25 @@ def test_output_schema_staging_existing_destination_raises(tmp_path: Path) -> No
 
 
 def test_review_image_build_argv() -> None:
-    assert REVIEW_IMAGE_BUILD_ARGV == [
+    # WR-09: the build records the committed Dockerfile's sha256 as a label,
+    # so verify_isolation_boundary() can refuse an image built from anything else.
+    assert codex_review_run.review_image_build_argv() == [
         "docker",
         "build",
+        "--label",
+        f"{codex_review_run.REVIEW_IMAGE_DOCKERFILE_LABEL}={_DOCKERFILE_SHA256}",
         "-f",
         "docker/codex-review/Dockerfile",
         "-t",
         REVIEW_IMAGE_REF,
         "docker/codex-review",
     ]
+    assert REVIEW_IMAGE_BUILD_ARGV[:2] == ["docker", "build"]
+
+
+def test_review_image_dockerfile_label_constant() -> None:
+    assert codex_review_run.REVIEW_IMAGE_DOCKERFILE_LABEL == "org.triggarr.codex-review.dockerfile-sha256"
+    assert codex_review_run.review_image_dockerfile_sha256() == _DOCKERFILE_SHA256
 
 
 def test_review_image_ref_and_label_constants() -> None:
@@ -1328,6 +1345,8 @@ class _DockerRunner:
         canary_id: str = "c" * 64,
         canary_stdout: str | None = None,
         canary_start_raises: type[BaseException] | None = None,
+        dockerfile_sha256: str | None = None,
+        dockerfile_label_missing: bool = False,
         review_id: str = "d" * 64,
         review_inspect_json: str | None = None,
         review_start_raises: type[BaseException] | None = None,
@@ -1340,6 +1359,7 @@ class _DockerRunner:
     ) -> None:
         self.calls: list[list[str]] = []
         self.envs: list[dict | None] = []
+        self.dockerfile_sha256 = None if dockerfile_label_missing else (dockerfile_sha256 or _DOCKERFILE_SHA256)
         self.live = set(live or ())
         self.rm_breaks = set(rm_breaks or ())
         self.ps_breaks = set(ps_breaks or ())
@@ -1405,7 +1425,10 @@ class _DockerRunner:
         if argv[:3] == ["docker", "image", "inspect"]:
             if not self.image_ok:
                 return subprocess.CompletedProcess(argv, 1, stdout="")
-            data = [{"Id": self.image_id, "Config": {"Labels": {REVIEW_IMAGE_LABEL: self.codex_version}}}]
+            labels = {REVIEW_IMAGE_LABEL: self.codex_version}
+            if self.dockerfile_sha256 is not None:
+                labels[_DOCKERFILE_LABEL] = self.dockerfile_sha256
+            data = [{"Id": self.image_id, "Config": {"Labels": labels}}]
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(data))
         if argv[:2] == ["docker", "create"] and "--entrypoint" in argv:
             self._record_mounts(argv)
@@ -1840,6 +1863,47 @@ def test_verify_isolation_boundary_image_label_mismatch() -> None:
     assert any("review image not built or not labelled" in r for r in boundary["reasons"])
 
 
+@pytest.mark.parametrize(
+    "runner_kwargs",
+    [pytest.param({"dockerfile_label_missing": True}, id="label-missing"), {"dockerfile_sha256": "0" * 64}],
+)
+def test_verify_isolation_boundary_image_not_built_from_committed_dockerfile(runner_kwargs) -> None:
+    """WR-09: a tagged, version-labelled image built from another Dockerfile is never trusted."""
+    docker = _DockerRunner(**runner_kwargs)
+    ledger = ContainerLedger(docker)
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=Path("/tmp/does-not-matter-85-1-08"),
+        inner_argv=inspection_codex_argv(),
+        expected_schema_sha256="0" * 64,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("not built from the committed docker/codex-review/Dockerfile" in r for r in boundary["reasons"])
+    assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
+
+
+def test_verify_isolation_boundary_records_image_id_and_dockerfile_sha(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture)
+    ledger = ContainerLedger(docker)
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "verified"
+    assert boundary["image_id"] == docker.image_id
+    assert boundary["dockerfile_sha256"] == _DOCKERFILE_SHA256
+    ledger.close()
+
+
 def test_verify_isolation_boundary_stale_sign_in(tmp_path: Path, monkeypatch) -> None:
     fixture = _BoundaryFixture(tmp_path, monkeypatch)
     fixture.auth_path.write_bytes(_auth_bytes(last_refresh=(_NOW - timedelta(days=8)).isoformat()))
@@ -2035,7 +2099,7 @@ def test_verify_isolation_boundary_docker_create_oserror(tmp_path: Path, monkeyp
 
     def _runner(argv, **kwargs):
         if argv[:3] == ["docker", "image", "inspect"]:
-            labels = {REVIEW_IMAGE_LABEL: REVIEW_CODEX_VERSION}
+            labels = {REVIEW_IMAGE_LABEL: REVIEW_CODEX_VERSION, _DOCKERFILE_LABEL: _DOCKERFILE_SHA256}
             image_data = [{"Id": "sha256:" + "a" * 64, "Config": {"Labels": labels}}]
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(image_data))
         if argv[:2] == ["docker", "create"]:
