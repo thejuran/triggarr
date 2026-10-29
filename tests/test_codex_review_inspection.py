@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -47,9 +46,7 @@ from tests.codex_review_run import (
     inspection_meta,
     new_input_fence,
     render_inspection_prompt,
-    run_untrusted_codex,
     trusted_main_grader_supports_mode,
-    verify_isolation_boundary,
 )
 
 H = "1" * 40  # reviewed head
@@ -856,55 +853,18 @@ def test_audit_event_types_missing_file_is_a_reason(tmp_path) -> None:
     assert audit_event_types(path) == ["no Codex event stream recorded"]
 
 
-# --- verify_isolation_boundary (the mandatory gate, B04-R3) ------------------
-
-
-def test_verify_isolation_boundary_gate_returns_unverified_and_issues_no_command() -> None:
-    run = _run()
-    fake = _ScriptedRunner([])
-    inner_argv = inspection_codex_argv()
-
-    boundary = verify_isolation_boundary(run, fake, scratch=Path("/tmp/does-not-matter"), inner_argv=inner_argv)
-
-    assert boundary == {
-        "boundary_version": 1,
-        "verdict": "unverified",
-        "reasons": ["deterministic container checks are not available in this build"],
-        "checked_at": boundary["checked_at"],
-        "head": run.head,
-        "label": run.label,
-        "attempt": run.attempt,
-    }
-    datetime.fromisoformat(boundary["checked_at"])  # ISO-8601, parseable
-    assert fake.calls == []
-
-
-# --- run_untrusted_codex (the only launch seam, B04-R3) ----------------------
-
-
-def test_run_untrusted_codex_seam_rejects_unverified_boundary() -> None:
-    run = _run()
-    fake = _ScriptedRunner([])
-    boundary = {"verdict": "unverified"}
-
-    with pytest.raises(RunnerError, match="untrusted Codex launch requires a verified container boundary"):
-        run_untrusted_codex(
-            run, inner_argv=inspection_codex_argv(), prompt="prompt", boundary=boundary, command_runner=fake
-        )
-    assert fake.calls == []
-
-
-def test_run_untrusted_codex_seam_also_refuses_a_verified_boundary_in_this_plan() -> None:
-    run = _run()
-    fake = _ScriptedRunner([])
-    boundary = {"verdict": "verified"}
-
-    with pytest.raises(RunnerError, match="untrusted Codex launch requires a verified container boundary"):
-        run_untrusted_codex(
-            run, inner_argv=inspection_codex_argv(), prompt="prompt", boundary=boundary, command_runner=fake
-        )
-    assert fake.calls == []
-    assert all(call[0] != "codex" for call in fake.calls)
+# --- verify_isolation_boundary / run_untrusted_codex (B04-R3) ----------------
+#
+# Plan 85.1-06 pinned these two seams as an always-"unverified"/always-refuse
+# stub (tested here at the time). Plan 85.1-08 replaces both bodies with the
+# real container boundary and launch; the stub-specific tests that lived here
+# (asserting "always unverified, issues no command" and "always refuses,
+# verified or not") are gone with the stub they tested. The real contract --
+# deterministic checks, the launch under a ContainerLedger, every failure
+# mode -- is covered in tests/test_codex_review_container.py, which also
+# owns the scripted docker runner these seams now need. The orchestration
+# tests below (which monkeypatch both seams rather than calling the real
+# implementation) are unaffected and still pin _execute_inspection's wiring.
 
 
 # --- Orchestration: execute() / _execute_untrusted() / _execute_inspection() -

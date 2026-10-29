@@ -1245,26 +1245,363 @@ def audit_event_types(path: Path) -> list[str]:
     return reasons
 
 
+def _protected_path_marker(path: Path, *, host_home: Path, repo_root: Path, host_codex_home: Path) -> str | None:
+    """The marker for the most specific protected host path *path* resolves under, if any.
+
+    Shared by host_exposure_problems() (argv-token check) and
+    verify_isolation_boundary() (per-run-directory check); host_codex_home
+    is typically nested under host_home, so the longest matching prefix
+    wins, not just the first one checked.
+    """
+    protected = (
+        (os.path.realpath(str(host_home)), "<HOST_HOME>"),
+        (os.path.realpath(str(repo_root)), "<REPO_ROOT>"),
+        (os.path.realpath(str(host_codex_home)), "<HOST_CODEX_HOME>"),
+    )
+    real = os.path.realpath(str(path))
+    candidates = [
+        (protected_real, marker)
+        for protected_real, marker in protected
+        if real == protected_real or real.startswith(protected_real + os.sep)
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda pair: len(pair[0]))[1]
+
+
+def _inspect_review_image(command_runner: CommandRunner, image_ref: str) -> tuple[str | None, str | None]:
+    """`docker image inspect` *image_ref*; returns (image_id, codex_version) or (None, None) on any failure."""
+    try:
+        proc = command_runner(
+            ["docker", "image", "inspect", image_ref],
+            env=docker_env(os.environ),
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None, None
+    if proc.returncode != 0:
+        return None, None
+    try:
+        data = json.loads(proc.stdout or "")
+    except ValueError:
+        return None, None
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+        return None, None
+    image = data[0]
+    image_id = image.get("Id")
+    labels = (image.get("Config") or {}).get("Labels") or {}
+    codex_version = labels.get(REVIEW_IMAGE_LABEL)
+    if not image_id or codex_version != REVIEW_CODEX_VERSION:
+        return None, None
+    return image_id, codex_version
+
+
 def verify_isolation_boundary(
-    run: ReviewRun, command_runner: CommandRunner, *, scratch: Path, inner_argv: list[str]
+    run: ReviewRun,
+    command_runner: CommandRunner,
+    *,
+    scratch: Path,
+    inner_argv: list[str],
+    expected_schema_sha256: str,
+    ledger: ContainerLedger,
+    now: datetime | None = None,
 ) -> dict[str, object]:
     """The mandatory precondition before any untrusted Codex launch (B04-R3).
 
     Must never return "verified" without performing every deterministic
-    container check on that call -- no cache, no override flag. This
-    plan's body always returns "unverified": Plan 85.1-07 replaces it with
-    the real ``docker inspect``-based checks against a created container.
-    Issues no command of any kind.
+    container check on that call -- no cache, no override flag: the
+    review image (docker image inspect against the expected label and
+    recorded image id), the credential snapshot and 7-day preflight
+    (D-11), the per-run directories (refused if any overlaps the host
+    home, REPO_ROOT or the host's Codex home), the sign-in copy, the
+    output-schema staging (B17), the canary container's create/start/
+    confirmed-removal and report (B16), the review container's create
+    and inspect, and a static check that *inner_argv* disables every
+    DISABLED_FEATURES entry and uses the mounted schema. Any failure
+    returns "unverified" with every reason it found; the canary and the
+    review container are both registered on *ledger* as soon as they
+    are created, and the per-run directory tree is registered on
+    *ledger* before anything is written into it, so an interrupt or any
+    later failure is cleaned up by the ledger's own cleanup.
     """
+    checked_at = now or datetime.now(UTC)
+
+    def _unverified(reasons: list[str]) -> dict[str, object]:
+        return {
+            "boundary_version": 1,
+            "verdict": "unverified",
+            "reasons": reasons,
+            "checked_at": checked_at.isoformat(),
+            "head": run.head,
+            "label": run.label,
+            "attempt": run.attempt,
+        }
+
+    disabled = {inner_argv[i + 1] for i, token in enumerate(inner_argv) if token == "--disable"}
+    if not set(DISABLED_FEATURES).issubset(disabled):
+        return _unverified(["inner Codex argv does not disable every tool feature"])
+    if (
+        "--output-schema" not in inner_argv
+        or inner_argv[inner_argv.index("--output-schema") + 1] != SCHEMA_IN_CONTAINER
+    ):
+        return _unverified(["inner Codex argv does not use the mounted output schema"])
+
+    image_id, codex_version = _inspect_review_image(command_runner, REVIEW_IMAGE_REF)
+    if image_id is None:
+        return _unverified(
+            [f"review image not built or not labelled: run {shlex.join(REVIEW_IMAGE_BUILD_ARGV)}"]
+        )
+
+    codex_home_dir = scratch / "codex-home"
+    out_dir = scratch / "out"
+    schema_dir = scratch / "schema"
+
+    host_auth_path = host_credential_path(os.environ)
+    host_home = Path.home()
+    repo_root = REPO_ROOT
+    host_codex_home = host_auth_path.parent
+
+    for per_run_dir in (codex_home_dir, out_dir, schema_dir):
+        marker = _protected_path_marker(
+            per_run_dir, host_home=host_home, repo_root=repo_root, host_codex_home=host_codex_home
+        )
+        if marker is not None:
+            return _unverified([f"per-run directory overlaps a protected host path: {marker}"])
+
+    ledger.register_dir(scratch)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        credential_sha256, preflight_info = prepare_codex_home(host_auth_path, codex_home_dir, now=checked_at)
+    except RunnerError as exc:
+        return _unverified([str(exc)])
+
+    try:
+        schema_dir.mkdir(parents=True, exist_ok=True)
+        schema_sha256 = stage_output_schema(schema_dir, expected_sha256=expected_schema_sha256)
+    except RunnerError as exc:
+        return _unverified([str(exc)])
+
+    canary_pairs = canary_paths(
+        host_home=host_home,
+        repo_root=repo_root,
+        host_codex_home=host_codex_home,
+        ssh_auth_sock=os.environ.get("SSH_AUTH_SOCK"),
+        host_canary_file=scratch / "host-canary-marker",
+    )
+    canary_path_list = [path for path, _marker in canary_pairs]
+    per_run_dirs = (codex_home_dir, out_dir, schema_dir)
+
+    canary_argv = container_check_argv(
+        REVIEW_IMAGE_REF, codex_home_dir, out_dir, schema_dir, canary_paths=canary_path_list
+    )
+    exposure = host_exposure_problems(
+        canary_argv,
+        kind="canary",
+        per_run_dirs=per_run_dirs,
+        host_home=host_home,
+        repo_root=repo_root,
+        host_codex_home=host_codex_home,
+    )
+    if exposure:
+        return _unverified(exposure)
+
+    review_argv = container_create_argv(
+        REVIEW_IMAGE_REF, codex_home_dir=codex_home_dir, out_dir=out_dir, schema_dir=schema_dir, inner_argv=inner_argv
+    )
+    exposure = host_exposure_problems(
+        review_argv,
+        kind="review",
+        per_run_dirs=per_run_dirs,
+        host_home=host_home,
+        repo_root=repo_root,
+        host_codex_home=host_codex_home,
+    )
+    if exposure:
+        return _unverified(exposure)
+
+    env = docker_env(os.environ)
+
+    try:
+        created_canary = command_runner(canary_argv, env=env, stdout=subprocess.PIPE, text=True, check=False)
+    except OSError as exc:
+        return _unverified([f"canary container could not be created: {type(exc).__name__}"])
+    if created_canary.returncode != 0:
+        return _unverified([f"canary container could not be created: docker create exited {created_canary.returncode}"])
+    canary_id = (created_canary.stdout or "").strip()
+    if not _CONTAINER_ID_RE.fullmatch(canary_id):
+        return _unverified(["canary container create did not return a valid container id"])
+    ledger.register(canary_id, "canary")
+
+    try:
+        started_canary = command_runner(
+            ["docker", "start", "-a", canary_id], env=env, stdout=subprocess.PIPE, text=True, check=False
+        )
+    except OSError as exc:
+        return _unverified([f"canary container could not start: {type(exc).__name__}"])
+    canary_stdout = started_canary.stdout or ""
+
+    removal_problems = remove_container_confirmed(canary_id, command_runner, kind="canary")
+    if removal_problems:
+        return _unverified(removal_problems)
+    ledger.release(canary_id)
+
+    expected_canary = ExpectedCanary(
+        paths=tuple(canary_pairs), schema_sha256=schema_sha256, env_names=CONTAINER_BASE_ENV | CANARY_RUNTIME_ENV
+    )
+    canary_reasons = parse_canary_check(canary_stdout, expected_canary)
+    if canary_reasons:
+        return _unverified(canary_reasons)
+
+    try:
+        created_review = command_runner(review_argv, env=env, stdout=subprocess.PIPE, text=True, check=False)
+    except OSError as exc:
+        return _unverified([f"review container could not be created: {type(exc).__name__}"])
+    if created_review.returncode != 0:
+        return _unverified([f"review container could not be created: docker create exited {created_review.returncode}"])
+    container_id = (created_review.stdout or "").strip()
+    if not _CONTAINER_ID_RE.fullmatch(container_id):
+        return _unverified(["review container create did not return a valid container id"])
+    ledger.register(container_id, "review")
+
+    try:
+        inspected = command_runner(
+            ["docker", "inspect", container_id], env=env, stdout=subprocess.PIPE, text=True, check=False
+        )
+    except OSError as exc:
+        return _unverified([f"review container could not be inspected: {type(exc).__name__}"])
+    if inspected.returncode != 0:
+        return _unverified([f"review container could not be inspected: docker inspect exited {inspected.returncode}"])
+
+    expected_container = ExpectedContainer(
+        image_id=image_id,
+        mounts={
+            "/codex-home": (str(codex_home_dir), True),
+            "/out": (str(out_dir), True),
+            "/schema": (str(schema_dir), False),
+        },
+        tmpfs=frozenset(CONTAINER_TMPFS),
+        user=CONTAINER_USER,
+        env_names=CONTAINER_BASE_ENV,
+        entrypoint=["codex"],
+        cmd=inner_argv[1:],
+    )
+    config_reasons = verify_container_config(inspected.stdout or "", expected_container)
+    if config_reasons:
+        return _unverified(config_reasons)
+
+    age_days = round(preflight_info["age_seconds"] / 86400, 1)
     return {
         "boundary_version": 1,
-        "verdict": "unverified",
-        "reasons": ["deterministic container checks are not available in this build"],
-        "checked_at": datetime.now(UTC).isoformat(),
+        "verdict": "verified",
+        "reasons": [],
+        "checked_at": checked_at.isoformat(),
         "head": run.head,
         "label": run.label,
         "attempt": run.attempt,
+        "container_id": container_id,
+        "image_id": image_id,
+        "codex_version": codex_version,
+        "credential_mode": "auth.json copy",
+        "network": "bridge (egress not restricted)",
+        "mounts": [
+            {"destination": "/codex-home", "rw": True},
+            {"destination": "/out", "rw": True},
+            {"destination": "/schema", "rw": False},
+        ],
+        "env_names": sorted(CONTAINER_BASE_ENV),
+        "canary": [marker for _path, marker in canary_pairs],
+        "schema_sha256": schema_sha256,
+        "credential": {"last_refresh": preflight_info["last_refresh"], "age_days": age_days},
+        # Launcher-only keys: _execute_inspection() must never write these
+        # to `.boundary.json` (they are per-run filesystem locations and
+        # the before-run credential hash, not evidence to publish).
+        "_codex_home_dir": str(codex_home_dir),
+        "_out_dir": str(out_dir),
+        "_schema_dir": str(schema_dir),
+        "_credential_sha256": credential_sha256,
     }
+
+
+def _write_bytes_atomic(path: Path, data: bytes) -> None:
+    """Write raw bytes to *path* via a temp file + os.replace (this repo's atomic write-then-rename convention)."""
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
+
+
+def launch_in_verified_container(
+    boundary: dict[str, object],
+    *,
+    prompt: str,
+    jsonl_path: Path,
+    last_json_path: Path,
+    command_runner: CommandRunner,
+    run: ReviewRun,
+    ledger: ContainerLedger,
+) -> tuple[int | None, list[str]]:
+    """Start the already-verified review container and read its output only after confirmed removal (B15, D-06, D-08).
+
+    Issues ``docker start -a -i <the inspected container id>`` with
+    *prompt* on stdin, streamed to *jsonl_path* (`<OUT>.jsonl`, via
+    _stream_events). In a `finally`, the container is removed and its
+    removal confirmed regardless of how the start finished (clean exit,
+    non-zero exit, an OSError at start, a timeout, or an interrupt
+    propagating through); *ledger* is only released once that removal is
+    confirmed. Only then: the container's `/out/last.json` is read with
+    safe_read_regular_file() and written to *last_json_path* via
+    write-then-rename of the raw bytes, the sign-in copy's hash is
+    compared with credential_outcome(), and the per-run directory tree
+    is deleted. If removal is never confirmed, nothing from the
+    container is read and the per-run directories are left registered
+    on the ledger.
+    """
+    if boundary.get("verdict") != "verified" or not boundary.get("container_id"):
+        raise RunnerError("untrusted Codex launch requires a verified container boundary")
+
+    container_id = str(boundary["container_id"])
+    codex_home_dir = Path(str(boundary["_codex_home_dir"]))
+    out_dir = Path(str(boundary["_out_dir"]))
+    credential_sha256 = str(boundary["_credential_sha256"])
+    scratch = codex_home_dir.parent
+    env = docker_env(os.environ)
+
+    problems: list[str] = []
+    exit_code: int | None = None
+    try:
+        exit_code = _stream_events(run, ["docker", "start", "-a", "-i", container_id], prompt, command_runner, env=env)
+    finally:
+        in_flight = sys.exc_info()[1]
+        if exit_code is None and in_flight is None:
+            problems.append("review container could not start: OSError")
+        removal_problems = remove_container_confirmed(container_id, command_runner, kind="review")
+        if removal_problems:
+            problems += removal_problems
+        else:
+            ledger.release(container_id)
+            raw: bytes | None = None
+            try:
+                raw = safe_read_regular_file(out_dir, "last.json", max_bytes=LAST_MESSAGE_MAX_BYTES)
+            except FileNotFoundError:
+                raw = None
+            except UnsafeOutputError as exc:
+                problems.append(f"unsafe container output refused: {str(exc).removeprefix('refused: ')}")
+            if raw is not None:
+                _write_bytes_atomic(last_json_path, raw)
+            problems += credential_outcome(codex_home_dir, before_sha256=credential_sha256)
+            shutil.rmtree(scratch, ignore_errors=True)
+
+    return exit_code, problems
 
 
 def run_untrusted_codex(
@@ -1274,21 +1611,28 @@ def run_untrusted_codex(
     prompt: str,
     boundary: dict[str, object],
     command_runner: CommandRunner,
-) -> tuple[int, list[str]]:
+    ledger: ContainerLedger,
+) -> tuple[int | None, list[str]]:
     """The only seam through which an untrusted head may reach Codex (B04-R3).
 
-    The host must never run ``codex`` for an untrusted head outside this
-    function. A non-"verified" boundary is refused outright. Plan 85.1-08
-    replaces the body below the guard with the real disposable-container
-    launch (``docker create``/``docker start``); until then every call --
-    verified boundary or not -- raises the same refusal, so an untrusted
-    run can never reach Codex in this build. The disabled features in
-    *inner_argv* are defense in depth, not the guarantee: the guarantee is
-    the verified container boundary itself.
+    A thin wrapper around launch_in_verified_container(): the host must
+    never run ``codex`` for an untrusted head outside this call chain.
+    The disabled features in *inner_argv* are defense in depth, not the
+    guarantee -- the guarantee is the verified container boundary
+    launch_in_verified_container() starts; *inner_argv* is already baked
+    into the inspected container's own Cmd, so nothing more needs to be
+    passed to `docker start`.
     """
-    if boundary.get("verdict") != "verified":
-        raise RunnerError("untrusted Codex launch requires a verified container boundary")
-    raise RunnerError("untrusted Codex launch requires a verified container boundary")
+    del inner_argv
+    return launch_in_verified_container(
+        boundary,
+        prompt=prompt,
+        jsonl_path=run.output(".jsonl"),
+        last_json_path=run.output(".last.json"),
+        command_runner=command_runner,
+        run=run,
+        ledger=ledger,
+    )
 
 
 # --- Review container configuration and deterministic verification --------
@@ -2263,17 +2607,35 @@ def _run_pytest(run: ReviewRun, worktree: Path, scratch: Path, command_runner: C
     print(f"pytest evidence: {run.output('.pytest.txt')} (exit_code: {exit_code})")
 
 
-def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: CommandRunner) -> int | None:
+def _stream_events(
+    run: ReviewRun,
+    argv: list[str],
+    prompt: str,
+    command_runner: CommandRunner,
+    *,
+    env: dict[str, str] | None = None,
+) -> int | None:
+    """Run *argv* with *prompt* on stdin, streaming stdout to `<OUT>.jsonl` (shared launch helper).
+
+    A timeout returns CODEX_TIMEOUT_EXIT; a failure to start returns
+    None. Both are the same contract the trusted path's ``_run_codex``
+    has always had; the untrusted path's container launch
+    (launch_in_verified_container) uses this same helper with *env* set
+    to docker_env(os.environ).
+    """
+    kwargs: dict[str, object] = {"cwd": REPO_ROOT}
+    if env is not None:
+        kwargs["env"] = env
     with run.output(".jsonl").open("w", encoding="utf-8") as events:
         try:
             proc = command_runner(
-                codex_argv(worktree, run.output(".last.json")),
-                cwd=REPO_ROOT,
+                argv,
                 input=prompt,
                 stdout=events,
                 text=True,
                 timeout=CODEX_TIMEOUT_SECONDS,
                 start_new_session=True,
+                **kwargs,
             )
         except subprocess.TimeoutExpired:
             print(f"codex timed out after {CODEX_TIMEOUT_SECONDS}s")
@@ -2283,6 +2645,10 @@ def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: Comm
             return None
     print(f"codex exit code: {proc.returncode}")
     return proc.returncode
+
+
+def _run_codex(run: ReviewRun, worktree: Path, prompt: str, command_runner: CommandRunner) -> int | None:
+    return _stream_events(run, codex_argv(worktree, run.output(".last.json")), prompt, command_runner)
 
 
 def _redact_file(path: Path, *, worktree: Path, scratch: Path) -> None:
@@ -2850,6 +3216,59 @@ def _inspection_incomplete(run: ReviewRun, reason: str, *, write_stub: bool = Tr
     return 3
 
 
+def _record_cleanup_escalation(run: ReviewRun, problems: list[str], *, in_flight: BaseException | None) -> None:
+    """Persist unconfirmed or indeterminate container cleanup into `<OUT>.status.json` (B15, PC-01-R2).
+
+    Called from ContainerLedger's __exit__, before any in-flight
+    exception continues propagating, so the manual-removal warning
+    survives an interrupt or a launch-preparation failure. Never raises
+    (an OSError/ValueError while reading or writing the status file is
+    printed as a warning instead) and never reads anything the
+    container wrote (no per-run out dir or codex-home read). If
+    `<OUT>.status.json` does not already exist, writes an incomplete
+    stub whose reasons are the interrupt/failure cause (when
+    *in_flight* is set) followed by *problems*. If it already exists
+    (an earlier RunnerError path already wrote it), reads only that
+    harness-written file, forces status "incomplete", and appends any
+    of *problems* not already present, then writes it back via
+    write-then-rename.
+    """
+    try:
+        status_path = run.output(".status.json")
+        if not status_path.exists():
+            cause_reason: str | None = None
+            if in_flight is not None:
+                if isinstance(in_flight, (KeyboardInterrupt, SystemExit)) and _RECEIVED_SIGNAL is not None:
+                    cause_reason = f"interrupted by {signal.Signals(_RECEIVED_SIGNAL).name}"
+                elif isinstance(in_flight, (KeyboardInterrupt, SystemExit)):
+                    cause_reason = f"interrupted by {type(in_flight).__name__}"
+                else:
+                    cause_reason = f"run failed: {type(in_flight).__name__}"
+            reasons = ([cause_reason] if cause_reason else []) + list(problems)
+            stub = {
+                "status": "incomplete",
+                "reasons": reasons,
+                "qualified_ids": [],
+                "finding_count": 0,
+                "inspected_head": None,
+                "inspected_base": None,
+            }
+            status_path.write_text(json.dumps(stub) + "\n", encoding="utf-8")
+            print(f"status: {status_path}")
+            print(json.dumps(stub))
+            return
+        existing = json.loads(status_path.read_text(encoding="utf-8"))
+        existing["status"] = "incomplete"
+        existing_reasons = list(existing.get("reasons") or [])
+        for problem in problems:
+            if problem not in existing_reasons:
+                existing_reasons.append(problem)
+        existing["reasons"] = existing_reasons
+        _write_json_atomic(status_path, existing)
+    except (OSError, ValueError) as exc:
+        print(f"warning: could not record the cleanup escalation: {type(exc).__name__}", file=sys.stderr)
+
+
 def _execute_inspection(
     run: ReviewRun,
     *,
@@ -2865,7 +3284,14 @@ def _execute_inspection(
     verify_isolation_boundary() is the mandatory precondition and runs
     after grader provenance (establish_trusted_main) and before the only
     launch seam (run_untrusted_codex); a non-"verified" verdict never
-    reaches it (B04-R3). Returns 0 (COMPLETE) or 3 (INCOMPLETE).
+    reaches it (B04-R3). Boundary verification, launch preparation and
+    the launch itself all run inside one ContainerLedger owned by this
+    function, so every container and per-run directory the run creates
+    is owned by a single cleanup that runs even while an exception or
+    interrupt is propagating (B15, T-85.1-36); its escalation is
+    persisted by _record_cleanup_escalation before that exception
+    continues, and a cleanup problem surviving to a normal exit also
+    makes the run INCOMPLETE. Returns 0 (COMPLETE) or 3 (INCOMPLETE).
     """
     if input_stats.get("oversize"):
         return _inspection_incomplete(run, "inspection input exceeds MAX_INSPECTION_INPUT_BYTES")
@@ -2879,6 +3305,7 @@ def _execute_inspection(
 
     main_sha = str(provenance["grader_ref"])
     audited_changed = list(meta["audited_inputs_changed_in_diff"])
+    expected_schema_sha256 = str(inputs[".claude/schemas/codex-review-findings.schema.json"]["sha256"])
 
     scratch = Path(tempfile.mkdtemp(prefix="codex-inspection-"))
     try:
@@ -2894,26 +3321,50 @@ def _execute_inspection(
                 )
 
         inner_argv = inspection_codex_argv()
-        boundary = verify_isolation_boundary(run, command_runner, scratch=scratch, inner_argv=inner_argv)
-        _write_json_atomic(run.output(".boundary.json"), boundary)
-        if boundary.get("verdict") != "verified":
-            reasons = "; ".join(str(reason) for reason in (boundary.get("reasons") or []))
-            return _inspection_incomplete(
-                run, f"isolation boundary not verified ({reasons}); Codex was not run on the untrusted head"
-            )
 
-        codex_exit: int | None = None
-        problems: list[str] = []
-        try:
-            codex_exit, problems = run_untrusted_codex(
-                run, inner_argv=inner_argv, prompt=prompt, boundary=boundary, command_runner=command_runner
+        with ContainerLedger(
+            command_runner,
+            on_cleanup_problems=lambda ledger_problems, exc: _record_cleanup_escalation(
+                run, ledger_problems, in_flight=exc
+            ),
+        ) as ledger:
+            boundary = verify_isolation_boundary(
+                run,
+                command_runner,
+                scratch=scratch,
+                inner_argv=inner_argv,
+                expected_schema_sha256=expected_schema_sha256,
+                ledger=ledger,
             )
-        except RunnerError as exc:
-            return _inspection_incomplete(run, f"untrusted Codex launch failed: {exc}")
-        finally:
-            # There is no separate worktree for an untrusted head; the same
-            # scratch dir stands in for both arguments.
-            _finalize_raw_outputs(run, worktree=scratch, scratch=scratch)
+            _write_json_atomic(
+                run.output(".boundary.json"), {k: v for k, v in boundary.items() if not k.startswith("_")}
+            )
+            if boundary.get("verdict") != "verified":
+                reasons = "; ".join(str(reason) for reason in (boundary.get("reasons") or []))
+                return _inspection_incomplete(
+                    run, f"isolation boundary not verified ({reasons}); Codex was not run on the untrusted head"
+                )
+
+            codex_exit: int | None = None
+            problems: list[str] = []
+            try:
+                codex_exit, problems = run_untrusted_codex(
+                    run,
+                    inner_argv=inner_argv,
+                    prompt=prompt,
+                    boundary=boundary,
+                    command_runner=command_runner,
+                    ledger=ledger,
+                )
+            except RunnerError as exc:
+                return _inspection_incomplete(run, f"untrusted Codex launch failed: {exc}")
+            finally:
+                # There is no separate worktree for an untrusted head; the same
+                # scratch dir stands in for both arguments.
+                _finalize_raw_outputs(run, worktree=scratch, scratch=scratch)
+
+        if ledger.cleanup_problems:
+            return _inspection_incomplete(run, "; ".join(ledger.cleanup_problems))
 
         if problems:
             return _inspection_incomplete(run, "; ".join(problems))

@@ -1510,6 +1510,7 @@ class _BoundaryFixture:
 
         self.repo_root = tmp_path / "fake-repo"
         self.repo_root.mkdir()
+        (self.repo_root / _B_PHASE_DIR).mkdir(parents=True)
 
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: self.host_home))
         monkeypatch.delenv("CODEX_HOME", raising=False)
@@ -1756,6 +1757,9 @@ def test_verify_isolation_boundary_canary_removal_unconfirmed(tmp_path: Path, mo
     # the review container must never be created once the canary cannot be confirmed removed
     assert not any(c[:2] == ["docker", "create"] and "--entrypoint" not in c for c in docker.calls)
 
+    # the canary is still stuck in rm_breaks; a real operator would remove
+    # it manually -- simulate that happening before the final cleanup.
+    docker.rm_breaks.discard(canary_id)
     assert ledger.close() == []
     assert not fixture.scratch.exists()
 
@@ -1892,6 +1896,10 @@ def _prepared_fixture(tmp_path: Path, monkeypatch) -> tuple[_BoundaryFixture, _D
     fixture.out_dir.mkdir(parents=True)
     fixture.schema_dir.mkdir(parents=True)
     (fixture.codex_home_dir / "auth.json").write_bytes(fixture.auth_path.read_bytes())
+    # run.output(...) writes under <REPO_ROOT>/<phase_dir>/codex/; the full
+    # pipeline creates that directory before reserving outputs, but these
+    # standalone launch tests call run_untrusted_codex() directly.
+    _boundary_run().out_base.parent.mkdir(parents=True, exist_ok=True)
     docker = _clean_docker_runner(fixture)
     return fixture, docker
 
@@ -2011,9 +2019,11 @@ def test_launch_fifo_output_refused_and_does_not_hang(tmp_path: Path, monkeypatc
 def test_launch_sign_in_refreshed_mid_run(tmp_path: Path, monkeypatch) -> None:
     fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
     docker.live.add(docker.review_id)
-    # the container's copy was rewritten during the run
-    (fixture.codex_home_dir / "auth.json").write_bytes(_auth_bytes(last_refresh=_NOW.isoformat()))
+    # the boundary's recorded hash is of the snapshot copied in *before*
+    # the run; only after that is the container's copy rewritten, as if
+    # Codex refreshed it mid-run.
     boundary = _verified_boundary(fixture, docker)
+    (fixture.codex_home_dir / "auth.json").write_bytes(_auth_bytes(last_refresh=_NOW.isoformat()))
     ledger = ContainerLedger(docker)
     ledger.register(docker.review_id, "review")
 
@@ -2178,15 +2188,12 @@ def _patch_untrusted_pipeline(monkeypatch, *, provenance: dict[str, object]) -> 
 
 
 def _e2e_setup(tmp_path: Path, monkeypatch) -> tuple[ReviewRun, _BoundaryFixture]:
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    (repo_root / _B_PHASE_DIR).mkdir(parents=True)
-    monkeypatch.setattr(codex_review_run, "REPO_ROOT", repo_root)
-
+    # _BoundaryFixture already monkeypatches Path.home/REPO_ROOT to its own
+    # fake_home/repo_root; reuse that same repo_root here (its own
+    # scratch/per-run-dir fixtures are unused by this e2e test) so the
+    # REPO_ROOT a _DockerRunner is told about always matches what
+    # verify_isolation_boundary itself reads.
     fixture = _BoundaryFixture(tmp_path, monkeypatch)
-    # _BoundaryFixture also set REPO_ROOT; re-point it at our e2e repo_root
-    # (its own scratch/per-run-dir fixtures are unused by this test).
-    monkeypatch.setattr(codex_review_run, "REPO_ROOT", repo_root)
 
     provenance = {
         "main_ref": "refs/remotes/origin/main",
@@ -2290,6 +2297,7 @@ def test_cleanup_escalation_interrupt_execute_inspection(tmp_path: Path, monkeyp
         expected_schema_sha256=fixture.expected_schema_sha256,
         review_start_raises=KeyboardInterrupt,
     )
+    docker.rm_breaks.add(docker.review_id)
     e2e = _E2ERunner(docker, head_ref_oid=run.head, checker_stdout=_E2E_COMPLETE_STATUS)
 
     read_calls = []
@@ -2305,30 +2313,32 @@ def test_cleanup_escalation_interrupt_execute_inspection(tmp_path: Path, monkeyp
         codex_review_run, "credential_outcome", lambda *a, **k: credential_calls.append((a, k)) or []
     )
 
-    # once the review container is created, make its removal unconfirmed
-    original_call = docker.__call__
-
-    def _patched(argv, **kwargs):
-        result = original_call(argv, **kwargs)
-        if argv[:2] == ["docker", "create"] and "--entrypoint" not in argv:
-            docker.rm_breaks.add(docker.review_id)
-        return result
-
-    docker.__call__ = _patched
-
     with pytest.raises(KeyboardInterrupt):
         execute(run, command_runner=e2e)
 
     status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
     assert status["status"] == "incomplete"
-    assert any("interrupted by KeyboardInterrupt" in r for r in status["reasons"])
+    # _finalize_raw_outputs's own pre-existing interrupt handling (Plan
+    # 85.1-06, unchanged) records the Codex-step failure; the ledger's
+    # cleanup escalation (merged in afterwards) carries the manual
+    # removal warning.
+    assert any("KeyboardInterrupt" in r for r in status["reasons"])
     assert any(f"docker rm -f {docker.review_id}" in r for r in status["reasons"])
     assert not run.output(".last.json").exists()
-    assert not any(dir_path == fixture.out_dir or dir_path == fixture.codex_home_dir for dir_path, _ in read_calls)
+    assert not any(name == "last.json" for _dir_path, name in read_calls)
     assert credential_calls == []
 
 
 def test_cleanup_escalation_launch_prep_failure_execute_inspection(tmp_path: Path, monkeypatch) -> None:
+    # "Launch preparation" here is the raw-output finalization step that
+    # always runs in a `finally` around the launch (_finalize_raw_outputs):
+    # the real launch succeeds, but something in that finalization step
+    # fails (simulated here) after it has already recorded its own
+    # reason, combined with the review container's removal being
+    # unconfirmed -- exercising the same "RunnerError propagates, ledger
+    # cleans up, escalation merges into the already-written status"
+    # path PC-01-R2 describes, distinct from run_untrusted_codex's own
+    # (separately caught) RunnerError path.
     run, fixture = _e2e_setup(tmp_path, monkeypatch)
     docker = _DockerRunner(
         host_home=fixture.host_home,
@@ -2336,20 +2346,20 @@ def test_cleanup_escalation_launch_prep_failure_execute_inspection(tmp_path: Pat
         host_codex_home=fixture.host_codex_home,
         expected_schema_sha256=fixture.expected_schema_sha256,
     )
+    docker.rm_breaks.add(docker.review_id)
     e2e = _E2ERunner(docker, head_ref_oid=run.head, checker_stdout=_E2E_COMPLETE_STATUS)
 
-    original_run_untrusted_codex = codex_review_run.run_untrusted_codex
     raised: dict[str, BaseException] = {}
+    real_finalize = codex_review_run._finalize_raw_outputs
 
-    def _fake_run_untrusted_codex(run_arg, **kwargs):
-        boundary = kwargs["boundary"]
-        docker.rm_breaks.add(boundary["container_id"])
+    def _fake_finalize(run_arg, *, worktree, scratch):
+        real_finalize(run_arg, worktree=worktree, scratch=scratch)
         codex_review_run._write_status_stub(run_arg, "original launch-preparation reason")
         exc = RunnerError("simulated launch preparation failure")
         raised["exc"] = exc
         raise exc
 
-    monkeypatch.setattr(codex_review_run, "run_untrusted_codex", _fake_run_untrusted_codex)
+    monkeypatch.setattr(codex_review_run, "_finalize_raw_outputs", _fake_finalize)
 
     read_calls = []
     real_safe_read = codex_review_run.safe_read_regular_file
@@ -2368,8 +2378,10 @@ def test_cleanup_escalation_launch_prep_failure_execute_inspection(tmp_path: Pat
     assert status["status"] == "incomplete"
     assert any("original launch-preparation reason" in r for r in status["reasons"])
     assert any(f"docker rm -f {docker.review_id}" in r for r in status["reasons"])
-    assert read_calls == []
-    codex_review_run.run_untrusted_codex = original_run_untrusted_codex
+    # the host credential (and its just-written copy) are legitimately
+    # read during boundary setup; the container's own last.json is not,
+    # since the review container's removal was never confirmed.
+    assert not any(name == "last.json" for _dir_path, name in read_calls)
 
 
 def test_cleanup_escalation_canary_interrupt_execute_inspection(tmp_path: Path, monkeypatch) -> None:
