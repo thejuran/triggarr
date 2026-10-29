@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -43,6 +44,7 @@ from tests.codex_review_run import (
     ContainerLedger,
     ExpectedCanary,
     ExpectedContainer,
+    ReviewRun,
     RunnerError,
     UnsafeOutputError,
     canary_paths,
@@ -51,15 +53,18 @@ from tests.codex_review_run import (
     credential_outcome,
     credential_preflight,
     docker_env,
+    execute,
     host_credential_path,
     host_exposure_problems,
     inspection_codex_argv,
     parse_canary_check,
     prepare_codex_home,
     remove_container_confirmed,
+    run_untrusted_codex,
     safe_read_regular_file,
     stage_output_schema,
     verify_container_config,
+    verify_isolation_boundary,
 )
 
 # A fixed "now" for the credential-preflight tests below, so every test's
@@ -1128,6 +1133,21 @@ class _DockerRunner:
         rm_breaks: set[str] | None = None,
         ps_breaks: set[str] | None = None,
         raise_on: dict[str, type[BaseException]] | None = None,
+        image_ok: bool = True,
+        image_id: str = "sha256:" + "a" * 64,
+        codex_version: str = REVIEW_CODEX_VERSION,
+        canary_id: str = "c" * 64,
+        canary_stdout: str | None = None,
+        canary_start_raises: type[BaseException] | None = None,
+        review_id: str = "d" * 64,
+        review_inspect_json: str | None = None,
+        review_start_raises: type[BaseException] | None = None,
+        start_returncode: int = 0,
+        host_home: Path | None = None,
+        repo_root: Path | None = None,
+        host_codex_home: Path | None = None,
+        ssh_auth_sock: str | None = None,
+        expected_schema_sha256: str | None = None,
     ) -> None:
         self.calls: list[list[str]] = []
         self.envs: list[dict | None] = []
@@ -1135,10 +1155,93 @@ class _DockerRunner:
         self.rm_breaks = set(rm_breaks or ())
         self.ps_breaks = set(ps_breaks or ())
         self.raise_on = raise_on or {}
+        self.image_ok = image_ok
+        self.image_id = image_id
+        self.codex_version = codex_version
+        self.canary_id = canary_id
+        self.canary_stdout = canary_stdout
+        self.canary_start_raises = canary_start_raises
+        self.review_id = review_id
+        self.review_inspect_json = review_inspect_json
+        self.review_start_raises = review_start_raises
+        self.start_returncode = start_returncode
+        # Supplied when canary_stdout/review_inspect_json are left None, so
+        # a clean response can be generated from the *actual* --mount
+        # sources a test's own docker-create call used (needed when the
+        # caller creates its own per-run scratch dir via tempfile.mkdtemp,
+        # whose path the test cannot predict in advance).
+        self.host_home = host_home
+        self.repo_root = repo_root
+        self.host_codex_home = host_codex_home
+        self.ssh_auth_sock = ssh_auth_sock
+        self.expected_schema_sha256 = expected_schema_sha256
+        self._last_mounts: dict[str, str] = {}
+
+    def _record_mounts(self, argv: list[str]) -> None:
+        mounts: dict[str, str] = {}
+        for i, tok in enumerate(argv):
+            if tok == "--mount":
+                parts = dict(p.split("=", 1) for p in argv[i + 1].split(",") if "=" in p)
+                if "dst" in parts and "src" in parts:
+                    mounts[parts["dst"]] = parts["src"]
+        self._last_mounts = mounts
+
+    def _auto_canary_stdout(self) -> str:
+        scratch = Path(self._last_mounts["/codex-home"]).parent
+        pairs = canary_paths(
+            host_home=self.host_home,
+            repo_root=self.repo_root,
+            host_codex_home=self.host_codex_home,
+            ssh_auth_sock=self.ssh_auth_sock,
+            host_canary_file=scratch / "host-canary-marker",
+        )
+        expected = ExpectedCanary(
+            paths=tuple(pairs),
+            schema_sha256=self.expected_schema_sha256,
+            env_names=CONTAINER_BASE_ENV | CANARY_RUNTIME_ENV,
+        )
+        return _clean_canary_stdout(expected)
+
+    def _auto_review_inspect_json(self) -> str:
+        mounts = [
+            {"Type": "bind", "Source": self._last_mounts["/codex-home"], "Destination": "/codex-home", "RW": True},
+            {"Type": "bind", "Source": self._last_mounts["/out"], "Destination": "/out", "RW": True},
+            {"Type": "bind", "Source": self._last_mounts["/schema"], "Destination": "/schema", "RW": False},
+        ]
+        return _inspect_json(mounts=mounts, image=self.image_id)
 
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
         self.envs.append(kwargs.get("env"))
+        if argv[:3] == ["docker", "image", "inspect"]:
+            if not self.image_ok:
+                return subprocess.CompletedProcess(argv, 1, stdout="")
+            data = [{"Id": self.image_id, "Config": {"Labels": {REVIEW_IMAGE_LABEL: self.codex_version}}}]
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(data))
+        if argv[:2] == ["docker", "create"] and "--entrypoint" in argv:
+            self._record_mounts(argv)
+            self.live.add(self.canary_id)
+            return subprocess.CompletedProcess(argv, 0, stdout=self.canary_id + "\n")
+        if argv[:2] == ["docker", "create"]:
+            self._record_mounts(argv)
+            self.live.add(self.review_id)
+            return subprocess.CompletedProcess(argv, 0, stdout=self.review_id + "\n")
+        if argv[:3] == ["docker", "start", "-a"] and len(argv) == 4:
+            if self.canary_start_raises is not None:
+                raise self.canary_start_raises("simulated canary start failure")
+            stdout = self.canary_stdout if self.canary_stdout is not None else self._auto_canary_stdout()
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout)
+        if argv[:2] == ["docker", "inspect"]:
+            body = (
+                self.review_inspect_json
+                if self.review_inspect_json is not None
+                else self._auto_review_inspect_json()
+            )
+            return subprocess.CompletedProcess(argv, 0, stdout=body)
+        if argv[:4] == ["docker", "start", "-a", "-i"]:
+            if self.review_start_raises is not None:
+                raise self.review_start_raises("simulated review start failure")
+            return subprocess.CompletedProcess(argv, self.start_returncode, stdout="")
         if argv[:2] == ["docker", "rm"]:
             if "rm" in self.raise_on:
                 raise self.raise_on["rm"]("simulated docker rm failure")
@@ -1367,3 +1470,927 @@ def test_ledger_finalizer_not_called_when_clean(capsys) -> None:
     captured = capsys.readouterr()
     assert captured.err == ""
     assert ledger.cleanup_problems == []
+
+
+# --- verify_isolation_boundary / launch_in_verified_container / run_untrusted_codex ---
+# (B04-R3, B15, D-06, D-11). Deterministic boundary verification and the
+# container launch under one ContainerLedger.
+
+_B_HEAD = "5" * 40
+_B_BASE = "6" * 40
+_B_LABEL = "codex-review"
+_B_PHASE_DIR = ".planning/phases/85.1-isolated-codex-review-for-untrusted-prs"
+
+
+def _boundary_run(**overrides) -> ReviewRun:
+    kwargs = {
+        "head": _B_HEAD,
+        "base": _B_BASE,
+        "label": _B_LABEL,
+        "attempt": 1,
+        "pr_url": "https://github.com/thejuran/triggarr/pull/1",
+        "scope": "test",
+        "phase_dir": _B_PHASE_DIR,
+        "trusted": False,
+    }
+    kwargs.update(overrides)
+    return ReviewRun(**kwargs)
+
+
+class _BoundaryFixture:
+    """A fake host identity + per-run scratch tree for verify_isolation_boundary tests."""
+
+    def __init__(self, tmp_path: Path, monkeypatch) -> None:
+        self.host_home = tmp_path / "fake-home"
+        self.host_home.mkdir()
+        self.host_codex_home = self.host_home / ".codex"
+        self.host_codex_home.mkdir()
+        self.auth_path = self.host_codex_home / "auth.json"
+        self.auth_path.write_bytes(_auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat()))
+
+        self.repo_root = tmp_path / "fake-repo"
+        self.repo_root.mkdir()
+
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: self.host_home))
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+        monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
+        monkeypatch.setattr(codex_review_run, "REPO_ROOT", self.repo_root)
+
+        self.scratch = tmp_path / "scratch"
+        self.scratch.mkdir()
+        self.codex_home_dir = self.scratch / "codex-home"
+        self.out_dir = self.scratch / "out"
+        self.schema_dir = self.scratch / "schema"
+        self.expected_schema_sha256 = hashlib.sha256(SCHEMA_PATH.read_bytes()).hexdigest()
+        self.inner_argv = inspection_codex_argv()
+
+    def canary_expected(self) -> ExpectedCanary:
+        return ExpectedCanary(
+            paths=tuple(self.canary_pairs()),
+            schema_sha256=self.expected_schema_sha256,
+            env_names=CONTAINER_BASE_ENV | CANARY_RUNTIME_ENV,
+        )
+
+    def canary_pairs(self) -> list[tuple[str, str]]:
+        return canary_paths(
+            host_home=self.host_home,
+            repo_root=self.repo_root,
+            host_codex_home=self.host_codex_home,
+            ssh_auth_sock=None,
+            host_canary_file=self.scratch / "host-canary-marker",
+        )
+
+    def clean_canary_stdout(self) -> str:
+        return _clean_canary_stdout(self.canary_expected())
+
+    def clean_review_inspect_json(self) -> str:
+        mounts = [
+            {"Type": "bind", "Source": str(self.codex_home_dir), "Destination": "/codex-home", "RW": True},
+            {"Type": "bind", "Source": str(self.out_dir), "Destination": "/out", "RW": True},
+            {"Type": "bind", "Source": str(self.schema_dir), "Destination": "/schema", "RW": False},
+        ]
+        return _inspect_json(mounts=mounts)
+
+
+def _clean_docker_runner(fixture: _BoundaryFixture, **overrides) -> _DockerRunner:
+    kwargs = {
+        "canary_stdout": fixture.clean_canary_stdout(),
+        "review_inspect_json": fixture.clean_review_inspect_json(),
+    }
+    kwargs.update(overrides)
+    return _DockerRunner(**kwargs)
+
+
+def test_verify_isolation_boundary_happy_path(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture)
+    ledger = ContainerLedger(docker)
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+
+    assert boundary["verdict"] == "verified"
+    assert boundary["container_id"] == docker.review_id
+    assert boundary["image_id"] == docker.image_id
+    assert boundary["codex_version"] == REVIEW_CODEX_VERSION
+    assert boundary["credential_mode"] == "auth.json copy"
+    assert boundary["network"] == "bridge (egress not restricted)"
+    assert boundary["mounts"] == [
+        {"destination": "/codex-home", "rw": True},
+        {"destination": "/out", "rw": True},
+        {"destination": "/schema", "rw": False},
+    ]
+    assert "source" not in boundary["mounts"][0]
+    assert set(boundary["env_names"]) == CONTAINER_BASE_ENV
+    assert boundary["schema_sha256"] == fixture.expected_schema_sha256
+    assert boundary["credential"]["age_days"] == 1.0
+
+    # private launcher-only keys exist but are not meant for `.boundary.json`
+    assert Path(boundary["_codex_home_dir"]) == fixture.codex_home_dir
+    assert Path(boundary["_out_dir"]) == fixture.out_dir
+
+    assert docker.calls[0][:3] == ["docker", "image", "inspect"]
+    create_calls = [c for c in docker.calls if c[:2] == ["docker", "create"]]
+    assert len(create_calls) == 2
+    assert docker.calls.index(["docker", "start", "-a", docker.canary_id]) < docker.calls.index(
+        ["docker", "rm", "-f", docker.canary_id]
+    )
+    assert ["docker", "inspect", docker.review_id] in docker.calls
+    # canary removed and confirmed before the review container is created
+    review_create_index = next(
+        i for i, c in enumerate(docker.calls) if c[:2] == ["docker", "create"] and "--entrypoint" not in c
+    )
+    canary_rm_index = docker.calls.index(["docker", "rm", "-f", docker.canary_id])
+    assert canary_rm_index < review_create_index
+
+    for env in docker.envs:
+        assert env == docker_env(os.environ)
+
+    assert ledger.close() == []
+    assert not fixture.scratch.exists()
+
+
+def test_verify_isolation_boundary_image_not_ready() -> None:
+    docker = _DockerRunner(image_ok=False)
+    ledger = ContainerLedger(docker)
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=Path("/tmp/does-not-matter-85-1-08"),
+        inner_argv=inspection_codex_argv(),
+        expected_schema_sha256="0" * 64,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("review image not built or not labelled" in r for r in boundary["reasons"])
+    assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
+
+
+def test_verify_isolation_boundary_image_label_mismatch() -> None:
+    docker = _DockerRunner(codex_version="0.0.0-wrong")
+    ledger = ContainerLedger(docker)
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=Path("/tmp/does-not-matter-85-1-08"),
+        inner_argv=inspection_codex_argv(),
+        expected_schema_sha256="0" * 64,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("review image not built or not labelled" in r for r in boundary["reasons"])
+
+
+def test_verify_isolation_boundary_stale_sign_in(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    fixture.auth_path.write_bytes(_auth_bytes(last_refresh=(_NOW - timedelta(days=8)).isoformat()))
+    docker = _clean_docker_runner(fixture)
+    ledger = ContainerLedger(docker)
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("re-login needed" in r for r in boundary["reasons"])
+    assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
+    assert not fixture.codex_home_dir.exists()
+
+
+def test_verify_isolation_boundary_per_run_dir_overlaps_protected_path(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    # Force the scratch dir itself under the fake host home, so its
+    # per-run subdirectories collide with a protected path.
+    overlapping_scratch = fixture.host_home / "scratch"
+    overlapping_scratch.mkdir()
+    docker = _clean_docker_runner(fixture)
+    ledger = ContainerLedger(docker)
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=overlapping_scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("per-run directory overlaps a protected host path: <HOST_HOME>" in r for r in boundary["reasons"])
+    assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
+
+
+def test_verify_isolation_boundary_inner_argv_missing_disable(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture)
+    ledger = ContainerLedger(docker)
+    bad_argv = [a for a in fixture.inner_argv if a != "shell_tool"]
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=bad_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("does not disable every tool feature" in r for r in boundary["reasons"])
+    assert docker.calls == []
+
+
+def test_verify_isolation_boundary_inner_argv_wrong_schema(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture)
+    ledger = ContainerLedger(docker)
+    bad_argv = list(fixture.inner_argv)
+    bad_argv[bad_argv.index("--output-schema") + 1] = "/not/the/mounted/schema.json"
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=bad_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("does not use the mounted output schema" in r for r in boundary["reasons"])
+    assert docker.calls == []
+
+
+def test_verify_isolation_boundary_canary_removal_unconfirmed(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture)
+    canary_id = docker.canary_id
+    docker.rm_breaks.add(canary_id)
+    ledger = ContainerLedger(docker)
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("could not be confirmed removed" in r for r in boundary["reasons"])
+    # the review container must never be created once the canary cannot be confirmed removed
+    assert not any(c[:2] == ["docker", "create"] and "--entrypoint" not in c for c in docker.calls)
+
+    assert ledger.close() == []
+    assert not fixture.scratch.exists()
+
+
+def test_verify_isolation_boundary_canary_reports_present_path(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    dirty_stdout = fixture.clean_canary_stdout().replace(
+        f"absent {fixture.host_home}", f"present {fixture.host_home}"
+    )
+    docker = _clean_docker_runner(fixture, canary_stdout=dirty_stdout)
+    ledger = ContainerLedger(docker)
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("canary path visible in container: <HOST_HOME>" in r for r in boundary["reasons"])
+
+
+def test_verify_isolation_boundary_container_config_mismatch(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    bad_mounts = [
+        {"Type": "bind", "Source": str(fixture.codex_home_dir), "Destination": "/codex-home", "RW": True},
+        {"Type": "bind", "Source": str(fixture.out_dir), "Destination": "/out", "RW": True},
+        {"Type": "bind", "Source": str(fixture.schema_dir), "Destination": "/schema", "RW": True},
+    ]
+    docker = _clean_docker_runner(fixture, review_inspect_json=_inspect_json(mounts=bad_mounts))
+    ledger = ContainerLedger(docker)
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("schema mount is writable" in r for r in boundary["reasons"])
+
+
+def test_verify_isolation_boundary_docker_create_oserror(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+
+    def _runner(argv, **kwargs):
+        if argv[:3] == ["docker", "image", "inspect"]:
+            labels = {REVIEW_IMAGE_LABEL: REVIEW_CODEX_VERSION}
+            image_data = [{"Id": "sha256:" + "a" * 64, "Config": {"Labels": labels}}]
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(image_data))
+        if argv[:2] == ["docker", "create"]:
+            raise OSError("simulated docker create failure")
+        raise AssertionError(argv)
+
+    ledger = ContainerLedger(_runner)
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        _runner,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+    assert boundary["verdict"] == "unverified"
+    assert any("canary container could not be created" in r for r in boundary["reasons"])
+
+
+def test_canary_interrupted(tmp_path: Path, monkeypatch) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture, canary_start_raises=KeyboardInterrupt)
+    ledger = ContainerLedger(docker)
+
+    with pytest.raises(KeyboardInterrupt), ledger:
+        verify_isolation_boundary(
+            _boundary_run(),
+            docker,
+            scratch=fixture.scratch,
+            inner_argv=fixture.inner_argv,
+            expected_schema_sha256=fixture.expected_schema_sha256,
+            ledger=ledger,
+            now=_NOW,
+        )
+
+    assert ["docker", "rm", "-f", docker.canary_id] in docker.calls
+    assert ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", f"id={docker.canary_id}"] in docker.calls
+    assert not fixture.scratch.exists()
+    assert not any(c[:2] == ["docker", "create"] and "--entrypoint" not in c for c in docker.calls)
+
+
+# --- launch_in_verified_container / run_untrusted_codex -----------------------
+
+
+def _verified_boundary(fixture: _BoundaryFixture, docker: _DockerRunner) -> dict[str, object]:
+    return {
+        "boundary_version": 1,
+        "verdict": "verified",
+        "reasons": [],
+        "checked_at": _NOW.isoformat(),
+        "head": _B_HEAD,
+        "label": _B_LABEL,
+        "attempt": 1,
+        "container_id": docker.review_id,
+        "image_id": docker.image_id,
+        "codex_version": REVIEW_CODEX_VERSION,
+        "credential_mode": "auth.json copy",
+        "network": "bridge (egress not restricted)",
+        "mounts": [
+            {"destination": "/codex-home", "rw": True},
+            {"destination": "/out", "rw": True},
+            {"destination": "/schema", "rw": False},
+        ],
+        "env_names": sorted(CONTAINER_BASE_ENV),
+        "canary": [marker for _path, marker in fixture.canary_pairs()],
+        "schema_sha256": fixture.expected_schema_sha256,
+        "credential": {"last_refresh": "x", "age_days": 1.0},
+        "_codex_home_dir": str(fixture.codex_home_dir),
+        "_out_dir": str(fixture.out_dir),
+        "_schema_dir": str(fixture.schema_dir),
+        "_credential_sha256": hashlib.sha256((fixture.codex_home_dir / "auth.json").read_bytes()).hexdigest(),
+    }
+
+
+def _prepared_fixture(tmp_path: Path, monkeypatch) -> tuple[_BoundaryFixture, _DockerRunner]:
+    """A _BoundaryFixture whose codex-home/out/schema dirs already exist with a copied credential."""
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    fixture.codex_home_dir.mkdir(parents=True)
+    fixture.out_dir.mkdir(parents=True)
+    fixture.schema_dir.mkdir(parents=True)
+    (fixture.codex_home_dir / "auth.json").write_bytes(fixture.auth_path.read_bytes())
+    docker = _clean_docker_runner(fixture)
+    return fixture, docker
+
+
+def test_run_untrusted_codex_seam_rejects_unverified_boundary() -> None:
+    with pytest.raises(RunnerError, match="requires a verified container boundary"):
+        run_untrusted_codex(
+            _boundary_run(),
+            inner_argv=inspection_codex_argv(),
+            prompt="hello",
+            boundary={"verdict": "unverified"},
+            command_runner=lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not be called")),
+            ledger=ContainerLedger(lambda *a, **k: None),
+        )
+
+
+def test_launch_happy_path(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    (fixture.out_dir / "last.json").write_bytes(b'{"ok": true}')
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    exit_code, problems = run_untrusted_codex(
+        _boundary_run(), inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=docker, ledger=ledger,
+    )
+
+    assert exit_code == 0
+    assert problems == []
+    assert _boundary_run().output(".last.json").read_bytes() == b'{"ok": true}'
+    assert not fixture.scratch.exists()
+    assert docker.review_id not in ledger._containers
+    _boundary_run().output(".last.json").unlink()
+    _boundary_run().output(".jsonl").unlink(missing_ok=True)
+
+
+def test_launch_removal_unconfirmed(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    docker.rm_breaks.add(docker.review_id)
+    (fixture.out_dir / "last.json").write_bytes(b'{"ok": true}')
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    read_calls = []
+    real_safe_read = codex_review_run.safe_read_regular_file
+
+    def _spy(dir_path, name, *, max_bytes):
+        read_calls.append((Path(dir_path), name))
+        return real_safe_read(dir_path, name, max_bytes=max_bytes)
+
+    monkeypatch.setattr(codex_review_run, "safe_read_regular_file", _spy)
+    credential_calls = []
+    monkeypatch.setattr(
+        codex_review_run,
+        "credential_outcome",
+        lambda *a, **k: credential_calls.append((a, k)),
+    )
+
+    run = _boundary_run()
+    last_json_before = run.output(".last.json").exists()
+    exit_code, problems = run_untrusted_codex(
+        run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=docker, ledger=ledger,
+    )
+
+    assert any("could not be confirmed removed" in p for p in problems)
+    assert run.output(".last.json").exists() == last_json_before  # unchanged (not created)
+    assert credential_calls == []
+    assert read_calls == []
+    assert docker.review_id in ledger._containers
+    run.output(".jsonl").unlink(missing_ok=True)
+
+
+def test_launch_symlinked_output_refused(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    secret = tmp_path / "host-secret"
+    secret.write_text("do not leak")
+    (fixture.out_dir / "last.json").symlink_to(secret)
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    run = _boundary_run()
+    exit_code, problems = run_untrusted_codex(
+        run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=docker, ledger=ledger,
+    )
+    assert problems == ["unsafe container output refused: last.json is a symlink"]
+    assert not run.output(".last.json").exists()
+    run.output(".jsonl").unlink(missing_ok=True)
+
+
+def test_launch_fifo_output_refused_and_does_not_hang(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    os.mkfifo(fixture.out_dir / "last.json")
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    run = _boundary_run()
+    start = time.monotonic()
+    exit_code, problems = run_untrusted_codex(
+        run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=docker, ledger=ledger,
+    )
+    assert time.monotonic() - start < 2
+    assert problems == ["unsafe container output refused: last.json is not a regular file"]
+    run.output(".jsonl").unlink(missing_ok=True)
+
+
+def test_launch_sign_in_refreshed_mid_run(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    # the container's copy was rewritten during the run
+    (fixture.codex_home_dir / "auth.json").write_bytes(_auth_bytes(last_refresh=_NOW.isoformat()))
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    run = _boundary_run()
+    exit_code, problems = run_untrusted_codex(
+        run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=docker, ledger=ledger,
+    )
+    assert any("Re-login needed: run `codex login` on the host (D-11)" in p for p in problems)
+    run.output(".jsonl").unlink(missing_ok=True)
+
+
+def test_launch_docker_start_nonzero_exit(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    docker.start_returncode = 1
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    run = _boundary_run()
+    exit_code, problems = run_untrusted_codex(
+        run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=docker, ledger=ledger,
+    )
+    assert (exit_code, problems) == (1, [])
+    assert not fixture.scratch.exists()
+    run.output(".jsonl").unlink(missing_ok=True)
+    run.output(".last.json").unlink(missing_ok=True)
+
+
+def test_launch_docker_start_oserror(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    docker.review_start_raises = OSError
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    run = _boundary_run()
+    exit_code, problems = run_untrusted_codex(
+        run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=docker, ledger=ledger,
+    )
+    assert exit_code is None
+    assert problems == ["review container could not start: OSError"]
+    assert not fixture.scratch.exists()
+    run.output(".jsonl").unlink(missing_ok=True)
+
+
+def test_launch_start_timeout(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+
+    def _timeout_runner(argv, **kwargs):
+        if argv[:4] == ["docker", "start", "-a", "-i"]:
+            raise subprocess.TimeoutExpired(argv, 1800)
+        return docker(argv, **kwargs)
+
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(_timeout_runner)
+    ledger.register(docker.review_id, "review")
+
+    run = _boundary_run()
+    exit_code, problems = run_untrusted_codex(
+        run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+        command_runner=_timeout_runner, ledger=ledger,
+    )
+    assert exit_code == codex_review_run.CODEX_TIMEOUT_EXIT
+    assert problems == []
+    assert ["docker", "rm", "-f", docker.review_id] in docker.calls
+    run.output(".jsonl").unlink(missing_ok=True)
+    run.output(".last.json").unlink(missing_ok=True)
+
+
+def test_launch_keyboard_interrupt_during_start_still_cleans_up(tmp_path: Path, monkeypatch) -> None:
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    docker.review_start_raises = KeyboardInterrupt
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+
+    run = _boundary_run()
+    with pytest.raises(KeyboardInterrupt):
+        run_untrusted_codex(
+            run, inner_argv=inspection_codex_argv(), prompt="hello", boundary=boundary,
+            command_runner=docker, ledger=ledger,
+        )
+    assert ["docker", "rm", "-f", docker.review_id] in docker.calls
+    assert not fixture.scratch.exists()
+    assert docker.review_id not in ledger._containers
+    run.output(".jsonl").unlink(missing_ok=True)
+
+
+# --- _execute_inspection / execute() integration -----------------------------
+
+
+class _E2ERunner:
+    """Combines a _DockerRunner with the handful of git/gh/checker calls
+    _execute_untrusted()/_execute_inspection() still issue once
+    inspect_untrusted_pr/ci_evidence/build_inspection_input/
+    establish_trusted_main are monkeypatched (see _patch_untrusted_pipeline).
+    """
+
+    def __init__(
+        self, docker: _DockerRunner, *, head_ref_oid: str, checker_stdout: str, checker_returncode: int = 0
+    ) -> None:
+        self.docker = docker
+        self.head_ref_oid = head_ref_oid
+        self.checker_stdout = checker_stdout
+        self.checker_returncode = checker_returncode
+        self.calls: list[list[str]] = []
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        if argv and argv[0] == "docker":
+            return self.docker(argv, **kwargs)
+        if argv[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="")
+        if argv == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=_B_HEAD + "\n")
+        if argv[:2] == ["git", "diff"] and "--name-only" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout="")
+        if argv[:3] == ["gh", "pr", "view"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({"headRefOid": self.head_ref_oid}))
+        if argv and argv[0] == sys.executable and len(argv) > 1 and "codex_report_status.py" in str(argv[1]):
+            return subprocess.CompletedProcess(argv, self.checker_returncode, stdout=self.checker_stdout)
+        raise AssertionError(f"unscripted command: {argv}")
+
+
+def _patch_untrusted_pipeline(monkeypatch, *, provenance: dict[str, object]) -> None:
+    monkeypatch.setattr(
+        codex_review_run,
+        "inspect_untrusted_pr",
+        lambda run, command_runner: {
+            "number": 1,
+            "author_login": "dependabot[bot]",
+            "is_cross_repository": False,
+            "head_ref_oid": run.head,
+            "base_ref_oid": run.base,
+            "merge_base": run.base,
+        },
+    )
+    monkeypatch.setattr(
+        codex_review_run,
+        "ci_evidence",
+        lambda run, command_runner: {
+            "check_runs": [],
+            "ci_ready": {"id": 1, "name": "CI ready", "head_sha": run.head, "conclusion": "success", "html_url": "x"},
+        },
+    )
+    monkeypatch.setattr(
+        codex_review_run,
+        "build_inspection_input",
+        lambda run, command_runner: (
+            "### In-scope diff\nFAKE\n",
+            {"bytes": 10, "files_included": 1, "files_omitted": 0, "oversize": False},
+        ),
+    )
+    monkeypatch.setattr(codex_review_run, "establish_trusted_main", lambda run, command_runner: dict(provenance))
+
+
+def _e2e_setup(tmp_path: Path, monkeypatch) -> tuple[ReviewRun, _BoundaryFixture]:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / _B_PHASE_DIR).mkdir(parents=True)
+    monkeypatch.setattr(codex_review_run, "REPO_ROOT", repo_root)
+
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    # _BoundaryFixture also set REPO_ROOT; re-point it at our e2e repo_root
+    # (its own scratch/per-run-dir fixtures are unused by this test).
+    monkeypatch.setattr(codex_review_run, "REPO_ROOT", repo_root)
+
+    provenance = {
+        "main_ref": "refs/remotes/origin/main",
+        "main_sha": _B_BASE,
+        "harness_head": _B_BASE,
+        "base": _B_BASE,
+        "base_on_main": True,
+        "grader_ref": _B_BASE,
+        "grader_source": "trusted-origin-main",
+    }
+    _patch_untrusted_pipeline(monkeypatch, provenance=provenance)
+
+    run = _boundary_run()
+    return run, fixture
+
+
+_E2E_COMPLETE_STATUS = (
+    json.dumps(
+        {
+            "status": "complete",
+            "reasons": [],
+            "qualified_ids": [],
+            "finding_count": 0,
+            "inspected_head": _B_HEAD,
+            "inspected_base": _B_BASE,
+        }
+    )
+    + "\n"
+)
+
+
+def test_untrusted_launch_sequence_end_to_end(tmp_path: Path, monkeypatch) -> None:
+    run, fixture = _e2e_setup(tmp_path, monkeypatch)
+    docker = _DockerRunner(
+        host_home=fixture.host_home,
+        repo_root=fixture.repo_root,
+        host_codex_home=fixture.host_codex_home,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+    )
+    e2e = _E2ERunner(docker, head_ref_oid=run.head, checker_stdout=_E2E_COMPLETE_STATUS)
+
+    exit_code = execute(run, command_runner=e2e)
+
+    assert exit_code == 0
+    boundary = json.loads(run.output(".boundary.json").read_text(encoding="utf-8"))
+    assert boundary["verdict"] == "verified"
+    assert "_codex_home_dir" not in boundary
+    assert not any(c[0] == "codex" for c in e2e.calls)
+
+    docker_calls = [c for c in e2e.calls if c and c[0] == "docker"]
+    expected_order = [
+        ["docker", "image", "inspect", REVIEW_IMAGE_REF],
+    ]
+    assert docker_calls[0] == expected_order[0]
+    create_indices = [i for i, c in enumerate(docker_calls) if c[:2] == ["docker", "create"]]
+    assert len(create_indices) == 2
+    start_a_index = next(i for i, c in enumerate(docker_calls) if c[:3] == ["docker", "start", "-a"] and len(c) == 4)
+    rm_indices = [i for i, c in enumerate(docker_calls) if c[:2] == ["docker", "rm"]]
+    ps_indices = [i for i, c in enumerate(docker_calls) if c[:2] == ["docker", "ps"]]
+    inspect_index = next(i for i, c in enumerate(docker_calls) if c[:2] == ["docker", "inspect"])
+    start_ai_index = next(i for i, c in enumerate(docker_calls) if c[:4] == ["docker", "start", "-a", "-i"])
+    assert create_indices[0] < start_a_index < rm_indices[0] < ps_indices[0] < create_indices[1] < inspect_index
+    assert inspect_index < start_ai_index < rm_indices[1] < ps_indices[1]
+    assert docker.review_id not in docker.live
+
+
+def test_failure_after_verification_before_launch(tmp_path: Path, monkeypatch) -> None:
+    run, fixture = _e2e_setup(tmp_path, monkeypatch)
+    docker = _DockerRunner(
+        host_home=fixture.host_home,
+        repo_root=fixture.repo_root,
+        host_codex_home=fixture.host_codex_home,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+    )
+    e2e = _E2ERunner(docker, head_ref_oid=run.head, checker_stdout=_E2E_COMPLETE_STATUS)
+
+    def _raise(*args, **kwargs):
+        raise RunnerError("simulated launch preparation failure")
+
+    monkeypatch.setattr(codex_review_run, "run_untrusted_codex", _raise)
+
+    exit_code = execute(run, command_runner=e2e)
+
+    assert exit_code == 3
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    docker_calls = [c for c in e2e.calls if c and c[0] == "docker"]
+    assert any(c[:2] == ["docker", "create"] and "--entrypoint" not in c for c in docker_calls)
+    review_id = docker.review_id
+    assert ["docker", "rm", "-f", review_id] in docker_calls
+    assert ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", f"id={review_id}"] in docker_calls
+    assert review_id not in docker.live
+
+
+def test_cleanup_escalation_interrupt_execute_inspection(tmp_path: Path, monkeypatch) -> None:
+    run, fixture = _e2e_setup(tmp_path, monkeypatch)
+    docker = _DockerRunner(
+        host_home=fixture.host_home,
+        repo_root=fixture.repo_root,
+        host_codex_home=fixture.host_codex_home,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        review_start_raises=KeyboardInterrupt,
+    )
+    e2e = _E2ERunner(docker, head_ref_oid=run.head, checker_stdout=_E2E_COMPLETE_STATUS)
+
+    read_calls = []
+    real_safe_read = codex_review_run.safe_read_regular_file
+
+    def _spy(dir_path, name, *, max_bytes):
+        read_calls.append((Path(dir_path), name))
+        return real_safe_read(dir_path, name, max_bytes=max_bytes)
+
+    monkeypatch.setattr(codex_review_run, "safe_read_regular_file", _spy)
+    credential_calls = []
+    monkeypatch.setattr(
+        codex_review_run, "credential_outcome", lambda *a, **k: credential_calls.append((a, k)) or []
+    )
+
+    # once the review container is created, make its removal unconfirmed
+    original_call = docker.__call__
+
+    def _patched(argv, **kwargs):
+        result = original_call(argv, **kwargs)
+        if argv[:2] == ["docker", "create"] and "--entrypoint" not in argv:
+            docker.rm_breaks.add(docker.review_id)
+        return result
+
+    docker.__call__ = _patched
+
+    with pytest.raises(KeyboardInterrupt):
+        execute(run, command_runner=e2e)
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("interrupted by KeyboardInterrupt" in r for r in status["reasons"])
+    assert any(f"docker rm -f {docker.review_id}" in r for r in status["reasons"])
+    assert not run.output(".last.json").exists()
+    assert not any(dir_path == fixture.out_dir or dir_path == fixture.codex_home_dir for dir_path, _ in read_calls)
+    assert credential_calls == []
+
+
+def test_cleanup_escalation_launch_prep_failure_execute_inspection(tmp_path: Path, monkeypatch) -> None:
+    run, fixture = _e2e_setup(tmp_path, monkeypatch)
+    docker = _DockerRunner(
+        host_home=fixture.host_home,
+        repo_root=fixture.repo_root,
+        host_codex_home=fixture.host_codex_home,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+    )
+    e2e = _E2ERunner(docker, head_ref_oid=run.head, checker_stdout=_E2E_COMPLETE_STATUS)
+
+    original_run_untrusted_codex = codex_review_run.run_untrusted_codex
+    raised: dict[str, BaseException] = {}
+
+    def _fake_run_untrusted_codex(run_arg, **kwargs):
+        boundary = kwargs["boundary"]
+        docker.rm_breaks.add(boundary["container_id"])
+        codex_review_run._write_status_stub(run_arg, "original launch-preparation reason")
+        exc = RunnerError("simulated launch preparation failure")
+        raised["exc"] = exc
+        raise exc
+
+    monkeypatch.setattr(codex_review_run, "run_untrusted_codex", _fake_run_untrusted_codex)
+
+    read_calls = []
+    real_safe_read = codex_review_run.safe_read_regular_file
+
+    def _spy(dir_path, name, *, max_bytes):
+        read_calls.append((Path(dir_path), name))
+        return real_safe_read(dir_path, name, max_bytes=max_bytes)
+
+    monkeypatch.setattr(codex_review_run, "safe_read_regular_file", _spy)
+
+    with pytest.raises(RunnerError) as exc_info:
+        execute(run, command_runner=e2e)
+    assert exc_info.value is raised["exc"]
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("original launch-preparation reason" in r for r in status["reasons"])
+    assert any(f"docker rm -f {docker.review_id}" in r for r in status["reasons"])
+    assert read_calls == []
+    codex_review_run.run_untrusted_codex = original_run_untrusted_codex
+
+
+def test_cleanup_escalation_canary_interrupt_execute_inspection(tmp_path: Path, monkeypatch) -> None:
+    run, fixture = _e2e_setup(tmp_path, monkeypatch)
+    docker = _DockerRunner(
+        host_home=fixture.host_home,
+        repo_root=fixture.repo_root,
+        host_codex_home=fixture.host_codex_home,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        canary_start_raises=KeyboardInterrupt,
+    )
+    docker.rm_breaks.add(docker.canary_id)
+    e2e = _E2ERunner(docker, head_ref_oid=run.head, checker_stdout=_E2E_COMPLETE_STATUS)
+
+    with pytest.raises(KeyboardInterrupt):
+        execute(run, command_runner=e2e)
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    canary_id12 = docker.canary_id[:12]
+    assert any(f"canary container {canary_id12} could not be confirmed removed" in r for r in status["reasons"])
+    assert any(f"docker rm -f {docker.canary_id}" in r for r in status["reasons"])
+    docker_calls = [c for c in e2e.calls if c and c[0] == "docker"]
+    assert not any(c[:2] == ["docker", "create"] and "--entrypoint" not in c for c in docker_calls)
