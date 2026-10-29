@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests import codex_review_run as runner
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILE_PATH = REPO_ROOT / "docker" / "codex-review" / "Dockerfile"
 
@@ -106,3 +108,11 @@ def test_header_comment_documents_digest_pinning_and_sensitivity() -> None:
     assert "deliberately new" in header
     assert "digest" in header
     assert "sensitive review-machinery change" in header
+
+
+def test_review_image_version_parity() -> None:
+    text = _dockerfile_text()
+    match = re.search(r"ARG CODEX_VERSION=([0-9.]+)", text)
+    assert match is not None, "Dockerfile has no ARG CODEX_VERSION="
+    assert match.group(1) == runner.REVIEW_CODEX_VERSION
+    assert runner.REVIEW_IMAGE_REF == "triggarr-codex-review:" + runner.REVIEW_CODEX_VERSION
