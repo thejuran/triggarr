@@ -1747,3 +1747,77 @@ def test_any_runner_error_after_reservation_writes_status_and_returns_3(tmp_path
     status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
     assert status["status"] == "incomplete"
     assert any("unexpected boundary failure" in r for r in status["reasons"])
+
+
+# --- WR-06: reasons written to committed evidence never carry local paths -----
+
+
+def _local_path_variants() -> list[str]:
+    import tempfile
+
+    paths = {str(Path.home()), str(Path.home().resolve())}
+    paths |= {str(Path(tempfile.gettempdir())), str(Path(tempfile.gettempdir()).resolve())}
+    return sorted(paths)
+
+
+def _assert_no_local_paths(text: str) -> None:
+    for variant in _local_path_variants():
+        assert variant not in text, f"{variant!r} leaked into committed evidence: {text}"
+
+
+def test_boundary_and_status_reasons_redact_home_and_tmp_paths(tmp_path, monkeypatch) -> None:
+    import tempfile
+
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    home_auth = Path.home() / ".codex" / "auth.json"
+    scratch_dir = Path(tempfile.gettempdir()) / "codex-inspection-abc123" / "codex-home"
+    unverified = {
+        **DEFAULT_BOUNDARY_UNVERIFIED,
+        "reasons": [
+            f"Codex sign-in file not found: {home_auth}",
+            f"Codex sign-in copy destination already exists: {scratch_dir}",
+        ],
+    }
+    _patch_pipeline(monkeypatch, boundary=unverified)
+    run = _untrusted_run()
+
+    assert execute(run, command_runner=_OrchestrationRunner()) == 3
+
+    boundary_text = run.output(".boundary.json").read_text(encoding="utf-8")
+    status_text = run.output(".status.json").read_text(encoding="utf-8")
+    _assert_no_local_paths(boundary_text)
+    _assert_no_local_paths(status_text)
+    assert "~/.codex/auth.json" in boundary_text
+    assert "~/.codex/auth.json" in status_text
+
+
+def test_cleanup_escalation_reasons_redact_local_paths(tmp_path, monkeypatch) -> None:
+    import tempfile
+
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    run = _untrusted_run()
+    run.out_base.parent.mkdir(parents=True)
+    leftover = Path(tempfile.gettempdir()) / "codex-inspection-xyz" / "out"
+
+    runner._record_cleanup_escalation(
+        run, [f"per-run directory could not be removed: OSError: {leftover}"], in_flight=None
+    )
+    _assert_no_local_paths(run.output(".status.json").read_text(encoding="utf-8"))
+
+    # Merging into an existing status redacts too.
+    runner._record_cleanup_escalation(
+        run, [f"per-run directory could not be removed: PermissionError: {Path.home() / 'x'}"], in_flight=None
+    )
+    _assert_no_local_paths(run.output(".status.json").read_text(encoding="utf-8"))
+
+
+def test_status_stub_redacts_local_paths(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    run = _untrusted_run()
+    run.out_base.parent.mkdir(parents=True)
+
+    runner._write_status_stub(run, f"refused: {Path.home() / '.codex'} could not be opened safely: OSError")
+
+    text = run.output(".status.json").read_text(encoding="utf-8")
+    _assert_no_local_paths(text)
+    assert "refused: ~/.codex could not be opened safely: OSError" in text
