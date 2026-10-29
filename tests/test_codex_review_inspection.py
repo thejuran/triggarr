@@ -492,7 +492,7 @@ def _build_inspection_script(
         (_exact(name_status_plan), _ok(stdout=_name_status_output(plan_changed_entries))),
     ]
     for _, path in [*changed_entries, *plan_changed_entries]:
-        ls_tree_argv = [*GIT_SAFE_PREFIX, "ls-tree", "-z", run.head, "--", path]
+        ls_tree_argv = ["git", "--literal-pathspecs", *GIT_SAFE_PREFIX[1:], "ls-tree", "-z", run.head, "--", path]
         script.append((_exact(ls_tree_argv), _ok(stdout=LS_TREE_OUTPUT.get(path, ""))))
         if path in CAT_FILE_CONTENT:
             cat_file_argv = [*GIT_SAFE_PREFIX, "cat-file", "blob", f"{run.head}:{path}"]
@@ -514,7 +514,9 @@ def test_build_inspection_input_includes_diff_sections_and_safe_git_prefix() -> 
     for _, path in CHANGED_ENTRIES:
         assert f"#### {path}" in text
     for call in fake.calls:
-        assert call[:5] == list(GIT_SAFE_PREFIX)
+        # ls-tree takes a head-chosen file name, so it also gets --literal-pathspecs (WR-08).
+        safe_prefix = [call[0], *call[2:6]] if "ls-tree" in call else call[:5]
+        assert safe_prefix == list(GIT_SAFE_PREFIX)
     assert stats["bytes"] == len(text.encode("utf-8"))
     assert stats["oversize"] is False
 

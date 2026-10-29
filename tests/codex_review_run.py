@@ -912,8 +912,19 @@ def inspect_untrusted_pr(run: ReviewRun, command_runner: CommandRunner) -> dict[
 
 
 def _ls_tree_entry(run: ReviewRun, path: str, command_runner: CommandRunner) -> str | None:
-    """Return the ls-tree mode for *path* at --head, or None if absent at head."""
-    output = _git_stdout([*GIT_SAFE_PREFIX, "ls-tree", "-z", run.head, "--", path], command_runner)
+    """Return the ls-tree mode for *path* at --head, or None if absent at head.
+
+    *path* is a file name chosen by the untrusted head, so git is told to
+    treat it as a literal path (``--literal-pathspecs``): a name such as
+    ``:(glob)b`` must not abort the run, and ``:(top)x`` or ``:/x`` must not
+    look up a different path (WR-08). Only this call passes a head-chosen
+    name as a pathspec; the fixed EXCLUDE_PATHSPECS elsewhere rely on magic,
+    so the flag is not added to GIT_SAFE_PREFIX itself.
+    """
+    output = _git_stdout(
+        [GIT_SAFE_PREFIX[0], "--literal-pathspecs", *GIT_SAFE_PREFIX[1:], "ls-tree", "-z", run.head, "--", path],
+        command_runner,
+    )
     if not output.strip():
         return None
     # "<mode> <type> <sha>\t<path>\0" -- only the leading mode is needed.
