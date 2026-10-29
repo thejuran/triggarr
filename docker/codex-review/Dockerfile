@@ -1,11 +1,15 @@
 # Review image for Phase 85.1 (D-07): isolates the Codex review of an
 # untrusted (bot or fork) PR head inside a disposable container. This
-# image must contain nothing but the Codex runtime -- no git, Python,
-# Node, curl, package manager or shell toolchain beyond the base OS --
-# so an injected instruction inside the reviewed diff has nothing useful
-# to reach for even if it escaped Codex's own sandboxing. Changing this
-# file is a sensitive review-machinery change (see
-# docs/review-classification-policy.md) and needs the same risk
+# image must contain nothing but the Codex runtime and the CA
+# certificate bundle it needs to reach the model backend over TLS --
+# no git, Python, Node, curl, package manager or shell toolchain beyond
+# the base OS -- so an injected instruction inside the reviewed diff has
+# nothing useful to reach for even if it escaped Codex's own sandboxing.
+# The CA bundle is copied as a plain file from the fetch stage (which
+# already installed ca-certificates to verify the download over TLS);
+# no apt, curl or other package tooling is ever added to the final
+# stage to produce it. Changing this file is a sensitive review-machinery change
+# (see docs/review-classification-policy.md) and needs the same risk
 # assessment any review-machinery edit does.
 #
 # The base image below is pinned by digest. That is a deliberately new,
@@ -37,7 +41,7 @@ RUN curl -fsSLO "https://github.com/openai/codex/releases/download/rust-v${CODEX
     && tar -xzf codex-aarch64-unknown-linux-musl.tar.gz \
     && install -m 0755 codex-aarch64-unknown-linux-musl /usr/local/bin/codex
 
-# ---- Stage 2: review -- nothing in the final image but the base OS and the Codex binary ----
+# ---- Stage 2: review -- nothing in the final image but the base OS, the Codex binary and the CA bundle ----
 FROM debian:bookworm-slim@sha256:7ccb8b5b60c7654f5b795d94ee7d751cd0811500803f0b09cefcd555e755a55a
 
 ARG CODEX_VERSION=0.153.4
@@ -46,6 +50,7 @@ RUN groupadd -g 10001 review \
     && useradd -u 10001 -g 10001 -d /home/review -m -s /usr/sbin/nologin review
 
 COPY --from=fetch /usr/local/bin/codex /usr/local/bin/codex
+COPY --from=fetch /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ENV HOME=/home/review \
     LANG=C.UTF-8 \
