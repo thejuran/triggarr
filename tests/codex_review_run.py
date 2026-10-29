@@ -860,8 +860,11 @@ def inspect_untrusted_pr(run: ReviewRun, command_runner: CommandRunner) -> dict[
         raise RunnerError(
             f"could not verify the PR: gh pr view returned unparseable JSON ({type(exc).__name__})"
         ) from exc
-    if data.get("state") in ("CLOSED", "MERGED"):
-        raise RunnerError(f"PR is not open: PR #{number} state is {data.get('state')}")
+    state = data.get("state")
+    if state != "OPEN":
+        # Allowlist, not denylist (WR-07): a missing, null or unknown state fails closed.
+        shown = state if isinstance(state, str) and state.isalpha() and len(state) <= 20 else "missing or unrecognized"
+        raise RunnerError(f"PR is not open: PR #{number} state is {shown}")
     if data.get("headRefOid") != run.head:
         raise RunnerError(f"PR head is {data.get('headRefOid')}, not --head {run.head}")
     try:
