@@ -53,3 +53,20 @@ updates:
       docker-minor-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+
+  # The digest-pinned review image for untrusted-head Codex reviews (Phase 85.1,
+  # WR-10). It holds a copy of the owner's Codex sign-in, so its base image must
+  # not silently age. A bump here changes review machinery and is classified
+  # sensitive (docs/review-classification-policy.md); the image is rebuilt and
+  # re-verified (--verify-boundary) after merging one.
+  - package-ecosystem: "docker"
+    directory: "/docker/codex-review"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 5
+    groups:
+      codex-review-image-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
