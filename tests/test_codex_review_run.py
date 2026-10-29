@@ -358,6 +358,19 @@ def test_checker_argv_omits_unknown_exit_code() -> None:
     assert "--exit-code" not in argv
 
 
+def test_checker_argv_default_review_mode_is_byte_identical_to_before() -> None:
+    """checker_argv(...) without review_mode is unchanged (Phase 85.1-06 adds an opt-in append only)."""
+    with_default = checker_argv(_run(), exit_code=0, current_head=H)
+    explicit_trusted = checker_argv(_run(), exit_code=0, current_head=H, review_mode="trusted")
+    assert with_default == explicit_trusted
+    assert "--review-mode" not in with_default
+
+
+def test_checker_argv_inspection_only_appends_review_mode_flag() -> None:
+    argv = checker_argv(_run(), exit_code=0, current_head=H, review_mode="inspection-only")
+    assert argv[-2:] == ["--review-mode", "inspection-only"]
+
+
 # --- Dry run -----------------------------------------------------------------
 
 
@@ -606,83 +619,74 @@ def test_cli_requires_exactly_one_trust_flag(flags: tuple) -> None:
 
 # Owner decision 2026-10-22 (owner-approved round 3, resolves
 # bm:dbe1b7f56bdd:CR-01 = codex:dbe1b7f56bdd:a1:F001 and bm:dbe1b7f56bdd:WR-02),
-# amended 2026-10-27 (D-07 amendment, interim rule): Codex is not run for
-# untrusted (bot or fork) heads at all until Phase 85.1 delivers the isolated
-# review. --untrusted issues no command of any kind and instead records a
-# permanent INCOMPLETE result (review_mode "untrusted-refused"); CI plus an
-# owner-approved fallback (D-16) covers that head in the interim.
+# superseded by Phase 85.1 (D-07): an untrusted (bot or fork) head no longer
+# refuses outright -- --untrusted now runs the inspection-only review behind
+# a fail-closed isolation boundary (see tests/test_codex_review_inspection.py
+# for the orchestration itself). These CLI-level tests cover only main()'s
+# dispatch and error handling for --untrusted, with execute() monkeypatched
+# except for the one test that pins the never-calls-verify_trust guarantee.
 
 
-def _forbid_everything(monkeypatch) -> None:
-    def _forbidden(*_args, **_kwargs):
-        raise AssertionError("an untrusted run must not run any command or create any directory")
+def test_main_untrusted_dispatches_through_execute(monkeypatch) -> None:
+    """main() routes --untrusted through execute(), the same as --trusted."""
+    calls: list[bool] = []
 
-    monkeypatch.setattr(runner.subprocess, "run", _forbidden)
-    monkeypatch.setattr(runner.tempfile, "mkdtemp", _forbidden)
+    def _fake_execute(run, *, command_runner=runner.run_command, allow_stale_head=False) -> int:
+        calls.append(run.trusted)
+        return 7
+
+    monkeypatch.setattr(runner, "execute", _fake_execute)
+
+    assert main(_cli(PHASE_DIR, "--untrusted")) == 7
+    assert calls == [False]
 
 
-def test_main_refuses_untrusted_and_records_incomplete(tmp_path, monkeypatch, capsys) -> None:
-    import json as _json
+def test_main_untrusted_runner_error_before_reservation_reports_exit_2(monkeypatch, capsys) -> None:
+    def _raise(*_args, **_kwargs):
+        raise runner.RunnerError("PR is not open: PR #91 state is CLOSED")
 
-    _forbid_everything(monkeypatch)
-    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    run = _run(attempt=1, trusted=False)
+    monkeypatch.setattr(runner, "execute", _raise)
 
     assert main(_cli(PHASE_DIR, "--untrusted")) == 2
 
     out = capsys.readouterr().out
-    assert runner.UNTRUSTED_REFUSAL in out
-
-    written = {suffix for suffix in runner.OUTPUT_SUFFIXES if run.output(suffix).exists()}
-    assert written == {".meta.json", ".status.json"}
-
-    meta = _json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
-    assert meta["meta_version"] == 2
-    assert meta["review_mode"] == "untrusted-refused"
-    assert meta["trusted"] is False
-    assert meta["trust_verification"] is None
-    assert meta["test_evidence_source"] is None
-    assert meta["head"] == H and meta["base"] == B and meta["label"] == "explicit" and meta["attempt"] == 1
-
-    status = _json.loads(run.output(".status.json").read_text(encoding="utf-8"))
-    assert status["status"] == "incomplete"
-    assert any(
-        "refused until Phase 85.1" in reason and "owner-approved fallback (D-16)" in reason
-        for reason in status["reasons"]
-    )
+    assert "error: PR is not open: PR #91 state is CLOSED" in out
 
 
-def test_main_dry_run_untrusted_writes_nothing(monkeypatch, capsys) -> None:
-    _forbid_everything(monkeypatch)
-    run = _run(attempt=1, trusted=False)
-    before = {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES}
+def test_main_untrusted_existing_outputs_report_exit_2(monkeypatch, capsys) -> None:
+    def _raise(*_args, **_kwargs):
+        raise FileExistsError("review outputs already exist: ['x.meta.json']")
 
-    assert main([*_cli(PHASE_DIR, "--untrusted"), "--dry-run"]) == 2
-
-    out = capsys.readouterr().out
-    assert str(run.output(".meta.json")) in out
-    assert str(run.output(".status.json")) in out
-    assert runner.UNTRUSTED_REFUSAL in out
-    assert {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES} == before
-
-
-def test_main_untrusted_refuses_when_output_already_exists(tmp_path, monkeypatch, capsys) -> None:
-    _forbid_everything(monkeypatch)
-    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-    run = _run(attempt=1, trusted=False)
-    run.out_base.parent.mkdir(parents=True)
-    run.output(".status.json").write_text("recorded")
+    monkeypatch.setattr(runner, "execute", _raise)
 
     assert main(_cli(PHASE_DIR, "--untrusted")) == 2
 
     out = capsys.readouterr().out
     assert "already exist" in out
-    assert not run.output(".meta.json").exists()
-    assert run.output(".status.json").read_text() == "recorded"
+    assert "use the next attempt number" in out
 
 
-def test_execute_refuses_untrusted_before_any_work(tmp_path, monkeypatch) -> None:
-    """execute()/verify_trust() are never reached for an untrusted run (defense in depth)."""
+def test_main_dry_run_untrusted_prints_commands_and_writes_nothing(monkeypatch, capsys) -> None:
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("an untrusted dry run must not run any command or create any directory")
+
+    monkeypatch.setattr(runner.subprocess, "run", _forbidden)
+    monkeypatch.setattr(runner.tempfile, "mkdtemp", _forbidden)
+    run = _run(attempt=1, trusted=False)
+    before = {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES}
+
+    assert main([*_cli(PHASE_DIR, "--untrusted"), "--dry-run"]) == 0
+
+    out = capsys.readouterr().out
+    assert "<inert input: built at run time>" in out
+    assert shlex.join(runner.inspection_codex_argv()) in out
+    assert "origin" in out and "main" in out  # the origin/main fetch is previewed
+    assert "merge-base" in out and "is-ancestor" in out
+    assert {suffix: run.output(suffix).exists() for suffix in runner.OUTPUT_SUFFIXES} == before
+
+
+def test_execute_never_calls_verify_trust_for_untrusted_run(tmp_path, monkeypatch) -> None:
+    """execute() dispatches an untrusted run to _execute_untrusted(), never verify_trust() (defense in depth)."""
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
     run = _run(attempt=1, trusted=False)
     fake = FakeRunner()
@@ -691,11 +695,10 @@ def test_execute_refuses_untrusted_before_any_work(tmp_path, monkeypatch) -> Non
         raise AssertionError("verify_trust must not run for an untrusted ReviewRun")
 
     monkeypatch.setattr(runner, "verify_trust", _forbidden_verify_trust)
+    monkeypatch.setattr(runner, "_execute_untrusted", lambda run, command_runner: 0)
 
-    with pytest.raises(runner.RunnerError, match="Phase 85.1"):
-        execute(run, command_runner=fake)
+    assert execute(run, command_runner=fake) == 0
     assert fake.calls == []
-    assert not (tmp_path / PHASE_DIR / "codex").exists()
 
 
 def test_cli_still_requires_an_explicit_trusted_flag() -> None:
@@ -1233,19 +1236,6 @@ def test_rerun_refused_when_base_status_already_exists(tmp_path, monkeypatch) ->
     with pytest.raises(FileExistsError):
         execute(run, command_runner=fake)
     assert run.output(".base-status.json").read_text() == "recorded"
-
-
-def test_untrusted_never_reaches_materialize_grader(tmp_path, monkeypatch) -> None:
-    """checker B13: the untrusted path never materializes a grader of any kind."""
-    _forbid_everything(monkeypatch)
-    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
-
-    def _forbidden_materialize(*_args, **_kwargs):
-        raise AssertionError("materialize_grader must not run for an untrusted ReviewRun")
-
-    monkeypatch.setattr(runner, "materialize_grader", _forbidden_materialize)
-
-    assert main(_cli(PHASE_DIR, "--untrusted")) == 2
 
 
 def test_contract_documents_untrusted_sources() -> None:

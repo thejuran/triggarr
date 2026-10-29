@@ -40,9 +40,11 @@ from tests.codex_review_run import (
     build_inspection_input,
     ci_evidence,
     establish_trusted_main,
+    execute,
     flatten_pages,
     inspect_untrusted_pr,
     inspection_codex_argv,
+    inspection_meta,
     new_input_fence,
     render_inspection_prompt,
     run_untrusted_codex,
@@ -903,3 +905,566 @@ def test_run_untrusted_codex_seam_also_refuses_a_verified_boundary_in_this_plan(
         )
     assert fake.calls == []
     assert all(call[0] != "codex" for call in fake.calls)
+
+
+# --- Orchestration: execute() / _execute_untrusted() / _execute_inspection() -
+# (D-07, B14). The pipeline's own building blocks (inspect_untrusted_pr,
+# ci_evidence, build_inspection_input, establish_trusted_main,
+# materialize_grader, trusted_main_grader_supports_mode,
+# verify_isolation_boundary, run_untrusted_codex) are each unit-tested above
+# or in Plan 85.1-05; here they are monkeypatched to canned values so these
+# tests exercise only the NEW orchestration code -- the order of operations,
+# the outputs, the grading and the exit codes. The few remaining real
+# command_runner calls (git status, git rev-parse HEAD, git diff
+# --name-only, a second gh pr view, and the head/base checker subprocess)
+# are answered by _OrchestrationRunner; anything unscripted raises
+# AssertionError.
+
+PR_NUMBER_INT = int(PR_NUMBER)
+
+DEFAULT_PR_INFO = {
+    "number": PR_NUMBER_INT,
+    "author_login": "dependabot[bot]",
+    "is_cross_repository": False,
+    "head_ref_oid": H,
+    "base_ref_oid": PR_BASE_SHA,
+    "merge_base": B,
+}
+
+DEFAULT_CI_EVIDENCE = {
+    "check_runs": [
+        {
+            "id": 1,
+            "name": CI_READY_CHECK_NAME,
+            "head_sha": H,
+            "status": "completed",
+            "conclusion": "success",
+            "html_url": "https://x/1",
+        }
+    ],
+    "ci_ready": {
+        "id": 1,
+        "name": CI_READY_CHECK_NAME,
+        "head_sha": H,
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://x/1",
+    },
+}
+
+DEFAULT_INPUT_TEXT = "### In-scope diff\nFAKE DIFF\n"
+DEFAULT_INPUT_STATS = {
+    "bytes": len(DEFAULT_INPUT_TEXT.encode("utf-8")),
+    "files_included": 1,
+    "files_omitted": 0,
+    "oversize": False,
+}
+
+DEFAULT_PROVENANCE = {
+    "main_ref": TRUSTED_MAIN_REF,
+    "main_sha": M,
+    "harness_head": M,
+    "base": B,
+    "base_on_main": True,
+    "grader_ref": M,
+    "grader_source": "trusted-origin-main",
+}
+
+DEFAULT_BOUNDARY_VERIFIED = {
+    "boundary_version": 1,
+    "verdict": "verified",
+    "reasons": [],
+    "checked_at": "2026-10-29T00:00:00+00:00",
+    "head": H,
+    "label": "inspection",
+    "attempt": 1,
+}
+
+DEFAULT_BOUNDARY_UNVERIFIED = {
+    "boundary_version": 1,
+    "verdict": "unverified",
+    "reasons": ["deterministic container checks are not available in this build"],
+    "checked_at": "2026-10-29T00:00:00+00:00",
+    "head": H,
+    "label": "inspection",
+    "attempt": 1,
+}
+
+CLEAN_EVENTS = [
+    {"type": "thread.started"},
+    {"type": "turn.started"},
+    {"type": "item.completed", "item": {"type": "agent_message", "text": "ok"}},
+    {"type": "turn.completed"},
+]
+
+TOOL_USE_EVENTS = [
+    {"type": "thread.started"},
+    {"type": "item.completed", "item": {"type": "command_execution", "command": "cat /etc/passwd"}},
+    {"type": "turn.completed"},
+]
+
+COMPLETE_STATUS_JSON = (
+    json.dumps(
+        {
+            "status": "complete",
+            "reasons": [],
+            "qualified_ids": [],
+            "finding_count": 0,
+            "inspected_head": H,
+            "inspected_base": B,
+        }
+    )
+    + "\n"
+)
+
+INCOMPLETE_STATUS_JSON = (
+    json.dumps(
+        {
+            "status": "incomplete",
+            "reasons": ["codex exited 1"],
+            "qualified_ids": [],
+            "finding_count": 0,
+            "inspected_head": H,
+            "inspected_base": B,
+        }
+    )
+    + "\n"
+)
+
+
+def _use_tmp_repo_root(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
+    (tmp_path / PHASE_DIR).mkdir(parents=True)
+
+
+class _OrchestrationRunner:
+    """Answers the real command_runner calls left once the pipeline's own
+    building blocks are monkeypatched (see _patch_pipeline): git status
+    (audit_inputs), git rev-parse HEAD (harness_head), git diff --name-only
+    (audited_inputs_changed), a second gh pr view (the post-run current
+    head), `git show` (only when materialize_grader is NOT monkeypatched),
+    and the head/base checker subprocess calls (distinguished by the
+    "codex-base-grader" mkdtemp prefix _run_base_grader uses for its own
+    temp dir). Anything else raises AssertionError, proving exactly which
+    commands ran.
+    """
+
+    def __init__(
+        self,
+        *,
+        dirty: str = "",
+        changed_paths: str = "",
+        harness_head: str = M,
+        current_head_ref_oid: str = H,
+        checker_stdout: str = COMPLETE_STATUS_JSON,
+        checker_returncode: int = 0,
+        base_checker_stdout: str | None = None,
+        base_checker_returncode: int = 0,
+        git_show_files: dict[str, str] | None = None,
+    ) -> None:
+        self.calls: list[list[str]] = []
+        self.dirty = dirty
+        self.changed_paths = changed_paths
+        self.harness_head = harness_head
+        self.current_head_ref_oid = current_head_ref_oid
+        self.checker_stdout = checker_stdout
+        self.checker_returncode = checker_returncode
+        self.base_checker_stdout = base_checker_stdout if base_checker_stdout is not None else checker_stdout
+        self.base_checker_returncode = base_checker_returncode
+        self.git_show_files = git_show_files or {}
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(list(argv))
+        if argv[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=self.dirty)
+        if argv == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=f"{self.harness_head}\n")
+        if argv[:2] == ["git", "diff"] and "--name-only" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout=self.changed_paths)
+        if argv[:3] == ["gh", "pr", "view"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({"headRefOid": self.current_head_ref_oid}))
+        if argv[:2] == ["git", "show"]:
+            _, _, relpath = argv[2].partition(":")
+            if relpath in self.git_show_files:
+                return subprocess.CompletedProcess(argv, 0, stdout=self.git_show_files[relpath])
+            return subprocess.CompletedProcess(argv, 1, stdout="")
+        if argv and argv[0] == sys.executable and len(argv) > 1 and "codex_report_status.py" in str(argv[1]):
+            if "codex-base-grader" in str(argv[1]):
+                return subprocess.CompletedProcess(
+                    argv, self.base_checker_returncode, stdout=self.base_checker_stdout
+                )
+            return subprocess.CompletedProcess(argv, self.checker_returncode, stdout=self.checker_stdout)
+        raise AssertionError(f"unscripted command: {argv}")
+
+
+def _patch_pipeline(
+    monkeypatch,
+    *,
+    pr_info: dict | None = None,
+    ci: dict | None = None,
+    input_text: str | None = None,
+    input_stats: dict | None = None,
+    provenance: dict | None = None,
+    provenance_error: str | None = None,
+    patch_materialize_grader: bool = True,
+    grader_supports_mode: bool = True,
+    boundary: dict | None = None,
+    codex_events: list[dict] | None = None,
+    codex_report: dict | None = None,
+    codex_result: tuple[int, list[str]] | None = None,
+    codex_error: str | None = None,
+) -> None:
+    """Monkeypatch every building block execute()/_execute_untrusted()/
+    _execute_inspection() calls, except the handful of raw command_runner
+    calls _OrchestrationRunner answers. Each keyword overrides one seam;
+    unset ones fall back to a COMPLETE, happy-path default (verified
+    boundary, clean event stream, no audited-input change).
+    """
+    monkeypatch.setattr(runner, "inspect_untrusted_pr", lambda run, command_runner: dict(pr_info or DEFAULT_PR_INFO))
+    monkeypatch.setattr(runner, "ci_evidence", lambda run, command_runner: dict(ci or DEFAULT_CI_EVIDENCE))
+
+    text = input_text if input_text is not None else DEFAULT_INPUT_TEXT
+    stats = dict(input_stats) if input_stats is not None else dict(DEFAULT_INPUT_STATS)
+    monkeypatch.setattr(runner, "build_inspection_input", lambda run, command_runner: (text, stats))
+
+    if provenance_error is not None:
+
+        def _raise_provenance(run, command_runner):
+            raise RunnerError(provenance_error)
+
+        monkeypatch.setattr(runner, "establish_trusted_main", _raise_provenance)
+    else:
+        monkeypatch.setattr(
+            runner, "establish_trusted_main", lambda run, command_runner: dict(provenance or DEFAULT_PROVENANCE)
+        )
+
+    if patch_materialize_grader:
+        monkeypatch.setattr(runner, "materialize_grader", lambda grader_ref, dest, command_runner: None)
+    monkeypatch.setattr(
+        runner, "trusted_main_grader_supports_mode", lambda grader_path, command_runner: grader_supports_mode
+    )
+    monkeypatch.setattr(
+        runner,
+        "verify_isolation_boundary",
+        lambda run, command_runner, **kw: dict(boundary or DEFAULT_BOUNDARY_VERIFIED),
+    )
+
+    if codex_error is not None:
+
+        def _raise_codex(run, **kw):
+            raise RunnerError(codex_error)
+
+        monkeypatch.setattr(runner, "run_untrusted_codex", _raise_codex)
+    else:
+        exit_code, problems = codex_result if codex_result is not None else (0, [])
+        events = codex_events if codex_events is not None else CLEAN_EVENTS
+        report = codex_report if codex_report is not None else {"verdict": "no-findings"}
+
+        def _fake_codex(run, **kw):
+            _write_jsonl(run.output(".jsonl"), events)
+            run.output(".last.json").write_text(json.dumps(report), encoding="utf-8")
+            return exit_code, problems
+
+        monkeypatch.setattr(runner, "run_untrusted_codex", _fake_codex)
+
+
+def _untrusted_run(**overrides) -> ReviewRun:
+    return _run(trusted=False, **overrides)
+
+
+def test_execute_untrusted_happy_path_is_complete(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 0
+
+    assert run.output(".status.json").read_text(encoding="utf-8") == COMPLETE_STATUS_JSON
+    assert not run.output(".base-status.json").exists()
+    meta = json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
+    assert meta["meta_version"] == 2
+    assert meta["review_mode"] == "inspection-only-ci-evidence"
+    assert meta["trusted"] is False
+    assert json.loads(run.output(".ci-evidence.json").read_text(encoding="utf-8")) == DEFAULT_CI_EVIDENCE
+    provenance = json.loads(run.output(".grader-provenance.json").read_text(encoding="utf-8"))
+    assert provenance["established"] is True
+    boundary = json.loads(run.output(".boundary.json").read_text(encoding="utf-8"))
+    assert boundary["verdict"] == "verified"
+    assert any(call[:3] == ["gh", "pr", "view"] for call in fake.calls)
+
+
+def test_execute_untrusted_oversize_input_stops_before_provenance(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    stats = dict(DEFAULT_INPUT_STATS)
+    stats["oversize"] = True
+    _patch_pipeline(monkeypatch, input_stats=stats)
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("must not be called once the input is oversize")
+
+    monkeypatch.setattr(runner, "establish_trusted_main", _forbidden)
+    monkeypatch.setattr(runner, "verify_isolation_boundary", _forbidden)
+    monkeypatch.setattr(runner, "run_untrusted_codex", _forbidden)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("exceeds MAX_INSPECTION_INPUT_BYTES" in reason for reason in status["reasons"])
+    assert not run.output(".grader-provenance.json").exists()
+    assert not run.output(".boundary.json").exists()
+
+
+def test_malicious_base_end_to_end(tmp_path, monkeypatch) -> None:
+    """establish_trusted_main's B13 rejection stops the run before any grader materializes or Codex launches."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(
+        monkeypatch,
+        provenance_error=f"base grader provenance not established: {B[:12]} is not an ancestor of origin/main",
+    )
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("must not be reached once grader provenance fails")
+
+    monkeypatch.setattr(runner, "verify_isolation_boundary", _forbidden)
+    monkeypatch.setattr(runner, "run_untrusted_codex", _forbidden)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    provenance = json.loads(run.output(".grader-provenance.json").read_text(encoding="utf-8"))
+    assert provenance["established"] is False
+    assert "is not an ancestor of origin/main" in provenance["reasons"][0]
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert "base grader provenance not established" in status["reasons"][0]
+    for call in fake.calls:
+        joined = " ".join(str(part) for part in call)
+        assert "git show" not in joined
+        assert call[0] != sys.executable
+
+
+def test_boundary_not_verified_stops_before_launch(tmp_path, monkeypatch, capsys) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, boundary=dict(DEFAULT_BOUNDARY_UNVERIFIED))
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("run_untrusted_codex must not be called when the boundary is not verified")
+
+    monkeypatch.setattr(runner, "run_untrusted_codex", _forbidden)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    boundary = json.loads(run.output(".boundary.json").read_text(encoding="utf-8"))
+    assert boundary["verdict"] == "unverified"
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any("isolation boundary not verified" in reason for reason in status["reasons"])
+    assert any("Codex was not run on the untrusted head" in reason for reason in status["reasons"])
+    out = capsys.readouterr().out
+    assert f"Codex INCOMPLETE for {H[:12]}" in out
+    assert "Ask the owner to decide" in out
+    assert "do not record this run as clean" in out
+    for call in fake.calls:
+        assert call[0] != "codex"
+        assert call[:2] != ["docker", "start"]
+
+
+def test_untrusted_codex_launch_failure_is_incomplete(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(
+        monkeypatch,
+        boundary=dict(DEFAULT_BOUNDARY_VERIFIED),
+        codex_error="untrusted Codex launch requires a verified container boundary",
+    )
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any(
+        "untrusted Codex launch failed: untrusted Codex launch requires a verified container boundary" in reason
+        for reason in status["reasons"]
+    )
+
+
+def test_untrusted_codex_refreshed_sign_in_is_incomplete_without_grading(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(
+        monkeypatch,
+        boundary=dict(DEFAULT_BOUNDARY_VERIFIED),
+        codex_result=(0, ["Codex refreshed its sign-in during the run; re-login needed"]),
+    )
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any("refreshed its sign-in" in reason for reason in status["reasons"])
+    assert not any(call[0] == sys.executable and "codex_report_status.py" in str(call[1]) for call in fake.calls)
+
+
+def test_event_audit_finds_tool_use_even_if_checker_would_say_complete(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, boundary=dict(DEFAULT_BOUNDARY_VERIFIED), codex_events=TOOL_USE_EVENTS)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()  # would answer the checker with COMPLETE_STATUS_JSON if ever asked
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any("inspection-only review used a tool: command_execution" in reason for reason in status["reasons"])
+    assert not any(call[0] == sys.executable and "codex_report_status.py" in str(call[1]) for call in fake.calls)
+
+
+def test_older_main_checker_stops_before_boundary_check(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, grader_supports_mode=False)
+    run = _untrusted_run()
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("must not be reached once the trusted-main checker predates --review-mode")
+
+    monkeypatch.setattr(runner, "verify_isolation_boundary", _forbidden)
+    monkeypatch.setattr(runner, "run_untrusted_codex", _forbidden)
+    fake = _OrchestrationRunner(changed_paths="tests/codex_review_run.py\n")
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any(
+        f"trusted-main checker at {M[:12]} predates --review-mode inspection-only" in reason
+        for reason in status["reasons"]
+    )
+
+
+def test_cross_grade_base_checker_incomplete_blocks_even_if_head_is_complete(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, boundary=dict(DEFAULT_BOUNDARY_VERIFIED), patch_materialize_grader=False)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(
+        changed_paths="tests/codex_review_run.py\n",
+        checker_stdout=COMPLETE_STATUS_JSON,
+        checker_returncode=0,
+        base_checker_stdout=INCOMPLETE_STATUS_JSON,
+        base_checker_returncode=1,
+        git_show_files={
+            "tests/codex_report_status.py": "# materialized from main\n",
+            ".claude/schemas/codex-review-findings.schema.json": "{}",
+        },
+    )
+
+    assert execute(run, command_runner=fake) == 3
+
+    assert run.output(".status.json").read_text(encoding="utf-8") == COMPLETE_STATUS_JSON
+    assert run.output(".base-status.json").read_text(encoding="utf-8") == INCOMPLETE_STATUS_JSON
+    for call in fake.calls:
+        joined = " ".join(str(part) for part in call)
+        assert f"git show {B}:" not in joined
+    show_refs = {call[2].split(":")[0] for call in fake.calls if call[:2] == ["git", "show"]}
+    assert show_refs == {M}
+
+
+def test_cross_grade_both_checkers_complete_is_complete(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, boundary=dict(DEFAULT_BOUNDARY_VERIFIED), patch_materialize_grader=False)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(
+        changed_paths="tests/codex_review_run.py\n",
+        checker_stdout=COMPLETE_STATUS_JSON,
+        checker_returncode=0,
+        base_checker_stdout=COMPLETE_STATUS_JSON,
+        base_checker_returncode=0,
+        git_show_files={
+            "tests/codex_report_status.py": "# materialized from main\n",
+            ".claude/schemas/codex-review-findings.schema.json": "{}",
+        },
+    )
+
+    assert execute(run, command_runner=fake) == 0
+
+    head_argv = next(c for c in fake.calls if c[0] == sys.executable and "codex-base-grader" not in str(c[1]))
+    base_argv = next(c for c in fake.calls if c[0] == sys.executable and "codex-base-grader" in str(c[1]))
+    assert "--review-mode" in head_argv and "inspection-only" in head_argv
+    assert "--review-mode" in base_argv and "inspection-only" in base_argv
+
+
+def test_execute_untrusted_refuses_when_output_already_exists(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    run = _untrusted_run()
+    run.out_base.parent.mkdir(parents=True)
+    run.output(".status.json").write_text("recorded")
+    fake = _OrchestrationRunner()
+
+    with pytest.raises(FileExistsError, match="already exist"):
+        execute(run, command_runner=fake)
+
+    assert not run.output(".meta.json").exists()
+    assert run.output(".status.json").read_text() == "recorded"
+
+
+def test_execute_untrusted_runner_error_before_reservation_writes_nothing(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+
+    def _raise(run, command_runner):
+        raise RunnerError("PR is not open: PR #91 state is CLOSED")
+
+    monkeypatch.setattr(runner, "inspect_untrusted_pr", _raise)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    with pytest.raises(RunnerError, match="PR is not open"):
+        execute(run, command_runner=fake)
+
+    assert not run.output(".meta.json").exists()
+    assert not run.output(".status.json").exists()
+
+
+def test_inspection_meta_shape() -> None:
+    run = _untrusted_run()
+    meta = inspection_meta(
+        run,
+        harness_head=M,
+        inputs={"docs/codex-adversarial-review-contract.md": {"sha256": "x", "committed_unchanged": True}},
+        audited_inputs_changed_in_diff=[],
+        input_stats=dict(DEFAULT_INPUT_STATS),
+    )
+
+    assert meta["meta_version"] == 2
+    assert meta["head"] == H
+    assert meta["base"] == B
+    assert meta["label"] == run.label
+    assert meta["attempt"] == run.attempt
+    assert meta["pr_url"] == run.pr_url
+    assert meta["trusted"] is False
+    assert meta["review_mode"] == "inspection-only-ci-evidence"
+    assert meta["inspection_template_version"] == "1"
+    assert meta["harness_head"] == M
+    assert meta["test_evidence_source"] == "GitHub CI check runs"
+    assert meta["audited_inputs_changed_in_diff"] == []
+    assert meta["base_grader_source"] == "trusted-origin-main"
+    assert meta["inspection_input"] == {
+        "bytes": DEFAULT_INPUT_STATS["bytes"],
+        "files_included": 1,
+        "files_omitted": 0,
+    }
+
+
+def test_output_suffixes_gained_the_three_new_outputs() -> None:
+    assert ".ci-evidence.json" in runner.OUTPUT_SUFFIXES
+    assert ".grader-provenance.json" in runner.OUTPUT_SUFFIXES
+    assert ".boundary.json" in runner.OUTPUT_SUFFIXES
+
+
+def test_write_json_atomic_round_trips(tmp_path) -> None:
+    path = tmp_path / "out.json"
+    runner._write_json_atomic(path, {"a": 1, "b": [1, 2, 3]})
+    assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1, "b": [1, 2, 3]}
+    assert list(tmp_path.iterdir()) == [path]  # no leftover temp file
