@@ -1233,13 +1233,16 @@ def audit_event_types(path: Path) -> list[str]:
 
     Fails closed: a missing file is itself a reason (never silently
     "clean"), and any item type or event type outside the allowlists is a
-    reason, whatever the checker's report says (T-85.1-22). An unparseable
+    reason, whatever the checker's report says (T-85.1-22). The item type is
+    checked on every item event (started, updated and completed), reported
+    once per item id. An unparseable
     line raises RunnerError rather than being skipped, since a corrupted
     stream cannot be audited at all.
     """
     if not path.exists():
         return ["no Codex event stream recorded"]
     reasons: list[str] = []
+    reported_items: set[tuple[str, object]] = set()
     for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw_line.strip()
         if not line:
@@ -1254,10 +1257,20 @@ def audit_event_types(path: Path) -> list[str]:
         if event_type not in ALLOWED_EVENT_TYPES:
             reasons.append(f"unexpected Codex event: {event_type}")
             continue
-        if event_type == "item.completed":
+        # Every item-bearing event (item.started / item.updated /
+        # item.completed) is checked, not only item.completed: a tool item cut
+        # off before it completes (e.g. by the timeout) is still a tool use.
+        if event_type.startswith("item."):
             item = event.get("item")
             item_type = item.get("type") if isinstance(item, dict) else None
             if item_type not in ALLOWED_ITEM_TYPES:
+                item_id = item.get("id") if isinstance(item, dict) else None
+                if isinstance(item_id, str):
+                    # One reason per item across its started/updated/completed lifecycle.
+                    key = (item_id, item_type)
+                    if key in reported_items:
+                        continue
+                    reported_items.add(key)
                 reasons.append(f"inspection-only review used a tool: {item_type}")
     return reasons
 
