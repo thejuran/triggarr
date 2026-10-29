@@ -2073,6 +2073,26 @@ def test_any_runner_error_after_reservation_writes_status_and_returns_3(tmp_path
     assert any("unexpected boundary failure" in r for r in status["reasons"])
 
 
+@pytest.mark.parametrize("error", [KeyError("missing"), OSError("disk full"), ValueError("bad")])
+def test_unexpected_error_after_reservation_writes_status_and_returns_3(tmp_path, monkeypatch, error) -> None:
+    """IN-03: a non-RunnerError after the reservation also ends with a status and exit 3, never exit 2."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+
+    def _raise(run, command_runner, **kw):
+        raise error
+
+    monkeypatch.setattr(runner, "verify_isolation_boundary", _raise)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert status["reasons"] == [f"harness failed after reserving the output: {type(error).__name__}"]
+
+
 # --- WR-06: reasons written to committed evidence never carry local paths -----
 
 
