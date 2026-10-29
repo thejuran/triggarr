@@ -64,6 +64,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 # The checkout this harness runs from. REPO_ROOT is where outputs are written
@@ -1119,6 +1120,168 @@ def trusted_main_grader_supports_mode(grader_path: Path, command_runner: Command
         return False
     stdout = proc.stdout or ""
     return "--review-mode" in stdout and "inspection-only" in stdout
+
+
+# --- Isolation boundary and the only Codex launch seam for untrusted heads ---
+# (Phase 85.1, B04-R3). The inner codex invocation, the event-stream audit,
+# the mandatory boundary gate and the launch seam are each fixed, tested
+# contracts before the container exists: this plan's verify_isolation_boundary
+# always returns "unverified" and run_untrusted_codex always refuses, so every
+# untrusted run still ends INCOMPLETE. Plans 85.1-07/08 replace only the
+# bodies below the already-tested gate/seam boundary.
+
+# The schema path as it exists inside the review container (read-only mount,
+# Plan 85.1-07), distinct from SCHEMA_PATH (the harness checkout's own copy).
+SCHEMA_IN_CONTAINER = "/schema/codex-review-findings.schema.json"
+
+# Codex features disabled inside the review container (defense in depth --
+# the guarantee is the verified container boundary, not this list). Built
+# from `codex features list` on this machine (codex-cli 0.153.4); every
+# entry below was confirmed present there. Extending this tuple is a
+# sensitive review-machinery change and needs its own review.
+DISABLED_FEATURES: tuple[str, ...] = (
+    "shell_tool",  # the model's own command-execution tool
+    "unified_exec",  # the unified exec/pty tool
+    "code_mode_host",  # code-mode sandboxed code execution
+    "browser_use",  # built-in browser automation
+    "browser_use_external",  # browser automation against an external browser
+    "browser_use_full_cdp_access",  # full Chrome DevTools Protocol access
+    "computer_use",  # computer-use (mouse/keyboard) tool
+    "in_app_browser",  # the in-app browser surface
+    "apps",  # third-party app integrations
+    "plugins",  # plugin loading
+    "remote_plugin",  # remote plugin loading
+    "plugin_sharing",  # plugin sharing/distribution
+    "view_image",  # reading image files from disk
+    "image_generation",  # image generation
+    "sleep_tool",  # the sleep/wait tool
+    "tool_suggest",  # tool-use suggestions (reduces incentive to reach for a tool)
+    "skill_mcp_dependency_install",  # installing skill/MCP dependencies
+    "tool_call_mcp_elicitation",  # MCP elicitation during a tool call
+    "hooks",  # user/project hook execution
+    "multi_agent",  # spawning sub-agents
+    "multi_agent_v2",  # spawning sub-agents (v2)
+    "workspace_dependencies",  # installing workspace dependencies
+)
+
+# Event-stream audit allowlists (T-85.1-22): any item type outside
+# ALLOWED_ITEM_TYPES or top-level event type outside ALLOWED_EVENT_TYPES
+# means Codex reached for something other than reading and reasoning about
+# the inert input -- itself the violation, whatever the checker's report
+# claims. Extending either requires a justified non-tool type actually
+# observed in a real Codex run, recorded in the plan's SUMMARY, never added
+# speculatively.
+ALLOWED_ITEM_TYPES = frozenset({"agent_message", "reasoning"})
+ALLOWED_EVENT_TYPES = frozenset(
+    {"thread.started", "turn.started", "turn.completed", "item.started", "item.updated", "item.completed"}
+)
+
+
+def inspection_codex_argv(cwd: str = "/work", last_json: str = "/out/last.json") -> list[str]:
+    """The inner ``codex exec`` command run inside the disposable review container.
+
+    Read-only and ephemeral, with every feature in DISABLED_FEATURES turned
+    off. Never writable: no extra writable directory is granted, no
+    ``workspace-write`` or ``danger-full-access`` sandbox, and no
+    ``--dangerously-*`` flag.
+    """
+    argv = [
+        "codex",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--strict-config",
+        "-C",
+        cwd,
+    ]
+    for feature in DISABLED_FEATURES:
+        argv += ["--disable", feature]
+    argv += ["--output-schema", SCHEMA_IN_CONTAINER, "--json", "-o", last_json, "-"]
+    return argv
+
+
+def audit_event_types(path: Path) -> list[str]:
+    """Audit a Codex event stream against ALLOWED_ITEM_TYPES/ALLOWED_EVENT_TYPES.
+
+    Fails closed: a missing file is itself a reason (never silently
+    "clean"), and any item type or event type outside the allowlists is a
+    reason, whatever the checker's report says (T-85.1-22). An unparseable
+    line raises RunnerError rather than being skipped, since a corrupted
+    stream cannot be audited at all.
+    """
+    if not path.exists():
+        return ["no Codex event stream recorded"]
+    reasons: list[str] = []
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError as exc:
+            raise RunnerError("could not audit Codex event stream") from exc
+        if not isinstance(event, dict):
+            raise RunnerError("could not audit Codex event stream")
+        event_type = event.get("type")
+        if event_type not in ALLOWED_EVENT_TYPES:
+            reasons.append(f"unexpected Codex event: {event_type}")
+            continue
+        if event_type == "item.completed":
+            item = event.get("item")
+            item_type = item.get("type") if isinstance(item, dict) else None
+            if item_type not in ALLOWED_ITEM_TYPES:
+                reasons.append(f"inspection-only review used a tool: {item_type}")
+    return reasons
+
+
+def verify_isolation_boundary(
+    run: ReviewRun, command_runner: CommandRunner, *, scratch: Path, inner_argv: list[str]
+) -> dict[str, object]:
+    """The mandatory precondition before any untrusted Codex launch (B04-R3).
+
+    Must never return "verified" without performing every deterministic
+    container check on that call -- no cache, no override flag. This
+    plan's body always returns "unverified": Plan 85.1-07 replaces it with
+    the real ``docker inspect``-based checks against a created container.
+    Issues no command of any kind.
+    """
+    return {
+        "boundary_version": 1,
+        "verdict": "unverified",
+        "reasons": ["deterministic container checks are not available in this build"],
+        "checked_at": datetime.now(UTC).isoformat(),
+        "head": run.head,
+        "label": run.label,
+        "attempt": run.attempt,
+    }
+
+
+def run_untrusted_codex(
+    run: ReviewRun,
+    *,
+    inner_argv: list[str],
+    prompt: str,
+    boundary: dict[str, object],
+    command_runner: CommandRunner,
+) -> tuple[int, list[str]]:
+    """The only seam through which an untrusted head may reach Codex (B04-R3).
+
+    The host must never run ``codex`` for an untrusted head outside this
+    function. A non-"verified" boundary is refused outright. Plan 85.1-08
+    replaces the body below the guard with the real disposable-container
+    launch (``docker create``/``docker start``); until then every call --
+    verified boundary or not -- raises the same refusal, so an untrusted
+    run can never reach Codex in this build. The disabled features in
+    *inner_argv* are defense in depth, not the guarantee: the guarantee is
+    the verified container boundary itself.
+    """
+    if boundary.get("verdict") != "verified":
+        raise RunnerError("untrusted Codex launch requires a verified container boundary")
+    raise RunnerError("untrusted Codex launch requires a verified container boundary")
 
 
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
