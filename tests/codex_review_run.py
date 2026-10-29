@@ -1007,6 +1007,120 @@ def render_inspection_prompt(run: ReviewRun, *, ci_evidence_text: str, input_tex
     return render_template(template, values, INSPECTION_PLACEHOLDERS)
 
 
+# --- Trusted-main grader provenance for untrusted reviews (B13, D-02) --------
+
+TRUSTED_MAIN_REF = "refs/remotes/origin/main"
+_PROVENANCE_PREFIX = "base grader provenance not established"
+
+
+def establish_trusted_main(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
+    """Establish that an untrusted run's grader is a freshly fetched origin/main, and only that.
+
+    This is the only provenance rule for untrusted runs: it never reads,
+    materializes or runs anything from --base (B13). Requiring the harness
+    checkout's own HEAD to equal the freshly fetched origin/main means the
+    checker, the prompt contract and this runner itself are all main's too
+    -- there is no bootstrap exception (D-02). _require_base_on_main (the
+    trusted path's own ancestor check) is unrelated and unaffected.
+    """
+    try:
+        fetched = command_runner(
+            ["git", "fetch", "--no-tags", "origin", f"+refs/heads/main:{TRUSTED_MAIN_REF}"],
+            cwd=HARNESS_ROOT,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: could not fetch origin main ({type(exc).__name__})") from exc
+    if fetched.returncode != 0:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: could not fetch origin main")
+
+    try:
+        resolved = command_runner(
+            ["git", "rev-parse", "--verify", f"{TRUSTED_MAIN_REF}^{{commit}}"],
+            cwd=HARNESS_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: could not resolve origin/main ({type(exc).__name__})") from exc
+    main_sha = (resolved.stdout or "").strip()
+    if resolved.returncode != 0 or not _SHA_RE.fullmatch(main_sha):
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: could not resolve origin/main")
+
+    try:
+        harness = command_runner(
+            ["git", "rev-parse", "HEAD"],
+            cwd=HARNESS_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: could not resolve the harness HEAD ({type(exc).__name__})") from exc
+    harness_head = (harness.stdout or "").strip()
+    if harness.returncode != 0 or not _SHA_RE.fullmatch(harness_head):
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: could not resolve the harness HEAD")
+    if harness_head != main_sha:
+        raise RunnerError(
+            f"{_PROVENANCE_PREFIX}: the harness checkout is {harness_head[:12]}, not the freshly fetched"
+            f" origin/main {main_sha[:12]}; run from a checkout of origin/main (D-02)"
+        )
+
+    try:
+        audit_inputs(command_runner)
+    except RunnerError as exc:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: audited inputs have uncommitted changes") from exc
+
+    try:
+        ancestor = command_runner(
+            ["git", "merge-base", "--is-ancestor", run.base, main_sha], cwd=HARNESS_ROOT, check=False
+        )
+    except OSError as exc:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: git merge-base could not run ({type(exc).__name__})") from exc
+    if ancestor.returncode == 1:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: {run.base[:12]} is not an ancestor of origin/main")
+    if ancestor.returncode != 0:
+        raise RunnerError(f"{_PROVENANCE_PREFIX}: git merge-base exited {ancestor.returncode}")
+
+    return {
+        "main_ref": TRUSTED_MAIN_REF,
+        "main_sha": main_sha,
+        "harness_head": harness_head,
+        "base": run.base,
+        "base_on_main": True,
+        "grader_ref": main_sha,
+        "grader_source": "trusted-origin-main",
+    }
+
+
+def trusted_main_grader_supports_mode(grader_path: Path, command_runner: CommandRunner) -> bool:
+    """True only if the checker materialized from MAIN_SHA already supports --review-mode inspection-only.
+
+    Never raises: an older main checker, a non-zero exit or any OSError is
+    reported as False, so the caller can report "older main checker" in
+    plain words instead of crashing. Runs the checker's --help only --
+    trusted-main Python, never anything from the reviewed head or --base.
+    """
+    try:
+        proc = command_runner(
+            [sys.executable, str(grader_path), "--help"],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+    except OSError:
+        return False
+    if proc.returncode != 0:
+        return False
+    stdout = proc.stdout or ""
+    return "--review-mode" in stdout and "inspection-only" in stdout
+
+
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
     """Replace local absolute paths in harness-written text with neutral markers.
 
