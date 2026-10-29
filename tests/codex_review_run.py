@@ -758,13 +758,28 @@ def flatten_pages(text: str, kind: str) -> list[dict]:
 
 _CHECK_RUN_FIELDS = ("id", "name", "head_sha", "status", "conclusion", "html_url")
 
+# The GitHub App that posts the `ci-ready` job's check run (.github/workflows/ci.yml,
+# job `ci-ready`, name "CI ready"). Any other app's "CI ready" is ignored (WR-03).
+CI_READY_APP_SLUG = "github-actions"
+
+
+def _check_suite_id(run_item: dict) -> object:
+    suite = run_item.get("check_suite")
+    return suite.get("id") if isinstance(suite, dict) else None
+
 
 def ci_evidence(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
     """Return the GitHub check-run evidence for exactly --head, requiring a successful CI ready.
 
-    Only the latest (highest id) "CI ready" check run for this exact head
-    counts (T-85.1-18): a successful run for another head, or an older
-    successful run superseded by a later failure, is never accepted.
+    Only "CI ready" check runs posted by the github-actions app
+    (CI_READY_APP_SLUG) and belonging to a check suite count (WR-03). If
+    such runs come from more than one check suite -- i.e. more than one
+    workflow produced a "CI ready" job for this head, which a head-defined
+    workflow file could do -- the evidence is refused outright. Within the
+    single workflow, only the latest (highest id) "CI ready" counts
+    (T-85.1-18): a successful run for another head, or an older successful
+    run superseded by a later failure, is never accepted; a re-run of the
+    same workflow stays in its check suite, so its latest result wins.
     """
     try:
         proc = command_runner(
@@ -780,12 +795,25 @@ def ci_evidence(run: ReviewRun, command_runner: CommandRunner) -> dict[str, obje
     if proc.returncode != 0:
         raise RunnerError(f"could not read GitHub check runs: gh api exited {proc.returncode}")
     runs = flatten_pages(proc.stdout or "", "check_runs")
-    for_head = [
-        {field: run_item.get(field) for field in _CHECK_RUN_FIELDS}
-        for run_item in runs
-        if isinstance(run_item, dict) and run_item.get("head_sha") == run.head
+    raw_for_head = [
+        run_item for run_item in runs if isinstance(run_item, dict) and run_item.get("head_sha") == run.head
     ]
-    ci_ready_runs = [item for item in for_head if item.get("name") == CI_READY_CHECK_NAME]
+    for_head = [{field: run_item.get(field) for field in _CHECK_RUN_FIELDS} for run_item in raw_for_head]
+    raw_ci_ready = [
+        run_item
+        for run_item in raw_for_head
+        if run_item.get("name") == CI_READY_CHECK_NAME
+        and isinstance(run_item.get("app"), dict)
+        and run_item["app"].get("slug") == CI_READY_APP_SLUG
+        and _check_suite_id(run_item) is not None
+    ]
+    suites = {str(_check_suite_id(run_item)) for run_item in raw_ci_ready}
+    if len(suites) > 1:
+        raise RunnerError(
+            f"refused: more than one workflow posted a {CI_READY_CHECK_NAME!r} check run for this exact head"
+            f" (check suites {sorted(suites)}); the CI evidence cannot be attributed to the repository's CI"
+        )
+    ci_ready_runs = [{field: run_item.get(field) for field in _CHECK_RUN_FIELDS} for run_item in raw_ci_ready]
     latest_ci_ready = max(ci_ready_runs, key=lambda item: item.get("id") or 0, default=None)
     if (
         latest_ci_ready is None
