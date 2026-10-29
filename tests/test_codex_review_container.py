@@ -424,6 +424,92 @@ def test_host_exposure_reasons_never_contain_raw_host_path(kind: str) -> None:
         assert str(_HOST_HOME) not in reason
 
 
+def test_host_exposure_review_positional_rejected_dotdot_into_repo_root() -> None:
+    # A non-tilde absolute path using ".." that still resolves (via
+    # os.path.realpath) underneath the protected repo root must be
+    # caught exactly like a plain absolute path would be.
+    sneaky = str(_REPO_ROOT_FAKE / "sub" / ".." / "other")
+    argv = [*_golden_review_argv(), sneaky]
+    reasons = host_exposure_problems(argv, kind="review", **_exposure_kwargs())
+    assert any("review argv references a protected host path: <REPO_ROOT>" in r for r in reasons)
+
+
+def test_host_exposure_review_argv_clean_when_cwd_is_repo_root(tmp_path_factory, monkeypatch) -> None:
+    """Regression for the 2026-10-29 live run (--verify-boundary always
+    unverified): host_exposure_problems() used to call os.path.realpath()
+    on every pre-boundary argv token, including fixed non-path literals
+    such as "ALL", "bridge", "256" and "no-new-privileges". realpath()
+    resolves a relative string against the process's current working
+    directory, and since the real runner is always invoked from the
+    repository root, every one of those literals resolved underneath
+    repo_root and was wrongly flagged. Existing fixtures never caught
+    this because they used a fake repo_root distinct from the test
+    process's actual cwd (CLAUDE.md), this test reproduces the real
+    condition instead: cwd == repo_root, with the per-run scratch
+    directories kept outside of it (as they are in real usage) so only
+    the cwd/repo_root collision is exercised.
+    """
+    repo_root = tmp_path_factory.mktemp("repo-root")
+    scratch = tmp_path_factory.mktemp("scratch")
+    monkeypatch.chdir(repo_root)
+
+    codex_home_dir = scratch / "codex-home"
+    out_dir = scratch / "out"
+    schema_dir = scratch / "schema"
+
+    review_argv = container_create_argv(
+        REVIEW_IMAGE_REF,
+        codex_home_dir=codex_home_dir,
+        out_dir=out_dir,
+        schema_dir=schema_dir,
+        inner_argv=inspection_codex_argv(),
+    )
+    reasons = host_exposure_problems(
+        review_argv,
+        kind="review",
+        per_run_dirs=(codex_home_dir, out_dir, schema_dir),
+        host_home=_HOST_HOME,
+        repo_root=repo_root,
+        host_codex_home=_HOST_CODEX_HOME,
+    )
+    assert reasons == []
+
+
+def test_host_exposure_canary_argv_clean_when_cwd_is_repo_root(tmp_path_factory, monkeypatch) -> None:
+    """Same regression as the review-argv case above, for the canary argv."""
+    repo_root = tmp_path_factory.mktemp("repo-root")
+    scratch = tmp_path_factory.mktemp("scratch")
+    monkeypatch.chdir(repo_root)
+
+    codex_home_dir = scratch / "codex-home"
+    out_dir = scratch / "out"
+    schema_dir = scratch / "schema"
+
+    canary_pairs = canary_paths(
+        host_home=_HOST_HOME,
+        repo_root=repo_root,
+        host_codex_home=_HOST_CODEX_HOME,
+        ssh_auth_sock=_SSH_AUTH_SOCK,
+        host_canary_file=scratch / "host-canary-marker",
+    )
+    canary_argv = container_check_argv(
+        REVIEW_IMAGE_REF,
+        codex_home_dir,
+        out_dir,
+        schema_dir,
+        canary_paths=[path for path, _marker in canary_pairs],
+    )
+    reasons = host_exposure_problems(
+        canary_argv,
+        kind="canary",
+        per_run_dirs=(codex_home_dir, out_dir, schema_dir),
+        host_home=_HOST_HOME,
+        repo_root=repo_root,
+        host_codex_home=_HOST_CODEX_HOME,
+    )
+    assert reasons == []
+
+
 # --- output schema launch contract / staging --------------------------------
 
 
@@ -1697,6 +1783,39 @@ def test_verify_isolation_boundary_per_run_dir_overlaps_protected_path(tmp_path:
     )
     assert boundary["verdict"] == "unverified"
     assert any("per-run directory overlaps a protected host path: <HOST_HOME>" in r for r in boundary["reasons"])
+    assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
+
+
+def test_verify_isolation_boundary_host_exposure_failure_skips_credential_copy(tmp_path: Path, monkeypatch) -> None:
+    """The host-exposure check on the canary/review argv must run before
+    prepare_codex_home() ever copies the host's Codex sign-in to scratch
+    disk (2026-10-29 live run: the copy was staged, then cleaned up
+    unused, before the exposure check that should have run first failed).
+    Forcing host_exposure_problems() to report a problem must mean the
+    credential copy destination is never even created.
+    """
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture)
+    ledger = ContainerLedger(docker)
+    monkeypatch.setattr(
+        codex_review_run,
+        "host_exposure_problems",
+        lambda *args, **kwargs: ["canary argv references a protected host path: <REPO_ROOT>"],
+    )
+
+    boundary = verify_isolation_boundary(
+        _boundary_run(),
+        docker,
+        scratch=fixture.scratch,
+        inner_argv=fixture.inner_argv,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+        ledger=ledger,
+        now=_NOW,
+    )
+
+    assert boundary["verdict"] == "unverified"
+    assert any("canary argv references a protected host path: <REPO_ROOT>" in r for r in boundary["reasons"])
+    assert not fixture.codex_home_dir.exists()
     assert not any(c[:2] == ["docker", "create"] for c in docker.calls)
 
 
