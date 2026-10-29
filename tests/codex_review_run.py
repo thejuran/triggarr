@@ -1588,6 +1588,232 @@ def stage_output_schema(dest_dir: Path, *, expected_sha256: str) -> str:
     return actual_sha256
 
 
+# B16: the names docker inspect reports for a CREATED (not yet started)
+# container's Config.Env -- the image's own ENV plus any -e flags, with no
+# HOSTNAME. The static check (verify_container_config) accepts only these
+# four names; it must never accept a runtime-only addition.
+CONTAINER_BASE_ENV = frozenset({"PATH", "HOME", "LANG", "CODEX_HOME"})
+# B16: Docker adds HOSTNAME when the container actually starts, and the
+# canary's own `sh -c` sets PWD; the live canary check accepts exactly
+# these two names in addition to CONTAINER_BASE_ENV, and nothing else --
+# this is not a broad allowlist, it is the specific, documented runtime
+# addition over the static set.
+CANARY_RUNTIME_ENV = frozenset({"HOSTNAME", "PWD"})
+
+
+@dataclass(frozen=True)
+class ExpectedContainer:
+    """The review container's expected `docker inspect` configuration (B04-R3)."""
+
+    image_id: str
+    mounts: dict[str, tuple[str, bool]]  # destination -> (source, RW)
+    tmpfs: frozenset[str]  # expected tmpfs destinations
+    user: str
+    env_names: frozenset[str]
+    entrypoint: list[str]
+    cmd: list[str]
+
+
+@dataclass(frozen=True)
+class ExpectedCanary:
+    """The canary script's expected clean report (B04-R3)."""
+
+    paths: tuple[tuple[str, str], ...]  # (path, marker), all expected absent
+    schema_sha256: str
+    env_names: frozenset[str]
+
+
+def verify_container_config(inspect_json: str, expected: ExpectedContainer) -> list[str]:
+    """Statically verify a created (not started) container's `docker inspect`
+    output against *expected* (B04-R3, B16, B17).
+
+    Collects every reason it finds rather than raising; malformed input
+    (unparseable JSON, something other than a one-element array, or a
+    container missing its top-level Config/HostConfig/Mounts sections) is
+    reported as the single reason "could not read docker inspect output"
+    rather than partially checked. Mount sources are compared after
+    os.path.realpath on both sides (Docker Desktop may report
+    /private/var/... for /var/...).
+    """
+    try:
+        data = json.loads(inspect_json)
+    except ValueError:
+        return ["could not read docker inspect output"]
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+        return ["could not read docker inspect output"]
+    container = data[0]
+    if "Config" not in container or "HostConfig" not in container or "Mounts" not in container:
+        return ["could not read docker inspect output"]
+
+    config = container.get("Config") or {}
+    host_config = container.get("HostConfig") or {}
+    mounts = container.get("Mounts") or []
+    reasons: list[str] = []
+
+    if config.get("User") != expected.user:
+        reasons.append("container user is not 10001:10001")
+
+    if container.get("Image") != expected.image_id:
+        reasons.append("image mismatch")
+
+    if config.get("Entrypoint") != expected.entrypoint or config.get("Cmd") != expected.cmd:
+        reasons.append("container command mismatch")
+
+    env_entries = config.get("Env") or []
+    seen_names: set[str] = set()
+    for entry in env_entries:
+        name = entry.split("=", 1)[0] if isinstance(entry, str) else str(entry)
+        seen_names.add(name)
+        if name not in expected.env_names:
+            reasons.append(f"unexpected environment variable: {name}")
+    for name in sorted(expected.env_names - seen_names):
+        reasons.append(f"missing environment variable: {name}")
+
+    actual_mounts: dict[str, tuple[object, bool]] = {}
+    for mount in mounts:
+        if not isinstance(mount, dict):
+            continue
+        actual_mounts[mount.get("Destination")] = (mount.get("Source"), bool(mount.get("RW")))
+    for dest, (actual_source, actual_rw) in actual_mounts.items():
+        if dest not in expected.mounts:
+            reasons.append(f"unexpected mount: {dest}")
+            continue
+        expected_source, expected_rw = expected.mounts[dest]
+        if os.path.realpath(str(actual_source)) != os.path.realpath(str(expected_source)):
+            reasons.append(f"mount source mismatch: {dest}")
+        if actual_rw != expected_rw:
+            if dest == "/schema" and actual_rw:
+                reasons.append("schema mount is writable")
+            else:
+                reasons.append(f"mount access mismatch: {dest}")
+    for dest in expected.mounts:
+        if dest not in actual_mounts:
+            reasons.append(f"missing mount: {dest}")
+
+    if host_config.get("Binds"):
+        reasons.append("unexpected bind")
+
+    actual_tmpfs = set((host_config.get("Tmpfs") or {}).keys())
+    expected_tmpfs = set(expected.tmpfs)
+    for dest in sorted(actual_tmpfs - expected_tmpfs):
+        reasons.append(f"unexpected tmpfs: {dest}")
+    for dest in sorted(expected_tmpfs - actual_tmpfs):
+        reasons.append(f"missing tmpfs: {dest}")
+
+    if host_config.get("Privileged"):
+        reasons.append("privileged container")
+
+    if host_config.get("CapDrop") != ["ALL"] or host_config.get("CapAdd"):
+        reasons.append("capabilities not dropped")
+
+    if not host_config.get("ReadonlyRootfs"):
+        reasons.append("root filesystem is writable")
+
+    security_opt = host_config.get("SecurityOpt") or []
+    if "no-new-privileges" not in security_opt:
+        reasons.append("no-new-privileges not set")
+    if any(opt in ("seccomp=unconfined", "apparmor=unconfined") for opt in security_opt):
+        reasons.append("security profile disabled")
+
+    network_mode = host_config.get("NetworkMode")
+    if network_mode != "bridge":
+        reasons.append(f"network mode is not bridge: {network_mode}")
+
+    if host_config.get("PortBindings"):
+        reasons.append("published ports")
+
+    for key, field in (("pid", "PidMode"), ("ipc", "IpcMode"), ("uts", "UTSMode"), ("userns", "UsernsMode")):
+        if host_config.get(field) == "host":
+            reasons.append(f"host namespace: {key}")
+
+    if host_config.get("Devices"):
+        reasons.append("host devices exposed")
+
+    return reasons
+
+
+_CANARY_PRESENCE_RE = re.compile(r"^(present|absent) (.+)$")
+_CANARY_WORK_ENTRIES_RE = re.compile(r"^work-entries (\d+)$")
+_CANARY_CODEX_HOME_ENTRY_RE = re.compile(r"^codex-home-entry (.+)$")
+_CANARY_SCHEMA_SHA_RE = re.compile(r"^schema-sha256 ([0-9a-f]{64})$")
+_CANARY_ENV_RE = re.compile(r"^env (.+)$")
+
+
+def parse_canary_check(stdout: str, expected: ExpectedCanary) -> list[str]:
+    """Parse the canary script's stdout and verify every claim it reports (B04-R3).
+
+    Fails closed: a missing ``canary-done`` terminator, a missing
+    expected path line, a duplicate line, or any line this parser does
+    not recognize is "could not parse canary check output" -- an
+    incomplete or malformed transcript is never treated as clean. Every
+    reason about a path names it by marker only, never raw.
+    """
+    expected_markers = dict(expected.paths)
+    seen_lines: set[str] = set()
+    seen_paths: dict[str, str] = {}
+    codex_home_entries: list[str] = []
+    env_names: list[str] = []
+    work_entries: int | None = None
+    schema_sha256: str | None = None
+    saw_done = False
+
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line in seen_lines:
+            return ["could not parse canary check output"]
+        seen_lines.add(line)
+        if line == "canary-done":
+            saw_done = True
+            continue
+        match = _CANARY_PRESENCE_RE.match(line)
+        if match:
+            state, path = match.group(1), match.group(2)
+            if path in seen_paths:
+                return ["could not parse canary check output"]
+            seen_paths[path] = state
+            continue
+        match = _CANARY_WORK_ENTRIES_RE.match(line)
+        if match:
+            work_entries = int(match.group(1))
+            continue
+        match = _CANARY_CODEX_HOME_ENTRY_RE.match(line)
+        if match:
+            codex_home_entries.append(match.group(1))
+            continue
+        match = _CANARY_SCHEMA_SHA_RE.match(line)
+        if match:
+            schema_sha256 = match.group(1)
+            continue
+        match = _CANARY_ENV_RE.match(line)
+        if match:
+            env_names.append(match.group(1))
+            continue
+        return ["could not parse canary check output"]
+
+    if not saw_done or work_entries is None or schema_sha256 is None:
+        return ["could not parse canary check output"]
+    if any(path not in seen_paths for path in expected_markers):
+        return ["could not parse canary check output"]
+
+    reasons: list[str] = []
+    for path, state in seen_paths.items():
+        if state == "present":
+            marker = expected_markers.get(path, path)
+            reasons.append(f"canary path visible in container: {marker}")
+    if work_entries != 0:
+        reasons.append("review working directory not empty")
+    if sorted(codex_home_entries) != ["auth.json"]:
+        reasons.append("unexpected /codex-home contents")
+    if schema_sha256 != expected.schema_sha256:
+        reasons.append("output schema hash mismatch inside the container")
+    for name in env_names:
+        if name not in expected.env_names:
+            reasons.append(f"unexpected environment variable in container: {name}")
+    return reasons
+
+
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
     """Replace local absolute paths in harness-written text with neutral markers.
 
