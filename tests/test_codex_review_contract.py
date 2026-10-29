@@ -183,9 +183,12 @@ def test_inspection_prompt_states_no_tools_and_untrusted_input() -> None:
         "reproduced: true is not allowed in this mode",
     ):
         assert phrase in prompt, f"inspection-only prompt missing: {phrase!r}"
-    fence_begin_idx = prompt.index("{{INPUT_FENCE}}-BEGIN")
-    input_idx = prompt.index("{{INPUT}}", fence_begin_idx)
-    fence_end_idx = prompt.index("{{INPUT_FENCE}}-END", input_idx)
+    # The explanatory sentence earlier in the prompt also names these fence
+    # lines in prose, so anchor on the trailing, standalone occurrence (the
+    # actual fence) rather than the first match.
+    input_idx = prompt.rindex("{{INPUT}}")
+    fence_begin_idx = prompt.rindex("{{INPUT_FENCE}}-BEGIN", 0, input_idx)
+    fence_end_idx = prompt.rindex("{{INPUT_FENCE}}-END", input_idx)
     assert fence_begin_idx < input_idx < fence_end_idx, "fence lines must bracket {{INPUT}} in order"
     tail = prompt[fence_begin_idx:].splitlines()
     assert tail[:3] == ["{{INPUT_FENCE}}-BEGIN", "{{INPUT}}", "{{INPUT_FENCE}}-END"]

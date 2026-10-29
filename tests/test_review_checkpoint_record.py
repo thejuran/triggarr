@@ -42,6 +42,19 @@ def _codex_table_line(label: str) -> str:
     return next(line for line in _read().splitlines() if line.strip().startswith(f"| {label} |"))
 
 
+def _codex_section_table_line(label: str) -> str:
+    """Like _codex_table_line, but scoped to the "### Codex" table.
+
+    Needed for labels (e.g. "Status") that also appear in the earlier
+    "### BM review" table, where the unscoped lookup would return the wrong row.
+    """
+    text = _read()
+    start = text.index("### Codex")
+    end = text.index("### Greptile", start)
+    section = text[start:end]
+    return next(line for line in section.splitlines() if line.strip().startswith(f"| {label} |"))
+
+
 def test_raw_output_paths_include_pytest_evidence() -> None:
     assert "`.pytest.txt`" in _codex_table_line("Raw output paths")
 
@@ -73,7 +86,7 @@ def test_raw_output_paths_include_new_outputs() -> None:
 # boundary verdict for that exact head and attempt is "verified", on top of
 # the existing .status.json/.base-status.json completeness rules.
 def test_status_row_defines_inspection_only_completeness() -> None:
-    line = _codex_table_line("Status")
+    line = _codex_section_table_line("Status")
     assert "inspection-only" in line
     assert "`.boundary.json`" in line
     assert "verified" in line
