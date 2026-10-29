@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,14 +29,17 @@ from tests.codex_review_run import (
     MAX_INSPECTION_INPUT_BYTES,
     PER_FILE_CONTENT_LIMIT,
     REPO_SLUG,
+    TRUSTED_MAIN_REF,
     ReviewRun,
     RunnerError,
     build_inspection_input,
     ci_evidence,
+    establish_trusted_main,
     flatten_pages,
     inspect_untrusted_pr,
     new_input_fence,
     render_inspection_prompt,
+    trusted_main_grader_supports_mode,
 )
 
 H = "1" * 40  # reviewed head
@@ -555,3 +559,153 @@ def test_render_inspection_prompt_keeps_literal_placeholder_look_alikes() -> Non
         run, ci_evidence_text="evidence", input_text="literal {{HEAD_SHA}} stays put", fence="TRIGGARR-INERT-ffff"
     )
     assert "literal {{HEAD_SHA}} stays put" in text
+
+
+# --- establish_trusted_main ---------------------------------------------------
+
+
+def _trusted_main_script(
+    *,
+    fetch_rc: int = 0,
+    main_sha: str = M,
+    rev_parse_main_rc: int = 0,
+    harness_head: str = M,
+    rev_parse_harness_rc: int = 0,
+    status_dirty: str = "",
+    ancestor_rc: int = 0,
+) -> list:
+    return [
+        (("git", "fetch", "--no-tags", "origin", f"+refs/heads/main:{TRUSTED_MAIN_REF}"), _ok(returncode=fetch_rc)),
+        (
+            ("git", "rev-parse", "--verify", f"{TRUSTED_MAIN_REF}^{{commit}}"),
+            _ok(stdout=f"{main_sha}\n", returncode=rev_parse_main_rc),
+        ),
+        (
+            lambda argv: argv == ["git", "rev-parse", "HEAD"],
+            _ok(stdout=f"{harness_head}\n", returncode=rev_parse_harness_rc),
+        ),
+        (("git", "status", "--porcelain"), _ok(stdout=status_dirty)),
+        (("git", "merge-base", "--is-ancestor"), _ok(returncode=ancestor_rc)),
+    ]
+
+
+def test_establish_trusted_main_returns_provenance_dict() -> None:
+    run = _run(base=B)
+    fake = _ScriptedRunner(_trusted_main_script())
+
+    result = establish_trusted_main(run, fake)
+
+    assert result == {
+        "main_ref": TRUSTED_MAIN_REF,
+        "main_sha": M,
+        "harness_head": M,
+        "base": B,
+        "base_on_main": True,
+        "grader_ref": M,
+        "grader_source": "trusted-origin-main",
+    }
+
+
+def test_establish_trusted_main_fetch_failure() -> None:
+    run = _run()
+    fake = _ScriptedRunner(_trusted_main_script(fetch_rc=1))
+    with pytest.raises(RunnerError, match="could not fetch origin main"):
+        establish_trusted_main(run, fake)
+
+
+def test_establish_trusted_main_rev_parse_main_failure() -> None:
+    run = _run()
+    fake = _ScriptedRunner(_trusted_main_script(main_sha="not-a-sha"))
+    with pytest.raises(RunnerError, match="could not resolve origin/main"):
+        establish_trusted_main(run, fake)
+
+
+def test_establish_trusted_main_harness_head_mismatch() -> None:
+    run = _run()
+    fake = _ScriptedRunner(_trusted_main_script(harness_head=H))
+    with pytest.raises(RunnerError) as exc_info:
+        establish_trusted_main(run, fake)
+    message = str(exc_info.value)
+    assert "the harness checkout is" in message
+    assert "run from a checkout of origin/main (D-02)" in message
+
+
+def test_establish_trusted_main_audited_inputs_dirty() -> None:
+    run = _run()
+    fake = _ScriptedRunner(_trusted_main_script(status_dirty=" M tests/codex_review_run.py\n"))
+    with pytest.raises(RunnerError, match="audited inputs have uncommitted changes"):
+        establish_trusted_main(run, fake)
+
+
+def test_establish_trusted_main_oserror_wraps_exception_type_name() -> None:
+    run = _run()
+
+    def _raise(argv, **kwargs):
+        raise OSError("boom")
+
+    fake = _ScriptedRunner([(("git", "fetch"), _raise)])
+    with pytest.raises(
+        RunnerError, match=r"base grader provenance not established: could not fetch origin main \(OSError\)"
+    ):
+        establish_trusted_main(run, fake)
+
+
+def test_malicious_base_is_rejected_before_any_grader_runs() -> None:
+    run = _run(base="9" * 40)
+    fake = _ScriptedRunner(_trusted_main_script(ancestor_rc=1))
+
+    with pytest.raises(RunnerError, match="is not an ancestor of origin/main"):
+        establish_trusted_main(run, fake)
+
+    for call in fake.calls:
+        joined = " ".join(str(part) for part in call)
+        assert "git show" not in joined
+        assert call[0] != sys.executable
+
+
+def test_malicious_base_unexpected_exit_fails_closed() -> None:
+    run = _run(base="9" * 40)
+    fake = _ScriptedRunner(_trusted_main_script(ancestor_rc=128))
+
+    with pytest.raises(RunnerError, match="git merge-base exited 128"):
+        establish_trusted_main(run, fake)
+
+
+# --- trusted_main_grader_supports_mode ----------------------------------------
+
+
+def test_trusted_main_grader_supports_mode_true(tmp_path) -> None:
+    grader_path = tmp_path / "codex_report_status.py"
+
+    def _runner(argv, **kwargs):
+        assert argv == [sys.executable, str(grader_path), "--help"]
+        return subprocess.CompletedProcess(argv, 0, stdout="--review-mode {trusted,inspection-only}\n")
+
+    assert trusted_main_grader_supports_mode(grader_path, _runner) is True
+
+
+def test_older_main_checker_is_reported(tmp_path) -> None:
+    grader_path = tmp_path / "codex_report_status.py"
+
+    def _runner(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 0, stdout="usage: codex_report_status.py [-h] --legacy-v1\n")
+
+    assert trusted_main_grader_supports_mode(grader_path, _runner) is False
+
+
+def test_trusted_main_grader_supports_mode_false_on_nonzero_exit(tmp_path) -> None:
+    grader_path = tmp_path / "codex_report_status.py"
+
+    def _runner(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 2, stdout="--review-mode inspection-only")
+
+    assert trusted_main_grader_supports_mode(grader_path, _runner) is False
+
+
+def test_trusted_main_grader_supports_mode_false_on_oserror(tmp_path) -> None:
+    grader_path = tmp_path / "codex_report_status.py"
+
+    def _runner(argv, **kwargs):
+        raise OSError("boom")
+
+    assert trusted_main_grader_supports_mode(grader_path, _runner) is False
