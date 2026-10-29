@@ -169,6 +169,13 @@ OUTPUT_SUFFIXES = (
 # Where the harness evidence is copied inside the temp worktree (untracked),
 # so the prompt names a working-copy-relative path and never the operator's
 # home directory.
+# The exact relative-path shape every reserved review output lives under
+# (the same shape .github/scripts/acceptance-readiness.cjs's OUT_PATH_RE
+# matches -- a drift test pins the two). completion_gate() refuses
+# anything else before touching the filesystem (B18).
+_OUT_PREFIX_RE = re.compile(r"^\.planning/phases/[A-Za-z0-9._-]+/codex/[0-9a-f]{12}-[a-z0-9-]+-a[0-9]+$")
+_OUT_PREFIX_NAME_RE = re.compile(r"^([0-9a-f]{12})-[a-z0-9-]+-a([0-9]+)$")
+
 EVIDENCE_RELPATH = ".codex-review-evidence/pytest.txt"
 CODEX_TIMEOUT_SECONDS = 1800
 CODEX_TIMEOUT_EXIT = 124  # the exit code GNU timeout uses, so records stay comparable
@@ -2853,6 +2860,107 @@ def _write_json_atomic(path: Path, obj: object) -> None:
         raise
 
 
+def completion_gate(out_prefix: Path) -> list[str]:
+    """Decide whether the attempt at *out_prefix* counts as COMPLETE (B18, D-03).
+
+    Reads exactly the records bound to this one attempt prefix --
+    ``<out_prefix>.meta.json``/``.status.json``/``.boundary.json``/
+    ``.grader-provenance.json`` and, when the diff changed an audited
+    input, ``.base-status.json`` -- through safe_read_regular_file(),
+    never a glob over other attempts: an earlier failed attempt for the
+    same head can never block a later COMPLETE one, and a COMPLETE-
+    looking later attempt can never borrow an earlier attempt's files
+    (T-85.1-38/39/42). *out_prefix* is relative to REPO_ROOT, the exact
+    shape ReviewRun.output() writes -- the same shape
+    .github/scripts/acceptance-readiness.cjs's OUT_PATH_RE matches (a
+    drift test pins the two). Collects every reason it finds rather than
+    stopping at the first; an empty list means the gate passes.
+    """
+    prefix_text = str(out_prefix)
+    if not _OUT_PREFIX_RE.fullmatch(prefix_text):
+        return ["output prefix is not a phase codex output path"]
+
+    name = out_prefix.name
+    name_match = _OUT_PREFIX_NAME_RE.fullmatch(name)
+    head12, attempt_str = name_match.group(1), name_match.group(2)
+    attempt = int(attempt_str)
+    directory = REPO_ROOT / out_prefix.parent
+
+    reasons: list[str] = []
+
+    def _read(suffix: str, *, missing_reason: str | None = None) -> dict[str, object] | None:
+        try:
+            raw = safe_read_regular_file(directory, f"{name}{suffix}", max_bytes=LAST_MESSAGE_MAX_BYTES)
+        except FileNotFoundError:
+            reasons.append(missing_reason or f"missing {prefix_text}{suffix}")
+            return None
+        except UnsafeOutputError as exc:
+            reasons.append(str(exc))
+            return None
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            reasons.append(missing_reason or f"{prefix_text}{suffix} is not valid JSON")
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    meta = _read(".meta.json") or {}
+    if meta.get("review_mode") != "inspection-only-ci-evidence":
+        reasons.append("not an inspection-only record")
+    if not str(meta.get("head") or "").startswith(head12) or meta.get("attempt") != attempt:
+        reasons.append("meta does not match the output prefix")
+
+    boundary = _read(".boundary.json")
+    if boundary is not None:
+        if boundary.get("verdict") != "verified":
+            reasons.append("isolation boundary not verified")
+        elif boundary.get("head") != meta.get("head") or boundary.get("attempt") != attempt:
+            reasons.append("boundary record is for another head or attempt")
+
+    status = _read(".status.json")
+    if status is not None:
+        if status.get("status") != "complete":
+            reasons.append("Codex status is not complete")
+        elif status.get("inspected_head") != meta.get("head") or status.get("inspected_base") != meta.get("base"):
+            reasons.append("status is not bound to this head and base")
+
+    provenance = _read(
+        ".grader-provenance.json", missing_reason="grader provenance not established from origin/main"
+    )
+    if provenance is not None and (
+        not provenance.get("established")
+        or provenance.get("base_on_main") is not True
+        or provenance.get("grader_source") != "trusted-origin-main"
+    ):
+        reasons.append("grader provenance not established from origin/main")
+
+    if meta.get("audited_inputs_changed_in_diff"):
+        base_status = _read(
+            ".base-status.json",
+            missing_reason=(
+                f"base-status required (grader changed in this diff) but {prefix_text}.base-status.json is missing"
+            ),
+        )
+        if base_status is not None:
+            if base_status.get("status") != "complete":
+                reasons.append("base-status is not complete")
+            elif (
+                base_status.get("inspected_head") != meta.get("head")
+                or base_status.get("inspected_base") != meta.get("base")
+            ):
+                reasons.append("base-status is not bound to this head and base")
+
+    return reasons
+
+
+def _completion_gate_main(out_prefix: Path) -> int:
+    """Print the gate's JSON verdict for *out_prefix* and return 0 (pass) or 3 (fail)."""
+    reasons = completion_gate(out_prefix)
+    result = {"gate": "fail" if reasons else "pass", "prefix": str(out_prefix), "reasons": reasons}
+    print(json.dumps(result))
+    return 3 if reasons else 0
+
+
 def materialize_grader(grader_ref: str, dest: Path, command_runner: CommandRunner) -> None:
     """Write the checker and schema exactly as they exist at *grader_ref* into *dest*.
 
@@ -3625,9 +3733,52 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_tool_parser() -> argparse.ArgumentParser:
+    """The operator-tool parser for --completion-gate/--verify-boundary (B18, D-03).
+
+    Deliberately separate from _build_parser()'s review parser rather
+    than adding these as optional flags there: no review flag (--head,
+    --base, --trusted, ...) is ever valid alongside either tool mode, so
+    this parser defines none of them -- an unrecognized flag (including
+    every review flag) is an argparse error, not a weakened review
+    parser.
+    """
+    parser = argparse.ArgumentParser(
+        description="Operator tools: the per-attempt completion gate (B18) and a standalone isolation-boundary check."
+    )
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument(
+        "--completion-gate",
+        dest="completion_gate",
+        metavar="PREFIX",
+        type=Path,
+        help="Print the B18 completion-gate verdict for one attempt's output prefix",
+    )
+    modes.add_argument(
+        "--verify-boundary",
+        dest="verify_boundary",
+        action="store_true",
+        help="Verify the real isolation boundary against the built review image; no PR, no review",
+    )
+    parser.add_argument(
+        "--with-probes",
+        action="store_true",
+        help="With --verify-boundary only: also run supplementary behavioral probes (never proof)",
+    )
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
     previous_handlers = install_signal_handlers()
     try:
+        effective_argv = sys.argv[1:] if argv is None else argv
+        if "--completion-gate" in effective_argv:
+            tool_parser = _build_tool_parser()
+            tool_args = tool_parser.parse_args(effective_argv)
+            if tool_args.with_probes and not tool_args.verify_boundary:
+                tool_parser.error("--with-probes is only valid with --verify-boundary")
+            return _completion_gate_main(tool_args.completion_gate)
+
         parser = _build_parser()
         args = parser.parse_args(argv)
         try:
