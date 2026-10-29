@@ -695,7 +695,11 @@ def test_review_image_dockerfile_label_constant() -> None:
 
 @pytest.mark.parametrize(
     "porcelain",
-    [" M docker/codex-review/Dockerfile\n", "M  docker/codex-review/Dockerfile\n", " D docker/codex-review/Dockerfile\n"],
+    [
+        " M docker/codex-review/Dockerfile\n",
+        "M  docker/codex-review/Dockerfile\n",
+        " D docker/codex-review/Dockerfile\n",
+    ],
 )
 def test_review_image_dockerfile_sha256_refuses_uncommitted_changes(porcelain) -> None:
     """BM iter-2 WR-01: the fingerprint is of the committed Dockerfile, so an uncommitted edit is refused."""
@@ -1867,8 +1871,13 @@ def test_verify_isolation_boundary_happy_path(tmp_path: Path, monkeypatch) -> No
     canary_rm_index = docker.calls.index(["docker", "rm", "-f", docker.canary_id])
     assert canary_rm_index < review_create_index
 
-    for env in docker.envs:
-        assert env == docker_env(os.environ)
+    # Every docker call gets the minimal docker env; the one git call (the
+    # committed-Dockerfile check, WR-01) is a plain read-only git status.
+    for call, env in zip(docker.calls, docker.envs, strict=True):
+        if call[0] == "docker":
+            assert env == docker_env(os.environ)
+        else:
+            assert call == _DOCKERFILE_STATUS_ARGV
 
     assert ledger.close() == []
     assert not fixture.scratch.exists()

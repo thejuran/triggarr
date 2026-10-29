@@ -1502,7 +1502,8 @@ def verify_isolation_boundary(
     container check on that call -- no cache, no override flag: the
     review image (docker image inspect: the expected Codex version label,
     and a dockerfile-sha256 label equal to the sha256 of this checkout's
-    docker/codex-review/Dockerfile, WR-09; the image id resolved here is
+    committed docker/codex-review/Dockerfile, WR-09, refused if it has an
+    uncommitted change, WR-01; the image id resolved here is
     recorded in the result and the created review container's Image must
     equal it), the credential snapshot and 7-day preflight
     (D-11), the per-run directories (refused if any overlaps the host
@@ -1545,7 +1546,9 @@ def verify_isolation_boundary(
     if image_id is None:
         return _unverified([f"review image not built or not labelled: run {' '.join(REVIEW_IMAGE_BUILD_ARGV)}"])
     try:
-        dockerfile_sha256 = review_image_dockerfile_sha256()
+        dockerfile_sha256 = review_image_dockerfile_sha256(command_runner)
+    except RunnerError as exc:
+        return _unverified([str(exc)])
     except OSError as exc:
         return _unverified([f"could not read {REVIEW_IMAGE_DOCKERFILE_RELPATH}: {type(exc).__name__}"])
     if image_dockerfile_sha256 != dockerfile_sha256:
@@ -2011,7 +2014,8 @@ REVIEW_IMAGE_REF = f"{REVIEW_IMAGE_REPO}:{REVIEW_CODEX_VERSION}"
 REVIEW_IMAGE_LABEL = "org.triggarr.codex-review"
 # WR-09: the build also records the sha256 of the committed Dockerfile it was
 # built from, and verify_isolation_boundary() refuses any image whose label
-# differs from this checkout's docker/codex-review/Dockerfile. A tag and a
+# differs from this checkout's committed docker/codex-review/Dockerfile (an
+# uncommitted edit to it is refused outright, WR-01). A tag and a
 # version label alone are trivially set by any `docker build`, including one
 # run from an untrusted branch's modified Dockerfile.
 REVIEW_IMAGE_DOCKERFILE_LABEL = "org.triggarr.codex-review.dockerfile-sha256"
@@ -2019,18 +2023,35 @@ REVIEW_IMAGE_DOCKERFILE_RELPATH = "docker/codex-review/Dockerfile"
 REVIEW_IMAGE_DOCKERFILE = HARNESS_ROOT / REVIEW_IMAGE_DOCKERFILE_RELPATH
 
 
-def review_image_dockerfile_sha256() -> str:
-    """The sha256 of the harness checkout's review Dockerfile (raises OSError if unreadable)."""
+def review_image_dockerfile_sha256(command_runner: CommandRunner) -> str:
+    """The sha256 of the committed review Dockerfile (BM iter-2 WR-01).
+
+    Follows audit_inputs()'s rule for committed state: the Dockerfile must
+    have no uncommitted change (modified, staged, deleted or untracked) in
+    the harness checkout, so the working-tree bytes hashed here are exactly
+    the committed blob -- on the inspection-only path that is origin/main's,
+    since the harness HEAD must equal it (D-02). A RunnerError otherwise; an
+    OSError if the file cannot be read.
+    """
+    status = _git_stdout(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", REVIEW_IMAGE_DOCKERFILE_RELPATH],
+        command_runner,
+    )
+    if status.strip():
+        raise RunnerError(
+            f"{REVIEW_IMAGE_DOCKERFILE_RELPATH} has uncommitted changes; the review image must be built from the"
+            " committed Dockerfile, so commit or discard the change and rebuild"
+        )
     return hashlib.sha256(REVIEW_IMAGE_DOCKERFILE.read_bytes()).hexdigest()
 
 
-def review_image_build_argv() -> list[str]:
-    """The exact build command, labelling the image with the Dockerfile's sha256 (WR-09)."""
+def review_image_build_argv(command_runner: CommandRunner) -> list[str]:
+    """The exact build command, labelling the image with the committed Dockerfile's sha256 (WR-09, WR-01)."""
     return [
         "docker",
         "build",
         "--label",
-        f"{REVIEW_IMAGE_DOCKERFILE_LABEL}={review_image_dockerfile_sha256()}",
+        f"{REVIEW_IMAGE_DOCKERFILE_LABEL}={review_image_dockerfile_sha256(command_runner)}",
         "-f",
         REVIEW_IMAGE_DOCKERFILE_RELPATH,
         "-t",
