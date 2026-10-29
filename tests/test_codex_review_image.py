@@ -75,10 +75,17 @@ def test_final_stage_has_no_extra_tooling() -> None:
         assert token not in final_stage, f"final stage must not contain {token!r}: {final_stage!r}"
 
 
-def test_final_stage_copies_only_codex_binary() -> None:
+def test_final_stage_copies_codex_binary_and_ca_bundle() -> None:
+    """The final stage ships the Codex binary plus the CA bundle the fetch
+    stage already resolved -- and nothing else -- so Codex can validate TLS
+    to the model backend without any package manager in the final image.
+    """
     final_stage = _final_stage()
     copy_lines = [line.strip() for line in final_stage.splitlines() if line.strip().startswith("COPY")]
-    assert copy_lines == ["COPY --from=fetch /usr/local/bin/codex /usr/local/bin/codex"]
+    assert copy_lines == [
+        "COPY --from=fetch /usr/local/bin/codex /usr/local/bin/codex",
+        "COPY --from=fetch /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt",
+    ]
 
 
 def test_final_stage_declares_required_runtime_config() -> None:
@@ -95,6 +102,20 @@ def test_final_stage_declares_required_runtime_config() -> None:
     ), "final stage must label the image with the Codex version"
 
 
+def test_final_stage_declares_no_extra_env_vars() -> None:
+    """The ENV instruction must still declare exactly HOME, LANG, CODEX_HOME.
+
+    The CA bundle lands at the Debian-standard /etc/ssl/certs/ca-certificates.crt
+    path, which rustls-native-certs' openssl-probe lookup finds on its own --
+    no SSL_CERT_FILE is needed, so verify_container_config's CONTAINER_BASE_ENV
+    allowlist (PATH, HOME, LANG, CODEX_HOME) never has to grow for this fix.
+    """
+    final_stage = _final_stage()
+    assert "SSL_CERT_FILE" not in final_stage
+    env_block = re.search(r"ENV\s+HOME=\S+\s*\\\s*\n\s*LANG=\S+\s*\\\s*\n\s*CODEX_HOME=\S+\s*\n", final_stage)
+    assert env_block is not None, "ENV instruction must declare exactly HOME, LANG, CODEX_HOME and nothing else"
+
+
 def test_final_stage_creates_non_root_review_user() -> None:
     final_stage = _final_stage()
     assert re.search(r"groupadd\s+-g\s+10001\s+review\b", final_stage), "final stage must create group review:10001"
@@ -108,6 +129,11 @@ def test_header_comment_documents_digest_pinning_and_sensitivity() -> None:
     assert "deliberately new" in header
     assert "digest" in header
     assert "sensitive review-machinery change" in header
+
+
+def test_header_comment_documents_ca_bundle() -> None:
+    header = _header_comment()
+    assert "CA" in header or "certificate" in header
 
 
 def test_review_image_version_parity() -> None:

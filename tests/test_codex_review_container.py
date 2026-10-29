@@ -36,6 +36,7 @@ from tests.codex_review_run import (
     CONTAINER_BASE_ENV,
     CONTAINER_TMPFS,
     CONTAINER_USER,
+    KNOWN_TOOL_ITEM_TYPES,
     PROBE_PROMPT_TEMPLATE,
     REVIEW_CODEX_VERSION,
     REVIEW_IMAGE_BUILD_ARGV,
@@ -49,6 +50,7 @@ from tests.codex_review_run import (
     ReviewRun,
     RunnerError,
     UnsafeOutputError,
+    _probe_tool_use_reasons,
     canary_paths,
     container_check_argv,
     container_create_argv,
@@ -2796,6 +2798,59 @@ def test_probe_disallowed_item_type_downgrades_verdict(tmp_path: Path, monkeypat
 
     assert any("probe used a tool: command_execution" in r for r in result["reasons"])
     assert result["summary"] is None
+
+
+def test_probe_error_event_is_not_labelled_a_tool(tmp_path: Path, monkeypatch) -> None:
+    """An `error`-typed item (e.g. a TLS/connectivity failure reaching the
+    model backend) still downgrades the verdict -- the probe stays
+    fail-closed -- but must not be reported as "probe used a tool", since no
+    tool actually ran (the regression behind the run-2 "NOT verified" result).
+    """
+    fixture, docker = _prepared_fixture(tmp_path, monkeypatch)
+    docker.live.add(docker.review_id)
+    boundary = _verified_boundary(fixture, docker)
+    ledger = ContainerLedger(docker)
+    ledger.register(docker.review_id, "review")
+    scratch = tmp_path / "probe-scratch"
+    scratch.mkdir()
+
+    error_event = json.dumps({"type": "item.completed", "item": {"type": "error"}}) + "\n"
+
+    def _runner(argv, **kwargs):
+        if argv[:4] == ["docker", "start", "-a", "-i"]:
+            kwargs["stdout"].write(error_event)
+            return subprocess.CompletedProcess(argv, 0)
+        return docker(argv, **kwargs)
+
+    result = run_boundary_probe(boundary, scratch=scratch, command_runner=_runner, ledger=ledger)
+
+    assert any("probe produced an unexpected event: error" in r for r in result["reasons"])
+    assert not any("probe used a tool" in r for r in result["reasons"])
+    assert result["summary"] is None
+
+
+@pytest.mark.parametrize("item_type", sorted(KNOWN_TOOL_ITEM_TYPES))
+def test_probe_tool_use_reasons_labels_known_tool_types(tmp_path: Path, item_type: str) -> None:
+    path = tmp_path / "probe.jsonl"
+    path.write_text(json.dumps({"type": "item.completed", "item": {"type": item_type}}) + "\n", encoding="utf-8")
+    assert _probe_tool_use_reasons(path) == [f"probe used a tool: {item_type}"]
+
+
+@pytest.mark.parametrize("item_type", ["error", "something_unforeseen"])
+def test_probe_tool_use_reasons_labels_non_tool_types_as_unexpected_events(tmp_path: Path, item_type: str) -> None:
+    path = tmp_path / "probe.jsonl"
+    path.write_text(json.dumps({"type": "item.completed", "item": {"type": item_type}}) + "\n", encoding="utf-8")
+    assert _probe_tool_use_reasons(path) == [f"probe produced an unexpected event: {item_type}"]
+
+
+def test_probe_tool_use_reasons_allowed_types_are_clean(tmp_path: Path) -> None:
+    path = tmp_path / "probe.jsonl"
+    events = [
+        {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}},
+        {"type": "item.completed", "item": {"type": "reasoning", "text": "..."}},
+    ]
+    path.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    assert _probe_tool_use_reasons(path) == []
 
 
 def test_probe_observed_token_downgrades_verdict(tmp_path: Path, monkeypatch) -> None:
