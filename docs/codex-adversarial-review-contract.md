@@ -110,7 +110,7 @@ The report schema is version 2. A version 2 report is incomplete if `review_comp
 
 ## Raw output storage
 
-The raw Codex output is preserved (D-11) with one pre-grading redaction stage (Phase 85 D-18, WR-04): after Codex exits and before the checker runs, the runner replaces local absolute paths (home, worktree, scratch, repository and temp directories) in `.jsonl` and `.last.json` with neutral markers and changes nothing else; the checker grades the redacted report. Store it at `OUT=.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>`, keeping:
+The raw Codex output is preserved (D-11) with one pre-grading redaction stage (Phase 85 D-18, WR-04): after Codex exits and before the checker runs, the runner replaces local absolute paths (home, worktree, scratch, repository and temp directories) in `.jsonl` and `.last.json` with neutral markers and changes nothing else; the checker grades the redacted report. Reasons the runner itself writes into `.status.json`, `.base-status.json`, `.boundary.json` and `.grader-provenance.json` are redacted the same way (home directory `~`, repository `<repo>`, temp directories `<tmp>`). Store it at `OUT=.planning/phases/<phase-dir>/codex/<head12>-<label>-a<attempt>`, keeping:
 
 - `.prompt.txt` — the exact prompt sent to Codex on stdin
 - `.meta.json` — the run's provenance: template version, the sha256 of the contract, schema, checker and runner, whether each was committed unchanged (always true: the runner refuses to start otherwise), the harness checkout's HEAD, whether `--allow-stale-head` was used, and whether the source was trusted

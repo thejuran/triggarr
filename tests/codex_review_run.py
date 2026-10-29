@@ -2820,6 +2820,24 @@ def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
     return text
 
 
+def redact_reason(text: str) -> str:
+    """Redact local absolute paths from a reason headed for committed evidence (WR-06).
+
+    Uses redact_local_paths() with no separate worktree/scratch (``/`` is
+    never substituted): every per-run directory is created under the system
+    temp directory, so the home directory (``~``), the repository
+    (``<repo>``) and any temp path (``<tmp>``) never reach `.status.json`,
+    `.base-status.json`, `.boundary.json` or `.grader-provenance.json`.
+    """
+    root = Path("/")
+    return redact_local_paths(text, worktree=root, scratch=root)
+
+
+def _redacted_json_obj(obj: object) -> object:
+    """*obj* with every local absolute path in its string values redacted (WR-06)."""
+    return json.loads(redact_reason(json.dumps(obj)))
+
+
 def _publish_evidence(run: ReviewRun, worktree: Path, scratch: Path, text: str) -> None:
     """Write the evidence next to the raw outputs and copy it into the worktree."""
     text = redact_local_paths(text, worktree=worktree, scratch=scratch)
@@ -3102,7 +3120,7 @@ def _write_status_stub(run: ReviewRun, reason: str) -> None:
     """Record an incomplete status when the checker's own result is unavailable."""
     stub = {
         "status": "incomplete",
-        "reasons": [reason],
+        "reasons": [redact_reason(reason)],
         "qualified_ids": [],
         "finding_count": 0,
         "inspected_head": None,
@@ -3117,7 +3135,7 @@ def _write_base_status_stub(run: ReviewRun, reason: str) -> None:
     """Record an incomplete .base-status.json when the base checker's own result is unavailable."""
     stub = {
         "status": "incomplete",
-        "reasons": [reason],
+        "reasons": [redact_reason(reason)],
         "qualified_ids": [],
         "finding_count": 0,
         "inspected_head": None,
@@ -3640,7 +3658,7 @@ def _record_cleanup_escalation(run: ReviewRun, problems: list[str], *, in_flight
                     cause_reason = f"interrupted by {type(in_flight).__name__}"
                 else:
                     cause_reason = f"run failed: {type(in_flight).__name__}"
-            reasons = ([cause_reason] if cause_reason else []) + list(problems)
+            reasons = [redact_reason(r) for r in ([cause_reason] if cause_reason else []) + list(problems)]
             stub = {
                 "status": "incomplete",
                 "reasons": reasons,
@@ -3657,6 +3675,7 @@ def _record_cleanup_escalation(run: ReviewRun, problems: list[str], *, in_flight
         existing["status"] = "incomplete"
         existing_reasons = list(existing.get("reasons") or [])
         for problem in problems:
+            problem = redact_reason(problem)
             if problem not in existing_reasons:
                 existing_reasons.append(problem)
         existing["reasons"] = existing_reasons
@@ -3817,7 +3836,9 @@ def _execute_inspection(
     try:
         provenance = establish_trusted_main(run, command_runner)
     except RunnerError as exc:
-        _write_json_atomic(run.output(".grader-provenance.json"), {"established": False, "reasons": [str(exc)]})
+        _write_json_atomic(
+            run.output(".grader-provenance.json"), {"established": False, "reasons": [redact_reason(str(exc))]}
+        )
         return _inspection_incomplete(run, str(exc))
     _write_json_atomic(run.output(".grader-provenance.json"), {"established": True, **provenance})
 
@@ -3858,7 +3879,8 @@ def _execute_inspection(
                 ledger=ledger,
             )
             _write_json_atomic(
-                run.output(".boundary.json"), {k: v for k, v in boundary.items() if not k.startswith("_")}
+                run.output(".boundary.json"),
+                _redacted_json_obj({k: v for k, v in boundary.items() if not k.startswith("_")}),
             )
             if boundary.get("verdict") != "verified":
                 reasons = "; ".join(str(reason) for reason in (boundary.get("reasons") or []))
@@ -3916,7 +3938,9 @@ def _execute_inspection(
     )
     if reverify_problem is not None:
         reason = f"trusted grader could not be re-verified after the run: {reverify_problem}"
-        _write_json_atomic(run.output(".grader-provenance.json"), {"established": False, "reasons": [reason]})
+        _write_json_atomic(
+            run.output(".grader-provenance.json"), {"established": False, "reasons": [redact_reason(reason)]}
+        )
         return _inspection_incomplete(run, reason)
 
     checker_full_argv = checker_argv(
