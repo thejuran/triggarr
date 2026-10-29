@@ -5,6 +5,10 @@
 
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
+const {spawnSync} = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const {readiness, codexStatusFor} = require('./acceptance-readiness.cjs');
 const {INSPECTION_REVIEW_MODE, codexStatusFromOutput, validateFallback} = require('./codex-fallback.cjs');
 
@@ -29,7 +33,19 @@ function verifiedBoundary(overrides = {}) {
   };
 }
 
-// --- Fixture table: 8 rows covering completeness and fallback-eligibility ---
+function validProvenance(overrides = {}) {
+  return {
+    established: true, main_ref: 'refs/remotes/origin/main', main_sha: BASE, harness_head: BASE, base: BASE,
+    base_on_main: true, grader_ref: BASE, grader_source: 'trusted-origin-main', ...overrides,
+  };
+}
+
+// --- Fixture table: rows covering completeness and fallback-eligibility -----
+//
+// provenance defaults to a valid trusted-main record when a row omits it;
+// null means no .grader-provenance.json at all. metaAttempt (default:
+// attempt) lets a row record a meta attempt that differs from the -aN suffix
+// of its output prefix (WR-05).
 //
 // fallbackEligible is null for rows where the item is already complete
 // through the direct path (readiness never consults the fallback in that
@@ -115,6 +131,78 @@ const ROWS = [
     fallbackEligible: true,
   },
   {
+    label: 'missing-provenance-complete-claim',
+    headTrust: 'untrusted',
+    attempt: 2,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    boundary: verifiedBoundary({attempt: 2}),
+    provenance: null,
+    expectComplete: false,
+    fallbackEligible: false,
+  },
+  {
+    label: 'provenance-not-established-complete-claim',
+    headTrust: 'untrusted',
+    attempt: 2,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    boundary: verifiedBoundary({attempt: 2}),
+    provenance: {established: false, reasons: ['trusted grader could not be re-verified after the run']},
+    expectComplete: false,
+    fallbackEligible: false,
+  },
+  {
+    label: 'provenance-base-not-on-main-complete-claim',
+    headTrust: 'untrusted',
+    attempt: 2,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    boundary: verifiedBoundary({attempt: 2}),
+    provenance: validProvenance({base_on_main: false}),
+    expectComplete: false,
+    fallbackEligible: false,
+  },
+  {
+    label: 'provenance-wrong-grader-source-complete-claim',
+    headTrust: 'untrusted',
+    attempt: 2,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    boundary: verifiedBoundary({attempt: 2}),
+    provenance: validProvenance({grader_source: 'base'}),
+    expectComplete: false,
+    fallbackEligible: false,
+  },
+  {
+    label: 'provenance-not-an-object-complete-claim',
+    headTrust: 'untrusted',
+    attempt: 2,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    boundary: verifiedBoundary({attempt: 2}),
+    provenance: [],
+    expectComplete: false,
+    fallbackEligible: false,
+  },
+  {
+    label: 'meta-attempt-differs-from-prefix-complete-claim',
+    headTrust: 'untrusted',
+    attempt: 2,
+    metaAttempt: 3,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    boundary: verifiedBoundary({attempt: 3}), // bound to the meta's attempt, not the prefix's
+    expectComplete: false,
+    fallbackEligible: false,
+  },
+  {
     label: 'unverified-boundary-complete-claim-attempt-2',
     headTrust: 'untrusted',
     attempt: 2,
@@ -127,13 +215,17 @@ const ROWS = [
   },
 ];
 
-assert.ok(ROWS.length >= 8, 'the parity fixture table must have at least 8 rows');
+assert.ok(ROWS.length >= 14, 'the parity fixture table must have at least 14 rows');
+
+function provenanceFor(row) {
+  return row.provenance === undefined ? validProvenance() : row.provenance;
+}
 
 function filesFor(row, prefix) {
   const reviewMode = row.reviewMode || INSPECTION_REVIEW_MODE;
   const meta = {
-    meta_version: 2, head: HEAD, base: BASE, attempt: row.attempt, review_mode: reviewMode,
-    ...row.meta,
+    meta_version: 2, head: HEAD, base: BASE, attempt: row.metaAttempt ?? row.attempt, review_mode: reviewMode,
+    trusted: row.headTrust === 'trusted', ...row.meta,
   };
   const files = {
     [`${prefix}.status.json`]: JSON.stringify(row.status),
@@ -141,6 +233,8 @@ function filesFor(row, prefix) {
   };
   if (row.baseStatus !== null) files[`${prefix}.base-status.json`] = JSON.stringify(row.baseStatus);
   if (row.boundary !== null) files[`${prefix}.boundary.json`] = JSON.stringify(row.boundary);
+  const provenance = provenanceFor(row);
+  if (provenance !== null) files[`${prefix}.grader-provenance.json`] = JSON.stringify(provenance);
   return {files, meta};
 }
 
@@ -184,7 +278,8 @@ function readinessInputFor(row, prefix, meta, fallback) {
     dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
     blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
     codex: {
-      status: row.status, baseStatus: row.baseStatus, meta, boundary: row.boundary, out: prefix,
+      status: row.status, baseStatus: row.baseStatus, meta, boundary: row.boundary, provenance: provenanceFor(row),
+      out: prefix,
     },
     fallback,
   };
@@ -200,7 +295,8 @@ for (const row of ROWS) {
     assert.equal(fromOutput.complete, row.expectComplete, `codexStatusFromOutput.complete for ${row.label}`);
 
     const fromGate = codexStatusFor({
-      status: row.status, baseStatus: row.baseStatus, meta, boundary: row.boundary, auditedChanged: [],
+      status: row.status, baseStatus: row.baseStatus, meta, boundary: row.boundary, provenance: provenanceFor(row),
+      auditedChanged: [],
       out: prefix, head: HEAD, base: BASE, reviewedBase: BASE, pr: PR,
       prAuthor: row.headTrust === 'untrusted' ? 'dependabot[bot]' : 'thejuran',
       headTrust: row.headTrust, fallback: null,
@@ -233,3 +329,52 @@ for (const row of ROWS.filter(r => r.fallbackEligible !== null)) {
     assert.equal(direct.ok, row.fallbackEligible, `${row.label}: expected fallbackEligible=${row.fallbackEligible}`);
   });
 }
+
+// --- Cross-language parity (WR-05): the Python completion gate agrees ------
+//
+// tests/codex_review_run.py's completion_gate() is the other acceptor named
+// in docs/review-checkpoint-record.md. Every inspection-only row is written
+// to a temporary REPO_ROOT and graded by the real Python gate; its pass/fail
+// must equal the JS completeness above.
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const PY_GATE = `
+import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from tests import codex_review_run as runner
+runner.REPO_ROOT = Path(sys.argv[2])
+print(json.dumps({p: runner.completion_gate(Path(p)) for p in json.loads(sys.argv[3])}))
+`;
+
+test('cross-language parity: Python completion_gate agrees with JS completeness on every inspection-only row', () => {
+  const inspectionRows = ROWS.filter(row => (row.reviewMode || INSPECTION_REVIEW_MODE) === INSPECTION_REVIEW_MODE);
+  assert.ok(inspectionRows.length >= 12);
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-parity-'));
+  try {
+    const prefixes = [];
+    for (const row of inspectionRows) {
+      const prefix = outPrefix(row.label, row.attempt);
+      prefixes.push(prefix);
+      const {files} = filesFor(row, prefix);
+      for (const [relPath, text] of Object.entries(files)) {
+        fs.mkdirSync(path.join(tmp, path.dirname(relPath)), {recursive: true});
+        fs.writeFileSync(path.join(tmp, relPath), text);
+      }
+    }
+    const proc = spawnSync(
+      'uv', ['run', '--frozen', '--quiet', 'python', '-c', PY_GATE, REPO_ROOT, tmp, JSON.stringify(prefixes)],
+      {cwd: REPO_ROOT, encoding: 'utf8'},
+    );
+    assert.equal(proc.status, 0, `python completion gate failed to run: ${proc.stderr || proc.error}`);
+    const gate = JSON.parse(proc.stdout);
+    for (const row of inspectionRows) {
+      const prefix = outPrefix(row.label, row.attempt);
+      const fromOutput = codexStatusFromOutput(prefix, filePath => fs.readFileSync(path.join(tmp, filePath), 'utf8'));
+      const pythonPass = gate[prefix].length === 0;
+      assert.equal(pythonPass, row.expectComplete, `${row.label}: python gate reasons ${JSON.stringify(gate[prefix])}`);
+      assert.equal(fromOutput.complete, pythonPass, `${row.label}: JS complete=${fromOutput.complete} vs python pass=${pythonPass}`);
+    }
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
