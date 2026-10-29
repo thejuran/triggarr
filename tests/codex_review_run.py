@@ -3651,6 +3651,42 @@ def verify_boundary_main(*, with_probes: bool, command_runner: CommandRunner = r
     return 0 if verdict == "verified" else 3
 
 
+def _reverify_trusted_grader(
+    run: ReviewRun,
+    *,
+    provenance: dict[str, object],
+    inputs: dict[str, dict[str, object]],
+    command_runner: CommandRunner,
+) -> str | None:
+    """Re-check, after the Codex run and before grading, that the grader is still the verified main one (WR-02).
+
+    Re-runs establish_trusted_main() (a fresh origin/main fetch, harness
+    HEAD == origin/main, audited inputs committed and clean, base on main)
+    and requires the same main SHA and harness HEAD it recorded before the
+    run, then re-hashes the audited inputs and requires them to equal the
+    hashes recorded in .meta.json. Returns None when everything still
+    matches, otherwise a short plain reason. Never raises RunnerError.
+    """
+    try:
+        fresh = establish_trusted_main(run, command_runner)
+    except RunnerError as exc:
+        return str(exc)
+    for key in ("main_sha", "harness_head", "grader_ref"):
+        if fresh.get(key) != provenance.get(key):
+            return (
+                f"origin/main or the harness checkout moved during the run ({key} was"
+                f" {str(provenance.get(key))[:12]}, now {str(fresh.get(key))[:12]})"
+            )
+    try:
+        inputs_after = audit_inputs(command_runner)
+    except RunnerError as exc:
+        return str(exc)
+    if inputs_after != inputs:
+        changed = sorted(path for path in AUDITED_INPUTS if inputs_after.get(path) != inputs.get(path))
+        return f"audited inputs changed during the run: {changed}"
+    return None
+
+
 def _execute_inspection(
     run: ReviewRun,
     *,
@@ -3761,6 +3797,19 @@ def _execute_inspection(
         current_head = _refetch_head_ref_oid(run, pr_info, command_runner)
     except RunnerError as exc:
         return _inspection_incomplete(run, f"could not confirm the current head after the run: {exc}")
+
+    # WR-02: the checker below runs from the harness checkout up to the Codex
+    # time limit after establish_trusted_main verified it. Re-establish
+    # provenance from a fresh origin/main fetch and re-audit the inputs now,
+    # exactly as the trusted path re-audits before grading; any drift means the
+    # checkout's checker is no longer the verified one, so it never runs.
+    reverify_problem = _reverify_trusted_grader(
+        run, provenance=provenance, inputs=inputs, command_runner=command_runner
+    )
+    if reverify_problem is not None:
+        reason = f"trusted grader could not be re-verified after the run: {reverify_problem}"
+        _write_json_atomic(run.output(".grader-provenance.json"), {"established": False, "reasons": [reason]})
+        return _inspection_incomplete(run, reason)
 
     checker_full_argv = checker_argv(
         run, exit_code=codex_exit, current_head=current_head, review_mode="inspection-only"
