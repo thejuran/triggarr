@@ -1,14 +1,17 @@
-"""Tests for the untrusted-head inspection-only review input and provenance.
+"""Tests for the untrusted-head inspection-only review input, provenance and orchestration.
 
 Covers tests/codex_review_run.py's inspection-only building blocks (Phase
 85.1, D-07): PR/CI preconditions (inspect_untrusted_pr, ci_evidence,
 flatten_pages), the inert inspection input built purely from git objects
 (build_inspection_input), the inspection-only prompt (new_input_fence,
-render_inspection_prompt), and trusted-main grader provenance
-(establish_trusted_main, trusted_main_grader_supports_mode). No
-orchestration is exercised here -- Plan 85.1-06 wires these into execute().
-Every git/gh/Python command is answered by a scripted command runner; no
-real subprocess, checkout, or Codex call is ever made.
+render_inspection_prompt), trusted-main grader provenance
+(establish_trusted_main, trusted_main_grader_supports_mode), the inner Codex
+argv and event-stream audit (inspection_codex_argv, audit_event_types), the
+isolation-boundary gate and launch seam (verify_isolation_boundary,
+run_untrusted_codex), and the end-to-end orchestration that wires all of the
+above into execute() (D-07, B14). Every git/gh/Python command is answered by
+a scripted command runner; no real subprocess, checkout, or Codex call is
+ever made.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -32,14 +36,18 @@ from tests.codex_review_run import (
     TRUSTED_MAIN_REF,
     ReviewRun,
     RunnerError,
+    audit_event_types,
     build_inspection_input,
     ci_evidence,
     establish_trusted_main,
     flatten_pages,
     inspect_untrusted_pr,
+    inspection_codex_argv,
     new_input_fence,
     render_inspection_prompt,
+    run_untrusted_codex,
     trusted_main_grader_supports_mode,
+    verify_isolation_boundary,
 )
 
 H = "1" * 40  # reviewed head
@@ -709,3 +717,189 @@ def test_trusted_main_grader_supports_mode_false_on_oserror(tmp_path) -> None:
         raise OSError("boom")
 
     assert trusted_main_grader_supports_mode(grader_path, _runner) is False
+
+
+# --- inspection_codex_argv (the inner `codex exec` command, B04-R3) -----------
+
+REQUIRED_DISABLED_FEATURES = frozenset(
+    {
+        "shell_tool",
+        "unified_exec",
+        "code_mode_host",
+        "browser_use",
+        "browser_use_external",
+        "browser_use_full_cdp_access",
+        "computer_use",
+        "in_app_browser",
+        "apps",
+        "plugins",
+        "remote_plugin",
+        "plugin_sharing",
+        "view_image",
+        "image_generation",
+        "sleep_tool",
+        "tool_suggest",
+        "skill_mcp_dependency_install",
+        "tool_call_mcp_elicitation",
+        "hooks",
+        "multi_agent",
+        "multi_agent_v2",
+        "workspace_dependencies",
+    }
+)
+
+
+def test_schema_in_container_path() -> None:
+    assert runner.SCHEMA_IN_CONTAINER == "/schema/codex-review-findings.schema.json"
+
+
+def test_disabled_features_cover_the_required_set_with_no_duplicates() -> None:
+    # Every entry was confirmed present in `codex features list` on this
+    # machine (codex-cli 0.153.4); a feature this build does not list is
+    # omitted here and named in the plan SUMMARY, never invented.
+    assert set(runner.DISABLED_FEATURES) == REQUIRED_DISABLED_FEATURES
+    assert len(runner.DISABLED_FEATURES) == len(set(runner.DISABLED_FEATURES))
+
+
+def test_inspection_codex_argv_golden() -> None:
+    argv = inspection_codex_argv()
+
+    expected = [
+        "codex",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--strict-config",
+        "-C",
+        "/work",
+    ]
+    for feature in runner.DISABLED_FEATURES:
+        expected += ["--disable", feature]
+    expected += ["--output-schema", runner.SCHEMA_IN_CONTAINER, "--json", "-o", "/out/last.json", "-"]
+
+    assert argv == expected
+
+
+def test_inspection_codex_argv_honors_cwd_and_last_json_overrides() -> None:
+    argv = inspection_codex_argv(cwd="/other-work", last_json="/other-out/last.json")
+    assert "/other-work" in argv
+    assert "/other-out/last.json" in argv
+    assert "/work" not in argv
+
+
+def test_inspection_codex_argv_never_grants_write_access() -> None:
+    argv = inspection_codex_argv()
+    assert "--add-dir" not in argv
+    assert "workspace-write" not in argv
+    assert "danger-full-access" not in argv
+    assert not any(str(part).startswith("--dangerously") for part in argv)
+
+
+# --- audit_event_types (the event-stream audit, T-85.1-22) -------------------
+
+
+def _write_jsonl(path: Path, events: list[dict]) -> None:
+    path.write_text("\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8")
+
+
+def test_audit_event_types_clean_stream_is_empty(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    _write_jsonl(
+        path,
+        [
+            {"type": "thread.started"},
+            {"type": "turn.started"},
+            {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}},
+            {"type": "item.completed", "item": {"type": "reasoning", "text": "..."}},
+            {"type": "turn.completed"},
+        ],
+    )
+    assert audit_event_types(path) == []
+
+
+def test_audit_event_types_flags_command_execution(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    _write_jsonl(path, [{"type": "item.completed", "item": {"type": "command_execution"}}])
+    assert audit_event_types(path) == ["inspection-only review used a tool: command_execution"]
+
+
+@pytest.mark.parametrize("item_type", ["file_change", "mcp_tool_call", "web_search", "error"])
+def test_audit_event_types_flags_every_disallowed_item_type(tmp_path, item_type) -> None:
+    path = tmp_path / "events.jsonl"
+    _write_jsonl(path, [{"type": "item.completed", "item": {"type": item_type}}])
+    reasons = audit_event_types(path)
+    assert len(reasons) == 1
+    assert item_type in reasons[0]
+
+
+def test_audit_event_types_flags_unexpected_top_level_event(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    _write_jsonl(path, [{"type": "turn.failed"}])
+    assert audit_event_types(path) == ["unexpected Codex event: turn.failed"]
+
+
+def test_audit_event_types_raises_on_unparseable_line(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_text("not json\n", encoding="utf-8")
+    with pytest.raises(RunnerError, match="could not audit Codex event stream"):
+        audit_event_types(path)
+
+
+def test_audit_event_types_missing_file_is_a_reason(tmp_path) -> None:
+    path = tmp_path / "missing.jsonl"
+    assert audit_event_types(path) == ["no Codex event stream recorded"]
+
+
+# --- verify_isolation_boundary (the mandatory gate, B04-R3) ------------------
+
+
+def test_verify_isolation_boundary_gate_returns_unverified_and_issues_no_command() -> None:
+    run = _run()
+    fake = _ScriptedRunner([])
+    inner_argv = inspection_codex_argv()
+
+    boundary = verify_isolation_boundary(run, fake, scratch=Path("/tmp/does-not-matter"), inner_argv=inner_argv)
+
+    assert boundary == {
+        "boundary_version": 1,
+        "verdict": "unverified",
+        "reasons": ["deterministic container checks are not available in this build"],
+        "checked_at": boundary["checked_at"],
+        "head": run.head,
+        "label": run.label,
+        "attempt": run.attempt,
+    }
+    datetime.fromisoformat(boundary["checked_at"])  # ISO-8601, parseable
+    assert fake.calls == []
+
+
+# --- run_untrusted_codex (the only launch seam, B04-R3) ----------------------
+
+
+def test_run_untrusted_codex_seam_rejects_unverified_boundary() -> None:
+    run = _run()
+    fake = _ScriptedRunner([])
+    boundary = {"verdict": "unverified"}
+
+    with pytest.raises(RunnerError, match="untrusted Codex launch requires a verified container boundary"):
+        run_untrusted_codex(
+            run, inner_argv=inspection_codex_argv(), prompt="prompt", boundary=boundary, command_runner=fake
+        )
+    assert fake.calls == []
+
+
+def test_run_untrusted_codex_seam_also_refuses_a_verified_boundary_in_this_plan() -> None:
+    run = _run()
+    fake = _ScriptedRunner([])
+    boundary = {"verdict": "verified"}
+
+    with pytest.raises(RunnerError, match="untrusted Codex launch requires a verified container boundary"):
+        run_untrusted_codex(
+            run, inner_argv=inspection_codex_argv(), prompt="prompt", boundary=boundary, command_runner=fake
+        )
+    assert fake.calls == []
+    assert all(call[0] != "codex" for call in fake.calls)
