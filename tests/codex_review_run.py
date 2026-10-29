@@ -1289,6 +1289,305 @@ def run_untrusted_codex(
     raise RunnerError("untrusted Codex launch requires a verified container boundary")
 
 
+# --- Review container configuration and deterministic verification --------
+# (Phase 85.1, B04-R3, B16, B17). The exact `docker create` invocation for
+# both the review container and the in-container canary check, the
+# host-exposure rule shared by both, and the two deterministic checks that
+# prove the running configuration matches: a static `docker inspect`
+# comparison (verify_container_config) and a parse of the canary script's
+# own report from inside a container built by the same builder
+# (parse_canary_check). No Docker daemon is called by any function below
+# -- Plan 85.1-08 is the only place that actually creates, inspects or
+# starts a container.
+
+# Must match ARG CODEX_VERSION in docker/codex-review/Dockerfile (asserted
+# by test_review_image_version_parity in tests/test_codex_review_image.py).
+# Deliberately decoupled from the host's own installed Codex version, so a
+# host-side Codex update can never silently change which Codex build
+# reviews an untrusted head.
+REVIEW_CODEX_VERSION = "0.153.4"
+REVIEW_IMAGE_REPO = "triggarr-codex-review"
+REVIEW_IMAGE_REF = f"{REVIEW_IMAGE_REPO}:{REVIEW_CODEX_VERSION}"
+REVIEW_IMAGE_LABEL = "org.triggarr.codex-review"
+REVIEW_IMAGE_BUILD_ARGV = [
+    "docker",
+    "build",
+    "-f",
+    "docker/codex-review/Dockerfile",
+    "-t",
+    REVIEW_IMAGE_REF,
+    "docker/codex-review",
+]
+
+CONTAINER_USER = "10001:10001"
+CONTAINER_TMPFS = {
+    "/work": "rw,size=64m,mode=0700,uid=10001,gid=10001",
+    "/tmp": "rw,size=64m,mode=1777",
+}
+
+# The canary script run inside a container built by the same builder as the
+# review container (B04-R3). Invoked as
+# `docker create --entrypoint /bin/sh <options> <image> -c CANARY_CHECK_SCRIPT canary <path>...`,
+# which Docker runs as `sh -c "$CANARY_CHECK_SCRIPT" canary <path>...`: "canary"
+# becomes $0 (not part of "$@"), so only the path arguments are tested. Never
+# prints an environment variable's value, only its name.
+CANARY_CHECK_SCRIPT = r'''for p in "$@"; do
+  if [ -e "$p" ] || [ -L "$p" ]; then
+    echo "present $p"
+  else
+    echo "absent $p"
+  fi
+done
+echo "work-entries $(ls -A /work | wc -l | tr -d ' ')"
+for n in $(ls -A /codex-home); do
+  echo "codex-home-entry $n"
+done
+echo "schema-sha256 $(sha256sum /schema/codex-review-findings.schema.json | cut -d' ' -f1)"
+env | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' | while IFS= read -r n; do
+  echo "env $n"
+done
+echo "canary-done"
+'''
+
+
+def _container_options(codex_home_dir: Path, out_dir: Path, schema_dir: Path) -> list[str]:
+    """The `docker create` options shared by the review container and the canary check.
+
+    Every value here is fixed in code; the only variables are the three
+    per-run temp directories the harness itself created (PC-03). No
+    `-v`/`--volume`, `--privileged`, host namespace, `--device`,
+    `-p`/`--publish`, Docker socket or `--env-file` ever appears.
+    """
+    return [
+        "-i",
+        "--read-only",
+        "--tmpfs",
+        f"/work:{CONTAINER_TMPFS['/work']}",
+        "--tmpfs",
+        f"/tmp:{CONTAINER_TMPFS['/tmp']}",
+        "--user",
+        CONTAINER_USER,
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--pids-limit",
+        "256",
+        "--memory",
+        "2g",
+        "--network",
+        "bridge",
+        "--mount",
+        f"type=bind,src={codex_home_dir},dst=/codex-home",
+        "--mount",
+        f"type=bind,src={out_dir},dst=/out",
+        "--mount",
+        f"type=bind,src={schema_dir},dst=/schema,readonly",
+        "-e",
+        "CODEX_HOME=/codex-home",
+        "-w",
+        "/work",
+    ]
+
+
+def container_create_argv(
+    image_ref: str, *, codex_home_dir: Path, out_dir: Path, schema_dir: Path, inner_argv: list[str]
+) -> list[str]:
+    """The exact `docker create` invocation for the review container (B04-R3).
+
+    Relies on the image's own `ENTRYPOINT ["codex"]`; *inner_argv* is the
+    inner `codex exec ...` command with its leading "codex" element
+    dropped, since the entrypoint already supplies it.
+    """
+    return [
+        "docker",
+        "create",
+        *_container_options(codex_home_dir, out_dir, schema_dir),
+        image_ref,
+        *inner_argv[1:],
+    ]
+
+
+def container_check_argv(
+    image_ref: str,
+    codex_home_dir: Path,
+    out_dir: Path,
+    schema_dir: Path,
+    *,
+    canary_paths: list[str],
+) -> list[str]:
+    """The exact `docker create` invocation for the in-container canary check.
+
+    Uses the same option list as the review container
+    (_container_options), overriding only the entrypoint to run
+    CANARY_CHECK_SCRIPT. Always `docker create`, never `docker run` and
+    never `--rm`: Plan 85.1-08 owns the canary's `docker start` and
+    confirmed `docker rm` removal, not this function.
+    """
+    return [
+        "docker",
+        "create",
+        "--entrypoint",
+        "/bin/sh",
+        *_container_options(codex_home_dir, out_dir, schema_dir),
+        image_ref,
+        "-c",
+        CANARY_CHECK_SCRIPT,
+        "canary",
+        *canary_paths,
+    ]
+
+
+def _mount_src(mount_value: str) -> str | None:
+    for part in mount_value.split(","):
+        if part.startswith("src="):
+            return part[len("src=") :]
+    return None
+
+
+def host_exposure_problems(
+    argv: list[str],
+    *,
+    kind: str,
+    per_run_dirs: tuple[Path, ...],
+    host_home: Path,
+    repo_root: Path,
+    host_codex_home: Path,
+) -> list[str]:
+    """Verify a `docker create` argv never exposes a protected host path (PC-03).
+
+    Applies to both the review and the canary argv (*kind* is "review" or
+    "canary"): no `--mount` source, no `-e`/`--env-file` value, and -- for
+    "review" -- no element anywhere in the argv may reference *host_home*,
+    *repo_root* or *host_codex_home* (T-85.1-29). The canary argv's
+    positional arguments after the fixed `-c CANARY_CHECK_SCRIPT canary`
+    boundary are inert data the canary script only tests for absence, so a
+    protected path there is allowed; everywhere else in either argv it is
+    not. Every reason names a path by marker only, never by the raw path.
+    Mount sources are compared after os.path.realpath, same as
+    verify_container_config.
+    """
+    protected = (
+        (os.path.realpath(str(host_home)), "<HOST_HOME>"),
+        (os.path.realpath(str(repo_root)), "<REPO_ROOT>"),
+        (os.path.realpath(str(host_codex_home)), "<HOST_CODEX_HOME>"),
+    )
+    per_run_real = {os.path.realpath(str(d)) for d in per_run_dirs}
+
+    def _protected_marker(value: str) -> str | None:
+        # host_codex_home is typically nested under host_home (e.g.
+        # ~/.codex); pick the most specific (longest) protected prefix
+        # that matches, not just the first one in *protected*, so a
+        # mount of the narrower path is reported by its own marker.
+        real = os.path.realpath(value)
+        candidates = [
+            (protected_real, marker)
+            for protected_real, marker in protected
+            if real == protected_real or real.startswith(protected_real + os.sep)
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda pair: len(pair[0]))[1]
+
+    boundary_index = len(argv)
+    if kind == "canary":
+        for i in range(len(argv) - 2):
+            if argv[i] == "-c" and argv[i + 1] == CANARY_CHECK_SCRIPT and argv[i + 2] == "canary":
+                boundary_index = i + 3
+                break
+
+    reasons: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--mount" and i + 1 < len(argv):
+            src = _mount_src(argv[i + 1])
+            if src is not None:
+                marker = _protected_marker(src)
+                if marker is not None:
+                    reasons.append(f"mount source exposes a protected host path: {marker}")
+                elif os.path.realpath(src) not in per_run_real:
+                    reasons.append("unexpected mount source")
+            i += 2
+            continue
+        if token == "-e" and i + 1 < len(argv):
+            if argv[i + 1] != "CODEX_HOME=/codex-home":
+                reasons.append("forwarded environment value not allowed")
+            i += 2
+            continue
+        if token == "--env-file":
+            reasons.append("forwarded environment value not allowed")
+            i += 1
+            continue
+        if i < boundary_index:
+            marker = _protected_marker(token)
+            if marker is not None:
+                reasons.append(f"{kind} argv references a protected host path: {marker}")
+        i += 1
+    return reasons
+
+
+def canary_paths(
+    *,
+    host_home: Path,
+    repo_root: Path,
+    host_codex_home: Path,
+    ssh_auth_sock: str | None,
+    host_canary_file: Path,
+) -> list[tuple[str, str]]:
+    """Build the (path, marker) pairs the canary script checks for absence (B04-R3).
+
+    Host-sensitive paths are reported by marker, never by raw path, in
+    every reason host_exposure_problems()/parse_canary_check() produce.
+    The fixed in-container paths use their own path as the marker, since
+    they carry no host-identifying information. *ssh_auth_sock* is
+    included only when set (the host may not have one).
+    """
+    pairs: list[tuple[str, str]] = [
+        (str(host_home), "<HOST_HOME>"),
+        (str(repo_root), "<REPO_ROOT>"),
+        (str(host_codex_home), "<HOST_CODEX_HOME>"),
+    ]
+    if ssh_auth_sock is not None:
+        pairs.append((ssh_auth_sock, "<SSH_AUTH_SOCK>"))
+    pairs.append((str(host_canary_file), "<HOST_CANARY>"))
+    for fixed in (
+        "/run/host-services/ssh-auth.sock",
+        "/var/run/docker.sock",
+        "/root/.ssh",
+        "/home/review/.ssh",
+        "/codex-home/config.toml",
+        "/codex-home/sessions",
+    ):
+        pairs.append((fixed, fixed))
+    return pairs
+
+
+def stage_output_schema(dest_dir: Path, *, expected_sha256: str) -> str:
+    """Copy SCHEMA_PATH into *dest_dir* read-only, after verifying its hash (B17).
+
+    Refuses with RunnerError if the hash does not match the audited value
+    the caller recorded, or if the destination already exists
+    (O_CREAT|O_EXCL). The copy is written 0o444 via fchmod on the open fd
+    (bypassing umask) so nothing inside the container can modify the
+    schema it was launched with, independent of the read-only mount
+    itself.
+    """
+    data = SCHEMA_PATH.read_bytes()
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise RunnerError(f"audited output schema hash mismatch: expected {expected_sha256}, got {actual_sha256}")
+    dest = dest_dir / SCHEMA_PATH.name
+    try:
+        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+    except FileExistsError as exc:
+        raise RunnerError(f"output schema already staged: {dest}") from exc
+    os.fchmod(fd, 0o444)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+    return actual_sha256
+
+
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
     """Replace local absolute paths in harness-written text with neutral markers.
 

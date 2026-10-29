@@ -54,7 +54,9 @@ _SCHEMA_DIR = Path("/tmp/x/schema")
 # tests never depend on (or risk asserting against) the operator's own
 # home directory or checkout path.
 _HOST_HOME = Path("/Users/example-owner")
-_REPO_ROOT_FAKE = Path("/Users/example-owner/code/triggarr")
+# Deliberately not nested under _HOST_HOME, so a mount source mutation can
+# unambiguously target exactly one protected path at a time.
+_REPO_ROOT_FAKE = Path("/opt/build/triggarr-checkout")
 _HOST_CODEX_HOME = Path("/Users/example-owner/.codex")
 _SSH_AUTH_SOCK = "/private/tmp/com.apple.launchd.fake/Listeners"
 _HOST_CANARY_FILE = Path("/tmp/fake-canary-host")
