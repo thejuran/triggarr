@@ -337,6 +337,8 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   1. An untrusted head is reviewed by Codex without being checked out or executed. The grader comes only from fresh `origin/main`, and a fork-controlled base is rejected before any of its code runs.
   2. The isolation boundary is verified deterministically on every run (container configuration, mounts, environment, and output ingestion that can't follow a symlink or FIFO). Behavioral probes are only supplementary.
   3. A live end-to-end review of a real PR completes. Any incomplete outcome blocks and is escalated, never reported clean.
+
+**Completion rule (D-03)**: complete only when the post-merge live inspection-only review (PR #47, or the next open Dependabot PR per D-09), run from a detached checkout of freshly fetched origin/main, returns COMPLETE through `--completion-gate` and an authenticated host Codex call succeeds afterwards; until then the phase is shown as merged and awaiting live verification, never complete.
 **Plans**: 10 plans (waves 1-6 build and test, wave 7 pre-merge evidence; the post-merge live run on PR #47 is the phase verification gate after the owner merges, not a plan)
 
 Plans:
