@@ -285,9 +285,28 @@ def test_flatten_pages_rejects_unparseable_text() -> None:
         flatten_pages("not json", "check_runs")
 
 
-def _gh_api_script(pages: list) -> list:
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
+
+
+def _workflow_run(suite_id, path=CI_WORKFLOW_PATH, head_sha=H, id_=None):
+    return {"id": id_ or 7000 + suite_id, "check_suite_id": suite_id, "path": path, "head_sha": head_sha}
+
+
+# By default every check suite the fixtures use (100, 200) belongs to a ci.yml run.
+DEFAULT_WORKFLOW_RUNS = [_workflow_run(100), _workflow_run(200)]
+
+
+def _workflow_runs_argv(head=H):
+    return ("gh", "api", f"repos/{REPO_SLUG}/actions/runs?head_sha={head}&per_page=100", "--paginate", "--slurp")
+
+
+def _gh_api_script(pages: list, workflow_runs: list | None = None) -> list:
     argv = ("gh", "api", f"repos/{REPO_SLUG}/commits/{H}/check-runs", "--paginate", "--slurp")
-    return [(argv, _ok(stdout=json.dumps(pages)))]
+    runs = DEFAULT_WORKFLOW_RUNS if workflow_runs is None else workflow_runs
+    return [
+        (argv, _ok(stdout=json.dumps(pages))),
+        (_workflow_runs_argv(), _ok(stdout=json.dumps([{"total_count": len(runs), "workflow_runs": runs}]))),
+    ]
 
 
 def test_ci_evidence_finds_evidence_on_second_page() -> None:
@@ -364,8 +383,28 @@ def test_ci_evidence_rejects_ci_ready_without_the_github_actions_app(app) -> Non
         ci_evidence(run, fake)
 
 
-def test_ci_evidence_refuses_ci_ready_from_more_than_one_workflow() -> None:
-    """A head-defined extra workflow with a passing "CI ready" job (its own check suite) is refused."""
+def test_ci_evidence_refuses_ci_ready_from_another_workflow_file() -> None:
+    """A head-defined extra workflow with a passing "CI ready" job (its own check suite) is refused (WR-02)."""
+    run = _run()
+    pages = [
+        {
+            "check_runs": [
+                _check_run(2, CI_READY_CHECK_NAME, conclusion="failure", suite_id=100),
+                _check_run(5, CI_READY_CHECK_NAME, conclusion="success", suite_id=200),
+            ]
+        }
+    ]
+    workflow_runs = [_workflow_run(100), _workflow_run(200, path=".github/workflows/evil.yml")]
+    fake = _ScriptedRunner(_gh_api_script(pages, workflow_runs))
+    with pytest.raises(RunnerError, match="from a workflow other than .github/workflows/ci.yml"):
+        ci_evidence(run, fake)
+
+
+# --- BM iter-2 WR-02: a close/reopen runs ci.yml again in a new check suite ----
+
+
+def test_ci_evidence_accepts_ci_ready_from_two_ci_yml_runs_after_a_reopen() -> None:
+    """Close/reopen (or @dependabot reopen) gives ci.yml a second check suite; the latest result wins."""
     run = _run()
     pages = [
         {
@@ -376,8 +415,57 @@ def test_ci_evidence_refuses_ci_ready_from_more_than_one_workflow() -> None:
         }
     ]
     fake = _ScriptedRunner(_gh_api_script(pages))
-    with pytest.raises(RunnerError, match="more than one workflow"):
+    assert ci_evidence(run, fake)["ci_ready"]["id"] == 5
+
+
+def test_ci_evidence_reopen_latest_failure_still_refused() -> None:
+    run = _run()
+    pages = [
+        {
+            "check_runs": [
+                _check_run(2, CI_READY_CHECK_NAME, conclusion="success", suite_id=100),
+                _check_run(5, CI_READY_CHECK_NAME, conclusion="failure", suite_id=200),
+            ]
+        }
+    ]
+    fake = _ScriptedRunner(_gh_api_script(pages))
+    with pytest.raises(RunnerError, match="no successful CI ready check run for this exact head"):
         ci_evidence(run, fake)
+
+
+@pytest.mark.parametrize(
+    "workflow_runs",
+    [
+        pytest.param([], id="no-workflow-run"),
+        pytest.param([_workflow_run(100, head_sha="9" * 40)], id="workflow-run-for-another-head"),
+        pytest.param([_workflow_run(999)], id="other-suite-only"),
+        pytest.param([{"check_suite_id": 100, "head_sha": H}], id="workflow-run-without-path"),
+    ],
+)
+def test_ci_evidence_refuses_ci_ready_whose_workflow_cannot_be_identified(workflow_runs) -> None:
+    run = _run()
+    pages = [{"check_runs": [_check_run(5, CI_READY_CHECK_NAME, suite_id=100)]}]
+    fake = _ScriptedRunner(_gh_api_script(pages, workflow_runs))
+    with pytest.raises(RunnerError, match="from a workflow other than .github/workflows/ci.yml"):
+        ci_evidence(run, fake)
+
+
+def test_ci_evidence_workflow_runs_read_failure_fails_closed() -> None:
+    run = _run()
+    pages = [{"check_runs": [_check_run(5, CI_READY_CHECK_NAME, suite_id=100)]}]
+    script = _gh_api_script(pages)
+    script[1] = (_workflow_runs_argv(), _ok(stdout="", returncode=1))
+    fake = _ScriptedRunner(script)
+    with pytest.raises(RunnerError, match="could not read GitHub workflow runs"):
+        ci_evidence(run, fake)
+
+
+def test_ci_evidence_reads_workflow_runs_for_exactly_this_head() -> None:
+    run = _run()
+    pages = [{"check_runs": [_check_run(5, CI_READY_CHECK_NAME, suite_id=100)]}]
+    fake = _ScriptedRunner(_gh_api_script(pages))
+    ci_evidence(run, fake)
+    assert list(_workflow_runs_argv()) in fake.calls
 
 
 def test_ci_evidence_refuses_ci_ready_without_a_check_suite() -> None:
