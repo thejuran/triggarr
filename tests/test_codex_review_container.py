@@ -2496,9 +2496,11 @@ def test_cleanup_escalation_launch_prep_failure_execute_inspection(tmp_path: Pat
 
     monkeypatch.setattr(codex_review_run, "safe_read_regular_file", _spy)
 
-    with pytest.raises(RunnerError) as exc_info:
-        execute(run, command_runner=e2e)
-    assert exc_info.value is raised["exc"]
+    # WR-01: an untrusted run returns 0 or 3 with a status always recorded;
+    # the RunnerError no longer escapes as exit 2, and the status the failing
+    # step already wrote is kept (not overwritten by a generic stub).
+    assert execute(run, command_runner=e2e) == 3
+    assert "exc" in raised
 
     status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
     assert status["status"] == "incomplete"

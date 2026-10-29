@@ -3742,7 +3742,10 @@ def _execute_inspection(
     try:
         if audited_changed:
             grader_dir = scratch / "trusted-main-grader"
-            materialize_grader(main_sha, grader_dir, command_runner)
+            try:
+                materialize_grader(main_sha, grader_dir, command_runner)
+            except RunnerError as exc:
+                return _inspection_incomplete(run, str(exc))
             checker_path = grader_dir / "tests" / "codex_report_status.py"
             if not trusted_main_grader_supports_mode(checker_path, command_runner):
                 return _inspection_incomplete(
@@ -3800,7 +3803,12 @@ def _execute_inspection(
         if problems:
             return _inspection_incomplete(run, "; ".join(problems))
 
-        audit_reasons = audit_event_types(run.output(".jsonl"))
+        try:
+            audit_reasons = audit_event_types(run.output(".jsonl"))
+        except RunnerError as exc:
+            # E.g. the last line was cut off mid-write when a timeout killed
+            # the docker client: the stream cannot be audited (WR-01).
+            return _inspection_incomplete(run, str(exc))
         if audit_reasons:
             return _inspection_incomplete(run, "; ".join(audit_reasons))
     finally:
@@ -3901,9 +3909,14 @@ def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
             input_stats=input_stats,
             command_runner=command_runner,
         )
-    except RunnerError:
-        # Every RunnerError raised after the reservation has already written its status.
-        raise
+    except RunnerError as exc:
+        # The contract for an untrusted run is exit 0 or 3 with a status always
+        # recorded (WR-01): a RunnerError no inner step already recorded becomes
+        # an incomplete stub here, never exit 2 with no status.
+        if run.output(".status.json").exists():
+            _print_inspection_result(run, complete=False, reason=str(exc))
+            return 3
+        return _inspection_incomplete(run, f"harness failed after reserving the output: {exc}")
     except Exception as exc:
         reason = f"harness failed after reserving the output: {type(exc).__name__}"
         if not run.output(".status.json").exists():
