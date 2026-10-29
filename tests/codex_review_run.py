@@ -1995,10 +1995,40 @@ def container_check_argv(
 
 
 def _mount_src(mount_value: str) -> str | None:
+    """The bind source of a `--mount` value, accepting both `src=` and `source=` (docker accepts either)."""
     for part in mount_value.split(","):
-        if part.startswith("src="):
-            return part[len("src=") :]
+        key, sep, value = part.partition("=")
+        if sep and key in ("src", "source"):
+            return value
     return None
+
+
+# The exact `docker create` option allowlist (WR-04): every option the runner
+# may pass, split by whether it takes a separate value token. Anything else in
+# the option section -- including any `--opt=value` spelling -- is a reason,
+# and the option section must also equal _container_options() exactly.
+_ALLOWED_FLAG_OPTIONS = frozenset({"-i", "--read-only"})
+_ALLOWED_VALUE_OPTIONS = frozenset(
+    {
+        "--tmpfs",
+        "--user",
+        "--cap-drop",
+        "--security-opt",
+        "--pids-limit",
+        "--memory",
+        "--network",
+        "--mount",
+        "-e",
+        "-w",
+    }
+)
+_PRINTABLE_OPTION_RE = re.compile(r"--?[A-Za-z][A-Za-z0-9-]{0,40}")
+
+
+def _option_label(token: str) -> str:
+    """The option's name for a reason, never its value (a value may be a host path)."""
+    name = token.split("=", 1)[0]
+    return name if _PRINTABLE_OPTION_RE.fullmatch(name) else "an unrecognized option"
 
 
 def host_exposure_problems(
@@ -2010,41 +2040,86 @@ def host_exposure_problems(
     repo_root: Path,
     host_codex_home: Path,
 ) -> list[str]:
-    """Verify a `docker create` argv never exposes a protected host path (PC-03).
+    """Verify a `docker create` argv against the exact option allowlist and protected host paths (PC-03, WR-04).
 
     Applies to both the review and the canary argv (*kind* is "review" or
-    "canary"): no `--mount` source, no `-e`/`--env-file` value, and -- for
-    "review" -- no element anywhere in the argv may reference *host_home*,
-    *repo_root* or *host_codex_home* (T-85.1-29). The canary argv's
-    positional arguments after the fixed `-c CANARY_CHECK_SCRIPT canary`
-    boundary are inert data the canary script only tests for absence, so a
-    protected path there is allowed; everywhere else in either argv it is
-    not. Every reason names a path by marker only, never by the raw path.
-    Mount sources are compared after os.path.realpath, same as
-    verify_container_config.
+    "canary"). Structural allowlist first: the argv must start with
+    `docker create` (plus exactly `--entrypoint /bin/sh` for the canary,
+    and never an entrypoint override for the review), name the review image
+    REVIEW_IMAGE_REF, and its option section (everything before the image)
+    must use only allowlisted options with separate value tokens and equal
+    _container_options(*per_run_dirs) exactly -- so `--opt=value`
+    spellings, `-v`/`--volume`, `--env`, `--privileged`, host namespaces,
+    `--cap-add`, `--device`, extra or missing options and changed values
+    are all reasons. Mount sources (`src=` or `source=`) are compared after
+    os.path.realpath and must be one of *per_run_dirs*. Then, as before, no
+    `-e`/`--env-file` value and -- for "review" -- no element anywhere in
+    the argv may reference *host_home*, *repo_root* or *host_codex_home*
+    (T-85.1-29); the canary argv's positional arguments after the fixed
+    `-c CANARY_CHECK_SCRIPT canary` boundary are inert data the canary
+    script only tests for absence, so a protected path there is allowed.
+    Only absolute-path tokens are resolved, so fixed literals are never
+    resolved against the current working directory. Every reason names a
+    path by marker only, never by the raw path.
     """
-    protected = (
-        (os.path.realpath(str(host_home)), "<HOST_HOME>"),
-        (os.path.realpath(str(repo_root)), "<REPO_ROOT>"),
-        (os.path.realpath(str(host_codex_home)), "<HOST_CODEX_HOME>"),
-    )
     per_run_real = {os.path.realpath(str(d)) for d in per_run_dirs}
 
     def _protected_marker(value: str) -> str | None:
-        # host_codex_home is typically nested under host_home (e.g.
-        # ~/.codex); pick the most specific (longest) protected prefix
-        # that matches, not just the first one in *protected*, so a
-        # mount of the narrower path is reported by its own marker.
-        real = os.path.realpath(value)
-        candidates = [
-            (protected_real, marker)
-            for protected_real, marker in protected
-            if real == protected_real or real.startswith(protected_real + os.sep)
-        ]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda pair: len(pair[0]))[1]
+        return _protected_path_marker(
+            Path(value), host_home=host_home, repo_root=repo_root, host_codex_home=host_codex_home
+        )
 
+    def _mount_reasons(value: str) -> list[str]:
+        src = _mount_src(value)
+        if src is None:
+            return ["mount has no bind source"]
+        marker = _protected_marker(src)
+        if marker is not None:
+            return [f"mount source exposes a protected host path: {marker}"]
+        if os.path.realpath(src) not in per_run_real:
+            return ["unexpected mount source"]
+        return []
+
+    reasons: list[str] = []
+
+    # --- Pass A: the exact option allowlist (WR-04) -------------------------
+    prefix = ["docker", "create", *(["--entrypoint", "/bin/sh"] if kind == "canary" else [])]
+    options_span: tuple[int, int] | None = None
+    if argv[: len(prefix)] != prefix:
+        reasons.append(f"{kind} argv does not start with `{shlex.join(prefix)}`")
+    elif REVIEW_IMAGE_REF not in argv[len(prefix) :]:
+        reasons.append(f"{kind} argv does not use the review image {REVIEW_IMAGE_REF}")
+    else:
+        image_index = argv.index(REVIEW_IMAGE_REF, len(prefix))
+        options_span = (len(prefix), image_index)
+        options = argv[len(prefix) : image_index]
+        i = 0
+        while i < len(options):
+            token = options[i]
+            if token in _ALLOWED_FLAG_OPTIONS:
+                i += 1
+                continue
+            if token in _ALLOWED_VALUE_OPTIONS and i + 1 < len(options):
+                value = options[i + 1]
+                if token == "--mount":
+                    reasons += _mount_reasons(value)
+                elif token == "-e" and value != "CODEX_HOME=/codex-home":
+                    reasons.append("forwarded environment value not allowed")
+                elif os.path.isabs(value):
+                    marker = _protected_marker(value)
+                    if marker is not None:
+                        reasons.append(f"{kind} argv references a protected host path: {marker}")
+                i += 2
+                continue
+            if token.startswith("-"):
+                reasons.append(f"docker create option not on the allowlist: {_option_label(token)}")
+            else:
+                reasons.append(f"{kind} argv has an unexpected argument before the image")
+            i += 1
+        if len(per_run_dirs) != 3 or options != _container_options(*per_run_dirs):
+            reasons.append(f"{kind} docker create options differ from the fixed container options")
+
+    # --- Pass B: protected paths and forwarded environment anywhere else ----
     boundary_index = len(argv)
     if kind == "canary":
         for i in range(len(argv) - 2):
@@ -2052,18 +2127,14 @@ def host_exposure_problems(
                 boundary_index = i + 3
                 break
 
-    reasons: list[str] = []
     i = 0
     while i < len(argv):
+        if options_span is not None and options_span[0] <= i < options_span[1]:
+            i = options_span[1]  # already checked token by token in pass A
+            continue
         token = argv[i]
         if token == "--mount" and i + 1 < len(argv):
-            src = _mount_src(argv[i + 1])
-            if src is not None:
-                marker = _protected_marker(src)
-                if marker is not None:
-                    reasons.append(f"mount source exposes a protected host path: {marker}")
-                elif os.path.realpath(src) not in per_run_real:
-                    reasons.append("unexpected mount source")
+            reasons += _mount_reasons(argv[i + 1])
             i += 2
             continue
         if token == "-e" and i + 1 < len(argv):
@@ -2071,33 +2142,21 @@ def host_exposure_problems(
                 reasons.append("forwarded environment value not allowed")
             i += 2
             continue
-        if token == "--env-file":
+        if token == "--env-file" or token.startswith("--env-file="):
             reasons.append("forwarded environment value not allowed")
             i += 1
             continue
         if i < boundary_index and os.path.isabs(token):
-            # Only an absolute-path token is resolved here. A fixed
-            # non-path option value in this argv (ALL, bridge, 256,
-            # no-new-privileges, an image ref, a Codex feature name, ...)
-            # is never absolute; os.path.realpath() resolves a relative
-            # string against the *process's* current working directory,
-            # not against any meaningful host location, so checking
-            # every token unconditionally flagged all of those literals
-            # as if they referenced a real host path whenever the runner
-            # was invoked from the repository root (the real usage
-            # pattern -- see 85.1-UNTRUSTED-BOUNDARY.md, 2026-10-29).
-            # This does not weaken the real check: docker itself
-            # requires `--mount type=bind,src=` to be an absolute path
-            # (it rejects a relative bind-mount source outright), and
-            # every mount source this runner builds is already an
-            # absolute Path string, so a relative token here is never a
-            # host path docker would honor -- it can only be one of
-            # these fixed option literals.
+            # Only an absolute-path token is resolved here: os.path.realpath()
+            # resolves a relative string against the process's current
+            # working directory, so resolving fixed literals (ALL, bridge,
+            # 256, ...) flagged them whenever the runner ran from the
+            # repository root (85.1-UNTRUSTED-BOUNDARY.md, 2026-10-29).
             marker = _protected_marker(token)
             if marker is not None:
                 reasons.append(f"{kind} argv references a protected host path: {marker}")
         i += 1
-    return reasons
+    return list(dict.fromkeys(reasons))
 
 
 def canary_paths(
