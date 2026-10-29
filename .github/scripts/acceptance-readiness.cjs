@@ -46,8 +46,11 @@ function headTrustFor({isCrossRepository, author}) {
 // predicate (exported by codex-fallback.cjs, also used by
 // codexStatusFromOutput() there) says so: the head-side status is complete
 // and bound to this head/base, <OUT>.boundary.json has a verdict of
-// "verified" bound to this head and attempt, and (when an audited input
-// changed) the base checker also confirms completeness. A record claiming
+// "verified" bound to this head and attempt, <OUT>.grader-provenance.json
+// records an established trusted-origin-main grader with the base on main,
+// the meta's head and attempt match the <OUT> prefix (the same rules as the
+// Python completion gate, WR-05), and (when an audited input changed) the
+// base checker also confirms completeness. A record claiming
 // trusted-mode completion for an untrusted head, or an inspection-only record
 // that claims "complete" without satisfying the predicate, is blocked
 // outright -- never rescued by a fallback (T-85.1-04/07b, PC-06). When
@@ -69,7 +72,7 @@ function headTrustFor({isCrossRepository, author}) {
 // Codex evidence must name one base, the range actually reviewed.
 function codexStatusFor({
   status, baseStatus, meta, auditedChanged: recomputed, out, head, base, reviewedBase, pr, prAuthor, headTrust, fallback,
-  boundary,
+  boundary, provenance,
 }) {
   if (!meta || meta.head !== head) {
     return {ok: false, detail: 'Codex evidence is for a different head'};
@@ -103,7 +106,7 @@ function codexStatusFor({
   let invalidEvidence = false;
 
   if (headTrust === 'untrusted' && meta.review_mode === INSPECTION_REVIEW_MODE) {
-    const predicate = inspectionOnlyCompleteness({meta, status, baseStatus, boundary, head, baseRequired});
+    const predicate = inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provenance, out, head, baseRequired});
     invalidEvidence = predicate.invalidEvidence;
     if (predicate.complete) {
       complete = true;
@@ -438,6 +441,7 @@ function runCli(argv, {exec, readFile} = {}) {
   }
   const baseStatus = readJsonIfPresent(readFileFn, `${opts.codexOut}.base-status.json`);
   const boundary = readJsonIfPresent(readFileFn, `${opts.codexOut}.boundary.json`);
+  const provenance = readJsonIfPresent(readFileFn, `${opts.codexOut}.grader-provenance.json`);
 
   // Recompute the reviewed base and the audited-input change set from git
   // itself (argument arrays, no shell); fail closed when either cannot be
@@ -494,7 +498,7 @@ function runCli(argv, {exec, readFile} = {}) {
     commentsError,
     dispositions,
     blockers,
-    codex: {status, baseStatus, meta, auditedChanged, boundary, out: opts.codexOut},
+    codex: {status, baseStatus, meta, auditedChanged, boundary, provenance, out: opts.codexOut},
     fallback,
   });
 

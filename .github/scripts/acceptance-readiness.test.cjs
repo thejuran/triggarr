@@ -135,6 +135,13 @@ function verifiedBoundary(overrides = {}) {
   };
 }
 
+function validProvenance(overrides = {}) {
+  return {
+    established: true, main_ref: 'refs/remotes/origin/main', main_sha: BASE, harness_head: BASE, base: BASE,
+    base_on_main: true, grader_ref: BASE, grader_source: 'trusted-origin-main', ...overrides,
+  };
+}
+
 function inspectionOnlyOut() {
   return `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task5-a1`;
 }
@@ -158,6 +165,7 @@ function inspectionOnlyBaseline({prAuthor, prAuthorIsBot, isCrossRepository}, ov
       audited_inputs_changed_in_diff: overrides.auditedInputsChangedInDiff || [],
     },
     boundary: Object.hasOwn(overrides, 'boundary') ? overrides.boundary : verifiedBoundary({head: HEAD, attempt}),
+    provenance: Object.hasOwn(overrides, 'provenance') ? overrides.provenance : validProvenance(),
     out,
   };
   input.fallback = null;
@@ -790,7 +798,7 @@ test('runCli rejects an invalid --pr before calling the injected exec', () => {
   assert.equal(readCalled, false);
 });
 
-function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson}) {
+function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson, provenanceJson = JSON.stringify(validProvenance())}) {
   const prInfo = JSON.stringify({
     number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
     author: {login: authorLogin, is_bot: isBot}, isCrossRepository: false,
@@ -815,22 +823,41 @@ function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson}) {
   const files = {
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
-      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: INSPECTION_REVIEW_MODE,
+      meta_version: 2, head: HEAD, base: BASE, attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
       audited_inputs_changed_in_diff: [],
     }),
   };
   if (boundaryJson !== undefined) files[`${CODEX_OUT}.boundary.json`] = boundaryJson;
+  if (provenanceJson !== null) files[`${CODEX_OUT}.grader-provenance.json`] = provenanceJson;
   return {exec, readFile: fileTable(files)};
 }
 
 test('runCli reads <out>.boundary.json so a COMPLETE inspection-only record for an untrusted head reaches ok', () => {
   const {exec, readFile} = inspectionOnlyCliFixture({
-    authorLogin: 'dependabot[bot]', isBot: true, boundaryJson: JSON.stringify(verifiedBoundary({attempt: 1})),
+    authorLogin: 'dependabot[bot]', isBot: true, boundaryJson: JSON.stringify(verifiedBoundary({attempt: 2})),
   });
   const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
   const output = logs.join('\n');
   assert.equal(exitCode, 0, output);
   assert.ok(output.includes('Codex: ok'), output);
+});
+
+test('runCli reads <out>.grader-provenance.json: without it a COMPLETE inspection-only record is blocked (WR-05)', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true, boundaryJson: JSON.stringify(verifiedBoundary({attempt: 2})),
+    provenanceJson: null,
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('grader provenance not established from origin/main'), output);
+});
+
+test('untrusted head: grader provenance not established blocks a COMPLETE inspection-only claim (WR-05)', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {provenance: validProvenance({base_on_main: false})});
+  const i = item(readiness(input), 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes('grader provenance not established from origin/main'), i.detail);
 });
 
 test('runCli: a missing <out>.boundary.json for an inspection-only record is not an error (readJsonIfPresent)', () => {

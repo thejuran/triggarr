@@ -384,8 +384,21 @@ function verifiedBoundary(overrides = {}) {
   };
 }
 
+function validProvenance(overrides = {}) {
+  return {
+    established: true, main_ref: 'refs/remotes/origin/main', main_sha: BASE, harness_head: BASE, base: BASE,
+    base_on_main: true, grader_ref: BASE, grader_source: 'trusted-origin-main', ...overrides,
+  };
+}
+
+// The predicate with this file's CODEX_OUT (-a2, matching inspectionMeta's
+// attempt) and a valid trusted-main provenance unless a test overrides them.
+function predicate(args) {
+  return inspectionOnlyCompleteness({provenance: validProvenance(), out: CODEX_OUT, ...args});
+}
+
 test('inspectionOnlyCompleteness: complete status, bound, verified boundary, no base required is complete', () => {
-  const result = inspectionOnlyCompleteness({
+  const result = predicate({
     meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
     head: HEAD, baseRequired: false,
   });
@@ -393,7 +406,7 @@ test('inspectionOnlyCompleteness: complete status, bound, verified boundary, no 
 });
 
 test('inspectionOnlyCompleteness: an incomplete status is a legitimate incomplete, never invalid evidence', () => {
-  const result = inspectionOnlyCompleteness({
+  const result = predicate({
     meta: inspectionMeta(), status: {status: 'incomplete', reasons: ['boundary unverified']}, baseStatus: null,
     boundary: null, head: HEAD, baseRequired: false,
   });
@@ -403,7 +416,7 @@ test('inspectionOnlyCompleteness: an incomplete status is a legitimate incomplet
 });
 
 test('inspectionOnlyCompleteness: a missing boundary makes a complete claim invalid evidence', () => {
-  const result = inspectionOnlyCompleteness({
+  const result = predicate({
     meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: null,
     head: HEAD, baseRequired: false,
   });
@@ -418,7 +431,7 @@ test('inspectionOnlyCompleteness: an unverified, wrong-head, or wrong-attempt bo
     verifiedBoundary({head: 'f'.repeat(40)}),
     verifiedBoundary({attempt: 1}),
   ]) {
-    const result = inspectionOnlyCompleteness({
+    const result = predicate({
       meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary, head: HEAD, baseRequired: false,
     });
     assert.equal(result.complete, false, JSON.stringify(boundary));
@@ -428,7 +441,7 @@ test('inspectionOnlyCompleteness: an unverified, wrong-head, or wrong-attempt bo
 });
 
 test('inspectionOnlyCompleteness: a missing required base-status blocks with the grader-changed reason', () => {
-  const result = inspectionOnlyCompleteness({
+  const result = predicate({
     meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
     head: HEAD, baseRequired: true,
   });
@@ -437,7 +450,7 @@ test('inspectionOnlyCompleteness: a missing required base-status blocks with the
 });
 
 test('inspectionOnlyCompleteness: an incomplete required base-status blocks with the grader-changed reason', () => {
-  const result = inspectionOnlyCompleteness({
+  const result = predicate({
     meta: inspectionMeta(), status: inspectionStatus(), baseStatus: {status: 'incomplete'}, boundary: verifiedBoundary(),
     head: HEAD, baseRequired: true,
   });
@@ -446,7 +459,7 @@ test('inspectionOnlyCompleteness: an incomplete required base-status blocks with
 });
 
 test('inspectionOnlyCompleteness: a complete but unbound required base-status blocks with the grader-changed reason', () => {
-  const result = inspectionOnlyCompleteness({
+  const result = predicate({
     meta: inspectionMeta(), status: inspectionStatus(),
     baseStatus: {status: 'complete', inspected_head: 'f'.repeat(40), inspected_base: BASE},
     boundary: verifiedBoundary(), head: HEAD, baseRequired: true,
@@ -458,7 +471,7 @@ test('inspectionOnlyCompleteness: a complete but unbound required base-status bl
 });
 
 test('inspectionOnlyCompleteness: a complete and bound required base-status is complete', () => {
-  const result = inspectionOnlyCompleteness({
+  const result = predicate({
     meta: inspectionMeta(), status: inspectionStatus(), baseStatus: inspectionStatus(), boundary: verifiedBoundary(),
     head: HEAD, baseRequired: true,
   });
@@ -477,6 +490,11 @@ function inspectionOutputFiles(overrides = {}) {
     if (overrides.boundary !== null) files[`${out}.boundary.json`] = JSON.stringify(overrides.boundary);
   } else {
     files[`${out}.boundary.json`] = JSON.stringify(verifiedBoundary());
+  }
+  if (overrides.provenance !== undefined) {
+    if (overrides.provenance !== null) files[`${out}.grader-provenance.json`] = JSON.stringify(overrides.provenance);
+  } else {
+    files[`${out}.grader-provenance.json`] = JSON.stringify(validProvenance());
   }
   return files;
 }
@@ -528,6 +546,44 @@ test('codexStatusFromOutput: a complete, bound, verified-boundary inspection-onl
   assert.equal(result.complete, true);
   assert.equal(result.invalidEvidence, false);
   assert.equal(result.boundaryVerdict, 'verified');
+});
+
+// --- WR-05: grader provenance and output-prefix attempt, as the Python gate ---
+
+test('inspectionOnlyCompleteness: missing or unestablished grader provenance makes a complete claim invalid evidence', () => {
+  for (const provenance of [
+    null, [], {established: false, reasons: ['x']}, validProvenance({base_on_main: false}),
+    validProvenance({grader_source: 'base'}),
+  ]) {
+    const result = predicate({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      provenance, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(provenance));
+    assert.equal(result.invalidEvidence, true, JSON.stringify(provenance));
+    assert.ok(result.reasons.includes('grader provenance not established from origin/main'), JSON.stringify(result));
+  }
+});
+
+test('inspectionOnlyCompleteness: a meta head or attempt that differs from the output prefix is invalid evidence', () => {
+  for (const [meta, boundary, out] of [
+    [inspectionMeta({attempt: 3}), verifiedBoundary({attempt: 3}), CODEX_OUT],
+    [inspectionMeta(), verifiedBoundary(), CODEX_OUT.replace(/-a2$/, '-a1')],
+    [inspectionMeta(), verifiedBoundary(), undefined],
+  ]) {
+    const result = predicate({
+      meta, status: inspectionStatus(), baseStatus: null, boundary, out, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, String(out));
+    assert.ok(result.reasons.includes('inspection-only meta does not match the output prefix (head or attempt)'));
+  }
+});
+
+test('codexStatusFromOutput: a complete claim with no .grader-provenance.json is invalid evidence', () => {
+  const files = inspectionOutputFiles({provenance: null});
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
 });
 
 test('codexStatusFromOutput: trusted-local-tests records never carry invalidEvidence', () => {

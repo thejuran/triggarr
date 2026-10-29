@@ -348,7 +348,7 @@ function readJson(readFileSync, path) {
   return JSON.parse(text);
 }
 
-// inspectionOnlyCompleteness({meta, status, baseStatus, boundary, head, baseRequired})
+// inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provenance, out, head, baseRequired})
 // -> {complete, invalidEvidence, reasons}
 //
 // The single completeness rule for an inspection-only (isolated-container)
@@ -361,7 +361,15 @@ function readJson(readFileSync, path) {
 // completeness checks fail (an anomalous completion claim, T-85.1-04/07b); a
 // status that is honestly "incomplete" is never invalid evidence, whatever
 // the boundary says -- that is a legitimate INCOMPLETE result.
-function inspectionOnlyCompleteness({meta, status, baseStatus, boundary, head, baseRequired}) {
+//
+// It applies the same rules as tests/codex_review_run.py's completion_gate()
+// (WR-05; a cross-language parity test pins the two): the meta's head and
+// attempt must match the output prefix *out* (<head12>-<label>-a<attempt>),
+// and <OUT>.grader-provenance.json (*provenance*) must record an established
+// trusted-origin-main grader whose base is on main.
+const OUT_NAME_RE = /^([0-9a-f]{12})-[a-z0-9-]+-a([0-9]+)$/;
+
+function inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provenance, out, head, baseRequired}) {
   if (status?.status !== 'complete') {
     return {complete: false, invalidEvidence: false, reasons: ['Codex status is incomplete']};
   }
@@ -371,6 +379,25 @@ function inspectionOnlyCompleteness({meta, status, baseStatus, boundary, head, b
   const boundHere = status?.inspected_head === head && status?.inspected_base === meta?.base;
   if (!boundHere) {
     reasons.push('inspection-only status is not bound to this head and base (inspected_head/inspected_base differ)');
+  }
+
+  const outMatch = OUT_NAME_RE.exec(basename(out));
+  const matchesPrefix =
+    Boolean(outMatch) &&
+    typeof meta?.head === 'string' &&
+    meta.head.startsWith(outMatch[1]) &&
+    meta?.attempt === Number(outMatch[2]);
+  if (!matchesPrefix) {
+    reasons.push('inspection-only meta does not match the output prefix (head or attempt)');
+  }
+
+  const provenanceValid =
+    isPlainObject(provenance) &&
+    Boolean(provenance.established) &&
+    provenance.base_on_main === true &&
+    provenance.grader_source === 'trusted-origin-main';
+  if (!provenanceValid) {
+    reasons.push('grader provenance not established from origin/main');
   }
 
   const boundaryValid =
@@ -437,8 +464,15 @@ function codexStatusFromOutput(codexOutPrefix, readFileSync) {
       boundary = null;
     }
     boundaryVerdict = isPlainObject(boundary) ? boundary.verdict : undefined;
+    let provenance = null;
+    try {
+      provenance = readJson(readFileSync, `${codexOutPrefix}.grader-provenance.json`);
+    } catch {
+      provenance = null;
+    }
     const result = inspectionOnlyCompleteness({
-      meta, status, baseStatus, boundary, head: meta.head, baseRequired: auditedChanged.length > 0,
+      meta, status, baseStatus, boundary, provenance, out: codexOutPrefix, head: meta.head,
+      baseRequired: auditedChanged.length > 0,
     });
     complete = result.complete;
     invalidEvidence = result.invalidEvidence;
