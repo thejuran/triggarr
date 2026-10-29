@@ -3841,9 +3841,10 @@ def _execute_reserved(
 # gathers everything needed to build the inspection-only prompt purely from
 # read-only git/gh calls, then reserves the output name exactly like the
 # trusted path before writing anything. _execute_inspection() is everything
-# after that reservation: it returns 0 (COMPLETE) or 3 (INCOMPLETE) and never
-# raises except for a BaseException escaping the Codex launch, which
-# _execute_untrusted still turns into a status stub before re-raising.
+# after that reservation: it returns 0 (COMPLETE) or 3 (INCOMPLETE). Any
+# exception escaping it is turned by _execute_untrusted into an incomplete
+# status and exit 3 (IN-03); an interrupt (BaseException) gets a status stub
+# before it is re-raised.
 
 
 def _ci_evidence_text(ci: dict[str, object]) -> str:
@@ -4260,9 +4261,11 @@ def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
 
     Every step up to and including reserve_outputs may raise RunnerError or
     FileExistsError; nothing is written for a refused or already-claimed
-    head. From the reservation onward, every path writes a status before
-    returning or re-raising, mirroring execute()'s own wrapper for the
-    trusted path (same Exception/BaseException stub-writing pattern).
+    head. From the reservation onward, every path writes a status: any
+    error (RunnerError or otherwise) returns 3 with an incomplete status
+    (IN-03), and an interrupt (BaseException) writes one before re-raising.
+    The single exception is a status that cannot itself be written, which
+    surfaces as a RunnerError (exit 2) because no status was recorded.
     """
     pr_info = inspect_untrusted_pr(run, command_runner)
     ci = ci_evidence(run, command_runner)
@@ -4327,10 +4330,20 @@ def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
             return 3
         return _inspection_incomplete(run, f"harness failed after reserving the output: {exc}")
     except Exception as exc:
+        # IN-03: any other error is recorded the same way and also ends with
+        # exit 3. Only when the status itself cannot be written (e.g. the disk
+        # is full) does this surface as a RunnerError (exit 2): no status could
+        # be recorded, so the run must not claim one.
         reason = f"harness failed after reserving the output: {type(exc).__name__}"
-        if not run.output(".status.json").exists():
-            _write_status_stub(run, reason)
-        raise RunnerError(reason) from exc
+        if run.output(".status.json").exists():
+            _print_inspection_result(run, complete=False, reason=reason)
+            return 3
+        try:
+            return _inspection_incomplete(run, reason)
+        except OSError as write_exc:
+            raise RunnerError(
+                f"{reason}; the incomplete status could not be recorded ({type(write_exc).__name__})"
+            ) from exc
     except BaseException as exc:
         if not run.output(".status.json").exists():
             if isinstance(exc, SystemExit) and _RECEIVED_SIGNAL is not None:
