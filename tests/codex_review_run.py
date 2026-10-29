@@ -1382,17 +1382,14 @@ def verify_isolation_boundary(
     ledger.register_dir(scratch)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        credential_sha256, preflight_info = prepare_codex_home(host_auth_path, codex_home_dir, now=checked_at)
-    except RunnerError as exc:
-        return _unverified([str(exc)])
-
-    try:
-        schema_dir.mkdir(parents=True, exist_ok=True)
-        schema_sha256 = stage_output_schema(schema_dir, expected_sha256=expected_schema_sha256)
-    except RunnerError as exc:
-        return _unverified([str(exc)])
-
+    # The host-exposure check on both argvs runs before any credential
+    # material is staged on disk: prepare_codex_home() below copies the
+    # host's Codex sign-in, and stage_output_schema() writes into
+    # schema_dir. Both argvs only need the per-run directory *paths*,
+    # never their contents, so building and checking them first means a
+    # failing exposure check never lets a credential copy exist at all
+    # (2026-10-29 live run: the copy was staged, then unused and cleaned
+    # up, before an exposure check that should have run first failed).
     canary_pairs = canary_paths(
         host_home=host_home,
         repo_root=repo_root,
@@ -1430,6 +1427,17 @@ def verify_isolation_boundary(
     )
     if exposure:
         return _unverified(exposure)
+
+    try:
+        credential_sha256, preflight_info = prepare_codex_home(host_auth_path, codex_home_dir, now=checked_at)
+    except RunnerError as exc:
+        return _unverified([str(exc)])
+
+    try:
+        schema_dir.mkdir(parents=True, exist_ok=True)
+        schema_sha256 = stage_output_schema(schema_dir, expected_sha256=expected_schema_sha256)
+    except RunnerError as exc:
+        return _unverified([str(exc)])
 
     env = docker_env(os.environ)
 
