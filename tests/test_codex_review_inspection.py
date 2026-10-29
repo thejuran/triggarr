@@ -498,8 +498,11 @@ def test_planted_files_stay_inert_text() -> None:
     prompt = render_inspection_prompt(run, ci_evidence_text="CI evidence text", input_text=text, fence=fence)
 
     assert "echo PLANTED-RUN" in text
-    begin = prompt.index(f"{fence}-BEGIN")
-    end = prompt.index(f"{fence}-END")
+    # rindex, not index: the prompt's own instructional sentence mentions
+    # "{fence}-BEGIN"/"{fence}-END" by name earlier in the text, so the first
+    # occurrence is prose, not the real trailing fence line.
+    begin = prompt.rindex(f"{fence}-BEGIN")
+    end = prompt.rindex(f"{fence}-END")
     assert "echo PLANTED-RUN" not in prompt[:begin]
     assert "echo PLANTED-RUN" not in prompt[end:]
     assert "echo PLANTED-RUN" in prompt[begin:end]

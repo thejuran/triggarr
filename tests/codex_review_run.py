@@ -55,6 +55,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import shutil
 import signal
@@ -97,6 +98,33 @@ TRUSTED_AUTHORS = frozenset({"thejuran"})
 
 TEMPLATE_HEADING = "## Fixed prompt (version 6)"
 PLACEHOLDERS = frozenset({"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "TEST_EVIDENCE"})
+
+# The untrusted (bot/fork) head's inspection-only prompt (Phase 85.1, D-07):
+# Codex gets no checkout, so the review input is inert text substituted into
+# this separate template instead of the trusted TEMPLATE_HEADING above.
+INSPECTION_TEMPLATE_HEADING = "## Inspection-only prompt (version 1)"
+INSPECTION_PLACEHOLDERS = frozenset(
+    {"PR_URL", "HEAD_SHA", "BASE_SHA", "SCOPE", "CI_EVIDENCE", "INPUT_FENCE", "INPUT"}
+)
+
+# Per-file and total byte bounds on the inert inspection input (T-85.1-20,
+# denial of service): a file over PER_FILE_CONTENT_LIMIT is omitted with a
+# note instead of read in full; a total input over MAX_INSPECTION_INPUT_BYTES
+# is recorded oversize by the caller rather than raising here.
+PER_FILE_CONTENT_LIMIT = 262_144
+MAX_INSPECTION_INPUT_BYTES = 1_500_000
+
+# Prefix for the random per-run fence marking the inert input block
+# (T-85.1-19, prompt injection): new_input_fence() regenerates until the
+# result does not occur anywhere in the input it is fencing.
+INPUT_FENCE_PREFIX = "TRIGGARR-INERT-"
+
+CI_READY_CHECK_NAME = "CI ready"
+
+# Every git command that reads the untrusted head's content (diff, ls-tree,
+# cat-file) is prefixed with this, so a repository-supplied .gitattributes
+# driver never runs during the read (T-85.1-16).
+GIT_SAFE_PREFIX = ("git", "-c", "core.attributesFile=/dev/null", "-c", "diff.external=")
 
 # Planning markdown, raw review transcripts and generated review artifacts are
 # out of scope for the review diff; planning markdown is background Codex may
@@ -319,13 +347,13 @@ class ReviewRun:
         return self.out_base.parent / f"{self.out_base.name}{suffix}"
 
 
-def load_template(contract_text: str | None = None) -> str:
-    """Return the fixed prompt: the first fenced block after the template heading."""
+def load_template(contract_text: str | None = None, heading: str = TEMPLATE_HEADING) -> str:
+    """Return the fixed prompt: the first fenced block after *heading*."""
     text = contract_text if contract_text is not None else CONTRACT_PATH.read_text(encoding="utf-8")
-    after = text[text.index(TEMPLATE_HEADING) + len(TEMPLATE_HEADING) :]
+    after = text[text.index(heading) + len(heading) :]
     match = re.search(r"```[^\n]*\n(.*?)```", after, re.DOTALL)
     if match is None:
-        raise ValueError(f"no fenced prompt block after {TEMPLATE_HEADING!r}")
+        raise ValueError(f"no fenced prompt block after {heading!r}")
     return match.group(1)
 
 
@@ -338,21 +366,39 @@ def template_version(contract_text: str | None = None) -> str:
     return match.group(1)
 
 
+def inspection_template_version(contract_text: str | None = None) -> str:
+    """Return the contract's "Inspection-only template version: N." number."""
+    text = contract_text if contract_text is not None else CONTRACT_PATH.read_text(encoding="utf-8")
+    match = re.search(r"^Inspection-only template version: (\d+)\.", text, re.MULTILINE)
+    if match is None:
+        raise ValueError("contract has no 'Inspection-only template version: N.' line")
+    return match.group(1)
+
+
+def render_template(template: str, values: dict[str, str], placeholders: frozenset[str]) -> str:
+    """Substitute exactly *placeholders* in one pass.
+
+    Single-pass substitution means a value that itself looks like a
+    placeholder is never expanded again.
+    """
+    keys = set(values)
+    if keys != placeholders:
+        missing = sorted(placeholders - keys)
+        unknown = sorted(keys - placeholders)
+        raise ValueError(f"placeholder values mismatch: missing {missing}, unknown {unknown}")
+    used = set(_PLACEHOLDER_RE.findall(template))
+    if used != placeholders:
+        raise ValueError(f"template placeholders {sorted(used)} differ from {sorted(placeholders)}")
+    return _PLACEHOLDER_RE.sub(lambda match: values[match.group(1)], template)
+
+
 def render_prompt(template: str, values: dict[str, str]) -> str:
     """Substitute exactly the documented placeholders in one pass.
 
     Single-pass substitution means a value that itself looks like a
     placeholder is never expanded again.
     """
-    keys = set(values)
-    if keys != PLACEHOLDERS:
-        missing = sorted(PLACEHOLDERS - keys)
-        unknown = sorted(keys - PLACEHOLDERS)
-        raise ValueError(f"placeholder values mismatch: missing {missing}, unknown {unknown}")
-    used = set(_PLACEHOLDER_RE.findall(template))
-    if used != PLACEHOLDERS:
-        raise ValueError(f"template placeholders {sorted(used)} differ from {sorted(PLACEHOLDERS)}")
-    return _PLACEHOLDER_RE.sub(lambda match: values[match.group(1)], template)
+    return render_template(template, values, PLACEHOLDERS)
 
 
 def prompt_values(run: ReviewRun) -> dict[str, str]:
@@ -473,6 +519,11 @@ def _require_base_on_main(run: ReviewRun, command_runner: CommandRunner) -> None
 
 
 _GH_PR_VIEW_FIELDS = "author,isCrossRepository,headRefOid,baseRefOid"
+
+# The inspection-only PR precondition check (inspect_untrusted_pr) also needs
+# the PR's open/closed state, which the trusted path's check never needs
+# (D-09 open-PR rule).
+_GH_PR_VIEW_FIELDS_INSPECTION = "author,isCrossRepository,headRefOid,baseRefOid,state"
 
 
 def _pr_merge_base(pr_base: str, head: str, command_runner: CommandRunner) -> str:
@@ -640,6 +691,320 @@ def verify_trust(run: ReviewRun, command_runner: CommandRunner) -> dict[str, obj
     if match is None:
         raise RunnerError(f"unrecognized --pr-url form: {run.pr_url!r}")
     return _verify_trust_pr(run, command_runner, match)
+
+
+# --- Inspection-only review for untrusted (bot/fork) heads (Phase 85.1, D-07) -----
+#
+# An untrusted head is never checked out, never written to disk and never
+# executed. These functions build the review input purely from git objects
+# read into memory, confirm CI evidence for exactly that head, render the
+# inspection-only prompt, and establish that the grader is a freshly fetched
+# origin/main before any grader code runs (B13, D-02). No orchestration here
+# -- Plan 85.1-06 wires these into execute().
+
+
+def _git_bytes(argv: list[str], command_runner: CommandRunner) -> bytes:
+    """Like _git_stdout, but returns raw bytes (no decoding) for blob content.
+
+    The caller checks for a NUL byte (binary detection) before any decoding
+    happens; decoding with errors="replace" happens only after that check.
+    """
+    try:
+        proc = command_runner(argv, cwd=HARNESS_ROOT, stdout=subprocess.PIPE, check=False)
+    except OSError as exc:
+        raise RunnerError(f"{shlex.join(argv[:3])} could not run: {type(exc).__name__}") from exc
+    if proc.returncode != 0:
+        raise RunnerError(f"{shlex.join(argv[:3])} exited {proc.returncode}")
+    output = proc.stdout or b""
+    return output.encode("utf-8") if isinstance(output, str) else output
+
+
+def flatten_pages(text: str, kind: str) -> list[dict]:
+    """Flatten a `gh api --paginate --slurp` array of pages into one list.
+
+    *text* must parse as a JSON array; every page must be a dict with a list
+    at *kind*. Anything else -- non-array JSON, a page missing the key, or
+    unparseable text -- fails closed (T-85.1-18): a missed or malformed page
+    must never be silently treated as "no evidence" or "ignored".
+    """
+    try:
+        pages = json.loads(text)
+    except ValueError as exc:
+        raise RunnerError(f"could not read GitHub check runs: unparseable JSON ({type(exc).__name__})") from exc
+    if not isinstance(pages, list):
+        raise RunnerError("could not read GitHub check runs: expected a --slurp array of pages")
+    items: list[dict] = []
+    for page in pages:
+        if not isinstance(page, dict) or not isinstance(page.get(kind), list):
+            raise RunnerError(f"could not read GitHub check runs: a page is missing its {kind!r} list")
+        items.extend(page[kind])
+    return items
+
+
+_CHECK_RUN_FIELDS = ("id", "name", "head_sha", "status", "conclusion", "html_url")
+
+
+def ci_evidence(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
+    """Return the GitHub check-run evidence for exactly --head, requiring a successful CI ready.
+
+    Only the latest (highest id) "CI ready" check run for this exact head
+    counts (T-85.1-18): a successful run for another head, or an older
+    successful run superseded by a later failure, is never accepted.
+    """
+    try:
+        proc = command_runner(
+            ["gh", "api", f"repos/{REPO_SLUG}/commits/{run.head}/check-runs", "--paginate", "--slurp"],
+            cwd=HARNESS_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not read GitHub check runs: gh api could not run ({type(exc).__name__})") from exc
+    if proc.returncode != 0:
+        raise RunnerError(f"could not read GitHub check runs: gh api exited {proc.returncode}")
+    runs = flatten_pages(proc.stdout or "", "check_runs")
+    for_head = [
+        {field: run_item.get(field) for field in _CHECK_RUN_FIELDS}
+        for run_item in runs
+        if isinstance(run_item, dict) and run_item.get("head_sha") == run.head
+    ]
+    ci_ready_runs = [item for item in for_head if item.get("name") == CI_READY_CHECK_NAME]
+    latest_ci_ready = max(ci_ready_runs, key=lambda item: item.get("id") or 0, default=None)
+    if (
+        latest_ci_ready is None
+        or latest_ci_ready.get("status") != "completed"
+        or latest_ci_ready.get("conclusion") != "success"
+    ):
+        raise RunnerError("no successful CI ready check run for this exact head")
+    return {"check_runs": for_head, "ci_ready": latest_ci_ready}
+
+
+def inspect_untrusted_pr(run: ReviewRun, command_runner: CommandRunner) -> dict[str, object]:
+    """Verify the inspection-only preconditions for an untrusted PR head.
+
+    An untrusted head needs CI evidence bound to the exact head, so an
+    unpushed (local checkpoint) head is refused outright. A closed or
+    merged PR is never reviewed (D-09): only an open PR whose fetched head
+    matches --head and whose reviewed base is the merge-base of its base and
+    head may proceed. Unlike verify_trust(), a bot author and a
+    cross-repository fork are both accepted here -- that is exactly the kind
+    of head this path exists for.
+    """
+    if run.pr_url == LOCAL_CHECKPOINT_PR_URL:
+        raise RunnerError("inspection-only review needs CI evidence for the exact head; an unpushed head has none")
+    match = _PR_URL_RE.fullmatch(run.pr_url)
+    if match is None:
+        raise RunnerError(f"unrecognized --pr-url form: {run.pr_url!r}")
+    slug, number = match.group(1), match.group(2)
+    if slug != REPO_SLUG:
+        raise RunnerError(f"only {REPO_SLUG} PRs are reviewed inspection-only: {slug!r} is a different repository")
+    try:
+        result = command_runner(
+            ["gh", "pr", "view", number, "--repo", REPO_SLUG, "--json", _GH_PR_VIEW_FIELDS_INSPECTION],
+            stdout=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not verify the PR: gh pr view could not run ({type(exc).__name__})") from exc
+    if result.returncode != 0:
+        raise RunnerError(f"could not verify the PR: gh pr view exited {result.returncode}")
+    try:
+        data = json.loads(result.stdout or "")
+    except ValueError as exc:
+        raise RunnerError(
+            f"could not verify the PR: gh pr view returned unparseable JSON ({type(exc).__name__})"
+        ) from exc
+    if data.get("state") in ("CLOSED", "MERGED"):
+        raise RunnerError(f"PR is not open: PR #{number} state is {data.get('state')}")
+    if data.get("headRefOid") != run.head:
+        raise RunnerError(f"PR head is {data.get('headRefOid')}, not --head {run.head}")
+    try:
+        fetched = command_runner(
+            ["git", "fetch", "--no-tags", "origin", f"pull/{number}/head"], cwd=HARNESS_ROOT, check=False
+        )
+    except OSError as exc:
+        raise RunnerError(f"could not fetch the PR head: git fetch could not run ({type(exc).__name__})") from exc
+    if fetched.returncode != 0:
+        raise RunnerError(f"could not fetch the PR head: git fetch exited {fetched.returncode}")
+    try:
+        verified = command_runner(
+            ["git", "rev-parse", "--verify", "FETCH_HEAD^{commit}"],
+            cwd=HARNESS_ROOT,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+    except OSError as exc:
+        raise RunnerError(
+            f"could not verify the fetched head: git rev-parse could not run ({type(exc).__name__})"
+        ) from exc
+    fetched_head = (verified.stdout or "").strip()
+    if verified.returncode != 0 or fetched_head != run.head:
+        raise RunnerError(f"fetched head does not match --head {run.head}: FETCH_HEAD resolved to {fetched_head!r}")
+    pr_base = data.get("baseRefOid")
+    if not isinstance(pr_base, str) or not _SHA_RE.fullmatch(pr_base):
+        raise RunnerError(f"could not verify the PR: gh pr view returned no valid baseRefOid ({pr_base!r})")
+    merge_base = _pr_merge_base(pr_base, run.head, command_runner)
+    if merge_base != run.base:
+        raise RunnerError(
+            f"--base must be the merge-base of PR base {pr_base} and head {run.head}, which is {merge_base},"
+            f" not {run.base}"
+        )
+    author = data.get("author") or {}
+    return {
+        "number": int(number),
+        "author_login": author.get("login", ""),
+        "is_cross_repository": bool(data.get("isCrossRepository")),
+        "head_ref_oid": data.get("headRefOid"),
+        "base_ref_oid": pr_base,
+        "merge_base": merge_base,
+    }
+
+
+def _ls_tree_entry(run: ReviewRun, path: str, command_runner: CommandRunner) -> str | None:
+    """Return the ls-tree mode for *path* at --head, or None if absent at head."""
+    output = _git_stdout([*GIT_SAFE_PREFIX, "ls-tree", "-z", run.head, "--", path], command_runner)
+    if not output.strip():
+        return None
+    # "<mode> <type> <sha>\t<path>\0" -- only the leading mode is needed.
+    return output.split(maxsplit=1)[0]
+
+
+def _inspected_file_note(run: ReviewRun, path: str, mode: str, command_runner: CommandRunner) -> str:
+    """Return the text (or a replacement note) for one changed path's head content."""
+    if mode == "120000":
+        return "symlink at head (target not followed)"
+    if mode == "160000":
+        return "submodule pointer, not inspected"
+    if mode not in ("100644", "100755"):
+        return f"content omitted: unsupported mode {mode}"
+    content = _git_bytes([*GIT_SAFE_PREFIX, "cat-file", "blob", f"{run.head}:{path}"], command_runner)
+    if len(content) > PER_FILE_CONTENT_LIMIT:
+        return f"content omitted: {len(content)} bytes exceeds PER_FILE_CONTENT_LIMIT; review the diff hunks"
+    if b"\x00" in content:
+        return "content omitted: binary"
+    return content.decode("utf-8", errors="replace")
+
+
+def _changed_paths(run: ReviewRun, pathspecs: tuple[str, ...], command_runner: CommandRunner) -> list[str]:
+    output = _git_stdout(
+        [
+            *GIT_SAFE_PREFIX,
+            "diff",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            "--no-textconv",
+            "--no-ext-diff",
+            "--no-color",
+            f"{run.base}..{run.head}",
+            "--",
+            *pathspecs,
+        ],
+        command_runner,
+    )
+    fields = [field for field in output.split("\0") if field]
+    # "<status>\0<path>\0<status>\0<path>\0..."; every even index is a status code.
+    return [fields[i] for i in range(1, len(fields), 2)]
+
+
+def build_inspection_input(run: ReviewRun, command_runner: CommandRunner) -> tuple[str, dict[str, object]]:
+    """Build the inert text input for an untrusted head's inspection-only review.
+
+    Every byte of the untrusted head reaches this function only as git
+    objects read into memory via *command_runner* -- no checkout, worktree,
+    archive, clone or restore is ever issued, and nothing from the head is
+    ever written to disk. Oversize input is reported in *stats*, not raised:
+    the caller decides how to record that (INCOMPLETE), not this function.
+    """
+    diff_flags = ("--no-textconv", "--no-ext-diff", "--no-color")
+    full_diff = _git_stdout(
+        [*GIT_SAFE_PREFIX, "diff", f"{run.base}..{run.head}", *diff_flags, "--", ".", *EXCLUDE_PATHSPECS],
+        command_runner,
+    )
+    plan_diff = _git_stdout(
+        [*GIT_SAFE_PREFIX, "diff", f"{run.base}..{run.head}", *diff_flags, "--", *PLAN_PATHSPECS],
+        command_runner,
+    )
+    full_scope_paths = _changed_paths(run, (".", *EXCLUDE_PATHSPECS), command_runner)
+    plan_scope_paths = _changed_paths(run, PLAN_PATHSPECS, command_runner)
+    paths: list[str] = []
+    for path in [*full_scope_paths, *plan_scope_paths]:
+        if path not in paths:
+            paths.append(path)
+
+    files_included = 0
+    files_omitted = 0
+    file_sections: list[str] = []
+    for path in paths:
+        mode = _ls_tree_entry(run, path, command_runner)
+        if mode is None:
+            note = "deleted at head"
+            files_omitted += 1
+        else:
+            note = _inspected_file_note(run, path, mode, command_runner)
+            if note.startswith("content omitted") or note.startswith("symlink") or note.startswith("submodule"):
+                files_omitted += 1
+            else:
+                files_included += 1
+        file_sections.append(f"#### {path}\n{note}")
+
+    text = (
+        "### In-scope diff\n"
+        f"{full_diff}\n\n"
+        "### Phase-plan diff\n"
+        f"{plan_diff}\n\n"
+        "### Changed files at head\n" + "\n\n".join(file_sections)
+    )
+    total_bytes = len(text.encode("utf-8"))
+    stats = {
+        "bytes": total_bytes,
+        "files_included": files_included,
+        "files_omitted": files_omitted,
+        "oversize": total_bytes > MAX_INSPECTION_INPUT_BYTES,
+    }
+    return text, stats
+
+
+def new_input_fence(input_text: str) -> str:
+    """Return a fresh random fence that does not occur anywhere in *input_text*.
+
+    Regenerated until the random suffix does not collide, so an attacker who
+    could predict (or got lucky guessing) the marker can never use it to
+    forge the end of the fenced block (T-85.1-19).
+    """
+    while True:
+        fence = INPUT_FENCE_PREFIX + secrets.token_hex(16)
+        if fence not in input_text:
+            return fence
+
+
+def inspection_prompt_values(run: ReviewRun, *, ci_evidence_text: str, input_text: str, fence: str) -> dict[str, str]:
+    return {
+        "PR_URL": run.pr_url,
+        "HEAD_SHA": run.head,
+        "BASE_SHA": run.base,
+        "SCOPE": run.scope,
+        "CI_EVIDENCE": ci_evidence_text,
+        "INPUT_FENCE": fence,
+        "INPUT": input_text,
+    }
+
+
+def render_inspection_prompt(run: ReviewRun, *, ci_evidence_text: str, input_text: str, fence: str) -> str:
+    """Render the inspection-only prompt, substituting all seven placeholders in one pass.
+
+    Single-pass substitution (render_template) means text inside *input_text*
+    that looks like a placeholder (e.g. literal "{{HEAD_SHA}}") is never
+    expanded -- it stays exactly as it appears in the untrusted head.
+    """
+    template = load_template(heading=INSPECTION_TEMPLATE_HEADING)
+    values = inspection_prompt_values(run, ci_evidence_text=ci_evidence_text, input_text=input_text, fence=fence)
+    return render_template(template, values, INSPECTION_PLACEHOLDERS)
 
 
 def redact_local_paths(text: str, *, worktree: Path, scratch: Path) -> str:
