@@ -1609,3 +1609,68 @@ def test_start_or_update_only_tool_never_reaches_grading(tmp_path, monkeypatch, 
     status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
     assert any("inspection-only review used a tool: command_execution" in r for r in status["reasons"])
     assert not _checker_ran(fake)
+
+
+# --- WR-01: failures after the reservation record a status and exit 3 ---------
+
+
+def test_truncated_last_jsonl_line_is_incomplete_with_status(tmp_path, monkeypatch, capsys) -> None:
+    """A timeout SIGKILL can cut the last event mid-write; the run is INCOMPLETE (3), never exit 2 with no status."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+
+    def _codex(run, **kw):
+        _write_jsonl(run.output(".jsonl"), CLEAN_EVENTS)
+        with run.output(".jsonl").open("a", encoding="utf-8") as handle:
+            handle.write('{"type": "item.completed", "item": {"type": "agent_mes')
+        run.output(".last.json").write_text(json.dumps({"verdict": "no-findings"}), encoding="utf-8")
+        return 124, []
+
+    monkeypatch.setattr(runner, "run_untrusted_codex", _codex)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("could not audit Codex event stream" in r for r in status["reasons"])
+    assert not _checker_ran(fake)
+    assert "Codex INCOMPLETE" in capsys.readouterr().out
+
+
+def test_materialize_grader_failure_is_incomplete_with_status(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, patch_materialize_grader=False)
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("must not be reached once the trusted-main grader cannot be materialized")
+
+    monkeypatch.setattr(runner, "verify_isolation_boundary", _forbidden)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(changed_paths="tests/codex_report_status.py\n", git_show_files={})
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("has no tests/codex_report_status.py" in r for r in status["reasons"])
+
+
+def test_any_runner_error_after_reservation_writes_status_and_returns_3(tmp_path, monkeypatch) -> None:
+    """Catch-all: a RunnerError no inner step recorded still leaves an incomplete status and exit 3."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+
+    def _raise(run, command_runner, **kw):
+        raise RunnerError("unexpected boundary failure")
+
+    monkeypatch.setattr(runner, "verify_isolation_boundary", _raise)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("unexpected boundary failure" in r for r in status["reasons"])
