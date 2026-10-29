@@ -2007,7 +2007,24 @@ def host_exposure_problems(
             reasons.append("forwarded environment value not allowed")
             i += 1
             continue
-        if i < boundary_index:
+        if i < boundary_index and os.path.isabs(token):
+            # Only an absolute-path token is resolved here. A fixed
+            # non-path option value in this argv (ALL, bridge, 256,
+            # no-new-privileges, an image ref, a Codex feature name, ...)
+            # is never absolute; os.path.realpath() resolves a relative
+            # string against the *process's* current working directory,
+            # not against any meaningful host location, so checking
+            # every token unconditionally flagged all of those literals
+            # as if they referenced a real host path whenever the runner
+            # was invoked from the repository root (the real usage
+            # pattern -- see 85.1-UNTRUSTED-BOUNDARY.md, 2026-10-29).
+            # This does not weaken the real check: docker itself
+            # requires `--mount type=bind,src=` to be an absolute path
+            # (it rejects a relative bind-mount source outright), and
+            # every mount source this runner builds is already an
+            # absolute Path string, so a relative token here is never a
+            # host path docker would honor -- it can only be one of
+            # these fixed option literals.
             marker = _protected_marker(token)
             if marker is not None:
                 reasons.append(f"{kind} argv references a protected host path: {marker}")
