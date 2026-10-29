@@ -1341,8 +1341,16 @@ def _protected_path_marker(path: Path, *, host_home: Path, repo_root: Path, host
     return max(candidates, key=lambda pair: len(pair[0]))[1]
 
 
-def _inspect_review_image(command_runner: CommandRunner, image_ref: str) -> tuple[str | None, str | None]:
-    """`docker image inspect` *image_ref*; returns (image_id, codex_version) or (None, None) on any failure."""
+def _inspect_review_image(
+    command_runner: CommandRunner, image_ref: str
+) -> tuple[str | None, str | None, str | None]:
+    """`docker image inspect` *image_ref*; returns (image_id, codex_version, dockerfile_sha256).
+
+    (None, None, None) on any failure or a missing/wrong Codex version
+    label. The third element is the image's dockerfile-sha256 label as
+    recorded at build time (None if absent); the caller compares it with
+    the committed Dockerfile (WR-09).
+    """
     try:
         proc = command_runner(
             ["docker", "image", "inspect", image_ref],
@@ -1352,22 +1360,25 @@ def _inspect_review_image(command_runner: CommandRunner, image_ref: str) -> tupl
             check=False,
         )
     except OSError:
-        return None, None
+        return None, None, None
     if proc.returncode != 0:
-        return None, None
+        return None, None, None
     try:
         data = json.loads(proc.stdout or "")
     except ValueError:
-        return None, None
+        return None, None, None
     if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
-        return None, None
+        return None, None, None
     image = data[0]
     image_id = image.get("Id")
     labels = (image.get("Config") or {}).get("Labels") or {}
+    if not isinstance(labels, dict):
+        return None, None, None
     codex_version = labels.get(REVIEW_IMAGE_LABEL)
-    if not image_id or codex_version != REVIEW_CODEX_VERSION:
-        return None, None
-    return image_id, codex_version
+    if not isinstance(image_id, str) or not image_id or codex_version != REVIEW_CODEX_VERSION:
+        return None, None, None
+    dockerfile_sha256 = labels.get(REVIEW_IMAGE_DOCKERFILE_LABEL)
+    return image_id, codex_version, dockerfile_sha256 if isinstance(dockerfile_sha256, str) else None
 
 
 def verify_isolation_boundary(
@@ -1384,8 +1395,11 @@ def verify_isolation_boundary(
 
     Must never return "verified" without performing every deterministic
     container check on that call -- no cache, no override flag: the
-    review image (docker image inspect against the expected label and
-    recorded image id), the credential snapshot and 7-day preflight
+    review image (docker image inspect: the expected Codex version label,
+    and a dockerfile-sha256 label equal to the sha256 of this checkout's
+    docker/codex-review/Dockerfile, WR-09; the image id resolved here is
+    recorded in the result and the created review container's Image must
+    equal it), the credential snapshot and 7-day preflight
     (D-11), the per-run directories (refused if any overlaps the host
     home, REPO_ROOT or the host's Codex home), the sign-in copy, the
     output-schema staging (B17), the canary container's create/start/
@@ -1422,10 +1436,20 @@ def verify_isolation_boundary(
     ):
         return _unverified(["inner Codex argv does not use the mounted output schema"])
 
-    image_id, codex_version = _inspect_review_image(command_runner, REVIEW_IMAGE_REF)
+    image_id, codex_version, image_dockerfile_sha256 = _inspect_review_image(command_runner, REVIEW_IMAGE_REF)
     if image_id is None:
+        return _unverified([f"review image not built or not labelled: run {' '.join(REVIEW_IMAGE_BUILD_ARGV)}"])
+    try:
+        dockerfile_sha256 = review_image_dockerfile_sha256()
+    except OSError as exc:
+        return _unverified([f"could not read {REVIEW_IMAGE_DOCKERFILE_RELPATH}: {type(exc).__name__}"])
+    if image_dockerfile_sha256 != dockerfile_sha256:
         return _unverified(
-            [f"review image not built or not labelled: run {shlex.join(REVIEW_IMAGE_BUILD_ARGV)}"]
+            [
+                f"review image is not built from the committed {REVIEW_IMAGE_DOCKERFILE_RELPATH} (its"
+                f" {REVIEW_IMAGE_DOCKERFILE_LABEL} label is missing or differs); rebuild it from this checkout:"
+                f" {' '.join(REVIEW_IMAGE_BUILD_ARGV)}"
+            ]
         )
 
     codex_home_dir = scratch / "codex-home"
@@ -1585,6 +1609,7 @@ def verify_isolation_boundary(
         "attempt": run.attempt if run is not None else None,
         "container_id": container_id,
         "image_id": image_id,
+        "dockerfile_sha256": dockerfile_sha256,
         "codex_version": codex_version,
         "credential_mode": "auth.json copy",
         "network": "bridge (egress not restricted)",
@@ -1879,11 +1904,44 @@ REVIEW_CODEX_VERSION = "0.153.4"
 REVIEW_IMAGE_REPO = "triggarr-codex-review"
 REVIEW_IMAGE_REF = f"{REVIEW_IMAGE_REPO}:{REVIEW_CODEX_VERSION}"
 REVIEW_IMAGE_LABEL = "org.triggarr.codex-review"
+# WR-09: the build also records the sha256 of the committed Dockerfile it was
+# built from, and verify_isolation_boundary() refuses any image whose label
+# differs from this checkout's docker/codex-review/Dockerfile. A tag and a
+# version label alone are trivially set by any `docker build`, including one
+# run from an untrusted branch's modified Dockerfile.
+REVIEW_IMAGE_DOCKERFILE_LABEL = "org.triggarr.codex-review.dockerfile-sha256"
+REVIEW_IMAGE_DOCKERFILE_RELPATH = "docker/codex-review/Dockerfile"
+REVIEW_IMAGE_DOCKERFILE = HARNESS_ROOT / REVIEW_IMAGE_DOCKERFILE_RELPATH
+
+
+def review_image_dockerfile_sha256() -> str:
+    """The sha256 of the harness checkout's review Dockerfile (raises OSError if unreadable)."""
+    return hashlib.sha256(REVIEW_IMAGE_DOCKERFILE.read_bytes()).hexdigest()
+
+
+def review_image_build_argv() -> list[str]:
+    """The exact build command, labelling the image with the Dockerfile's sha256 (WR-09)."""
+    return [
+        "docker",
+        "build",
+        "--label",
+        f"{REVIEW_IMAGE_DOCKERFILE_LABEL}={review_image_dockerfile_sha256()}",
+        "-f",
+        REVIEW_IMAGE_DOCKERFILE_RELPATH,
+        "-t",
+        REVIEW_IMAGE_REF,
+        "docker/codex-review",
+    ]
+
+
+# The build command as documented, with the label value computed by the shell.
 REVIEW_IMAGE_BUILD_ARGV = [
     "docker",
     "build",
+    "--label",
+    f'{REVIEW_IMAGE_DOCKERFILE_LABEL}="$(shasum -a 256 {REVIEW_IMAGE_DOCKERFILE_RELPATH} | cut -d\' \' -f1)"',
     "-f",
-    "docker/codex-review/Dockerfile",
+    REVIEW_IMAGE_DOCKERFILE_RELPATH,
     "-t",
     REVIEW_IMAGE_REF,
     "docker/codex-review",
