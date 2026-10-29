@@ -19,11 +19,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from tests import codex_review_run
 from tests.codex_review_run import (
     CANARY_CHECK_SCRIPT,
     CANARY_RUNTIME_ENV,
@@ -39,15 +43,43 @@ from tests.codex_review_run import (
     ExpectedCanary,
     ExpectedContainer,
     RunnerError,
+    UnsafeOutputError,
     canary_paths,
     container_check_argv,
     container_create_argv,
+    credential_outcome,
+    credential_preflight,
+    docker_env,
+    host_credential_path,
     host_exposure_problems,
     inspection_codex_argv,
     parse_canary_check,
+    prepare_codex_home,
+    safe_read_regular_file,
     stage_output_schema,
     verify_container_config,
 )
+
+# A fixed "now" for the credential-preflight tests below, so every test's
+# last_refresh offset is exact and independent of wall-clock time.
+_NOW = datetime(2026, 10, 28, 12, 0, 0, tzinfo=UTC)
+_FIXTURE_REFRESH_TOKEN = "refresh-token-fixture-must-never-leak"  # noqa: S105 -- test fixture, not a real secret
+
+
+def _auth_bytes(*, last_refresh: str, auth_mode: str = "chatgpt", refresh_token: str = _FIXTURE_REFRESH_TOKEN) -> bytes:
+    return json.dumps(
+        {
+            "auth_mode": auth_mode,
+            "OPENAI_API_KEY": None,
+            "tokens": {
+                "id_token": "id-token-fixture",
+                "access_token": "access-token-fixture",
+                "refresh_token": refresh_token,
+                "account_id": "11111111-1111-1111-1111-111111111111",
+            },
+            "last_refresh": last_refresh,
+        }
+    ).encode("utf-8")
 
 # Example per-run directories, matching the plan's own must_have example
 # call. Never created on disk for the argv-builder tests (argv strings
@@ -778,3 +810,290 @@ def test_container_base_env_and_canary_runtime_env_constants() -> None:
     assert frozenset({"PATH", "HOME", "LANG", "CODEX_HOME"}) == CONTAINER_BASE_ENV
     assert frozenset({"HOSTNAME", "PWD"}) == CANARY_RUNTIME_ENV
     assert CONTAINER_BASE_ENV.isdisjoint(CANARY_RUNTIME_ENV)
+
+
+# --- host_credential_path -----------------------------------------------
+
+
+def test_host_credential_path_uses_codex_home_env() -> None:
+    assert host_credential_path({"CODEX_HOME": "/x"}) == Path("/x/auth.json")
+
+
+def test_host_credential_path_defaults_to_home_dot_codex(monkeypatch) -> None:
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: Path("/home/fake-owner")))
+    assert host_credential_path({}) == Path("/home/fake-owner/.codex/auth.json")
+
+
+# --- credential_preflight (D-06, D-11 amendment) -------------------------
+
+
+def test_credential_preflight_six_days_ok() -> None:
+    last_refresh = (_NOW - timedelta(days=6)).isoformat()
+    result = credential_preflight(_auth_bytes(last_refresh=last_refresh), now=_NOW)
+    assert result == {"last_refresh": last_refresh, "age_seconds": 518400}
+
+
+def test_credential_preflight_seven_day_boundary() -> None:
+    last_refresh_ok = (_NOW - timedelta(days=7)).isoformat()
+    result = credential_preflight(_auth_bytes(last_refresh=last_refresh_ok), now=_NOW)
+    assert result["age_seconds"] == 7 * 86400
+
+    last_refresh_over = (_NOW - timedelta(days=7, seconds=1)).isoformat()
+    with pytest.raises(RunnerError):
+        credential_preflight(_auth_bytes(last_refresh=last_refresh_over), now=_NOW)
+
+
+def test_credential_preflight_eight_days_refused() -> None:
+    last_refresh = (_NOW - timedelta(days=8)).isoformat()
+    with pytest.raises(RunnerError) as exc_info:
+        credential_preflight(_auth_bytes(last_refresh=last_refresh), now=_NOW)
+    message = str(exc_info.value)
+    assert "last refreshed 8.0 days ago (limit 7 days)" in message
+    assert "run `codex login` (or use Codex on the host) first" in message
+    assert _FIXTURE_REFRESH_TOKEN not in message
+
+
+def test_credential_preflight_future_timestamp() -> None:
+    last_refresh = (_NOW + timedelta(seconds=301)).isoformat()
+    with pytest.raises(RunnerError, match="last_refresh is in the future"):
+        credential_preflight(_auth_bytes(last_refresh=last_refresh), now=_NOW)
+
+
+def test_credential_preflight_future_timestamp_within_skew_accepted() -> None:
+    last_refresh = (_NOW + timedelta(seconds=300)).isoformat()
+    result = credential_preflight(_auth_bytes(last_refresh=last_refresh), now=_NOW)
+    assert result["age_seconds"] == -300
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"not json at all",
+        _auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat(), auth_mode="apikey"),
+        _auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat(), refresh_token=""),
+        _auth_bytes(last_refresh="not-a-timestamp"),
+    ],
+    ids=["non_json", "wrong_auth_mode", "empty_refresh_token", "unparseable_last_refresh"],
+)
+def test_credential_preflight_malformed(raw: bytes) -> None:
+    with pytest.raises(RunnerError) as exc_info:
+        credential_preflight(raw, now=_NOW)
+    message = str(exc_info.value)
+    assert message.startswith("Codex sign-in not usable for an untrusted review:")
+    assert _FIXTURE_REFRESH_TOKEN not in message
+
+
+def test_credential_no_24_hour_rule() -> None:
+    last_refresh = (_NOW - timedelta(hours=30)).isoformat()
+    result = credential_preflight(_auth_bytes(last_refresh=last_refresh), now=_NOW)
+    assert result["age_seconds"] == 30 * 3600
+
+
+# --- prepare_codex_home ----------------------------------------------------
+
+
+def test_prepare_codex_home_copies_exact_snapshot(tmp_path: Path, monkeypatch) -> None:
+    host_dir = tmp_path / "host-codex"
+    host_dir.mkdir()
+    host_path = host_dir / "auth.json"
+    last_refresh = (_NOW - timedelta(days=1)).isoformat()
+    raw = _auth_bytes(last_refresh=last_refresh)
+    host_path.write_bytes(raw)
+    host_path.chmod(0o600)
+
+    read_calls: list[tuple[Path, str]] = []
+    real_safe_read = codex_review_run.safe_read_regular_file
+
+    def _counting_safe_read(dir_path, name, *, max_bytes):
+        read_calls.append((Path(dir_path), name))
+        return real_safe_read(dir_path, name, max_bytes=max_bytes)
+
+    monkeypatch.setattr(codex_review_run, "safe_read_regular_file", _counting_safe_read)
+
+    dest = tmp_path / "codex-home"
+    sha256, preflight_info = prepare_codex_home(host_path, dest, now=_NOW)
+
+    host_reads = [c for c in read_calls if c == (host_dir, "auth.json")]
+    assert len(host_reads) == 1
+    assert sha256 == hashlib.sha256(raw).hexdigest()
+    assert preflight_info["last_refresh"] == last_refresh
+    assert (dest.stat().st_mode & 0o777) == 0o700
+    copy_path = dest / "auth.json"
+    assert sorted(p.name for p in dest.iterdir()) == ["auth.json"]
+    assert (copy_path.stat().st_mode & 0o777) == 0o600
+    assert copy_path.read_bytes() == raw
+
+    host_path.write_bytes(_auth_bytes(last_refresh=(_NOW - timedelta(days=2)).isoformat()))
+    assert copy_path.read_bytes() == raw
+    assert sha256 == hashlib.sha256(raw).hexdigest()
+
+
+def test_prepare_codex_home_refuses_before_copy(tmp_path: Path) -> None:
+    dest = tmp_path / "codex-home"
+
+    missing_host = tmp_path / "missing-dir" / "auth.json"
+    with pytest.raises(RunnerError):
+        prepare_codex_home(missing_host, dest, now=_NOW)
+    assert not dest.exists()
+
+    host_dir2 = tmp_path / "host2"
+    host_dir2.mkdir()
+    real_secret = tmp_path / "real-secret.json"
+    real_secret.write_bytes(_auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat()))
+    symlinked_host = host_dir2 / "auth.json"
+    symlinked_host.symlink_to(real_secret)
+    with pytest.raises(RunnerError):
+        prepare_codex_home(symlinked_host, dest, now=_NOW)
+    assert not dest.exists()
+
+    host_dir3 = tmp_path / "host3"
+    host_dir3.mkdir()
+    stale_host = host_dir3 / "auth.json"
+    stale_host.write_bytes(_auth_bytes(last_refresh=(_NOW - timedelta(days=8)).isoformat()))
+    with pytest.raises(RunnerError):
+        prepare_codex_home(stale_host, dest, now=_NOW)
+    assert not dest.exists()
+
+    host_dir4 = tmp_path / "host4"
+    host_dir4.mkdir()
+    good_host = host_dir4 / "auth.json"
+    good_host.write_bytes(_auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat()))
+    dest.mkdir()
+    with pytest.raises(RunnerError):
+        prepare_codex_home(good_host, dest, now=_NOW)
+
+
+# --- credential_outcome ------------------------------------------------------
+
+
+def test_credential_outcome_unchanged(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    raw = _auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat())
+    (codex_home / "auth.json").write_bytes(raw)
+    before_sha256 = hashlib.sha256(raw).hexdigest()
+    assert credential_outcome(codex_home, before_sha256=before_sha256) == []
+
+
+def test_credential_outcome_refreshed(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    raw = _auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat())
+    before_sha256 = hashlib.sha256(raw).hexdigest()
+    (codex_home / "auth.json").write_bytes(_auth_bytes(last_refresh=_NOW.isoformat()))
+    problems = credential_outcome(codex_home, before_sha256=before_sha256)
+    assert problems == [
+        "Codex refreshed its sign-in inside the review container; the host login has likely been signed out."
+        " Re-login needed: run `codex login` on the host (D-11). The refreshed copy was deleted and never"
+        " copied back."
+    ]
+
+
+def test_credential_outcome_deleted(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    problems = credential_outcome(codex_home, before_sha256="0" * 64)
+    assert len(problems) == 1
+    assert problems[0].startswith("could not confirm the Codex sign-in copy was unchanged")
+
+
+def test_credential_outcome_symlinked(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    target = tmp_path / "elsewhere.json"
+    target.write_bytes(b"{}")
+    (codex_home / "auth.json").symlink_to(target)
+    problems = credential_outcome(codex_home, before_sha256="0" * 64)
+    assert len(problems) == 1
+    assert problems[0].startswith("could not confirm the Codex sign-in copy was unchanged")
+
+
+def test_credential_outcome_fifo(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    os.mkfifo(codex_home / "auth.json")
+    problems = credential_outcome(codex_home, before_sha256="0" * 64)
+    assert len(problems) == 1
+    assert problems[0].startswith("could not confirm the Codex sign-in copy was unchanged")
+
+
+def test_credential_outcome_never_writes_host_file(tmp_path: Path) -> None:
+    host_dir = tmp_path / "host"
+    host_dir.mkdir()
+    host_path = host_dir / "auth.json"
+    raw = _auth_bytes(last_refresh=(_NOW - timedelta(days=1)).isoformat())
+    host_path.write_bytes(raw)
+    before_mtime = host_path.stat().st_mtime_ns
+
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "auth.json").write_bytes(_auth_bytes(last_refresh=_NOW.isoformat()))
+    credential_outcome(codex_home, before_sha256=hashlib.sha256(raw).hexdigest())
+
+    assert host_path.stat().st_mtime_ns == before_mtime
+    assert host_path.read_bytes() == raw
+
+
+# --- safe_read_regular_file (B15) -------------------------------------------
+
+
+def test_safe_read_refuses_symlink(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not leak")
+    (out_dir / "last.json").symlink_to(secret)
+    with pytest.raises(UnsafeOutputError, match="refused: last.json is a symlink"):
+        safe_read_regular_file(out_dir, "last.json", max_bytes=1024)
+
+
+def test_safe_read_refuses_fifo(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    os.mkfifo(out_dir / "last.json")
+    start = time.monotonic()
+    with pytest.raises(UnsafeOutputError, match="refused: last.json is not a regular file"):
+        safe_read_regular_file(out_dir, "last.json", max_bytes=1024)
+    assert time.monotonic() - start < 2
+
+
+def test_safe_read_bounds_size(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    big = out_dir / "last.json"
+    big.write_bytes(b"x" * 2048)
+    with pytest.raises(UnsafeOutputError, match=r"refused: last\.json exceeds 1024 bytes"):
+        safe_read_regular_file(out_dir, "last.json", max_bytes=1024)
+
+    small = out_dir / "small.json"
+    small.write_bytes(b"ok")
+    assert safe_read_regular_file(out_dir, "small.json", max_bytes=1024) == b"ok"
+
+    with pytest.raises(FileNotFoundError):
+        safe_read_regular_file(out_dir, "missing.json", max_bytes=1024)
+
+
+def test_safe_read_refuses_symlinked_directory(tmp_path: Path) -> None:
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    (real_dir / "last.json").write_bytes(b"ok")
+    linked_dir = tmp_path / "linked"
+    linked_dir.symlink_to(real_dir)
+    with pytest.raises(UnsafeOutputError):
+        safe_read_regular_file(linked_dir, "last.json", max_bytes=1024)
+
+
+# --- docker_env --------------------------------------------------------------
+
+
+def test_docker_env_filters_to_allowed_names() -> None:
+    environ = {
+        "PATH": "p",
+        "HOME": "h",
+        "GH_TOKEN": "t",
+        "SSH_AUTH_SOCK": "s",
+        "DOCKER_HOST": "d",
+        "OPENAI_API_KEY": "k",
+        "CODEX_API_KEY": "c",
+    }
+    assert docker_env(environ) == {"PATH": "p", "HOME": "h", "DOCKER_HOST": "d"}
