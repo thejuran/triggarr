@@ -1428,3 +1428,121 @@ def test_write_json_atomic_round_trips(tmp_path) -> None:
     runner._write_json_atomic(path, {"a": 1, "b": [1, 2, 3]})
     assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1, "b": [1, 2, 3]}
     assert list(tmp_path.iterdir()) == [path]  # no leftover temp file
+
+
+# --- WR-02 / Codex a2 F002: re-verify the grader after the Codex run ----------
+
+
+def _checker_ran(fake: _OrchestrationRunner) -> bool:
+    return any(call[0] == sys.executable and "codex_report_status.py" in str(call[1]) for call in fake.calls)
+
+
+def _sequenced_establish(monkeypatch, results: list) -> list[str]:
+    """Replace establish_trusted_main with one returning/raising *results* in order; returns a call log."""
+    log: list[str] = []
+    queue = list(results)
+
+    def _establish(run, command_runner):
+        log.append("establish")
+        result = queue.pop(0) if len(queue) > 1 else queue[0]
+        if isinstance(result, Exception):
+            raise result
+        return dict(result)
+
+    monkeypatch.setattr(runner, "establish_trusted_main", _establish)
+    return log
+
+
+def test_inspection_reverifies_trusted_main_after_the_run(tmp_path, monkeypatch) -> None:
+    """Happy path: provenance is established again after Codex finishes, before the checker runs."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    order: list[str] = []
+    log = _sequenced_establish(monkeypatch, [DEFAULT_PROVENANCE])
+    real_codex = runner.run_untrusted_codex
+
+    def _codex(run, **kw):
+        order.append(f"codex after {len(log)} establish")
+        return real_codex(run, **kw)
+
+    monkeypatch.setattr(runner, "run_untrusted_codex", _codex)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 0
+
+    assert order == ["codex after 1 establish"]
+    assert len(log) == 2, "establish_trusted_main must run again after the Codex run"
+
+
+def test_inspection_harness_moved_off_main_during_run_is_incomplete(tmp_path, monkeypatch) -> None:
+    """The checkout was switched off origin/main during the review: never grade, record INCOMPLETE."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    _sequenced_establish(
+        monkeypatch,
+        [
+            DEFAULT_PROVENANCE,
+            RunnerError(
+                "base grader provenance not established: the harness checkout is 999999999999, not the freshly"
+                " fetched origin/main 333333333333; run from a checkout of origin/main (D-02)"
+            ),
+        ],
+    )
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    assert not _checker_ran(fake)
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert any("trusted grader could not be re-verified after the run" in r for r in status["reasons"])
+    provenance = json.loads(run.output(".grader-provenance.json").read_text(encoding="utf-8"))
+    assert provenance["established"] is False
+
+
+def test_inspection_origin_main_moved_during_run_is_incomplete(tmp_path, monkeypatch) -> None:
+    """A different main SHA after the run means the recorded grader is no longer the verified one."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    moved = {**DEFAULT_PROVENANCE, "main_sha": "9" * 40, "harness_head": "9" * 40, "grader_ref": "9" * 40}
+    _sequenced_establish(monkeypatch, [DEFAULT_PROVENANCE, moved])
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    assert not _checker_ran(fake)
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any("trusted grader could not be re-verified after the run" in r for r in status["reasons"])
+    assert json.loads(run.output(".grader-provenance.json").read_text(encoding="utf-8"))["established"] is False
+
+
+def test_inspection_audited_inputs_changed_during_run_is_incomplete(tmp_path, monkeypatch) -> None:
+    """The checker/schema bytes changed while Codex ran: the replacement checker is never executed."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    real_audit = runner.audit_inputs
+    calls = {"n": 0}
+
+    def _audit(command_runner):
+        calls["n"] += 1
+        inputs = real_audit(command_runner)
+        if calls["n"] > 1:
+            inputs = {**inputs, "tests/codex_report_status.py": {"sha256": "0" * 64, "committed_unchanged": True}}
+        return inputs
+
+    monkeypatch.setattr(runner, "audit_inputs", _audit)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    assert not _checker_ran(fake)
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any(
+        "trusted grader could not be re-verified after the run" in r and "tests/codex_report_status.py" in r
+        for r in status["reasons"]
+    )
+    assert json.loads(run.output(".grader-provenance.json").read_text(encoding="utf-8"))["established"] is False
