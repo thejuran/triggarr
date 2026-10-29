@@ -436,6 +436,102 @@ def test_host_exposure_review_positional_rejected_dotdot_into_repo_root() -> Non
     assert any("review argv references a protected host path: <REPO_ROOT>" in r for r in reasons)
 
 
+# --- WR-04: exact allowlist of docker create options -------------------------
+
+
+def _insert_options(argv: list[str], *options: str) -> list[str]:
+    """Insert *options* into the docker option section, just before the image ref."""
+    idx = argv.index(REVIEW_IMAGE_REF)
+    return [*argv[:idx], *options, *argv[idx:]]
+
+
+_HOME = str(_HOST_HOME)
+
+_OFF_ALLOWLIST_OPTIONS = [
+    pytest.param((f"--mount=type=bind,src={_HOME},dst=/x",), id="mount-equals-form"),
+    pytest.param((f"--volume={_HOME}:/h",), id="volume-equals-form"),
+    pytest.param(("--volume", f"{_HOME}:/h"), id="volume"),
+    pytest.param(("-v", f"{_HOME}:/h"), id="v-home-colon"),
+    pytest.param(("--env", "X=Y"), id="env"),
+    pytest.param(("--env=X=Y",), id="env-equals-form"),
+    pytest.param(("-eX=Y",), id="e-attached"),
+    pytest.param(("--env-file=/tmp/x",), id="env-file-equals-form"),
+    pytest.param(("--privileged",), id="privileged"),
+    pytest.param(("--network=host",), id="network-equals-host"),
+    pytest.param(("--pid=host",), id="pid-host"),
+    pytest.param(("--cap-add", "SYS_ADMIN"), id="cap-add"),
+    pytest.param(("--device", "/dev/null"), id="device"),
+    pytest.param(("-p", "8080:8080"), id="publish"),
+    pytest.param(("--mount", "type=bind,src=/tmp/x,dst=/y"), id="extra-mount"),
+    pytest.param(("--read-only",), id="duplicate-option"),
+]
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+@pytest.mark.parametrize("options", _OFF_ALLOWLIST_OPTIONS)
+def test_host_exposure_rejects_option_not_on_allowlist(kind: str, options: tuple[str, ...]) -> None:
+    mutated = _insert_options(_argv_for_kind(kind), *options)
+    reasons = host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+    assert reasons, f"{options!r} passed the {kind} host-exposure check"
+    for reason in reasons:
+        assert _HOME not in reason
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+@pytest.mark.parametrize(
+    "flag,value",
+    [("--network", "host"), ("--user", "0:0"), ("--cap-drop", "NET_RAW"), ("--memory", "64g"), ("-w", "/tmp")],
+)
+def test_host_exposure_rejects_changed_option_value(kind: str, flag: str, value: str) -> None:
+    mutated = _replace_option_value(_argv_for_kind(kind), flag, value)
+    assert host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+def test_host_exposure_rejects_mount_source_spelled_source(kind: str) -> None:
+    argv = _argv_for_kind(kind)
+    idx = argv.index(f"type=bind,src={_CODEX_HOME_DIR},dst=/codex-home")
+    mutated = [*argv[:idx], f"type=bind,source={_HOME},dst=/codex-home", *argv[idx + 1 :]]
+    reasons = host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+    assert reasons
+    assert all(_HOME not in reason for reason in reasons)
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+def test_host_exposure_rejects_sourceless_mount(kind: str) -> None:
+    argv = _argv_for_kind(kind)
+    idx = argv.index(f"type=bind,src={_CODEX_HOME_DIR},dst=/codex-home")
+    mutated = [*argv[:idx], "type=volume,dst=/codex-home", *argv[idx + 1 :]]
+    assert host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+def test_host_exposure_rejects_missing_option(kind: str) -> None:
+    argv = _argv_for_kind(kind)
+    mutated = list(argv)
+    mutated.remove("--read-only")
+    assert host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+def test_host_exposure_rejects_other_image(kind: str) -> None:
+    argv = _argv_for_kind(kind)
+    mutated = [("someone/else:latest" if token == REVIEW_IMAGE_REF else token) for token in argv]
+    assert host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+
+
+def test_host_exposure_canary_requires_its_entrypoint() -> None:
+    argv = _golden_canary_argv()
+    assert argv[2:4] == ["--entrypoint", "/bin/sh"]
+    assert host_exposure_problems([*argv[:2], *argv[4:]], kind="canary", **_exposure_kwargs())
+
+
+def test_host_exposure_review_rejects_entrypoint_override() -> None:
+    argv = _golden_review_argv()
+    mutated = [*argv[:2], "--entrypoint", "/bin/sh", *argv[2:]]
+    assert host_exposure_problems(mutated, kind="review", **_exposure_kwargs())
+
+
 def test_host_exposure_review_argv_clean_when_cwd_is_repo_root(tmp_path_factory, monkeypatch) -> None:
     """Regression for the 2026-10-29 live run (--verify-boundary always
     unverified): host_exposure_problems() used to call os.path.realpath()
