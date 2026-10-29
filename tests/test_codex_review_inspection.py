@@ -1840,3 +1840,50 @@ def test_status_stub_redacts_local_paths(tmp_path, monkeypatch) -> None:
     text = run.output(".status.json").read_text(encoding="utf-8")
     _assert_no_local_paths(text)
     assert "refused: ~/.codex could not be opened safely: OSError" in text
+
+
+# --- WR-08: untrusted file names are literal paths, never pathspec magic ------
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_build_inspection_input_treats_magic_looking_names_literally(tmp_path, monkeypatch) -> None:
+    """A head file named `:(glob)b` must not abort the input build, and `:(top)x` must not be read as `x`."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", ".")
+    (repo / "x").write_text("BASE-X\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    (repo / ":(glob)b").write_text("GLOB-NAMED-FILE\n", encoding="utf-8")
+    (repo / ":(top)x").write_text("TOP-NAMED-FILE\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "head")
+    head = _git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(runner, "HARNESS_ROOT", repo)
+    run = _run(head=head, base=base)
+
+    text, stats = build_inspection_input(run, runner.run_command)
+
+    assert "#### :(glob)b\nGLOB-NAMED-FILE" in text
+    assert "#### :(top)x\nTOP-NAMED-FILE" in text
+    assert "deleted at head" not in text
+    assert stats["files_included"] == 2
+    assert stats["files_omitted"] == 0
+
+
+def test_ls_tree_entry_uses_literal_pathspecs() -> None:
+    fake = _ScriptedRunner([(("git",), _ok(stdout="100644 blob abc\t:/x\0"))])
+    assert runner._ls_tree_entry(_run(), ":/x", fake) == "100644"
+    (call,) = fake.calls
+    assert call[:2] == ["git", "--literal-pathspecs"]
+    assert call[-2:] == ["--", ":/x"]
