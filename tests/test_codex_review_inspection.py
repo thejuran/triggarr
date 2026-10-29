@@ -1546,3 +1546,66 @@ def test_inspection_audited_inputs_changed_during_run_is_incomplete(tmp_path, mo
         for r in status["reasons"]
     )
     assert json.loads(run.output(".grader-provenance.json").read_text(encoding="utf-8"))["established"] is False
+
+
+# --- Codex a1 F002: audit tool types on every item-bearing event ---------------
+
+
+@pytest.mark.parametrize("event_type", ["item.started", "item.updated"])
+def test_audit_event_types_flags_tool_on_started_or_updated_only(tmp_path, event_type) -> None:
+    path = tmp_path / "events.jsonl"
+    _write_jsonl(
+        path,
+        [
+            {"type": event_type, "item": {"id": "tool1", "type": "command_execution", "command": "id"}},
+            {"type": "turn.completed"},
+        ],
+    )
+    assert audit_event_types(path) == ["inspection-only review used a tool: command_execution"]
+
+
+def test_audit_event_types_reports_one_tool_item_once_across_its_lifecycle(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    item = {"id": "tool1", "type": "command_execution", "command": "id"}
+    _write_jsonl(
+        path,
+        [
+            {"type": "item.started", "item": item},
+            {"type": "item.updated", "item": item},
+            {"type": "item.completed", "item": item},
+        ],
+    )
+    assert audit_event_types(path) == ["inspection-only review used a tool: command_execution"]
+
+
+def test_audit_event_types_allows_started_and_updated_agent_messages(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    _write_jsonl(
+        path,
+        [
+            {"type": "item.started", "item": {"id": "m1", "type": "agent_message", "text": ""}},
+            {"type": "item.updated", "item": {"id": "m1", "type": "agent_message", "text": "partial"}},
+            {"type": "item.completed", "item": {"id": "m1", "type": "agent_message", "text": "done"}},
+            {"type": "turn.completed"},
+        ],
+    )
+    assert audit_event_types(path) == []
+
+
+@pytest.mark.parametrize("event_type", ["item.started", "item.updated"])
+def test_start_or_update_only_tool_never_reaches_grading(tmp_path, monkeypatch, event_type) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    events = [
+        {"type": "thread.started"},
+        {"type": event_type, "item": {"id": "t", "type": "command_execution", "command": "id"}},
+        {"type": "turn.completed"},
+    ]
+    _patch_pipeline(monkeypatch, codex_events=events)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner()
+
+    assert execute(run, command_runner=fake) == 3
+
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert any("inspection-only review used a tool: command_execution" in r for r in status["reasons"])
+    assert not _checker_ran(fake)
