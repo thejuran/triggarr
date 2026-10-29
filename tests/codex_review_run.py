@@ -271,6 +271,43 @@ def _with_drain_marker(output: str | bytes | None, *, text_mode: bool) -> str | 
     return (output or b"") + marker.encode()
 
 
+_BOUNDED_READ_CHUNK = 65_536
+
+
+def _run_bounded_output(argv: list[str], *, max_output_bytes: int, **kwargs) -> subprocess.CompletedProcess:
+    """Run *argv*, reading at most ``max_output_bytes + 1`` bytes of its stdout (Codex 0aeeeda F001).
+
+    Once more than *max_output_bytes* bytes have arrived the process is
+    killed and nothing further is read, so a command whose output size an
+    untrusted head controls can never make the host hold more than that in
+    memory. A result longer than *max_output_bytes* therefore means "over
+    the bound"; the caller must check that before trusting the exit code
+    (a killed process exits non-zero). stdout is always returned as bytes.
+    """
+    for key in ("stdout", "text", "universal_newlines", "encoding", "errors"):
+        kwargs.pop(key, None)
+    chunks: list[bytes] = []
+    total = 0
+    with subprocess.Popen(argv, stdout=subprocess.PIPE, **kwargs) as proc:
+        try:
+            stream = proc.stdout
+            if stream is None:  # stdout=PIPE above makes this unreachable
+                raise OSError("no stdout pipe")
+            while total <= max_output_bytes:
+                chunk = stream.read(min(_BOUNDED_READ_CHUNK, max_output_bytes + 1 - total))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+            if total > max_output_bytes:
+                proc.kill()
+            proc.wait()
+        except BaseException:
+            proc.kill()
+            raise
+    return subprocess.CompletedProcess(argv, proc.returncode, b"".join(chunks), None)
+
+
 def run_command(
     argv: list[str],
     *,
@@ -278,6 +315,7 @@ def run_command(
     input: str | None = None,
     timeout: float | None = None,
     check: bool = False,
+    max_output_bytes: int | None = None,
     **kwargs,
 ) -> subprocess.CompletedProcess:
     """subprocess.run, except a child started in its own session is killed as a whole group.
@@ -289,8 +327,14 @@ def run_command(
     interruption) kills that group before re-raising. The post-kill drain
     that collects partial output is bounded by DRAIN_TIMEOUT_SECONDS so a
     descendant holding stdout open in a different process group can't hang
-    the run.
+    the run. *max_output_bytes* (short read-only commands only: no session,
+    input, timeout or check) bounds how much stdout is ever read, see
+    _run_bounded_output.
     """
+    if max_output_bytes is not None:
+        if start_new_session or input is not None or timeout is not None or check:
+            raise ValueError("max_output_bytes is only supported for a plain read-only command")
+        return _run_bounded_output(argv, max_output_bytes=max_output_bytes, **kwargs)
     if not start_new_session:
         return subprocess.run(argv, input=input, timeout=timeout, check=check, **kwargs)
     if input is not None:
@@ -718,20 +762,30 @@ def verify_trust(run: ReviewRun, command_runner: CommandRunner) -> dict[str, obj
 # -- Plan 85.1-06 wires these into execute().
 
 
-def _git_bytes(argv: list[str], command_runner: CommandRunner) -> bytes:
-    """Like _git_stdout, but returns raw bytes (no decoding) for blob content.
+def _git_bounded(argv: list[str], command_runner: CommandRunner, max_bytes: int) -> bytes | None:
+    """Run a read-only git command reading at most *max_bytes* of its output (Codex 0aeeeda F001).
 
-    The caller checks for a NUL byte (binary detection) before any decoding
-    happens; decoding with errors="replace" happens only after that check.
+    Returns the raw bytes, or None when the output is longer than
+    *max_bytes*: the command runner stops reading (and stops the command)
+    just past the bound, so an untrusted head can never make the host hold
+    more than that. Over-the-bound is checked before the exit code, since a
+    command stopped early exits non-zero. Any other failure is a RunnerError.
+    The caller checks for a NUL byte (binary detection) before decoding.
     """
     try:
-        proc = command_runner(argv, cwd=HARNESS_ROOT, stdout=subprocess.PIPE, check=False)
+        proc = command_runner(
+            argv, cwd=HARNESS_ROOT, stdout=subprocess.PIPE, check=False, max_output_bytes=max_bytes
+        )
     except OSError as exc:
         raise RunnerError(f"{shlex.join(argv[:3])} could not run: {type(exc).__name__}") from exc
+    output = proc.stdout or b""
+    if isinstance(output, str):
+        output = output.encode("utf-8")
+    if len(output) > max_bytes:
+        return None
     if proc.returncode != 0:
         raise RunnerError(f"{shlex.join(argv[:3])} exited {proc.returncode}")
-    output = proc.stdout or b""
-    return output.encode("utf-8") if isinstance(output, str) else output
+    return output
 
 
 def flatten_pages(text: str, kind: str) -> list[dict]:
@@ -931,24 +985,44 @@ def _ls_tree_entry(run: ReviewRun, path: str, command_runner: CommandRunner) -> 
     return output.split(maxsplit=1)[0]
 
 
-def _inspected_file_note(run: ReviewRun, path: str, mode: str, command_runner: CommandRunner) -> str:
-    """Return the text (or a replacement note) for one changed path's head content."""
+def _inspected_file_note(
+    run: ReviewRun, path: str, mode: str, command_runner: CommandRunner, *, remaining: int
+) -> str | None:
+    """Return the text (or a replacement note) for one changed path's head content.
+
+    The blob's size is read first (``git cat-file -s``), so a blob over
+    PER_FILE_CONTENT_LIMIT is omitted without its content ever being read
+    (Codex 0aeeeda F001). Returns None when the blob would not fit in the
+    *remaining* inspection-input budget; it is not read in that case either.
+    """
     if mode == "120000":
         return "symlink at head (target not followed)"
     if mode == "160000":
         return "submodule pointer, not inspected"
     if mode not in ("100644", "100755"):
         return f"content omitted: unsupported mode {mode}"
-    content = _git_bytes([*GIT_SAFE_PREFIX, "cat-file", "blob", f"{run.head}:{path}"], command_runner)
-    if len(content) > PER_FILE_CONTENT_LIMIT:
-        return f"content omitted: {len(content)} bytes exceeds PER_FILE_CONTENT_LIMIT; review the diff hunks"
+    object_name = f"{run.head}:{path}"
+    size_text = _git_stdout([*GIT_SAFE_PREFIX, "cat-file", "-s", object_name], command_runner).strip()
+    if not size_text.isdigit():
+        raise RunnerError("git cat-file -s returned no blob size")
+    size = int(size_text)
+    if size > PER_FILE_CONTENT_LIMIT:
+        return f"content omitted: {size} bytes exceeds PER_FILE_CONTENT_LIMIT; review the diff hunks"
+    if size > remaining:
+        return None
+    content = _git_bounded(
+        [*GIT_SAFE_PREFIX, "cat-file", "blob", object_name], command_runner, min(PER_FILE_CONTENT_LIMIT, remaining)
+    )
+    if content is None:
+        return None
     if b"\x00" in content:
         return "content omitted: binary"
     return content.decode("utf-8", errors="replace")
 
 
-def _changed_paths(run: ReviewRun, pathspecs: tuple[str, ...], command_runner: CommandRunner) -> list[str]:
-    output = _git_stdout(
+def _changed_paths(run: ReviewRun, pathspecs: tuple[str, ...], command_runner: CommandRunner) -> list[str] | None:
+    """The paths changed in --base..--head under *pathspecs*, or None if the list exceeds the input budget."""
+    output = _git_bounded(
         [
             *GIT_SAFE_PREFIX,
             "diff",
@@ -963,8 +1037,11 @@ def _changed_paths(run: ReviewRun, pathspecs: tuple[str, ...], command_runner: C
             *pathspecs,
         ],
         command_runner,
+        MAX_INSPECTION_INPUT_BYTES,
     )
-    fields = [field for field in output.split("\0") if field]
+    if output is None:
+        return None
+    fields = [field for field in output.decode("utf-8", errors="replace").split("\0") if field]
     # "<status>\0<path>\0<status>\0<path>\0..."; every even index is a status code.
     return [fields[i] for i in range(1, len(fields), 2)]
 
@@ -977,54 +1054,82 @@ def build_inspection_input(run: ReviewRun, command_runner: CommandRunner) -> tup
     archive, clone or restore is ever issued, and nothing from the head is
     ever written to disk. Oversize input is reported in *stats*, not raised:
     the caller decides how to record that (INCOMPLETE), not this function.
+
+    The MAX_INSPECTION_INPUT_BYTES budget is enforced while reading, not
+    after (Codex 0aeeeda F001): every read whose size the head controls is
+    bounded, a blob's size is checked before its content is fetched, and
+    the first read that would exceed the budget ends extraction. An
+    oversize result returns empty text, so nothing oversized is rendered.
     """
+    budget = MAX_INSPECTION_INPUT_BYTES
+    parts: list[str] = []
+    used = 0
+    files_included = 0
+    files_omitted = 0
+
+    def _stats(*, oversize: bool) -> dict[str, object]:
+        return {
+            "bytes": used,
+            "files_included": files_included,
+            "files_omitted": files_omitted,
+            "oversize": oversize,
+        }
+
+    def _add(piece: str) -> bool:
+        nonlocal used
+        parts.append(piece)
+        used += len(piece.encode("utf-8"))
+        return used <= budget
+
     diff_flags = ("--no-textconv", "--no-ext-diff", "--no-color")
-    full_diff = _git_stdout(
-        [*GIT_SAFE_PREFIX, "diff", f"{run.base}..{run.head}", *diff_flags, "--", ".", *EXCLUDE_PATHSPECS],
-        command_runner,
+    diff_sections = (
+        ("### In-scope diff\n", (".", *EXCLUDE_PATHSPECS)),
+        ("\n\n### Phase-plan diff\n", PLAN_PATHSPECS),
     )
-    plan_diff = _git_stdout(
-        [*GIT_SAFE_PREFIX, "diff", f"{run.base}..{run.head}", *diff_flags, "--", *PLAN_PATHSPECS],
-        command_runner,
-    )
+    for heading, pathspecs in diff_sections:
+        if not _add(heading):
+            return "", _stats(oversize=True)
+        raw = _git_bounded(
+            [*GIT_SAFE_PREFIX, "diff", f"{run.base}..{run.head}", *diff_flags, "--", *pathspecs],
+            command_runner,
+            budget - used,
+        )
+        if raw is None or not _add(raw.decode("utf-8", errors="replace")):
+            return "", _stats(oversize=True)
+    if not _add("\n\n### Changed files at head\n"):
+        return "", _stats(oversize=True)
+
     full_scope_paths = _changed_paths(run, (".", *EXCLUDE_PATHSPECS), command_runner)
+    if full_scope_paths is None:
+        return "", _stats(oversize=True)
     plan_scope_paths = _changed_paths(run, PLAN_PATHSPECS, command_runner)
+    if plan_scope_paths is None:
+        return "", _stats(oversize=True)
     paths: list[str] = []
     for path in [*full_scope_paths, *plan_scope_paths]:
         if path not in paths:
             paths.append(path)
 
-    files_included = 0
-    files_omitted = 0
-    file_sections: list[str] = []
-    for path in paths:
+    for index, path in enumerate(paths):
+        heading = ("" if index == 0 else "\n\n") + f"#### {path}\n"
+        if not _add(heading):
+            return "", _stats(oversize=True)
         mode = _ls_tree_entry(run, path, command_runner)
         if mode is None:
-            note = "deleted at head"
+            note: str | None = "deleted at head"
             files_omitted += 1
         else:
-            note = _inspected_file_note(run, path, mode, command_runner)
+            note = _inspected_file_note(run, path, mode, command_runner, remaining=budget - used)
+            if note is None:
+                return "", _stats(oversize=True)
             if note.startswith("content omitted") or note.startswith("symlink") or note.startswith("submodule"):
                 files_omitted += 1
             else:
                 files_included += 1
-        file_sections.append(f"#### {path}\n{note}")
+        if not _add(note):
+            return "", _stats(oversize=True)
 
-    text = (
-        "### In-scope diff\n"
-        f"{full_diff}\n\n"
-        "### Phase-plan diff\n"
-        f"{plan_diff}\n\n"
-        "### Changed files at head\n" + "\n\n".join(file_sections)
-    )
-    total_bytes = len(text.encode("utf-8"))
-    stats = {
-        "bytes": total_bytes,
-        "files_included": files_included,
-        "files_omitted": files_omitted,
-        "oversize": total_bytes > MAX_INSPECTION_INPUT_BYTES,
-    }
-    return text, stats
+    return "".join(parts), _stats(oversize=False)
 
 
 def new_input_fence(input_text: str) -> str:
@@ -4062,8 +4167,17 @@ def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
     harness_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
     audited_changed = audited_inputs_changed(run, command_runner)
     input_text, input_stats = build_inspection_input(run, command_runner)
-    fence = new_input_fence(input_text)
-    prompt = render_inspection_prompt(run, ci_evidence_text=_ci_evidence_text(ci), input_text=input_text, fence=fence)
+    if input_stats.get("oversize"):
+        # Codex 0aeeeda F001: an oversize input is never rendered or persisted;
+        # the reservation records only this note, and _execute_inspection
+        # records INCOMPLETE before anything else runs.
+        input_text = ""
+        prompt = "(inspection-only prompt not rendered: inspection input exceeds MAX_INSPECTION_INPUT_BYTES)\n"
+    else:
+        fence = new_input_fence(input_text)
+        prompt = render_inspection_prompt(
+            run, ci_evidence_text=_ci_evidence_text(ci), input_text=input_text, fence=fence
+        )
 
     existing = [str(run.output(suffix)) for suffix in OUTPUT_SUFFIXES if run.output(suffix).exists()]
     if existing:
