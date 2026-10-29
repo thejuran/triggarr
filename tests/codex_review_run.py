@@ -1081,6 +1081,49 @@ def _changed_paths(run: ReviewRun, pathspecs: tuple[str, ...], command_runner: C
     return [fields[i] for i in range(1, len(fields), 2)]
 
 
+# SA-03 (owner ruling 2026-10-29, "fork rule: fallback"): under
+# `pull_request` a fork's own workflow and action files decide what its CI
+# runs, so when a fork head changes any of them its "CI ready" is not
+# independent evidence. Same-repository PRs (Dependabot) are not affected.
+CI_DEFINITION_PATHSPECS = (".github/workflows", ".github/actions")
+FORK_CI_NOT_INDEPENDENT_REASON = (
+    "fork PR changes CI workflow files; CI evidence is not independent; owner fallback required"
+)
+
+
+def fork_ci_independence_problem(
+    run: ReviewRun, pr_info: dict[str, object], command_runner: CommandRunner
+) -> str | None:
+    """Return FORK_CI_NOT_INDEPENDENT_REASON when a fork head changes CI definitions, else None (SA-03).
+
+    Only a cross-repository PR is checked. The changed-path list is read
+    with the safe git prefix and a byte bound; a list too long to read is
+    treated as a change (fail closed).
+    """
+    if not pr_info.get("is_cross_repository"):
+        return None
+    output = _git_bounded(
+        [
+            *GIT_SAFE_PREFIX,
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            "--no-textconv",
+            "--no-ext-diff",
+            "--no-color",
+            f"{run.base}..{run.head}",
+            "--",
+            *CI_DEFINITION_PATHSPECS,
+        ],
+        command_runner,
+        MAX_INSPECTION_INPUT_BYTES,
+    )
+    if output is None or output.strip(b"\0\n"):
+        return FORK_CI_NOT_INDEPENDENT_REASON
+    return None
+
+
 def build_inspection_input(run: ReviewRun, command_runner: CommandRunner) -> tuple[str, dict[str, object]]:
     """Build the inert text input for an untrusted head's inspection-only review.
 
@@ -4048,6 +4091,7 @@ def _execute_inspection(
     pr_info: dict[str, object],
     input_stats: dict[str, object],
     command_runner: CommandRunner,
+    stop_reason: str | None = None,
 ) -> int:
     """Everything after the output name is reserved, for an untrusted head (D-07, B14).
 
@@ -4063,6 +4107,9 @@ def _execute_inspection(
     continues, and a cleanup problem surviving to a normal exit also
     makes the run INCOMPLETE. Returns 0 (COMPLETE) or 3 (INCOMPLETE).
     """
+    if stop_reason is not None:
+        # The head is not reviewed at all (SA-03 fork rule, or an oversize input).
+        return _inspection_incomplete(run, stop_reason)
     if input_stats.get("oversize"):
         return _inspection_incomplete(run, "inspection input exceeds MAX_INSPECTION_INPUT_BYTES")
 
@@ -4222,13 +4269,21 @@ def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
     inputs = audit_inputs(command_runner)
     harness_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
     audited_changed = audited_inputs_changed(run, command_runner)
-    input_text, input_stats = build_inspection_input(run, command_runner)
-    if input_stats.get("oversize"):
-        # Codex 0aeeeda F001: an oversize input is never rendered or persisted;
-        # the reservation records only this note, and _execute_inspection
-        # records INCOMPLETE before anything else runs.
+    # A head that is not reviewed (SA-03 fork rule, or an oversize input,
+    # Codex 0aeeeda F001) is never rendered into a prompt: the reservation
+    # records only a note, and _execute_inspection records INCOMPLETE with
+    # *stop_reason* before anything else runs.
+    stop_reason = fork_ci_independence_problem(run, pr_info, command_runner)
+    if stop_reason is not None:
         input_text = ""
-        prompt = "(inspection-only prompt not rendered: inspection input exceeds MAX_INSPECTION_INPUT_BYTES)\n"
+        input_stats: dict[str, object] = {"bytes": 0, "files_included": 0, "files_omitted": 0, "oversize": False}
+    else:
+        input_text, input_stats = build_inspection_input(run, command_runner)
+        if input_stats.get("oversize"):
+            input_text = ""
+            stop_reason = "inspection input exceeds MAX_INSPECTION_INPUT_BYTES"
+    if stop_reason is not None:
+        prompt = f"(inspection-only prompt not rendered: {stop_reason})\n"
     else:
         fence = new_input_fence(input_text)
         prompt = render_inspection_prompt(
@@ -4261,6 +4316,7 @@ def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
             pr_info=pr_info,
             input_stats=input_stats,
             command_runner=command_runner,
+            stop_reason=stop_reason,
         )
     except RunnerError as exc:
         # The contract for an untrusted run is exit 0 or 3 with a status always
