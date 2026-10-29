@@ -354,3 +354,14 @@ def test_invocation_uses_runner_and_checker() -> None:
 
 def test_storage_lists_pytest_evidence_file() -> None:
     assert "`.pytest.txt`" in _storage_section()
+
+
+def test_contract_states_the_fork_ci_independence_rule() -> None:
+    """SA-03 (owner ruling 2026-10-29: fallback): a fork PR that changes CI definitions goes to the fallback."""
+    text = CONTRACT.read_text(encoding="utf-8")
+    assert (
+        "A fork (cross-repository) PR whose diff changes any file under `.github/workflows/` or"
+        " `.github/actions/` has no independent CI evidence"
+    ) in text
+    assert "fork PR changes CI workflow files; CI evidence is not independent; owner fallback required" in text
+    assert "Same-repository bot PRs (Dependabot) are not affected" in text

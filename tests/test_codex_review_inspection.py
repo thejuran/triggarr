@@ -1276,6 +1276,25 @@ INCOMPLETE_STATUS_JSON = (
 )
 
 
+# SA-03 (owner ruling 2026-10-29: fallback): the CI-definition paths a fork
+# head's diff is checked against, read with the safe git prefix.
+FORK_CI_DIFF_ARGV = [
+    *GIT_SAFE_PREFIX,
+    "diff",
+    "--name-only",
+    "-z",
+    "--no-renames",
+    "--no-textconv",
+    "--no-ext-diff",
+    "--no-color",
+    f"{B}..{H}",
+    "--",
+    ".github/workflows",
+    ".github/actions",
+]
+FORK_CI_REASON = "fork PR changes CI workflow files; CI evidence is not independent; owner fallback required"
+
+
 def _use_tmp_repo_root(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(runner, "REPO_ROOT", tmp_path)
     (tmp_path / PHASE_DIR).mkdir(parents=True)
@@ -1305,8 +1324,10 @@ class _OrchestrationRunner:
         base_checker_stdout: str | None = None,
         base_checker_returncode: int = 0,
         git_show_files: dict[str, str] | None = None,
+        ci_definition_changes: str = "",
     ) -> None:
         self.calls: list[list[str]] = []
+        self.ci_definition_changes = ci_definition_changes
         self.dirty = dirty
         self.changed_paths = changed_paths
         self.harness_head = harness_head
@@ -1319,6 +1340,8 @@ class _OrchestrationRunner:
 
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
+        if argv == FORK_CI_DIFF_ARGV:
+            return subprocess.CompletedProcess(argv, 0, stdout=self.ci_definition_changes)
         if argv[:2] == ["git", "status"]:
             return subprocess.CompletedProcess(argv, 0, stdout=self.dirty)
         if argv == ["git", "rev-parse", "HEAD"]:
@@ -1485,6 +1508,71 @@ def test_execute_untrusted_oversize_input_never_renders_or_persists_the_prompt(t
     prompt = run.output(".prompt.txt").read_text(encoding="utf-8")
     assert "OVERSIZE-INPUT-MARKER" not in prompt
     assert "not rendered" in prompt
+
+
+# --- SA-03 (owner ruling: fallback): a fork that changes CI is not independent --
+
+
+FORK_PR_INFO = {**DEFAULT_PR_INFO, "author_login": "someone-else", "is_cross_repository": True}
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [".github/workflows/ci.yml\0", ".github/workflows/new.yml\0", ".github/actions/setup/action.yml\0"],
+)
+def test_fork_pr_changing_ci_definitions_is_incomplete_for_the_fallback(tmp_path, monkeypatch, changed) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, pr_info=FORK_PR_INFO, input_text="FORK-INPUT-MARKER")
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("a fork PR that changes CI definitions must never be inspected")
+
+    for name in (
+        "build_inspection_input",
+        "establish_trusted_main",
+        "verify_isolation_boundary",
+        "run_untrusted_codex",
+    ):
+        monkeypatch.setattr(runner, name, _forbidden)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(ci_definition_changes=changed)
+
+    assert execute(run, command_runner=fake) == 3
+
+    assert FORK_CI_DIFF_ARGV in fake.calls
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "incomplete"
+    assert status["reasons"] == [FORK_CI_REASON]
+    assert "FORK-INPUT-MARKER" not in run.output(".prompt.txt").read_text(encoding="utf-8")
+    assert not run.output(".boundary.json").exists()
+    meta = json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
+    assert meta["review_mode"] == "inspection-only-ci-evidence"
+    # The record routes to the D-16 fallback: never complete under the gate.
+    assert runner.completion_gate(run.out_base)
+
+
+def test_fork_pr_not_changing_ci_definitions_is_reviewed(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, pr_info=FORK_PR_INFO)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(ci_definition_changes="")
+
+    assert execute(run, command_runner=fake) == 0
+
+    assert FORK_CI_DIFF_ARGV in fake.calls
+    assert run.output(".status.json").read_text(encoding="utf-8") == COMPLETE_STATUS_JSON
+
+
+def test_same_repository_bot_pr_changing_ci_definitions_is_unaffected(tmp_path, monkeypatch) -> None:
+    """Dependabot (same repository) PRs bumping workflow actions keep the normal inspection-only review."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(ci_definition_changes=".github/workflows/ci.yml\0")
+
+    assert execute(run, command_runner=fake) == 0
+
+    assert FORK_CI_DIFF_ARGV not in fake.calls
 
 
 def test_malicious_base_end_to_end(tmp_path, monkeypatch) -> None:
