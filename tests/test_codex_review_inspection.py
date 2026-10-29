@@ -228,7 +228,9 @@ def test_inspect_untrusted_pr_accepts_bot_author_and_cross_repository_fork() -> 
 # --- flatten_pages / ci_evidence ---------------------------------------------
 
 
-def _check_run(id_, name, head_sha=H, status="completed", conclusion="success", **extra):
+def _check_run(
+    id_, name, head_sha=H, status="completed", conclusion="success", app_slug="github-actions", suite_id=100, **extra
+):
     data = {
         "id": id_,
         "name": name,
@@ -236,6 +238,8 @@ def _check_run(id_, name, head_sha=H, status="completed", conclusion="success", 
         "status": status,
         "conclusion": conclusion,
         "html_url": f"https://x/{id_}",
+        "app": {"slug": app_slug},
+        "check_suite": {"id": suite_id},
     }
     data.update(extra)
     return data
@@ -310,6 +314,75 @@ def test_ci_evidence_keeps_only_allowed_fields() -> None:
 
     assert set(result["ci_ready"]) == {"id", "name", "head_sha", "status", "conclusion", "html_url"}
     assert "app" not in result["ci_ready"]
+
+
+# --- WR-03: CI ready must come from the expected app and a single workflow ----
+
+
+def test_ci_evidence_ignores_ci_ready_from_another_app() -> None:
+    """A later, successful "CI ready" posted by a different GitHub App never overrides the real one."""
+    run = _run()
+    pages = [
+        {
+            "check_runs": [
+                _check_run(2, CI_READY_CHECK_NAME, conclusion="failure"),
+                _check_run(9, CI_READY_CHECK_NAME, app_slug="some-other-app", suite_id=900),
+            ]
+        }
+    ]
+    fake = _ScriptedRunner(_gh_api_script(pages))
+    with pytest.raises(RunnerError, match="no successful CI ready check run for this exact head"):
+        ci_evidence(run, fake)
+
+
+@pytest.mark.parametrize("app", [None, {}, {"slug": None}, "github-actions"])
+def test_ci_evidence_rejects_ci_ready_without_the_github_actions_app(app) -> None:
+    run = _run()
+    item = _check_run(1, CI_READY_CHECK_NAME)
+    item["app"] = app
+    fake = _ScriptedRunner(_gh_api_script([{"check_runs": [item]}]))
+    with pytest.raises(RunnerError, match="no successful CI ready check run for this exact head"):
+        ci_evidence(run, fake)
+
+
+def test_ci_evidence_refuses_ci_ready_from_more_than_one_workflow() -> None:
+    """A head-defined extra workflow with a passing "CI ready" job (its own check suite) is refused."""
+    run = _run()
+    pages = [
+        {
+            "check_runs": [
+                _check_run(2, CI_READY_CHECK_NAME, conclusion="failure", suite_id=100),
+                _check_run(5, CI_READY_CHECK_NAME, conclusion="success", suite_id=200),
+            ]
+        }
+    ]
+    fake = _ScriptedRunner(_gh_api_script(pages))
+    with pytest.raises(RunnerError, match="more than one workflow"):
+        ci_evidence(run, fake)
+
+
+def test_ci_evidence_refuses_ci_ready_without_a_check_suite() -> None:
+    run = _run()
+    item = _check_run(1, CI_READY_CHECK_NAME)
+    del item["check_suite"]
+    fake = _ScriptedRunner(_gh_api_script([{"check_runs": [item]}]))
+    with pytest.raises(RunnerError, match="no successful CI ready check run for this exact head"):
+        ci_evidence(run, fake)
+
+
+def test_ci_evidence_accepts_a_successful_rerun_in_the_same_workflow() -> None:
+    """A re-run of the real CI workflow stays in the same check suite; the latest result still wins."""
+    run = _run()
+    pages = [
+        {
+            "check_runs": [
+                _check_run(2, CI_READY_CHECK_NAME, conclusion="failure", suite_id=100),
+                _check_run(5, CI_READY_CHECK_NAME, conclusion="success", suite_id=100),
+            ]
+        }
+    ]
+    fake = _ScriptedRunner(_gh_api_script(pages))
+    assert ci_evidence(run, fake)["ci_ready"]["id"] == 5
 
 
 # --- build_inspection_input ---------------------------------------------------
