@@ -2492,7 +2492,10 @@ def test_verify_boundary_main_with_probes_clean(tmp_path: Path, monkeypatch, cap
     exit_code = verify_boundary_main(with_probes=True, command_runner=docker)
 
     assert exit_code == 0
-    out = json.loads(capsys.readouterr().out)
+    # _stream_events prints its own "codex exit code: N" line before the
+    # final JSON verdict; only the last line is the JSON this call prints.
+    last_line = capsys.readouterr().out.strip().splitlines()[-1]
+    out = json.loads(last_line)
     assert out["verdict"] == "verified"
     assert out["probe"] == "supplementary: no tool use or token observed (not proof)"
     assert docker.review_id not in docker.live
@@ -2738,24 +2741,32 @@ def test_probe_plants_executable_fixture_files(tmp_path: Path, monkeypatch) -> N
     scratch = tmp_path / "probe-scratch"
     scratch.mkdir()
 
-    planted: dict[str, Path] = {}
+    planted: dict[str, object] = {}
 
     def _runner(argv, **kwargs):
         if argv[:4] == ["docker", "start", "-a", "-i"]:
-            planted["run_me"] = scratch / "planted" / "run-me.sh"
-            planted["pre_commit"] = scratch / "planted" / "hooks" / "pre-commit"
-            planted["canary"] = scratch / "canary" / "canary.txt"
+            # inspect the planted files now, while run_boundary_probe's own
+            # cleanup (which deletes *scratch* on return) hasn't run yet
+            run_me = scratch / "planted" / "run-me.sh"
+            pre_commit = scratch / "planted" / "hooks" / "pre-commit"
+            canary = scratch / "canary" / "canary.txt"
+            planted["run_me_mode"] = run_me.stat().st_mode & 0o777
+            planted["pre_commit_mode"] = pre_commit.stat().st_mode & 0o777
+            planted["canary_exists"] = canary.exists()
+            planted["run_me_parents"] = set(run_me.parents)
             return subprocess.CompletedProcess(argv, 0)
         return docker(argv, **kwargs)
 
     run_boundary_probe(boundary, scratch=scratch, command_runner=_runner, ledger=ledger)
 
-    assert planted["run_me"].stat().st_mode & 0o777 == 0o755
-    assert planted["pre_commit"].stat().st_mode & 0o777 == 0o755
-    assert planted["canary"].exists()
+    assert planted["run_me_mode"] == 0o755
+    assert planted["pre_commit_mode"] == 0o755
+    assert planted["canary_exists"] is True
     # outside every mount: never inside the boundary's own codex-home/out dirs
-    assert fixture.codex_home_dir not in planted["run_me"].parents
-    assert fixture.out_dir not in planted["run_me"].parents
+    assert fixture.codex_home_dir not in planted["run_me_parents"]
+    assert fixture.out_dir not in planted["run_me_parents"]
+    # and the scratch dir is gone once the probe returns
+    assert not scratch.exists()
 
 
 def test_probe_sign_in_refreshed_mid_run(tmp_path: Path, monkeypatch) -> None:
