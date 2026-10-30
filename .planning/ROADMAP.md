@@ -221,7 +221,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] **Phase 83: Paired BM + Codex Review & Risk-Based Depth** - A gated BM update, then every BM review gets an independent Codex pass plus a high-risk vibe-check recommendation (merged 2026-10-23, PR #35)
 - [x] **Phase 84: Codex Plan-Checker Investigation** - Record whether a narrowly scoped hook can route only the plan checker, and how it compares on the original Phase 81 plans — separately gated, nothing activated without approval (verified 2026-10-26: hook routing proven; blind comparison invalid — input was post-review, not original; owner chose to adopt anyway, activation is a separate quick task)
 - [x] **Phase 85: Follow-on CI Improvements & Acceptance Usability** - Dependency/image/lint/coverage/permissions hardening plus an acceptance register usable under real PR traffic (merged 2026-10-28, PR #36; follow-ups #44, #45)
-- [ ] **Phase 85.1: Isolated Codex Review for Untrusted PRs** (INSERTED) - Bot/fork PRs get the paired Codex review through an enforced isolation boundary instead of the interim per-PR fallback
+- [x] **Phase 85.1: Isolated Codex Review for Untrusted PRs** (INSERTED) - Bot/fork PRs get the paired Codex review through an enforced isolation boundary instead of the interim per-PR fallback (merged 2026-10-30, PR #48; closed as an owner exception: live criterion 3 unmet on current Codex models, bot/fork PRs keep the vibe-check fallback)
 - [ ] **Phase 86: Pilot & Reference Record** - 3-5 real PRs run the paired workflow; the owner records a retirement decision and reusable guidance is written
 
 ### Phase 82: CI Tests What We Ship
@@ -338,7 +338,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   2. The isolation boundary is verified deterministically on every run (container configuration, mounts, environment, and output ingestion that can't follow a symlink or FIFO). Behavioral probes are only supplementary.
   3. A live end-to-end review of a real PR completes. Any incomplete outcome blocks and is escalated, never reported clean.
 
-**Completion rule (D-03)**: complete only when the post-merge live inspection-only review (PR #47, or the next open Dependabot PR per D-09), run from a detached checkout of freshly fetched origin/main, returns COMPLETE through `--completion-gate` and an authenticated host Codex call succeeds afterwards; until then the phase is shown as merged and awaiting live verification, never complete.
+**Completion rule (D-03)**: complete only when the post-merge live inspection-only review (PR #47, or the next open Dependabot PR per D-09), run from a detached checkout of freshly fetched origin/main, returns COMPLETE through `--completion-gate` and an authenticated host Codex call succeeds afterwards; until then the phase is shown as merged and awaiting live verification, never complete. **Owner exception (2026-10-30):** the live run on PR #52 was INCOMPLETE because Codex's default model is code-mode-only; the owner kept the D-16 fallback and closed the phase with criterion 3 unmet (85.1-REVIEW-EVIDENCE.md).
 **Plans**: 10 plans (waves 1-6 build and test, wave 7 pre-merge evidence; the post-merge live run on PR #47 is the phase verification gate after the owner merges, not a plan)
 
 Plans:
@@ -383,7 +383,7 @@ Plans:
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
 | 85. Follow-on CI Improvements & Acceptance Usability | 19/19 | Complete (merged PR #36; Codex incomplete for size, owner-approved vibe-check fallback; UAT P5 at next release) | 2026-10-28 |
-| 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Merged via PR #48 (df65ab9); blocked -- post-merge live run on PR #52 INCOMPLETE (Codex code-mode startup notice failed the event audit); follow-up PR needed, D-03 | - |
+| 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
 ## Following milestone: Reliability
