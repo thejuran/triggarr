@@ -1,0 +1,45 @@
+{
+  "meta_version": 2,
+  "head": "f033b7e391e8aa4ae7f98cb6c4f8a255ec1f8f57",
+  "base": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "label": "phase85-1",
+  "attempt": 2,
+  "trusted": true,
+  "review_mode": "trusted-local-tests",
+  "template_version": "6",
+  "harness_head": "f033b7e391e8aa4ae7f98cb6c4f8a255ec1f8f57",
+  "allow_stale_head": false,
+  "inputs": {
+    "docs/codex-adversarial-review-contract.md": {
+      "sha256": "3cc95f5dad2c148f6a98045fd428f5332ab0f122abdeaf606a318103cf1e6a62",
+      "committed_unchanged": true
+    },
+    ".claude/schemas/codex-review-findings.schema.json": {
+      "sha256": "24e387cdc778c93c12f8dc6b8ad6bc36c5c1fe158e21dfe09227120ab872302b",
+      "committed_unchanged": true
+    },
+    "tests/codex_report_status.py": {
+      "sha256": "e66df1fcbdb1a34e75700dd6bca8ab892a6a0f2c0ee95c602c801b8092a356b6",
+      "committed_unchanged": true
+    },
+    "tests/codex_review_run.py": {
+      "sha256": "2d884b7db137a01e171cde609e049e3218c12aa395479c5df1b4de55e64646ad",
+      "committed_unchanged": true
+    }
+  },
+  "codex_timeout_seconds": 1800,
+  "trust_verification": {
+    "method": "local reflog",
+    "pr_number": null,
+    "author": null,
+    "commits_checked": 146
+  },
+  "test_evidence_source": "harness-local-pytest",
+  "audited_inputs_changed_in_diff": [
+    "docs/codex-adversarial-review-contract.md",
+    "tests/codex_report_status.py",
+    "tests/codex_review_run.py"
+  ],
+  "base_grader_ref": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "base_grader_source": "base"
+}
