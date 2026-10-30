@@ -1597,3 +1597,50 @@ test('F001 runCli: a fork PR whose diff changes .github/ with a COMPLETE record 
   assert.ok(output.includes('- Codex: BLOCKED'), output);
   assert.ok(output.includes('NOT ready'), output);
 });
+
+// --- BM iter-4 IN-01: an undeterminable .github/ change set is shown as unknown, and its error is logged ---
+
+test('IN-01: an unknown .github/ change set is shown as unknown, never as a change', () => {
+  for (const unknown of [null, undefined]) {
+    const input = baseline();
+    input.isCrossRepository = true;
+    input.ciDefinitionsChanged = unknown;
+    if (unknown === null) input.ciDefinitionsError = 'fatal: bad revision';
+    const ci = item(readiness(input), 'CI ready');
+    assert.equal(ci.status, 'not-independent', ci.detail);
+    assert.ok(ci.detail.includes('unknown'), ci.detail);
+    assert.ok(!ci.detail.includes('changes files under .github/'), ci.detail);
+    if (unknown === null) assert.ok(ci.detail.includes('fatal: bad revision'), ci.detail);
+  }
+});
+
+test('IN-01: a known .github/ change still says the head changes files under .github/', () => {
+  const input = baseline();
+  input.isCrossRepository = true;
+  input.ciDefinitionsChanged = true;
+  const ci = item(readiness(input), 'CI ready');
+  assert.ok(ci.detail.includes('changes files under .github/'), ci.detail);
+  assert.ok(!ci.detail.includes('unknown'), ci.detail);
+});
+
+test('IN-01 runCli: a failed .github/ diff is logged and shown as unknown, and readiness fails closed', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+  });
+  const failing = (cmd, args) => {
+    if (JSON.stringify([cmd, ...args]) === githubDiffKey()) throw new Error('fatal: bad object aaaa');
+    return exec(cmd, args);
+  };
+  const {exitCode, logs, errors} = withCapturedConsole(
+    () => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec: failing, readFile}),
+  );
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(errors.some(e => e.includes('.github/') && e.includes('fatal: bad object aaaa')), JSON.stringify(errors));
+  const ciLine = output.split('\n').find(line => line.startsWith('- CI ready:'));
+  assert.ok(ciLine.includes('NOT INDEPENDENT'), ciLine);
+  assert.ok(ciLine.includes('unknown'), ciLine);
+  assert.ok(!ciLine.includes('changes files under .github/'), ciLine);
+  assert.ok(output.includes('- Codex: BLOCKED'), output);
+});
