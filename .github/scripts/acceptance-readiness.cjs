@@ -32,11 +32,27 @@ const PR_ARG_RE = /^[1-9][0-9]*$/;
 const HEAD_RE = /^[0-9a-f]{40}$/;
 const OUT_PATH_RE = /^\.planning\/phases\/[A-Za-z0-9._-]+\/codex\/[0-9a-f]{12}-[a-z0-9-]+-a[0-9]+$/;
 
-function headTrustFor({isCrossRepository, author}) {
+function isRecognisedBot(author) {
   const login = author?.login;
-  const isBot = Boolean(author?.is_bot) || (typeof login === 'string' && login.endsWith('[bot]'));
-  if (isCrossRepository || isBot || !TRUSTED_AUTHORS.includes(login)) return 'untrusted';
+  return Boolean(author?.is_bot) || (typeof login === 'string' && login.endsWith('[bot]'));
+}
+
+function headTrustFor({isCrossRepository, author}) {
+  if (isCrossRepository || isRecognisedBot(author) || !TRUSTED_AUTHORS.includes(author?.login)) return 'untrusted';
   return 'trusted';
+}
+
+// Mirrors tests/codex_review_run.py ci_independence_rule_applies() (SA-03/SA-04;
+// a cross-language parity test pins the two): a fork head, or a
+// same-repository head whose author is neither an owner nor a recognised bot.
+// When such a head changes anything under .github/, its own files decided
+// what CI ran, so its "CI ready" is not independent evidence (BM iter-3 IN-07).
+const CI_DEFINITION_PATHSPEC = '.github';
+
+function ciIndependenceRuleApplies({isCrossRepository, author}) {
+  if (isCrossRepository) return true;
+  if (isRecognisedBot(author)) return false;
+  return !TRUSTED_AUTHORS.includes(author?.login);
 }
 
 // codexStatusFor implements the completeness contract shared with
@@ -267,7 +283,7 @@ function readiness(input) {
   const {
     pr, prAuthor, prAuthorIsBot, isCrossRepository, draft, open,
     head, baseSha, mergeBase, checks, comments, checksError, commentsError,
-    workflowRuns, workflowRunsError, dispositions, blockers, codex = {}, fallback,
+    workflowRuns, workflowRunsError, dispositions, blockers, codex = {}, fallback, ciDefinitionsChanged,
   } = input;
 
   const items = [];
@@ -288,7 +304,20 @@ function readiness(input) {
     items.push({name: 'CI ready', status: 'blocked', detail: checksError});
     items.push({name: 'CodeQL', status: 'blocked', detail: checksError});
   } else {
-    items.push(ciReadyItem(checks, head, workflowRuns, workflowRunsError));
+    const ciItem = ciReadyItem(checks, head, workflowRuns, workflowRunsError);
+    const author = {login: prAuthor, is_bot: prAuthorIsBot};
+    // An unknown change set (anything but an explicit false) counts as a change: fail closed.
+    if (ciItem.status === 'ok' && ciIndependenceRuleApplies({isCrossRepository, author}) && ciDefinitionsChanged !== false) {
+      items.push({
+        name: 'CI ready',
+        status: 'not-independent',
+        detail: `${ciItem.detail}, but not independent evidence: this fork or non-bot untrusted head changes files `
+          + 'under .github/, so its own files decided what CI ran and what counts as passing; '
+          + 'the Codex item needs the owner-approved fallback',
+      });
+    } else {
+      items.push(ciItem);
+    }
     items.push(codeQlItem(checks, head));
   }
 
@@ -304,7 +333,10 @@ function readiness(input) {
   const codexResult = codexStatusFor({...codex, head, base: baseSha, reviewedBase: mergeBase, pr, prAuthor, headTrust, fallback});
   items.push({name: 'Codex', status: codexResult.ok ? 'ok' : 'blocked', detail: codexResult.detail});
 
-  const ready = items.every(i => i.status === 'ok');
+  // A not-independent CI ready still passed; it is shown as such rather than
+  // "ok", and acceptance then rests on the Codex item, which for such a head is
+  // INCOMPLETE until the owner approves the fallback (IN-05/IN-07).
+  const ready = items.every(i => i.status === 'ok' || i.status === 'not-independent');
   return {ready, pr, head, base: baseSha, reviewedBase: mergeBase, items};
 }
 
@@ -324,7 +356,8 @@ function renderChecklist(result) {
   lines.push('Review status on this head:');
   lines.push('- BM: <fill from the checkpoint record>');
   for (const item of result.items) {
-    lines.push(`- ${item.name}: ${item.status === 'ok' ? 'ok' : 'BLOCKED'} — ${item.detail}`);
+    const shown = {ok: 'ok', 'not-independent': 'NOT INDEPENDENT'}[item.status] || 'BLOCKED';
+    lines.push(`- ${item.name}: ${shown} — ${item.detail}`);
   }
   lines.push('');
   lines.push(result.ready ? 'Ready to request approval' : 'NOT ready: fix the blocked items before presenting the pending run');
@@ -545,6 +578,23 @@ function runCli(argv, {exec, readFile} = {}) {
     return 1;
   }
 
+  // Only a head the CI-independence rule covers needs its .github/ change set
+  // (IN-07); the reviewed range is the runner's (merge-base..head), and
+  // --no-renames keeps a rename into or out of .github/ visible. A failed read
+  // leaves it unknown, which readiness() treats as a change (fail closed).
+  let ciDefinitionsChanged = null;
+  const author = {login: prInfo.author?.login, is_bot: Boolean(prInfo.author?.is_bot)};
+  if (ciIndependenceRuleApplies({isCrossRepository: Boolean(prInfo.isCrossRepository), author})) {
+    try {
+      const changed = execFn('git', [
+        'diff', '--name-only', '--no-renames', `${mergeBase}..${head}`, '--', CI_DEFINITION_PATHSPEC,
+      ]);
+      ciDefinitionsChanged = String(changed).trim().length > 0;
+    } catch {
+      ciDefinitionsChanged = null;
+    }
+  }
+
   let fallback = null;
   if (opts.fallback) {
     try {
@@ -575,6 +625,7 @@ function runCli(argv, {exec, readFile} = {}) {
     blockers,
     codex: {status, baseStatus, meta, auditedChanged, boundary, provenance, ciEvidence, out: opts.codexOut},
     fallback,
+    ciDefinitionsChanged,
   });
 
   console.log(renderChecklist(result));
@@ -585,4 +636,6 @@ if (require.main === module) {
   process.exitCode = runCli(process.argv.slice(2));
 }
 
-module.exports = {readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS};
+module.exports = {
+  readiness, renderChecklist, codexStatusFor, headTrustFor, ciIndependenceRuleApplies, runCli, AUDITED_INPUTS,
+};
