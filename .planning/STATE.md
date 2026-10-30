@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85.1 executed (10/10 plans; live boundary check owner-approved with a recorded probe exception) -- phase code review next; Dependabot #47 held open as the post-merge live proof PR"
-stopped_at: "Phase 85.1 plans 01-10 executed 2026-10-29 on isolated-codex-review (sequential, unpushed); next: phase BM code review + paired read-only Codex pass, then vibe-check decision, verification, push and one PR"
-last_updated: "2026-10-29T19:36:55Z"
-last_activity: "2026-10-29 -- Phase 85.1 executed: 10/10 plans; live boundary run 3 setup check verified, probe downgrade on a blocked tool attempt accepted by the owner as a recorded exception"
+status: "Phase 85.1 executed, in review (10/10 plans, 5 review fix rounds, live boundary check run 5 passed; not pushed) -- final PR head review next; Dependabot #47 held open as the post-merge live proof PR"
+stopped_at: "Phase 85.1 reviewed through BM iteration 6 + Codex (iteration-6 Codex INCOMPLETE twice for size); verification human_needed (post-merge live run on PR #47; final PR head review). Next: freeze final head, BM + Codex on it (owner-approved vibe-check fallback if Codex incomplete twice), push, one PR"
+last_updated: "2026-10-30T19:30:15Z"
+last_activity: "2026-10-30 -- Phase 85.1: review fix rounds 1-5 applied (owner threat-model stopping rule adopted), live boundary run 5 passed on the rebuilt fingerprint-labelled image, verification human_needed (2/3; criterion 3 is the post-merge live run)"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — EXECUTED, in review (not pushed)
+Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — EXECUTED, IN REVIEW (not pushed)
 Plan: 10 of 10 executed (85.1-01..85.1-10); the post-merge live run on PR #47 remains the phase verification gate
-Status: Phase 85.1 planned (10 plans in 7 waves; context D-01..D-12 incl. the D-11 7-day amendment); Phase 85 merged via PR #36 (0309313) with follow-ups #44/#45 and rollup #46; next: /bm:execute-phase 85.1
-Last activity: 2026-10-28 -- Phase 85.1 discussed: live end-to-end review runs after merge on main's grader (phase stays open until it is COMPLETE); open egress accepted with a backlog item; owner Codex login copy, residual risk recorded; Dependabot #47 held open as the proof PR
+Status: Phase 85.1 executed, in review (10/10 plans; 5 review fix rounds; live boundary run 5 passed; verification human_needed); not pushed; next: final PR head BM + Codex review, then push and one PR
+Last activity: 2026-10-30 -- Phase 85.1 review fix rounds 1-5 applied under the owner threat-model stopping rule; live boundary run 5 passed on the rebuilt image; verification human_needed (criterion 3 is the post-merge live run on PR #47)
 
 ### v2.13 milestone shape
 
