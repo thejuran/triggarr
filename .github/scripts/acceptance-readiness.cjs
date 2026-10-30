@@ -194,7 +194,11 @@ function codexStatusFor({
     return {ok: false, detail: 'INCOMPLETE/PENDING: no recorded fallback; wait or retry later blocks acceptance'};
   }
 
-  const {ok, reasons} = validateFallback(fallback, {pr, head, base: expectedBase, prAuthor, headTrust, codexStatus});
+  // readiness's own CI-independence finding, never the status file, decides the
+  // attempt-1 exception (BM iter-4 IN-02).
+  const {ok, reasons} = validateFallback(fallback, {
+    pr, head, base: expectedBase, prAuthor, headTrust, codexStatus, ciIndependenceRequired: ciIndependenceRequired === true,
+  });
   if (!ok) {
     return {ok: false, detail: reasons.join('; ')};
   }

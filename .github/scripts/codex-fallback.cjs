@@ -8,6 +8,11 @@
 // decision naming the head is never ok.
 
 const fs = require('node:fs');
+const {execFileSync} = require('node:child_process');
+
+const REPO = 'thejuran/triggarr';
+// Same pathspec as acceptance-readiness.cjs and the runner (BM iter-4 IN-02).
+const CI_DEFINITION_PATHSPEC = '.github';
 
 // The review mode an isolated-container, inspection-only run of an untrusted
 // (bot/fork) head records in its .meta.json (D-07, D-12). A COMPLETE result in
@@ -169,11 +174,15 @@ function basename(path) {
 
 // validateFallback(record, context) -> {ok, reasons}
 // context: {pr, head, base, prAuthor, headTrust: 'trusted'|'untrusted',
-//           codexStatus: {complete, attempt, out, reviewMode}}
+//           codexStatus: {complete, attempt, out, reviewMode, ciNotIndependent},
+//           ciIndependenceRequired}
 // `base` is the reviewed base: the base the Codex evidence records (the
 // merge-base of the PR base and head), never a newer PR base (WR-02, iteration 3).
+// `ciIndependenceRequired` is true only when the caller checked, independently
+// of the Codex records, that the CI-independence rule covers this head and its
+// .github/ changed or could not be determined (BM iter-4 IN-02).
 function validateFallback(record, context = {}) {
-  const {pr, head, base, prAuthor, headTrust, codexStatus} = context;
+  const {pr, head, base, prAuthor, headTrust, codexStatus, ciIndependenceRequired} = context;
   const reasons = [];
 
   if (!isPlainObject(record)) {
@@ -347,7 +356,11 @@ function validateFallback(record, context = {}) {
     const attempt = codexStatus?.attempt;
     // Attempt 2 or later, except for the CI-independence stop, where a retry
     // cannot change the outcome and attempt 1 is enough (BM iter-3 IN-05).
-    const minAttempt = codexStatus?.ciNotIndependent === true ? 1 : 2;
+    // The stop record alone never opens that exception: the caller must have
+    // re-verified that the rule covers this head (fork, or non-owner non-bot
+    // author) and that its .github/ changed or could not be determined
+    // (context.ciIndependenceRequired === true; BM iter-4 IN-02).
+    const minAttempt = codexStatus?.ciNotIndependent === true && ciIndependenceRequired === true ? 1 : 2;
     const legitimateIncompleteInspection =
       codexStatus?.reviewMode === INSPECTION_REVIEW_MODE &&
       codexOutMatchesHead &&
@@ -604,12 +617,52 @@ function parseValidateArgs(rest) {
   return opts;
 }
 
-// runCli(argv, io): argv is ['validate', ...flags]. io.readFileSync/log/error are
-// injectable for tests; io.readFileSync defaults to node:fs's readFileSync. Every
-// argument is validated before any file is read. Exits 0 when the fallback is
-// valid, 1 when it is invalid (reasons printed via io.error), 2 on a usage error.
+function oneLine(err) {
+  return String(err?.message || err).trim().split('\n').map(line => line.trim()).filter(Boolean).join(' / ').slice(0, 500);
+}
+
+// BM iter-4 IN-02: re-verifies, from GitHub and git rather than from the Codex
+// records, that the CI-independence rule covers this head and that its
+// .github/ changed in base..head (base is the reviewed base). Used only to
+// decide the attempt-1 exception for a CI-independence stop. An unreadable or
+// malformed PR never grants the exception; an undeterminable .github/ change
+// set counts as a change, as in acceptance-readiness.cjs. Argument arrays
+// only, never a shell string.
+function ciIndependenceRequiredFor({pr, head, base}, exec, error) {
+  // Required lazily: acceptance-readiness.cjs itself requires this module.
+  const {ciIndependenceRuleApplies} = require('./acceptance-readiness.cjs');
+  let prInfo;
+  try {
+    prInfo = JSON.parse(exec('gh', ['pr', 'view', String(pr), '--repo', REPO, '--json', 'author,isCrossRepository']));
+  } catch (err) {
+    error(`could not read PR #${pr} to re-verify the CI-independence rule: ${oneLine(err)}; attempt-1 exception not granted`);
+    return false;
+  }
+  if (!isPlainObject(prInfo) || !isPlainObject(prInfo.author) || typeof prInfo.author.login !== 'string'
+      || typeof prInfo.isCrossRepository !== 'boolean') {
+    error(`PR #${pr} did not report its author and fork status; attempt-1 exception not granted`);
+    return false;
+  }
+  const author = {login: prInfo.author.login, is_bot: Boolean(prInfo.author.is_bot)};
+  if (!ciIndependenceRuleApplies({isCrossRepository: prInfo.isCrossRepository, author})) return false;
+  try {
+    const changed = exec('git', ['diff', '--name-only', '--no-renames', `${base}..${head}`, '--', CI_DEFINITION_PATHSPEC]);
+    return String(changed).trim().length > 0;
+  } catch (err) {
+    error(`could not determine whether files under .github/ changed (git diff ${base}..${head}): ${oneLine(err)}; treated as changed`);
+    return true;
+  }
+}
+
+// runCli(argv, io): argv is ['validate', ...flags]. io.readFileSync/log/error/exec
+// are injectable for tests; io.readFileSync defaults to node:fs's readFileSync and
+// io.exec to execFileSync (argument arrays only). Every argument is validated
+// before any file is read; GitHub and git are consulted only for an untrusted
+// head's CI-independence stop (IN-02). Exits 0 when the fallback is valid, 1 when
+// it is invalid (reasons printed via io.error), 2 on a usage error.
 function runCli(argv, io = {}) {
   const readFileSync = io.readFileSync || fs.readFileSync;
+  const exec = io.exec || ((cmd, args) => execFileSync(cmd, args, {encoding: 'utf8'}));
   const log = io.log || ((...args) => console.log(...args));
   const error = io.error || ((...args) => console.error(...args));
 
@@ -654,6 +707,10 @@ function runCli(argv, io = {}) {
     return 1;
   }
 
+  const ciIndependenceRequired = opts.headTrust === 'untrusted' && codexStatus.ciNotIndependent === true
+    ? ciIndependenceRequiredFor({pr: opts.pr, head: opts.head, base: opts.base}, exec, error)
+    : false;
+
   const {ok, reasons} = validateFallback(record, {
     pr: opts.pr,
     head: opts.head,
@@ -661,6 +718,7 @@ function runCli(argv, io = {}) {
     prAuthor: opts.prAuthor,
     headTrust: opts.headTrust,
     codexStatus,
+    ciIndependenceRequired,
   });
 
   if (ok) {
