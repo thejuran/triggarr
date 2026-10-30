@@ -1372,6 +1372,13 @@ class _DockerRunner:
     instead of answering that command at all. Extended in Plan 85.1-08
     Task 3 to also answer `docker image inspect`/`docker create`/
     `docker inspect`/`docker start` for the boundary and launch tests.
+
+    Like the real daemon, a `docker create --name <name>` records the name
+    against the new ID, and `docker rm -f`/`docker ps -a --filter` accept
+    either. *create_raises* maps "canary" or "review" to an exception the
+    create raises *after* the daemon-side container exists (F001: the
+    client is interrupted before it sees the ID); *create_stdout_lost* is
+    the set of kinds whose create exits 0 with its response lost.
     """
 
     def __init__(
@@ -1399,8 +1406,14 @@ class _DockerRunner:
         host_codex_home: Path | None = None,
         ssh_auth_sock: str | None = None,
         expected_schema_sha256: str | None = None,
+        create_raises: dict[str, type[BaseException]] | None = None,
+        create_stdout_lost: set[str] | None = None,
     ) -> None:
         self.calls: list[list[str]] = []
+        self.create_raises = create_raises or {}
+        self.create_stdout_lost = set(create_stdout_lost or ())
+        self.names: dict[str, str] = {}
+        self.created_names: dict[str, str] = {}
         self.envs: list[dict | None] = []
         self.dockerfile_sha256 = None if dockerfile_label_missing else (dockerfile_sha256 or _DOCKERFILE_SHA256)
         self.dockerfile_dirty = dockerfile_dirty
@@ -1478,14 +1491,20 @@ class _DockerRunner:
                 labels[_DOCKERFILE_LABEL] = self.dockerfile_sha256
             data = [{"Id": self.image_id, "Config": {"Labels": labels}}]
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(data))
-        if argv[:2] == ["docker", "create"] and "--entrypoint" in argv:
-            self._record_mounts(argv)
-            self.live.add(self.canary_id)
-            return subprocess.CompletedProcess(argv, 0, stdout=self.canary_id + "\n")
         if argv[:2] == ["docker", "create"]:
+            kind = "canary" if "--entrypoint" in argv else "review"
+            container_id = self.canary_id if kind == "canary" else self.review_id
             self._record_mounts(argv)
-            self.live.add(self.review_id)
-            return subprocess.CompletedProcess(argv, 0, stdout=self.review_id + "\n")
+            self.live.add(container_id)
+            if "--name" in argv:
+                name = argv[argv.index("--name") + 1]
+                self.names[name] = container_id
+                self.created_names[kind] = name
+            if kind in self.create_raises:
+                raise self.create_raises[kind]("daemon created the container; client lost the response")
+            if kind in self.create_stdout_lost:
+                return subprocess.CompletedProcess(argv, 0, stdout="")
+            return subprocess.CompletedProcess(argv, 0, stdout=container_id + "\n")
         if argv[:3] == ["docker", "start", "-a"] and len(argv) == 4:
             if self.canary_start_raises is not None:
                 raise self.canary_start_raises("simulated canary start failure")
@@ -1505,7 +1524,7 @@ class _DockerRunner:
         if argv[:2] == ["docker", "rm"]:
             if "rm" in self.raise_on:
                 raise self.raise_on["rm"]("simulated docker rm failure")
-            container_id = argv[3]
+            container_id = self.names.get(argv[3], argv[3])
             if container_id in self.rm_breaks:
                 return subprocess.CompletedProcess(argv, 1, stdout="")
             self.live.discard(container_id)
@@ -1513,10 +1532,12 @@ class _DockerRunner:
         if argv[:2] == ["docker", "ps"]:
             if "ps" in self.raise_on:
                 raise self.raise_on["ps"]("simulated docker ps failure")
-            container_id = argv[-1].removeprefix("id=")
-            if container_id in self.ps_breaks:
+            key, _, value = argv[-1].partition("=")
+            # docker's name filter is an unanchored match on the name.
+            matches = [cid for name, cid in self.names.items() if value in name] if key == "name" else [value]
+            if any(cid in self.ps_breaks for cid in matches):
                 return subprocess.CompletedProcess(argv, 1, stdout="")
-            stdout = container_id + "\n" if container_id in self.live else ""
+            stdout = "".join(cid + "\n" for cid in matches if cid in self.live)
             return subprocess.CompletedProcess(argv, 0, stdout=stdout)
         raise AssertionError(f"unscripted command: {argv}")
 
@@ -2214,6 +2235,80 @@ def test_canary_interrupted(tmp_path: Path, monkeypatch) -> None:
     assert ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", f"id={docker.canary_id}"] in docker.calls
     assert not fixture.scratch.exists()
     assert not any(c[:2] == ["docker", "create"] and "--entrypoint" not in c for c in docker.calls)
+
+
+# --- F001 (Codex 3eda427): a container whose docker create response is lost ---
+# The daemon can create the container while the client is interrupted, or
+# loses the response, before it ever sees the ID. The run's cleanup must
+# still find it (by the name registered before the create) and remove it,
+# or escalate with the exact manual removal command.
+
+
+def _run_boundary_under_ledger(fixture: _BoundaryFixture, docker: _DockerRunner) -> ContainerLedger:
+    ledger = ContainerLedger(docker)
+    with ledger:
+        verify_isolation_boundary(
+            _boundary_run(),
+            docker,
+            scratch=fixture.scratch,
+            inner_argv=fixture.inner_argv,
+            expected_schema_sha256=fixture.expected_schema_sha256,
+            ledger=ledger,
+            now=_NOW,
+        )
+    return ledger
+
+
+@pytest.mark.parametrize("kind", ["canary", "review"])
+def test_create_interrupted_after_daemon_created_container_is_removed(tmp_path: Path, monkeypatch, kind: str) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture, create_raises={kind: KeyboardInterrupt})
+    orphan = docker.canary_id if kind == "canary" else docker.review_id
+
+    with pytest.raises(KeyboardInterrupt):
+        _run_boundary_under_ledger(fixture, docker)
+
+    assert orphan not in docker.live, f"the {kind} container created before the interrupt was left behind"
+    name = docker.created_names[kind]
+    assert ["docker", "rm", "-f", name] in docker.calls
+
+
+@pytest.mark.parametrize("kind", ["canary", "review"])
+def test_create_response_lost_container_is_removed(tmp_path: Path, monkeypatch, kind: str) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _clean_docker_runner(fixture, create_stdout_lost={kind})
+    orphan = docker.canary_id if kind == "canary" else docker.review_id
+
+    ledger = _run_boundary_under_ledger(fixture, docker)
+
+    assert orphan not in docker.live, f"the {kind} container whose create response was lost was left behind"
+    assert ledger.cleanup_problems == []
+
+
+@pytest.mark.parametrize("kind", ["canary", "review"])
+def test_create_interrupted_unconfirmed_removal_escalates_by_name(
+    tmp_path: Path, monkeypatch, capsys, kind: str
+) -> None:
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    orphan = "c" * 64 if kind == "canary" else "d" * 64
+    docker = _clean_docker_runner(fixture, create_raises={kind: KeyboardInterrupt}, rm_breaks={orphan})
+    ledger = ContainerLedger(docker)
+
+    with pytest.raises(KeyboardInterrupt), ledger:
+        verify_isolation_boundary(
+            _boundary_run(),
+            docker,
+            scratch=fixture.scratch,
+            inner_argv=fixture.inner_argv,
+            expected_schema_sha256=fixture.expected_schema_sha256,
+            ledger=ledger,
+            now=_NOW,
+        )
+
+    name = docker.created_names.get(kind, f"<no {kind} container name was registered>")
+    assert len(ledger.cleanup_problems) == 1, ledger.cleanup_problems
+    assert f"`docker rm -f {name}`" in ledger.cleanup_problems[0]
+    assert "ESCALATION: " in capsys.readouterr().err
 
 
 # --- launch_in_verified_container / run_untrusted_codex -----------------------
