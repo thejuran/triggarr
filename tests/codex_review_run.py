@@ -1647,8 +1647,11 @@ def verify_isolation_boundary(
     and inspect, and a static check that *inner_argv* disables every
     DISABLED_FEATURES entry and uses the mounted schema. Any failure
     returns "unverified" with every reason it found; the canary and the
-    review container are both registered on *ledger* as soon as they
-    are created, and the per-run directory tree is registered on
+    review container are each registered on *ledger* by a fresh name
+    (new_container_name) *before* its `docker create` is issued, with
+    that name passed as `--name` and the returned ID bound to it, so a
+    create that is interrupted or whose ID is lost is still removed by
+    name or escalated (F001); the per-run directory tree is registered on
     *ledger* before anything is written into it, so an interrupt or any
     later failure is cleaned up by the ledger's own cleanup. *run* is
     None for a standalone boundary check with no reviewed head
@@ -1731,8 +1734,10 @@ def verify_isolation_boundary(
     canary_path_list = [path for path, _marker in canary_pairs]
     per_run_dirs = (codex_home_dir, out_dir, schema_dir)
 
+    canary_name = new_container_name("canary")
+    review_name = new_container_name("review")
     canary_argv = container_check_argv(
-        REVIEW_IMAGE_REF, codex_home_dir, out_dir, schema_dir, canary_paths=canary_path_list
+        REVIEW_IMAGE_REF, codex_home_dir, out_dir, schema_dir, name=canary_name, canary_paths=canary_path_list
     )
     exposure = host_exposure_problems(
         canary_argv,
@@ -1746,7 +1751,12 @@ def verify_isolation_boundary(
         return _unverified(exposure)
 
     review_argv = container_create_argv(
-        REVIEW_IMAGE_REF, codex_home_dir=codex_home_dir, out_dir=out_dir, schema_dir=schema_dir, inner_argv=inner_argv
+        REVIEW_IMAGE_REF,
+        name=review_name,
+        codex_home_dir=codex_home_dir,
+        out_dir=out_dir,
+        schema_dir=schema_dir,
+        inner_argv=inner_argv,
     )
     exposure = host_exposure_problems(
         review_argv,
@@ -1772,6 +1782,9 @@ def verify_isolation_boundary(
 
     env = docker_env(os.environ)
 
+    # F001: registered by name before the create is issued, so a create that
+    # is interrupted, or whose response is lost, is still cleaned up.
+    ledger.register(canary_name, "canary")
     try:
         created_canary = command_runner(canary_argv, env=env, stdout=subprocess.PIPE, text=True, check=False)
     except OSError as exc:
@@ -1781,7 +1794,7 @@ def verify_isolation_boundary(
     canary_id = (created_canary.stdout or "").strip()
     if not _CONTAINER_ID_RE.fullmatch(canary_id):
         return _unverified(["canary container create did not return a valid container id"])
-    ledger.register(canary_id, "canary")
+    ledger.bind_id(canary_name, canary_id)
 
     try:
         started_canary = command_runner(
@@ -1803,6 +1816,7 @@ def verify_isolation_boundary(
     if canary_reasons:
         return _unverified(canary_reasons)
 
+    ledger.register(review_name, "review")
     try:
         created_review = command_runner(review_argv, env=env, stdout=subprocess.PIPE, text=True, check=False)
     except OSError as exc:
@@ -1812,7 +1826,7 @@ def verify_isolation_boundary(
     container_id = (created_review.stdout or "").strip()
     if not _CONTAINER_ID_RE.fullmatch(container_id):
         return _unverified(["review container create did not return a valid container id"])
-    ledger.register(container_id, "review")
+    ledger.bind_id(review_name, container_id)
 
     try:
         inspected = command_runner(
@@ -1835,6 +1849,7 @@ def verify_isolation_boundary(
         env_names=CONTAINER_BASE_ENV,
         entrypoint=["codex"],
         cmd=inner_argv[1:],
+        name=review_name,
     )
     config_reasons = verify_container_config(inspected.stdout or "", expected_container)
     if config_reasons:
@@ -2210,6 +2225,27 @@ REVIEW_IMAGE_BUILD_ARGV = [
 ]
 
 CONTAINER_USER = "10001:10001"
+
+# F001 (Codex 3eda427): every canary and review container gets a fresh,
+# unguessable name chosen *before* its `docker create` is issued, and the run's
+# ContainerLedger registers that name first. If the create is interrupted, or
+# its response (the container ID) is lost after the daemon already created the
+# container, cleanup still finds the container by name, removes it and confirms
+# its absence -- or escalates with the exact `docker rm -f <name>` command.
+CONTAINER_NAME_PREFIX = "triggarr-codex-"
+_CONTAINER_KINDS = ("canary", "review")
+
+
+def _container_name_re(kind: str) -> re.Pattern[str]:
+    """The exact name pattern for a *kind* container: prefix, kind, 16 lowercase hex."""
+    return re.compile(rf"{re.escape(CONTAINER_NAME_PREFIX)}{re.escape(kind)}-[0-9a-f]{{16}}")
+
+
+def new_container_name(kind: str) -> str:
+    """A fresh per-attempt container name for *kind* ("canary" or "review")."""
+    if kind not in _CONTAINER_KINDS:
+        raise RunnerError(f"unknown container kind: {kind!r}")
+    return f"{CONTAINER_NAME_PREFIX}{kind}-{secrets.token_hex(8)}"
 CONTAINER_TMPFS = {
     "/work": "rw,size=64m,mode=0700,uid=10001,gid=10001",
     "/tmp": "rw,size=64m,mode=1777",
@@ -2281,17 +2317,20 @@ def _container_options(codex_home_dir: Path, out_dir: Path, schema_dir: Path) ->
 
 
 def container_create_argv(
-    image_ref: str, *, codex_home_dir: Path, out_dir: Path, schema_dir: Path, inner_argv: list[str]
+    image_ref: str, *, name: str, codex_home_dir: Path, out_dir: Path, schema_dir: Path, inner_argv: list[str]
 ) -> list[str]:
     """The exact `docker create` invocation for the review container (B04-R3).
 
     Relies on the image's own `ENTRYPOINT ["codex"]`; *inner_argv* is the
     inner `codex exec ...` command with its leading "codex" element
-    dropped, since the entrypoint already supplies it.
+    dropped, since the entrypoint already supplies it. *name* is the
+    run's pre-registered review container name (new_container_name, F001).
     """
     return [
         "docker",
         "create",
+        "--name",
+        name,
         *_container_options(codex_home_dir, out_dir, schema_dir),
         image_ref,
         *inner_argv[1:],
@@ -2304,6 +2343,7 @@ def container_check_argv(
     out_dir: Path,
     schema_dir: Path,
     *,
+    name: str,
     canary_paths: list[str],
 ) -> list[str]:
     """The exact `docker create` invocation for the in-container canary check.
@@ -2312,13 +2352,16 @@ def container_check_argv(
     (_container_options), overriding only the entrypoint to run
     CANARY_CHECK_SCRIPT. Always `docker create`, never `docker run` and
     never `--rm`: Plan 85.1-08 owns the canary's `docker start` and
-    confirmed `docker rm` removal, not this function.
+    confirmed `docker rm` removal, not this function. *name* is the
+    run's pre-registered canary container name (new_container_name, F001).
     """
     return [
         "docker",
         "create",
         "--entrypoint",
         "/bin/sh",
+        "--name",
+        name,
         *_container_options(codex_home_dir, out_dir, schema_dir),
         image_ref,
         "-c",
@@ -2379,7 +2422,8 @@ def host_exposure_problems(
     Applies to both the review and the canary argv (*kind* is "review" or
     "canary"). Structural allowlist first: the argv must start with
     `docker create` (plus exactly `--entrypoint /bin/sh` for the canary,
-    and never an entrypoint override for the review), name the review image
+    and never an entrypoint override for the review), followed by exactly
+    `--name <name>` with a *kind* name from new_container_name (F001), name the review image
     REVIEW_IMAGE_REF, and its option section (everything before the image)
     must use only allowlisted options with separate value tokens and equal
     _container_options(*per_run_dirs) exactly -- so `--opt=value`
@@ -2419,14 +2463,21 @@ def host_exposure_problems(
     # --- Pass A: the exact option allowlist (WR-04) -------------------------
     prefix = ["docker", "create", *(["--entrypoint", "/bin/sh"] if kind == "canary" else [])]
     options_span: tuple[int, int] | None = None
+    name_ok = (
+        len(argv) > len(prefix) + 1
+        and argv[len(prefix)] == "--name"
+        and _container_name_re(kind).fullmatch(argv[len(prefix) + 1]) is not None
+    )
     if argv[: len(prefix)] != prefix:
         reasons.append(f"{kind} argv does not start with `{shlex.join(prefix)}`")
-    elif REVIEW_IMAGE_REF not in argv[len(prefix) :]:
+    elif not name_ok:
+        reasons.append(f"{kind} argv does not name its container `--name {CONTAINER_NAME_PREFIX}{kind}-<16 hex>`")
+    elif REVIEW_IMAGE_REF not in argv[len(prefix) + 2 :]:
         reasons.append(f"{kind} argv does not use the review image {REVIEW_IMAGE_REF}")
     else:
-        image_index = argv.index(REVIEW_IMAGE_REF, len(prefix))
-        options_span = (len(prefix), image_index)
-        options = argv[len(prefix) : image_index]
+        image_index = argv.index(REVIEW_IMAGE_REF, len(prefix) + 2)
+        options_span = (len(prefix) + 2, image_index)
+        options = argv[len(prefix) + 2 : image_index]
         i = 0
         while i < len(options):
             token = options[i]
@@ -2578,6 +2629,7 @@ class ExpectedContainer:
     env_names: frozenset[str]
     entrypoint: list[str]
     cmd: list[str]
+    name: str  # the pre-registered container name (F001); docker inspect reports it as "/<name>"
 
 
 @dataclass(frozen=True)
@@ -2621,6 +2673,9 @@ def verify_container_config(inspect_json: str, expected: ExpectedContainer) -> l
 
     if container.get("Image") != expected.image_id:
         reasons.append("image mismatch")
+
+    if container.get("Name") != f"/{expected.name}":
+        reasons.append("container name mismatch")
 
     if config.get("Entrypoint") != expected.entrypoint or config.get("Cmd") != expected.cmd:
         reasons.append("container command mismatch")
@@ -2999,15 +3054,26 @@ def remove_container_confirmed(
     --filter id=<id>` prints nothing. Any indeterminate outcome (a
     non-zero or unexpected `docker ps` result, or either command
     raising) is reported as "could not be confirmed removed" -- never
-    silently treated as clean. *container_id* must already be a full
-    64-lowercase-hex id (as `docker create` returns), validated before
-    any docker call is issued. Never raises.
+    silently treated as clean. *container_id* must already be either a
+    full 64-lowercase-hex id (as `docker create` returns) or a name from
+    new_container_name (F001: the identity registered before the create,
+    used when the ID never arrived), validated before any docker call is
+    issued; a name is confirmed absent with `--filter name=<name>`. That
+    filter is an unanchored match, so a broader match can only report
+    the container as still present (an escalation), never as removed.
+    Never raises.
     """
-    if not _CONTAINER_ID_RE.fullmatch(container_id):
+    if _CONTAINER_ID_RE.fullmatch(container_id):
+        ps_filter = f"id={container_id}"
+        label = container_id[:12]
+    elif any(_container_name_re(k).fullmatch(container_id) for k in _CONTAINER_KINDS):
+        ps_filter = f"name={container_id}"
+        label = container_id
+    else:
         raise RunnerError(f"not a valid container id: {container_id!r}")
     env = docker_env(os.environ)
     escalation = (
-        f"{kind} container {container_id[:12]} could not be confirmed removed; remove it manually with"
+        f"{kind} container {label} could not be confirmed removed; remove it manually with"
         f" `docker rm -f {container_id}` and check `docker ps -a` (escalate; this run is INCOMPLETE)"
     )
     try:
@@ -3018,7 +3084,7 @@ def remove_container_confirmed(
         return [escalation]
     try:
         ps = command_runner(
-            ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", f"id={container_id}"],
+            ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", ps_filter],
             env=env,
             stdout=subprocess.PIPE,
             text=True,
@@ -3036,7 +3102,12 @@ class ContainerLedger:
 
     register()/register_dir() record what this run created; release()
     drops a container id once its removal has already been confirmed
-    elsewhere, so close() does not attempt it twice. close() removes
+    elsewhere, so close() does not attempt it twice. A container is
+    registered by its pre-chosen name before its `docker create` is
+    issued (F001), and bind_id() attaches the ID once the create returns
+    one: close() then removes it by that ID, or by the name if no ID was
+    ever bound (an interrupted create, or a lost or invalid response),
+    and release() accepts either the name or the bound ID. close() removes
     every still-registered container with remove_container_confirmed
     (collecting every problem, continuing after a failure) and every
     still-registered directory with shutil.rmtree, never raises, and is
@@ -3061,6 +3132,7 @@ class ContainerLedger:
         self._command_runner = command_runner
         self._on_cleanup_problems = on_cleanup_problems
         self._containers: dict[str, str] = {}
+        self._bound_ids: dict[str, str] = {}  # registered name -> the ID its create returned
         self._dirs: list[Path] = []
         self.cleanup_problems: list[str] = []
 
@@ -3070,17 +3142,28 @@ class ContainerLedger:
     def register_dir(self, path: Path) -> None:
         self._dirs.append(path)
 
+    def bind_id(self, name: str, container_id: str) -> None:
+        """Record the ID `docker create` returned for the container registered as *name*."""
+        self._bound_ids[name] = container_id
+
     def release(self, container_id: str) -> None:
         self._containers.pop(container_id, None)
+        self._bound_ids.pop(container_id, None)
+        for name, bound in list(self._bound_ids.items()):
+            if bound == container_id:
+                self._containers.pop(name, None)
+                self._bound_ids.pop(name, None)
 
     def close(self) -> list[str]:
         problems: list[str] = []
-        for container_id, kind in list(self._containers.items()):
+        for identity, kind in list(self._containers.items()):
+            target = self._bound_ids.get(identity, identity)
             try:
-                problems += remove_container_confirmed(container_id, self._command_runner, kind=kind)
+                problems += remove_container_confirmed(target, self._command_runner, kind=kind)
             except RunnerError as exc:
-                problems.append(f"{kind} container {container_id[:12]} could not be confirmed removed: {exc}")
-            self._containers.pop(container_id, None)
+                problems.append(f"{kind} container {target[:12]} could not be confirmed removed: {exc}")
+            self._containers.pop(identity, None)
+            self._bound_ids.pop(identity, None)
         for path in list(self._dirs):
             try:
                 shutil.rmtree(path)

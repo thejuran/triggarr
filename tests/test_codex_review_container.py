@@ -62,6 +62,7 @@ from tests.codex_review_run import (
     host_exposure_problems,
     inspection_codex_argv,
     main,
+    new_container_name,
     parse_canary_check,
     prepare_codex_home,
     remove_container_confirmed,
@@ -135,11 +136,15 @@ _REPO_ROOT_FAKE = Path("/opt/build/triggarr-checkout")
 _HOST_CODEX_HOME = Path("/Users/example-owner/.codex")
 _SSH_AUTH_SOCK = "/private/tmp/com.apple.launchd.fake/Listeners"
 _HOST_CANARY_FILE = Path("/tmp/fake-canary-host")
+# Fixed container names for the pure argv/inspect tests (F001); real runs use new_container_name().
+_REVIEW_NAME = "triggarr-codex-review-" + "0" * 16
+_CANARY_NAME = "triggarr-codex-canary-" + "1" * 16
 
 
 def _golden_review_argv() -> list[str]:
     return container_create_argv(
         REVIEW_IMAGE_REF,
+        name=_REVIEW_NAME,
         codex_home_dir=_CODEX_HOME_DIR,
         out_dir=_OUT_DIR,
         schema_dir=_SCHEMA_DIR,
@@ -159,7 +164,9 @@ def _golden_canary_paths() -> list[tuple[str, str]]:
 
 def _golden_canary_argv() -> list[str]:
     paths = [path for path, _marker in _golden_canary_paths()]
-    return container_check_argv(REVIEW_IMAGE_REF, _CODEX_HOME_DIR, _OUT_DIR, _SCHEMA_DIR, canary_paths=paths)
+    return container_check_argv(
+        REVIEW_IMAGE_REF, _CODEX_HOME_DIR, _OUT_DIR, _SCHEMA_DIR, name=_CANARY_NAME, canary_paths=paths
+    )
 
 
 def _argv_for_kind(kind: str) -> list[str]:
@@ -204,6 +211,8 @@ def test_container_create_argv_matches_golden() -> None:
     assert _golden_review_argv() == [
         "docker",
         "create",
+        "--name",
+        _REVIEW_NAME,
         "-i",
         "--read-only",
         "--tmpfs",
@@ -284,6 +293,8 @@ def test_container_check_argv_matches_golden() -> None:
         "create",
         "--entrypoint",
         "/bin/sh",
+        "--name",
+        _CANARY_NAME,
         "-i",
         "--read-only",
         "--tmpfs",
@@ -554,6 +565,52 @@ def test_host_exposure_review_rejects_entrypoint_override() -> None:
     assert host_exposure_problems(mutated, kind="review", **_exposure_kwargs())
 
 
+@pytest.mark.parametrize("kind", ["review", "canary"])
+def test_host_exposure_rejects_missing_container_name(kind: str) -> None:
+    argv = _argv_for_kind(kind)
+    idx = argv.index("--name")
+    mutated = [*argv[:idx], *argv[idx + 2 :]]
+    reasons = host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+    assert any("does not name its container" in r for r in reasons), reasons
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "triggarr-codex-{other}-" + "0" * 16,
+        "triggarr-codex-{kind}-" + "0" * 15,
+        "triggarr-codex-{kind}-" + "G" * 16,
+        "someone-else",
+        "--privileged",
+    ],
+    ids=["other-kind", "short-token", "non-hex-token", "foreign-name", "option-as-name"],
+)
+def test_host_exposure_rejects_bad_container_name(kind: str, bad_name: str) -> None:
+    other = "canary" if kind == "review" else "review"
+    mutated = _replace_option_value(_argv_for_kind(kind), "--name", bad_name.format(kind=kind, other=other))
+    reasons = host_exposure_problems(mutated, kind=kind, **_exposure_kwargs())
+    assert any("does not name its container" in r for r in reasons), reasons
+
+
+def test_host_exposure_rejects_name_option_inside_the_option_section() -> None:
+    argv = _insert_options(_golden_review_argv(), "--name", "triggarr-codex-review-" + "2" * 16)
+    reasons = host_exposure_problems(argv, kind="review", **_exposure_kwargs())
+    assert any("not on the allowlist: --name" in r for r in reasons), reasons
+
+
+@pytest.mark.parametrize("kind", ["review", "canary"])
+def test_new_container_name_is_fresh_and_allowlisted(kind: str) -> None:
+    names = {new_container_name(kind) for _ in range(50)}
+    assert len(names) == 50
+    assert all(n.startswith(f"triggarr-codex-{kind}-") and len(n) == len(f"triggarr-codex-{kind}-") + 16 for n in names)
+
+
+def test_new_container_name_rejects_unknown_kind() -> None:
+    with pytest.raises(RunnerError):
+        new_container_name("probe")
+
+
 def test_host_exposure_review_argv_clean_when_cwd_is_repo_root(tmp_path_factory, monkeypatch) -> None:
     """Regression for the 2026-10-29 live run (--verify-boundary always
     unverified): host_exposure_problems() used to call os.path.realpath()
@@ -579,6 +636,7 @@ def test_host_exposure_review_argv_clean_when_cwd_is_repo_root(tmp_path_factory,
 
     review_argv = container_create_argv(
         REVIEW_IMAGE_REF,
+        name=_REVIEW_NAME,
         codex_home_dir=codex_home_dir,
         out_dir=out_dir,
         schema_dir=schema_dir,
@@ -617,6 +675,7 @@ def test_host_exposure_canary_argv_clean_when_cwd_is_repo_root(tmp_path_factory,
         codex_home_dir,
         out_dir,
         schema_dir,
+        name=_CANARY_NAME,
         canary_paths=[path for path, _marker in canary_pairs],
     )
     reasons = host_exposure_problems(
@@ -637,6 +696,7 @@ def test_output_schema_launch_contract() -> None:
     inner = inspection_codex_argv()
     argv = container_create_argv(
         REVIEW_IMAGE_REF,
+        name=_REVIEW_NAME,
         codex_home_dir=_CODEX_HOME_DIR,
         out_dir=_OUT_DIR,
         schema_dir=_SCHEMA_DIR,
@@ -779,6 +839,7 @@ def _inspect_json(
     port_bindings: dict[str, object] | None = None,
     tmpfs: dict[str, str] | None = None,
     mounts: list[dict[str, object]] | None = None,
+    name: str | None = None,
 ) -> str:
     """Build a one-element `docker inspect` JSON array for a created (not
     started) review container, with every security-relevant field at its
@@ -801,6 +862,7 @@ def _inspect_json(
             "Labels": labels if labels is not None else {REVIEW_IMAGE_LABEL: REVIEW_CODEX_VERSION},
         },
         "Image": image if image is not None else _EXPECTED_IMAGE_ID,
+        "Name": name if name is not None else f"/{_REVIEW_NAME}",
         "HostConfig": {
             "Binds": binds,
             "ReadonlyRootfs": readonly_rootfs,
@@ -834,6 +896,7 @@ _EXPECTED = ExpectedContainer(
     env_names=CONTAINER_BASE_ENV,
     entrypoint=list(_EXPECTED_ENTRYPOINT),
     cmd=list(_EXPECTED_CMD),
+    name=_REVIEW_NAME,
 )
 
 _VCC_MUTATIONS = [
@@ -888,6 +951,9 @@ _VCC_MUTATIONS = [
     pytest.param({"image": "sha256:" + "b" * 64}, "image mismatch", id="image_mismatch"),
     pytest.param({"entrypoint": ["sh"]}, "container command mismatch", id="entrypoint_mismatch"),
     pytest.param({"cmd": ["codex", "exec"]}, "container command mismatch", id="cmd_mismatch"),
+    pytest.param({"name": "/some-other-container"}, "container name mismatch", id="name_mismatch"),
+    pytest.param({"name": _REVIEW_NAME}, "container name mismatch", id="name_without_leading_slash"),
+    pytest.param({"name": ""}, "container name mismatch", id="name_empty"),
 ]
 
 
@@ -928,6 +994,7 @@ def test_verify_container_config_mount_source_realpath_equivalence(tmp_path: Pat
         env_names=_EXPECTED.env_names,
         entrypoint=_EXPECTED.entrypoint,
         cmd=_EXPECTED.cmd,
+        name=_EXPECTED.name,
     )
     mounts = [
         {"Type": "bind", "Source": str(real_dir) + "/.", "Destination": "/codex-home", "RW": True},
@@ -1516,6 +1583,16 @@ class _DockerRunner:
                 if self.review_inspect_json is not None
                 else self._auto_review_inspect_json()
             )
+            # Like the daemon, inspect reports the name the container was created with.
+            created_name = self.created_names.get("review")
+            if created_name is not None:
+                try:
+                    data = json.loads(body)
+                except ValueError:
+                    data = None
+                if isinstance(data, list) and data and isinstance(data[0], dict):
+                    data[0]["Name"] = f"/{created_name}"
+                    body = json.dumps(data)
             return subprocess.CompletedProcess(argv, 0, stdout=body)
         if argv[:4] == ["docker", "start", "-a", "-i"]:
             if self.review_start_raises is not None:
@@ -1612,6 +1689,26 @@ def test_remove_container_confirmed_ps_raises_oserror() -> None:
     assert "could not be confirmed removed" in problems[0]
 
 
+def test_remove_container_confirmed_by_name() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    runner.names[_REVIEW_NAME] = _ID_A
+    assert remove_container_confirmed(_REVIEW_NAME, runner, kind="review") == []
+    assert runner.calls == [
+        ["docker", "rm", "-f", _REVIEW_NAME],
+        ["docker", "ps", "-a", "-q", "--no-trunc", "--filter", f"name={_REVIEW_NAME}"],
+    ]
+    assert _ID_A not in runner.live
+
+
+def test_remove_container_confirmed_by_name_unconfirmed_escalates_with_the_name() -> None:
+    runner = _DockerRunner(live={_ID_A}, rm_breaks={_ID_A})
+    runner.names[_CANARY_NAME] = _ID_A
+    assert remove_container_confirmed(_CANARY_NAME, runner, kind="canary") == [
+        f"canary container {_CANARY_NAME} could not be confirmed removed; remove it manually with"
+        f" `docker rm -f {_CANARY_NAME}` and check `docker ps -a` (escalate; this run is INCOMPLETE)"
+    ]
+
+
 def test_remove_container_confirmed_rejects_invalid_id() -> None:
     def _runner(argv, **kwargs):
         raise AssertionError("docker must not be called for an invalid id")
@@ -1635,6 +1732,37 @@ def test_ledger_release_prevents_double_removal() -> None:
     runner = _DockerRunner(live={_ID_A})
     ledger = ContainerLedger(runner)
     ledger.register(_ID_A, "review")
+    ledger.release(_ID_A)
+    assert ledger.close() == []
+    assert runner.calls == []
+
+
+def test_ledger_removes_a_name_with_no_bound_id_by_name() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    runner.names[_REVIEW_NAME] = _ID_A
+    ledger = ContainerLedger(runner)
+    ledger.register(_REVIEW_NAME, "review")
+    assert ledger.close() == []
+    assert ["docker", "rm", "-f", _REVIEW_NAME] in runner.calls
+    assert _ID_A not in runner.live
+
+
+def test_ledger_removes_a_bound_name_by_its_id() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    runner.names[_REVIEW_NAME] = _ID_A
+    ledger = ContainerLedger(runner)
+    ledger.register(_REVIEW_NAME, "review")
+    ledger.bind_id(_REVIEW_NAME, _ID_A)
+    assert ledger.close() == []
+    assert runner.calls[0] == ["docker", "rm", "-f", _ID_A]
+    assert _ID_A not in runner.live
+
+
+def test_ledger_release_by_bound_id_releases_the_name() -> None:
+    runner = _DockerRunner(live={_ID_A})
+    ledger = ContainerLedger(runner)
+    ledger.register(_REVIEW_NAME, "review")
+    ledger.bind_id(_REVIEW_NAME, _ID_A)
     ledger.release(_ID_A)
     assert ledger.close() == []
     assert runner.calls == []
