@@ -188,6 +188,6 @@ Incomplete items:
 - <each incomplete item in plain words, or "None.">
 ```
 
-For a fork, or a same-repository head by a non-owner, non-bot author, that changes any file under `.github/`, the readiness check shows CI ready as `NOT INDEPENDENT` instead of `ok`, even when CI passed: that head's own files decided what CI ran. It does not block readiness on its own, but such a head's Codex item stays INCOMPLETE until the owner approves the fallback (see the contract's CI-independence rule).
+For a fork, or a same-repository head by a non-owner, non-bot author, that changes any file under `.github/`, the readiness check shows CI ready as `NOT INDEPENDENT` instead of `ok`, even when CI passed: that head's own files decided what CI ran. It does not block readiness on its own, but such a head's Codex item is satisfied only by the owner-approved fallback (see the contract's CI-independence rule): a COMPLETE Codex record for that head does not satisfy it, and neither does a `.github/` change set the check could not determine, which counts as a change.
 
 This checklist is the manual BM/Codex completion check (D-12). Approval itself still follows [owner CLI acceptance](owner-cli-acceptance.md) unchanged — this checklist only assembles the evidence that procedure's step 1 and step 4 require; it adds no new authorization path.

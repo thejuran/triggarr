@@ -442,6 +442,9 @@ test('an untrusted head whose Codex files claim trusted-mode completion is block
 for (const variant of UNTRUSTED_VARIANTS) {
   test(`untrusted head (${variant.label}) with a COMPLETE inspection-only result and a verified boundary is ok, no fallback`, () => {
     const input = inspectionOnlyBaseline(variant);
+    // This head leaves .github/ alone; an unknown change set fails closed for a
+    // fork or non-owner head (Codex c7c34a5 F001, tests below).
+    input.ciDefinitionsChanged = false;
     const result = readiness(input);
     const i = item(result, 'Codex');
     assert.equal(i.status, 'ok');

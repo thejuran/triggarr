@@ -91,9 +91,15 @@ function ciIndependenceRuleApplies({isCrossRepository, author}) {
 // A fallback stands in for that same Codex evidence, so the fallback validator
 // is given the same reviewed base (WR-02, iteration 3): the record and its
 // Codex evidence must name one base, the range actually reviewed.
+// ciIndependenceRequired is readiness's own finding that the CI-independence
+// rule covers this head and its .github/ change set changed or could not be
+// determined (Codex c7c34a5 F001). For such a head only the owner-approved
+// fallback satisfies this item: a COMPLETE inspection-only record is blocked
+// (the runner stops such a head, so a COMPLETE record for it is stale or
+// reused), and is never rescued by a fallback (PC-06).
 function codexStatusFor({
   status, baseStatus, meta, auditedChanged: recomputed, out, head, base, reviewedBase, pr, prAuthor, headTrust, fallback,
-  boundary, provenance, ciEvidence,
+  boundary, provenance, ciEvidence, ciIndependenceRequired,
 }) {
   if (!meta || meta.head !== head) {
     return {ok: false, detail: 'Codex evidence is for a different head'};
@@ -131,6 +137,14 @@ function codexStatusFor({
       meta, status, baseStatus, boundary, provenance, ciEvidence, out, head, baseRequired,
     });
     invalidEvidence = predicate.invalidEvidence;
+    if (predicate.complete && ciIndependenceRequired === true) {
+      return {
+        ok: false,
+        detail: 'a COMPLETE Codex record does not satisfy this item: CI evidence for this fork or non-bot untrusted head '
+          + 'is not independent (its .github/ changed or could not be determined); rerun the inspection-only review, '
+          + 'which stops with the CI-independence reason, then record the owner-approved fallback (D-16)',
+      };
+    }
     if (predicate.complete) {
       complete = true;
       completeDetail = 'complete (inspection-only, isolation boundary verified)';
@@ -288,6 +302,13 @@ function readiness(input) {
 
   const items = [];
 
+  // An unknown change set (anything but an explicit false) counts as a change:
+  // fail closed. This one value drives both the CI ready display and the Codex
+  // item (Codex c7c34a5 F001).
+  const ciIndependenceRequired = ciIndependenceRuleApplies({
+    isCrossRepository, author: {login: prAuthor, is_bot: prAuthorIsBot},
+  }) && ciDefinitionsChanged !== false;
+
   items.push(open === false
     ? {name: 'PR open', status: 'blocked', detail: 'PR is not open'}
     : {name: 'PR open', status: 'ok', detail: 'open'});
@@ -305,9 +326,7 @@ function readiness(input) {
     items.push({name: 'CodeQL', status: 'blocked', detail: checksError});
   } else {
     const ciItem = ciReadyItem(checks, head, workflowRuns, workflowRunsError);
-    const author = {login: prAuthor, is_bot: prAuthorIsBot};
-    // An unknown change set (anything but an explicit false) counts as a change: fail closed.
-    if (ciItem.status === 'ok' && ciIndependenceRuleApplies({isCrossRepository, author}) && ciDefinitionsChanged !== false) {
+    if (ciItem.status === 'ok' && ciIndependenceRequired) {
       items.push({
         name: 'CI ready',
         status: 'not-independent',
@@ -330,12 +349,15 @@ function readiness(input) {
   }
 
   const headTrust = headTrustFor({isCrossRepository, author: {login: prAuthor, is_bot: prAuthorIsBot}});
-  const codexResult = codexStatusFor({...codex, head, base: baseSha, reviewedBase: mergeBase, pr, prAuthor, headTrust, fallback});
+  const codexResult = codexStatusFor({
+    ...codex, head, base: baseSha, reviewedBase: mergeBase, pr, prAuthor, headTrust, fallback, ciIndependenceRequired,
+  });
   items.push({name: 'Codex', status: codexResult.ok ? 'ok' : 'blocked', detail: codexResult.detail});
 
   // A not-independent CI ready still passed; it is shown as such rather than
   // "ok", and acceptance then rests on the Codex item, which for such a head is
-  // INCOMPLETE until the owner approves the fallback (IN-05/IN-07).
+  // satisfied only by the owner-approved fallback, never by a COMPLETE record
+  // (IN-05/IN-07, Codex c7c34a5 F001).
   const ready = items.every(i => i.status === 'ok' || i.status === 'not-independent');
   return {ready, pr, head, base: baseSha, reviewedBase: mergeBase, items};
 }
