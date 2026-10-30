@@ -1082,19 +1082,23 @@ def _changed_paths(run: ReviewRun, pathspecs: tuple[str, ...], command_runner: C
 
 
 # SA-03 (owner ruling 2026-10-29, "fork rule: fallback"): under
-# `pull_request` a fork's own workflow and action files decide what its CI
-# runs, so when a fork head changes any of them its "CI ready" is not
-# independent evidence. Same-repository PRs (Dependabot) are not affected.
-CI_DEFINITION_PATHSPECS = (".github/workflows", ".github/actions")
+# `pull_request` a fork's own files under .github/ decide what its CI runs
+# and what counts as passing -- not only workflow and action definitions but
+# the gate scripts and data ci.yml executes from the head (os-scan-gate.cjs,
+# os-scan-exceptions.json, image_lock_consistency.py, ...; BM iter-3 WR-01).
+# So when a fork head changes anything under .github/ (including a rename,
+# deletion, or replacing .github itself), its "CI ready" is not independent
+# evidence. Same-repository PRs (Dependabot) are not affected.
+CI_DEFINITION_PATHSPECS = (".github",)
 FORK_CI_NOT_INDEPENDENT_REASON = (
-    "fork PR changes CI workflow files; CI evidence is not independent; owner fallback required"
+    "fork PR changes files under .github/; CI evidence is not independent; owner fallback required"
 )
 
 
 def fork_ci_independence_problem(
     run: ReviewRun, pr_info: dict[str, object], command_runner: CommandRunner
 ) -> str | None:
-    """Return FORK_CI_NOT_INDEPENDENT_REASON when a fork head changes CI definitions, else None (SA-03).
+    """Return FORK_CI_NOT_INDEPENDENT_REASON when a fork head changes anything under .github/, else None (SA-03).
 
     Only a cross-repository PR is checked. The changed-path list is read
     with the safe git prefix and a byte bound; a list too long to read is
