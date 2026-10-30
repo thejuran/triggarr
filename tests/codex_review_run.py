@@ -174,7 +174,7 @@ OUTPUT_SUFFIXES = (
 # matches -- a drift test pins the two). completion_gate() refuses
 # anything else before touching the filesystem (B18).
 _OUT_PREFIX_RE = re.compile(r"^\.planning/phases/[A-Za-z0-9._-]+/codex/[0-9a-f]{12}-[a-z0-9-]+-a[0-9]+$")
-_OUT_PREFIX_NAME_RE = re.compile(r"^([0-9a-f]{12})-[a-z0-9-]+-a([0-9]+)$")
+_OUT_PREFIX_NAME_RE = re.compile(r"^([0-9a-f]{12})-([a-z0-9-]+)-a([0-9]+)$")
 
 EVIDENCE_RELPATH = ".codex-review-evidence/pytest.txt"
 CODEX_TIMEOUT_SECONDS = 1800
@@ -3476,13 +3476,41 @@ def _write_json_atomic(path: Path, obj: object) -> None:
         raise
 
 
+def _provenance_names_this_review(provenance: dict[str, object], meta: dict[str, object]) -> bool:
+    """True when grader provenance names this review's grader and reviewed base (Codex 2aa2cc8 F001).
+
+    establish_trusted_main() records the freshly fetched origin/main SHA as
+    main_sha and grader_ref, and requires the harness HEAD to equal it; the
+    meta's harness_head is the same checkout's HEAD, and its base is the
+    reviewed base. A provenance record copied from another review -- another
+    base, another grader, or a harness that was not on origin/main -- names
+    something else.
+    """
+    grader = provenance.get("grader_ref")
+    return (
+        isinstance(grader, str)
+        and _SHA_RE.fullmatch(grader) is not None
+        and provenance.get("main_sha") == grader
+        and provenance.get("harness_head") == grader
+        and meta.get("harness_head") == grader
+        and isinstance(meta.get("base"), str)
+        and provenance.get("base") == meta.get("base")
+    )
+
+
 def completion_gate(out_prefix: Path) -> list[str]:
     """Decide whether the attempt at *out_prefix* counts as COMPLETE (B18, D-03).
 
     Reads exactly the records bound to this one attempt prefix --
     ``<out_prefix>.meta.json``/``.status.json``/``.boundary.json``/
-    ``.grader-provenance.json`` and, when the diff changed an audited
-    input, ``.base-status.json`` -- through safe_read_regular_file(),
+    ``.grader-provenance.json``/``.ci-evidence.json`` and, when the diff
+    changed an audited input, ``.base-status.json`` -- and requires them to
+    agree with each other (Codex 2aa2cc8 F001): the meta's head, label and
+    attempt match the prefix, the boundary names the same head, label and
+    attempt, both statuses name the meta's head and base, the CI evidence is
+    for the meta's head, and the grader provenance names the meta's
+    reviewed base and the origin/main grader its harness_head records.
+    Every read goes through safe_read_regular_file(),
     never a glob over other attempts: an earlier failed attempt for the
     same head can never block a later COMPLETE one, and a COMPLETE-
     looking later attempt can never borrow an earlier attempt's files
@@ -3498,7 +3526,7 @@ def completion_gate(out_prefix: Path) -> list[str]:
 
     name = out_prefix.name
     name_match = _OUT_PREFIX_NAME_RE.fullmatch(name)
-    head12, attempt_str = name_match.group(1), name_match.group(2)
+    head12, label, attempt_str = name_match.group(1), name_match.group(2), name_match.group(3)
     attempt = int(attempt_str)
     directory = REPO_ROOT / out_prefix.parent
 
@@ -3528,15 +3556,23 @@ def completion_gate(out_prefix: Path) -> list[str]:
     meta = _read(".meta.json") or {}
     if meta.get("review_mode") != "inspection-only-ci-evidence":
         reasons.append("not an inspection-only record")
-    if not str(meta.get("head") or "").startswith(head12) or meta.get("attempt") != attempt:
+    if (
+        not str(meta.get("head") or "").startswith(head12)
+        or meta.get("label") != label
+        or meta.get("attempt") != attempt
+    ):
         reasons.append("meta does not match the output prefix")
 
     boundary = _read(".boundary.json")
     if boundary is not None:
         if boundary.get("verdict") != "verified":
             reasons.append("isolation boundary not verified")
-        elif boundary.get("head") != meta.get("head") or boundary.get("attempt") != attempt:
-            reasons.append("boundary record is for another head or attempt")
+        elif (
+            boundary.get("head") != meta.get("head")
+            or boundary.get("label") != meta.get("label")
+            or boundary.get("attempt") != attempt
+        ):
+            reasons.append("boundary record is for another head, label or attempt")
 
     status = _read(".status.json")
     if status is not None:
@@ -3548,12 +3584,22 @@ def completion_gate(out_prefix: Path) -> list[str]:
     provenance = _read(
         ".grader-provenance.json", missing_reason="grader provenance not established from origin/main"
     )
-    if provenance is not None and (
-        not provenance.get("established")
-        or provenance.get("base_on_main") is not True
-        or provenance.get("grader_source") != "trusted-origin-main"
-    ):
-        reasons.append("grader provenance not established from origin/main")
+    if provenance is not None:
+        if (
+            provenance.get("established") is not True
+            or provenance.get("base_on_main") is not True
+            or provenance.get("grader_source") != "trusted-origin-main"
+        ):
+            reasons.append("grader provenance not established from origin/main")
+        elif not _provenance_names_this_review(provenance, meta):
+            reasons.append("grader provenance does not name this review's grader and reviewed base")
+
+    ci = _read(".ci-evidence.json")
+    if ci is not None:
+        ci_ready = ci.get("ci_ready")
+        head = meta.get("head")
+        if not isinstance(ci_ready, dict) or not isinstance(head, str) or ci_ready.get("head_sha") != head:
+            reasons.append("CI evidence is not bound to this head")
 
     if meta.get("audited_inputs_changed_in_diff"):
         base_status = _read(

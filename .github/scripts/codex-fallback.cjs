@@ -348,7 +348,7 @@ function readJson(readFileSync, path) {
   return JSON.parse(text);
 }
 
-// inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provenance, out, head, baseRequired})
+// inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provenance, ciEvidence, out, head, baseRequired})
 // -> {complete, invalidEvidence, reasons}
 //
 // The single completeness rule for an inspection-only (isolated-container)
@@ -363,13 +363,30 @@ function readJson(readFileSync, path) {
 // the boundary says -- that is a legitimate INCOMPLETE result.
 //
 // It applies the same rules as tests/codex_review_run.py's completion_gate()
-// (WR-05; a cross-language parity test pins the two): the meta's head and
-// attempt must match the output prefix *out* (<head12>-<label>-a<attempt>),
-// and <OUT>.grader-provenance.json (*provenance*) must record an established
-// trusted-origin-main grader whose base is on main.
-const OUT_NAME_RE = /^([0-9a-f]{12})-[a-z0-9-]+-a([0-9]+)$/;
+// (WR-05; a cross-language parity test pins the two): the meta's head, label
+// and attempt must match the output prefix *out* (<head12>-<label>-a<attempt>),
+// the boundary must name the meta's head, label and attempt,
+// <OUT>.grader-provenance.json (*provenance*) must record an established
+// trusted-origin-main grader whose base is on main, and every record must
+// agree with the others (Codex 2aa2cc8 F001): the provenance names the meta's
+// reviewed base and the origin/main grader its harness_head records, and
+// <OUT>.ci-evidence.json (*ciEvidence*) is for the meta's head.
+const OUT_NAME_RE = /^([0-9a-f]{12})-([a-z0-9-]+)-a([0-9]+)$/;
+const SHA_RE = /^[0-9a-f]{40}$/;
 
-function inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provenance, out, head, baseRequired}) {
+function provenanceNamesThisReview(provenance, meta) {
+  const grader = provenance.grader_ref;
+  return typeof grader === 'string' && SHA_RE.test(grader) &&
+    provenance.main_sha === grader &&
+    provenance.harness_head === grader &&
+    meta?.harness_head === grader &&
+    typeof meta?.base === 'string' &&
+    provenance.base === meta.base;
+}
+
+function inspectionOnlyCompleteness({
+  meta, status, baseStatus, boundary, provenance, ciEvidence, out, head, baseRequired,
+}) {
   if (status?.status !== 'complete') {
     return {complete: false, invalidEvidence: false, reasons: ['Codex status is incomplete']};
   }
@@ -386,27 +403,36 @@ function inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provena
     Boolean(outMatch) &&
     typeof meta?.head === 'string' &&
     meta.head.startsWith(outMatch[1]) &&
-    meta?.attempt === Number(outMatch[2]);
+    meta?.label === outMatch[2] &&
+    meta?.attempt === Number(outMatch[3]);
   if (!matchesPrefix) {
-    reasons.push('inspection-only meta does not match the output prefix (head or attempt)');
+    reasons.push('inspection-only meta does not match the output prefix (head, label or attempt)');
   }
 
   const provenanceValid =
     isPlainObject(provenance) &&
-    Boolean(provenance.established) &&
+    provenance.established === true &&
     provenance.base_on_main === true &&
     provenance.grader_source === 'trusted-origin-main';
   if (!provenanceValid) {
     reasons.push('grader provenance not established from origin/main');
+  } else if (!provenanceNamesThisReview(provenance, meta)) {
+    reasons.push("grader provenance does not name this review's grader and reviewed base");
   }
 
   const boundaryValid =
     isPlainObject(boundary) &&
     boundary.verdict === 'verified' &&
     boundary.head === head &&
+    boundary.label === meta?.label &&
     boundary.attempt === meta?.attempt;
   if (!boundaryValid) {
-    reasons.push('inspection-only result has no verified isolation boundary for this head and attempt');
+    reasons.push('inspection-only result has no verified isolation boundary for this head, label and attempt');
+  }
+
+  const ciReady = isPlainObject(ciEvidence) ? ciEvidence.ci_ready : undefined;
+  if (!isPlainObject(ciReady) || typeof meta?.head !== 'string' || ciReady.head_sha !== meta.head) {
+    reasons.push('CI evidence is not bound to this head');
   }
 
   if (baseRequired) {
@@ -470,8 +496,14 @@ function codexStatusFromOutput(codexOutPrefix, readFileSync) {
     } catch {
       provenance = null;
     }
+    let ciEvidence = null;
+    try {
+      ciEvidence = readJson(readFileSync, `${codexOutPrefix}.ci-evidence.json`);
+    } catch {
+      ciEvidence = null;
+    }
     const result = inspectionOnlyCompleteness({
-      meta, status, baseStatus, boundary, provenance, out: codexOutPrefix, head: meta.head,
+      meta, status, baseStatus, boundary, provenance, ciEvidence, out: codexOutPrefix, head: meta.head,
       baseRequired: auditedChanged.length > 0,
     });
     complete = result.complete;

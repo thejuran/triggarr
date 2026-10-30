@@ -238,7 +238,9 @@ def test_completion_gate_meta_wrong_head(tmp_path: Path, monkeypatch) -> None:
     meta = {**_valid_meta(2), "head": wrong_head}
     boundary = {**_valid_boundary(2), "head": wrong_head}
     status = {**_valid_status(), "inspected_head": wrong_head}
-    _write_full_attempt(codex_dir, 2, meta=meta, boundary=boundary, status=status)
+    ci = _valid_ci_evidence()
+    ci["ci_ready"] = {**ci["ci_ready"], "head_sha": wrong_head}
+    _write_full_attempt(codex_dir, 2, meta=meta, boundary=boundary, status=status, ci_evidence=ci)
     assert completion_gate(_gate_prefix(2)) == ["meta does not match the output prefix"]
 
 
