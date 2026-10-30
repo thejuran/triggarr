@@ -3527,7 +3527,8 @@ def completion_gate(out_prefix: Path) -> list[str]:
     agree with each other (Codex 2aa2cc8 F001): the meta's head, label and
     attempt match the prefix, the boundary names the same head, label and
     attempt, both statuses name the meta's head and base, the CI evidence is
-    for the meta's head, and the grader provenance names the meta's
+    for the meta's head and shows its CI ready run completed with success
+    (BM iter-4 IN-03), and the grader provenance names the meta's
     reviewed base and the origin/main grader its harness_head records.
     Every read goes through safe_read_regular_file(),
     never a glob over other attempts: an earlier failed attempt for the
@@ -3619,6 +3620,10 @@ def completion_gate(out_prefix: Path) -> list[str]:
         head = meta.get("head")
         if not isinstance(ci_ready, dict) or not isinstance(head, str) or ci_ready.get("head_sha") != head:
             reasons.append("CI evidence is not bound to this head")
+        elif ci_ready.get("status") != "completed" or ci_ready.get("conclusion") != "success":
+            # BM iter-4 IN-03: the record must show the CI ready run passed, not
+            # only name this head (mirrored by codex-fallback.cjs).
+            reasons.append("CI evidence does not show a CI ready run that completed with success")
 
     if meta.get("audited_inputs_changed_in_diff"):
         base_status = _read(

@@ -404,7 +404,8 @@ function readJson(readFileSync, path) {
 // trusted-origin-main grader whose base is on main, and every record must
 // agree with the others (Codex 2aa2cc8 F001): the provenance names the meta's
 // reviewed base and the origin/main grader its harness_head records, and
-// <OUT>.ci-evidence.json (*ciEvidence*) is for the meta's head.
+// <OUT>.ci-evidence.json (*ciEvidence*) is for the meta's head and shows CI
+// ready completed with success (BM iter-4 IN-03).
 const OUT_NAME_RE = /^([0-9a-f]{12})-([a-z0-9-]+)-a([0-9]+)$/;
 const SHA_RE = /^[0-9a-f]{40}$/;
 
@@ -467,6 +468,10 @@ function inspectionOnlyCompleteness({
   const ciReady = isPlainObject(ciEvidence) ? ciEvidence.ci_ready : undefined;
   if (!isPlainObject(ciReady) || typeof meta?.head !== 'string' || ciReady.head_sha !== meta.head) {
     reasons.push('CI evidence is not bound to this head');
+  } else if (ciReady.status !== 'completed' || ciReady.conclusion !== 'success') {
+    // BM iter-4 IN-03: the record must show the CI ready run passed, not only
+    // name this head (mirrors tests/codex_review_run.py completion_gate()).
+    reasons.push('CI evidence does not show a CI ready run that completed with success');
   }
 
   if (baseRequired) {
