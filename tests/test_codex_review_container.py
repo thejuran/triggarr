@@ -3079,6 +3079,68 @@ def test_probe_tool_use_reasons_labels_non_tool_types_as_unexpected_events(tmp_p
     assert _probe_tool_use_reasons(path) == [f"probe produced an unexpected event: {item_type}"]
 
 
+# --- Codex 2aa2cc8 F002: started/updated tool items count in the probe too ----
+
+
+@pytest.mark.parametrize("event_type", ["item.started", "item.updated"])
+@pytest.mark.parametrize("item_type", sorted(KNOWN_TOOL_ITEM_TYPES))
+def test_probe_tool_use_reasons_flags_tool_on_started_or_updated(
+    tmp_path: Path, event_type: str, item_type: str
+) -> None:
+    path = tmp_path / "probe.jsonl"
+    event = {"type": event_type, "item": {"id": "tool1", "type": item_type}}
+    path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+    assert _probe_tool_use_reasons(path) == [f"probe used a tool: {item_type}"]
+
+
+def test_probe_tool_use_reasons_reports_one_tool_item_once_across_its_lifecycle(tmp_path: Path) -> None:
+    path = tmp_path / "probe.jsonl"
+    events = [
+        {"type": "item.started", "item": {"id": "tool1", "type": "command_execution"}},
+        {"type": "item.updated", "item": {"id": "tool1", "type": "command_execution"}},
+        {"type": "item.completed", "item": {"id": "tool1", "type": "command_execution"}},
+    ]
+    path.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    assert _probe_tool_use_reasons(path) == ["probe used a tool: command_execution"]
+
+
+def test_probe_tool_use_reasons_matches_the_mandatory_audit_on_codex_f002_fixture(tmp_path: Path) -> None:
+    """Codex 2aa2cc8 F002's reproduction: the mandatory audit and the probe agree on a started tool."""
+    path = tmp_path / "probe.jsonl"
+    event = {"type": "item.started", "item": {"id": "tool1", "type": "command_execution", "command": "id"}}
+    path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+    assert codex_review_run.audit_event_types(path) == ["inspection-only review used a tool: command_execution"]
+    assert _probe_tool_use_reasons(path) == ["probe used a tool: command_execution"]
+
+
+@pytest.mark.parametrize("returncode", [0, 124], ids=["missing-completion", "timeout"])
+def test_verify_boundary_main_started_only_probe_tool_is_unverified(
+    tmp_path: Path, monkeypatch, capsys, returncode: int
+) -> None:
+    """A probe tool item that never completes (cut off, or simply never closed) still downgrades the verdict."""
+    fixture = _BoundaryFixture(tmp_path, monkeypatch)
+    docker = _DockerRunner(
+        host_home=fixture.host_home,
+        repo_root=fixture.repo_root,
+        host_codex_home=fixture.host_codex_home,
+        expected_schema_sha256=fixture.expected_schema_sha256,
+    )
+    started = json.dumps({"type": "item.started", "item": {"id": "tool1", "type": "command_execution"}}) + "\n"
+
+    def _runner(argv, **kwargs):
+        if argv[:4] == ["docker", "start", "-a", "-i"]:
+            kwargs["stdout"].write(started)
+            return subprocess.CompletedProcess(argv, returncode)
+        return docker(argv, **kwargs)
+
+    exit_code = verify_boundary_main(with_probes=True, command_runner=_runner)
+
+    assert exit_code == 3
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out["verdict"] == "unverified"
+    assert any("probe used a tool: command_execution" in r for r in out["reasons"]), out
+
+
 def test_probe_tool_use_reasons_allowed_types_are_clean(tmp_path: Path) -> None:
     path = tmp_path / "probe.jsonl"
     events = [
