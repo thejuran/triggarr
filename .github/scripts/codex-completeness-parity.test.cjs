@@ -227,6 +227,51 @@ const ROWS = [
     expectComplete: false,
     fallbackEligible: false,
   },
+  // --- BM iter-3 IN-05: the CI-independence stop is fallback-eligible at attempt 1 ---
+  {
+    label: 'ci-not-independent-stop-attempt-1',
+    headTrust: 'untrusted',
+    attempt: 1,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {
+      status: 'incomplete',
+      reasons: ['fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required'],
+    },
+    baseStatus: null,
+    boundary: null,
+    provenance: null,
+    expectComplete: false,
+    fallbackEligible: true,
+  },
+  {
+    label: 'ci-not-independent-plus-another-reason-attempt-1',
+    headTrust: 'untrusted',
+    attempt: 1,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {
+      status: 'incomplete',
+      reasons: [
+        'fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required',
+        'interrupted by SIGINT',
+      ],
+    },
+    baseStatus: null,
+    boundary: null,
+    provenance: null,
+    expectComplete: false,
+    fallbackEligible: false,
+  },
+  {
+    label: 'other-incomplete-reason-attempt-1',
+    headTrust: 'untrusted',
+    attempt: 1,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'incomplete', reasons: ['boundary unverified']},
+    baseStatus: null,
+    boundary: null,
+    expectComplete: false,
+    fallbackEligible: false,
+  },
   // --- Codex 2aa2cc8 F001: records of one attempt must be bound together ---
   ...[
     ['meta-and-boundary-from-another-label', {metaOverrides: {label: 'old-review'}, boundary: verifiedBoundary({label: 'old-review'})}],

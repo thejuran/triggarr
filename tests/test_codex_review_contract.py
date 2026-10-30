@@ -376,3 +376,10 @@ def test_contract_extends_the_ci_independence_rule_to_non_bot_same_repository_he
         "The same rule applies to a same-repository PR whose author is neither an owner (`TRUSTED_AUTHORS`)"
         " nor a recognised bot"
     ) in text
+
+
+def test_contract_says_the_ci_independence_stop_needs_only_one_attempt() -> None:
+    """BM iter-3 IN-05: a retry cannot change the CI-independence stop, so attempt 1 suffices for the fallback."""
+    text = CONTRACT.read_text(encoding="utf-8")
+    assert "one attempt is enough before the owner-approved fallback" in text
+    assert "attempt 1 whose only status reason is that exact reason" in text

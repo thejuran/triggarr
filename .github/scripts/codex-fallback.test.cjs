@@ -11,7 +11,10 @@ const {
   codexStatusFromOutput,
   validateFallback,
   runCli,
+  CI_NOT_INDEPENDENT_REASON,
 } = require('./codex-fallback.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -1014,4 +1017,63 @@ test('codexStatusFromOutput: reads <out>.ci-evidence.json; without it a complete
   const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(inspectionOutputFiles({ciEvidence: null})));
   assert.equal(result.complete, false);
   assert.equal(result.invalidEvidence, true);
+});
+
+// --- BM iter-3 IN-05: the CI-independence stop needs only one attempt -------
+//
+// A fork or non-bot head that changes .github/ is stopped before anything is
+// reviewed, with exactly this one reason; a retry cannot change that, so the
+// fallback is accepted after attempt 1 in exactly that case and nowhere else.
+
+const CI_STOP_REASON =
+  'fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required';
+const CODEX_OUT_A1 = CODEX_OUT.replace(/-a2$/, '-a1');
+
+function ciStopStatusAt1(reasons) {
+  const files = inspectionOutputFiles({
+    out: CODEX_OUT_A1,
+    status: {status: 'incomplete', reasons, qualified_ids: [], finding_count: 0, inspected_head: null, inspected_base: null},
+    meta: inspectionMeta({attempt: 1}),
+    boundary: null,
+    provenance: null,
+  });
+  return codexStatusFromOutput(CODEX_OUT_A1, stubReadFile(files));
+}
+
+test('CI_NOT_INDEPENDENT_REASON mirrors tests/codex_review_run.py CI_NOT_INDEPENDENT_REASON', () => {
+  const runner = fs.readFileSync(path.join(__dirname, '../../tests/codex_review_run.py'), 'utf8');
+  const block = runner.match(/^CI_NOT_INDEPENDENT_REASON = \(\n([\s\S]*?)^\)/m);
+  assert.ok(block, 'CI_NOT_INDEPENDENT_REASON not found in tests/codex_review_run.py');
+  const pyText = [...block[1].matchAll(/"([^"]*)"/g)].map(m => m[1]).join('');
+  assert.equal(CI_NOT_INDEPENDENT_REASON, pyText);
+  assert.equal(CI_NOT_INDEPENDENT_REASON, CI_STOP_REASON);
+});
+
+test('validateFallback: an untrusted head stopped by the CI-independence rule is eligible after attempt 1', () => {
+  const codexStatus = ciStopStatusAt1([CI_STOP_REASON]);
+  assert.equal(codexStatus.complete, false);
+  assert.equal(codexStatus.invalidEvidence, false);
+  const {ok, reasons} = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+    headTrust: 'untrusted', codexStatus,
+  }));
+  assert.equal(ok, true, JSON.stringify(reasons));
+});
+
+test('validateFallback: attempt 1 is not enough when the CI-independence reason is not the only reason', () => {
+  for (const reasons of [[CI_STOP_REASON, 'interrupted by SIGINT'], ['boundary unverified'], [], [`${CI_STOP_REASON} `]]) {
+    const codexStatus = ciStopStatusAt1(reasons);
+    const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+      headTrust: 'untrusted', codexStatus,
+    }));
+    assert.equal(result.ok, false, JSON.stringify(reasons));
+    assert.ok(result.reasons.some(r => r.includes('attempt 2 or later')), JSON.stringify(result.reasons));
+  }
+});
+
+test('validateFallback: the CI-independence attempt-1 exception never applies to a trusted head', () => {
+  const codexStatus = ciStopStatusAt1([CI_STOP_REASON]);
+  const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+    headTrust: 'trusted', codexStatus,
+  }));
+  assert.equal(result.ok, false);
 });
