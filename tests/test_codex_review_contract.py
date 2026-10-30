@@ -383,3 +383,15 @@ def test_contract_says_the_ci_independence_stop_needs_only_one_attempt() -> None
     text = CONTRACT.read_text(encoding="utf-8")
     assert "one attempt is enough before the owner-approved fallback" in text
     assert "attempt 1 whose only status reason is that exact reason" in text
+
+
+def test_contract_states_the_threat_model_and_stopping_rule() -> None:
+    """Owner decision 2026-10-30 ("apply the stopping rule"): BM iter-4 WR-01/SA-05 are recorded, not fixed."""
+    text = CONTRACT.read_text(encoding="utf-8")
+    start = text.index("### Threat model and stopping rule")
+    section = text[start : text.index("\n## ", start)]
+    assert "defends against bots and forks" in section
+    assert "the owner is the only collaborator with write access" in section
+    assert "recorded against this assumption rather than fixed" in section
+    assert "every commit on a PR is a verified commit by its claimed author" in section
+    assert "WR-01" in section and "SA-05" in section

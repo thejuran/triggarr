@@ -12,6 +12,10 @@ The template must never contain a credential, token, or `.env` value.
 
 `/bm:review --codex` is a **plan** review and never satisfies this independent code review (D-05). The `codex` plugin's `/codex:adversarial-review` command is not used for this contract because it wraps the supplied text in its own template and its schema lacks the REVIEW-04 fields this repository requires (83-RESEARCH.md Pitfall 4).
 
+### Threat model and stopping rule
+
+The untrusted-PR design (Phase 85.1) defends against bots and forks, that is, against outside contributors. It assumes the owner is the only collaborator with write access to this repository. A finding that needs another collaborator with write access, for example someone pushing commits to a Dependabot branch or to the owner's own PR branch, is recorded against this assumption rather than fixed (owner decision, 2026-10-30: "apply the stopping rule"; BM iteration-4 WR-01 and SA-05 at `c7c34a5`). Precondition before anyone else is given write access: build a check that every commit on a PR is a verified commit by its claimed author, and use it in trust verification and in the CI-independence rule.
+
 ## Review scope
 
 The review diff excludes these paths by git pathspec, not by request:
