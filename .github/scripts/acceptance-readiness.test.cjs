@@ -155,6 +155,20 @@ function inspectionOnlyOut() {
   return `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task5-a1`;
 }
 
+// The <label> of an output prefix (<head12>-<label>-a<attempt>); the meta and
+// boundary of an attempt must carry it (Codex 2aa2cc8 F001).
+function labelOf(out) {
+  return /^[0-9a-f]{12}-([a-z0-9-]+)-a[0-9]+$/.exec(out.slice(out.lastIndexOf('/') + 1))[1];
+}
+
+function validCiEvidence(overrides = {}) {
+  const ciReady = {
+    id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', html_url: 'https://x/1',
+    ...overrides,
+  };
+  return {check_runs: [ciReady], ci_ready: ciReady};
+}
+
 function inspectionOnlyBaseline({prAuthor, prAuthorIsBot, isCrossRepository}, overrides = {}) {
   const input = baseline();
   input.prAuthor = prAuthor;
@@ -162,6 +176,7 @@ function inspectionOnlyBaseline({prAuthor, prAuthorIsBot, isCrossRepository}, ov
   input.isCrossRepository = Boolean(isCrossRepository);
   const out = overrides.out || inspectionOnlyOut();
   const attempt = overrides.attempt ?? 1;
+  const label = labelOf(out);
   input.codex = {
     status: overrides.status || {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
     baseStatus: Object.hasOwn(overrides, 'baseStatus') ? overrides.baseStatus : null,
@@ -169,12 +184,15 @@ function inspectionOnlyBaseline({prAuthor, prAuthorIsBot, isCrossRepository}, ov
       meta_version: 2,
       head: HEAD,
       base: BASE,
+      label,
       attempt,
       review_mode: INSPECTION_REVIEW_MODE,
+      harness_head: BASE,
       audited_inputs_changed_in_diff: overrides.auditedInputsChangedInDiff || [],
     },
-    boundary: Object.hasOwn(overrides, 'boundary') ? overrides.boundary : verifiedBoundary({head: HEAD, attempt}),
+    boundary: Object.hasOwn(overrides, 'boundary') ? overrides.boundary : verifiedBoundary({head: HEAD, label, attempt}),
     provenance: Object.hasOwn(overrides, 'provenance') ? overrides.provenance : validProvenance(),
+    ciEvidence: Object.hasOwn(overrides, 'ciEvidence') ? overrides.ciEvidence : validCiEvidence(),
     out,
   };
   input.fallback = null;
@@ -929,7 +947,10 @@ test('runCli rejects an invalid --pr before calling the injected exec', () => {
   assert.equal(readCalled, false);
 });
 
-function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson, provenanceJson = JSON.stringify(validProvenance())}) {
+function inspectionOnlyCliFixture({
+  authorLogin, isBot, boundaryJson, provenanceJson = JSON.stringify(validProvenance()),
+  ciEvidenceJson = JSON.stringify(validCiEvidence()),
+}) {
   const prInfo = JSON.stringify({
     number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
     author: {login: authorLogin, is_bot: isBot}, isCrossRepository: false,
@@ -955,18 +976,20 @@ function inspectionOnlyCliFixture({authorLogin, isBot, boundaryJson, provenanceJ
   const files = {
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
     [`${CODEX_OUT}.meta.json`]: JSON.stringify({
-      meta_version: 2, head: HEAD, base: BASE, attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
-      audited_inputs_changed_in_diff: [],
+      meta_version: 2, head: HEAD, base: BASE, label: labelOf(CODEX_OUT), attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
+      harness_head: BASE, audited_inputs_changed_in_diff: [],
     }),
   };
   if (boundaryJson !== undefined) files[`${CODEX_OUT}.boundary.json`] = boundaryJson;
   if (provenanceJson !== null) files[`${CODEX_OUT}.grader-provenance.json`] = provenanceJson;
+  if (ciEvidenceJson !== null) files[`${CODEX_OUT}.ci-evidence.json`] = ciEvidenceJson;
   return {exec, readFile: fileTable(files)};
 }
 
 test('runCli reads <out>.boundary.json so a COMPLETE inspection-only record for an untrusted head reaches ok', () => {
   const {exec, readFile} = inspectionOnlyCliFixture({
-    authorLogin: 'dependabot[bot]', isBot: true, boundaryJson: JSON.stringify(verifiedBoundary({attempt: 2})),
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
   });
   const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
   const output = logs.join('\n');
@@ -976,13 +999,40 @@ test('runCli reads <out>.boundary.json so a COMPLETE inspection-only record for 
 
 test('runCli reads <out>.grader-provenance.json: without it a COMPLETE inspection-only record is blocked (WR-05)', () => {
   const {exec, readFile} = inspectionOnlyCliFixture({
-    authorLogin: 'dependabot[bot]', isBot: true, boundaryJson: JSON.stringify(verifiedBoundary({attempt: 2})),
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
     provenanceJson: null,
   });
   const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
   const output = logs.join('\n');
   assert.equal(exitCode, 1, output);
   assert.ok(output.includes('grader provenance not established from origin/main'), output);
+});
+
+test('runCli reads <out>.ci-evidence.json: without it a COMPLETE inspection-only record is blocked (Codex 2aa2cc8 F001)', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    ciEvidenceJson: null,
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('CI evidence is not bound to this head'), output);
+});
+
+test('untrusted head: records copied from another label or a stale provenance block a COMPLETE claim (Codex 2aa2cc8 F001)', () => {
+  const otherLabel = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0]);
+  otherLabel.codex.meta.label = 'old-review';
+  otherLabel.codex.boundary.label = 'old-review';
+  let i = item(readiness(otherLabel), 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes('(head, label or attempt)'), i.detail);
+
+  const staleProvenance = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {provenance: validProvenance({base: 'c'.repeat(40)})});
+  i = item(readiness(staleProvenance), 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes("grader provenance does not name this review's grader and reviewed base"), i.detail);
 });
 
 test('untrusted head: grader provenance not established blocks a COMPLETE inspection-only claim (WR-05)', () => {

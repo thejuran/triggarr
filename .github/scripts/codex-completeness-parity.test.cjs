@@ -15,6 +15,9 @@ const {INSPECTION_REVIEW_MODE, codexStatusFromOutput, validateFallback} = requir
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
 const HEAD12 = HEAD.slice(0, 12);
+// The origin/main SHA the trusted grader came from: provenance main_sha,
+// harness_head and grader_ref, and the meta's harness_head (Codex 2aa2cc8 F001).
+const MAIN = 'd'.repeat(40);
 const PHASE_DIR = '85.1-isolated-codex-review-for-untrusted-prs';
 const PR = 90;
 const REGISTER_KEY = `${PR}:${HEAD}`;
@@ -26,7 +29,7 @@ function outPrefix(label, attempt) {
 
 function verifiedBoundary(overrides = {}) {
   return {
-    boundary_version: 1, verdict: 'verified', reasons: [], head: HEAD, label: 'parity', attempt: 1,
+    boundary_version: 1, verdict: 'verified', reasons: [], head: HEAD, attempt: 1,
     checked_at: DECIDED_AT, image_ref: 'codex-review:local', image_id: `sha256:${'a'.repeat(64)}`,
     codex_version: '0.153.4', credential_mode: 'copied-login', network: 'default', mounts: [],
     env_names: [], canary: 'ok', schema_sha256: 'b'.repeat(64), ...overrides,
@@ -35,15 +38,26 @@ function verifiedBoundary(overrides = {}) {
 
 function validProvenance(overrides = {}) {
   return {
-    established: true, main_ref: 'refs/remotes/origin/main', main_sha: BASE, harness_head: BASE, base: BASE,
-    base_on_main: true, grader_ref: BASE, grader_source: 'trusted-origin-main', ...overrides,
+    established: true, main_ref: 'refs/remotes/origin/main', main_sha: MAIN, harness_head: MAIN, base: BASE,
+    base_on_main: true, grader_ref: MAIN, grader_source: 'trusted-origin-main', ...overrides,
   };
+}
+
+function validCiEvidence(overrides = {}) {
+  const ciReady = {
+    id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', html_url: 'https://x/1',
+    ...overrides,
+  };
+  return {check_runs: [ciReady], ci_ready: ciReady};
 }
 
 // --- Fixture table: rows covering completeness and fallback-eligibility -----
 //
 // provenance defaults to a valid trusted-main record when a row omits it;
-// null means no .grader-provenance.json at all. metaAttempt (default:
+// null means no .grader-provenance.json at all. ciEvidence likewise defaults
+// to valid CI evidence for HEAD (null: no .ci-evidence.json). The meta and a
+// non-null boundary carry the row's label unless metaOverrides or the
+// boundary itself set one (Codex 2aa2cc8 F001). metaAttempt (default:
 // attempt) lets a row record a meta attempt that differs from the -aN suffix
 // of its output prefix (WR-05).
 //
@@ -213,28 +227,66 @@ const ROWS = [
     expectComplete: false,
     fallbackEligible: false,
   },
+  // --- Codex 2aa2cc8 F001: records of one attempt must be bound together ---
+  ...[
+    ['meta-and-boundary-from-another-label', {metaOverrides: {label: 'old-review'}, boundary: verifiedBoundary({label: 'old-review'})}],
+    ['boundary-from-another-label', {boundary: verifiedBoundary({label: 'old-review'})}],
+    ['provenance-base-differs-from-meta', {provenance: validProvenance({base: 'c'.repeat(40)})}],
+    ['provenance-grader-ref-differs-from-main', {provenance: validProvenance({grader_ref: 'e'.repeat(40)})}],
+    ['provenance-harness-not-on-main', {provenance: validProvenance({harness_head: 'e'.repeat(40)})}],
+    ['provenance-grader-differs-from-meta-harness', {metaOverrides: {harness_head: 'e'.repeat(40)}}],
+    ['provenance-established-truthy-not-true', {provenance: validProvenance({established: 1})}],
+    ['ci-evidence-missing', {ciEvidence: null}],
+    ['ci-evidence-for-another-head', {ciEvidence: validCiEvidence({head_sha: 'c'.repeat(40)})}],
+    ['codex-f001-reproduction', {
+      metaOverrides: {label: 'old-review'}, boundary: verifiedBoundary({label: 'old-review'}),
+      provenance: validProvenance({base: 'c'.repeat(40), main_sha: MAIN, harness_head: 'e'.repeat(40), grader_ref: 'f'.repeat(40)}),
+    }],
+  ].map(([label, overrides]) => ({
+    label: `${label}-complete-claim`,
+    headTrust: 'untrusted',
+    attempt: 1,
+    meta: {audited_inputs_changed_in_diff: []},
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    boundary: verifiedBoundary({attempt: 1}),
+    expectComplete: false,
+    fallbackEligible: null,
+    ...overrides,
+  })),
 ];
 
-assert.ok(ROWS.length >= 14, 'the parity fixture table must have at least 14 rows');
+assert.ok(ROWS.length >= 24, 'the parity fixture table must have at least 24 rows');
 
 function provenanceFor(row) {
   return row.provenance === undefined ? validProvenance() : row.provenance;
 }
 
+function ciEvidenceFor(row) {
+  return row.ciEvidence === undefined ? validCiEvidence() : row.ciEvidence;
+}
+
+function boundaryFor(row) {
+  return row.boundary === null ? null : {label: row.label, ...row.boundary};
+}
+
 function filesFor(row, prefix) {
   const reviewMode = row.reviewMode || INSPECTION_REVIEW_MODE;
   const meta = {
-    meta_version: 2, head: HEAD, base: BASE, attempt: row.metaAttempt ?? row.attempt, review_mode: reviewMode,
-    trusted: row.headTrust === 'trusted', ...row.meta,
+    meta_version: 2, head: HEAD, base: BASE, label: row.label, attempt: row.metaAttempt ?? row.attempt,
+    review_mode: reviewMode, harness_head: MAIN, trusted: row.headTrust === 'trusted', ...row.meta,
+    ...row.metaOverrides,
   };
   const files = {
     [`${prefix}.status.json`]: JSON.stringify(row.status),
     [`${prefix}.meta.json`]: JSON.stringify(meta),
   };
   if (row.baseStatus !== null) files[`${prefix}.base-status.json`] = JSON.stringify(row.baseStatus);
-  if (row.boundary !== null) files[`${prefix}.boundary.json`] = JSON.stringify(row.boundary);
+  if (row.boundary !== null) files[`${prefix}.boundary.json`] = JSON.stringify(boundaryFor(row));
   const provenance = provenanceFor(row);
   if (provenance !== null) files[`${prefix}.grader-provenance.json`] = JSON.stringify(provenance);
+  const ciEvidence = ciEvidenceFor(row);
+  if (ciEvidence !== null) files[`${prefix}.ci-evidence.json`] = JSON.stringify(ciEvidence);
   return {files, meta};
 }
 
@@ -282,8 +334,8 @@ function readinessInputFor(row, prefix, meta, fallback) {
     dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
     blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
     codex: {
-      status: row.status, baseStatus: row.baseStatus, meta, boundary: row.boundary, provenance: provenanceFor(row),
-      out: prefix,
+      status: row.status, baseStatus: row.baseStatus, meta, boundary: boundaryFor(row), provenance: provenanceFor(row),
+      ciEvidence: ciEvidenceFor(row), out: prefix,
     },
     fallback,
   };
@@ -299,8 +351,8 @@ for (const row of ROWS) {
     assert.equal(fromOutput.complete, row.expectComplete, `codexStatusFromOutput.complete for ${row.label}`);
 
     const fromGate = codexStatusFor({
-      status: row.status, baseStatus: row.baseStatus, meta, boundary: row.boundary, provenance: provenanceFor(row),
-      auditedChanged: [],
+      status: row.status, baseStatus: row.baseStatus, meta, boundary: boundaryFor(row), provenance: provenanceFor(row),
+      ciEvidence: ciEvidenceFor(row), auditedChanged: [],
       out: prefix, head: HEAD, base: BASE, reviewedBase: BASE, pr: PR,
       prAuthor: row.headTrust === 'untrusted' ? 'dependabot[bot]' : 'thejuran',
       headTrust: row.headTrust, fallback: null,

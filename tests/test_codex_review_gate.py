@@ -100,6 +100,18 @@ def _valid_provenance() -> dict:
     }
 
 
+def _valid_ci_evidence() -> dict:
+    ci_ready = {
+        "id": 1,
+        "name": "CI ready",
+        "head_sha": _GATE_HEAD,
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": "https://github.com/thejuran/triggarr/runs/1",
+    }
+    return {"check_runs": [ci_ready], "ci_ready": ci_ready}
+
+
 def _write_full_attempt(codex_dir: Path, attempt: int, **overrides: object) -> None:
     """Write a fully valid, internally-bound attempt record set, unless overridden."""
     name = _gate_name(attempt)
@@ -107,10 +119,12 @@ def _write_full_attempt(codex_dir: Path, attempt: int, **overrides: object) -> N
     status = overrides.get("status", _valid_status())
     boundary = overrides.get("boundary", _valid_boundary(attempt))
     provenance = overrides.get("provenance", _valid_provenance())
+    ci = overrides.get("ci_evidence", _valid_ci_evidence())
     _write(codex_dir, name, ".meta.json", meta)
     _write(codex_dir, name, ".status.json", status)
     _write(codex_dir, name, ".boundary.json", boundary)
     _write(codex_dir, name, ".grader-provenance.json", provenance)
+    _write(codex_dir, name, ".ci-evidence.json", ci)
     if "base_status" in overrides:
         _write(codex_dir, name, ".base-status.json", overrides["base_status"])
 
@@ -139,6 +153,7 @@ def test_completion_gate_does_not_borrow_other_attempts(tmp_path: Path, monkeypa
     _write(codex_dir, name2, ".meta.json", _valid_meta(2))
     _write(codex_dir, name2, ".status.json", _valid_status())
     _write(codex_dir, name2, ".grader-provenance.json", _valid_provenance())
+    _write(codex_dir, name2, ".ci-evidence.json", _valid_ci_evidence())
     # deliberately no a2.boundary.json
 
     assert completion_gate(_gate_prefix(2)) == [f"missing {_gate_prefix(2)}.boundary.json"]
@@ -186,7 +201,7 @@ def test_completion_gate_boundary_wrong_attempt(tmp_path: Path, monkeypatch) -> 
     codex_dir = _gate_setup(tmp_path, monkeypatch)
     # attempt=1 embedded in a record filed under the a2 prefix.
     _write_full_attempt(codex_dir, 2, boundary=_valid_boundary(1))
-    assert completion_gate(_gate_prefix(2)) == ["boundary record is for another head or attempt"]
+    assert completion_gate(_gate_prefix(2)) == ["boundary record is for another head, label or attempt"]
 
 
 # --- Status binding --------------------------------------------------------
@@ -245,6 +260,7 @@ def test_completion_gate_provenance_missing(tmp_path: Path, monkeypatch) -> None
     _write(codex_dir, name, ".meta.json", _valid_meta(2))
     _write(codex_dir, name, ".status.json", _valid_status())
     _write(codex_dir, name, ".boundary.json", _valid_boundary(2))
+    _write(codex_dir, name, ".ci-evidence.json", _valid_ci_evidence())
     # deliberately no .grader-provenance.json
     assert completion_gate(_gate_prefix(2)) == ["grader provenance not established from origin/main"]
 
@@ -263,6 +279,104 @@ def test_completion_gate_provenance_wrong_source(tmp_path: Path, monkeypatch) ->
     assert completion_gate(_gate_prefix(2)) == ["grader provenance not established from origin/main"]
 
 
+# --- Cross-record binding (Codex 2aa2cc8 F001) ----------------------------------
+#
+# Every record of the selected attempt must name the same head, base, label
+# and attempt, and the grader provenance must name the grader (the origin/main
+# SHA the meta's harness_head records) and the reviewed base the meta records.
+
+_PROVENANCE_BINDING_REASON = "grader provenance does not name this review's grader and reviewed base"
+
+
+def test_completion_gate_codex_f001_reproduction_fails(tmp_path: Path, monkeypatch) -> None:
+    """Codex 2aa2cc8 F001: another label's meta/boundary plus unrelated provenance under this prefix."""
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    meta = {**_valid_meta(1), "label": "old-review"}
+    boundary = {**_valid_boundary(1), "label": "old-review"}
+    provenance = {
+        **_valid_provenance(),
+        "base": "c" * 40,
+        "main_sha": "d" * 40,
+        "harness_head": "e" * 40,
+        "grader_ref": "f" * 40,
+    }
+    _write_full_attempt(codex_dir, 1, meta=meta, boundary=boundary, provenance=provenance)
+
+    reasons = completion_gate(_gate_prefix(1))
+
+    assert "meta does not match the output prefix" in reasons
+    assert _PROVENANCE_BINDING_REASON in reasons
+
+
+def test_completion_gate_meta_label_differs_from_prefix(tmp_path: Path, monkeypatch) -> None:
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    # The boundary agrees with the (wrong) meta, so only the meta-vs-prefix comparison fails.
+    meta = {**_valid_meta(2), "label": "old-review"}
+    boundary = {**_valid_boundary(2), "label": "old-review"}
+    _write_full_attempt(codex_dir, 2, meta=meta, boundary=boundary)
+    assert completion_gate(_gate_prefix(2)) == ["meta does not match the output prefix"]
+
+
+def test_completion_gate_boundary_label_differs(tmp_path: Path, monkeypatch) -> None:
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    _write_full_attempt(codex_dir, 2, boundary={**_valid_boundary(2), "label": "old-review"})
+    assert completion_gate(_gate_prefix(2)) == ["boundary record is for another head, label or attempt"]
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"base": "c" * 40},  # a different reviewed base than the meta's
+        {"main_sha": "d" * 40},  # grader_ref is no longer the origin/main SHA
+        {"grader_ref": "d" * 40},
+        {"harness_head": "d" * 40},  # the harness was not on origin/main
+        # All three agree, but not with the harness the meta recorded.
+        {"main_sha": "d" * 40, "harness_head": "d" * 40, "grader_ref": "d" * 40},
+        {"base": None},
+        {"main_sha": "not-a-sha", "harness_head": "not-a-sha", "grader_ref": "not-a-sha"},
+    ],
+    ids=repr,
+)
+def test_completion_gate_provenance_must_name_this_grader_and_base(
+    tmp_path: Path, monkeypatch, override: dict
+) -> None:
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    meta = _valid_meta(2)
+    if "not-a-sha" in override.values():
+        meta = {**meta, "harness_head": "not-a-sha"}
+    _write_full_attempt(codex_dir, 2, meta=meta, provenance={**_valid_provenance(), **override})
+    assert completion_gate(_gate_prefix(2)) == [_PROVENANCE_BINDING_REASON]
+
+
+@pytest.mark.parametrize("value", [1, "yes", [1]], ids=repr)
+def test_completion_gate_provenance_established_must_be_true(tmp_path: Path, monkeypatch, value: object) -> None:
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    _write_full_attempt(codex_dir, 2, provenance={**_valid_provenance(), "established": value})
+    assert completion_gate(_gate_prefix(2)) == ["grader provenance not established from origin/main"]
+
+
+def test_completion_gate_requires_ci_evidence(tmp_path: Path, monkeypatch) -> None:
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    _write_full_attempt(codex_dir, 2)
+    (codex_dir / f"{_gate_name(2)}.ci-evidence.json").unlink()
+    assert completion_gate(_gate_prefix(2)) == [f"missing {_gate_prefix(2)}.ci-evidence.json"]
+
+
+@pytest.mark.parametrize(
+    "ci",
+    [
+        {"check_runs": [], "ci_ready": {**_valid_ci_evidence()["ci_ready"], "head_sha": "c" * 40}},
+        {"check_runs": [], "ci_ready": None},
+        {"check_runs": []},
+    ],
+    ids=["other-head", "null-ci-ready", "no-ci-ready"],
+)
+def test_completion_gate_ci_evidence_must_be_for_this_head(tmp_path: Path, monkeypatch, ci: dict) -> None:
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    _write_full_attempt(codex_dir, 2, ci_evidence=ci)
+    assert completion_gate(_gate_prefix(2)) == ["CI evidence is not bound to this head"]
+
+
 # --- Non-object JSON records (CR-01 / Codex F001) ------------------------------
 
 _NON_OBJECT_VALUES = [None, [], "x", 1, True, False]
@@ -271,7 +385,14 @@ _NON_OBJECT_VALUES = [None, [], "x", 1, True, False]
 @pytest.mark.parametrize("value", _NON_OBJECT_VALUES, ids=repr)
 @pytest.mark.parametrize(
     "suffix",
-    [".meta.json", ".status.json", ".boundary.json", ".grader-provenance.json", ".base-status.json"],
+    [
+        ".meta.json",
+        ".status.json",
+        ".boundary.json",
+        ".grader-provenance.json",
+        ".base-status.json",
+        ".ci-evidence.json",
+    ],
 )
 def test_completion_gate_fails_on_non_object_record(
     tmp_path: Path, monkeypatch, capsys, suffix: str, value: object
@@ -298,13 +419,19 @@ def test_completion_gate_all_records_null_fails(tmp_path: Path, monkeypatch, cap
     codex_dir = _gate_setup(tmp_path, monkeypatch)
     name = _gate_name(2)
     _write(codex_dir, name, ".meta.json", _valid_meta(2, audited_changed=["tests/codex_report_status.py"]))
-    for suffix in (".status.json", ".boundary.json", ".grader-provenance.json", ".base-status.json"):
+    for suffix in (
+        ".status.json",
+        ".boundary.json",
+        ".grader-provenance.json",
+        ".base-status.json",
+        ".ci-evidence.json",
+    ):
         _write(codex_dir, name, suffix, None)
 
     assert main(["--completion-gate", str(_gate_prefix(2))]) == 3
     out = json.loads(capsys.readouterr().out)
     assert out["gate"] == "fail"
-    assert len(out["reasons"]) == 4
+    assert len(out["reasons"]) == 5
 
 
 # --- Symlink refusal (read through safe_read_regular_file) -------------------

@@ -1444,6 +1444,11 @@ def _untrusted_run(**overrides) -> ReviewRun:
     return _run(trusted=False, **overrides)
 
 
+def _gate_prefix(run: ReviewRun) -> Path:
+    """The REPO_ROOT-relative prefix completion_gate() takes (out_base is absolute)."""
+    return run.out_base.relative_to(runner.REPO_ROOT)
+
+
 def test_execute_untrusted_happy_path_is_complete(tmp_path, monkeypatch) -> None:
     _use_tmp_repo_root(tmp_path, monkeypatch)
     _patch_pipeline(monkeypatch)
@@ -1464,6 +1469,17 @@ def test_execute_untrusted_happy_path_is_complete(tmp_path, monkeypatch) -> None
     boundary = json.loads(run.output(".boundary.json").read_text(encoding="utf-8"))
     assert boundary["verdict"] == "verified"
     assert any(call[:3] == ["gh", "pr", "view"] for call in fake.calls)
+
+
+def test_execute_untrusted_happy_path_records_pass_the_completion_gate(tmp_path, monkeypatch) -> None:
+    """Codex 2aa2cc8 F001: the records a real COMPLETE run writes satisfy the cross-record binding."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch)
+    run = _untrusted_run()
+
+    assert execute(run, command_runner=_OrchestrationRunner()) == 0
+
+    assert runner.completion_gate(_gate_prefix(run)) == []
 
 
 def test_execute_untrusted_oversize_input_stops_before_provenance(tmp_path, monkeypatch) -> None:
@@ -1559,7 +1575,7 @@ def test_fork_pr_changing_ci_definitions_is_incomplete_for_the_fallback(tmp_path
     meta = json.loads(run.output(".meta.json").read_text(encoding="utf-8"))
     assert meta["review_mode"] == "inspection-only-ci-evidence"
     # The record routes to the D-16 fallback: never complete under the gate.
-    assert runner.completion_gate(run.out_base)
+    assert "Codex status is not complete" in runner.completion_gate(_gate_prefix(run))
 
 
 def test_fork_pr_not_changing_ci_definitions_is_reviewed(tmp_path, monkeypatch) -> None:
@@ -1622,7 +1638,7 @@ def test_same_repository_non_bot_pr_changing_dot_github_is_incomplete(tmp_path, 
     status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
     assert status["reasons"] == [FORK_CI_REASON]
     assert "COLLAB-INPUT-MARKER" not in run.output(".prompt.txt").read_text(encoding="utf-8")
-    assert runner.completion_gate(run.out_base)
+    assert "Codex status is not complete" in runner.completion_gate(_gate_prefix(run))
 
 
 def test_same_repository_non_bot_pr_not_changing_dot_github_is_reviewed(tmp_path, monkeypatch) -> None:

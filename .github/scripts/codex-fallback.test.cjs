@@ -370,9 +370,17 @@ function inspectionStatus(overrides = {}) {
 
 function inspectionMeta(overrides = {}) {
   return {
-    meta_version: 2, head: HEAD, base: BASE, attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
-    audited_inputs_changed_in_diff: [], ...overrides,
+    meta_version: 2, head: HEAD, base: BASE, label: 'task1', attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
+    harness_head: BASE, audited_inputs_changed_in_diff: [], ...overrides,
   };
+}
+
+function validCiEvidence(overrides = {}) {
+  const ciReady = {
+    id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', html_url: 'https://x/1',
+    ...overrides,
+  };
+  return {check_runs: [ciReady], ci_ready: ciReady};
 }
 
 function verifiedBoundary(overrides = {}) {
@@ -392,9 +400,12 @@ function validProvenance(overrides = {}) {
 }
 
 // The predicate with this file's CODEX_OUT (-a2, matching inspectionMeta's
-// attempt) and a valid trusted-main provenance unless a test overrides them.
+// attempt), a valid trusted-main provenance and valid CI evidence unless a
+// test overrides them.
 function predicate(args) {
-  return inspectionOnlyCompleteness({provenance: validProvenance(), out: CODEX_OUT, ...args});
+  return inspectionOnlyCompleteness({
+    provenance: validProvenance(), ciEvidence: validCiEvidence(), out: CODEX_OUT, ...args,
+  });
 }
 
 test('inspectionOnlyCompleteness: complete status, bound, verified boundary, no base required is complete', () => {
@@ -422,7 +433,7 @@ test('inspectionOnlyCompleteness: a missing boundary makes a complete claim inva
   });
   assert.equal(result.complete, false);
   assert.equal(result.invalidEvidence, true);
-  assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head and attempt'));
+  assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head, label and attempt'));
 });
 
 test('inspectionOnlyCompleteness: an unverified, wrong-head, or wrong-attempt boundary is invalid evidence', () => {
@@ -436,7 +447,7 @@ test('inspectionOnlyCompleteness: an unverified, wrong-head, or wrong-attempt bo
     });
     assert.equal(result.complete, false, JSON.stringify(boundary));
     assert.equal(result.invalidEvidence, true, JSON.stringify(boundary));
-    assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head and attempt'));
+    assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head, label and attempt'));
   }
 });
 
@@ -495,6 +506,11 @@ function inspectionOutputFiles(overrides = {}) {
     if (overrides.provenance !== null) files[`${out}.grader-provenance.json`] = JSON.stringify(overrides.provenance);
   } else {
     files[`${out}.grader-provenance.json`] = JSON.stringify(validProvenance());
+  }
+  if (overrides.ciEvidence !== undefined) {
+    if (overrides.ciEvidence !== null) files[`${out}.ci-evidence.json`] = JSON.stringify(overrides.ciEvidence);
+  } else {
+    files[`${out}.ci-evidence.json`] = JSON.stringify(validCiEvidence());
   }
   return files;
 }
@@ -575,7 +591,7 @@ test('inspectionOnlyCompleteness: a meta head or attempt that differs from the o
       meta, status: inspectionStatus(), baseStatus: null, boundary, out, head: HEAD, baseRequired: false,
     });
     assert.equal(result.complete, false, String(out));
-    assert.ok(result.reasons.includes('inspection-only meta does not match the output prefix (head or attempt)'));
+    assert.ok(result.reasons.includes('inspection-only meta does not match the output prefix (head, label or attempt)'));
   }
 });
 
@@ -906,4 +922,96 @@ test('runCli validate rejects Codex output whose meta names no base', () => {
 test('runCli validate accepts a fallback whose base matches the Codex evidence base', () => {
   const {exitCode, errors} = runValidate(cliFiles());
   assert.equal(exitCode, 0, errors.join('\n'));
+});
+
+// --- Codex 2aa2cc8 F001: every record of the selected attempt is bound together ---
+
+const PROVENANCE_BINDING_REASON = "grader provenance does not name this review's grader and reviewed base";
+
+test('inspectionOnlyCompleteness: Codex 2aa2cc8 F001 reproduction is not complete', () => {
+  const head = HEAD;
+  const base = BASE;
+  const result = inspectionOnlyCompleteness({
+    meta: {head, base, label: 'old-review', attempt: 1},
+    status: {status: 'complete', inspected_head: head, inspected_base: base},
+    boundary: {verdict: 'verified', head, label: 'old-review', attempt: 1},
+    provenance: {
+      established: true, base_on_main: true, grader_source: 'trusted-origin-main', base: 'c'.repeat(40),
+      main_sha: 'd'.repeat(40), harness_head: 'e'.repeat(40), grader_ref: 'f'.repeat(40),
+    },
+    ciEvidence: validCiEvidence(),
+    out: `.planning/phases/x/codex/${head.slice(0, 12)}-new-review-a1`, head, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+  assert.ok(result.reasons.includes('inspection-only meta does not match the output prefix (head, label or attempt)'));
+  assert.ok(result.reasons.includes(PROVENANCE_BINDING_REASON), JSON.stringify(result.reasons));
+});
+
+test('inspectionOnlyCompleteness: a meta label that differs from the output prefix is invalid evidence', () => {
+  const result = predicate({
+    meta: inspectionMeta({label: 'old-review'}), status: inspectionStatus(), baseStatus: null,
+    boundary: verifiedBoundary({label: 'old-review'}), head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.reasons, ['inspection-only meta does not match the output prefix (head, label or attempt)']);
+});
+
+test('inspectionOnlyCompleteness: a boundary for another label is invalid evidence', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null,
+    boundary: verifiedBoundary({label: 'old-review'}), head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.reasons, ['inspection-only result has no verified isolation boundary for this head, label and attempt']);
+});
+
+test('inspectionOnlyCompleteness: provenance must name the grader and reviewed base the meta records', () => {
+  const D = 'd'.repeat(40);
+  for (const [overrides, metaOverrides] of [
+    [{base: 'c'.repeat(40)}, {}],
+    [{main_sha: D}, {}],
+    [{grader_ref: D}, {}],
+    [{harness_head: D}, {}],
+    [{main_sha: D, harness_head: D, grader_ref: D}, {}],
+    [{base: null}, {}],
+    [{main_sha: 'not-a-sha', harness_head: 'not-a-sha', grader_ref: 'not-a-sha'}, {harness_head: 'not-a-sha'}],
+  ]) {
+    const result = predicate({
+      meta: inspectionMeta(metaOverrides), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      provenance: validProvenance(overrides), head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(overrides));
+    assert.deepEqual(result.reasons, [PROVENANCE_BINDING_REASON], JSON.stringify(overrides));
+  }
+});
+
+test('inspectionOnlyCompleteness: provenance.established must be exactly true', () => {
+  for (const established of [1, 'yes', [1]]) {
+    const result = predicate({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      provenance: validProvenance({established}), head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(established));
+    assert.deepEqual(result.reasons, ['grader provenance not established from origin/main']);
+  }
+});
+
+test('inspectionOnlyCompleteness: CI evidence must exist and be for this head', () => {
+  for (const ciEvidence of [
+    null, [], {check_runs: []}, {check_runs: [], ci_ready: null}, validCiEvidence({head_sha: 'c'.repeat(40)}),
+  ]) {
+    const result = predicate({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      ciEvidence, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(ciEvidence));
+    assert.deepEqual(result.reasons, ['CI evidence is not bound to this head'], JSON.stringify(ciEvidence));
+  }
+});
+
+test('codexStatusFromOutput: reads <out>.ci-evidence.json; without it a complete claim is invalid evidence', () => {
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(inspectionOutputFiles({ciEvidence: null})));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
 });
