@@ -1521,22 +1521,39 @@ def audit_event_types(path: Path) -> list[str]:
         if event_type not in ALLOWED_EVENT_TYPES:
             reasons.append(f"unexpected Codex event: {event_type}")
             continue
-        # Every item-bearing event (item.started / item.updated /
-        # item.completed) is checked, not only item.completed: a tool item cut
-        # off before it completes (e.g. by the timeout) is still a tool use.
-        if event_type.startswith("item."):
-            item = event.get("item")
-            item_type = item.get("type") if isinstance(item, dict) else None
-            if item_type not in ALLOWED_ITEM_TYPES:
-                item_id = item.get("id") if isinstance(item, dict) else None
-                if isinstance(item_id, str):
-                    # One reason per item across its started/updated/completed lifecycle.
-                    key = (item_id, item_type)
-                    if key in reported_items:
-                        continue
-                    reported_items.add(key)
-                reasons.append(f"inspection-only review used a tool: {item_type}")
+        disallowed, item_type = _new_disallowed_item(event, reported_items)
+        if disallowed:
+            reasons.append(f"inspection-only review used a tool: {item_type}")
     return reasons
+
+
+def _new_disallowed_item(event: dict, reported_items: set[tuple[str, object]]) -> tuple[bool, object]:
+    """Classify one Codex event's item: (True, item_type) the first time a disallowed item is seen.
+
+    The one item classification shared by the mandatory audit
+    (audit_event_types) and the supplementary probe audit
+    (_probe_tool_use_reasons), so the two can never disagree (Codex 2aa2cc8
+    F002). Every item-bearing event (item.started / item.updated /
+    item.completed) is checked, not only item.completed: a tool item cut off
+    before it completes (e.g. by the timeout) is still a tool use. An item
+    whose type is outside ALLOWED_ITEM_TYPES is reported once per item id
+    across its started/updated/completed lifecycle (*reported_items* tracks
+    that); an item without a string id is reported on every event.
+    """
+    event_type = event.get("type")
+    if not isinstance(event_type, str) or not event_type.startswith("item."):
+        return False, None
+    item = event.get("item")
+    item_type = item.get("type") if isinstance(item, dict) else None
+    if item_type in ALLOWED_ITEM_TYPES:
+        return False, None
+    item_id = item.get("id") if isinstance(item, dict) else None
+    if isinstance(item_id, str):
+        key = (item_id, item_type)
+        if key in reported_items:
+            return False, None
+        reported_items.add(key)
+    return True, item_type
 
 
 def _protected_path_marker(path: Path, *, host_home: Path, repo_root: Path, host_codex_home: Path) -> str | None:
@@ -2006,6 +2023,7 @@ def _probe_tool_use_reasons(jsonl_path: Path) -> list[str]:
     if not jsonl_path.exists():
         return []
     reasons: list[str] = []
+    reported_items: set[tuple[str, object]] = set()
     for raw_line in jsonl_path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw_line.strip()
         if not line:
@@ -2014,11 +2032,12 @@ def _probe_tool_use_reasons(jsonl_path: Path) -> list[str]:
             event = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(event, dict) or event.get("type") != "item.completed":
+        if not isinstance(event, dict):
             continue
-        item = event.get("item")
-        item_type = item.get("type") if isinstance(item, dict) else None
-        if item_type in ALLOWED_ITEM_TYPES:
+        # The mandatory audit's own classification (Codex 2aa2cc8 F002): a
+        # tool item seen only as item.started / item.updated counts too.
+        disallowed, item_type = _new_disallowed_item(event, reported_items)
+        if not disallowed:
             continue
         if item_type in KNOWN_TOOL_ITEM_TYPES:
             reasons.append(f"probe used a tool: {item_type}")
