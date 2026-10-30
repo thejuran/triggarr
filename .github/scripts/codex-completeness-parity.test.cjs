@@ -296,6 +296,9 @@ const ROWS = [
     ['provenance-established-truthy-not-true', {provenance: validProvenance({established: 1})}],
     ['ci-evidence-missing', {ciEvidence: null}],
     ['ci-evidence-for-another-head', {ciEvidence: validCiEvidence({head_sha: 'c'.repeat(40)})}],
+    // BM iter-4 IN-03: the record must show CI ready concluded success.
+    ['ci-evidence-ci-ready-failed', {ciEvidence: validCiEvidence({conclusion: 'failure'})}],
+    ['ci-evidence-ci-ready-not-completed', {ciEvidence: validCiEvidence({status: 'in_progress', conclusion: null})}],
     ['codex-f001-reproduction', {
       metaOverrides: {label: 'old-review'}, boundary: verifiedBoundary({label: 'old-review'}),
       provenance: validProvenance({base: 'c'.repeat(40), main_sha: MAIN, harness_head: 'e'.repeat(40), grader_ref: 'f'.repeat(40)}),

@@ -379,6 +379,30 @@ def test_completion_gate_ci_evidence_must_be_for_this_head(tmp_path: Path, monke
     assert completion_gate(_gate_prefix(2)) == ["CI evidence is not bound to this head"]
 
 
+_CI_NOT_PASSING_REASON = "CI evidence does not show a CI ready run that completed with success"
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"conclusion": "failure"},
+        {"conclusion": None},
+        {"status": "in_progress", "conclusion": None},
+        {"status": "queued"},
+        {"conclusion": "neutral"},
+    ],
+    ids=repr,
+)
+def test_completion_gate_ci_evidence_must_show_ci_ready_success(
+    tmp_path: Path, monkeypatch, override: dict
+) -> None:
+    """BM iter-4 IN-03: a record for the right head that shows a non-passing CI ready never counts."""
+    codex_dir = _gate_setup(tmp_path, monkeypatch)
+    ci_ready = {**_valid_ci_evidence()["ci_ready"], **override}
+    _write_full_attempt(codex_dir, 2, ci_evidence={"check_runs": [ci_ready], "ci_ready": ci_ready})
+    assert completion_gate(_gate_prefix(2)) == [_CI_NOT_PASSING_REASON]
+
+
 # --- Non-object JSON records (CR-01 / Codex F001) ------------------------------
 
 _NON_OBJECT_VALUES = [None, [], "x", 1, True, False]

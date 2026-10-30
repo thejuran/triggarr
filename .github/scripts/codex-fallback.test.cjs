@@ -1177,3 +1177,27 @@ test('IN-02 runCli: when the PR cannot be read, the attempt-1 exception is not g
   assert.ok(errors.some(e => e.includes('gh: HTTP 502')), JSON.stringify(errors));
   assert.ok(errors.some(e => e.includes('attempt 2 or later')), JSON.stringify(errors));
 });
+
+// --- BM iter-4 IN-03: the CI evidence must show CI ready concluded success ---
+
+test('IN-03 codexStatusFromOutput: CI evidence for this head whose CI ready did not succeed is invalid evidence', () => {
+  for (const override of [
+    {conclusion: 'failure'}, {conclusion: null}, {status: 'in_progress', conclusion: null}, {status: 'queued'},
+    {conclusion: 'neutral'},
+  ]) {
+    const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(inspectionOutputFiles({ciEvidence: validCiEvidence(override)})));
+    assert.equal(result.complete, false, JSON.stringify(override));
+    assert.equal(result.invalidEvidence, true, JSON.stringify(override));
+  }
+  const ok = codexStatusFromOutput(CODEX_OUT, stubReadFile(inspectionOutputFiles()));
+  assert.equal(ok.complete, true);
+});
+
+test('IN-03 inspectionOnlyCompleteness names the non-passing CI ready', () => {
+  const ciEvidence = validCiEvidence({conclusion: 'failure'});
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+    provenance: validProvenance(), ciEvidence, out: CODEX_OUT, head: HEAD, baseRequired: false,
+  });
+  assert.deepEqual(result.reasons, ['CI evidence does not show a CI ready run that completed with success']);
+});
