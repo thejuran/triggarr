@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS,
+  readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS, ciIndependenceRuleApplies,
 } = require('./acceptance-readiness.cjs');
 const {INSPECTION_REVIEW_MODE} = require('./codex-fallback.cjs');
 
@@ -949,11 +949,11 @@ test('runCli rejects an invalid --pr before calling the injected exec', () => {
 
 function inspectionOnlyCliFixture({
   authorLogin, isBot, boundaryJson, provenanceJson = JSON.stringify(validProvenance()),
-  ciEvidenceJson = JSON.stringify(validCiEvidence()),
+  ciEvidenceJson = JSON.stringify(validCiEvidence()), isCrossRepository = false, githubDiffOutput,
 }) {
   const prInfo = JSON.stringify({
     number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
-    author: {login: authorLogin, is_bot: isBot}, isCrossRepository: false,
+    author: {login: authorLogin, is_bot: isBot}, isCrossRepository,
   });
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
@@ -972,6 +972,7 @@ function inspectionOnlyCliFixture({
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
     [mergeBaseKey()]: `${BASE}\n`,
     [gitDiffKey()]: '',
+    ...(githubDiffOutput === undefined ? {} : {[githubDiffKey()]: githubDiffOutput}),
   });
   const files = {
     [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
@@ -1361,4 +1362,133 @@ test('codexStatusFor without a reviewed base still binds the fallback to the PR 
   assert.equal(codexStatusFor(args).ok, true);
   args.fallback = validFallback(); // names BASE, not the PR base MAIN_TIP
   assert.equal(codexStatusFor(args).ok, false);
+});
+
+// --- BM iter-3 IN-07: "CI ready" for a head whose CI evidence is not independent ---
+//
+// A fork, or a same-repository head by a non-owner, non-bot author, that
+// changes anything under .github/ decided its own CI (SA-03/SA-04). Its
+// successful "CI ready" must not be shown as plain "ok".
+
+function githubDiffKey(base = BASE, head = HEAD) {
+  return JSON.stringify(['git', 'diff', '--name-only', '--no-renames', `${base}..${head}`, '--', '.github']);
+}
+
+const CI_RULE_VARIANTS = [
+  {label: 'fork PR', prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true, applies: true},
+  {label: 'fork PR by the owner', prAuthor: 'thejuran', prAuthorIsBot: false, isCrossRepository: true, applies: true},
+  {label: 'fork PR by a bot', prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: true, applies: true},
+  {label: 'same-repo non-bot collaborator', prAuthor: 'collaborator', prAuthorIsBot: false, isCrossRepository: false, applies: true},
+  {label: 'same-repo Dependabot ([bot] login)', prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: false, applies: false},
+  {label: 'same-repo Dependabot (app/ login, is_bot)', prAuthor: 'app/dependabot', prAuthorIsBot: true, isCrossRepository: false, applies: false},
+  {label: 'same-repo owner', prAuthor: 'thejuran', prAuthorIsBot: false, isCrossRepository: false, applies: false},
+  {label: 'unidentified author', prAuthor: undefined, prAuthorIsBot: false, isCrossRepository: false, applies: true},
+];
+
+for (const variant of CI_RULE_VARIANTS) {
+  test(`ciIndependenceRuleApplies: ${variant.label} -> ${variant.applies}`, () => {
+    assert.equal(ciIndependenceRuleApplies({
+      isCrossRepository: variant.isCrossRepository, author: {login: variant.prAuthor, is_bot: variant.prAuthorIsBot},
+    }), variant.applies);
+  });
+
+  test(`CI ready item when .github/ changed: ${variant.label}`, () => {
+    const input = baseline();
+    input.prAuthor = variant.prAuthor;
+    input.prAuthorIsBot = variant.prAuthorIsBot;
+    input.isCrossRepository = variant.isCrossRepository;
+    input.ciDefinitionsChanged = true;
+    const result = readiness(input);
+    const ci = item(result, 'CI ready');
+    const checklist = renderChecklist(result);
+    if (variant.applies) {
+      assert.equal(ci.status, 'not-independent', ci.detail);
+      assert.ok(ci.detail.includes('not independent'), ci.detail);
+      assert.ok(checklist.includes('- CI ready: NOT INDEPENDENT'), checklist);
+      assert.ok(!checklist.includes('- CI ready: ok'), checklist);
+    } else {
+      assert.equal(ci.status, 'ok', ci.detail);
+      assert.ok(checklist.includes('- CI ready: ok'), checklist);
+    }
+  });
+}
+
+test('CI ready item: a covered head that did not change .github/ keeps "ok"', () => {
+  const input = baseline();
+  input.isCrossRepository = true;
+  input.ciDefinitionsChanged = false;
+  assert.equal(item(readiness(input), 'CI ready').status, 'ok');
+});
+
+test('CI ready item: an unknown .github/ change set for a covered head fails closed to not independent', () => {
+  for (const unknown of [undefined, null]) {
+    const input = baseline();
+    input.isCrossRepository = true;
+    input.ciDefinitionsChanged = unknown;
+    assert.equal(item(readiness(input), 'CI ready').status, 'not-independent', String(unknown));
+  }
+});
+
+test('CI ready item: a failing CI for a covered head stays BLOCKED, never softened', () => {
+  const input = baseline();
+  input.isCrossRepository = true;
+  input.ciDefinitionsChanged = true;
+  input.checks[0] = {...input.checks[0], conclusion: 'failure'};
+  assert.equal(item(readiness(input), 'CI ready').status, 'blocked');
+});
+
+test('a not-independent head is ready only through the owner-approved fallback (attempt 1, IN-05)', () => {
+  const stop = {
+    status: 'incomplete',
+    reasons: ['fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required'],
+  };
+  const variant = {prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true};
+  const out = inspectionOnlyOut();
+  const input = inspectionOnlyBaseline(variant, {status: stop, attempt: 1, out, boundary: null, provenance: null});
+  input.ciDefinitionsChanged = true;
+  const without = readiness(input);
+  assert.equal(without.ready, false);
+  assert.equal(item(without, 'Codex').status, 'blocked');
+
+  input.fallback = validFallback({codex_out: out});
+  const withFallback = readiness(input);
+  assert.equal(item(withFallback, 'CI ready').status, 'not-independent');
+  assert.equal(item(withFallback, 'Codex').status, 'ok', item(withFallback, 'Codex').detail);
+  assert.equal(withFallback.ready, true);
+  const checklist = renderChecklist(withFallback);
+  assert.ok(checklist.includes('- CI ready: NOT INDEPENDENT'), checklist);
+  assert.ok(checklist.includes('Ready to request approval'), checklist);
+});
+
+test('runCli: a fork PR whose diff changes .github/ shows CI ready as NOT INDEPENDENT', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    githubDiffOutput: '.github/os-scan-exceptions.json\n',
+  });
+  const {logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.ok(output.includes('- CI ready: NOT INDEPENDENT'), output);
+  assert.ok(!output.includes('- CI ready: ok'), output);
+});
+
+test('runCli: a fork PR whose diff leaves .github/ alone keeps CI ready ok', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    githubDiffOutput: '',
+  });
+  const {logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.ok(logs.join('\n').includes('- CI ready: ok'), logs.join('\n'));
+});
+
+test('runCli: a Dependabot same-repository PR never runs the .github/ diff', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+  });
+  const calls = [];
+  const spy = (cmd, args) => { calls.push(JSON.stringify([cmd, ...args])); return exec(cmd, args); };
+  withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec: spy, readFile}));
+  assert.ok(!calls.includes(githubDiffKey()));
 });

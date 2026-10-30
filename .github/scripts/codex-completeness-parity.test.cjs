@@ -9,7 +9,7 @@ const {spawnSync} = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {readiness, codexStatusFor} = require('./acceptance-readiness.cjs');
+const {readiness, codexStatusFor, ciIndependenceRuleApplies} = require('./acceptance-readiness.cjs');
 const {INSPECTION_REVIEW_MODE, codexStatusFromOutput, validateFallback} = require('./codex-fallback.cjs');
 
 const HEAD = 'a'.repeat(40);
@@ -573,4 +573,44 @@ test('cross-language parity: Python ci_evidence agrees with the JS "CI ready" it
     assert.equal(python[row.label], row.ok, `${row.label}: python ci_evidence accepted=${python[row.label]}`);
     assert.equal(jsCiReadyOk(row), python[row.label], `${row.label}: JS and Python disagree`);
   }
+});
+
+// --- Cross-language parity (SA-03/SA-04, IN-07): who the CI-independence rule covers ---
+//
+// The runner's ci_independence_rule_applies() decides which heads are stopped;
+// acceptance-readiness.cjs's ciIndependenceRuleApplies() decides which heads'
+// "CI ready" is shown as not independent. They must agree on every author shape.
+const CI_RULE_ROWS = [
+  {isCrossRepository: true, login: 'outsider', isBot: false},
+  {isCrossRepository: true, login: 'thejuran', isBot: false},
+  {isCrossRepository: true, login: 'dependabot[bot]', isBot: true},
+  {isCrossRepository: false, login: 'collaborator', isBot: false},
+  {isCrossRepository: false, login: 'dependabot[bot]', isBot: false},
+  {isCrossRepository: false, login: 'app/dependabot', isBot: true},
+  {isCrossRepository: false, login: 'thejuran', isBot: false},
+  {isCrossRepository: false, login: '', isBot: false},
+  {isCrossRepository: false, login: null, isBot: false},
+];
+
+const PY_CI_RULE = `
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from tests import codex_review_run as runner
+rows = json.loads(sys.argv[2])
+print(json.dumps([runner.ci_independence_rule_applies({
+    "is_cross_repository": r["isCrossRepository"], "author_login": r["login"], "author_is_bot": r["isBot"],
+}) for r in rows]))
+`;
+
+test('cross-language parity: Python ci_independence_rule_applies agrees with JS ciIndependenceRuleApplies', () => {
+  const proc = spawnSync(
+    'uv', ['run', '--frozen', '--quiet', 'python', '-c', PY_CI_RULE, REPO_ROOT, JSON.stringify(CI_RULE_ROWS)],
+    {cwd: REPO_ROOT, encoding: 'utf8'},
+  );
+  assert.equal(proc.status, 0, `python ci_independence_rule_applies failed to run: ${proc.stderr || proc.error}`);
+  const python = JSON.parse(proc.stdout);
+  CI_RULE_ROWS.forEach((row, index) => {
+    const js = ciIndependenceRuleApplies({isCrossRepository: row.isCrossRepository, author: {login: row.login, is_bot: row.isBot}});
+    assert.equal(js, python[index], `${JSON.stringify(row)}: JS ${js} vs python ${python[index]}`);
+  });
 });
