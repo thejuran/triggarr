@@ -1,0 +1,53 @@
+{
+  "boundary_version": 1,
+  "verdict": "verified",
+  "reasons": [],
+  "checked_at": "2026-10-30T21:24:49.671877+00:00",
+  "head": "16a719d720b385ca026c48be0c641a048ff17d69",
+  "label": "untrusted-e2e",
+  "attempt": 1,
+  "container_id": "a0e6adda5453c7ae789abd2400957dd628fd5c69b9394b9e11cfe4582530dea6",
+  "image_id": "sha256:59480ac5c502bb8d3b78228450f660bb7c0572cdcc7b9a602cb689497704e60e",
+  "dockerfile_sha256": "41753d2160c487badc6f38a9e97f770ecf0f5a36d3c425e4cffd7723d0d9489d",
+  "codex_version": "0.153.4",
+  "credential_mode": "auth.json copy",
+  "network": "bridge (egress not restricted)",
+  "mounts": [
+    {
+      "destination": "/codex-home",
+      "rw": true
+    },
+    {
+      "destination": "/out",
+      "rw": true
+    },
+    {
+      "destination": "/schema",
+      "rw": false
+    }
+  ],
+  "env_names": [
+    "CODEX_HOME",
+    "HOME",
+    "LANG",
+    "PATH"
+  ],
+  "canary": [
+    "<HOST_HOME>",
+    "<REPO_ROOT>",
+    "<HOST_CODEX_HOME>",
+    "<SSH_AUTH_SOCK>",
+    "<HOST_CANARY>",
+    "/run/host-services/ssh-auth.sock",
+    "/var/run/docker.sock",
+    "/root/.ssh",
+    "/home/review/.ssh",
+    "/codex-home/config.toml",
+    "/codex-home/sessions"
+  ],
+  "schema_sha256": "24e387cdc778c93c12f8dc6b8ad6bc36c5c1fe158e21dfe09227120ab872302b",
+  "credential": {
+    "last_refresh": "2026-10-26T19:02:24.346068Z",
+    "age_days": 4.1
+  }
+}

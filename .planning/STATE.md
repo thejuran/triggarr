@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85.1 verifying -- PR #48 is on main (df65ab9, 2026-10-30); the post-merge live inspection-only review of Dependabot PR #47 through --completion-gate is the phase completion gate (D-03)"
-stopped_at: "Phase 85.1 code landed on main via PR #48 (head 82b3411: BM iteration 7 0 critical/0 warning, Codex attempt 2 complete with one low finding backlogged, vibe-check approve, all CI green). Next: live inspection-only review of PR #47 through --completion-gate"
-last_updated: "2026-10-30T21:19:13Z"
-last_activity: "2026-10-30 -- PR #48 (Phase 85.1) landed on main as df65ab9; Codex F001 and vibe-check import-cycle item backlogged; PR #48 checkpoint record copied to 85.1-REVIEW-EVIDENCE.md"
+status: "Phase 85.1 blocked -- post-merge live review INCOMPLETE (Codex startup code-mode notice counted as tool use); follow-up PR needed"
+stopped_at: "Phase 85.1 merged via PR #48 (df65ab9); post-merge live inspection-only review ran on Dependabot PR #52 (PR #47 was closed by Dependabot) and is INCOMPLETE: the event audit failed closed on Codex's startup error notice (code_mode on for the account, code_mode_host disabled). Boundary verified, no container survived, host call OK. Not retried; follow-up PR needed"
+last_updated: "2026-10-30T21:26:53Z"
+last_activity: "2026-10-30 -- Phase 85.1 post-merge live review on PR #52 INCOMPLETE (audit: 'inspection-only review used a tool: error'); recorded in 85.1-REVIEW-EVIDENCE.md"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 85.1 — post-merge live review of Dependabot PR #47 (completion gate); Phase 86 next
+**Current focus:** Phase 85.1 — follow-up fix for the untrusted-path event audit (Codex code-mode startup notice), then rerun the post-merge live review; Phase 86 next
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. v2.12 shipped 2026-10-21 as v2.12.0 (tag on `dbb38fa`).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — ON MAIN (PR #48, df65ab9), VERIFYING
-Plan: 10 of 10 executed (85.1-01..85.1-10); the post-merge live run on PR #47 is the remaining phase verification gate
-Status: Phase 85.1 verifying -- PR #48 on main (final head 82b3411 reviewed: BM iteration 7, Codex complete, vibe-check approve, CI green); verification human_needed until the live inspection-only review of PR #47 completes through --completion-gate
-Last activity: 2026-10-30 -- PR #48 landed on main as df65ab9 (21:16 UTC); Codex F001 and vibe-check arch-001 backlogged by owner decision
+Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — MERGED (PR #48, df65ab9), BLOCKED: post-merge live review INCOMPLETE
+Plan: 10 of 10 executed (85.1-01..85.1-10); the post-merge live run (D-03) is the remaining phase verification gate -- first attempt INCOMPLETE on PR #52
+Status: Phase 85.1 blocked -- post-merge live review on PR #52 INCOMPLETE: `audit_event_types` failed closed on Codex's startup `error` notice ("Code Mode is unavailable because code-mode host is disabled"); boundary verified, grader from origin/main, no container survived, host call OK; not retried (tool-use rule); follow-up PR needed
+Last activity: 2026-10-30 -- post-merge live review on PR #52 INCOMPLETE (PR #47 closed by Dependabot at 21:17 UTC); evidence and raw outputs recorded
 
 ### v2.13 milestone shape
 
@@ -244,12 +244,12 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 ## Session Continuity
 
 Last session: 2026-10-30T21:19:13Z
-Stopped at: Phase 85.1 on main via PR #48; next: post-merge live inspection-only review of PR #47 (--completion-gate)
+Stopped at: Phase 85.1 post-merge live review INCOMPLETE on PR #52; next: follow-up PR fixing the event audit / code-mode flag, then rerun the live review
 Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-REVIEW-EVIDENCE.md
 
 ## Operator Next Steps
 
-- Phase 85.1 completion gate: run the live inspection-only review of Dependabot PR #47 through `--completion-gate` (D-03), then record the result and close the phase
+- Phase 85.1 follow-up PR: stop Codex's startup code-mode notice from failing the untrusted-path event audit (candidate: also `--disable code_mode`), with tests; then rerun the live inspection-only review on a qualifying Dependabot PR through `--completion-gate` (D-03) and close the phase
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot PRs per the release rule
 - Decide SA-12 (FastAPI 0.162 opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - `/bm:plan-phase 82` -- plan Phase 82 (CI Tests What We Ship) from 82-CONTEXT.md

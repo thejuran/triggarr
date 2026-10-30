@@ -1,0 +1,10 @@
+{
+  "established": true,
+  "main_ref": "refs/remotes/origin/main",
+  "main_sha": "df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+  "harness_head": "df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+  "base": "df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+  "base_on_main": true,
+  "grader_ref": "df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+  "grader_source": "trusted-origin-main"
+}
