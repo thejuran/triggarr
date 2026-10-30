@@ -93,6 +93,14 @@ def test_status_row_defines_inspection_only_completeness() -> None:
     assert "`.base-status.json`" in line
 
 
+# BM iter-4 IN-04: inspection-only runs cover every untrusted head, including
+# same-repository heads by non-owner authors, not only bots and forks.
+def test_status_row_names_every_untrusted_head_kind() -> None:
+    line = _codex_section_table_line("Status")
+    assert "(untrusted head: bot, fork, or non-owner author)" in line
+    assert "(bot or fork head)" not in line
+
+
 # D-16/IN-01: "wait" and "retry later" must be stated, in one sentence, as
 # blocking acceptance -- not merely as options with no stated consequence.
 def test_wait_and_retry_later_block_acceptance() -> None:
