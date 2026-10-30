@@ -51,7 +51,7 @@
       "purpose": "Inspect runner and operational contracts; output partially truncated."
     },
     {
-      "command": "cat /Users/julianamacbook/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a1.pytest.txt",
+      "command": "cat ~/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a1.pytest.txt",
       "exit_code": 0,
       "purpose": "Read exact-head harness test evidence; initially truncated, reread later."
     },
@@ -136,7 +136,7 @@
       "purpose": "Inspect early phase plans and summaries; output truncated."
     },
     {
-      "command": "git status --short; git rev-parse HEAD; nl -ba triggarr/templates/partials/cycle_grade.html | sed -n '27,39p'; cat /Users/julianamacbook/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a1.pytest.txt",
+      "command": "git status --short; git rev-parse HEAD; nl -ba triggarr/templates/partials/cycle_grade.html | sed -n '27,39p'; cat ~/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a1.pytest.txt",
       "exit_code": 0,
       "purpose": "Confirm unchanged checkout, finding location, and complete harness evidence."
     },

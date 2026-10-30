@@ -1,6 +1,6 @@
 {"type":"thread.started","thread_id":"01a16aae-9631-7441-a147-8d4719b949a0"}
 {"type":"item.completed","item":{"id":"item_0","type":"error","message":"`[features].codex_hooks` is deprecated. Use `[features].hooks` instead. (Enable it with `--enable hooks` or `[features].hooks` in config.toml. See https://developers.openai.com/codex/config-basic#feature-flags for details.)"}}
-{"type":"item.completed","item":{"id":"item_1","type":"error","message":"failed to parse hooks config /Users/julianamacbook/.codex/hooks.json: unknown field `SessionStart`, expected `description` or `hooks` at line 2 column 16"}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"failed to parse hooks config ~/.codex/hooks.json: unknown field `SessionStart`, expected `description` or `hooks` at line 2 column 16"}}
 {"type":"turn.started"}
 {"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"I’ll verify the checkout and base commit, inspect the full scoped diff, and trace the changed behavior through surrounding code and tests.\n"}}
 {"type":"item.started","item":{"id":"item_3","type":"command_execution","command":"/bin/zsh -lc 'git rev-parse HEAD'","aggregated_output":"","exit_code":null,"status":"in_progress"}}

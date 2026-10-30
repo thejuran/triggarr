@@ -460,7 +460,7 @@ cp "${PHASE_DIR}/${PADDED_PHASE}-REVIEW.md" \
 - The D-16 quick-task fix has its pattern already living in the same file: `_atomic_text_write` already demonstrates the fchmod-before-replace fix that `generate_default_config` needs, and `tests/test_config.py` already has the exact spy-based test shape (`test_backfill_temp_file_is_0600_before_replace`) to copy for the new regression test.
 
 ### File Created
-`/Users/julianamacbook/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/83-PATTERNS.md`
+`~/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/83-PATTERNS.md`
 
 ### Ready for Planning
 Pattern mapping complete. Planner can now reference analog patterns in PLAN.md files.

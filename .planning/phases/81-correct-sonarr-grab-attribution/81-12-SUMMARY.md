@@ -31,7 +31,7 @@ key-files:
   created: []
   modified:
     - .planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results.md
+    - ~/Cowork/mediaserver/v5test-results.md
 
 key-decisions:
   - "Deployed the exact recorded commit (b35470b66f1287859319a6633ad3b0a34fbf7c39) via the same NAS-side git-archive build pattern as 81-07, confirmed by revision label, new image ID, and unchanged sonarr-v5/seedsyncarr-test start times"
@@ -92,8 +92,8 @@ _Note: this plan has no TDD tasks -- it is a live-environment verification run, 
 ## Files Created/Modified
 
 - `.planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md` - Plan 81-12 narrative section (build identity, target-season selection, gate staging, controlled-run observations, judgment, owner review), updated D-11.1/D-11.2 Matrix cells with 81-12 verdicts, 81-07 history fully preserved
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results.md` - Two new 81-12 rows added to the Phase 81 compatibility checks table
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-12-0-build-sha.txt` through `81-12-7-id-extract.txt` (18 files) - Sanitized evidence: build SHA, fingerprints, gate script and outputs, DB snapshots at each stage, probe insertion/cleanup records, history-shape re-check, sanitized ID extract for the owner-decision record
+- `~/Cowork/mediaserver/v5test-results.md` - Two new 81-12 rows added to the Phase 81 compatibility checks table
+- `~/Cowork/mediaserver/v5test-results/81-12-0-build-sha.txt` through `81-12-7-id-extract.txt` (18 files) - Sanitized evidence: build SHA, fingerprints, gate script and outputs, DB snapshots at each stage, probe insertion/cleanup records, history-shape re-check, sanitized ID extract for the owner-decision record
 
 ## Decisions Made
 
@@ -141,4 +141,4 @@ None beyond the owner actions already part of this plan's design (running the sh
 
 ## Self-Check: PASSED
 
-Both tracked claimed files confirmed present on disk (`81-LIVE-MATRIX.md`, this `81-12-SUMMARY.md`) and the external `v5test-results.md`. All 18 claimed sanitized evidence files confirmed present under `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-12-*.txt`. All 4 claimed commit hashes (`1cce96b`, `528ea34`, `6b49731`, `0111dea`) confirmed present via `git log --oneline --all`. Full suite (`uv run pytest tests/ -x -q` -> 1996 passed) and `uv run ruff check triggarr/ tests/` (-> all checks passed) re-run and confirmed immediately before writing this summary (no code was changed by this plan, so these results are unchanged from the preconditions check). `grep -rniE "apikey|x-api-key: [A-Za-z0-9]{8}"` over every `81-12-*` evidence file confirmed empty. `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/STATE.md` and `docs/bm-greptile-codex-blueprint.md` were never staged or committed by this plan (confirmed via `git status --short` and `git log` for this plan's four commits, each touching only `81-LIVE-MATRIX.md`). No missing items.
+Both tracked claimed files confirmed present on disk (`81-LIVE-MATRIX.md`, this `81-12-SUMMARY.md`) and the external `v5test-results.md`. All 18 claimed sanitized evidence files confirmed present under `~/Cowork/mediaserver/v5test-results/81-12-*.txt`. All 4 claimed commit hashes (`1cce96b`, `528ea34`, `6b49731`, `0111dea`) confirmed present via `git log --oneline --all`. Full suite (`uv run pytest tests/ -x -q` -> 1996 passed) and `uv run ruff check triggarr/ tests/` (-> all checks passed) re-run and confirmed immediately before writing this summary (no code was changed by this plan, so these results are unchanged from the preconditions check). `grep -rniE "apikey|x-api-key: [A-Za-z0-9]{8}"` over every `81-12-*` evidence file confirmed empty. `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/STATE.md` and `docs/bm-greptile-codex-blueprint.md` were never staged or committed by this plan (confirmed via `git status --short` and `git log` for this plan's four commits, each touching only `81-LIVE-MATRIX.md`). No missing items.

@@ -30,17 +30,17 @@ tech-stack:
 
 key-files:
   created:
-    - /Users/julianamacbook/scratch/planchk-pilot/harness/run_adjudicator.py (adjudicator session runner, reuses run_matched_checker.py helpers)
-    - /Users/julianamacbook/scratch/planchk-pilot/settings/adjudicator-settings.json
-    - /Users/julianamacbook/scratch/planchk-pilot/evaluator-only/arm-map-blind-r1.json (mode a-w after write)
-    - /Users/julianamacbook/scratch/planchk-pilot/adjudication/blind-r1/ (input/reviewers/Reviewer-{W,X,Y,Z}.md, input/ADJUDICATOR-BRIEF.md, input/answer-key-initial.md, input/snapshot/ (read-only copy of blind-r1), work/adjudication.json, work/ADJUDICATION.md, work/repro/, run/attempt-1.*, PROGRESS.txt)
-    - /Users/julianamacbook/scratch/planchk-pilot/runs/validation/ (work-v1/, work-v3/, codex-validation-a{1,2,3}.*)
-    - /Users/julianamacbook/scratch/planchk-pilot/runs/blind/ (work-{ordinary,codex}-a{1,2,3}/, {ordinary,codex}-blind-a{1,2,3}.*, blind-r1-outputs.sha256, two *.status.json.pre-classifier-fix records)
-    - /Users/julianamacbook/scratch/planchk-pilot/runs/smoke/codex-smoke-a{99,100,101,102,103}.* (hook debugging smoke tests)
+    - ~/scratch/planchk-pilot/harness/run_adjudicator.py (adjudicator session runner, reuses run_matched_checker.py helpers)
+    - ~/scratch/planchk-pilot/settings/adjudicator-settings.json
+    - ~/scratch/planchk-pilot/evaluator-only/arm-map-blind-r1.json (mode a-w after write)
+    - ~/scratch/planchk-pilot/adjudication/blind-r1/ (input/reviewers/Reviewer-{W,X,Y,Z}.md, input/ADJUDICATOR-BRIEF.md, input/answer-key-initial.md, input/snapshot/ (read-only copy of blind-r1), work/adjudication.json, work/ADJUDICATION.md, work/repro/, run/attempt-1.*, PROGRESS.txt)
+    - ~/scratch/planchk-pilot/runs/validation/ (work-v1/, work-v3/, codex-validation-a{1,2,3}.*)
+    - ~/scratch/planchk-pilot/runs/blind/ (work-{ordinary,codex}-a{1,2,3}/, {ordinary,codex}-blind-a{1,2,3}.*, blind-r1-outputs.sha256, two *.status.json.pre-classifier-fix records)
+    - ~/scratch/planchk-pilot/runs/smoke/codex-smoke-a{99,100,101,102,103}.* (hook debugging smoke tests)
     - .planning/phases/84-codex-plan-checker-investigation/84-COMPARISON-REPORT.md (local, git-excluded, never committed per D-16)
   modified:
-    - /Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router/hooks/register.js (per-spawn console.error log; final sha256 573895ffcfaf94a2fc42c84f58df3edad7e05eb4f55f0c8521d70d4ac22e7a39)
-    - /Users/julianamacbook/scratch/planchk-pilot/harness/run_matched_checker.py (margin-inclusive sampling, hook-spawn-log readback, interval-based classify_routes rewrite, --round validation; final sha256 ff51913375b919c50a1bfb2a24506658133c2e73df04193fef3bed56256a1f0e)
+    - ~/scratch/planchk-pilot/plugins/planchk-router/hooks/register.js (per-spawn console.error log; final sha256 573895ffcfaf94a2fc42c84f58df3edad7e05eb4f55f0c8521d70d4ac22e7a39)
+    - ~/scratch/planchk-pilot/harness/run_matched_checker.py (margin-inclusive sampling, hook-spawn-log readback, interval-based classify_routes rewrite, --round validation; final sha256 ff51913375b919c50a1bfb2a24506658133c2e73df04193fef3bed56256a1f0e)
 
 key-decisions:
   - "Ran the §7 full-loop validation before the four blind runs, per 84-04-SUMMARY's carried obligations and this plan's own <authority> sequencing instruction, even though 84-05-PLAN.md's own Task 1 text does not literally describe it -- logged as a deviation, not silently added"
@@ -297,7 +297,7 @@ Verified STATE.md/ROADMAP.md/REQUIREMENTS.md untouched: `git status --short -- .
 ## Self-Check (closeout, 2026-10-26): PASSED
 
 Verified `84-INPUT-LABEL-CORRECTION.md` exists (local, git-excluded):
-`test -f /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-INPUT-LABEL-CORRECTION.md && echo FOUND` → FOUND.
+`test -f ~/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-INPUT-LABEL-CORRECTION.md && echo FOUND` → FOUND.
 Verified prior commit `e5ed13c` (84-03/84-04 label correction) exists:
 `git log --oneline --all | grep -q e5ed13c && echo FOUND` → FOUND.
 Verified no evidence file was committed by this closeout:

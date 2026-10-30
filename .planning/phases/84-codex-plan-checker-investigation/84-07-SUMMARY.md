@@ -97,7 +97,7 @@ what fell short. Ran the task's exact automated `<verify>` command: **exit 0.**
 **Task 2 (Isolation proof + closeout):** re-hashed all six isolation-baseline files — all
 six match the Plan 01 baseline exactly, no mismatch, no planchk-count fallback needed.
 Confirmed `claude plugin list` has no `planchk-router` entry; `grep -rl planchk
-/Users/julianamacbook/triggarr/.claude` finds nothing; `git diff --stat`/`git status
+~/triggarr/.claude` finds nothing; `git diff --stat`/`git status
 --porcelain` against `triggarr tests .claude CLAUDE.md` are both empty; `git ls-files` on
 the phase directory lists only PLAN/SUMMARY/CONTEXT/PATTERNS/RESEARCH/VALIDATION/
 DISCUSSION-LOG files, no evidence file; the branch has never been pushed (no upstream
@@ -237,11 +237,11 @@ None.
 
 Verified file existence (all FOUND):
 ```
-$ test -f /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-INPUT-LABEL-CORRECTION.md && echo FOUND
+$ test -f ~/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-INPUT-LABEL-CORRECTION.md && echo FOUND
 FOUND
-$ test -f /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-CLOSEOUT.md && echo FOUND
+$ test -f ~/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-CLOSEOUT.md && echo FOUND
 FOUND
-$ test -f /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-06-SUMMARY.md && echo FOUND
+$ test -f ~/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-06-SUMMARY.md && echo FOUND
 FOUND
 ```
 
@@ -279,12 +279,12 @@ Verified STATE.md/ROADMAP.md/REQUIREMENTS.md untouched throughout this plan:
 → empty. Per this phase's explicit binding rules, no `bm-sdk query state.*`/`roadmap.*`/
 `requirements.*` writer was run — the orchestrator updates tracking by hand.
 
-Verified no evidence file was committed: `git -C /Users/julianamacbook/triggarr ls-files
+Verified no evidence file was committed: `git -C ~/triggarr ls-files
 .planning/phases/84-codex-plan-checker-investigation | grep -Eq
 "VERDICT|MANIFEST|CRITERIA|REPORT|CLOSEOUT|BASELINE|EVIDENCE"` → no match (confirmed above
 in Task 2's verify).
 
-Verified nothing was pushed: `git -C /Users/julianamacbook/triggarr status -sb` reads
+Verified nothing was pushed: `git -C ~/triggarr status -sb` reads
 `## codex-plan-checker` with no upstream configured.
 
 ## Self-Check: PASSED

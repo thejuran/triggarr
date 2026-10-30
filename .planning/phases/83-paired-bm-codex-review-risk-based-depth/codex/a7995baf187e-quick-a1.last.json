@@ -33,7 +33,7 @@
       "purpose": "Confirm base exists."
     },
     {
-      "command": "cat /Users/julianamacbook/.agents/skills/review/SKILL.md",
+      "command": "cat ~/.agents/skills/review/SKILL.md",
       "exit_code": 0,
       "purpose": "Read review workflow."
     },
@@ -68,7 +68,7 @@
       "purpose": "Read existing outcome, upgrade, escaping, and refresh tests."
     },
     {
-      "command": "rg -n 'cycle_view|partial_app_card|last_cycle|data-cycle-detail' triggarr/web/routes.py triggarr/templates/partials/app_card.html triggarr/state.py; cat pyproject.toml; ls -d .venv /Users/julianamacbook/triggarr/.venv 2>/dev/null",
+      "command": "rg -n 'cycle_view|partial_app_card|last_cycle|data-cycle-detail' triggarr/web/routes.py triggarr/templates/partials/app_card.html triggarr/state.py; cat pyproject.toml; ls -d .venv ~/triggarr/.venv 2>/dev/null",
       "exit_code": 1,
       "purpose": "Locate callers, inspect dependencies, and find interpreter. Local .venv absent; external environment found."
     },
@@ -83,7 +83,7 @@
       "purpose": "Read rationale and prior claims as source material, not correctness evidence."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -m pytest tests/test_app_cards.py -q -p no:cacheprovider",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -m pytest tests/test_app_cards.py -q -p no:cacheprovider",
       "exit_code": 1,
       "purpose": "Attempt card suite; blocked before collection because no writable temporary directory exists."
     },
@@ -98,7 +98,7 @@
       "purpose": "Read complete plan and implementation claims."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python - <<'PY' [in-memory AST/template assertion harness] PY",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python - <<'PY' [in-memory AST/template assertion harness] PY",
       "exit_code": 1,
       "purpose": "Attempt in-memory assertion harness; shell rejected heredoc temporary-file creation before Python executed."
     },
@@ -108,7 +108,7 @@
       "purpose": "Read verification claims and state changes."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -c '<in-memory harness: AST-extract _last_cycle_record and functions at lines 550–738; execute each with a client adapter rendering cycle_view through the actual Jinja template; compare HEAD and base>'",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -c '<in-memory harness: AST-extract _last_cycle_record and functions at lines 550–738; execute each with a client adapter rendering cycle_view through the actual Jinja template; compare HEAD and base>'",
       "exit_code": 0,
       "purpose": "HEAD: 10 assertions suites passed. Base: 3 passed, 7 failed, as expected."
     },
@@ -123,7 +123,7 @@
       "purpose": "Recover document openings and confirm unchanged working tree."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -c '<in-memory matrix: product([0,1],[0,1],[0,1,3],[0,2],[False,True],[False,True]); generate CycleTally records, render cycle_view through HEAD template, assert expected label category and escaped script text>'",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -c '<in-memory matrix: product([0,1],[0,1],[0,1,3],[0,2],[False,True],[False,True]); generate CycleTally records, render cycle_view through HEAD template, assert expected label category and escaped script text>'",
       "exit_code": 0,
       "purpose": "Verify 96 generated-cycle combinations."
     }

@@ -13,7 +13,7 @@ Agent-executed release verification gate for runtime config-dir behavior, docume
 
 - Repository is checked out at the current S03 closure tree.
 - `uv` dependencies are installed or available to resolve.
-- Commands are run from `/Users/julianamacbook/triggarr`.
+- Commands are run from `~/triggarr`.
 - No real Radarr/Sonarr/Lidarr credentials are required.
 
 ## Test Case 1 — Focused portable config-dir runtime tests

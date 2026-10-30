@@ -25,11 +25,11 @@ key-files:
   created:
     - .planning/phases/84-codex-plan-checker-investigation/84-ISOLATION-BASELINE.txt (local only, git-excluded, never committed per D-16)
     - .planning/phases/84-codex-plan-checker-investigation/84-RUNTIME-VERDICT.md (local only, git-excluded, never committed per D-16)
-    - /Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router/.claude-plugin/plugin.json
-    - /Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router/hooks/hooks.json
-    - /Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router/hooks/register.js
-    - /Users/julianamacbook/scratch/planchk-pilot/toy/ (synthetic one-phase GSD project fixture, own throwaway git repo)
-    - /Users/julianamacbook/scratch/planchk-pilot/runs/smoke/ (driver prompt, run_smoke.py harness, two full attempt transcripts, route-log extracts, comparison notes)
+    - ~/scratch/planchk-pilot/plugins/planchk-router/.claude-plugin/plugin.json
+    - ~/scratch/planchk-pilot/plugins/planchk-router/hooks/hooks.json
+    - ~/scratch/planchk-pilot/plugins/planchk-router/hooks/register.js
+    - ~/scratch/planchk-pilot/toy/ (synthetic one-phase GSD project fixture, own throwaway git repo)
+    - ~/scratch/planchk-pilot/runs/smoke/ (driver prompt, run_smoke.py harness, two full attempt transcripts, route-log extracts, comparison notes)
   modified: []
 
 key-decisions:
@@ -74,9 +74,9 @@ No task-level code commits in Triggarr: every file this plan's Tasks 1-3 create 
 ## Files Created/Modified
 - `.planning/phases/84-codex-plan-checker-investigation/84-ISOLATION-BASELINE.txt` — pre-pilot sha256 baseline of 6 settings/config files + plugin list + planchk-grep result (local only, never committed)
 - `.planning/phases/84-codex-plan-checker-investigation/84-RUNTIME-VERDICT.md` — full PLANCHK-01 evidence record: installed versions, binary/docs evidence, live proof (both attempts), Verdict, Route, D-02 gate outcome (local only, never committed)
-- `/Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router/` — the scratch-only `agent.spawn` hook plugin
-- `/Users/julianamacbook/scratch/planchk-pilot/toy/` — synthetic one-phase GSD project fixture (own git repo)
-- `/Users/julianamacbook/scratch/planchk-pilot/runs/smoke/` — driver prompt, timeout-bounded runner, two full `claude -p` transcripts, route-log extracts, plugin-validate output, comparison notes
+- `~/scratch/planchk-pilot/plugins/planchk-router/` — the scratch-only `agent.spawn` hook plugin
+- `~/scratch/planchk-pilot/toy/` — synthetic one-phase GSD project fixture (own git repo)
+- `~/scratch/planchk-pilot/runs/smoke/` — driver prompt, timeout-bounded runner, two full `claude -p` transcripts, route-log extracts, plugin-validate output, comparison notes
 - `.planning/phases/84-codex-plan-checker-investigation/84-01-SUMMARY.md` — this file (only file this plan commits)
 
 ## Decisions Made
@@ -102,7 +102,7 @@ No task-level code commits in Triggarr: every file this plan's Tasks 1-3 create 
 - **Issue:** The hook never fired; the checker ran on the literal, unrewritten `model="sonnet"` argument. `claude --debug hooks` revealed the root cause: an early-access flag, `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`, gates whether an installed/sideloaded mod's hooks module loads at all on 2.1.281 — undocumented on either docs page fetched in Task 1, and not caught by `claude plugin validate` (which only checks the manifest/matcher statically).
 - **Fix:** Set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in the `claude -p` subprocess's own environment for attempt 2 only (never in any Triggarr or global settings file). Attempt 2 then routed cleanly.
 - **Cost if wrong:** If this flag were mistakenly treated as unnecessary going forward, Plan 02 onward would silently repeat attempt 1's failure mode (hook loaded, matcher correct, but never actually executes) and could misreport the route as broken when it is simply unconfigured.
-- **Files modified:** `/Users/julianamacbook/scratch/planchk-pilot/runs/smoke/run_smoke.py` (scratch only, not committed).
+- **Files modified:** `~/scratch/planchk-pilot/runs/smoke/run_smoke.py` (scratch only, not committed).
 - **Commit:** N/A (scratch file, not committed).
 
 ---
@@ -140,6 +140,6 @@ None — no external service configuration required. (If this route is ever prop
 - FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-01-SUMMARY.md`
 - FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-ISOLATION-BASELINE.txt`
 - FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-RUNTIME-VERDICT.md`
-- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router/hooks/register.js`
-- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/toy/` (toy GSD project fixture)
+- FOUND: `~/scratch/planchk-pilot/plugins/planchk-router/hooks/register.js`
+- FOUND: `~/scratch/planchk-pilot/toy/` (toy GSD project fixture)
 - FOUND: commit `724efc6` in `git log --oneline --all`

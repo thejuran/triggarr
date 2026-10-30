@@ -66,7 +66,7 @@
 
 ## Project Constraints (from CLAUDE.md)
 
-Directives from `/Users/julianamacbook/triggarr/CLAUDE.md` that this phase's plan must not contradict:
+Directives from `~/triggarr/CLAUDE.md` that this phase's plan must not contradict:
 
 - **Buildomator + Greptile pilot section:** "This is a staged migration; keep the existing review process until the checklist is complete. Use feature branches and PRs. Buildomator's review hook is advisory, and a Greptile review does not replace running tests or product acceptance. After fixes, require fresh checks and review of the current commit. Do not weaken CI, suppress findings, or push directly to main to make a task appear complete." — Phase 83 restructures this section but must preserve its substance (fresh review after fixes, no weakening CI/findings, no direct-to-main pushes).
 - **Deep Code Review Convention:** "Before pushing to main or creating a release tag, offer `/deep-review` to the user." This pre-existing convention is distinct from the new BM+Codex pairing; the plan should clarify how/whether it coexists with the new classification policy rather than silently dropping it.

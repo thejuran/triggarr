@@ -33,7 +33,7 @@
       "purpose": "Confirm requested base exists."
     },
     {
-      "command": "cat /Users/julianamacbook/.agents/skills/review/SKILL.md",
+      "command": "cat ~/.agents/skills/review/SKILL.md",
       "exit_code": 0,
       "purpose": "Read review skill."
     },
@@ -78,17 +78,17 @@
       "purpose": "Recover policy/configuration diff without surrounding-code output."
     },
     {
-      "command": "cat .planning/phases/83*/83-CONTEXT.md .planning/phases/83*/83-REVIEW-EVIDENCE.md; ls -d .venv /Users/julianamacbook/triggarr/.venv 2>/dev/null; command -v python3 uv",
+      "command": "cat .planning/phases/83*/83-CONTEXT.md .planning/phases/83*/83-REVIEW-EVIDENCE.md; ls -d .venv ~/triggarr/.venv 2>/dev/null; command -v python3 uv",
       "exit_code": 0,
       "purpose": "Read intent/evidence and locate available interpreter."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -c 'import runpy,json; m=runpy.run_path(\"tests/codex_report_status.py\"); s=m[\"_load_schema\"](); h=\"a\"*40; b=\"b\"*40; r={k:None for k in s[\"required\"]}; r.update(inspected_head_sha=h,inspected_base_sha=b); print(m[\"assess_report\"](json.dumps(r),exit_code=0,expected_head=h,expected_base=b,current_head=h,attempt=1))'",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -c 'import runpy,json; m=runpy.run_path(\"tests/codex_report_status.py\"); s=m[\"_load_schema\"](); h=\"a\"*40; b=\"b\"*40; r={k:None for k in s[\"required\"]}; r.update(inspected_head_sha=h,inspected_base_sha=b); print(m[\"assess_report\"](json.dumps(r),exit_code=0,expected_head=h,expected_base=b,current_head=h,attempt=1))'",
       "exit_code": 0,
       "purpose": "Reproduce acceptance of a schema-invalid report."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -m pytest -p no:cacheprovider tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_instructions.py tests/test_app_cards.py -q",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -m pytest -p no:cacheprovider tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_instructions.py tests/test_app_cards.py -q",
       "exit_code": 1,
       "purpose": "Attempt targeted suites; failed before collection because no writable temporary directory exists."
     },
@@ -103,7 +103,7 @@
       "purpose": "Inspect fixtures, parent template, and route integration."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -m pytest -s -p no:cacheprovider tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_instructions.py -q -k 'not cli_complete and not cli_missing'",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -m pytest -s -p no:cacheprovider tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_review_instructions.py -q -k 'not cli_complete and not cli_missing'",
       "exit_code": 0,
       "purpose": "Run tests without file-backed capture: 39 passed, two deselected."
     },
@@ -148,7 +148,7 @@
       "purpose": "Inspect review, retry, fix, and publication handoff plans; output contained truncation."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -c 'import inspect; from fastapi import FastAPI; from fastapi.testclient import TestClient; from fastapi.staticfiles import StaticFiles; from unittest.mock import MagicMock; from tests.conftest import make_settings; import tests.test_app_cards as t; from triggarr.web.routes import router,STATIC_DIR; app=FastAPI(); app.mount(\"/static\",StaticFiles(directory=str(STATIC_DIR)),name=\"static\"); app.include_router(router); app.state.settings=make_settings(); app.state.scheduler=MagicMock(); app.state.scheduler.get_job.return_value=None; client=TestClient(app); cases=[(n,f) for n,f in vars(t).items() if n.startswith(\"test_\") and 549 <= inspect.getsourcelines(f)[1] < 740];\nfor n,f in cases:\n app.state.triggarr_state={\"radarr\":{\"Default\":{}}}; f(client,app); print(\"PASS\",n)\nprint(\"Total:\",len(cases))'",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -c 'import inspect; from fastapi import FastAPI; from fastapi.testclient import TestClient; from fastapi.staticfiles import StaticFiles; from unittest.mock import MagicMock; from tests.conftest import make_settings; import tests.test_app_cards as t; from triggarr.web.routes import router,STATIC_DIR; app=FastAPI(); app.mount(\"/static\",StaticFiles(directory=str(STATIC_DIR)),name=\"static\"); app.include_router(router); app.state.settings=make_settings(); app.state.scheduler=MagicMock(); app.state.scheduler.get_job.return_value=None; client=TestClient(app); cases=[(n,f) for n,f in vars(t).items() if n.startswith(\"test_\") and 549 <= inspect.getsourcelines(f)[1] < 740];\nfor n,f in cases:\n app.state.triggarr_state={\"radarr\":{\"Default\":{}}}; f(client,app); print(\"PASS\",n)\nprint(\"Total:\",len(cases))'",
       "exit_code": 0,
       "purpose": "Execute 10 added card tests and one existing test against real route/templates with in-memory setup; all 11 passed."
     },
@@ -158,7 +158,7 @@
       "purpose": "Inspect card intent and validation strategy; check diff whitespace."
     },
     {
-      "command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -c 'import inspect,subprocess; from fastapi import FastAPI; from fastapi.testclient import TestClient; from fastapi.staticfiles import StaticFiles; from unittest.mock import MagicMock; from jinja2 import ChoiceLoader,DictLoader; from tests.conftest import make_settings; import tests.test_app_cards as t; from triggarr.web.routes import router,STATIC_DIR,templates; app=FastAPI(); app.mount(\"/static\",StaticFiles(directory=str(STATIC_DIR)),name=\"static\"); app.include_router(router); app.state.settings=make_settings(); app.state.scheduler=MagicMock(); app.state.scheduler.get_job.return_value=None; client=TestClient(app); base=subprocess.check_output([\"git\",\"show\",\"6f3841aaae4f2511efe6796f7f5c7ad50b423f90:triggarr/templates/partials/cycle_grade.html\"],text=True); templates.env.loader=ChoiceLoader([DictLoader({\"partials/cycle_grade.html\":base}),templates.env.loader]); templates.env.cache.clear(); counts={\"pass\":0,\"fail\":0};\nfor n,f in vars(t).items():\n if not n.startswith(\"test_\") or not 549 <= inspect.getsourcelines(f)[1] < 737: continue\n app.state.triggarr_state={\"radarr\":{\"Default\":{}}}\n try: f(client,app); counts[\"pass\"]+=1\n except AssertionError: counts[\"fail\"]+=1; print(\"EXPECTED BASE FAILURE\",n)\nprint(counts); assert counts=={\"pass\":3,\"fail\":7}'",
+      "command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -c 'import inspect,subprocess; from fastapi import FastAPI; from fastapi.testclient import TestClient; from fastapi.staticfiles import StaticFiles; from unittest.mock import MagicMock; from jinja2 import ChoiceLoader,DictLoader; from tests.conftest import make_settings; import tests.test_app_cards as t; from triggarr.web.routes import router,STATIC_DIR,templates; app=FastAPI(); app.mount(\"/static\",StaticFiles(directory=str(STATIC_DIR)),name=\"static\"); app.include_router(router); app.state.settings=make_settings(); app.state.scheduler=MagicMock(); app.state.scheduler.get_job.return_value=None; client=TestClient(app); base=subprocess.check_output([\"git\",\"show\",\"6f3841aaae4f2511efe6796f7f5c7ad50b423f90:triggarr/templates/partials/cycle_grade.html\"],text=True); templates.env.loader=ChoiceLoader([DictLoader({\"partials/cycle_grade.html\":base}),templates.env.loader]); templates.env.cache.clear(); counts={\"pass\":0,\"fail\":0};\nfor n,f in vars(t).items():\n if not n.startswith(\"test_\") or not 549 <= inspect.getsourcelines(f)[1] < 737: continue\n app.state.triggarr_state={\"radarr\":{\"Default\":{}}}\n try: f(client,app); counts[\"pass\"]+=1\n except AssertionError: counts[\"fail\"]+=1; print(\"EXPECTED BASE FAILURE\",n)\nprint(counts); assert counts=={\"pass\":3,\"fail\":7}'",
       "exit_code": 0,
       "purpose": "Verify new assertions detect original label bug; embedded git show succeeded, seven expected failures and three passes."
     },
@@ -182,7 +182,7 @@
       "evidence": "The reproduction returned Assessment(status='complete', reasons=(), qualified_ids=(), finding_count=0). The schema requires strings and arrays for these fields. Existing tests cover missing keys and selected enum violations, but not required-field nulls, incorrect container types, schema_version values, or most nested field types.",
       "suggested_fix": "Validate every schema node recursively, including types, nullable unions, enums, array items, required fields, and additional properties. Reject booleans where integers are required. Add parameterized negative tests for null/wrong-type values at every level and ensure malformed reports return incomplete.",
       "reproduced": true,
-      "reproduction_command": "PYTHONDONTWRITEBYTECODE=1 /Users/julianamacbook/triggarr/.venv/bin/python -c 'import runpy,json; m=runpy.run_path(\"tests/codex_report_status.py\"); s=m[\"_load_schema\"](); h=\"a\"*40; b=\"b\"*40; r={k:None for k in s[\"required\"]}; r.update(inspected_head_sha=h,inspected_base_sha=b); print(m[\"assess_report\"](json.dumps(r),exit_code=0,expected_head=h,expected_base=b,current_head=h,attempt=1))'",
+      "reproduction_command": "PYTHONDONTWRITEBYTECODE=1 ~/triggarr/.venv/bin/python -c 'import runpy,json; m=runpy.run_path(\"tests/codex_report_status.py\"); s=m[\"_load_schema\"](); h=\"a\"*40; b=\"b\"*40; r={k:None for k in s[\"required\"]}; r.update(inspected_head_sha=h,inspected_base_sha=b); print(m[\"assess_report\"](json.dumps(r),exit_code=0,expected_head=h,expected_base=b,current_head=h,attempt=1))'",
       "hypothesis": null
     },
     {

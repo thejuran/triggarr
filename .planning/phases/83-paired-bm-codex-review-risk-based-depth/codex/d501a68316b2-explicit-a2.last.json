@@ -40,7 +40,7 @@
       "purpose": "Inspect implementation and test changes; truncated portions recovered later."
     },
     {
-      "command": "cat /Users/julianamacbook/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/d501a68316b2-explicit-a2.pytest.txt",
+      "command": "cat ~/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/d501a68316b2-explicit-a2.pytest.txt",
       "exit_code": 0,
       "purpose": "Read authorized harness evidence: exact head, exit 0, 2215 passed."
     },

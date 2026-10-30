@@ -1461,7 +1461,7 @@ passed).
 Every `.jsonl` and `.last.json` under `codex/` for this phase contains the
 operator's absolute home-directory path, including the two new files from
 this round (`f46f18ccac12-round3-a1.jsonl`, `36eaa67c2976-final-a1.jsonl`
-— confirmed by `grep -l "/Users/julianamacbook"` against both; their
+— confirmed by `grep -l "~"` against both; their
 `.last.json` siblings do not contain it). Neither secret scan flags it;
 it is not a credential. This was first raised at `322afc50367d` and
 remains unresolved across every subsequent head, including this one. Raw
