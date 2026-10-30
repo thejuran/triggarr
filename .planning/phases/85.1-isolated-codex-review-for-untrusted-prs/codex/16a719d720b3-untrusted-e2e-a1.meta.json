@@ -1,0 +1,38 @@
+{
+  "meta_version": 2,
+  "head": "16a719d720b385ca026c48be0c641a048ff17d69",
+  "base": "df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+  "label": "untrusted-e2e",
+  "attempt": 1,
+  "pr_url": "https://github.com/thejuran/triggarr/pull/52",
+  "trusted": false,
+  "review_mode": "inspection-only-ci-evidence",
+  "inspection_template_version": "1",
+  "harness_head": "df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+  "inputs": {
+    "docs/codex-adversarial-review-contract.md": {
+      "sha256": "3cc95f5dad2c148f6a98045fd428f5332ab0f122abdeaf606a318103cf1e6a62",
+      "committed_unchanged": true
+    },
+    ".claude/schemas/codex-review-findings.schema.json": {
+      "sha256": "24e387cdc778c93c12f8dc6b8ad6bc36c5c1fe158e21dfe09227120ab872302b",
+      "committed_unchanged": true
+    },
+    "tests/codex_report_status.py": {
+      "sha256": "e66df1fcbdb1a34e75700dd6bca8ab892a6a0f2c0ee95c602c801b8092a356b6",
+      "committed_unchanged": true
+    },
+    "tests/codex_review_run.py": {
+      "sha256": "2d884b7db137a01e171cde609e049e3218c12aa395479c5df1b4de55e64646ad",
+      "committed_unchanged": true
+    }
+  },
+  "test_evidence_source": "GitHub CI check runs",
+  "audited_inputs_changed_in_diff": [],
+  "base_grader_source": "trusted-origin-main",
+  "inspection_input": {
+    "bytes": 20978,
+    "files_included": 1,
+    "files_omitted": 0
+  }
+}

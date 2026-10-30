@@ -1,0 +1,321 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "82b34111f6c71903f4ad9e4db8c8956ced598a59",
+  "inspected_base_sha": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 85.1, full specified diff and changed phase plans at the final checkpoint; independent review paired with BM iteration 7, standard depth.",
+  "verdict": "findings",
+  "summary": "Completed the review with one reproduced low-severity diagnostic disclosure. All 257 acceptance/fallback tests run in this session passed. Harness evidence reports 3270 pytest tests passed and one skipped at the requested head.",
+  "coverage": [
+    "All 23 files in the specified non-planning diff, including configuration, Docker image, review policy, runner, report checker, acceptance/fallback validators, and regression tests.",
+    "All changed phase plans, 85.1-01-PLAN.md through 85.1-10-PLAN.md.",
+    "PR trust, CI origin and independence, inert input extraction, input bounds, trusted-main provenance, and post-run revalidation.",
+    "Container configuration, credential custody, unsafe file reads, interrupted creation, cleanup failures, event auditing, and diagnostic redaction.",
+    "Attempt isolation, completion gates, fallback eligibility, cross-language parity, and preservation of owner acceptance requirements.",
+    "Regression assertions and mocked failure paths; direct fault injection reproduced F001."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Other reviewers' approvals and generated review artifacts were not treated as correctness evidence."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head before review"
+    },
+    {
+      "command": "git cat-file -e 05b24feedcfa7933dbbd9aab41c06e89103556da",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists"
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scope"
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed executor plans"
+    },
+    {
+      "command": "git diff --name-only 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory plans"
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence"
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- .github/dependabot.yml docker/codex-review/Dockerfile docs tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect configuration, policy and checker changes"
+    },
+    {
+      "command": "rg -n '^(def |class |[A-Z_]+ =)' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Map runner structure"
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- .github/scripts/codex-fallback.cjs .github/scripts/acceptance-readiness.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance and fallback security changes"
+    },
+    {
+      "command": "sed -n '775,1410p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace inert inputs and trusted grader provenance"
+    },
+    {
+      "command": "sed -n '1410,1740p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect tool disabling and boundary verification"
+    },
+    {
+      "command": "sed -n '1741,2013p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace launch and output handling"
+    },
+    {
+      "command": "sed -n '4242,4551p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace untrusted orchestration"
+    },
+    {
+      "command": "sed -n '2160,2546p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect image and host exposure checks"
+    },
+    {
+      "command": "sed -n '2547,2844p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect container and canary validators"
+    },
+    {
+      "command": "sed -n '2845,3196p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect credential custody and safe reads"
+    },
+    {
+      "command": "sed -n '3405,3816p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect auditing, completion gate and cross-grading"
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- .github/dependabot.yml docker/codex-review/Dockerfile docs/codex-adversarial-review-contract.md docs/review-checkpoint-record.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Inspect image and policy diff"
+    },
+    {
+      "command": "sed -n '1,416p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect process bounds and configuration"
+    },
+    {
+      "command": "git diff --unified=0 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- tests/codex_review_run.py tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Locate changed runner and checker hunks"
+    },
+    {
+      "command": "sed -n '2014,2158p' tests/codex_review_run.py; sed -n '3197,3404p' tests/codex_review_run.py; sed -n '3817,4241p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect probes, redaction and finalization"
+    },
+    {
+      "command": "rg -n '^def test_|^test\\(' tests/test_codex_review_container.py tests/test_codex_review_inspection.py tests/test_codex_review_gate.py .github/scripts/codex-completeness-parity.test.cjs",
+      "exit_code": 0,
+      "purpose": "Map regression coverage"
+    },
+    {
+      "command": "sed -n '2990,3075p' tests/test_codex_review_container.py; sed -n '4730,4785p' tests/codex_review_run.py; tail -n 8 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect diagnostic tests, CLI handling and test summary"
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport contextlib, io, json\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\nbuf = io.StringIO()\nwith patch.object(r.tempfile, 'mkdtemp', return_value='/synthetic-review/scratch'), patch.object(r.shutil, 'rmtree'), patch.object(Path, 'mkdir'), patch.object(Path, 'home', return_value=Path('/Users/review-owner')), patch.object(r, 'host_credential_path', return_value=Path('/Users/review-owner/.codex/auth.json')), patch.object(r, '_inspect_review_image', return_value=('sha256:fixture', r.REVIEW_CODEX_VERSION, 'fixture-hash')), patch.object(r, 'review_image_dockerfile_sha256', return_value='fixture-hash'), patch.object(r, 'safe_read_regular_file', side_effect=FileNotFoundError), contextlib.redirect_stdout(buf):\n    code = r.verify_boundary_main(with_probes=False)\nresult = json.loads(buf.getvalue())\nassert code == 3\nassert '/Users/review-owner/.codex/auth.json' in result['reasons'][0]\nprint(json.dumps({'exit_code': code, 'diagnostic': result['reasons'][0], 'host_path_leaked': True}))\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt fault injection; shell could not create heredoc temporary file"
+    },
+    {
+      "command": "python3 -B -c 'import contextlib, io, json\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\nbuf = io.StringIO()\nwith patch.object(r.tempfile, \"mkdtemp\", return_value=\"/synthetic-review/scratch\"), patch.object(r.shutil, \"rmtree\"), patch.object(Path, \"mkdir\"), patch.object(Path, \"home\", return_value=Path(\"/Users/review-owner\")), patch.object(r, \"host_credential_path\", return_value=Path(\"/Users/review-owner/.codex/auth.json\")), patch.object(r, \"_inspect_review_image\", return_value=(\"sha256:fixture\", r.REVIEW_CODEX_VERSION, \"fixture-hash\")), patch.object(r, \"review_image_dockerfile_sha256\", return_value=\"fixture-hash\"), patch.object(r, \"safe_read_regular_file\", side_effect=FileNotFoundError), contextlib.redirect_stdout(buf):\n    code = r.verify_boundary_main(with_probes=False)\nresult = json.loads(buf.getvalue())\nassert code == 3\nassert \"/Users/review-owner/.codex/auth.json\" in result[\"reasons\"][0]\nprint(json.dumps({\"exit_code\": code, \"diagnostic\": result[\"reasons\"][0], \"host_path_leaked\": True}))\n'",
+      "exit_code": 0,
+      "purpose": "Reproduce F001 with mocked I/O and no writes"
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review plan 02"
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review plan 03"
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review plan 04"
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-05-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review plan 05"
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review plan 06"
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review plan 07"
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-08-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review plan 08"
+    },
+    {
+      "command": "sed -n '130,190p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-08-PLAN.md; cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Recover plan output gap and review plan 09"
+    },
+    {
+      "command": "sed -n '1,100p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-10-PLAN.md; sed -n '4552,4733p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining plan and CLI changes"
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- tests/test_acceptance_docs.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_codex_review_run.py tests/test_dependabot_config.py tests/test_review_checkpoint_record.py tests/test_review_machinery_lists.py",
+      "exit_code": 0,
+      "purpose": "Inspect modified regression tests"
+    },
+    {
+      "command": "sed -n '1,650p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect PR, CI and inert input tests"
+    },
+    {
+      "command": "sed -n '651,1280p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect bounds, provenance and audit tests"
+    },
+    {
+      "command": "sed -n '1281,1915p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect orchestration failure assertions"
+    },
+    {
+      "command": "sed -n '1916,2415p' tests/test_codex_review_inspection.py; cat tests/test_codex_review_image.py",
+      "exit_code": 0,
+      "purpose": "Inspect drift, malformed input and image tests"
+    },
+    {
+      "command": "sed -n '1,700p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container arguments and exposure tests"
+    },
+    {
+      "command": "sed -n '701,1405p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect image, credentials and safe reader tests"
+    },
+    {
+      "command": "sed -n '1406,2109p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect Docker mocks and cleanup assertions"
+    },
+    {
+      "command": "sed -n '2110,2800p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect boundary and cleanup regressions"
+    },
+    {
+      "command": "sed -n '2801,3500p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect interruption and diagnostic tests"
+    },
+    {
+      "command": "cat tests/test_codex_review_gate.py",
+      "exit_code": 0,
+      "purpose": "Inspect completion gate tests"
+    },
+    {
+      "command": "sed -n '417,774p' tests/codex_review_run.py; git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining runner and checker changes"
+    },
+    {
+      "command": "sed -n '480,530p' tests/test_codex_review_gate.py; sed -n '417,545p' tests/codex_review_run.py; sed -n '90,115p' docs/codex-adversarial-review-contract.md; sed -n '110,135p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-08-PLAN.md; cat .claude/schemas/codex-review-findings.schema.json",
+      "exit_code": 0,
+      "purpose": "Recover truncated output and inspect report schema"
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- .github/scripts/acceptance-readiness.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance regression diff"
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- .github/scripts/codex-fallback.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect fallback regression diff"
+    },
+    {
+      "command": "sed -n '1,325p' .github/scripts/codex-completeness-parity.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect parity fixtures"
+    },
+    {
+      "command": "sed -n '326,660p' .github/scripts/codex-completeness-parity.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect parity execution and Python bridge"
+    },
+    {
+      "command": "sed -n '545,620p' tests/codex_review_run.py; sed -n '570,760p' .github/scripts/acceptance-readiness.cjs; sed -n '98,103p' docs/codex-adversarial-review-contract.md; nl -ba tests/codex_review_run.py | sed -n '4225,4242p'; git diff --name-status 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect remaining source gaps and verify file inventory"
+    },
+    {
+      "command": "node --test .github/scripts/acceptance-readiness.test.cjs .github/scripts/codex-fallback.test.cjs",
+      "exit_code": 0,
+      "purpose": "Run acceptance and fallback suites: 257 passed"
+    },
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm head remained unchanged"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "low",
+      "title": "Standalone boundary diagnostics expose the host home path",
+      "file": "tests/codex_review_run.py",
+      "line_start": 4235,
+      "line_end": 4238,
+      "trigger": "Run --verify-boundary with a valid review image but a missing host Codex auth.json.",
+      "execution_path": "main → verify_boundary_main → verify_isolation_boundary → prepare_codex_home. The missing-file exception includes host_auth_path, becomes a boundary reason, and is printed after replacing only scratch-directory paths.",
+      "consequence": "The JSON intended for recorded boundary evidence contains the owner's absolute home and credential-file path. Publishing that diagnostic exposes local identity/path information contrary to the phase's redaction requirement. Credential contents are not disclosed by this reproduction.",
+      "evidence": "Mocked missing-auth fault injection returned exit 3 and printed: Codex sign-in file not found: /Users/review-owner/.codex/auth.json. The standalone regression test checks scratch-path replacement only; regular-review redaction tests do not exercise this entry point.",
+      "suggested_fix": "Apply the shared home/repository/temp-path redaction to standalone public boundary output before printing. Add a standalone missing-auth regression using a synthetic home outside the scratch directory and assert that the absolute home path is absent.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'import contextlib, io, json\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\nbuf = io.StringIO()\nwith patch.object(r.tempfile, \"mkdtemp\", return_value=\"/synthetic-review/scratch\"), patch.object(r.shutil, \"rmtree\"), patch.object(Path, \"mkdir\"), patch.object(Path, \"home\", return_value=Path(\"/Users/review-owner\")), patch.object(r, \"host_credential_path\", return_value=Path(\"/Users/review-owner/.codex/auth.json\")), patch.object(r, \"_inspect_review_image\", return_value=(\"sha256:fixture\", r.REVIEW_CODEX_VERSION, \"fixture-hash\")), patch.object(r, \"review_image_dockerfile_sha256\", return_value=\"fixture-hash\"), patch.object(r, \"safe_read_regular_file\", side_effect=FileNotFoundError), contextlib.redirect_stdout(buf):\n    code = r.verify_boundary_main(with_probes=False)\nresult = json.loads(buf.getvalue())\nassert code == 3\nassert \"/Users/review-owner/.codex/auth.json\" in result[\"reasons\"][0]\nprint(json.dumps({\"exit_code\": code, \"diagnostic\": result[\"reasons\"][0], \"host_path_leaked\": True}))\n'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not rerun pytest because the read-only environment prevents its required temporary-file writes. Harness evidence for the exact head reports exit 0, 3270 passed, one skipped, and 38 warnings.",
+    "Did not run live Docker/Codex, authentication, or GitHub network checks. F001 was reproduced through mocked I/O without accessing real credentials.",
+    "Inspected the cross-language parity suite but did not execute it because it creates temporary files.",
+    "Large initial outputs were truncated; affected source and test sections were subsequently inspected in smaller portions."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

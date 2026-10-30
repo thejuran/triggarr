@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85.1 executed, in review (10/10 plans, 5 review fix rounds, live boundary check run 5 passed; not pushed) -- final PR head review next; Dependabot #47 held open as the post-merge live proof PR"
-stopped_at: "Phase 85.1 reviewed through BM iteration 6 + Codex (iteration-6 Codex INCOMPLETE twice for size); verification human_needed (post-merge live run on PR #47; final PR head review). Next: freeze final head, BM + Codex on it (owner-approved vibe-check fallback if Codex incomplete twice), push, one PR"
-last_updated: "2026-10-30T19:30:15Z"
-last_activity: "2026-10-30 -- Phase 85.1: review fix rounds 1-5 applied (owner threat-model stopping rule adopted), live boundary run 5 passed on the rebuilt fingerprint-labelled image, verification human_needed (2/3; criterion 3 is the post-merge live run)"
+status: "Phase 85.1 complete as an owner exception -- isolation machinery on main (PR #48); live criterion 3 unmet on current Codex models; bot/fork PRs keep the vibe-check fallback. Phase 86 next"
+stopped_at: "Phase 85.1 closed as an owner exception 2026-10-30: post-merge live review on PR #52 INCOMPLETE because the default Codex model is code-mode-only; owner kept the D-16 vibe-check fallback (no code change; quick task 261030-oaf researched and stopped). Next: Phase 86"
+last_updated: "2026-10-30T21:37:58Z"
+last_activity: "2026-10-30 -- Phase 85.1 closed as an owner exception; quick task 261030-oaf stopped at research (disabling code_mode does not suppress the notice); evidence corrected"
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 55
   completed_plans: 55
-  percent: 57
+  percent: 71
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 85.1 — Isolated Codex review for untrusted PRs (planned; execute next)
+**Current focus:** Phase 86 — Pilot & Reference Record (Phase 85.1 closed as an owner exception)
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. v2.12 shipped 2026-10-21 as v2.12.0 (tag on `dbb38fa`).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — EXECUTED, IN REVIEW (not pushed)
-Plan: 10 of 10 executed (85.1-01..85.1-10); the post-merge live run on PR #47 remains the phase verification gate
-Status: Phase 85.1 executed, in review (10/10 plans; 5 review fix rounds; live boundary run 5 passed; verification human_needed); not pushed; next: final PR head BM + Codex review, then push and one PR
-Last activity: 2026-10-30 -- Phase 85.1 review fix rounds 1-5 applied under the owner threat-model stopping rule; live boundary run 5 passed on the rebuilt image; verification human_needed (criterion 3 is the post-merge live run on PR #47)
+Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — COMPLETE (owner exception; live criterion 3 unmet)
+Plan: 10 of 10 executed (85.1-01..85.1-10); D-03 live run INCOMPLETE on PR #52, closed by owner exception
+Status: Phase 85.1 complete as an owner exception -- machinery on main via PR #48 and boundary verified; the live inspection-only review cannot complete on current Codex models (default model is code-mode-only); bot/fork PRs keep the D-16 vibe-check fallback; reopening tracked in backlog/MAINTENANCE.md
+Last activity: 2026-10-30 -- Phase 85.1 closed as an owner exception; quick task 261030-oaf stopped at research
 
 ### v2.13 milestone shape
 
@@ -157,6 +157,8 @@ Out-of-cycle security patch on top of the archived v2.8 milestone (no full GSD p
 - 2026-10-21 (v2.13 roadmap): 28 requirements mapped to 5 phases (82-86) with 100% coverage, no orphans. REVIEW-01 (BM update) folded into the start of Phase 83 rather than a standalone phase, per the granularity rule against single-requirement phases, while keeping its owner-approval gate as that phase's first explicit success criterion. PLANCHK (84) kept fully independent per owner instruction. CIMAINT + ACCEPT grouped into Phase 85 since both extend the Phase 82 CI baseline and CIMAINT-06 feeds Phase 83's risk-based review.
 - 2026-10-21 (v2.12 closeout): the owner confirmed the review blueprint and the CI reference-baseline plan as written; they form the CI & Review Workflow milestone. No BM settings, CLAUDE.md, CI or acceptance changes until that milestone implements them.
 
+- 2026-10-30 (Phase 85.1 closeout, owner): kept the D-16 vibe-check fallback for bot/fork PRs rather than pinning `gpt-5.5` or allowlisting the code-mode notice; closed Phase 85.1 as an exception with live criterion 3 unmet (85.1-REVIEW-EVIDENCE.md).
+
 Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
 
 - [Phase 77]: 77-01: create_buffer_sink reads a bound extra['viewer_message'] before falling back to record['message'], structurally excluding a value from log_buffer (D-03) rather than scrubbing it after insertion — Enables Plan 04 to bind the exact D-01 viewer wording at the reset-token mint call site with no further sink-side changes
@@ -227,6 +229,7 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 |------|------|---------|
 | 2026-05-19 | Address Dependabot alerts and PR | Merged PR #19 (idna 3.11→3.15, squash cc61133). Closes alert #12 (CVE-2026-45409, IDNA encoding bypass, medium). |
 | 2026-10-22 | 261022-l7h: Fix card reasons label for skip-only rows (Phase 83 quick-task review demo, `--full`) | Verified. Test `7da265f`, fix `e0e72ba`; skip-only → "Show N skipped record(s)", 0-failure with unevaluated queue → "Show N detail(s)", real failures unchanged. BM quick review: 0 blockers, 2 warnings. Paired Codex pass recorded in 83-REVIEW-EVIDENCE.md. [261022-l7h](./quick/261022-l7h-fix-card-reasons-label-for-skip-only-row/) |
+| 2026-10-30 | 261030-oaf: Stop Codex startup code-mode notice from failing the untrusted-path event audit (`--full`) | Not executed (owner decision). Research: disabling `code_mode` does not suppress the notice (default model is code-mode-only; `-m gpt-5.5` does). Owner kept the vibe-check fallback; no code change, no review. [261030-oaf](./quick/261030-oaf-stop-codex-startup-code-mode-notice-from/) |
 | 2026-10-26 | 261026-s2v: Activate the Codex-routed plan checker for Triggarr only (`--full`) | Needs Review (verifier human_needed item since fixed: README disable semantics). Plugin under `.claude/plugins/planchk-router` (router `agent.spawn` hook + fail-closed PreToolUse guard), switched on only in gitignored `settings.local.json`. Live smoke: checker → codex `gpt-6-astra`, orchestrator → anthropic; guard refusal proven from real registration. Final head `4d7e677`: BM quick 0 blockers, Codex complete 0 findings; records in 84-REVIEW-EVIDENCE.md. [261026-s2v](./quick/261026-s2v-activate-the-codex-routed-plan-checker-f/) |
 
 ### Reference Artifacts
@@ -243,13 +246,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-28T21:43:00Z
-Stopped at: Phase 85.1 context gathered; next: /bm:plan-phase 85.1
-Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CONTEXT.md
+Last session: 2026-10-30T21:19:13Z
+Stopped at: Phase 85.1 closed as an owner exception; next: Phase 86 (Pilot & Reference Record)
+Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-REVIEW-EVIDENCE.md
 
 ## Operator Next Steps
 
-- `/bm:plan-phase 85.1` -- isolated Codex review for untrusted (bot/fork) PRs, from 85.1-CONTEXT.md
+- Phase 86 (Pilot & Reference Record): `/bm:discuss-phase 86` or `/bm:plan-phase 86`. Bot/fork PRs (#49-#52 open now) still need the per-PR owner-approved vibe-check fallback (D-16)
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot PRs per the release rule
 - Decide SA-12 (FastAPI 0.162 opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - `/bm:plan-phase 82` -- plan Phase 82 (CI Tests What We Ship) from 82-CONTEXT.md
