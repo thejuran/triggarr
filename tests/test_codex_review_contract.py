@@ -362,5 +362,17 @@ def test_contract_states_the_fork_ci_independence_rule() -> None:
     assert (
         "A fork (cross-repository) PR whose diff changes any file under `.github/` has no independent CI evidence"
     ) in text
-    assert "fork PR changes files under .github/; CI evidence is not independent; owner fallback required" in text
+    assert (
+        "fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent;"
+        " owner fallback required"
+    ) in text
     assert "Same-repository bot PRs (Dependabot) are not affected" in text
+
+
+def test_contract_extends_the_ci_independence_rule_to_non_bot_same_repository_heads() -> None:
+    """SA-04 (owner ruling 2026-10-30: extend): a same-repository branch by a non-owner, non-bot author too."""
+    text = CONTRACT.read_text(encoding="utf-8")
+    assert (
+        "The same rule applies to a same-repository PR whose author is neither an owner (`TRUSTED_AUTHORS`)"
+        " nor a recognised bot"
+    ) in text

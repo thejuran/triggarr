@@ -237,6 +237,7 @@ def test_inspect_untrusted_pr_accepts_bot_author_and_cross_repository_fork() -> 
     assert result == {
         "number": int(PR_NUMBER),
         "author_login": "dependabot[bot]",
+        "author_is_bot": True,
         "is_cross_repository": True,
         "head_ref_oid": H,
         "base_ref_oid": PR_BASE_SHA,
@@ -1293,7 +1294,10 @@ FORK_CI_DIFF_ARGV = [
     "--",
     ".github",
 ]
-FORK_CI_REASON = "fork PR changes files under .github/; CI evidence is not independent; owner fallback required"
+FORK_CI_REASON = (
+    "fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent;"
+    " owner fallback required"
+)
 
 
 def _use_tmp_repo_root(tmp_path, monkeypatch) -> None:
@@ -1580,6 +1584,94 @@ def test_same_repository_bot_pr_changing_ci_definitions_is_unaffected(tmp_path, 
     assert execute(run, command_runner=fake) == 0
 
     assert FORK_CI_DIFF_ARGV not in fake.calls
+
+
+# --- SA-04 (owner ruling 2026-10-30: extend): non-bot same-repo heads too ----
+
+
+NON_BOT_SAME_REPO_PR_INFO = {
+    **DEFAULT_PR_INFO,
+    "author_login": "collaborator",
+    "author_is_bot": False,
+    "is_cross_repository": False,
+}
+
+
+@pytest.mark.parametrize("changed", [".github/workflows/ci.yml\0", ".github/os-scan-exceptions.json\0"])
+def test_same_repository_non_bot_pr_changing_dot_github_is_incomplete(tmp_path, monkeypatch, changed) -> None:
+    """A same-repository branch by a non-owner, non-bot author is held to the fork rule (SA-04)."""
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, pr_info=NON_BOT_SAME_REPO_PR_INFO, input_text="COLLAB-INPUT-MARKER")
+
+    def _forbidden(*_args, **_kwargs):
+        raise AssertionError("a non-bot head that changes .github/ must never be inspected")
+
+    for name in (
+        "build_inspection_input",
+        "establish_trusted_main",
+        "verify_isolation_boundary",
+        "run_untrusted_codex",
+    ):
+        monkeypatch.setattr(runner, name, _forbidden)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(ci_definition_changes=changed)
+
+    assert execute(run, command_runner=fake) == 3
+
+    assert FORK_CI_DIFF_ARGV in fake.calls
+    status = json.loads(run.output(".status.json").read_text(encoding="utf-8"))
+    assert status["reasons"] == [FORK_CI_REASON]
+    assert "COLLAB-INPUT-MARKER" not in run.output(".prompt.txt").read_text(encoding="utf-8")
+    assert runner.completion_gate(run.out_base)
+
+
+def test_same_repository_non_bot_pr_not_changing_dot_github_is_reviewed(tmp_path, monkeypatch) -> None:
+    _use_tmp_repo_root(tmp_path, monkeypatch)
+    _patch_pipeline(monkeypatch, pr_info=NON_BOT_SAME_REPO_PR_INFO)
+    run = _untrusted_run()
+    fake = _OrchestrationRunner(ci_definition_changes="")
+
+    assert execute(run, command_runner=fake) == 0
+
+    assert FORK_CI_DIFF_ARGV in fake.calls
+
+
+@pytest.mark.parametrize(
+    ("pr_info", "applies"),
+    [
+        # Forks: always, whoever the author is.
+        ({"is_cross_repository": True, "author_login": "dependabot[bot]", "author_is_bot": True}, True),
+        ({"is_cross_repository": True, "author_login": "thejuran", "author_is_bot": False}, True),
+        ({"is_cross_repository": True, "author_login": "outsider", "author_is_bot": False}, True),
+        # Same repository: a recognised bot (verify_trust's rule: is_bot, or a "[bot]" login) is exempt.
+        ({"is_cross_repository": False, "author_login": "app/dependabot", "author_is_bot": True}, False),
+        ({"is_cross_repository": False, "author_login": "dependabot[bot]", "author_is_bot": False}, False),
+        # Same repository: an owner (TRUSTED_AUTHORS) head is exempt.
+        ({"is_cross_repository": False, "author_login": "thejuran", "author_is_bot": False}, False),
+        # Same repository: any other author is held to the rule.
+        ({"is_cross_repository": False, "author_login": "collaborator", "author_is_bot": False}, True),
+        # Fail closed: an author that cannot be identified is not exempt.
+        ({"is_cross_repository": False}, True),
+        ({"is_cross_repository": False, "author_login": "", "author_is_bot": False}, True),
+    ],
+)
+def test_ci_independence_rule_applies_to_forks_and_non_bot_untrusted_heads(pr_info, applies) -> None:
+    fake = _OrchestrationRunner(ci_definition_changes=".github/workflows/ci.yml\0")
+
+    problem = runner.ci_independence_problem(_untrusted_run(), pr_info, fake)
+
+    assert (problem == FORK_CI_REASON) is applies
+    assert (FORK_CI_DIFF_ARGV in fake.calls) is applies
+
+
+def test_inspect_untrusted_pr_records_author_is_bot_for_app_login() -> None:
+    """gh reports Dependabot as login "app/dependabot" with is_bot true; the flag must reach the rule."""
+    fake = _ScriptedRunner(_pr_script(author={"login": "app/dependabot", "is_bot": True}))
+
+    result = inspect_untrusted_pr(_run(), fake)
+
+    assert result["author_login"] == "app/dependabot"
+    assert result["author_is_bot"] is True
 
 
 def test_malicious_base_end_to_end(tmp_path, monkeypatch) -> None:
@@ -2282,7 +2374,7 @@ def test_fork_ci_rule_detects_any_change_under_dot_github(tmp_path, monkeypatch,
     head = _git(repo, "rev-parse", "HEAD")
     monkeypatch.setattr(runner, "HARNESS_ROOT", repo)
 
-    problem = runner.fork_ci_independence_problem(
+    problem = runner.ci_independence_problem(
         _run(head=head, base=base), {"is_cross_repository": True}, runner.run_command
     )
 
@@ -2298,7 +2390,7 @@ def test_fork_ci_rule_ignores_changes_outside_dot_github(tmp_path, monkeypatch) 
     head = _git(repo, "rev-parse", "HEAD")
     monkeypatch.setattr(runner, "HARNESS_ROOT", repo)
 
-    problem = runner.fork_ci_independence_problem(
+    problem = runner.ci_independence_problem(
         _run(head=head, base=base), {"is_cross_repository": True}, runner.run_command
     )
 
