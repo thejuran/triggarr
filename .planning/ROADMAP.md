@@ -230,10 +230,12 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 **Depends on**: Nothing (first phase)
 **Requirements**: CISHIP-01, CISHIP-02, CISHIP-03, CISHIP-04
 **Success Criteria** (what must be TRUE):
+
   1. CI starts the exact publish-candidate image through its normal entrypoint with isolated test config and mocked/test services, and verifies health, setup/login, static assets, writable config, and persistence across a restart; a deliberately broken entrypoint and a deliberately missing static asset each make the check fail. (GitHub-enforced: required status check)
   2. A small browser regression suite asserts the connection-pill request-loop behavior and critical setup/login behavior as observable behavior, not screenshots; reintroducing the polling bug makes the suite fail, and failure logs/screenshots are uploaded as artifacts with no secrets present. (GitHub-enforced)
   3. Before any version-tag publication, CI rejects a tag that disagrees with package metadata or image version, and accepts one that matches — both proven without publishing a production tag, with exact-commit CI and artifact-identity checks preserved. (GitHub-enforced)
   4. The CISHIP jobs join the existing required aggregate gate and consistency checks together; a missing or skipped mandatory job cannot let the gate pass, and the artifact published afterward is the same tested/audited image, never rebuilt. (GitHub-enforced)
+
 **Plans**: 9 plans
 
 - [x] 82-01-PLAN.md — release tag/package/image identity rules in release-policy.cjs (TDD)
@@ -252,6 +254,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 **Depends on**: Phase 82 (sequenced immediately after per owner instruction; no technical coupling)
 **Requirements**: REVIEW-01, REVIEW-02, REVIEW-03, REVIEW-04, REVIEW-05, REVIEW-06, REVIEW-07, REVIEW-08, RISK-01, RISK-02
 **Success Criteria** (what must be TRUE):
+
   1. (Gate) Before any BM update, a baseline is recorded (current configuration, plugin and runtime versions) and the proposed target version's native review/fixer behavior is assessed and documented; the owner explicitly approves an exact target version and a bounded settings list (expected: `workflow.code_review` on at `standard` depth) — passing case: the update proceeds only after that recorded approval, `/bm:version` confirms the loaded version, and only the approved settings changed; broken case: an attempted update or settings change without a recorded owner approval does not happen. (Instruction-enforced)
   2. Every BM code review path used in practice — phase execution, quick task, explicit review command, and review after fixes — is followed by an independent Codex adversarial pass on the same checkpoint commit, demonstrated once per path; if BM cannot invoke Codex directly it explicitly requests the exact-SHA review and tracks it pending, demonstrated with a deliberate case where the report is missing, stale, or on the wrong commit and is reported as incomplete rather than clean. (Instruction-enforced)
   3. Each Codex report records the inspected full head and base SHAs, coverage, exclusions, commands actually run, and findings with source/run-qualified IDs, severity, location, trigger, path, consequence, evidence, and suggested fix, distinguishing reproduced defects from hypotheses; finding dispositions survive bot thread resolution. (Instruction-enforced)
@@ -259,6 +262,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   5. Checkpoint evidence is bound to one pushed, frozen head: Greptile reviews the same head as Codex, and after any fix the affected tests, finding dispositions, and every applicable review are refreshed for the new head with the original findings preserved for comparison — evidence from an earlier head never counts for a later one. (Instruction-enforced)
   6. At a high-risk checkpoint, BM's report records scope (full head/base SHAs, affected behavior, full-PR vs. follow-up), concrete risk rationale, recommended depth and specialist focus, required evidence, and an explicit vibe-check recommendation with the owner's recorded decision — demonstrated on a real high-risk checkpoint, without ever substituting vibe-check for Codex or Greptile, waiving findings, or reducing mandatory coverage. (Instruction-enforced)
   7. A written review-classification policy replaces blanket "every PR" wording in `CLAUDE.md` and the BM/repository instructions. Ordinary docs/planning-only changes get a focused consistency review, without routine Greptile, Codex code review or vibe-check. Classification is by content, not file extension: agent instructions, executable workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and the applicable technical review, and a mixed PR follows its most consequential change. Each PR records its classification and rationale against the exact head. Codex stays paired with every BM code-review run, but ordinary planning edits don't force a code-review run. Demonstrated on Phase 83's own sensitive-docs/mixed PR (owner decision 2026-10-22, D-14: no docs-only PRs are opened); exact-commit owner acceptance is unchanged. (Instruction-enforced; GitHub-side handling is Phase 85's ACCEPT-03)
+
 **Plans**: 10 plans
 
 - [x] 83-01-PLAN.md — REVIEW-01 baseline, BM v5.0.3 assessment from the tag's own files, owner gate on exact version and settings
@@ -278,10 +282,12 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 **Depends on**: Nothing (independent investigation, separately gated so it cannot block or bundle into the review-pairing or CI phases; requires the preserved Phase 81 phase directories)
 **Requirements**: PLANCHK-01, PLANCHK-02, PLANCHK-03
 **Success Criteria** (what must be TRUE):
+
   1. Whether the installed Claude Code runtime supports an `agent.spawn` hook that changes only `bm:bm-plan-checker`'s model through model-gateway is verified and recorded (fields, model selection, permissions, resume); a passing case records clear support, a negative case records it as unsupported/unavailable rather than assumed, and any needed runtime update is proposed separately, never applied silently. (Instruction-enforced)
   2. If supported, a scratch-project pilot routes only the plan checker — proven from gateway metadata, with every other agent staying on its own model — and exercises initial check, a known-defective plan, revision/recheck, and post-bounce checks; an unavailable gateway/model or incomplete output leaves the check explicitly incomplete with an error rather than silently passing, and nothing from this pilot is activated in the Triggarr repo without separate owner approval. (Instruction-enforced)
   3. The blind comparison on the original Phase 81 plans runs per the blueprint — recovered and hashed inputs, matched sessions, a withheld answer key, a separate revision round, adoption criteria set before the runs — or is explicitly recorded as unavailable if the exact originals cannot be recovered. (Instruction-enforced)
   4. At closeout, the phase record separates what was actually investigated (with its evidence and result) from work that was deferred or not run (with the reason), so a deferred or unavailable item is never reported as an investigated outcome. (Instruction-enforced)
+
 **Plans**: 7 plans
 
 - [x] 84-01-PLAN.md — isolation baseline, installed-runtime agent.spawn verification, scratch opt-in hook with live gateway routing proof, conditional D-02 update gate
@@ -298,6 +304,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 **Depends on**: Phase 82 (extends the CI baseline) and, for ACCEPT-03, Phase 83 (the review-classification policy that the GitHub checks implement); also relates to Phase 83 through CIMAINT-06 (the coverage artifact feeds the vibe-check test-sufficiency lane)
 **Requirements**: CIMAINT-01, CIMAINT-02, CIMAINT-03, CIMAINT-04, CIMAINT-05, CIMAINT-06, CIMAINT-07, ACCEPT-01, ACCEPT-02, ACCEPT-03
 **Success Criteria** (what must be TRUE):
+
   1. The Docker image installs runtime dependencies from the same locked set CI tests (`uv.lock`), with compiled frontend assets and runtime behavior unchanged; a passing build matches the lockfile and a deliberately mismatched lockfile/image fails the consistency check. (GitHub-enforced)
   2. Grouped, bounded automated update PRs exist for uv dependencies, SHA-pinned Actions, and the Docker base image with no auto-merge (manual acceptance stays), and publishing `:main`/`:dev` images no longer requires repository contents-write permission — only tagged GitHub release creation holds it — demonstrated by a successful publish under the narrower permission. (GitHub-enforced)
   3. The shipped image's OS packages are scanned under a written policy for severity, fix availability, scanner errors, and time-limited documented exceptions defined before the gate is enforced with no duplicate equivalent scanner, and workflow changes are linted with actionlint such that skipping the lint when workflows are unchanged cannot let the required gate pass when mandatory validation was omitted — a passing lint and a deliberately bad workflow failing it both demonstrated. (GitHub-enforced)
@@ -305,6 +312,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
   5. The CI pytest run produces a branch-coverage `coverage.xml` bound to the exact tested full commit SHA and run (PR head distinguished from the synthetic merge commit) without a percentage gate or masked test failures, discoverable by vibe-check's test-sufficiency lane; a wrong-commit or missing report is rejected as evidence, and test-runtime overhead is recorded. (Instruction-enforced discovery; GitHub-enforced artifact generation)
   6. Before final owner approval is requested, the PR is marked ready with visible machine-checkable prerequisites (SHA binding unchanged) so avoidable repeat approvals aren't needed; and the acceptance register is shown to handle concurrent PRs without one PR's update erasing another's evidence or satisfying another PR's gate, or — until that is shown — final acceptance updates are serialized with the rule documented. (Instruction-enforced)
   7. GitHub's required checks honor Phase 83's review classification without weakening protection for code or control changes. The mechanism is designed and verified with an ordinary-docs PR, a sensitive-docs PR, a mixed docs-and-code PR, and a misclassified PR (claims ordinary docs but contains a consequential change) that still gets the full checks. Required checks are never disabled ad hoc, and exact-commit owner acceptance stays required for every PR. Until this is verified, existing protections are preserved and any review still running automatically on docs-only PRs is disclosed. (GitHub-enforced) Owner decision 2026-10-26 (D-01): no docs fast path — every PR runs every required check; verified by a permanent no-skip test over ordinary-docs, sensitive-docs, mixed and misclassified fixture diffs plus Phase 85's own mixed PR as the real GitHub run (D-02).
+
 **Plans**: 19 plans
 
 - [x] 85-01-PLAN.md — Record owner decisions D-01/D-14 in requirements/roadmap; written OS-scan policy before enforcement; README standalone install (owner choice)
@@ -334,6 +342,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 **Requirements**: none new; completes Phase 85 D-07 for untrusted heads (owner split decision 2026-10-27)
 **Interim**: until this phase ships, bot and fork PRs get CI plus a per-PR owner-approved fallback review (D-16). Untrusted Codex runs are recorded INCOMPLETE, never clean.
 **Success Criteria** (what must be TRUE):
+
   1. An untrusted head is reviewed by Codex without being checked out or executed. The grader comes only from fresh `origin/main`, and a fork-controlled base is rejected before any of its code runs.
   2. The isolation boundary is verified deterministically on every run (container configuration, mounts, environment, and output ingestion that can't follow a symlink or FIFO). Behavioral probes are only supplementary.
   3. A live end-to-end review of a real PR completes. Any incomplete outcome blocks and is escalated, never reported clean.
@@ -342,6 +351,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 **Plans**: 10 plans (waves 1-6 build and test, wave 7 pre-merge evidence; the post-merge live run on PR #47 is the phase verification gate after the owner merges, not a plan)
 
 Plans:
+
 - [x] 85.1-01-PLAN.md — TDD: checker `--review-mode inspection-only` (no commands, no reproduced findings; trusted guard unchanged)
 - [x] 85.1-02-PLAN.md — TDD: acceptance gate counts a COMPLETE inspection-only result for bot/fork heads; fallback stays for INCOMPLETE; shared predicate + parity test (D-12)
 - [x] 85.1-03-PLAN.md — Pinned review image (digest base, sha256 Codex binary, non-root); classified sensitive; egress backlog item (D-05)
@@ -359,11 +369,58 @@ Plans:
 **Depends on**: Phases 82, 83 and 85 (needs the paired review workflow in place; draws pilot PRs from this milestone's own authorized work). Pilot evidence is collected from PRs after Phase 83 while later authorized work proceeds. Not Phase 84: the plan-checker investigation is separately gated and does not block the pilot.
 **Requirements**: PILOT-01, PILOT-02, PILOT-03, PILOT-04
 **Success Criteria** (what must be TRUE):
+
   1. 3-5 representative PRs run under the paired workflow, drawn from this milestone's own PRs and owner-authorized maintenance/backlog work (no invented product changes), aiming to cover a small fix, state/error-path logic, a UI or security-sensitive change, and at least one larger change; any category without suitable work is recorded as a gap, and each PR records per reviewer: confirmed consequential defects, false positives, later-found misses, revision rounds, review time, observable usage/cost, and owner effort.
   2. At least one substantial pilot PR gets a recorded side-by-side comparison of vibe-check against the paired workflow, in addition to routine vibe-check, which continues on every pilot PR until the owner retires it.
   3. The owner's decisions are recorded: whether to retire routine vibe-check, and whether BM/Codex completion stays a manual owner check or the existing acceptance gate is extended to require those reports — recording the decisions completes this, and if extension is chosen it is scheduled as its own later reviewed change (FUT-03), not required before this milestone closes.
   4. Reusable adoption guidance for other repositories is written, distinguishing instruction-enforced from GitHub-enforced requirements and listing what not to copy blindly.
-**Plans**: TBD
+
+**Plans**: 10 plans, run in order (waves 1-10; 86-10 runs in wave 8, between 86-07 and 86-08; the work moves between the phase branch and two pilot branches in one checkout, so nothing runs in parallel). The two new pilot PRs ship separately from `main` (86-CONTEXT D-04).
+
+Plans:
+**Wave 1**
+
+- [ ] 86-01-PLAN.md — Pilot record: D-15 retirement bar and PILOT-02 method committed before any results; scorecards for #48, #36, #44 from committed evidence
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 86-02-PLAN.md — TDD: Refresh counts skips a malformed record per item for Radarr, Sonarr and Lidarr (D-02, D-02a), on its own pilot branch
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 86-03-PLAN.md — PILOT-02: vibe-check vs. BM + Codex on the Refresh-counts PR's first head, independently; proof-based tally approved by the owner
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 86-04-PLAN.md — Refresh-counts PR: one batched fix for confirmed defects, then fresh BM, Codex and routine vibe-check on the final head
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 86-05-PLAN.md — TDD: card template groups reason rows by a structured kind instead of display text (D-03), on its own pilot branch
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 86-06-PLAN.md — Card-template PR: full review, proof-based triage, final-head evidence
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 86-07-PLAN.md — Push both pilot PRs, per-head checkpoint comments; exact-commit owner acceptance of the first; the owner merges it
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 86-10-PLAN.md — Second pilot PR: merge the new main in (no rebase), fresh exact-head evidence, exact-commit owner acceptance; the owner merges
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 86-08-PLAN.md — All five scorecards, category gaps, backlog items settled; PILOT-03 recommendation and the owner's decisions
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 86-09-PLAN.md — Adoption guide `docs/review-workflow-adoption.md` (PILOT-04); PILOT-03 follow-through; planning hand-off
+
+**Cross-cutting constraints:**
+
+- Every raw review output and record committed by this plan passed the evidence publication gate (gitleaks, 32-hex API-key-shape scan, public-infrastructure check across every staged file); no Codex file was edited after grading
 
 ## Progress
 
@@ -384,7 +441,7 @@ Plans:
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
 | 85. Follow-on CI Improvements & Acceptance Usability | 19/19 | Complete (merged PR #36; Codex incomplete for size, owner-approved vibe-check fallback; UAT P5 at next release) | 2026-10-28 |
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
-| 86. Pilot & Reference Record | 0/TBD | Not started | - |
+| 86. Pilot & Reference Record | 0/10 | Planned | - |
 
 ## Following milestone: Reliability
 
@@ -440,6 +497,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with /bm:review-backlog when ready)
 
 ## Planning boundaries and maintenance
