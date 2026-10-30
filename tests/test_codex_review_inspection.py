@@ -1277,7 +1277,9 @@ INCOMPLETE_STATUS_JSON = (
 
 
 # SA-03 (owner ruling 2026-10-29: fallback): the CI-definition paths a fork
-# head's diff is checked against, read with the safe git prefix.
+# head's diff is checked against, read with the safe git prefix. BM iter-3
+# WR-01: the whole of `.github/`, since ci.yml runs gate scripts and data
+# from there (os-scan-gate.cjs, os-scan-exceptions.json, ...).
 FORK_CI_DIFF_ARGV = [
     *GIT_SAFE_PREFIX,
     "diff",
@@ -1289,10 +1291,9 @@ FORK_CI_DIFF_ARGV = [
     "--no-color",
     f"{B}..{H}",
     "--",
-    ".github/workflows",
-    ".github/actions",
+    ".github",
 ]
-FORK_CI_REASON = "fork PR changes CI workflow files; CI evidence is not independent; owner fallback required"
+FORK_CI_REASON = "fork PR changes files under .github/; CI evidence is not independent; owner fallback required"
 
 
 def _use_tmp_repo_root(tmp_path, monkeypatch) -> None:
@@ -1518,7 +1519,13 @@ FORK_PR_INFO = {**DEFAULT_PR_INFO, "author_login": "someone-else", "is_cross_rep
 
 @pytest.mark.parametrize(
     "changed",
-    [".github/workflows/ci.yml\0", ".github/workflows/new.yml\0", ".github/actions/setup/action.yml\0"],
+    [
+        ".github/workflows/ci.yml\0",
+        ".github/workflows/new.yml\0",
+        ".github/actions/setup/action.yml\0",
+        ".github/os-scan-exceptions.json\0",
+        ".github/scripts/os-scan-gate.cjs\0",
+    ],
 )
 def test_fork_pr_changing_ci_definitions_is_incomplete_for_the_fallback(tmp_path, monkeypatch, changed) -> None:
     _use_tmp_repo_root(tmp_path, monkeypatch)
@@ -2212,3 +2219,87 @@ def test_ls_tree_entry_uses_literal_pathspecs() -> None:
     (call,) = fake.calls
     assert call[:2] == ["git", "--literal-pathspecs"]
     assert call[-2:] == ["--", ":/x"]
+
+
+# --- BM iter-3 WR-01: the fork rule covers every path under .github/ ---------
+
+
+def _ci_rule_repo(tmp_path: Path) -> tuple[Path, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", ".")
+    (repo / ".github" / "scripts").mkdir(parents=True)
+    (repo / ".github" / "workflows").mkdir()
+    (repo / ".github" / "workflows" / "ci.yml").write_text("on: pull_request\n", encoding="utf-8")
+    (repo / ".github" / "scripts" / "os-scan-gate.cjs").write_text("process.exit(1)\n", encoding="utf-8")
+    (repo / ".github" / "os-scan-exceptions.json").write_text("[]\n", encoding="utf-8")
+    (repo / "src.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    return repo, _git(repo, "rev-parse", "HEAD")
+
+
+def _ci_rule_change_exceptions(repo: Path) -> None:
+    (repo / ".github" / "os-scan-exceptions.json").write_text('["CVE-ALL"]\n', encoding="utf-8")
+
+
+def _ci_rule_change_gate_script(repo: Path) -> None:
+    (repo / ".github" / "scripts" / "os-scan-gate.cjs").write_text("process.exit(0)\n", encoding="utf-8")
+
+
+def _ci_rule_rename_into_github(repo: Path) -> None:
+    _git(repo, "mv", "src.py", ".github/scripts/new-gate.py")
+
+
+def _ci_rule_delete_under_github(repo: Path) -> None:
+    _git(repo, "rm", "-q", ".github/scripts/os-scan-gate.cjs")
+
+
+def _ci_rule_replace_github_with_symlink(repo: Path) -> None:
+    _git(repo, "rm", "-rq", ".github")
+    (repo / "elsewhere").mkdir()
+    (repo / "elsewhere" / "x").write_text("x\n", encoding="utf-8")
+    (repo / ".github").symlink_to("elsewhere")
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        _ci_rule_change_exceptions,
+        _ci_rule_change_gate_script,
+        _ci_rule_rename_into_github,
+        _ci_rule_delete_under_github,
+        _ci_rule_replace_github_with_symlink,
+    ],
+    ids=lambda change: change.__name__.removeprefix("_ci_rule_"),
+)
+def test_fork_ci_rule_detects_any_change_under_dot_github(tmp_path, monkeypatch, change) -> None:
+    """A real git repository: a change anywhere under .github/ (incl. rename, deletion, symlink) is detected."""
+    repo, base = _ci_rule_repo(tmp_path)
+    change(repo)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "head")
+    head = _git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(runner, "HARNESS_ROOT", repo)
+
+    problem = runner.fork_ci_independence_problem(
+        _run(head=head, base=base), {"is_cross_repository": True}, runner.run_command
+    )
+
+    assert problem == FORK_CI_REASON
+
+
+def test_fork_ci_rule_ignores_changes_outside_dot_github(tmp_path, monkeypatch) -> None:
+    repo, base = _ci_rule_repo(tmp_path)
+    (repo / "src.py").write_text("x = 2\n", encoding="utf-8")
+    (repo / "github-notes.md").write_text("not CI\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "head")
+    head = _git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(runner, "HARNESS_ROOT", repo)
+
+    problem = runner.fork_ci_independence_problem(
+        _run(head=head, base=base), {"is_cross_repository": True}, runner.run_command
+    )
+
+    assert problem is None
