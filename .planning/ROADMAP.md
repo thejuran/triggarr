@@ -383,7 +383,7 @@ Plans:
 | 83. Paired BM + Codex Review & Risk-Based Depth | 10/10 | Complete | 2026-10-23 |
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
 | 85. Follow-on CI Improvements & Acceptance Usability | 19/19 | Complete (merged PR #36; Codex incomplete for size, owner-approved vibe-check fallback; UAT P5 at next release) | 2026-10-28 |
-| 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Executed, in review (not pushed; post-merge live run on PR #47 is the completion gate, D-03) | - |
+| 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | On main via PR #48 (df65ab9); verifying -- post-merge live run on PR #47 is the completion gate, D-03 | - |
 | 86. Pilot & Reference Record | 0/TBD | Not started | - |
 
 ## Following milestone: Reliability

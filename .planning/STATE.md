@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85.1 executed, in review (10/10 plans, 5 review fix rounds, live boundary check run 5 passed; not pushed) -- final PR head review next; Dependabot #47 held open as the post-merge live proof PR"
-stopped_at: "Phase 85.1 reviewed through BM iteration 6 + Codex (iteration-6 Codex INCOMPLETE twice for size); verification human_needed (post-merge live run on PR #47; final PR head review). Next: freeze final head, BM + Codex on it (owner-approved vibe-check fallback if Codex incomplete twice), push, one PR"
-last_updated: "2026-10-30T19:30:15Z"
-last_activity: "2026-10-30 -- Phase 85.1: review fix rounds 1-5 applied (owner threat-model stopping rule adopted), live boundary run 5 passed on the rebuilt fingerprint-labelled image, verification human_needed (2/3; criterion 3 is the post-merge live run)"
+status: "Phase 85.1 verifying -- PR #48 is on main (df65ab9, 2026-10-30); the post-merge live inspection-only review of Dependabot PR #47 through --completion-gate is the phase completion gate (D-03)"
+stopped_at: "Phase 85.1 code landed on main via PR #48 (head 82b3411: BM iteration 7 0 critical/0 warning, Codex attempt 2 complete with one low finding backlogged, vibe-check approve, all CI green). Next: live inspection-only review of PR #47 through --completion-gate"
+last_updated: "2026-10-30T21:19:13Z"
+last_activity: "2026-10-30 -- PR #48 (Phase 85.1) landed on main as df65ab9; Codex F001 and vibe-check import-cycle item backlogged; PR #48 checkpoint record copied to 85.1-REVIEW-EVIDENCE.md"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 85.1 — Isolated Codex review for untrusted PRs (planned; execute next)
+**Current focus:** Phase 85.1 — post-merge live review of Dependabot PR #47 (completion gate); Phase 86 next
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. v2.12 shipped 2026-10-21 as v2.12.0 (tag on `dbb38fa`).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — EXECUTED, IN REVIEW (not pushed)
-Plan: 10 of 10 executed (85.1-01..85.1-10); the post-merge live run on PR #47 remains the phase verification gate
-Status: Phase 85.1 executed, in review (10/10 plans; 5 review fix rounds; live boundary run 5 passed; verification human_needed); not pushed; next: final PR head BM + Codex review, then push and one PR
-Last activity: 2026-10-30 -- Phase 85.1 review fix rounds 1-5 applied under the owner threat-model stopping rule; live boundary run 5 passed on the rebuilt image; verification human_needed (criterion 3 is the post-merge live run on PR #47)
+Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — ON MAIN (PR #48, df65ab9), VERIFYING
+Plan: 10 of 10 executed (85.1-01..85.1-10); the post-merge live run on PR #47 is the remaining phase verification gate
+Status: Phase 85.1 verifying -- PR #48 on main (final head 82b3411 reviewed: BM iteration 7, Codex complete, vibe-check approve, CI green); verification human_needed until the live inspection-only review of PR #47 completes through --completion-gate
+Last activity: 2026-10-30 -- PR #48 landed on main as df65ab9 (21:16 UTC); Codex F001 and vibe-check arch-001 backlogged by owner decision
 
 ### v2.13 milestone shape
 
@@ -243,13 +243,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-28T21:43:00Z
-Stopped at: Phase 85.1 context gathered; next: /bm:plan-phase 85.1
-Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CONTEXT.md
+Last session: 2026-10-30T21:19:13Z
+Stopped at: Phase 85.1 on main via PR #48; next: post-merge live inspection-only review of PR #47 (--completion-gate)
+Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-REVIEW-EVIDENCE.md
 
 ## Operator Next Steps
 
-- `/bm:plan-phase 85.1` -- isolated Codex review for untrusted (bot/fork) PRs, from 85.1-CONTEXT.md
+- Phase 85.1 completion gate: run the live inspection-only review of Dependabot PR #47 through `--completion-gate` (D-03), then record the result and close the phase
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot PRs per the release rule
 - Decide SA-12 (FastAPI 0.162 opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - `/bm:plan-phase 82` -- plan Phase 82 (CI Tests What We Ship) from 82-CONTEXT.md

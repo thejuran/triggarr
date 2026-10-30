@@ -1,0 +1,160 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "82b34111f6c71903f4ad9e4db8c8956ced598a59",
+  "inspected_base_sha": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 85.1, full phase at the requested checkpoint, paired with BM code review iteration 7 at standard depth.",
+  "verdict": "no-findings",
+  "summary": "Incomplete review: no actionable defect confirmed in the inspected portions. Substantial test and plan changes remain uninspected; this is not a clean review or approval.",
+  "coverage": [
+    "Confirmed HEAD matches the requested commit and the base object exists.",
+    "Inspected the inspection-only runner's input extraction, trusted-main provenance, container configuration, credential custody, lifecycle cleanup, event audit, grading, and completion gate.",
+    "Inspected acceptance-readiness and fallback changes, including CI attribution, independence rules, evidence binding, and fallback eligibility.",
+    "Inspected report-mode grading changes and the review-image Dockerfile.",
+    "Inspected the completion-gate test file and most smaller changed Python test diffs.",
+    "Inspected documentation and Dependabot changes, with some output truncation.",
+    "Partially inspected plans 01–03 and container tests.",
+    "Read harness evidence identifying the requested head: pytest exit 0, 3270 passed, 1 skipped, 38 warnings."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than changed *-PLAN.md files"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e 05b24feedcfa7933dbbd9aab41c06e89103556da",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "git diff --name-only 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory changed plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- .github/dependabot.yml .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs docker/codex-review/Dockerfile tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and implementation diffs; output truncated."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance and fallback changes."
+    },
+    {
+      "command": "rg -n '^(def |class |[A-Z_]+ =)' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Map runner functions and constants."
+    },
+    {
+      "command": "sed -n '1,650p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner foundations and invocation configuration."
+    },
+    {
+      "command": "sed -n '775,1412p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect CI evidence, inert input extraction, and grader provenance."
+    },
+    {
+      "command": "sed -n '1413,1975p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect tool restrictions, event audit, boundary verification, and launch."
+    },
+    {
+      "command": "sed -n '1976,2410p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect probes, image provenance, and container command construction."
+    },
+    {
+      "command": "sed -n '2411,2844p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect host exposure and container configuration checks."
+    },
+    {
+      "command": "sed -n '2845,3196p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect credential handling, safe reads, and cleanup ledger."
+    },
+    {
+      "command": "git diff -U3 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- tests/codex_review_run.py | sed -n '1,240p'",
+      "exit_code": 0,
+      "purpose": "Compare runner foundations against the base."
+    },
+    {
+      "command": "sed -n '3197,3737p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect redaction, metadata, output reservation, and completion gate."
+    },
+    {
+      "command": "sed -n '3738,4277p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect cross-grading, exception handling, cleanup escalation, and re-verification."
+    },
+    {
+      "command": "sed -n '4278,4830p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect inspection orchestration and CLI dispatch."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- ':(glob).planning/**/*-PLAN.md' | wc -l; git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- docs .github/dependabot.yml",
+      "exit_code": 0,
+      "purpose": "Measure plan scope and inspect policy/configuration changes; output truncated."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1,490p'",
+      "exit_code": 0,
+      "purpose": "Inspect initial phase plans; output truncated."
+    },
+    {
+      "command": "sed -n '85,120p' docs/codex-adversarial-review-contract.md; sed -n '85,145p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-02-PLAN.md; sed -n '580,620p' .github/scripts/acceptance-readiness.cjs",
+      "exit_code": 0,
+      "purpose": "Recover selected truncated contract, plan, and acceptance sections."
+    },
+    {
+      "command": "git diff -U3 05b24feedcfa7933dbbd9aab41c06e89103556da..82b34111f6c71903f4ad9e4db8c8956ced598a59 -- tests/test_codex_report_status.py tests/test_codex_review_run.py tests/test_codex_review_contract.py tests/test_acceptance_docs.py tests/test_dependabot_config.py tests/test_review_checkpoint_record.py tests/test_review_machinery_lists.py tests/test_codex_review_image.py",
+      "exit_code": 0,
+      "purpose": "Inspect smaller regression-test diffs; output partially truncated."
+    },
+    {
+      "command": "sed -n '490,525p' .github/scripts/codex-fallback.cjs; sed -n '700,745p' .github/scripts/codex-fallback.cjs; sed -n '1,180p' tests/test_codex_review_image.py; tail -n 4 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Trace fallback callers, inspect full image tests, and confirm harness test totals."
+    },
+    {
+      "command": "sed -n '1,523p' tests/test_codex_review_gate.py",
+      "exit_code": 0,
+      "purpose": "Inspect completion-gate regression tests."
+    },
+    {
+      "command": "rg -n 'image.*(mismatch|swap|race|tag|id)|canary.*inspect|REVIEW_IMAGE_REF|image_ref' tests/test_codex_review_container.py tests/test_codex_review_inspection.py; sed -n '1,160p' tests/test_codex_review_container.py; sed -n '140,176p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Locate image-binding regression coverage and inspect container fixtures."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; harness evidence was treated as test evidence, not approval.",
+    "Did not execute Docker, contact GitHub, or perform a live isolated review.",
+    "No files were edited, committed, pushed, or published."
+  ],
+  "review_complete": false,
+  "incomplete_reasons": [
+    "The review exhausted its available inspection context before covering the full approximately 13,220-line addition and 1,968-line plan diff.",
+    "Not inspected: .github/scripts/acceptance-readiness.test.cjs, .github/scripts/codex-fallback.test.cjs, and .github/scripts/codex-completeness-parity.test.cjs.",
+    "Not fully inspected: tests/test_codex_review_container.py and tests/test_codex_review_inspection.py; only selected fixtures and search results were examined.",
+    "Not fully inspected: changed phase plans 02–03; plans 04–10 were not inspected.",
+    "Some implementation, documentation, and initial-plan output was truncated and was not fully recovered. The full scoped diff was therefore not verified as inspected."
+  ]
+}
