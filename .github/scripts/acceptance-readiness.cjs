@@ -9,7 +9,9 @@ const fs = require('node:fs');
 const {execFileSync} = require('node:child_process');
 
 const {assess} = require('./review-acceptance.cjs');
-const {validateFallback, inspectionOnlyCompleteness, INSPECTION_REVIEW_MODE} = require('./codex-fallback.cjs');
+const {
+  validateFallback, inspectionOnlyCompleteness, isCiNotIndependentStop, INSPECTION_REVIEW_MODE,
+} = require('./codex-fallback.cjs');
 
 const REPO = 'thejuran/triggarr';
 // Mirrors tests/codex_review_run.py TRUSTED_AUTHORS (owner decision 2026-10-22).
@@ -141,7 +143,15 @@ function codexStatusFor({
     return {ok: true, detail: completeDetail};
   }
 
-  const codexStatus = {complete: false, invalidEvidence, attempt: meta?.attempt, out, reviewMode: meta?.review_mode};
+  const codexStatus = {
+    complete: false,
+    invalidEvidence,
+    // Same rule as codex-fallback.cjs codexStatusFromOutput() (BM iter-3 IN-05).
+    ciNotIndependent: meta?.review_mode === INSPECTION_REVIEW_MODE && isCiNotIndependentStop(status),
+    attempt: meta?.attempt,
+    out,
+    reviewMode: meta?.review_mode,
+  };
 
   if (!fallback) {
     if (headTrust === 'untrusted') {

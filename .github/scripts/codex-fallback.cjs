@@ -15,6 +15,24 @@ const fs = require('node:fs');
 // still needs the owner-approved fallback below.
 const INSPECTION_REVIEW_MODE = 'inspection-only-ci-evidence';
 
+// Mirrors tests/codex_review_run.py CI_NOT_INDEPENDENT_REASON (a drift test
+// pins the two). The runner stops a fork or non-bot untrusted head that
+// changes .github/ before reviewing anything and records exactly this one
+// reason. A retry cannot change that, so this stop is fallback-eligible at
+// attempt 1 (BM iter-3 IN-05) -- and no other result is.
+const CI_NOT_INDEPENDENT_REASON =
+  'fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required';
+
+// True only for an incomplete status whose sole reason is exactly
+// CI_NOT_INDEPENDENT_REASON.
+function isCiNotIndependentStop(status) {
+  return isPlainObject(status) &&
+    status.status === 'incomplete' &&
+    Array.isArray(status.reasons) &&
+    status.reasons.length === 1 &&
+    status.reasons[0] === CI_NOT_INDEPENDENT_REASON;
+}
+
 const FALLBACK_SCHEMA_VERSION = 1;
 const FALLBACK_FIELDS = Object.freeze([
   'schema', 'pr', 'head', 'base', 'codex_out', 'reviewer', 'scope', 'result', 'owner_decision',
@@ -327,11 +345,14 @@ function validateFallback(record, context = {}) {
     }
   } else if (headTrust === 'untrusted') {
     const attempt = codexStatus?.attempt;
+    // Attempt 2 or later, except for the CI-independence stop, where a retry
+    // cannot change the outcome and attempt 1 is enough (BM iter-3 IN-05).
+    const minAttempt = codexStatus?.ciNotIndependent === true ? 1 : 2;
     const legitimateIncompleteInspection =
       codexStatus?.reviewMode === INSPECTION_REVIEW_MODE &&
       codexOutMatchesHead &&
       typeof attempt === 'number' &&
-      attempt >= 2;
+      attempt >= minAttempt;
     const historicalRefusal = codexStatus?.reviewMode === 'untrusted-refused' && codexOutMatchesHead;
     if (!(legitimateIncompleteInspection || historicalRefusal)) {
       reasons.push(
@@ -518,6 +539,7 @@ function codexStatusFromOutput(codexOutPrefix, readFileSync) {
   return {
     complete,
     invalidEvidence,
+    ciNotIndependent: meta.review_mode === INSPECTION_REVIEW_MODE && isCiNotIndependentStop(status),
     boundaryVerdict,
     attempt: meta.attempt,
     out: codexOutPrefix,
@@ -660,6 +682,8 @@ module.exports = {
   DISALLOWED_REVIEWERS,
   OWNER_DECISIONS,
   INSPECTION_REVIEW_MODE,
+  CI_NOT_INDEPENDENT_REASON,
+  isCiNotIndependentStop,
   inspectionOnlyCompleteness,
   codexStatusFromOutput,
   validateFallback,
