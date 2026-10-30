@@ -4,8 +4,8 @@ milestone: v2.13
 milestone_name: CI & Review Workflow
 status: "Phase 85.1 complete as an owner exception -- isolation machinery on main (PR #48); live criterion 3 unmet on current Codex models; bot/fork PRs keep the vibe-check fallback. Phase 86 next"
 stopped_at: "Phase 85.1 closed as an owner exception 2026-10-30: post-merge live review on PR #52 INCOMPLETE because the default Codex model is code-mode-only; owner kept the D-16 vibe-check fallback (no code change; quick task 261030-oaf researched and stopped). Next: Phase 86"
-last_updated: "2026-10-30T22:05:27Z"
-last_activity: "2026-10-30 -- PR #53 opened (Dependabot rollup #49-#52; BM 0 critical/0 warning, Codex complete 0 findings); STATE history through v2.12 archived"
+last_updated: "2026-10-30T22:21:30Z"
+last_activity: "2026-10-30 -- PR #53 (Dependabot rollup #49-#52) accepted by the owner at 081b151 and merged as d5a4467; post-merge CI and Release runs passed; STATE history through v2.12 archived"
 progress:
   total_phases: 7
   completed_phases: 5
@@ -128,7 +128,6 @@ Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-
 
 ## Operator Next Steps
 
-- PR #53 (Dependabot rollup #49-#52): owner exact-commit acceptance, then merge; confirm the first post-merge main-push Release run passes before any `v*` tag
 - Phase 86 (Pilot & Reference Record): `/bm:discuss-phase 86` or `/bm:plan-phase 86`; cut its branch from `planning/cleanup-2026-10-30` so the held planning commits ride along
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule
