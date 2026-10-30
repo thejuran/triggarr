@@ -1492,3 +1492,105 @@ test('runCli: a Dependabot same-repository PR never runs the .github/ diff', () 
   withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec: spy, readFile}));
   assert.ok(!calls.includes(githubDiffKey()));
 });
+
+// --- Codex c7c34a5 F001: COMPLETE evidence never satisfies Codex for a not-independent head ---
+//
+// For a head the CI-independence rule covers, whose .github/ change set
+// changed or could not be determined, readiness must not report ready unless
+// a valid owner-approved fallback for that exact head is present. A COMPLETE
+// inspection-only record (stale, reused from an exempt bot PR at the same
+// commit, or kept across a policy change) does not satisfy the Codex item.
+
+for (const variant of CI_RULE_VARIANTS.filter(v => v.applies)) {
+  for (const changed of [true, null, undefined]) {
+    test(`F001: COMPLETE inspection-only evidence without a fallback is not ready (${variant.label}, .github/ changed: ${changed})`, () => {
+      const input = inspectionOnlyBaseline(variant);
+      input.ciDefinitionsChanged = changed;
+      const result = readiness(input);
+      assert.equal(result.ready, false);
+      const codex = item(result, 'Codex');
+      assert.equal(codex.status, 'blocked', codex.detail);
+      assert.ok(codex.detail.includes('not independent'), codex.detail);
+      assert.ok(renderChecklist(result).includes('NOT ready'), renderChecklist(result));
+    });
+  }
+}
+
+test('F001: the same COMPLETE evidence stays ok for a covered head whose .github/ did not change', () => {
+  const input = inspectionOnlyBaseline({prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true});
+  input.ciDefinitionsChanged = false;
+  const result = readiness(input);
+  assert.equal(item(result, 'Codex').status, 'ok', item(result, 'Codex').detail);
+  assert.equal(result.ready, true);
+});
+
+test('F001: COMPLETE evidence reused from an exempt Dependabot PR at the same commit is not ready for a collaborator PR', () => {
+  // The record is internally valid and was accepted for the bot PR.
+  const bot = inspectionOnlyBaseline({prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: false});
+  bot.ciDefinitionsChanged = true;
+  assert.equal(readiness(bot).ready, true);
+
+  const collaborator = inspectionOnlyBaseline({prAuthor: 'collaborator', prAuthorIsBot: false, isCrossRepository: false});
+  collaborator.codex = bot.codex;
+  collaborator.ciDefinitionsChanged = true;
+  const result = readiness(collaborator);
+  assert.equal(result.ready, false);
+  assert.equal(item(result, 'Codex').status, 'blocked');
+});
+
+test("F001: Codex's reproduction (fork, .github/ changed, bound COMPLETE evidence, no fallback) is not ready", () => {
+  const head = HEAD;
+  const base = BASE;
+  const result = readiness({
+    pr: PR, prAuthor: 'contributor', isCrossRepository: true, draft: false, open: true, head, baseSha: base, mergeBase: base,
+    ciDefinitionsChanged: true,
+    checks: [
+      {id: 1, name: 'CI ready', head_sha: head, status: 'completed', conclusion: 'success', app: {slug: 'github-actions'}, check_suite: {id: 100}},
+      {id: 2, name: 'CodeQL', head_sha: head, status: 'completed', conclusion: 'success'},
+    ],
+    workflowRuns: [{head_sha: head, check_suite_id: 100, path: '.github/workflows/ci.yml'}],
+    comments: [],
+    dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
+    blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
+    fallback: null,
+    codex: {
+      status: {status: 'complete', inspected_head: head, inspected_base: base},
+      meta: {
+        head, base, harness_head: base, label: 'review', attempt: 1, review_mode: INSPECTION_REVIEW_MODE,
+        audited_inputs_changed_in_diff: [],
+      },
+      out: `.planning/phases/85.1/codex/${head.slice(0, 12)}-review-a1`,
+      boundary: {verdict: 'verified', head, label: 'review', attempt: 1},
+      provenance: {
+        established: true, base_on_main: true, grader_source: 'trusted-origin-main', grader_ref: base, main_sha: base,
+        harness_head: base, base,
+      },
+      ciEvidence: {ci_ready: {head_sha: head, status: 'completed', conclusion: 'success'}},
+    },
+  });
+  assert.equal(result.ready, false);
+  assert.equal(item(result, 'CI ready').status, 'not-independent');
+  assert.equal(item(result, 'Codex').status, 'blocked');
+});
+
+test('F001: a fallback naming a COMPLETE record does not rescue it for a not-independent head', () => {
+  const input = inspectionOnlyBaseline({prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true});
+  input.ciDefinitionsChanged = true;
+  input.fallback = validFallback({codex_out: input.codex.out});
+  const result = readiness(input);
+  assert.equal(result.ready, false);
+  assert.equal(item(result, 'Codex').status, 'blocked', item(result, 'Codex').detail);
+});
+
+test('F001 runCli: a fork PR whose diff changes .github/ with a COMPLETE record exits 1 with Codex BLOCKED', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    githubDiffOutput: '.github/os-scan-exceptions.json\n',
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('- Codex: BLOCKED'), output);
+  assert.ok(output.includes('NOT ready'), output);
+});
