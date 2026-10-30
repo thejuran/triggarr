@@ -1,0 +1,103 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "081b15166b29258d42117036ec885f9cd03ba75b",
+  "inspected_base_sha": "df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+  "pr_url": "none",
+  "scope": "Local checkpoint: Dependabot rollup #49–#52 and Phase 85.1 closeout, using the requested exclusions and separate phase-plan diff.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects identified in the full in-scope diff. The phase-plan diff is empty. All 104 directly executed policy tests passed; harness evidence reports 3270 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "All changes in ci.yml, release.yml, review-acceptance.yml, and uv.lock.",
+    "Artifact upload consumers, image checksum and identity verification, exact-run download, and publication ordering.",
+    "Release and acceptance permissions, trusted code selection, stale approval and queued-release handling, API errors, and mandatory CI gates.",
+    "Development dependency changes against project configuration, test fixtures, and production dependency export.",
+    "Regression assertions and mutation checks for publication bypasses; directly executed release-policy, review-acceptance, and artifact-promotion tests.",
+    "Confirmed no changed phase PLAN.md files or other in-scope planning files."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than changed *-PLAN.md files."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected checkpoint."
+    },
+    {
+      "command": "git cat-file -e df65ab999b8ac4662852f6b368e2143bc3a4a51f",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff df65ab999b8ac4662852f6b368e2143bc3a4a51f..081b15166b29258d42117036ec885f9cd03ba75b -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete primary diff."
+    },
+    {
+      "command": "git diff df65ab999b8ac4662852f6b368e2143bc3a4a51f..081b15166b29258d42117036ec885f9cd03ba75b -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect phase-plan changes; none present."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "cat .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/review-acceptance.yml",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding workflow behavior."
+    },
+    {
+      "command": "cat pyproject.toml; rg --files .github/scripts tests | rg 'workflow|release|accept|coverage|conftest|audit'",
+      "exit_code": 0,
+      "purpose": "Inspect dependency configuration and locate relevant tests."
+    },
+    {
+      "command": "git status --short; git diff --name-status df65ab999b8ac4662852f6b368e2143bc3a4a51f..081b15166b29258d42117036ec885f9cd03ba75b",
+      "exit_code": 0,
+      "purpose": "Check working-copy status and complete changed-file inventory."
+    },
+    {
+      "command": "cat .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Read CI workflow without earlier aggregate output truncation."
+    },
+    {
+      "command": "tail -n 12 .codex-review-evidence/pytest.txt; cat tests/test_github_workflows.py",
+      "exit_code": 0,
+      "purpose": "Confirm pytest totals and inspect workflow regression tests."
+    },
+    {
+      "command": "cat .github/scripts/release-policy.cjs .github/scripts/review-acceptance.cjs",
+      "exit_code": 0,
+      "purpose": "Trace policy callers and failure handling."
+    },
+    {
+      "command": "sed -n '1,180p' tests/test_github_workflows.py; cat tests/conftest.py; rg -n 'artifact|setup-uv|github-script|asyncio|ruff' .github/scripts/*test.cjs tests/test_audit_lock_coverage.py tests/audit_lock_coverage.py Dockerfile .github/dependabot.yml",
+      "exit_code": 0,
+      "purpose": "Inspect test setup and locate upgrade-sensitive assertions."
+    },
+    {
+      "command": "cat .github/scripts/artifact-promotion.test.cjs; rg -n 'write|mkdir|tmp|exec|spawn' .github/scripts/release-policy.test.cjs .github/scripts/review-acceptance.test.cjs; rg -n 'upload-artifact|setup-uv|github-script|artifact' .github/scripts/ci-job-consistency.cjs; sed -n '180,235p' tests/test_github_workflows.py; cat Dockerfile",
+      "exit_code": 0,
+      "purpose": "Inspect artifact tests, publication assertions, and production dependency isolation."
+    },
+    {
+      "command": "node --test .github/scripts/release-policy.test.cjs .github/scripts/review-acceptance.test.cjs .github/scripts/artifact-promotion.test.cjs",
+      "exit_code": 0,
+      "purpose": "Run focused policy regression tests: 104 passed."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; used harness evidence tied to the exact inspected head.",
+    "Upstream Action implementations and release notes were unavailable within the permitted working-copy-only boundary; SHA provenance and upstream behavioral changes were not independently verified.",
+    "Local policy tests use mocks or workflow assertions and do not execute github-script v9, upload-artifact v7, or setup-uv v10.",
+    "Hosted CI, artifact transfer, Docker/browser execution, and Ruff were not run during this review. The harness pytest run excludes browser tests by default."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
