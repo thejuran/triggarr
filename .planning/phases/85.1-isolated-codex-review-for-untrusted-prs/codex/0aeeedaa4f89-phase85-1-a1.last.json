@@ -1,0 +1,248 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "0aeeedaa4f89c893f915385cd27d3f1c7974872e",
+  "inspected_base_sha": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 85.1, full phase after fix round 1, paired with BM code review iteration 2, standard depth. Includes the specified application/test/documentation diff and all ten changed phase PLAN.md files.",
+  "verdict": "findings",
+  "summary": "One medium-severity finding: inspection input limits are enforced after unbounded host-side reads. Reviewed the full in-scope diff. Independently ran 180 Node tests successfully; harness evidence reports 3145 Python tests passed and 1 skipped on the exact inspected head.",
+  "coverage": [
+    "All 23 files in the requested non-planning-markdown diff, including the Dockerfile, Dependabot configuration, documentation, Python runner/checker, JavaScript acceptance/fallback logic, and changed/new tests.",
+    "All ten changed Phase 85.1 PLAN.md files, including executor instructions, verification requirements, owner checkpoints, and post-merge completion policy.",
+    "Untrusted PR/head/base validation, CI evidence provenance, trusted-main grader establishment and revalidation, cross-grading, and stale-head handling.",
+    "Git object extraction, literal paths, symlink/submodule handling, prompt fencing, input limits, disabled tool features, and event auditing.",
+    "Image validation, container configuration checks, credential snapshot/freshness checks, schema custody, canary checks, cleanup ledgers, interruption/error paths, and safe output ingestion.",
+    "Completion-gate/readiness/fallback consistency, malformed evidence, attempt binding, regression assertions, and documented accepted residual risks.",
+    "Final HEAD and working-copy status verification; no tracked files changed."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than the explicitly included *-PLAN.md files.",
+    "External files, external services, and live credential/container operations."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "First command; confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e 05b24feedcfa7933dbbd9aab41c06e89103556da",
+      "exit_code": 0,
+      "purpose": "Confirm base exists. In subsequent command-log entries, BASE denotes this SHA, HEADSHA denotes 0aeeedaa4f89c893f915385cd27d3f1c7974872e, and P denotes .planning/phases/85.1-isolated-codex-review-for-untrusted-prs. These are display abbreviations for literal arguments."
+    },
+    {
+      "command": "git diff --stat BASE..HEADSHA -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory review scope."
+    },
+    {
+      "command": "git diff --name-only BASE..HEADSHA -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory in-scope plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; git diff BASE..HEAD -- .github/dependabot.yml .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs tests/codex_report_status.py docker/codex-review/Dockerfile",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and implementation changes."
+    },
+    {
+      "command": "git diff BASE..HEAD -- tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner changes; subsequently read chunks to recover truncated output."
+    },
+    {
+      "command": "rg -n '^def |^class |^[A-Z_]+ =' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Map runner functions and constants."
+    },
+    {
+      "command": "git diff BASE..HEAD -- .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance and checker changes."
+    },
+    {
+      "command": "sed -n '721,1190p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Read untrusted input and provenance paths."
+    },
+    {
+      "command": "sed -n '1191,1756p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Read inspection launch, audit, and boundary paths."
+    },
+    {
+      "command": "sed -n '1757,2233p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Read image/container configuration validation."
+    },
+    {
+      "command": "sed -n '2234,2851p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Read credential, safe-file, and cleanup helpers."
+    },
+    {
+      "command": "sed -n '3073,3420p' tests/codex_review_run.py; sed -n '3468,3880p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Read gate, grading, execution, and boundary orchestration."
+    },
+    {
+      "command": "git diff BASE..HEAD -- .github/dependabot.yml docker/codex-review/Dockerfile docs tests/test_acceptance_docs.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_codex_review_run.py tests/test_dependabot_config.py tests/test_review_checkpoint_record.py tests/test_review_machinery_lists.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining configuration, documentation, and test changes; recover truncated sections in later reads."
+    },
+    {
+      "command": "git diff BASE..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff; recover truncated sections through individual plan reads."
+    },
+    {
+      "command": "cat P/85.1-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect plan 02."
+    },
+    {
+      "command": "sed -n '274,325p' tests/codex_review_run.py; sed -n '2986,3072p' tests/codex_review_run.py; sed -n '78,104p' tests/codex_review_run.py; rg -n 'live_boundary|skip|ownership|permission|image.*label|ci_ready' tests/test_codex_review_container.py tests/test_codex_review_image.py tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Trace helpers and locate relevant regression coverage."
+    },
+    {
+      "command": "cat P/85.1-03-PLAN.md P/85.1-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect plans 03 and 04."
+    },
+    {
+      "command": "cat P/85.1-05-PLAN.md P/85.1-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect plans 05 and 06."
+    },
+    {
+      "command": "cat P/85.1-07-PLAN.md P/85.1-08-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect plans 07 and 08; recover truncated sections later."
+    },
+    {
+      "command": "rg -n 'review.machinery|codex_review|Dockerfile' .github/scripts/review-classification.cjs .github/scripts/acceptance-readiness.cjs .github/scripts/review-acceptance.cjs; sed -n '1,220p' tests/test_codex_review_image.py; sed -n '1380,1515p' tests/test_codex_review_container.py; sed -n '2890,2945p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect image and live-boundary tests. The rg subcommand reported a missing review-classification.cjs and exited 2; the compound command exited 0."
+    },
+    {
+      "command": "sed -n '1,1000p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container tests, first section."
+    },
+    {
+      "command": "sed -n '1001,2000p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container tests, middle section."
+    },
+    {
+      "command": "sed -n '2001,3125p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container tests, final section."
+    },
+    {
+      "command": "sed -n '1,950p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect input/provenance tests, first section."
+    },
+    {
+      "command": "sed -n '951,1891p' tests/test_codex_review_inspection.py; cat tests/test_codex_review_gate.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining inspection tests and all gate tests."
+    },
+    {
+      "command": "git diff BASE..HEAD -- .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs .github/scripts/acceptance-readiness.test.cjs .github/scripts/codex-fallback.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect JavaScript implementation and regression changes."
+    },
+    {
+      "command": "python3 -B <<'PY' [input-limit reproduction script] PY",
+      "exit_code": 1,
+      "purpose": "Initial reproduction invocation failed because the shell could not create a heredoc temporary file in the read-only sandbox; rerun successfully using python3 -B -c."
+    },
+    {
+      "command": "tail -n 8 .codex-review-evidence/pytest.txt; git status --short",
+      "exit_code": 0,
+      "purpose": "Confirm harness results and unchanged tracked files."
+    },
+    {
+      "command": "python3 -B -c 'from pathlib import Path\nfrom subprocess import CompletedProcess\nfrom tests import codex_review_run as r\nrun=r.ReviewRun(head=\"a\"*40,base=\"b\"*40,label=\"probe\",attempt=1,pr_url=\"https://github.com/thejuran/triggarr/pull/1\",scope=\"probe\",phase_dir=Path(\".planning/phases/x\"),trusted=False)\ncalls=[]\ndef fake(argv,**kw):\n calls.append(argv)\n if \"diff\" in argv and \"--name-status\" not in argv: return CompletedProcess(argv,0,stdout=\"x\"*(r.MAX_INSPECTION_INPUT_BYTES+1))\n if \"--name-status\" in argv: return CompletedProcess(argv,0,stdout=\"A\\0big.txt\\0\")\n if \"ls-tree\" in argv: return CompletedProcess(argv,0,stdout=\"100644 blob \"+\"c\"*40+\"\\tbig.txt\\0\")\n if \"cat-file\" in argv: return CompletedProcess(argv,0,stdout=b\"x\"*(r.PER_FILE_CONTENT_LIMIT+1))\n raise AssertionError(argv)\ntext,stats=r.build_inspection_input(run,fake)\nprint(dict(stats,blob_reads_after_oversized_diff=sum(\"cat-file\" in c for c in calls),retained_text_bytes=len(text.encode())))'",
+      "exit_code": 0,
+      "purpose": "Reproduce post-read limit enforcement and continued blob reads after an already-oversized diff."
+    },
+    {
+      "command": "cat P/85.1-09-PLAN.md; sed -n '1,150p' P/85.1-08-PLAN.md; sed -n '215,250p' P/85.1-07-PLAN.md; sed -n '35,70p' P/85.1-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect plan 09 and recover earlier plan output gaps."
+    },
+    {
+      "command": "cat .github/scripts/codex-completeness-parity.test.cjs; git diff BASE..HEAD -- tests/test_acceptance_docs.py tests/test_codex_report_status.py docs/review-checkpoint-record.md docs/review-classification-policy.md; sed -n '1550,1690p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect parity tests and recover truncated test/documentation sections."
+    },
+    {
+      "command": "git diff BASE..HEAD -- tests/codex_review_run.py | sed -n '1,310p'; sed -n '2852,2985p' tests/codex_review_run.py; sed -n '3421,3467p' tests/codex_review_run.py; sed -n '4121,4350p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining runner changes, helpers, and CLI dispatch."
+    },
+    {
+      "command": "sed -n '3881,4120p' tests/codex_review_run.py; cat P/85.1-10-PLAN.md; sed -n '1,32p' P/85.1-08-PLAN.md; tail -n 50 P/85.1-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect untrusted orchestration and remaining plan sections."
+    },
+    {
+      "command": "sed -n '85,145p' P/85.1-10-PLAN.md; git diff BASE..HEADSHA -- docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Recover plan 10 checkpoint details and inspect the full contract diff."
+    },
+    {
+      "command": "sed -n '70,85p' P/85.1-10-PLAN.md; sed -n '900,1045p' tests/codex_review_run.py; sed -n '1,220p' .github/scripts/codex-fallback.cjs; rg -n 'inspectionOnlyCompleteness|codexComplete|readCodex|auditedChanged|writeFile|mkdtemp' .github/scripts/acceptance-readiness.cjs .github/scripts/*test.cjs",
+      "exit_code": 0,
+      "purpose": "Finish plan coverage, verify finding location, and trace acceptance callers/test side effects."
+    },
+    {
+      "command": "node --test .github/scripts/acceptance-readiness.test.cjs .github/scripts/codex-fallback.test.cjs",
+      "exit_code": 0,
+      "purpose": "Independent verification: 180 passed, zero failed or skipped."
+    },
+    {
+      "command": "sed -n '60,180p' .github/scripts/acceptance-readiness.cjs; sed -n '445,510p' .github/scripts/acceptance-readiness.cjs; sed -n '315,460p' .github/scripts/codex-fallback.cjs; git diff --numstat BASE..HEADSHA -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Trace shared completeness callers and reconcile final file coverage."
+    },
+    {
+      "command": "git rev-parse HEAD; git status --short; nl -ba tests/codex_review_run.py | sed -n '934,950p'; sed -n '1,12p' .codex-review-evidence/pytest.txt; tail -n 3 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Confirm unchanged head, finding line numbers, and exact-head harness evidence."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Enforce inspection size limits before reading untrusted content into host memory",
+      "file": "tests/codex_review_run.py",
+      "line_start": 942,
+      "line_end": 944,
+      "trigger": "An eligible untrusted PR contains large blobs, many changed files, or a diff exceeding MAX_INSPECTION_INPUT_BYTES.",
+      "execution_path": "_execute_untrusted() calls build_inspection_input() before reserving outputs or entering the container. Both diffs are captured in full, then every changed regular-file blob is captured by _git_bytes(). PER_FILE_CONTENT_LIMIT is checked only afterward. The aggregate limit is calculated after all sections are assembled, and _execute_inspection() rejects the input only after prompt rendering and reservation.",
+      "consequence": "The advertised limits do not bound host memory or extraction work. A large untrusted change can exhaust host resources before an INCOMPLETE status is recorded; Docker resource limits do not protect this pre-container path. Even an already-oversized diff causes further blob reads and prompt allocation.",
+      "evidence": "A mocked command-runner reproduction supplied oversized diffs and one oversized blob. build_inspection_input() still fetched the blob and returned 3,000,166 retained text bytes with oversize=true. Existing tests verify omission/rejection after extraction, but do not assert bounded reads or early termination. Host OOM itself was not induced.",
+      "suggested_fix": "Check blob sizes with git cat-file -s before fetching contents. Stream diff output with a hard byte budget and terminate extraction when it is exceeded. Enforce a cumulative budget while collecting file sections, and record INCOMPLETE without rendering or persisting the oversized prompt. Add regression assertions that oversized blobs are never fetched and no further extraction occurs after budget exhaustion.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'from pathlib import Path\nfrom subprocess import CompletedProcess\nfrom tests import codex_review_run as r\nrun=r.ReviewRun(head=\"a\"*40,base=\"b\"*40,label=\"probe\",attempt=1,pr_url=\"https://github.com/thejuran/triggarr/pull/1\",scope=\"probe\",phase_dir=Path(\".planning/phases/x\"),trusted=False)\ncalls=[]\ndef fake(argv,**kw):\n calls.append(argv)\n if \"diff\" in argv and \"--name-status\" not in argv: return CompletedProcess(argv,0,stdout=\"x\"*(r.MAX_INSPECTION_INPUT_BYTES+1))\n if \"--name-status\" in argv: return CompletedProcess(argv,0,stdout=\"A\\0big.txt\\0\")\n if \"ls-tree\" in argv: return CompletedProcess(argv,0,stdout=\"100644 blob \"+\"c\"*40+\"\\tbig.txt\\0\")\n if \"cat-file\" in argv: return CompletedProcess(argv,0,stdout=b\"x\"*(r.PER_FILE_CONTENT_LIMIT+1))\n raise AssertionError(argv)\ntext,stats=r.build_inspection_input(run,fake)\nprint(dict(stats,blob_reads_after_oversized_diff=sum(\"cat-file\" in c for c in calls),retained_text_bytes=len(text.encode())))'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox. The supplied harness evidence identifies the exact inspected head and reports exit 0, 3145 passed, 1 skipped, and 38 warnings.",
+    "Did not run live Docker, authentication, GitHub, or post-merge end-to-end verification.",
+    "The resource-limit defect was reproduced with an injected command runner; actual host memory exhaustion was not attempted.",
+    "Some large read outputs were truncated by the tool; affected sections were inspected through subsequent targeted reads.",
+    "The initial reproduction heredoc failed under sandbox restrictions; the equivalent in-memory invocation succeeded."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

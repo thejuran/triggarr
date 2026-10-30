@@ -1,0 +1,210 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "c7c34a56209ec628a90a7e51328e8857f22b437e",
+  "inspected_base_sha": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 85.1 after fix round 3, paired with BM code review iteration 4, standard depth",
+  "verdict": "findings",
+  "summary": "One reproduced acceptance-policy defect. Review is incomplete: the entire test and phase-plan diff was not inspected. Twelve targeted acceptance tests passed despite the reproduced defect.",
+  "coverage": [
+    "Verified the requested HEAD and existence of the base commit; confirmed HEAD remained unchanged.",
+    "Inspected the runner's trust verification, inert-input extraction, input bounds, prompt rendering, grader provenance, container configuration, credential custody, event audit, cleanup, completion gate and orchestration.",
+    "Inspected changes to acceptance-readiness.cjs and codex-fallback.cjs, including shared completeness checks and CI-independence handling.",
+    "Inspected report-checker mode changes, Dockerfile, Dependabot configuration and review-contract changes.",
+    "Inspected changes in test_acceptance_docs.py, test_codex_report_status.py, test_codex_review_contract.py, test_codex_review_run.py, test_dependabot_config.py, test_review_checkpoint_record.py and test_review_machinery_lists.py.",
+    "Inspected test_codex_review_gate.py and test_codex_review_image.py.",
+    "Inspected selected acceptance-readiness tests, parity fixtures and container lifecycle test references.",
+    "Read harness evidence recording 3233 passed, 1 skipped, exit 0, at the requested head."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Raw transcripts and generated review artifacts under .planning/**/codex/**.",
+    ".planning/**/*.jsonl.",
+    "Files outside this working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 05b24feedcfa7933dbbd9aab41c06e89103556da",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..c7c34a56209ec628a90a7e51328e8857f22b437e -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..c7c34a56209ec628a90a7e51328e8857f22b437e -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read plan diff; returned output was truncated."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence; returned output was truncated."
+    },
+    {
+      "command": "rg -n '^def |^class |^function ' tests/codex_review_run.py .github/scripts/codex-fallback.cjs .github/scripts/acceptance-readiness.cjs",
+      "exit_code": 0,
+      "purpose": "Map review and acceptance entry points."
+    },
+    {
+      "command": "git diff 05b24feed..c7c34a5 -- tests/codex_report_status.py docker/codex-review/Dockerfile .github/dependabot.yml docs",
+      "exit_code": 0,
+      "purpose": "Inspect checker, image, configuration and documentation changes; output was truncated."
+    },
+    {
+      "command": "head -n 8 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Verify harness evidence commit and exit status."
+    },
+    {
+      "command": "sed -n '775,1251p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect PR checks, CI attribution and inert-input extraction."
+    },
+    {
+      "command": "sed -n '1252,1494p' tests/codex_review_run.py; sed -n '1623,1876p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect prompt construction, grader provenance and boundary verification."
+    },
+    {
+      "command": "sed -n '1877,2242p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect launch, probe and image-build paths."
+    },
+    {
+      "command": "sed -n '2243,2495p' tests/codex_review_run.py; sed -n '2592,2802p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect container arguments, exposure checks and canary validation."
+    },
+    {
+      "command": "sed -n '2803,3113p' tests/codex_review_run.py; sed -n '3498,3641p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect credential custody, safe reads, cleanup and completion checks."
+    },
+    {
+      "command": "sed -n '4154,4466p' tests/codex_review_run.py; sed -n '1,217p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect inspection orchestration, constants and trust configuration."
+    },
+    {
+      "command": "git diff 05b24feed..c7c34a5 -- .github/scripts/codex-fallback.cjs .github/scripts/acceptance-readiness.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance and fallback policy changes."
+    },
+    {
+      "command": "sed -n '1495,1622p' tests/codex_review_run.py; sed -n '218,368p' tests/codex_review_run.py; sed -n '3248,3295p' tests/codex_review_run.py; sed -n '3954,4153p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect event auditing, subprocess handling and failure finalization."
+    },
+    {
+      "command": "git diff 05b24feed..c7c34a5 -- docs/codex-adversarial-review-contract.md docker/codex-review/Dockerfile",
+      "exit_code": 0,
+      "purpose": "Read complete contract and image diffs."
+    },
+    {
+      "command": "git diff 05b24feed..c7c34a5 -- tests/codex_review_run.py | rg '^@@'",
+      "exit_code": 0,
+      "purpose": "Locate runner change hunks."
+    },
+    {
+      "command": "sed -n '1,185p' .github/scripts/acceptance-readiness.test.cjs; sed -n '1,150p' .github/scripts/codex-completeness-parity.test.cjs; sed -n '282,345p' .github/scripts/acceptance-readiness.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance fixtures and readiness aggregation."
+    },
+    {
+      "command": "node <<'JS'\nconst {readiness}=require('./.github/scripts/acceptance-readiness.cjs');\nconst head='a'.repeat(40), base='b'.repeat(40), key=`90:${head}`;\nconst result=readiness({pr:90,prAuthor:'contributor',isCrossRepository:true,draft:false,open:true,head,baseSha:base,mergeBase:base,ciDefinitionsChanged:true,\nchecks:[{id:1,name:'CI ready',head_sha:head,status:'completed',conclusion:'success',app:{slug:'github-actions'},check_suite:{id:100}},{id:2,name:'CodeQL',head_sha:head,status:'completed',conclusion:'success'}],\nworkflowRuns:[{head_sha:head,check_suite_id:100,path:'.github/workflows/ci.yml'}],comments:[],dispositions:{schema:2,by_pr_head:{[key]:{items:{}}}},blockers:{schema:2,global_open:[],by_pr_head:{[key]:{open:[]}}},fallback:null,\ncodex:{status:{status:'complete',inspected_head:head,inspected_base:base},meta:{head,base,harness_head:base,label:'review',attempt:1,review_mode:'inspection-only-ci-evidence',audited_inputs_changed_in_diff:[]},out:`.planning/phases/85.1/codex/${head.slice(0,12)}-review-a1`,boundary:{verdict:'verified',head,label:'review',attempt:1},provenance:{established:true,base_on_main:true,grader_source:'trusted-origin-main',grader_ref:base,main_sha:base,harness_head:base,base},ciEvidence:{ci_ready:{head_sha:head,status:'completed',conclusion:'success'}}}});\nconsole.log(JSON.stringify(result,null,2));\nif(!result.ready)process.exitCode=1;\nJS",
+      "exit_code": 1,
+      "purpose": "Attempt reproduction; shell could not create a here-document temporary file."
+    },
+    {
+      "command": "rg -n 'ciDefinitionsChanged|not-independent|CI.independence' .github/scripts/acceptance-readiness.test.cjs tests/test_codex_review_inspection.py; sed -n '2496,2591p' tests/codex_review_run.py; sed -n '3650,3775p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Locate regression tests and inspect schema staging and cross-grading."
+    },
+    {
+      "command": "node -e 'const {readiness}=require(\"./.github/scripts/acceptance-readiness.cjs\"); const head=\"a\".repeat(40),base=\"b\".repeat(40),key=`90:${head}`; const result=readiness({pr:90,prAuthor:\"contributor\",isCrossRepository:true,draft:false,open:true,head,baseSha:base,mergeBase:base,ciDefinitionsChanged:true,checks:[{id:1,name:\"CI ready\",head_sha:head,status:\"completed\",conclusion:\"success\",app:{slug:\"github-actions\"},check_suite:{id:100}},{id:2,name:\"CodeQL\",head_sha:head,status:\"completed\",conclusion:\"success\"}],workflowRuns:[{head_sha:head,check_suite_id:100,path:\".github/workflows/ci.yml\"}],comments:[],dispositions:{schema:2,by_pr_head:{[key]:{items:{}}}},blockers:{schema:2,global_open:[],by_pr_head:{[key]:{open:[]}}},fallback:null,codex:{status:{status:\"complete\",inspected_head:head,inspected_base:base},meta:{head,base,harness_head:base,label:\"review\",attempt:1,review_mode:\"inspection-only-ci-evidence\",audited_inputs_changed_in_diff:[]},out:`.planning/phases/85.1/codex/${head.slice(0,12)}-review-a1`,boundary:{verdict:\"verified\",head,label:\"review\",attempt:1},provenance:{established:true,base_on_main:true,grader_source:\"trusted-origin-main\",grader_ref:base,main_sha:base,harness_head:base,base},ciEvidence:{ci_ready:{head_sha:head,status:\"completed\",conclusion:\"success\"}}}}); console.log(JSON.stringify(result,null,2)); if(!result.ready)process.exitCode=1;'",
+      "exit_code": 0,
+      "purpose": "Reproduce readiness accepting non-independent CI without an owner fallback."
+    },
+    {
+      "command": "sed -n '1370,1470p' .github/scripts/acceptance-readiness.test.cjs; sed -n '374,416p' tests/codex_review_run.py; sed -n '3335,3497p' tests/codex_review_run.py; sed -n '4525,4700p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect relevant regression assertions, metadata, output reservation and CLI dispatch."
+    },
+    {
+      "command": "git diff 05b24feed..c7c34a5 -- tests/test_acceptance_docs.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_codex_review_run.py tests/test_dependabot_config.py tests/test_review_checkpoint_record.py tests/test_review_machinery_lists.py",
+      "exit_code": 0,
+      "purpose": "Inspect supporting test changes."
+    },
+    {
+      "command": "node --test --test-name-pattern 'not-independent head|CI ready item' .github/scripts/acceptance-readiness.test.cjs",
+      "exit_code": 0,
+      "purpose": "Run relevant acceptance regressions: 12 passed."
+    },
+    {
+      "command": "git diff --name-only 05b24feed..c7c34a5 -- ':(glob).planning/**/*-PLAN.md'; sed -n '1462,1495p' .github/scripts/acceptance-readiness.test.cjs; git diff 05b24feed..c7c34a5 -- tests/codex_review_run.py | sed -n '1,250p'",
+      "exit_code": 0,
+      "purpose": "Inventory plans, inspect CLI regression assertions and initial runner hunks."
+    },
+    {
+      "command": "rg -n 'create.*interrupt|interrupt.*create|register|SIGTERM|KeyboardInterrupt|create.*fail|lost|orphan' tests/test_codex_review_container.py tests/test_codex_review_inspection.py; sed -n '3776,3953p' tests/codex_review_run.py; sed -n '1,144p' tests/test_codex_review_image.py",
+      "exit_code": 0,
+      "purpose": "Inspect lifecycle test coverage, trusted orchestration and image tests."
+    },
+    {
+      "command": "sed -n '1,520p' tests/test_codex_review_gate.py",
+      "exit_code": 0,
+      "purpose": "Inspect completion-gate regression tests."
+    },
+    {
+      "command": "sed -n '417,774p' tests/codex_review_run.py; sed -n '3114,3247p' tests/codex_review_run.py; sed -n '3296,3334p' tests/codex_review_run.py; sed -n '4467,4524p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding trust, rendering, evidence, redaction and preview code."
+    },
+    {
+      "command": "git status --short; git rev-parse HEAD; nl -ba .github/scripts/acceptance-readiness.cjs | sed -n '303,342p'",
+      "exit_code": 0,
+      "purpose": "Confirm unchanged checkout and finding location."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Readiness does not enforce the fallback required by its CI-independence result",
+      "file": ".github/scripts/acceptance-readiness.cjs",
+      "line_start": 332,
+      "line_end": 339,
+      "trigger": "A fork or non-owner, non-bot PR changes .github/ and readiness receives a complete inspection record for the same head/base, with no fallback. Such evidence can be reused from an exempt same-repository bot PR at the same commit, or retained across a policy upgrade.",
+      "execution_path": "runCli recomputes ciDefinitionsChanged. readiness marks CI ready as not-independent, but does not pass that requirement into codexStatusFor. The latter accepts a complete inspection record without consulting fallback. The final aggregation explicitly accepts not-independent, returning ready: true.",
+      "consequence": "The checklist announces readiness to request approval despite the documented requirement for an owner-approved fallback on this PR.",
+      "evidence": "A direct call with isCrossRepository=true, ciDefinitionsChanged=true, internally bound complete inspection evidence and fallback=null returned ready=true, CI ready=not-independent and Codex=ok. All 12 targeted existing tests passed. The 'ready only through the owner-approved fallback' test starts with an incomplete status; the CLI test at lines 1463–1473 checks display text but does not assert readiness is blocked.",
+      "suggested_fix": "Make the independently computed CI-independence requirement constrain the Codex acceptance decision. A complete inspection record must not satisfy that item when the current PR requires fallback. Add regressions with complete evidence and no fallback for fork and non-bot collaborator PRs, including evidence reused from an exempt bot PR.",
+      "reproduced": true,
+      "reproduction_command": "node -e 'const {readiness}=require(\"./.github/scripts/acceptance-readiness.cjs\"); const head=\"a\".repeat(40),base=\"b\".repeat(40),key=`90:${head}`; const result=readiness({pr:90,prAuthor:\"contributor\",isCrossRepository:true,draft:false,open:true,head,baseSha:base,mergeBase:base,ciDefinitionsChanged:true,checks:[{id:1,name:\"CI ready\",head_sha:head,status:\"completed\",conclusion:\"success\",app:{slug:\"github-actions\"},check_suite:{id:100}},{id:2,name:\"CodeQL\",head_sha:head,status:\"completed\",conclusion:\"success\"}],workflowRuns:[{head_sha:head,check_suite_id:100,path:\".github/workflows/ci.yml\"}],comments:[],dispositions:{schema:2,by_pr_head:{[key]:{items:{}}}},blockers:{schema:2,global_open:[],by_pr_head:{[key]:{open:[]}}},fallback:null,codex:{status:{status:\"complete\",inspected_head:head,inspected_base:base},meta:{head,base,harness_head:base,label:\"review\",attempt:1,review_mode:\"inspection-only-ci-evidence\",audited_inputs_changed_in_diff:[]},out:`.planning/phases/85.1/codex/${head.slice(0,12)}-review-a1`,boundary:{verdict:\"verified\",head,label:\"review\",attempt:1},provenance:{established:true,base_on_main:true,grader_source:\"trusted-origin-main\",grader_ref:base,main_sha:base,harness_head:base,base},ciEvidence:{ci_ready:{head_sha:head,status:\"completed\",conclusion:\"success\"}}}}); console.log(JSON.stringify(result,null,2)); if(!result.ready)process.exitCode=1;'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; relied on the supplied exact-head harness evidence for that suite.",
+    "No live Docker, Codex or GitHub integration run was performed.",
+    "The reproduction verifies the acceptance function with synthetic records, not a live PR.",
+    "No files were edited, committed, pushed or published."
+  ],
+  "review_complete": false,
+  "incomplete_reasons": [
+    "The review ended before exhaustive inspection of all in-scope changes.",
+    "The large phase-plan diff was truncated and was not fully reread. Complete review of 85.1-01-PLAN.md through 85.1-10-PLAN.md is outstanding.",
+    "tests/test_codex_review_container.py and tests/test_codex_review_inspection.py were searched selectively, not inspected in full.",
+    ".github/scripts/acceptance-readiness.test.cjs and .github/scripts/codex-completeness-parity.test.cjs were inspected only in selected sections; .github/scripts/codex-fallback.test.cjs was not inspected.",
+    "The initial combined documentation diff was truncated; complete coverage of docs/review-checkpoint-record.md was not established.",
+    "Most runner source was inspected, but complete hunk-by-hunk diff coverage was not established."
+  ]
+}

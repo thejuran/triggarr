@@ -42,6 +42,19 @@ def _codex_table_line(label: str) -> str:
     return next(line for line in _read().splitlines() if line.strip().startswith(f"| {label} |"))
 
 
+def _codex_section_table_line(label: str) -> str:
+    """Like _codex_table_line, but scoped to the "### Codex" table.
+
+    Needed for labels (e.g. "Status") that also appear in the earlier
+    "### BM review" table, where the unscoped lookup would return the wrong row.
+    """
+    text = _read()
+    start = text.index("### Codex")
+    end = text.index("### Greptile", start)
+    section = text[start:end]
+    return next(line for line in section.splitlines() if line.strip().startswith(f"| {label} |"))
+
+
 def test_raw_output_paths_include_pytest_evidence() -> None:
     assert "`.pytest.txt`" in _codex_table_line("Raw output paths")
 
@@ -59,15 +72,33 @@ def test_codex_table_has_fallback_row() -> None:
     assert "codex-fallback.cjs" in line
 
 
-# D-16/D-18: the Raw output paths row must include the new .base-status.json
-# output; the Phase 85.1 isolated-review outputs do not exist yet and must
-# not be named anywhere in this record.
+# D-16/D-18/Phase 85.1 D-12: the Raw output paths row must include
+# .base-status.json plus the Phase 85.1 inspection-only outputs
+# (.ci-evidence.json, .grader-provenance.json, .boundary.json), now that
+# those outputs are part of the delivered record.
 def test_raw_output_paths_include_new_outputs() -> None:
     line = _codex_table_line("Raw output paths")
-    assert ".base-status.json" in line
-    text = _read()
-    for not_yet in (".ci-evidence.json", ".grader-provenance.json", ".boundary.json"):
-        assert not_yet not in text, f"{not_yet} is Phase 85.1 work and must not appear yet"
+    for output in (".base-status.json", ".ci-evidence.json", ".grader-provenance.json", ".boundary.json"):
+        assert output in line, f"Raw output paths row must list {output!r}"
+
+
+# Phase 85.1 (D-12, B18): an inspection-only run is complete only when the
+# boundary verdict for that exact head and attempt is "verified", on top of
+# the existing .status.json/.base-status.json completeness rules.
+def test_status_row_defines_inspection_only_completeness() -> None:
+    line = _codex_section_table_line("Status")
+    assert "inspection-only" in line
+    assert "`.boundary.json`" in line
+    assert "verified" in line
+    assert "`.base-status.json`" in line
+
+
+# BM iter-4 IN-04: inspection-only runs cover every untrusted head, including
+# same-repository heads by non-owner authors, not only bots and forks.
+def test_status_row_names_every_untrusted_head_kind() -> None:
+    line = _codex_section_table_line("Status")
+    assert "(untrusted head: bot, fork, or non-owner author)" in line
+    assert "(bot or fork head)" not in line
 
 
 # D-16/IN-01: "wait" and "retry later" must be stated, in one sentence, as

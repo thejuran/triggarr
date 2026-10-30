@@ -698,6 +698,124 @@ def test_hollow_report_guard(commands: list, expected_status: str, reason_substr
         assert any(reason_substring in r for r in result.reasons)
 
 
+# --- Inspection-only review mode (D-07, B04-R2) -----------------------------
+#
+# The checker grades an inspection-only report -- no commands, no reproduced
+# findings -- complete on its own terms only when the caller explicitly
+# passes review_mode="inspection-only". Without it (the default "trusted"),
+# the same report stays hollow and incomplete (no regression).
+
+
+def _inspection_only_report() -> dict:
+    """Derived from _valid_report(): empty commands_run and every finding
+    unreproduced -- what an inspection-only review of inert, untrusted-head
+    text produces when it behaves correctly."""
+    report = _valid_report()
+    report["commands_run"] = []
+    for finding in report["findings"]:
+        finding["reproduced"] = False
+        finding["reproduction_command"] = None
+        finding["hypothesis"] = finding.get("hypothesis") or "Not reproduced: inspection-only review runs no commands"
+    return report
+
+
+def test_inspection_only_empty_commands_and_unreproduced_findings_complete() -> None:
+    result = _assess(_inspection_only_report(), review_mode="inspection-only")
+    assert result.status == "complete"
+    assert result.reasons == ()
+
+
+def test_default_mode_keeps_hollow_report_guard() -> None:
+    """Regression: without review_mode, the same inspection-only-shaped
+    report is still graded under the trusted hollow-report guard."""
+    result = _assess(_inspection_only_report())
+    assert result.status == "incomplete"
+    assert any(r.startswith("no commands run:") for r in result.reasons)
+
+
+def test_inspection_only_commands_run_incomplete() -> None:
+    report = _inspection_only_report()
+    report["commands_run"] = [
+        {"command": "git diff A..B", "exit_code": 0, "purpose": "diff the change"},
+        {"command": "uv run pytest tests/", "exit_code": 0, "purpose": "run tests"},
+    ]
+    result = _assess(report, review_mode="inspection-only")
+    assert result.status == "incomplete"
+    assert "inspection-only review must not run commands: commands_run has 2 entries" in result.reasons
+
+
+def test_inspection_only_reproduced_finding_incomplete() -> None:
+    report = _inspection_only_report()
+    report["findings"][1]["reproduced"] = True
+    report["findings"][1]["reproduction_command"] = "uv run pytest tests/test_x.py"
+    result = _assess(report, review_mode="inspection-only")
+    assert result.status == "incomplete"
+    assert "inspection-only review cannot reproduce findings: F002 claims reproduced" in result.reasons
+
+
+def test_inspection_only_empty_coverage_incomplete() -> None:
+    report = _inspection_only_report()
+    report["coverage"] = []
+    result = _assess(report, review_mode="inspection-only")
+    assert result.status == "incomplete"
+    assert "no coverage stated" in result.reasons
+
+
+def test_inspection_only_review_complete_false_incomplete() -> None:
+    report = _inspection_only_report()
+    report["review_complete"] = False
+    report["incomplete_reasons"] = ["inert text only; no reproduction is possible"]
+    result = _assess(report, review_mode="inspection-only")
+    assert result.status == "incomplete"
+    assert "self-declared incomplete: inert text only; no reproduction is possible" in result.reasons
+
+
+def test_inspection_only_bogus_mode_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="REVIEW_MODES"):
+        _assess(_valid_report(), review_mode="bogus")
+
+
+# --- --review-mode CLI flag (D-07, B04-R2, B13 support check) --------------
+
+
+def test_cli_review_mode_inspection_only_exits_zero(tmp_path, capsys) -> None:
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(_inspection_only_report()), encoding="utf-8")
+
+    exit_code = main([*_cli_args(report_path), "--review-mode", "inspection-only"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["status"] == "complete"
+    assert payload["review_mode"] == "inspection-only"
+
+
+def test_cli_review_mode_default_is_trusted(tmp_path, capsys) -> None:
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(_inspection_only_report()), encoding="utf-8")
+
+    exit_code = main(_cli_args(report_path))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["review_mode"] == "trusted"
+
+
+def test_cli_review_mode_bogus_exits_two() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main([*_cli_args(Path("/nonexistent")), "--review-mode", "bogus"])
+    assert exc_info.value.code == 2
+
+
+def test_cli_help_lists_review_mode(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--help"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "--review-mode" in captured.out
+    assert "inspection-only" in captured.out
+
+
 def test_cli_whitespace_only_commands_run_exits_one(tmp_path, capsys) -> None:
     report = _valid_report()
     report["commands_run"] = [{"command": "   ", "exit_code": None, "purpose": ""}]

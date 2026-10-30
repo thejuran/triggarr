@@ -8,6 +8,35 @@
 // decision naming the head is never ok.
 
 const fs = require('node:fs');
+const {execFileSync} = require('node:child_process');
+
+const REPO = 'thejuran/triggarr';
+// Same pathspec as acceptance-readiness.cjs and the runner (BM iter-4 IN-02).
+const CI_DEFINITION_PATHSPEC = '.github';
+
+// The review mode an isolated-container, inspection-only run of an untrusted
+// (bot/fork) head records in its .meta.json (D-07, D-12). A COMPLETE result in
+// this mode satisfies the Codex acceptance item directly; an INCOMPLETE one
+// still needs the owner-approved fallback below.
+const INSPECTION_REVIEW_MODE = 'inspection-only-ci-evidence';
+
+// Mirrors tests/codex_review_run.py CI_NOT_INDEPENDENT_REASON (a drift test
+// pins the two). The runner stops a fork or non-bot untrusted head that
+// changes .github/ before reviewing anything and records exactly this one
+// reason. A retry cannot change that, so this stop is fallback-eligible at
+// attempt 1 (BM iter-3 IN-05) -- and no other result is.
+const CI_NOT_INDEPENDENT_REASON =
+  'fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required';
+
+// True only for an incomplete status whose sole reason is exactly
+// CI_NOT_INDEPENDENT_REASON.
+function isCiNotIndependentStop(status) {
+  return isPlainObject(status) &&
+    status.status === 'incomplete' &&
+    Array.isArray(status.reasons) &&
+    status.reasons.length === 1 &&
+    status.reasons[0] === CI_NOT_INDEPENDENT_REASON;
+}
 
 const FALLBACK_SCHEMA_VERSION = 1;
 const FALLBACK_FIELDS = Object.freeze([
@@ -145,11 +174,15 @@ function basename(path) {
 
 // validateFallback(record, context) -> {ok, reasons}
 // context: {pr, head, base, prAuthor, headTrust: 'trusted'|'untrusted',
-//           codexStatus: {complete, attempt, out, reviewMode}}
+//           codexStatus: {complete, attempt, out, reviewMode, ciNotIndependent},
+//           ciIndependenceRequired}
 // `base` is the reviewed base: the base the Codex evidence records (the
 // merge-base of the PR base and head), never a newer PR base (WR-02, iteration 3).
+// `ciIndependenceRequired` is true only when the caller checked, independently
+// of the Codex records, that the CI-independence rule covers this head and its
+// .github/ changed or could not be determined (BM iter-4 IN-02).
 function validateFallback(record, context = {}) {
-  const {pr, head, base, prAuthor, headTrust, codexStatus} = context;
+  const {pr, head, base, prAuthor, headTrust, codexStatus, ciIndependenceRequired} = context;
   const reasons = [];
 
   if (!isPlainObject(record)) {
@@ -298,11 +331,14 @@ function validateFallback(record, context = {}) {
 
   if (codexStatus && codexStatus.complete === true) {
     // Fallback is reserved for runs that actually stayed incomplete.
-    if (headTrust === 'untrusted') {
-      reasons.push('Codex evidence claims complete for an untrusted head; untrusted runs are refused until Phase 85.1');
-    } else {
-      reasons.push('Codex is complete for this head; a fallback is not used');
-    }
+    reasons.push('Codex is complete for this head; a fallback is not used');
+  } else if (codexStatus && codexStatus.invalidEvidence === true) {
+    // T-85.1-07b: an anomalous "complete" claim with invalid evidence (e.g. no
+    // verified boundary) is never rescued, at any attempt (PC-06). Checked
+    // before the attempt-number rules below so no attempt can launder it.
+    reasons.push(
+      'Codex evidence claims completion but is not valid for this head and attempt; a fallback cannot rescue invalid evidence — rerun the inspection-only review'
+    );
   } else if (headTrust === 'trusted') {
     const attempt = codexStatus?.attempt;
     if (!codexOutMatchesHead || !(typeof attempt === 'number' && attempt >= 2)) {
@@ -313,9 +349,28 @@ function validateFallback(record, context = {}) {
     if (codexStatus?.reviewMode === 'untrusted-refused') {
       reasons.push('an untrusted-mode refusal does not open the fallback for a trusted head; run the trusted Codex pass');
     }
+    if (codexStatus?.reviewMode === INSPECTION_REVIEW_MODE) {
+      reasons.push('an inspection-only result does not open the fallback for a trusted head; run the trusted Codex pass');
+    }
   } else if (headTrust === 'untrusted') {
-    if (!(codexStatus?.reviewMode === 'untrusted-refused' && codexOutMatchesHead)) {
-      reasons.push('untrusted head needs its recorded INCOMPLETE Codex refusal for this head');
+    const attempt = codexStatus?.attempt;
+    // Attempt 2 or later, except for the CI-independence stop, where a retry
+    // cannot change the outcome and attempt 1 is enough (BM iter-3 IN-05).
+    // The stop record alone never opens that exception: the caller must have
+    // re-verified that the rule covers this head (fork, or non-owner non-bot
+    // author) and that its .github/ changed or could not be determined
+    // (context.ciIndependenceRequired === true; BM iter-4 IN-02).
+    const minAttempt = codexStatus?.ciNotIndependent === true && ciIndependenceRequired === true ? 1 : 2;
+    const legitimateIncompleteInspection =
+      codexStatus?.reviewMode === INSPECTION_REVIEW_MODE &&
+      codexOutMatchesHead &&
+      typeof attempt === 'number' &&
+      attempt >= minAttempt;
+    const historicalRefusal = codexStatus?.reviewMode === 'untrusted-refused' && codexOutMatchesHead;
+    if (!(legitimateIncompleteInspection || historicalRefusal)) {
+      reasons.push(
+        'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+      );
     }
   }
 
@@ -327,9 +382,119 @@ function readJson(readFileSync, path) {
   return JSON.parse(text);
 }
 
-// Reads the Codex status/meta files under the OUT prefix to build the
-// codexStatus object validateFallback expects, implementing the same
-// completeness contract as acceptance-readiness.cjs's codexStatusFor().
+// inspectionOnlyCompleteness({meta, status, baseStatus, boundary, provenance, ciEvidence, out, head, baseRequired})
+// -> {complete, invalidEvidence, reasons}
+//
+// The single completeness rule for an inspection-only (isolated-container)
+// review of an untrusted head (D-07, D-12, T-85.1-07). Shared by
+// codexStatusFromOutput() below and acceptance-readiness.cjs's
+// codexStatusFor() -- both must call this, never re-implement it, so the two
+// scripts cannot drift (T-85.1-07).
+//
+// invalidEvidence is true only when the status file claims "complete" but the
+// completeness checks fail (an anomalous completion claim, T-85.1-04/07b); a
+// status that is honestly "incomplete" is never invalid evidence, whatever
+// the boundary says -- that is a legitimate INCOMPLETE result.
+//
+// It applies the same rules as tests/codex_review_run.py's completion_gate()
+// (WR-05; a cross-language parity test pins the two): the meta's head, label
+// and attempt must match the output prefix *out* (<head12>-<label>-a<attempt>),
+// the boundary must name the meta's head, label and attempt,
+// <OUT>.grader-provenance.json (*provenance*) must record an established
+// trusted-origin-main grader whose base is on main, and every record must
+// agree with the others (Codex 2aa2cc8 F001): the provenance names the meta's
+// reviewed base and the origin/main grader its harness_head records, and
+// <OUT>.ci-evidence.json (*ciEvidence*) is for the meta's head and shows CI
+// ready completed with success (BM iter-4 IN-03).
+const OUT_NAME_RE = /^([0-9a-f]{12})-([a-z0-9-]+)-a([0-9]+)$/;
+const SHA_RE = /^[0-9a-f]{40}$/;
+
+function provenanceNamesThisReview(provenance, meta) {
+  const grader = provenance.grader_ref;
+  return typeof grader === 'string' && SHA_RE.test(grader) &&
+    provenance.main_sha === grader &&
+    provenance.harness_head === grader &&
+    meta?.harness_head === grader &&
+    typeof meta?.base === 'string' &&
+    provenance.base === meta.base;
+}
+
+function inspectionOnlyCompleteness({
+  meta, status, baseStatus, boundary, provenance, ciEvidence, out, head, baseRequired,
+}) {
+  if (status?.status !== 'complete') {
+    return {complete: false, invalidEvidence: false, reasons: ['Codex status is incomplete']};
+  }
+
+  const reasons = [];
+
+  const boundHere = status?.inspected_head === head && status?.inspected_base === meta?.base;
+  if (!boundHere) {
+    reasons.push('inspection-only status is not bound to this head and base (inspected_head/inspected_base differ)');
+  }
+
+  const outMatch = OUT_NAME_RE.exec(basename(out));
+  const matchesPrefix =
+    Boolean(outMatch) &&
+    typeof meta?.head === 'string' &&
+    meta.head.startsWith(outMatch[1]) &&
+    meta?.label === outMatch[2] &&
+    meta?.attempt === Number(outMatch[3]);
+  if (!matchesPrefix) {
+    reasons.push('inspection-only meta does not match the output prefix (head, label or attempt)');
+  }
+
+  const provenanceValid =
+    isPlainObject(provenance) &&
+    provenance.established === true &&
+    provenance.base_on_main === true &&
+    provenance.grader_source === 'trusted-origin-main';
+  if (!provenanceValid) {
+    reasons.push('grader provenance not established from origin/main');
+  } else if (!provenanceNamesThisReview(provenance, meta)) {
+    reasons.push("grader provenance does not name this review's grader and reviewed base");
+  }
+
+  const boundaryValid =
+    isPlainObject(boundary) &&
+    boundary.verdict === 'verified' &&
+    boundary.head === head &&
+    boundary.label === meta?.label &&
+    boundary.attempt === meta?.attempt;
+  if (!boundaryValid) {
+    reasons.push('inspection-only result has no verified isolation boundary for this head, label and attempt');
+  }
+
+  const ciReady = isPlainObject(ciEvidence) ? ciEvidence.ci_ready : undefined;
+  if (!isPlainObject(ciReady) || typeof meta?.head !== 'string' || ciReady.head_sha !== meta.head) {
+    reasons.push('CI evidence is not bound to this head');
+  } else if (ciReady.status !== 'completed' || ciReady.conclusion !== 'success') {
+    // BM iter-4 IN-03: the record must show the CI ready run passed, not only
+    // name this head (mirrors tests/codex_review_run.py completion_gate()).
+    reasons.push('CI evidence does not show a CI ready run that completed with success');
+  }
+
+  if (baseRequired) {
+    if (!isPlainObject(baseStatus)) {
+      reasons.push("grader changed in this diff: the trusted-main checker's base-status is missing");
+    } else if (baseStatus.status !== 'complete') {
+      reasons.push('grader changed in this diff: the trusted-main checker did not confirm completeness');
+    } else if (!(baseStatus.inspected_head === head && baseStatus.inspected_base === meta?.base)) {
+      reasons.push(
+        'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)'
+      );
+    }
+  }
+
+  const complete = reasons.length === 0;
+  return {complete, invalidEvidence: !complete, reasons};
+}
+
+// Reads the Codex status/meta/boundary files under the OUT prefix to build
+// the codexStatus object validateFallback expects, implementing the same
+// completeness contract as acceptance-readiness.cjs's codexStatusFor() --
+// both call inspectionOnlyCompleteness() for the inspection-only mode so the
+// two scripts cannot drift (T-85.1-07).
 function codexStatusFromOutput(codexOutPrefix, readFileSync) {
   let status;
   let meta;
@@ -352,12 +517,48 @@ function codexStatusFromOutput(codexOutPrefix, readFileSync) {
       baseStatus = null;
     }
   }
-  const complete =
-    meta.review_mode === 'trusted-local-tests' &&
-    status?.status === 'complete' &&
-    (auditedChanged.length === 0 || baseStatus?.status === 'complete');
+
+  let complete;
+  let invalidEvidence = false;
+  let boundaryVerdict;
+  if (meta.review_mode === INSPECTION_REVIEW_MODE) {
+    let boundary = null;
+    try {
+      boundary = readJson(readFileSync, `${codexOutPrefix}.boundary.json`);
+    } catch {
+      boundary = null;
+    }
+    boundaryVerdict = isPlainObject(boundary) ? boundary.verdict : undefined;
+    let provenance = null;
+    try {
+      provenance = readJson(readFileSync, `${codexOutPrefix}.grader-provenance.json`);
+    } catch {
+      provenance = null;
+    }
+    let ciEvidence = null;
+    try {
+      ciEvidence = readJson(readFileSync, `${codexOutPrefix}.ci-evidence.json`);
+    } catch {
+      ciEvidence = null;
+    }
+    const result = inspectionOnlyCompleteness({
+      meta, status, baseStatus, boundary, provenance, ciEvidence, out: codexOutPrefix, head: meta.head,
+      baseRequired: auditedChanged.length > 0,
+    });
+    complete = result.complete;
+    invalidEvidence = result.invalidEvidence;
+  } else {
+    complete =
+      meta.review_mode === 'trusted-local-tests' &&
+      status?.status === 'complete' &&
+      (auditedChanged.length === 0 || baseStatus?.status === 'complete');
+  }
+
   return {
     complete,
+    invalidEvidence,
+    ciNotIndependent: meta.review_mode === INSPECTION_REVIEW_MODE && isCiNotIndependentStop(status),
+    boundaryVerdict,
     attempt: meta.attempt,
     out: codexOutPrefix,
     reviewMode: meta.review_mode,
@@ -421,12 +622,52 @@ function parseValidateArgs(rest) {
   return opts;
 }
 
-// runCli(argv, io): argv is ['validate', ...flags]. io.readFileSync/log/error are
-// injectable for tests; io.readFileSync defaults to node:fs's readFileSync. Every
-// argument is validated before any file is read. Exits 0 when the fallback is
-// valid, 1 when it is invalid (reasons printed via io.error), 2 on a usage error.
+function oneLine(err) {
+  return String(err?.message || err).trim().split('\n').map(line => line.trim()).filter(Boolean).join(' / ').slice(0, 500);
+}
+
+// BM iter-4 IN-02: re-verifies, from GitHub and git rather than from the Codex
+// records, that the CI-independence rule covers this head and that its
+// .github/ changed in base..head (base is the reviewed base). Used only to
+// decide the attempt-1 exception for a CI-independence stop. An unreadable or
+// malformed PR never grants the exception; an undeterminable .github/ change
+// set counts as a change, as in acceptance-readiness.cjs. Argument arrays
+// only, never a shell string.
+function ciIndependenceRequiredFor({pr, head, base}, exec, error) {
+  // Required lazily: acceptance-readiness.cjs itself requires this module.
+  const {ciIndependenceRuleApplies} = require('./acceptance-readiness.cjs');
+  let prInfo;
+  try {
+    prInfo = JSON.parse(exec('gh', ['pr', 'view', String(pr), '--repo', REPO, '--json', 'author,isCrossRepository']));
+  } catch (err) {
+    error(`could not read PR #${pr} to re-verify the CI-independence rule: ${oneLine(err)}; attempt-1 exception not granted`);
+    return false;
+  }
+  if (!isPlainObject(prInfo) || !isPlainObject(prInfo.author) || typeof prInfo.author.login !== 'string'
+      || typeof prInfo.isCrossRepository !== 'boolean') {
+    error(`PR #${pr} did not report its author and fork status; attempt-1 exception not granted`);
+    return false;
+  }
+  const author = {login: prInfo.author.login, is_bot: Boolean(prInfo.author.is_bot)};
+  if (!ciIndependenceRuleApplies({isCrossRepository: prInfo.isCrossRepository, author})) return false;
+  try {
+    const changed = exec('git', ['diff', '--name-only', '--no-renames', `${base}..${head}`, '--', CI_DEFINITION_PATHSPEC]);
+    return String(changed).trim().length > 0;
+  } catch (err) {
+    error(`could not determine whether files under .github/ changed (git diff ${base}..${head}): ${oneLine(err)}; treated as changed`);
+    return true;
+  }
+}
+
+// runCli(argv, io): argv is ['validate', ...flags]. io.readFileSync/log/error/exec
+// are injectable for tests; io.readFileSync defaults to node:fs's readFileSync and
+// io.exec to execFileSync (argument arrays only). Every argument is validated
+// before any file is read; GitHub and git are consulted only for an untrusted
+// head's CI-independence stop (IN-02). Exits 0 when the fallback is valid, 1 when
+// it is invalid (reasons printed via io.error), 2 on a usage error.
 function runCli(argv, io = {}) {
   const readFileSync = io.readFileSync || fs.readFileSync;
+  const exec = io.exec || ((cmd, args) => execFileSync(cmd, args, {encoding: 'utf8'}));
   const log = io.log || ((...args) => console.log(...args));
   const error = io.error || ((...args) => console.error(...args));
 
@@ -471,6 +712,10 @@ function runCli(argv, io = {}) {
     return 1;
   }
 
+  const ciIndependenceRequired = opts.headTrust === 'untrusted' && codexStatus.ciNotIndependent === true
+    ? ciIndependenceRequiredFor({pr: opts.pr, head: opts.head, base: opts.base}, exec, error)
+    : false;
+
   const {ok, reasons} = validateFallback(record, {
     pr: opts.pr,
     head: opts.head,
@@ -478,6 +723,7 @@ function runCli(argv, io = {}) {
     prAuthor: opts.prAuthor,
     headTrust: opts.headTrust,
     codexStatus,
+    ciIndependenceRequired,
   });
 
   if (ok) {
@@ -498,6 +744,11 @@ module.exports = {
   REVIEWER_KINDS,
   DISALLOWED_REVIEWERS,
   OWNER_DECISIONS,
+  INSPECTION_REVIEW_MODE,
+  CI_NOT_INDEPENDENT_REASON,
+  isCiNotIndependentStop,
+  inspectionOnlyCompleteness,
+  codexStatusFromOutput,
   validateFallback,
   runCli,
 };

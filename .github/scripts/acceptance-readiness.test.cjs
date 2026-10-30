@@ -3,8 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS,
+  readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS, ciIndependenceRuleApplies,
 } = require('./acceptance-readiness.cjs');
+const {INSPECTION_REVIEW_MODE} = require('./codex-fallback.cjs');
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -15,6 +16,14 @@ const CODEX_OUT = `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task3-a2`;
 const DECIDED_AT = '2026-10-27T12:00:00.000Z';
 const PR = 90;
 const REGISTER_KEY = `${PR}:${HEAD}`;
+const CI_WORKFLOW_PATH = '.github/workflows/ci.yml';
+// BM iter-2 WR-03: "CI ready" counts only from the github-actions app in a
+// ci.yml workflow run (its check suite is matched to that workflow run).
+const CI_READY_ORIGIN = Object.freeze({app: {slug: 'github-actions'}, check_suite: {id: 100}});
+
+function ciWorkflowRun(suiteId, path = CI_WORKFLOW_PATH, head = HEAD) {
+  return {id: 7000 + suiteId, check_suite_id: suiteId, path, head_sha: head};
+}
 
 function baseline() {
   return {
@@ -27,9 +36,10 @@ function baseline() {
     head: HEAD,
     baseSha: BASE,
     checks: [
-      {id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
       {id: 2, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
     ],
+    workflowRuns: [ciWorkflowRun(100)],
     comments: [],
     dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
     blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
@@ -123,6 +133,72 @@ const UNTRUSTED_VARIANTS = [
   {label: 'author outside TRUSTED_AUTHORS', prAuthor: 'someone-else', prAuthorIsBot: false, isCrossRepository: false},
 ];
 
+// --- D-07/D-12: inspection-only (isolated-container) evidence for an untrusted head ---
+
+function verifiedBoundary(overrides = {}) {
+  return {
+    boundary_version: 1, verdict: 'verified', reasons: [], head: HEAD, label: 'task5', attempt: 1,
+    checked_at: DECIDED_AT, image_ref: 'codex-review:local', image_id: `sha256:${'a'.repeat(64)}`,
+    codex_version: '0.153.4', credential_mode: 'copied-login', network: 'default', mounts: [],
+    env_names: [], canary: 'ok', schema_sha256: 'b'.repeat(64), ...overrides,
+  };
+}
+
+function validProvenance(overrides = {}) {
+  return {
+    established: true, main_ref: 'refs/remotes/origin/main', main_sha: BASE, harness_head: BASE, base: BASE,
+    base_on_main: true, grader_ref: BASE, grader_source: 'trusted-origin-main', ...overrides,
+  };
+}
+
+function inspectionOnlyOut() {
+  return `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task5-a1`;
+}
+
+// The <label> of an output prefix (<head12>-<label>-a<attempt>); the meta and
+// boundary of an attempt must carry it (Codex 2aa2cc8 F001).
+function labelOf(out) {
+  return /^[0-9a-f]{12}-([a-z0-9-]+)-a[0-9]+$/.exec(out.slice(out.lastIndexOf('/') + 1))[1];
+}
+
+function validCiEvidence(overrides = {}) {
+  const ciReady = {
+    id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', html_url: 'https://x/1',
+    ...overrides,
+  };
+  return {check_runs: [ciReady], ci_ready: ciReady};
+}
+
+function inspectionOnlyBaseline({prAuthor, prAuthorIsBot, isCrossRepository}, overrides = {}) {
+  const input = baseline();
+  input.prAuthor = prAuthor;
+  input.prAuthorIsBot = Boolean(prAuthorIsBot);
+  input.isCrossRepository = Boolean(isCrossRepository);
+  const out = overrides.out || inspectionOnlyOut();
+  const attempt = overrides.attempt ?? 1;
+  const label = labelOf(out);
+  input.codex = {
+    status: overrides.status || {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: Object.hasOwn(overrides, 'baseStatus') ? overrides.baseStatus : null,
+    meta: {
+      meta_version: 2,
+      head: HEAD,
+      base: BASE,
+      label,
+      attempt,
+      review_mode: INSPECTION_REVIEW_MODE,
+      harness_head: BASE,
+      audited_inputs_changed_in_diff: overrides.auditedInputsChangedInDiff || [],
+    },
+    boundary: Object.hasOwn(overrides, 'boundary') ? overrides.boundary : verifiedBoundary({head: HEAD, label, attempt}),
+    provenance: Object.hasOwn(overrides, 'provenance') ? overrides.provenance : validProvenance(),
+    ciEvidence: Object.hasOwn(overrides, 'ciEvidence') ? overrides.ciEvidence : validCiEvidence(),
+    out,
+  };
+  input.fallback = null;
+  return input;
+}
+
 // --- readiness(): all prerequisites present ---
 
 test('all prerequisites present: ready, every item ok', () => {
@@ -168,6 +244,73 @@ test('a successful "CI ready" on a different head does not count', () => {
   input.checks = input.checks.map(c => (c.name === 'CI ready' ? {...c, head_sha: OTHER_HEAD} : c));
   const result = readiness(input);
   assert.equal(item(result, 'CI ready').status, 'blocked');
+});
+
+// --- BM iter-2 WR-03: same "CI ready" rule as the runner's ci_evidence() ----
+
+function ciReady(id, {conclusion = 'success', slug = 'github-actions', suite = 100, head = HEAD} = {}) {
+  return {id, name: 'CI ready', head_sha: head, status: 'completed', conclusion, app: {slug}, check_suite: {id: suite}};
+}
+
+function withCiReady(ciReadyRuns, workflowRuns) {
+  const input = baseline();
+  input.checks = [...input.checks.filter(c => c.name !== 'CI ready'), ...ciReadyRuns];
+  input.workflowRuns = workflowRuns;
+  return input;
+}
+
+test('a "CI ready" from another GitHub App never counts', () => {
+  const input = withCiReady([ciReady(9, {slug: 'some-other-app', suite: 900})], [ciWorkflowRun(100)]);
+  const result = readiness(input);
+  assert.equal(item(result, 'CI ready').status, 'blocked');
+});
+
+test('a "CI ready" with no app or no check suite never counts', () => {
+  const noApp = baseline();
+  noApp.checks = noApp.checks.map(c => (c.name === 'CI ready' ? {...c, app: undefined} : c));
+  assert.equal(item(readiness(noApp), 'CI ready').status, 'blocked');
+  const noSuite = baseline();
+  noSuite.checks = noSuite.checks.map(c => (c.name === 'CI ready' ? {...c, check_suite: undefined} : c));
+  assert.equal(item(readiness(noSuite), 'CI ready').status, 'blocked');
+});
+
+test('a later successful "CI ready" from another workflow file blocks, even when ci.yml failed', () => {
+  const input = withCiReady(
+    [ciReady(2, {conclusion: 'failure', suite: 100}), ciReady(5, {suite: 200})],
+    [ciWorkflowRun(100), ciWorkflowRun(200, '.github/workflows/evil.yml')],
+  );
+  const result = readiness(input);
+  assert.equal(item(result, 'CI ready').status, 'blocked');
+  assert.match(item(result, 'CI ready').detail, /workflow other than \.github\/workflows\/ci\.yml/);
+});
+
+test('a "CI ready" whose workflow run cannot be identified blocks', () => {
+  for (const workflowRuns of [[], [ciWorkflowRun(100, CI_WORKFLOW_PATH, OTHER_HEAD)], [{check_suite_id: 100, head_sha: HEAD}]]) {
+    const result = readiness(withCiReady([ciReady(5)], workflowRuns));
+    assert.equal(item(result, 'CI ready').status, 'blocked', JSON.stringify(workflowRuns));
+  }
+});
+
+test('two ci.yml runs for one head (close/reopen) are accepted; the latest result counts', () => {
+  const ok = readiness(withCiReady(
+    [ciReady(2, {conclusion: 'failure', suite: 100}), ciReady(5, {suite: 200})],
+    [ciWorkflowRun(100), ciWorkflowRun(200)],
+  ));
+  assert.equal(item(ok, 'CI ready').status, 'ok');
+  const failedLater = readiness(withCiReady(
+    [ciReady(2, {suite: 100}), ciReady(5, {conclusion: 'failure', suite: 200})],
+    [ciWorkflowRun(100), ciWorkflowRun(200)],
+  ));
+  assert.equal(item(failedLater, 'CI ready').status, 'blocked');
+});
+
+test('an unreadable workflow-runs list blocks CI ready', () => {
+  const input = baseline();
+  input.workflowRuns = [];
+  input.workflowRunsError = 'could not read GitHub workflow runs';
+  const result = readiness(input);
+  assert.equal(item(result, 'CI ready').status, 'blocked');
+  assert.match(item(result, 'CI ready').detail, /could not read GitHub workflow runs/);
 });
 
 // --- CodeQL ---
@@ -267,7 +410,6 @@ for (const variant of UNTRUSTED_VARIANTS) {
     const i = item(result, 'Codex');
     assert.equal(i.status, 'ok');
     assert.ok(i.detail.includes('owner-approved fallback for untrusted head: vibe-check deep review (owner-run)'));
-    assert.ok(i.detail.includes('isolated review is Phase 85.1'));
   });
 
   test(`untrusted head (${variant.label}) with no fallback is blocked`, () => {
@@ -276,12 +418,13 @@ for (const variant of UNTRUSTED_VARIANTS) {
     const i = item(result, 'Codex');
     assert.equal(i.status, 'blocked');
     assert.ok(i.detail.includes(
-      'untrusted head (bot/fork): Codex review is refused until Phase 85.1; an owner-approved fallback (D-16) is required'
+      'INCOMPLETE/PENDING: no recorded fallback for this untrusted head; an owner-approved fallback (D-16) is required, '
+        + 'or rerun the inspection-only review; wait or retry later blocks acceptance'
     ));
   });
 }
 
-test('an untrusted head whose Codex files claim complete is blocked even with a fallback present', () => {
+test('an untrusted head whose Codex files claim trusted-mode completion is blocked even with a fallback present', () => {
   const input = untrustedBaseline(UNTRUSTED_VARIANTS[0]);
   input.codex.meta = {...input.codex.meta, review_mode: 'trusted-local-tests'};
   input.codex.status = {status: 'complete', inspected_head: HEAD, inspected_base: BASE};
@@ -289,7 +432,123 @@ test('an untrusted head whose Codex files claim complete is blocked even with a 
   const result = readiness(input);
   const i = item(result, 'Codex');
   assert.equal(i.status, 'blocked');
-  assert.ok(i.detail.includes('Codex evidence claims complete for an untrusted head'));
+  assert.ok(i.detail.includes(
+    'Codex evidence claims trusted-mode completion for an untrusted head; untrusted heads are reviewed inspection-only'
+  ));
+});
+
+// --- D-07/D-12: COMPLETE inspection-only evidence counts without a fallback ---
+
+for (const variant of UNTRUSTED_VARIANTS) {
+  test(`untrusted head (${variant.label}) with a COMPLETE inspection-only result and a verified boundary is ok, no fallback`, () => {
+    const input = inspectionOnlyBaseline(variant);
+    // This head leaves .github/ alone; an unknown change set fails closed for a
+    // fork or non-owner head (Codex c7c34a5 F001, tests below).
+    input.ciDefinitionsChanged = false;
+    const result = readiness(input);
+    const i = item(result, 'Codex');
+    assert.equal(i.status, 'ok');
+    assert.equal(i.detail, 'complete (inspection-only, isolation boundary verified)');
+  });
+}
+
+test('untrusted head: a missing isolation boundary blocks, even at attempt 2 with a valid fallback', () => {
+  for (const attempt of [1, 2]) {
+    const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {attempt, boundary: null, out: CODEX_OUT});
+    input.fallback = validFallback({codex_out: CODEX_OUT});
+    const result = readiness(input);
+    const i = item(result, 'Codex');
+    assert.equal(i.status, 'blocked', `attempt ${attempt}`);
+    assert.ok(i.detail.includes('no verified isolation boundary'), i.detail);
+  }
+});
+
+test('untrusted head: an unverified or wrong-head/attempt boundary blocks the same way', () => {
+  for (const boundary of [
+    verifiedBoundary({verdict: 'unverified'}),
+    verifiedBoundary({head: 'f'.repeat(40)}),
+    verifiedBoundary({attempt: 2}),
+  ]) {
+    const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {boundary});
+    const result = readiness(input);
+    const i = item(result, 'Codex');
+    assert.equal(i.status, 'blocked', JSON.stringify(boundary));
+    assert.ok(i.detail.includes('no verified isolation boundary'), i.detail);
+  }
+});
+
+test('untrusted head: an audited input change with a missing base-status blocks with the grader-changed reason', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    auditedInputsChangedInDiff: ['tests/codex_report_status.py'],
+    baseStatus: null,
+  });
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes("grader changed in this diff: the trusted-main checker's base-status is missing"), i.detail);
+});
+
+test('untrusted head: an audited input change with a complete, bound base-status is ok', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    auditedInputsChangedInDiff: ['tests/codex_report_status.py'],
+    baseStatus: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+  });
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'ok', i.detail);
+});
+
+test('untrusted head: a genuinely incomplete inspection-only result at attempt 2 with no fallback is blocked', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    attempt: 2,
+    status: {status: 'incomplete', reasons: ['boundary unverified']},
+    boundary: null,
+  });
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes(
+    'INCOMPLETE/PENDING: no recorded fallback for this untrusted head; an owner-approved fallback (D-16) is required, '
+      + 'or rerun the inspection-only review; wait or retry later blocks acceptance'
+  ), i.detail);
+});
+
+test('untrusted head: a genuinely incomplete inspection-only result at attempt 2 with a matching fallback is ok', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {
+    attempt: 2,
+    status: {status: 'incomplete', reasons: ['boundary unverified']},
+    boundary: null,
+    out: CODEX_OUT,
+  });
+  input.fallback = validFallback({codex_out: CODEX_OUT});
+  const result = readiness(input);
+  const i = item(result, 'Codex');
+  assert.equal(i.status, 'ok', i.detail);
+  assert.ok(i.detail.startsWith('ok (owner-approved fallback for untrusted head:'), i.detail);
+});
+
+test('trusted head with an inspection-only complete record is not complete; a fallback is rejected by the validator', () => {
+  const input = baseline();
+  input.codex = {
+    status: {status: 'complete', inspected_head: HEAD, inspected_base: BASE},
+    baseStatus: null,
+    meta: {
+      meta_version: 2, head: HEAD, base: BASE, attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
+      audited_inputs_changed_in_diff: [],
+    },
+    boundary: verifiedBoundary({attempt: 2}),
+    out: CODEX_OUT,
+  };
+  const noFallback = readiness(input);
+  assert.equal(item(noFallback, 'Codex').status, 'blocked');
+
+  input.fallback = validFallback();
+  const withFallback = readiness(input);
+  const i = item(withFallback, 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes(
+    'an inspection-only result does not open the fallback for a trusted head; run the trusted Codex pass'
+  ), i.detail);
 });
 
 test('a trusted head with only an untrusted-refused record and a fallback is blocked by the validator\'s reason', () => {
@@ -415,6 +674,14 @@ function checkRunsKey(head = HEAD) {
   return JSON.stringify(['gh', 'api', `repos/thejuran/triggarr/commits/${head}/check-runs`, '--paginate', '--slurp']);
 }
 
+function workflowRunsKey(head = HEAD) {
+  return JSON.stringify(['gh', 'api', `repos/thejuran/triggarr/actions/runs?head_sha=${head}&per_page=100`, '--paginate', '--slurp']);
+}
+
+function workflowRunsPages(runs = [ciWorkflowRun(100)]) {
+  return JSON.stringify([{total_count: runs.length, workflow_runs: runs}]);
+}
+
 function commentsKey() {
   return JSON.stringify(['gh', 'api', `repos/thejuran/triggarr/pulls/${PR}/comments`, '--paginate', '--slurp']);
 }
@@ -458,7 +725,7 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
   });
   const checksPages = JSON.stringify([
     {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
-    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN}]},
   ]);
   const commentsPages = JSON.stringify([
     [{id: 1, user: {login: 'greptile-apps[bot]'}}],
@@ -470,6 +737,7 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -490,6 +758,48 @@ test('runCli finds a relevant check run on page 2 and blocks on a page-2 undispo
   assert.ok(output.includes('2'));
 });
 
+test('runCli reads this head\'s workflow runs and blocks a "CI ready" from another workflow file', () => {
+  const prInfo = JSON.stringify({
+    number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
+    author: {login: 'thejuran', is_bot: false}, isCrossRepository: false,
+  });
+  const checksPages = JSON.stringify([
+    {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{
+      id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success',
+      app: {slug: 'github-actions'}, check_suite: {id: 200},
+    }]},
+  ]);
+  const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
+  const blockers = {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}};
+  const calls = [];
+  const table = execTable({
+    [prViewKey()]: prInfo,
+    [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages([ciWorkflowRun(200, '.github/workflows/evil.yml')]),
+    [commentsKey()]: JSON.stringify([[]]),
+    [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
+    [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
+    [gitDiffKey()]: '',
+  });
+  const exec = (cmd, args) => {
+    calls.push(JSON.stringify([cmd, ...args]));
+    return table(cmd, args);
+  };
+  const readFile = fileTable({
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests', audited_inputs_changed_in_diff: [],
+    }),
+  });
+
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.equal(exitCode, 1);
+  assert.ok(calls.includes(workflowRunsKey()));
+  assert.ok(logs.join('\n').includes('CI ready: BLOCKED'));
+});
+
 test('runCli blocks "CI ready" when a page-2 match has a different head_sha', () => {
   const prInfo = JSON.stringify({
     number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
@@ -497,7 +807,7 @@ test('runCli blocks "CI ready" when a page-2 match has a different head_sha', ()
   });
   const checksPages = JSON.stringify([
     {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
-    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: OTHER_HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: OTHER_HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN}]},
   ]);
   const commentsPages = JSON.stringify([[]]);
   const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
@@ -506,6 +816,7 @@ test('runCli blocks "CI ready" when a page-2 match has a different head_sha', ()
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: commentsPages,
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -535,6 +846,7 @@ test('runCli fails closed on unparseable check-runs slurp output', () => {
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: 'not json',
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -560,7 +872,7 @@ test('runCli fails closed on a non-array comments slurp output', () => {
   });
   const checksPages = JSON.stringify([
     {total_count: 1, check_runs: [{id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
-    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'}]},
+    {total_count: 1, check_runs: [{id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN}]},
   ]);
   const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
   const blockers = {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}};
@@ -568,6 +880,7 @@ test('runCli fails closed on a non-array comments slurp output', () => {
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify({not: 'an array'}),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -594,7 +907,7 @@ test('runCli: a fully ready PR exits 0 and the output never contains the string 
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
       {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
-      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
     ]},
   ]);
   const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
@@ -603,6 +916,7 @@ test('runCli: a fully ready PR exits 0 and the output never contains the string 
   const exec = execTable({
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
@@ -634,6 +948,110 @@ test('runCli rejects an invalid --pr before calling the injected exec', () => {
   assert.equal(exitCode, 2);
   assert.equal(execCalled, false);
   assert.equal(readCalled, false);
+});
+
+function inspectionOnlyCliFixture({
+  authorLogin, isBot, boundaryJson, provenanceJson = JSON.stringify(validProvenance()),
+  ciEvidenceJson = JSON.stringify(validCiEvidence()), isCrossRepository = false, githubDiffOutput,
+}) {
+  const prInfo = JSON.stringify({
+    number: PR, state: 'OPEN', isDraft: false, headRefOid: HEAD, baseRefOid: BASE,
+    author: {login: authorLogin, is_bot: isBot}, isCrossRepository,
+  });
+  const checksPages = JSON.stringify([
+    {total_count: 2, check_runs: [
+      {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
+    ]},
+  ]);
+  const dispositions = {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}};
+  const blockers = {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}};
+  const exec = execTable({
+    [prViewKey()]: prInfo,
+    [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
+    [commentsKey()]: JSON.stringify([[]]),
+    [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify(dispositions),
+    [variableKey('REVIEW_BLOCKERS')]: JSON.stringify(blockers),
+    [mergeBaseKey()]: `${BASE}\n`,
+    [gitDiffKey()]: '',
+    ...(githubDiffOutput === undefined ? {} : {[githubDiffKey()]: githubDiffOutput}),
+  });
+  const files = {
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, label: labelOf(CODEX_OUT), attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
+      harness_head: BASE, audited_inputs_changed_in_diff: [],
+    }),
+  };
+  if (boundaryJson !== undefined) files[`${CODEX_OUT}.boundary.json`] = boundaryJson;
+  if (provenanceJson !== null) files[`${CODEX_OUT}.grader-provenance.json`] = provenanceJson;
+  if (ciEvidenceJson !== null) files[`${CODEX_OUT}.ci-evidence.json`] = ciEvidenceJson;
+  return {exec, readFile: fileTable(files)};
+}
+
+test('runCli reads <out>.boundary.json so a COMPLETE inspection-only record for an untrusted head reaches ok', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 0, output);
+  assert.ok(output.includes('Codex: ok'), output);
+});
+
+test('runCli reads <out>.grader-provenance.json: without it a COMPLETE inspection-only record is blocked (WR-05)', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    provenanceJson: null,
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('grader provenance not established from origin/main'), output);
+});
+
+test('runCli reads <out>.ci-evidence.json: without it a COMPLETE inspection-only record is blocked (Codex 2aa2cc8 F001)', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    ciEvidenceJson: null,
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('CI evidence is not bound to this head'), output);
+});
+
+test('untrusted head: records copied from another label or a stale provenance block a COMPLETE claim (Codex 2aa2cc8 F001)', () => {
+  const otherLabel = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0]);
+  otherLabel.codex.meta.label = 'old-review';
+  otherLabel.codex.boundary.label = 'old-review';
+  let i = item(readiness(otherLabel), 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes('(head, label or attempt)'), i.detail);
+
+  const staleProvenance = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {provenance: validProvenance({base: 'c'.repeat(40)})});
+  i = item(readiness(staleProvenance), 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes("grader provenance does not name this review's grader and reviewed base"), i.detail);
+});
+
+test('untrusted head: grader provenance not established blocks a COMPLETE inspection-only claim (WR-05)', () => {
+  const input = inspectionOnlyBaseline(UNTRUSTED_VARIANTS[0], {provenance: validProvenance({base_on_main: false})});
+  const i = item(readiness(input), 'Codex');
+  assert.equal(i.status, 'blocked');
+  assert.ok(i.detail.includes('grader provenance not established from origin/main'), i.detail);
+});
+
+test('runCli: a missing <out>.boundary.json for an inspection-only record is not an error (readJsonIfPresent)', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({authorLogin: 'dependabot[bot]', isBot: true});
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('no verified isolation boundary'), output);
 });
 
 // --- WR-01 regressions: readiness must not trust the head runner's own meta ---
@@ -691,12 +1109,13 @@ function readyCliFixture(gitDiffOutput) {
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
       {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
-      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
     ]},
   ]);
   const table = {
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify({schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}}),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify({schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}}),
@@ -747,12 +1166,13 @@ function movedMainFixture({metaBase, mergeBaseOutput = `${BASE}\n`, diffs}) {
   const checksPages = JSON.stringify([
     {total_count: 2, check_runs: [
       {id: 1, name: 'CodeQL', head_sha: HEAD, status: 'completed', conclusion: 'success'},
-      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success'},
+      {id: 2, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', ...CI_READY_ORIGIN},
     ]},
   ]);
   const table = {
     [prViewKey()]: prInfo,
     [checkRunsKey()]: checksPages,
+    [workflowRunsKey()]: workflowRunsPages(),
     [commentsKey()]: JSON.stringify([[]]),
     [variableKey('REVIEW_DISPOSITIONS')]: JSON.stringify({schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}}),
     [variableKey('REVIEW_BLOCKERS')]: JSON.stringify({schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}}),
@@ -945,4 +1365,326 @@ test('codexStatusFor without a reviewed base still binds the fallback to the PR 
   assert.equal(codexStatusFor(args).ok, true);
   args.fallback = validFallback(); // names BASE, not the PR base MAIN_TIP
   assert.equal(codexStatusFor(args).ok, false);
+});
+
+// --- BM iter-3 IN-07: "CI ready" for a head whose CI evidence is not independent ---
+//
+// A fork, or a same-repository head by a non-owner, non-bot author, that
+// changes anything under .github/ decided its own CI (SA-03/SA-04). Its
+// successful "CI ready" must not be shown as plain "ok".
+
+function githubDiffKey(base = BASE, head = HEAD) {
+  return JSON.stringify(['git', 'diff', '--name-only', '--no-renames', `${base}..${head}`, '--', '.github']);
+}
+
+const CI_RULE_VARIANTS = [
+  {label: 'fork PR', prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true, applies: true},
+  {label: 'fork PR by the owner', prAuthor: 'thejuran', prAuthorIsBot: false, isCrossRepository: true, applies: true},
+  {label: 'fork PR by a bot', prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: true, applies: true},
+  {label: 'same-repo non-bot collaborator', prAuthor: 'collaborator', prAuthorIsBot: false, isCrossRepository: false, applies: true},
+  {label: 'same-repo Dependabot ([bot] login)', prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: false, applies: false},
+  {label: 'same-repo Dependabot (app/ login, is_bot)', prAuthor: 'app/dependabot', prAuthorIsBot: true, isCrossRepository: false, applies: false},
+  {label: 'same-repo owner', prAuthor: 'thejuran', prAuthorIsBot: false, isCrossRepository: false, applies: false},
+  {label: 'unidentified author', prAuthor: undefined, prAuthorIsBot: false, isCrossRepository: false, applies: true},
+];
+
+for (const variant of CI_RULE_VARIANTS) {
+  test(`ciIndependenceRuleApplies: ${variant.label} -> ${variant.applies}`, () => {
+    assert.equal(ciIndependenceRuleApplies({
+      isCrossRepository: variant.isCrossRepository, author: {login: variant.prAuthor, is_bot: variant.prAuthorIsBot},
+    }), variant.applies);
+  });
+
+  test(`CI ready item when .github/ changed: ${variant.label}`, () => {
+    const input = baseline();
+    input.prAuthor = variant.prAuthor;
+    input.prAuthorIsBot = variant.prAuthorIsBot;
+    input.isCrossRepository = variant.isCrossRepository;
+    input.ciDefinitionsChanged = true;
+    const result = readiness(input);
+    const ci = item(result, 'CI ready');
+    const checklist = renderChecklist(result);
+    if (variant.applies) {
+      assert.equal(ci.status, 'not-independent', ci.detail);
+      assert.ok(ci.detail.includes('not independent'), ci.detail);
+      assert.ok(checklist.includes('- CI ready: NOT INDEPENDENT'), checklist);
+      assert.ok(!checklist.includes('- CI ready: ok'), checklist);
+    } else {
+      assert.equal(ci.status, 'ok', ci.detail);
+      assert.ok(checklist.includes('- CI ready: ok'), checklist);
+    }
+  });
+}
+
+test('CI ready item: a covered head that did not change .github/ keeps "ok"', () => {
+  const input = baseline();
+  input.isCrossRepository = true;
+  input.ciDefinitionsChanged = false;
+  assert.equal(item(readiness(input), 'CI ready').status, 'ok');
+});
+
+test('CI ready item: an unknown .github/ change set for a covered head fails closed to not independent', () => {
+  for (const unknown of [undefined, null]) {
+    const input = baseline();
+    input.isCrossRepository = true;
+    input.ciDefinitionsChanged = unknown;
+    assert.equal(item(readiness(input), 'CI ready').status, 'not-independent', String(unknown));
+  }
+});
+
+test('CI ready item: a failing CI for a covered head stays BLOCKED, never softened', () => {
+  const input = baseline();
+  input.isCrossRepository = true;
+  input.ciDefinitionsChanged = true;
+  input.checks[0] = {...input.checks[0], conclusion: 'failure'};
+  assert.equal(item(readiness(input), 'CI ready').status, 'blocked');
+});
+
+test('a not-independent head is ready only through the owner-approved fallback (attempt 1, IN-05)', () => {
+  const stop = {
+    status: 'incomplete',
+    reasons: ['fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required'],
+  };
+  const variant = {prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true};
+  const out = inspectionOnlyOut();
+  const input = inspectionOnlyBaseline(variant, {status: stop, attempt: 1, out, boundary: null, provenance: null});
+  input.ciDefinitionsChanged = true;
+  const without = readiness(input);
+  assert.equal(without.ready, false);
+  assert.equal(item(without, 'Codex').status, 'blocked');
+
+  input.fallback = validFallback({codex_out: out});
+  const withFallback = readiness(input);
+  assert.equal(item(withFallback, 'CI ready').status, 'not-independent');
+  assert.equal(item(withFallback, 'Codex').status, 'ok', item(withFallback, 'Codex').detail);
+  assert.equal(withFallback.ready, true);
+  const checklist = renderChecklist(withFallback);
+  assert.ok(checklist.includes('- CI ready: NOT INDEPENDENT'), checklist);
+  assert.ok(checklist.includes('Ready to request approval'), checklist);
+});
+
+test('runCli: a fork PR whose diff changes .github/ shows CI ready as NOT INDEPENDENT', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    githubDiffOutput: '.github/os-scan-exceptions.json\n',
+  });
+  const {logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.ok(output.includes('- CI ready: NOT INDEPENDENT'), output);
+  assert.ok(!output.includes('- CI ready: ok'), output);
+});
+
+test('runCli: a fork PR whose diff leaves .github/ alone keeps CI ready ok', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    githubDiffOutput: '',
+  });
+  const {logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  assert.ok(logs.join('\n').includes('- CI ready: ok'), logs.join('\n'));
+});
+
+test('runCli: a Dependabot same-repository PR never runs the .github/ diff', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'dependabot[bot]', isBot: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+  });
+  const calls = [];
+  const spy = (cmd, args) => { calls.push(JSON.stringify([cmd, ...args])); return exec(cmd, args); };
+  withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec: spy, readFile}));
+  assert.ok(!calls.includes(githubDiffKey()));
+});
+
+// --- Codex c7c34a5 F001: COMPLETE evidence never satisfies Codex for a not-independent head ---
+//
+// For a head the CI-independence rule covers, whose .github/ change set
+// changed or could not be determined, readiness must not report ready unless
+// a valid owner-approved fallback for that exact head is present. A COMPLETE
+// inspection-only record (stale, reused from an exempt bot PR at the same
+// commit, or kept across a policy change) does not satisfy the Codex item.
+
+for (const variant of CI_RULE_VARIANTS.filter(v => v.applies)) {
+  for (const changed of [true, null, undefined]) {
+    test(`F001: COMPLETE inspection-only evidence without a fallback is not ready (${variant.label}, .github/ changed: ${changed})`, () => {
+      const input = inspectionOnlyBaseline(variant);
+      input.ciDefinitionsChanged = changed;
+      const result = readiness(input);
+      assert.equal(result.ready, false);
+      const codex = item(result, 'Codex');
+      assert.equal(codex.status, 'blocked', codex.detail);
+      assert.ok(codex.detail.includes('not independent'), codex.detail);
+      assert.ok(renderChecklist(result).includes('NOT ready'), renderChecklist(result));
+    });
+  }
+}
+
+test('F001: the same COMPLETE evidence stays ok for a covered head whose .github/ did not change', () => {
+  const input = inspectionOnlyBaseline({prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true});
+  input.ciDefinitionsChanged = false;
+  const result = readiness(input);
+  assert.equal(item(result, 'Codex').status, 'ok', item(result, 'Codex').detail);
+  assert.equal(result.ready, true);
+});
+
+test('F001: COMPLETE evidence reused from an exempt Dependabot PR at the same commit is not ready for a collaborator PR', () => {
+  // The record is internally valid and was accepted for the bot PR.
+  const bot = inspectionOnlyBaseline({prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: false});
+  bot.ciDefinitionsChanged = true;
+  assert.equal(readiness(bot).ready, true);
+
+  const collaborator = inspectionOnlyBaseline({prAuthor: 'collaborator', prAuthorIsBot: false, isCrossRepository: false});
+  collaborator.codex = bot.codex;
+  collaborator.ciDefinitionsChanged = true;
+  const result = readiness(collaborator);
+  assert.equal(result.ready, false);
+  assert.equal(item(result, 'Codex').status, 'blocked');
+});
+
+test("F001: Codex's reproduction (fork, .github/ changed, bound COMPLETE evidence, no fallback) is not ready", () => {
+  const head = HEAD;
+  const base = BASE;
+  const result = readiness({
+    pr: PR, prAuthor: 'contributor', isCrossRepository: true, draft: false, open: true, head, baseSha: base, mergeBase: base,
+    ciDefinitionsChanged: true,
+    checks: [
+      {id: 1, name: 'CI ready', head_sha: head, status: 'completed', conclusion: 'success', app: {slug: 'github-actions'}, check_suite: {id: 100}},
+      {id: 2, name: 'CodeQL', head_sha: head, status: 'completed', conclusion: 'success'},
+    ],
+    workflowRuns: [{head_sha: head, check_suite_id: 100, path: '.github/workflows/ci.yml'}],
+    comments: [],
+    dispositions: {schema: 2, by_pr_head: {[REGISTER_KEY]: {items: {}}}},
+    blockers: {schema: 2, global_open: [], by_pr_head: {[REGISTER_KEY]: {open: []}}},
+    fallback: null,
+    codex: {
+      status: {status: 'complete', inspected_head: head, inspected_base: base},
+      meta: {
+        head, base, harness_head: base, label: 'review', attempt: 1, review_mode: INSPECTION_REVIEW_MODE,
+        audited_inputs_changed_in_diff: [],
+      },
+      out: `.planning/phases/85.1/codex/${head.slice(0, 12)}-review-a1`,
+      boundary: {verdict: 'verified', head, label: 'review', attempt: 1},
+      provenance: {
+        established: true, base_on_main: true, grader_source: 'trusted-origin-main', grader_ref: base, main_sha: base,
+        harness_head: base, base,
+      },
+      ciEvidence: {ci_ready: {head_sha: head, status: 'completed', conclusion: 'success'}},
+    },
+  });
+  assert.equal(result.ready, false);
+  assert.equal(item(result, 'CI ready').status, 'not-independent');
+  assert.equal(item(result, 'Codex').status, 'blocked');
+});
+
+test('F001: a fallback naming a COMPLETE record does not rescue it for a not-independent head', () => {
+  const input = inspectionOnlyBaseline({prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true});
+  input.ciDefinitionsChanged = true;
+  input.fallback = validFallback({codex_out: input.codex.out});
+  const result = readiness(input);
+  assert.equal(result.ready, false);
+  assert.equal(item(result, 'Codex').status, 'blocked', item(result, 'Codex').detail);
+});
+
+test('F001 runCli: a fork PR whose diff changes .github/ with a COMPLETE record exits 1 with Codex BLOCKED', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+    githubDiffOutput: '.github/os-scan-exceptions.json\n',
+  });
+  const {exitCode, logs} = withCapturedConsole(() => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec, readFile}));
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(output.includes('- Codex: BLOCKED'), output);
+  assert.ok(output.includes('NOT ready'), output);
+});
+
+// --- BM iter-4 IN-01: an undeterminable .github/ change set is shown as unknown, and its error is logged ---
+
+test('IN-01: an unknown .github/ change set is shown as unknown, never as a change', () => {
+  for (const unknown of [null, undefined]) {
+    const input = baseline();
+    input.isCrossRepository = true;
+    input.ciDefinitionsChanged = unknown;
+    if (unknown === null) input.ciDefinitionsError = 'fatal: bad revision';
+    const ci = item(readiness(input), 'CI ready');
+    assert.equal(ci.status, 'not-independent', ci.detail);
+    assert.ok(ci.detail.includes('unknown'), ci.detail);
+    assert.ok(!ci.detail.includes('changes files under .github/'), ci.detail);
+    if (unknown === null) assert.ok(ci.detail.includes('fatal: bad revision'), ci.detail);
+  }
+});
+
+test('IN-01: a known .github/ change still says the head changes files under .github/', () => {
+  const input = baseline();
+  input.isCrossRepository = true;
+  input.ciDefinitionsChanged = true;
+  const ci = item(readiness(input), 'CI ready');
+  assert.ok(ci.detail.includes('changes files under .github/'), ci.detail);
+  assert.ok(!ci.detail.includes('unknown'), ci.detail);
+});
+
+test('IN-01 runCli: a failed .github/ diff is logged and shown as unknown, and readiness fails closed', () => {
+  const {exec, readFile} = inspectionOnlyCliFixture({
+    authorLogin: 'outsider', isBot: false, isCrossRepository: true,
+    boundaryJson: JSON.stringify(verifiedBoundary({label: labelOf(CODEX_OUT), attempt: 2})),
+  });
+  const failing = (cmd, args) => {
+    if (JSON.stringify([cmd, ...args]) === githubDiffKey()) throw new Error('fatal: bad object aaaa');
+    return exec(cmd, args);
+  };
+  const {exitCode, logs, errors} = withCapturedConsole(
+    () => runCli(['--pr', String(PR), '--codex-out', CODEX_OUT], {exec: failing, readFile}),
+  );
+  const output = logs.join('\n');
+  assert.equal(exitCode, 1, output);
+  assert.ok(errors.some(e => e.includes('.github/') && e.includes('fatal: bad object aaaa')), JSON.stringify(errors));
+  const ciLine = output.split('\n').find(line => line.startsWith('- CI ready:'));
+  assert.ok(ciLine.includes('NOT INDEPENDENT'), ciLine);
+  assert.ok(ciLine.includes('unknown'), ciLine);
+  assert.ok(!ciLine.includes('changes files under .github/'), ciLine);
+  assert.ok(output.includes('- Codex: BLOCKED'), output);
+});
+
+// --- BM iter-4 IN-02: readiness grants the attempt-1 exception only to a head the rule covers ---
+
+function ciStopInput(variant, ciDefinitionsChanged) {
+  const stop = {
+    status: 'incomplete',
+    reasons: ['fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required'],
+  };
+  const out = inspectionOnlyOut();
+  const input = inspectionOnlyBaseline(variant, {status: stop, attempt: 1, out, boundary: null, provenance: null});
+  input.ciDefinitionsChanged = ciDefinitionsChanged;
+  input.fallback = validFallback({codex_out: out});
+  return input;
+}
+
+test('IN-02: an attempt-1 stop record for a Dependabot head (rule does not cover it) does not open the fallback', () => {
+  for (const variant of [
+    {prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: false},
+    {prAuthor: 'app/dependabot', prAuthorIsBot: true, isCrossRepository: false},
+  ]) {
+    const codex = item(readiness(ciStopInput(variant, true)), 'Codex');
+    assert.equal(codex.status, 'blocked', codex.detail);
+    assert.ok(codex.detail.includes('attempt 2 or later'), codex.detail);
+  }
+});
+
+test('IN-02: an attempt-1 stop record for a covered head whose .github/ did not change does not open the fallback', () => {
+  const codex = item(readiness(ciStopInput({prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true}, false)), 'Codex');
+  assert.equal(codex.status, 'blocked', codex.detail);
+  assert.ok(codex.detail.includes('attempt 2 or later'), codex.detail);
+});
+
+test('IN-02: an attempt-1 stop record for a covered head with a changed or unknown .github/ opens the fallback', () => {
+  for (const changed of [true, null, undefined]) {
+    for (const variant of [
+      {prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true},
+      {prAuthor: 'collaborator', prAuthorIsBot: false, isCrossRepository: false},
+    ]) {
+      const result = readiness(ciStopInput(variant, changed));
+      assert.equal(item(result, 'Codex').status, 'ok', `${variant.prAuthor} ${changed}: ${item(result, 'Codex').detail}`);
+      assert.equal(result.ready, true);
+    }
+  }
 });

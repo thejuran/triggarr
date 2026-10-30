@@ -1,0 +1,324 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "3eda4277ebae6b6f31889157ccd98852149ebf44",
+  "inspected_base_sha": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 85.1, full phase after fix round 4, paired with BM iteration 5 at standard depth. Full requested source diff plus all ten changed phase PLAN files.",
+  "verdict": "findings",
+  "summary": "One reproduced cleanup defect: interruption during docker create can leave an unregistered container without cleanup escalation. All in-scope changes were inspected. Harness evidence reports 3240 passed and 1 skipped on the requested head.",
+  "coverage": [
+    "All 23 files in the primary scoped diff, including every changed test.",
+    "All ten changed phase plans, 85.1-01-PLAN.md through 85.1-10-PLAN.md.",
+    "Untrusted PR validation, exact-head CI evidence, workflow attribution, CI independence and owner fallback.",
+    "Inert git input construction, byte limits, path handling, prompt fencing and trusted-main grader provenance.",
+    "Container configuration, image provenance, credential custody, canary verification, output ingestion, interruption handling and cleanup.",
+    "Inspection-only report grading, event auditing, completion gates and Python/JavaScript parity tests.",
+    "Dependabot configuration, review classification, acceptance documentation and live-verification plan instructions.",
+    "Read harness test evidence and confirmed HEAD again at completion; working-tree status showed only the supplied untracked evidence directory."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    ".planning/**/codex/** generated review artifacts and transcripts.",
+    ".planning/**/*.jsonl raw event streams.",
+    "Files outside the working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "First command; confirmed requested head."
+    },
+    {
+      "command": "git cat-file -e 05b24feedcfa7933dbbd9aab41c06e89103556da",
+      "exit_code": 0,
+      "purpose": "Confirmed base object exists."
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory primary scope."
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory plan scope."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness evidence, including exact head and passing result."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner changes; truncated portions subsequently read in sections."
+    },
+    {
+      "command": "sed -n '770,1400p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner."
+    },
+    {
+      "command": "sed -n '1401,2070p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner."
+    },
+    {
+      "command": "sed -n '2071,2770p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner."
+    },
+    {
+      "command": "sed -n '2771,3470p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner."
+    },
+    {
+      "command": "sed -n '3471,4170p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect runner."
+    },
+    {
+      "command": "cat docker/codex-review/Dockerfile",
+      "exit_code": 0,
+      "purpose": "Inspect image definition."
+    },
+    {
+      "command": "sed -n '4171,4400p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect orchestration."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs tests/codex_report_status.py .github/dependabot.yml docs/",
+      "exit_code": 0,
+      "purpose": "Inspect grading, acceptance and documentation changes; truncated portions subsequently read separately."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect fallback changes."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Inspect contract changes."
+    },
+    {
+      "command": "sed -n '380,760p' .github/scripts/acceptance-readiness.cjs",
+      "exit_code": 0,
+      "purpose": "Trace acceptance CLI."
+    },
+    {
+      "command": "rg -n 'Linux|macOS|arm64|Docker Desktop|chmod|chown|10001|ownership' .planning/phases/*85.1*/*-PLAN.md tests/test_codex_review_container.py docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Check intended platform and bind-mount assumptions."
+    },
+    {
+      "command": "sed -n '95,155p' docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Read invocation and failure rules."
+    },
+    {
+      "command": "rg -n 'interrupt|create.*fail|created.*id|ledger|create.*raise' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Locate lifecycle regressions."
+    },
+    {
+      "command": "sed -n '1735,1830p' tests/test_codex_review_container.py; sed -n '2170,2225p' tests/test_codex_review_container.py; sed -n '180,270p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace interruption tests and signal handling."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nfrom contextlib import ExitStack\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\ncalls = []\ncreated = []\ndef docker(argv, **kwargs):\n    calls.append(argv)\n    if argv[:2] == ['docker', 'create']:\n        created.append('a' * 64)\n        raise KeyboardInterrupt('daemon created container; client interrupted before returning id')\n    raise AssertionError(argv)\nwith ExitStack() as stack:\n    for name, value in [('_inspect_review_image', ('sha256:' + 'b'*64, r.REVIEW_CODEX_VERSION, 'd'*64)), ('review_image_dockerfile_sha256', 'd'*64), ('_protected_path_marker', None), ('host_exposure_problems', []), ('prepare_codex_home', ('c'*64, {})), ('stage_output_schema', 'e'*64)]:\n        stack.enter_context(patch.object(r, name, return_value=value))\n    stack.enter_context(patch.object(Path, 'mkdir'))\n    stack.enter_context(patch.object(Path, 'home', return_value=Path('/mock-home')))\n    stack.enter_context(patch.object(r.shutil, 'rmtree'))\n    ledger = r.ContainerLedger(docker)\n    try:\n        with ledger:\n            r.verify_isolation_boundary(None, docker, scratch=Path('/mock-scratch'), inner_argv=r.inspection_codex_argv(), expected_schema_sha256='e'*64, ledger=ledger)\n    except KeyboardInterrupt:\n        pass\nprint({'simulated_daemon_containers': created, 'docker_commands': [a[:2] for a in calls], 'cleanup_problems': ledger.cleanup_problems})\nassert created and not any(a[:2] == ['docker', 'rm'] for a in calls)\nassert ledger.cleanup_problems == []\nPY",
+      "exit_code": 1,
+      "purpose": "Initial F001 reproduction attempt; shell could not create heredoc temporary file in read-only sandbox. Python did not execute."
+    },
+    {
+      "command": "python3 -B -c 'from contextlib import ExitStack\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\ncalls = []\ncreated = []\ndef docker(argv, **kwargs):\n    calls.append(argv)\n    if argv[:2] == ['\\''docker'\\'', '\\''create'\\'']:\n        created.append('\\''a'\\'' * 64)\n        raise KeyboardInterrupt('\\''daemon created container; client interrupted before returning id'\\'')\n    raise AssertionError(argv)\nwith ExitStack() as stack:\n    for name, value in [('\\''_inspect_review_image'\\'', ('\\''sha256:'\\'' + '\\''b'\\''*64, r.REVIEW_CODEX_VERSION, '\\''d'\\''*64)), ('\\''review_image_dockerfile_sha256'\\'', '\\''d'\\''*64), ('\\''_protected_path_marker'\\'', None), ('\\''host_exposure_problems'\\'', []), ('\\''prepare_codex_home'\\'', ('\\''c'\\''*64, {})), ('\\''stage_output_schema'\\'', '\\''e'\\''*64)]:\n        stack.enter_context(patch.object(r, name, return_value=value))\n    stack.enter_context(patch.object(Path, '\\''mkdir'\\''))\n    stack.enter_context(patch.object(Path, '\\''home'\\'', return_value=Path('\\''/mock-home'\\'')))\n    stack.enter_context(patch.object(r.shutil, '\\''rmtree'\\''))\n    ledger = r.ContainerLedger(docker)\n    try:\n        with ledger:\n            r.verify_isolation_boundary(None, docker, scratch=Path('\\''/mock-scratch'\\''), inner_argv=r.inspection_codex_argv(), expected_schema_sha256='\\''e'\\''*64, ledger=ledger)\n    except KeyboardInterrupt:\n        pass\nprint({'\\''simulated_daemon_containers'\\'': created, '\\''docker_commands'\\'': [a[:2] for a in calls], '\\''cleanup_problems'\\'': ledger.cleanup_problems})\nassert created and not any(a[:2] == ['\\''docker'\\'', '\\''rm'\\''] for a in calls)\nassert ledger.cleanup_problems == []\n'",
+      "exit_code": 0,
+      "purpose": "Reproduced F001 using the real boundary/ledger logic with Docker and filesystem side effects mocked."
+    },
+    {
+      "command": "sed -n '1,1000p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container tests."
+    },
+    {
+      "command": "sed -n '1001,1734p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container tests."
+    },
+    {
+      "command": "sed -n '1830,2650p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container tests."
+    },
+    {
+      "command": "sed -n '2651,3300p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining container tests."
+    },
+    {
+      "command": "sed -n '1,850p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect inspection-only tests."
+    },
+    {
+      "command": "sed -n '851,1650p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect inspection-only tests."
+    },
+    {
+      "command": "sed -n '1651,2450p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining inspection-only tests."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- tests/test_acceptance_docs.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_codex_review_run.py tests/test_dependabot_config.py tests/test_review_checkpoint_record.py tests/test_review_machinery_lists.py tests/test_codex_review_image.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining Python test changes."
+    },
+    {
+      "command": "cat tests/test_codex_review_gate.py tests/test_codex_review_image.py",
+      "exit_code": 0,
+      "purpose": "Inspect completion-gate and image tests in full."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- .github/scripts/acceptance-readiness.test.cjs | sed -n '1,460p'",
+      "exit_code": 0,
+      "purpose": "Inspect readiness test changes."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- .github/scripts/acceptance-readiness.test.cjs | sed -n '461,1000p'",
+      "exit_code": 0,
+      "purpose": "Inspect remaining readiness test changes."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- .github/scripts/codex-fallback.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect fallback test changes."
+    },
+    {
+      "command": "cat .github/scripts/codex-completeness-parity.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect cross-language parity tests."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1,400p'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff; truncated section subsequently reread."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '235,285p;401,640p'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff and recover truncated section."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '641,880p'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '881,1120p'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1121,1360p'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1361,1600p'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff; small truncated section subsequently reread."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1480,1505p;1601,1800p'",
+      "exit_code": 0,
+      "purpose": "Inspect plan diff and recover truncated section."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1801,2050p'",
+      "exit_code": 0,
+      "purpose": "Finish plan diff."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- .github/scripts/acceptance-readiness.cjs",
+      "exit_code": 0,
+      "purpose": "Complete untruncated inspection of readiness changes."
+    },
+    {
+      "command": "sed -n '1,390p' .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Trace surrounding fallback validation."
+    },
+    {
+      "command": "sed -n '390,820p' .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Trace completeness predicate and CLI callers."
+    },
+    {
+      "command": "sed -n '1,770p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Complete runner inspection, including shared subprocess and trust code."
+    },
+    {
+      "command": "sed -n '4401,4800p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Complete runner orchestration and CLI inspection."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..3eda4277ebae6b6f31889157ccd98852149ebf44 -- docs/ .github/dependabot.yml",
+      "exit_code": 0,
+      "purpose": "Confirm documentation and Dependabot changes; truncated contract section subsequently reread."
+    },
+    {
+      "command": "sed -n '1,100p' docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Complete contract inspection and check threat-model assumptions."
+    },
+    {
+      "command": "cat tests/codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Inspect complete checker and surrounding schema/completeness validation."
+    },
+    {
+      "command": "nl -ba tests/codex_review_run.py | sed -n '1550,1670p;1820,1945p'",
+      "exit_code": 0,
+      "purpose": "Trace finding and confirm source locations."
+    },
+    {
+      "command": "nl -ba tests/codex_review_run.py | sed -n '1735,1820p'; git status --short; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Pin create/register finding location and confirm final working-tree/head state."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Register a recoverable container identity before issuing docker create",
+      "file": "tests/codex_review_run.py",
+      "line_start": 1775,
+      "line_end": 1784,
+      "trigger": "Docker creates the canary container, but the client is interrupted or loses its response before returning a successful result containing its ID. The review-container create at lines 1806–1815 has the same gap.",
+      "execution_path": "The inspection runner or --verify-boundary enters ContainerLedger, then verify_isolation_boundary invokes docker create. Registration happens only after the command returns successfully and stdout passes ID validation. An interruption before that registration unwinds into ledger cleanup with no registered container.",
+      "consequence": "A created container remains in Docker without removal, absence verification, or a manual-cleanup escalation. The review remains incomplete, but the promised cleanup accounting silently misses the orphan. This reproduction establishes a stopped-container lifecycle leak, not a running-container escape or credential disclosure.",
+      "evidence": "A deterministic mock created a daemon-side container and then raised KeyboardInterrupt from the create call. The real boundary and ledger code issued only docker create, performed no docker rm, and returned cleanup_problems=[]. Existing interruption coverage raises during docker start, after registration, so it does not protect this interval.",
+      "suggested_fix": "Allocate a unique per-attempt container name or label before creation and register that provisional identity with the ledger. Reconcile and remove it even when docker create returns no usable ID, and escalate if absence cannot be confirmed. Add regressions for daemon-side creation followed by interruption or response failure for both canary and review containers.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'from contextlib import ExitStack\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\ncalls = []\ncreated = []\ndef docker(argv, **kwargs):\n    calls.append(argv)\n    if argv[:2] == ['\\''docker'\\'', '\\''create'\\'']:\n        created.append('\\''a'\\'' * 64)\n        raise KeyboardInterrupt('\\''daemon created container; client interrupted before returning id'\\'')\n    raise AssertionError(argv)\nwith ExitStack() as stack:\n    for name, value in [('\\''_inspect_review_image'\\'', ('\\''sha256:'\\'' + '\\''b'\\''*64, r.REVIEW_CODEX_VERSION, '\\''d'\\''*64)), ('\\''review_image_dockerfile_sha256'\\'', '\\''d'\\''*64), ('\\''_protected_path_marker'\\'', None), ('\\''host_exposure_problems'\\'', []), ('\\''prepare_codex_home'\\'', ('\\''c'\\''*64, {})), ('\\''stage_output_schema'\\'', '\\''e'\\''*64)]:\n        stack.enter_context(patch.object(r, name, return_value=value))\n    stack.enter_context(patch.object(Path, '\\''mkdir'\\''))\n    stack.enter_context(patch.object(Path, '\\''home'\\'', return_value=Path('\\''/mock-home'\\'')))\n    stack.enter_context(patch.object(r.shutil, '\\''rmtree'\\''))\n    ledger = r.ContainerLedger(docker)\n    try:\n        with ledger:\n            r.verify_isolation_boundary(None, docker, scratch=Path('\\''/mock-scratch'\\''), inner_argv=r.inspection_codex_argv(), expected_schema_sha256='\\''e'\\''*64, ledger=ledger)\n    except KeyboardInterrupt:\n        pass\nprint({'\\''simulated_daemon_containers'\\'': created, '\\''docker_commands'\\'': [a[:2] for a in calls], '\\''cleanup_problems'\\'': ledger.cleanup_problems})\nassert created and not any(a[:2] == ['\\''docker'\\'', '\\''rm'\\''] for a in calls)\nassert ledger.cleanup_problems == []\n'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest or Node suites in the read-only sandbox. Harness evidence records uv run --extra dev pytest tests/ -q on the exact requested head: exit 0, 3240 passed, 1 skipped, 38 warnings.",
+    "Did not build or launch the Docker image, access credentials, or exercise live GitHub/Codex services. The opt-in live boundary test was skipped in harness evidence.",
+    "F001 was reproduced through the real boundary and cleanup code with simulated Docker side effects; live Docker interruption timing was not reproduced.",
+    "Several large tool outputs were truncated; the omitted source sections were subsequently read in smaller sections.",
+    "The initial heredoc reproduction command failed because the sandbox denied temporary-file creation; the equivalent python -c invocation succeeded."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

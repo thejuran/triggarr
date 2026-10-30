@@ -1,0 +1,156 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "9c30b010f748866d432566c82ee54db533a49564",
+  "inspected_base_sha": "9978b7fafcafdfc7d400215c48211616ba75a0f3",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/46",
+  "scope": "PR #46 full scoped diff: action pin updates in three workflows and uv.lock dependency updates; separately checked changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No concrete defects identified. Harness evidence reports 2,688 tests passed at the requested head. Local Ruff 0.17.2 and six artifact-promotion tests passed.",
+  "coverage": [
+    "Inspected the entire in-scope diff, recovering truncated lockfile output with targeted reads.",
+    "Confirmed no phase *-PLAN.md files changed.",
+    "Reviewed CI permissions, mandatory jobs, audit failure handling, artifact verification, and browser-test completion gates.",
+    "Reviewed release trust checks, stale-main rejection, publication concurrency, exact-run artifact selection, and identity checks before publication.",
+    "Confirmed acceptance policy commit, protected environment, and credential-persistence settings remain unchanged.",
+    "Reviewed dependency constraints and Docker dependency export alongside all lockfile changes.",
+    "Inspected middleware, scheduler startup/shutdown, authentication sequence tests, and workflow regression assertions relevant to upgraded dependencies.",
+    "Checked harness evidence provenance, test results, and warnings; confirmed browser tests are excluded from the ordinary unit suite."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md except changed *-PLAN.md files",
+    "Excluded planning reviews and generated transcripts were not used as correctness evidence."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 9978b7fafcafdfc7d400215c48211616ba75a0f3",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 9978b7fafcafdfc7d400215c48211616ba75a0f3..9c30b010f748866d432566c82ee54db533a49564 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff."
+    },
+    {
+      "command": "git diff 9978b7fafcafdfc7d400215c48211616ba75a0f3..9c30b010f748866d432566c82ee54db533a49564 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check phase plan changes; none."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness evidence."
+    },
+    {
+      "command": "git diff --stat 9978b7fafcafdfc7d400215c48211616ba75a0f3..9c30b010f748866d432566c82ee54db533a49564",
+      "exit_code": 0,
+      "purpose": "Inventory changes and exclusions."
+    },
+    {
+      "command": "git diff 9978b7fafcafdfc7d400215c48211616ba75a0f3..9c30b010f748866d432566c82ee54db533a49564 -- uv.lock | tail -100",
+      "exit_code": 0,
+      "purpose": "Inspect remaining lockfile changes."
+    },
+    {
+      "command": "cat pyproject.toml Dockerfile .github/workflows/release.yml .github/workflows/review-acceptance.yml",
+      "exit_code": 0,
+      "purpose": "Review dependency consumers and publication/acceptance context."
+    },
+    {
+      "command": "rg --files tests .github/scripts triggarr | head -100",
+      "exit_code": 0,
+      "purpose": "Locate relevant code and tests."
+    },
+    {
+      "command": "cat .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Review full CI workflow."
+    },
+    {
+      "command": "git diff 9978b7fafcafdfc7d400215c48211616ba75a0f3..9c30b010f748866d432566c82ee54db533a49564 -- uv.lock | sed -n '90,145p'",
+      "exit_code": 0,
+      "purpose": "Inspect middle lockfile changes."
+    },
+    {
+      "command": "cat .github/scripts/artifact-promotion.test.cjs tests/test_github_workflows.py tests/test_audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Inspect regression assertions; output partly truncated."
+    },
+    {
+      "command": "rg -n 'apscheduler|AsyncIOScheduler|add_job|TemplateResponse|request.form|BaseHTTPMiddleware|lifespan' triggarr tests/test_scheduler.py tests/test_root_path.py tests/test_auth_integration.py",
+      "exit_code": 0,
+      "purpose": "Locate upgraded-library integration points."
+    },
+    {
+      "command": "ls -d .venv .venv/bin/python .venv/bin/ruff",
+      "exit_code": 0,
+      "purpose": "Check local verification tools."
+    },
+    {
+      "command": "git diff 9978b7fafcafdfc7d400215c48211616ba75a0f3..9c30b010f748866d432566c82ee54db533a49564 -- uv.lock | sed -n '107,150p'",
+      "exit_code": 0,
+      "purpose": "Recover truncated dependency changes."
+    },
+    {
+      "command": "cat .github/scripts/artifact-promotion.test.cjs",
+      "exit_code": 0,
+      "purpose": "Read artifact regression tests completely."
+    },
+    {
+      "command": ".venv/bin/ruff check --no-cache triggarr/ tests/",
+      "exit_code": 0,
+      "purpose": "Validate upgraded Ruff against application and tests."
+    },
+    {
+      "command": "cat triggarr/web/middleware.py tests/conftest.py",
+      "exit_code": 0,
+      "purpose": "Inspect security middleware and test collection."
+    },
+    {
+      "command": "sed -n '1,210p' .github/scripts/release-policy.cjs",
+      "exit_code": 0,
+      "purpose": "Trace release authorization and stale-state handling."
+    },
+    {
+      "command": "sed -n '610,757p' triggarr/search/scheduler.py; sed -n '960,1025p' tests/test_scheduler.py; sed -n '1,150p' tests/test_auth_integration.py",
+      "exit_code": 0,
+      "purpose": "Inspect lifecycle and authentication sequence coverage."
+    },
+    {
+      "command": "sed -n '1,170p' tests/test_github_workflows.py",
+      "exit_code": 0,
+      "purpose": "Inspect structural publication safeguards."
+    },
+    {
+      "command": "node --test .github/scripts/artifact-promotion.test.cjs",
+      "exit_code": 0,
+      "purpose": "Run six artifact-promotion regression checks."
+    },
+    {
+      "command": "tail -16 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Confirm harness summary and warnings."
+    },
+    {
+      "command": "git status --short; git rev-parse HEAD; .venv/bin/ruff --version",
+      "exit_code": 0,
+      "purpose": "Confirm final head, working-tree status, and Ruff version."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently rerun pytest in the read-only sandbox; relied on harness evidence for the exact head: exit 0, 2,688 passed, 38 warnings.",
+    "Did not execute GitHub Actions, Docker builds, browser tests, or vulnerability scanners. The harness unit run does not cover the browser suite.",
+    "Upstream action implementations and release metadata were unavailable within the permitted working-copy-only scope; action SHA provenance and upstream behavioral compatibility were not independently verified.",
+    "Workflow structural tests protect wiring and ordering but do not establish runtime compatibility of the upgraded actions."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85 executed, in review -- unpushed; BM review clean after 4 owner-approved fix rounds; paired Codex pending by PR URL after push; verification human_needed (8 items)"
-stopped_at: "Phase 85 executed 2026-10-27 (19/19 plans) at af08d2a; next: owner vibe-check decision + /deep-review offer, then end-of-phase push/PR and Codex by PR URL"
-last_updated: "2026-10-27T22:31:35Z"
-last_activity: "2026-10-27 -- Phase 85 executed (19/19 plans, 5 waves); BM phase review clean at iteration 5 after 4 owner-approved fix rounds; local Codex refused (worktree vs local-origin trust), owner chose Codex by PR URL after push; verification human_needed"
+status: "Phase 85.1 executed, in review (10/10 plans, 5 review fix rounds, live boundary check run 5 passed; not pushed) -- final PR head review next; Dependabot #47 held open as the post-merge live proof PR"
+stopped_at: "Phase 85.1 reviewed through BM iteration 6 + Codex (iteration-6 Codex INCOMPLETE twice for size); verification human_needed (post-merge live run on PR #47; final PR head review). Next: freeze final head, BM + Codex on it (owner-approved vibe-check fallback if Codex incomplete twice), push, one PR"
+last_updated: "2026-10-30T19:30:15Z"
+last_activity: "2026-10-30 -- Phase 85.1: review fix rounds 1-5 applied (owner threat-model stopping rule adopted), live boundary run 5 passed on the rebuilt fingerprint-labelled image, verification human_needed (2/3; criterion 3 is the post-merge live run)"
 progress:
   total_phases: 7
-  completed_phases: 3
-  total_plans: 45
-  completed_plans: 26
-  percent: 43
+  completed_phases: 4
+  total_plans: 55
+  completed_plans: 55
+  percent: 57
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 85 — Follow-on CI improvements & acceptance usability
+**Current focus:** Phase 85.1 — Isolated Codex review for untrusted PRs (planned; execute next)
 
 > **Releases:** v2.10.0, v2.11.0 and v2.11.1 are pushed and published as GitHub Releases (2026-09-20). v2.12 work so far: Phases 77–79 merged via PR #26 (`c914cbc`) and deployed to production as `:main` on 2026-10-18; connection-pill polling fix merged via PR #27 (`d41b484`); Phase 80 merged via PR #28 (`dee25df`) and deployed to production on 2026-10-18. v2.12 shipped 2026-10-21 as v2.12.0 (tag on `dbb38fa`).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85 (Follow-on CI improvements & acceptance usability) — EXECUTED, IN REVIEW (unpushed)
-Plan: 19 of 19 done; BM review iteration 5 clean at 1f8e339 (rounds 1-4 owner-approved); verification human_needed (85-VERIFICATION.md, 85-HUMAN-UAT.md: P1-P6, paired Codex by PR URL, register schema-2 migration)
-Status: Phase 85 executed, in review -- next: owner vibe-check decision and /deep-review offer, then end-of-phase push + ready PR, Codex by PR URL, hand-off steps in 85-REVIEW-EVIDENCE.md
-Last activity: 2026-10-27 -- Phase 85 executed and verified locally (human_needed); see 85-REVIEW-EVIDENCE.md post-plan review record
+Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — EXECUTED, IN REVIEW (not pushed)
+Plan: 10 of 10 executed (85.1-01..85.1-10); the post-merge live run on PR #47 remains the phase verification gate
+Status: Phase 85.1 executed, in review (10/10 plans; 5 review fix rounds; live boundary run 5 passed; verification human_needed); not pushed; next: final PR head BM + Codex review, then push and one PR
+Last activity: 2026-10-30 -- Phase 85.1 review fix rounds 1-5 applied under the owner threat-model stopping rule; live boundary run 5 passed on the rebuilt image; verification human_needed (criterion 3 is the post-merge live run on PR #47)
 
 ### v2.13 milestone shape
 
@@ -243,12 +243,15 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-10-27T12:37:41.000Z
-Stopped at: Phase 85 planned; next: /bm:execute-phase 85
-Resume file: .planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-CONTEXT.md
+Last session: 2026-10-28T21:43:00Z
+Stopped at: Phase 85.1 context gathered; next: /bm:plan-phase 85.1
+Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-CONTEXT.md
 
 ## Operator Next Steps
 
+- `/bm:plan-phase 85.1` -- isolated Codex review for untrusted (bot/fork) PRs, from 85.1-CONTEXT.md
+- Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot PRs per the release rule
+- Decide SA-12 (FastAPI 0.162 opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - `/bm:plan-phase 82` -- plan Phase 82 (CI Tests What We Ship) from 82-CONTEXT.md
 - Phase 83 begins with REVIEW-01's gate: record the BM baseline, assess the target version's native review/fixer behavior, and get explicit owner approval of the exact version + bounded settings list before any BM update runs
 - Phase 84 (PLANCHK) is separately gated: nothing from it is activated in the repo without owner approval, and it blocks no other phase. Routine vibe-check stays on code and control changes until the owner explicitly retires it (PILOT-03); ordinary docs/planning-only changes follow the classification policy once Phase 83 defines it

@@ -9,7 +9,9 @@ const fs = require('node:fs');
 const {execFileSync} = require('node:child_process');
 
 const {assess} = require('./review-acceptance.cjs');
-const {validateFallback} = require('./codex-fallback.cjs');
+const {
+  validateFallback, inspectionOnlyCompleteness, isCiNotIndependentStop, INSPECTION_REVIEW_MODE,
+} = require('./codex-fallback.cjs');
 
 const REPO = 'thejuran/triggarr';
 // Mirrors tests/codex_review_run.py TRUSTED_AUTHORS (owner decision 2026-10-22).
@@ -30,20 +32,52 @@ const PR_ARG_RE = /^[1-9][0-9]*$/;
 const HEAD_RE = /^[0-9a-f]{40}$/;
 const OUT_PATH_RE = /^\.planning\/phases\/[A-Za-z0-9._-]+\/codex\/[0-9a-f]{12}-[a-z0-9-]+-a[0-9]+$/;
 
-function headTrustFor({isCrossRepository, author}) {
+function isRecognisedBot(author) {
   const login = author?.login;
-  const isBot = Boolean(author?.is_bot) || (typeof login === 'string' && login.endsWith('[bot]'));
-  if (isCrossRepository || isBot || !TRUSTED_AUTHORS.includes(login)) return 'untrusted';
+  return Boolean(author?.is_bot) || (typeof login === 'string' && login.endsWith('[bot]'));
+}
+
+function headTrustFor({isCrossRepository, author}) {
+  if (isCrossRepository || isRecognisedBot(author) || !TRUSTED_AUTHORS.includes(author?.login)) return 'untrusted';
   return 'trusted';
 }
 
-// codexStatusFor implements the completeness contract shared with codex-fallback.cjs
-// and Plan 85-13's runner: complete iff review_mode is "trusted-local-tests" AND
-// the head-side checker says "complete" AND (no audited input changed in the diff,
-// or the base checker also says "complete"). For an untrusted head this never
-// reports complete; a record claiming complete is blocked outright. When
-// incomplete, the single owner-approved-fallback validator decides whether the
-// fallback satisfies the item -- never a local re-implementation of that rule.
+// Mirrors tests/codex_review_run.py ci_independence_rule_applies() (SA-03/SA-04;
+// a cross-language parity test pins the two): a fork head, or a
+// same-repository head whose author is neither an owner nor a recognised bot.
+// When such a head changes anything under .github/, its own files decided
+// what CI ran, so its "CI ready" is not independent evidence (BM iter-3 IN-07).
+const CI_DEFINITION_PATHSPEC = '.github';
+
+function ciIndependenceRuleApplies({isCrossRepository, author}) {
+  if (isCrossRepository) return true;
+  if (isRecognisedBot(author)) return false;
+  return !TRUSTED_AUTHORS.includes(author?.login);
+}
+
+// codexStatusFor implements the completeness contract shared with
+// codex-fallback.cjs (D-07, D-12). A trusted head is complete iff review_mode
+// is "trusted-local-tests" AND the head-side checker says "complete" AND (no
+// audited input changed in the diff, or the base checker also says
+// "complete"). An untrusted (bot/fork) head is complete iff review_mode is
+// "inspection-only-ci-evidence" and the shared inspectionOnlyCompleteness()
+// predicate (exported by codex-fallback.cjs, also used by
+// codexStatusFromOutput() there) says so: the head-side status is complete
+// and bound to this head/base, <OUT>.boundary.json has a verdict of
+// "verified" bound to this head and attempt, <OUT>.grader-provenance.json
+// records an established trusted-origin-main grader with the base on main,
+// the meta's head, label and attempt match the <OUT> prefix (the same rules as
+// the Python completion gate, WR-05), every record of the attempt agrees
+// (the provenance names the meta's reviewed base and grader, and
+// <OUT>.ci-evidence.json is for this head; Codex 2aa2cc8 F001), and (when an
+// audited input changed) the
+// base checker also confirms completeness. A record claiming
+// trusted-mode completion for an untrusted head, or an inspection-only record
+// that claims "complete" without satisfying the predicate, is blocked
+// outright -- never rescued by a fallback (T-85.1-04/07b, PC-06). When
+// incomplete for a legitimate reason, the single owner-approved-fallback
+// validator decides whether the fallback satisfies the item -- never a local
+// re-implementation of that rule.
 // auditedChanged is readiness's own recomputation of the audited inputs changed
 // in reviewedBase..head; it is unioned with the meta's claim so the head's runner
 // can never talk the base cross-grade away. The meta must name this head and the
@@ -57,8 +91,15 @@ function headTrustFor({isCrossRepository, author}) {
 // A fallback stands in for that same Codex evidence, so the fallback validator
 // is given the same reviewed base (WR-02, iteration 3): the record and its
 // Codex evidence must name one base, the range actually reviewed.
+// ciIndependenceRequired is readiness's own finding that the CI-independence
+// rule covers this head and its .github/ change set changed or could not be
+// determined (Codex c7c34a5 F001). For such a head only the owner-approved
+// fallback satisfies this item: a COMPLETE inspection-only record is blocked
+// (the runner stops such a head, so a COMPLETE record for it is stale or
+// reused), and is never rescued by a fallback (PC-06).
 function codexStatusFor({
   status, baseStatus, meta, auditedChanged: recomputed, out, head, base, reviewedBase, pr, prAuthor, headTrust, fallback,
+  boundary, provenance, ciEvidence, ciIndependenceRequired,
 }) {
   if (!meta || meta.head !== head) {
     return {ok: false, detail: 'Codex evidence is for a different head'};
@@ -71,10 +112,12 @@ function codexStatusFor({
   const claimed = Array.isArray(meta.audited_inputs_changed_in_diff) ? meta.audited_inputs_changed_in_diff : [];
   const auditedChanged = [...new Set([...claimed, ...(Array.isArray(recomputed) ? recomputed : [])])];
   const baseRequired = auditedChanged.length > 0;
-  const claimsComplete = meta?.review_mode === 'trusted-local-tests' && status?.status === 'complete';
 
-  if (headTrust === 'untrusted' && claimsComplete) {
-    return {ok: false, detail: 'Codex evidence claims complete for an untrusted head; untrusted runs are refused until Phase 85.1'};
+  if (headTrust === 'untrusted' && meta.review_mode === 'trusted-local-tests' && status?.status === 'complete') {
+    return {
+      ok: false,
+      detail: 'Codex evidence claims trusted-mode completion for an untrusted head; untrusted heads are reviewed inspection-only',
+    };
   }
 
   // A checker verdict counts only for the commits it graded (WR-02, iteration
@@ -84,39 +127,83 @@ function codexStatusFor({
   if (status?.status === 'complete' && !boundHere(status)) {
     return {ok: false, detail: 'Codex status file is not bound to this head and base (inspected_head/inspected_base differ)'};
   }
-  if (claimsComplete && baseRequired && baseStatus?.status === 'complete' && !boundHere(baseStatus)) {
-    return {
-      ok: false,
-      detail: 'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)',
-    };
-  }
-  const baseOk = !baseRequired || baseStatus?.status === 'complete';
-  const headSideComplete = claimsComplete;
 
-  if (headTrust === 'trusted' && headSideComplete && !baseOk) {
-    return {ok: false, detail: "grader changed in this diff: the base commit's checker did not confirm completeness"};
+  let complete = false;
+  let completeDetail = 'complete';
+  let invalidEvidence = false;
+
+  if (headTrust === 'untrusted' && meta.review_mode === INSPECTION_REVIEW_MODE) {
+    const predicate = inspectionOnlyCompleteness({
+      meta, status, baseStatus, boundary, provenance, ciEvidence, out, head, baseRequired,
+    });
+    invalidEvidence = predicate.invalidEvidence;
+    if (predicate.complete && ciIndependenceRequired === true) {
+      return {
+        ok: false,
+        detail: 'a COMPLETE Codex record does not satisfy this item: CI evidence for this fork or non-bot untrusted head '
+          + 'is not independent (its .github/ changed or could not be determined); rerun the inspection-only review, '
+          + 'which stops with the CI-independence reason, then record the owner-approved fallback (D-16)',
+      };
+    }
+    if (predicate.complete) {
+      complete = true;
+      completeDetail = 'complete (inspection-only, isolation boundary verified)';
+    } else if (status?.status === 'complete') {
+      // An anomalous "complete" claim is never rescued by a fallback (PC-06).
+      return {ok: false, detail: predicate.reasons.join('; ')};
+    }
+  } else {
+    const claimsComplete = meta?.review_mode === 'trusted-local-tests' && status?.status === 'complete';
+    if (claimsComplete && baseRequired && baseStatus?.status === 'complete' && !boundHere(baseStatus)) {
+      return {
+        ok: false,
+        detail: 'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)',
+      };
+    }
+    const baseOk = !baseRequired || baseStatus?.status === 'complete';
+
+    if (headTrust === 'trusted' && claimsComplete && !baseOk) {
+      return {ok: false, detail: "grader changed in this diff: the base commit's checker did not confirm completeness"};
+    }
+
+    complete = headTrust === 'trusted' && claimsComplete && baseOk;
   }
 
-  const complete = headTrust === 'trusted' && headSideComplete && baseOk;
   if (complete) {
-    return {ok: true, detail: 'complete'};
+    return {ok: true, detail: completeDetail};
   }
 
-  const codexStatus = {complete: false, attempt: meta?.attempt, out, reviewMode: meta?.review_mode};
+  const codexStatus = {
+    complete: false,
+    invalidEvidence,
+    // Same rule as codex-fallback.cjs codexStatusFromOutput() (BM iter-3 IN-05).
+    ciNotIndependent: meta?.review_mode === INSPECTION_REVIEW_MODE && isCiNotIndependentStop(status),
+    attempt: meta?.attempt,
+    out,
+    reviewMode: meta?.review_mode,
+  };
 
   if (!fallback) {
     if (headTrust === 'untrusted') {
-      return {ok: false, detail: 'untrusted head (bot/fork): Codex review is refused until Phase 85.1; an owner-approved fallback (D-16) is required'};
+      return {
+        ok: false,
+        detail: 'INCOMPLETE/PENDING: no recorded fallback for this untrusted head; an owner-approved fallback (D-16) '
+          + 'is required, or rerun the inspection-only review; wait or retry later blocks acceptance',
+      };
     }
     return {ok: false, detail: 'INCOMPLETE/PENDING: no recorded fallback; wait or retry later blocks acceptance'};
   }
 
-  const {ok, reasons} = validateFallback(fallback, {pr, head, base: expectedBase, prAuthor, headTrust, codexStatus});
+  // readiness's own CI-independence finding, never the status file, decides the
+  // attempt-1 exception (BM iter-4 IN-02).
+  const {ok, reasons} = validateFallback(fallback, {
+    pr, head, base: expectedBase, prAuthor, headTrust, codexStatus, ciIndependenceRequired: ciIndependenceRequired === true,
+  });
   if (!ok) {
     return {ok: false, detail: reasons.join('; ')};
   }
   if (headTrust === 'untrusted') {
-    return {ok: true, detail: `ok (owner-approved fallback for untrusted head: ${fallback.reviewer?.name}; isolated review is Phase 85.1)`};
+    return {ok: true, detail: `ok (owner-approved fallback for untrusted head: ${fallback.reviewer?.name})`};
   }
   return {ok: true, detail: `ok (owner-approved fallback: ${fallback.reviewer?.name})`};
 }
@@ -131,12 +218,46 @@ function isSuccessful(check) {
   return Boolean(check) && check.status === 'completed' && check.conclusion === 'success';
 }
 
-function ciReadyItem(checks, head) {
-  const latest = latestCheck(checks, head, 'CI ready');
+// Mirrors tests/codex_review_run.py ci_evidence() (BM iter-2 WR-02/WR-03; a
+// cross-language parity test pins the two). Only a "CI ready" check run
+// posted by the github-actions app, in a check suite that belongs to a
+// .github/workflows/ci.yml workflow run for this head, counts. If any such
+// run comes from another workflow file, or its workflow cannot be identified,
+// CI ready is blocked: a head-defined workflow could post its own passing
+// "CI ready". Several ci.yml runs (a re-run, or a close/reopen) all count and
+// the latest (highest id) result wins.
+const CI_READY_APP_SLUG = 'github-actions';
+const CI_WORKFLOW_PATH = '.github/workflows/ci.yml';
+
+function ciReadyItem(checks, head, workflowRuns, workflowRunsError) {
+  const ours = (checks || []).filter(c => c && c.head_sha === head && c.name === 'CI ready'
+    && c.app?.slug === CI_READY_APP_SLUG && c.check_suite?.id !== undefined && c.check_suite?.id !== null);
+  if (ours.length > 0) {
+    if (workflowRunsError) {
+      return {name: 'CI ready', status: 'blocked', detail: workflowRunsError};
+    }
+    const pathBySuite = new Map();
+    for (const run of workflowRuns || []) {
+      if (!run || run.head_sha !== head || run.check_suite_id === undefined || run.check_suite_id === null) continue;
+      if (typeof run.path === 'string') pathBySuite.set(String(run.check_suite_id), run.path);
+    }
+    const foreign = [...new Set(ours.map(c => String(c.check_suite.id)))]
+      .filter(suite => pathBySuite.get(suite) !== CI_WORKFLOW_PATH)
+      .sort();
+    if (foreign.length > 0) {
+      return {
+        name: 'CI ready',
+        status: 'blocked',
+        detail: `a "CI ready" check run for this head comes from a workflow other than ${CI_WORKFLOW_PATH}, `
+          + `or one that cannot be identified (check suites ${foreign.join(', ')})`,
+      };
+    }
+  }
+  const latest = ours.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
   if (!isSuccessful(latest)) {
     return {name: 'CI ready', status: 'blocked', detail: 'no successful "CI ready" check run for this head'};
   }
-  return {name: 'CI ready', status: 'ok', detail: 'success'};
+  return {name: 'CI ready', status: 'ok', detail: `success (${CI_WORKFLOW_PATH})`};
 }
 
 function codeQlItem(checks, head) {
@@ -180,10 +301,18 @@ function readiness(input) {
   const {
     pr, prAuthor, prAuthorIsBot, isCrossRepository, draft, open,
     head, baseSha, mergeBase, checks, comments, checksError, commentsError,
-    dispositions, blockers, codex = {}, fallback,
+    workflowRuns, workflowRunsError, dispositions, blockers, codex = {}, fallback, ciDefinitionsChanged,
+    ciDefinitionsError,
   } = input;
 
   const items = [];
+
+  // An unknown change set (anything but an explicit false) counts as a change:
+  // fail closed. This one value drives both the CI ready display and the Codex
+  // item (Codex c7c34a5 F001).
+  const ciIndependenceRequired = ciIndependenceRuleApplies({
+    isCrossRepository, author: {login: prAuthor, is_bot: prAuthorIsBot},
+  }) && ciDefinitionsChanged !== false;
 
   items.push(open === false
     ? {name: 'PR open', status: 'blocked', detail: 'PR is not open'}
@@ -201,7 +330,24 @@ function readiness(input) {
     items.push({name: 'CI ready', status: 'blocked', detail: checksError});
     items.push({name: 'CodeQL', status: 'blocked', detail: checksError});
   } else {
-    items.push(ciReadyItem(checks, head));
+    const ciItem = ciReadyItem(checks, head, workflowRuns, workflowRunsError);
+    if (ciItem.status === 'ok' && ciIndependenceRequired) {
+      // BM iter-4 IN-01: only a determined change is stated as a fact; an
+      // unknown change set is shown as unknown (with the git error, when one
+      // was recorded) and still treated as a change.
+      const why = ciDefinitionsChanged === true
+        ? 'this fork or non-bot untrusted head changes files under .github/, so its own files decided what CI ran '
+          + 'and what counts as passing'
+        : 'whether this fork or non-bot untrusted head changed files under .github/ is unknown '
+          + `(${ciDefinitionsError ? `git diff failed: ${ciDefinitionsError}` : 'not computed'}); treated as changed`;
+      items.push({
+        name: 'CI ready',
+        status: 'not-independent',
+        detail: `${ciItem.detail}, but not independent evidence: ${why}; the Codex item needs the owner-approved fallback`,
+      });
+    } else {
+      items.push(ciItem);
+    }
     items.push(codeQlItem(checks, head));
   }
 
@@ -214,10 +360,16 @@ function readiness(input) {
   }
 
   const headTrust = headTrustFor({isCrossRepository, author: {login: prAuthor, is_bot: prAuthorIsBot}});
-  const codexResult = codexStatusFor({...codex, head, base: baseSha, reviewedBase: mergeBase, pr, prAuthor, headTrust, fallback});
+  const codexResult = codexStatusFor({
+    ...codex, head, base: baseSha, reviewedBase: mergeBase, pr, prAuthor, headTrust, fallback, ciIndependenceRequired,
+  });
   items.push({name: 'Codex', status: codexResult.ok ? 'ok' : 'blocked', detail: codexResult.detail});
 
-  const ready = items.every(i => i.status === 'ok');
+  // A not-independent CI ready still passed; it is shown as such rather than
+  // "ok", and acceptance then rests on the Codex item, which for such a head is
+  // satisfied only by the owner-approved fallback, never by a COMPLETE record
+  // (IN-05/IN-07, Codex c7c34a5 F001).
+  const ready = items.every(i => i.status === 'ok' || i.status === 'not-independent');
   return {ready, pr, head, base: baseSha, reviewedBase: mergeBase, items};
 }
 
@@ -237,7 +389,8 @@ function renderChecklist(result) {
   lines.push('Review status on this head:');
   lines.push('- BM: <fill from the checkpoint record>');
   for (const item of result.items) {
-    lines.push(`- ${item.name}: ${item.status === 'ok' ? 'ok' : 'BLOCKED'} — ${item.detail}`);
+    const shown = {ok: 'ok', 'not-independent': 'NOT INDEPENDENT'}[item.status] || 'BLOCKED';
+    lines.push(`- ${item.name}: ${shown} — ${item.detail}`);
   }
   lines.push('');
   lines.push(result.ready ? 'Ready to request approval' : 'NOT ready: fix the blocked items before presenting the pending run');
@@ -249,7 +402,10 @@ function renderChecklist(result) {
 // on anything that is not the expected shape -- a non-array top level, or,
 // for 'check-runs', a page without its own check_runs array.
 function flattenPages(text, kind) {
-  const errorMessage = kind === 'check-runs' ? 'could not read GitHub check runs' : 'could not read PR comments';
+  const errorMessage = {
+    'check-runs': 'could not read GitHub check runs',
+    'workflow-runs': 'could not read GitHub workflow runs',
+  }[kind] || 'could not read PR comments';
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -263,6 +419,13 @@ function flattenPages(text, kind) {
     for (const page of parsed) {
       if (!page || !Array.isArray(page.check_runs)) throw new Error(errorMessage);
       flat.push(...page.check_runs);
+    }
+    return flat;
+  }
+  if (kind === 'workflow-runs') {
+    for (const page of parsed) {
+      if (!page || !Array.isArray(page.workflow_runs)) throw new Error(errorMessage);
+      flat.push(...page.workflow_runs);
     }
     return flat;
   }
@@ -373,6 +536,19 @@ function runCli(argv, {exec, readFile} = {}) {
     checksError = err.message;
   }
 
+  // The head's workflow runs map each "CI ready" check suite to its workflow
+  // file (BM iter-2 WR-03); read with the same read-only gh api as the runner.
+  let workflowRuns = [];
+  let workflowRunsError = null;
+  try {
+    const runsText = execFn('gh', [
+      'api', `repos/${REPO}/actions/runs?head_sha=${head}&per_page=100`, '--paginate', '--slurp',
+    ]);
+    workflowRuns = flattenPages(runsText, 'workflow-runs');
+  } catch (err) {
+    workflowRunsError = err.message;
+  }
+
   let comments = [];
   let commentsError = null;
   try {
@@ -402,6 +578,9 @@ function runCli(argv, {exec, readFile} = {}) {
     return 1;
   }
   const baseStatus = readJsonIfPresent(readFileFn, `${opts.codexOut}.base-status.json`);
+  const boundary = readJsonIfPresent(readFileFn, `${opts.codexOut}.boundary.json`);
+  const provenance = readJsonIfPresent(readFileFn, `${opts.codexOut}.grader-provenance.json`);
+  const ciEvidence = readJsonIfPresent(readFileFn, `${opts.codexOut}.ci-evidence.json`);
 
   // Recompute the reviewed base and the audited-input change set from git
   // itself (argument arrays, no shell); fail closed when either cannot be
@@ -432,6 +611,33 @@ function runCli(argv, {exec, readFile} = {}) {
     return 1;
   }
 
+  // Only a head the CI-independence rule covers needs its .github/ change set
+  // (IN-07); the reviewed range is the runner's (merge-base..head), and
+  // --no-renames keeps a rename into or out of .github/ visible. A failed read
+  // leaves it unknown, which readiness() treats as a change (fail closed); the
+  // git error is logged and shown, never dropped (BM iter-4 IN-01). The command
+  // has no credentials in it, so its message is safe to print.
+  let ciDefinitionsChanged = null;
+  let ciDefinitionsError = null;
+  const author = {login: prInfo.author?.login, is_bot: Boolean(prInfo.author?.is_bot)};
+  if (ciIndependenceRuleApplies({isCrossRepository: Boolean(prInfo.isCrossRepository), author})) {
+    try {
+      const changed = execFn('git', [
+        'diff', '--name-only', '--no-renames', `${mergeBase}..${head}`, '--', CI_DEFINITION_PATHSPEC,
+      ]);
+      ciDefinitionsChanged = String(changed).trim().length > 0;
+    } catch (err) {
+      ciDefinitionsChanged = null;
+      // execFileSync puts git's stderr after the "Command failed" line; keep both, on one line.
+      ciDefinitionsError = String(err?.message || err).trim().split('\n').map(line => line.trim()).filter(Boolean)
+        .join(' / ').slice(0, 500);
+      console.error(
+        `could not determine whether files under .github/ changed (git diff ${mergeBase}..${head}): `
+        + `${ciDefinitionsError}; treated as changed`,
+      );
+    }
+  }
+
   let fallback = null;
   if (opts.fallback) {
     try {
@@ -456,10 +662,14 @@ function runCli(argv, {exec, readFile} = {}) {
     comments,
     checksError,
     commentsError,
+    workflowRuns,
+    workflowRunsError,
     dispositions,
     blockers,
-    codex: {status, baseStatus, meta, auditedChanged, out: opts.codexOut},
+    codex: {status, baseStatus, meta, auditedChanged, boundary, provenance, ciEvidence, out: opts.codexOut},
     fallback,
+    ciDefinitionsChanged,
+    ciDefinitionsError,
   });
 
   console.log(renderChecklist(result));
@@ -470,4 +680,6 @@ if (require.main === module) {
   process.exitCode = runCli(process.argv.slice(2));
 }
 
-module.exports = {readiness, renderChecklist, codexStatusFor, headTrustFor, runCli, AUDITED_INPUTS};
+module.exports = {
+  readiness, renderChecklist, codexStatusFor, headTrustFor, ciIndependenceRuleApplies, runCli, AUDITED_INPUTS,
+};

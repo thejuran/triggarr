@@ -32,6 +32,11 @@ Completeness by schema version (owner decision 2026-10-22):
   flag. The v1 schema is derived from the current schema by removing the
   two v2 fields, so it cannot drift into a second hand-maintained copy.
 
+The caller declares which rules to grade under via ``--review-mode``
+(``trusted``, the default, or ``inspection-only`` for a review of an
+untrusted head that by design runs no commands and reproduces nothing);
+the mode is never inferred from the report itself.
+
 Run as `uv run python tests/codex_report_status.py ...` (invoked by
 docs/codex-adversarial-review-contract.md, Invocation step 4.6, via
 tests/codex_review_run.py). This
@@ -63,6 +68,15 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 # report with no commands at all. Extending this set is a sensitive
 # review-machinery change and needs its own review.
 TRIVIAL_COMMANDS = frozenset({"echo", "printf", "true", ":", "pwd", "whoami", "date", "sleep", "exit"})
+
+# The grading mode is always declared by the caller (the runner) via
+# --review-mode, never inferred from the report body -- same discipline as
+# --legacy-v1. "trusted" is the default and keeps every existing rule,
+# including the D-18 hollow-report guard. "inspection-only" is for a review
+# of an untrusted head that by design runs no commands and reproduces
+# nothing; it relaxes only the hollow-report command guard and adds two
+# rejection rules of its own (D-07, B04-R2).
+REVIEW_MODES = ("trusted", "inspection-only")
 
 # A leading NAME=value token (e.g. "FOO=1 true") is an environment
 # assignment, not the program being run, so it is skipped when classifying
@@ -97,6 +111,7 @@ class Assessment:
     finding_count: int
     inspected_head: str | None
     inspected_base: str | None
+    review_mode: str = "trusted"
 
 
 def _load_schema() -> dict:
@@ -348,6 +363,7 @@ def assess_report(
     source: str = "codex",
     read_error: str | None = None,
     legacy_v1: bool = False,
+    review_mode: str = "trusted",
 ) -> Assessment:
     """Decide whether *report_text* is a complete, current Codex review.
 
@@ -356,8 +372,14 @@ def assess_report(
     "incomplete" with a reason explaining why. *read_error* is set by the
     CLI when the report file exists but could not be read. *legacy_v1*
     allows a schema v1 report to be assessed under the v1 rules; it is
-    only for re-assessing reports already recorded under v1.
+    only for re-assessing reports already recorded under v1. *review_mode*
+    is caller-declared (never inferred from the report) and must be one of
+    REVIEW_MODES; an invalid value is a programming error, not a report
+    verdict, so it raises ValueError instead of yielding an assessment.
     """
+    if review_mode not in REVIEW_MODES:
+        raise ValueError(f"review_mode must be one of REVIEW_MODES {REVIEW_MODES}, got {review_mode!r}")
+
     reasons: list[str] = []
 
     if exit_code is None:
@@ -367,32 +389,32 @@ def assess_report(
 
     if read_error is not None:
         reasons.append(f"unreadable report: {read_error}")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     if report_text is None or not report_text.strip():
         reasons.append("missing report")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     try:
         report = json.loads(report_text, object_pairs_hook=_reject_duplicate_keys)
     except _DuplicateKeyError as exc:
         reasons.append(f"unparseable: duplicate key {exc.key}")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
     except RecursionError:
         reasons.append("unparseable: report is nested too deeply")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
     except json.JSONDecodeError:
         reasons.append("unparseable: report is not valid JSON")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
     except ValueError:
         # After the two ValueError subclasses above: for example an integer
         # longer than Python's int-string conversion limit.
         reasons.append("unparseable: report is not valid JSON")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     if not isinstance(report, dict):
         reasons.append("unparseable: report is not a JSON object")
-        return Assessment("incomplete", tuple(reasons), (), 0, None, None)
+        return Assessment("incomplete", tuple(reasons), (), 0, None, None, review_mode)
 
     v1_rules = _uses_v1_rules(report, legacy_v1)
     if report.get("schema_version") == "1" and not v1_rules:
@@ -441,6 +463,14 @@ def assess_report(
             reasons.append("verdict says no-findings but findings are listed")
         elif verdict == "findings" and not findings:
             reasons.append("verdict says findings but none are listed")
+        if review_mode == "inspection-only":
+            # An inspection-only review has no access to run anything, so it
+            # cannot have reproduced a finding; a claim otherwise is spoofing
+            # evidence the review never had (T-85.1-03).
+            for finding in findings:
+                if isinstance(finding, dict) and finding.get("reproduced") is True:
+                    fid = finding.get("id")
+                    reasons.append(f"inspection-only review cannot reproduce findings: {fid} claims reproduced")
 
     # Cheap evidence that Codex actually did the work: a report with no
     # commands or blank coverage is hollow, whatever it says about itself.
@@ -451,33 +481,39 @@ def assess_report(
         elif not all(_non_blank(entry) for entry in coverage if isinstance(entry, str)):
             reasons.append("blank coverage entry")
     commands = report.get("commands_run")
-    # Entries with a blank command are no evidence, so a list of only those counts as empty.
-    any_non_blank_command = isinstance(commands, list) and any(
-        isinstance(entry, dict) and _non_blank(entry.get("command")) for entry in commands
-    )
-    if isinstance(commands, list) and not any_non_blank_command:
-        reasons.append("no commands run: the report gives no evidence the diff was inspected")
-    elif isinstance(commands, list):
-        # D-18 hollow-report guard: a command with a null exit code, or a
-        # report whose every command is trivially uninformative (echo, pwd,
-        # true and similar), is no evidence the diff was inspected either.
-        recorded = [
-            entry
-            for entry in commands
-            if isinstance(entry, dict)
-            and _non_blank(entry.get("command"))
-            and isinstance(entry.get("exit_code"), int)
-            and not isinstance(entry.get("exit_code"), bool)
-        ]
-        if not recorded:
-            reasons.append(
-                "no command with a recorded exit code: the report gives no evidence the diff was inspected"
-            )
-        elif all(_first_program(entry["command"]) in TRIVIAL_COMMANDS for entry in recorded):
-            reasons.append(
-                "only trivial commands run (echo/pwd/true and similar): "
-                "the report gives no evidence the diff was inspected"
-            )
+    if review_mode == "trusted":
+        # Entries with a blank command are no evidence, so a list of only those counts as empty.
+        any_non_blank_command = isinstance(commands, list) and any(
+            isinstance(entry, dict) and _non_blank(entry.get("command")) for entry in commands
+        )
+        if isinstance(commands, list) and not any_non_blank_command:
+            reasons.append("no commands run: the report gives no evidence the diff was inspected")
+        elif isinstance(commands, list):
+            # D-18 hollow-report guard: a command with a null exit code, or a
+            # report whose every command is trivially uninformative (echo, pwd,
+            # true and similar), is no evidence the diff was inspected either.
+            recorded = [
+                entry
+                for entry in commands
+                if isinstance(entry, dict)
+                and _non_blank(entry.get("command"))
+                and isinstance(entry.get("exit_code"), int)
+                and not isinstance(entry.get("exit_code"), bool)
+            ]
+            if not recorded:
+                reasons.append(
+                    "no command with a recorded exit code: the report gives no evidence the diff was inspected"
+                )
+            elif all(_first_program(entry["command"]) in TRIVIAL_COMMANDS for entry in recorded):
+                reasons.append(
+                    "only trivial commands run (echo/pwd/true and similar): "
+                    "the report gives no evidence the diff was inspected"
+                )
+    elif isinstance(commands, list) and commands:
+        # Inspection-only review: the guard above is skipped entirely (the
+        # review runs no commands by design); running any is itself the
+        # violation (T-85.1-03).
+        reasons.append(f"inspection-only review must not run commands: commands_run has {len(commands)} entries")
 
     status: Literal["complete", "incomplete"] = "incomplete" if reasons else "complete"
     return Assessment(
@@ -487,6 +523,7 @@ def assess_report(
         finding_count=finding_count,
         inspected_head=inspected_head,
         inspected_base=inspected_base,
+        review_mode=review_mode,
     )
 
 
@@ -526,6 +563,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Re-assess an already recorded schema v1 report under the v1 rules (never used for new runs)",
     )
+    parser.add_argument(
+        "--review-mode",
+        choices=REVIEW_MODES,
+        default="trusted",
+        help=(
+            "Grading rules: trusted (default) or inspection-only (untrusted head reviewed "
+            "from inert text; declared by the runner, never by the report)"
+        ),
+    )
     return parser
 
 
@@ -537,6 +583,7 @@ def _assessment_to_dict(assessment: Assessment) -> dict:
         "finding_count": assessment.finding_count,
         "inspected_head": assessment.inspected_head,
         "inspected_base": assessment.inspected_base,
+        "review_mode": assessment.review_mode,
     }
 
 
@@ -563,6 +610,7 @@ def main(argv: list[str] | None = None) -> int:
         source=args.source,
         read_error=read_error,
         legacy_v1=args.legacy_v1,
+        review_mode=args.review_mode,
     )
 
     print(json.dumps(_assessment_to_dict(assessment)))

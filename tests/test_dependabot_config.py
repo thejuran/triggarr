@@ -47,13 +47,41 @@ def test_dependabot_version_2() -> None:
     assert _load_config()["version"] == 2
 
 
-def test_exactly_three_ecosystems_at_root() -> None:
-    """Exactly uv, github-actions and docker are configured, each rooted at "/"."""
+EXPECTED_ENTRIES = {
+    ("uv", "/"),
+    ("github-actions", "/"),
+    ("docker", "/"),
+    # Phase 85.1 WR-10: the digest-pinned review image that holds the Codex sign-in copy.
+    ("docker", "/docker/codex-review"),
+}
+
+
+def test_exactly_the_expected_ecosystems_and_directories() -> None:
+    """uv, github-actions and docker at "/", plus docker for the review image at /docker/codex-review."""
     updates = _updates()
-    ecosystems = {update["package-ecosystem"] for update in updates}
-    assert ecosystems == EXPECTED_ECOSYSTEMS
-    for update in updates:
-        assert update["directory"] == "/"
+    entries = [(update["package-ecosystem"], update["directory"]) for update in updates]
+    assert len(entries) == len(set(entries))
+    assert set(entries) == EXPECTED_ENTRIES
+    assert {ecosystem for ecosystem, _directory in entries} == EXPECTED_ECOSYSTEMS
+
+
+def test_codex_review_image_entry_matches_root_docker_conventions() -> None:
+    """WR-10: the review image's docker entry uses the same monthly schedule, cooldown and grouping as root docker."""
+    by_entry = {(u["package-ecosystem"], u["directory"]): u for u in _updates()}
+    root = by_entry[("docker", "/")]
+    review = by_entry[("docker", "/docker/codex-review")]
+    assert review["schedule"] == root["schedule"]
+    assert review["cooldown"] == root["cooldown"]
+    assert review["open-pull-requests-limit"] == root["open-pull-requests-limit"]
+    (root_group,) = root["groups"].values()
+    (review_group,) = review["groups"].values()
+    assert review_group == root_group
+    assert set(review["groups"]).isdisjoint(root["groups"])
+
+
+def test_group_names_are_unique() -> None:
+    names = [name for update in _updates() for name in update.get("groups", {})]
+    assert len(names) == len(set(names))
 
 
 def test_monthly_schedule() -> None:

@@ -1,0 +1,293 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "cc33f15789952be15f5aa71023fe609929f76891",
+  "inspected_base_sha": "05b24feedcfa7933dbbd9aab41c06e89103556da",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 85.1 full phase at standard depth, including all 22 scoped files, tests, relevant surrounding code, and all 10 changed phase plans.",
+  "verdict": "findings",
+  "summary": "Two findings: malformed records bypass the completion gate, and inspection-only grading does not revalidate its checker after the review. All 188 focused Node tests passed; harness evidence reports 3022 Python tests passed and 1 skipped.",
+  "coverage": [
+    "Entire scoped diff across all 22 changed files, including implementation, regression tests, Dockerfile, documentation, and Dependabot comments.",
+    "All changed plans: 85.1-01-PLAN.md through 85.1-10-PLAN.md.",
+    "Untrusted PR preconditions, Git-object input construction, CI evidence, prompt fencing, and trusted-main provenance.",
+    "Container configuration, credential custody, schema staging, output ingestion, interruption handling, confirmed cleanup, and supplementary probes.",
+    "Completion gating, acceptance readiness, fallback eligibility, cross-grading, stale state, and concurrent checkout changes.",
+    "Regression assertions and mocked integration coverage; focused Node suite executed independently.",
+    "Harness-provided pytest evidence for the requested head."
+  ],
+  "exclusions": [
+    ".planning/**/codex/** generated review artifacts",
+    ".planning/**/*.jsonl raw transcripts",
+    ".planning/**/*.md except explicitly included changed *-PLAN.md files"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 05b24feedcfa7933dbbd9aab41c06e89103556da",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "git diff --stat 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory changed plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- tests/codex_review_run.py | sed -n '1,1050p'",
+      "exit_code": 0,
+      "purpose": "Inspect runner changes; truncated portions read separately."
+    },
+    {
+      "command": "sed -n '800,1020p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect PR validation and input construction."
+    },
+    {
+      "command": "sed -n '1330,1820p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect boundary, launch, and probe handling."
+    },
+    {
+      "command": "sed -n '1820,2350p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect container builders and verification."
+    },
+    {
+      "command": "sed -n '2350,2690p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect credentials, safe reads, and cleanup."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- tests/codex_review_run.py | sed -n '2030,2700p'",
+      "exit_code": 0,
+      "purpose": "Inspect orchestration and completion changes; truncated portions read separately."
+    },
+    {
+      "command": "sed -n '3600,3960p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace inspection orchestration and grading."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- .github/dependabot.yml .github/scripts/acceptance-readiness.cjs .github/scripts/codex-fallback.cjs tests/codex_report_status.py docker/codex-review/Dockerfile",
+      "exit_code": 0,
+      "purpose": "Review acceptance policy, grading, and image changes."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- docs tests/test_acceptance_docs.py tests/test_codex_report_status.py tests/test_codex_review_contract.py tests/test_codex_review_run.py tests/test_review_checkpoint_record.py tests/test_review_machinery_lists.py",
+      "exit_code": 0,
+      "purpose": "Review documentation and regression changes; truncated portions read separately."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- docs/review-checkpoint-record.md docs/review-classification-policy.md tests/test_acceptance_docs.py tests/test_codex_report_status.py",
+      "exit_code": 0,
+      "purpose": "Complete documentation and checker-test inspection."
+    },
+    {
+      "command": "sed -n '3960,4150p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Inspect CLI dispatch and error handling."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1,545p'",
+      "exit_code": 0,
+      "purpose": "Inspect changed plans; truncated portions read separately."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- ':(glob).planning/**/*-PLAN.md' | sed -n '245,365p;546,1134p'",
+      "exit_code": 0,
+      "purpose": "Continue plan inspection; truncated portions read separately."
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect prompt and documentation plan."
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-05-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect input and provenance plan."
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect container verification plan."
+    },
+    {
+      "command": "sed -n '1,150p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-08-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect credential and lifecycle requirements."
+    },
+    {
+      "command": "sed -n '151,280p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-08-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete lifecycle and launch plan inspection."
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect completion-gate and probe plan."
+    },
+    {
+      "command": "cat .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-10-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect live validation and publication instructions."
+    },
+    {
+      "command": "cat tests/test_codex_review_gate.py tests/test_codex_review_image.py",
+      "exit_code": 0,
+      "purpose": "Inspect completion and image regression tests."
+    },
+    {
+      "command": "git diff 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- .github/scripts/acceptance-readiness.test.cjs .github/scripts/codex-fallback.test.cjs .github/scripts/codex-completeness-parity.test.cjs",
+      "exit_code": 0,
+      "purpose": "Inspect acceptance and fallback tests."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport json\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\nhead='a'*40\nmeta={'head':head,'base':'b'*40,'attempt':2,'review_mode':'inspection-only-ci-evidence','audited_inputs_changed_in_diff':['tests/codex_report_status.py']}\ndef read(directory,name,**kwargs):\n    return json.dumps(meta).encode() if name.endswith('.meta.json') else b'null'\nwith patch.object(r,'safe_read_regular_file',side_effect=read):\n    result=r._completion_gate_main(Path('.planning/phases/x/codex/aaaaaaaaaaaa-review-a2'))\n    print('exit_code:',result)\n    assert result == 0\nPY",
+      "exit_code": 1,
+      "purpose": "Initial reproduction attempt; shell heredoc temporary-file creation blocked by read-only sandbox."
+    },
+    {
+      "command": "node --test .github/scripts/acceptance-readiness.test.cjs .github/scripts/codex-fallback.test.cjs .github/scripts/codex-completeness-parity.test.cjs",
+      "exit_code": 0,
+      "purpose": "Run focused acceptance tests: 188 passed."
+    },
+    {
+      "command": "python3 -B -c 'import json; from pathlib import Path; from unittest.mock import patch; from tests import codex_review_run as r; meta={\"head\":\"a\"*40,\"base\":\"b\"*40,\"attempt\":2,\"review_mode\":\"inspection-only-ci-evidence\",\"audited_inputs_changed_in_diff\":[\"tests/codex_report_status.py\"]}; read=lambda directory,name,**kwargs: json.dumps(meta).encode() if name.endswith(\".meta.json\") else b\"null\"; p=patch.object(r,\"safe_read_regular_file\",side_effect=read); p.start(); result=r._completion_gate_main(Path(\".planning/phases/x/codex/aaaaaaaaaaaa-review-a2\")); print(\"exit_code:\",result); assert result == 0; p.stop()'",
+      "exit_code": 0,
+      "purpose": "Reproduce completion-gate bypass without filesystem writes."
+    },
+    {
+      "command": "sed -n '1,510p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect PR, CI, and inert-input tests."
+    },
+    {
+      "command": "sed -n '511,1000p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect provenance, feature, and event-audit tests."
+    },
+    {
+      "command": "sed -n '1001,1450p' tests/test_codex_review_inspection.py",
+      "exit_code": 0,
+      "purpose": "Inspect orchestration and cross-grading tests."
+    },
+    {
+      "command": "sed -n '1,550p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect container argv, exposure, and schema tests."
+    },
+    {
+      "command": "sed -n '551,1100p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect configuration, canary, and credential tests."
+    },
+    {
+      "command": "sed -n '1101,1650p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect safe-read, removal, and ledger tests."
+    },
+    {
+      "command": "sed -n '1651,2200p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect boundary and launch failure tests."
+    },
+    {
+      "command": "sed -n '2201,2650p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Inspect interruption, integration, and boundary-tool tests."
+    },
+    {
+      "command": "sed -n '2651,3000p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Complete probe and lifecycle regression inspection."
+    },
+    {
+      "command": "sed -n '1,42p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-06-PLAN.md; sed -n '1020,1130p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Complete orchestration-plan and provenance inspection."
+    },
+    {
+      "command": "sed -n '60,336p' tests/codex_review_run.py; sed -n '2840,2950p' tests/codex_review_run.py; sed -n '3150,3438p' tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace surrounding subprocess, auditing, and trusted grading behavior."
+    },
+    {
+      "command": "python3 -B -c '\nimport json, subprocess\nfrom pathlib import Path\nfrom contextlib import ExitStack\nfrom unittest.mock import patch\nfrom tests import codex_review_run as r\nhead=\"a\"*40; base=\"b\"*40\nrun=r.ReviewRun(head,base,\"review\",1,\"https://github.com/thejuran/triggarr/pull/1\",\"review\",Path(\".planning/phases/x\"),False)\nstate={\"checkout\":\"main\"}; checks=[]\ndef launch(*a,**kw):\n    state[\"checkout\"]=\"changed-checker\"\n    return 0,[]\ndef command(argv,**kw):\n    checks.append((state[\"checkout\"],argv[1]))\n    return subprocess.CompletedProcess(argv,0,stdout=json.dumps({\"status\":\"complete\"}))\nwith ExitStack() as s:\n    replacements={\"establish_trusted_main\":lambda *a:{\"grader_ref\":base},\"_write_json_atomic\":lambda *a:None,\"verify_isolation_boundary\":lambda *a,**kw:{\"verdict\":\"verified\"},\"run_untrusted_codex\":launch,\"_finalize_raw_outputs\":lambda *a,**kw:None,\"audit_event_types\":lambda *a:[],\"_refetch_head_ref_oid\":lambda *a:head,\"audit_inputs\":lambda *a:(_ for _ in ()).throw(AssertionError(\"changed inputs must stop grading\"))}\n    for name,value in replacements.items(): s.enter_context(patch.object(r,name,value))\n    s.enter_context(patch.object(r.tempfile,\"mkdtemp\",return_value=\"unused-review-scratch\"))\n    s.enter_context(patch.object(r.shutil,\"rmtree\"))\n    s.enter_context(patch.object(Path,\"write_text\",return_value=0))\n    result=r._execute_inspection(run,prompt=\"input\",meta={\"audited_inputs_changed_in_diff\":[]},inputs={\".claude/schemas/codex-review-findings.schema.json\":{\"sha256\":\"x\"}},pr_info={\"number\":1},input_stats={},command_runner=command)\n    print(\"result\",result,\"checker calls\",checks)\n    assert result==0 and checks[0][0]==\"changed-checker\"\n'",
+      "exit_code": 0,
+      "purpose": "Verify in-memory orchestration reaches the checkout checker without post-review input auditing; no real checkout mutation or checker execution."
+    },
+    {
+      "command": "nl -ba tests/codex_review_run.py | sed -n '895,980p;3060,3140p;3748,3784p'; git status --short",
+      "exit_code": 0,
+      "purpose": "Locate findings and confirm only harness evidence is untracked."
+    },
+    {
+      "command": "sed -n '65,85p' .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-02-PLAN.md; sed -n '336,510p' tests/codex_review_run.py; sed -n '1,170p' .github/scripts/acceptance-readiness.cjs; sed -n '390,465p' .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Complete plan inspection and trace checker and acceptance callers."
+    },
+    {
+      "command": "git diff --name-only 05b24feedcfa7933dbbd9aab41c06e89103556da..cc33f15789952be15f5aa71023fe609929f76891 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Reconcile inspected files against the complete scoped inventory."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Reject non-object JSON records in the completion gate",
+      "file": "tests/codex_review_run.py",
+      "line_start": 3083,
+      "line_end": 3088,
+      "trigger": "A required status, boundary, provenance, or base-status file contains valid non-object JSON such as null or [].",
+      "execution_path": "completion_gate._read parses the value and returns None without adding a reason. Each subsequent record check runs only when its value is not None, so the required check is skipped.",
+      "consequence": "The standalone completion gate reports pass and exits 0 without a complete status, verified boundary, established provenance, or required cross-grade. The separate readiness predicate still rejects a missing boundary, but the documented completion gate is independently fail-open.",
+      "evidence": "With valid inspection metadata requiring a cross-grade and all four other records supplied as JSON null, _completion_gate_main printed gate=pass, reasons=[] and returned 0. Existing gate tests cover missing files, mismatched objects, and symlinks, but omit valid JSON of the wrong type.",
+      "suggested_fix": "Append a named validation failure whenever a required record is not a JSON object. Add parameterized tests for null, arrays, strings, numbers, and booleans in every required record, including base-status.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'import json; from pathlib import Path; from unittest.mock import patch; from tests import codex_review_run as r; meta={\"head\":\"a\"*40,\"base\":\"b\"*40,\"attempt\":2,\"review_mode\":\"inspection-only-ci-evidence\",\"audited_inputs_changed_in_diff\":[\"tests/codex_report_status.py\"]}; read=lambda directory,name,**kwargs: json.dumps(meta).encode() if name.endswith(\".meta.json\") else b\"null\"; p=patch.object(r,\"safe_read_regular_file\",side_effect=read); p.start(); result=r._completion_gate_main(Path(\".planning/phases/x/codex/aaaaaaaaaaaa-review-a2\")); print(\"exit_code:\",result); assert result == 0; p.stop()'",
+      "hypothesis": null
+    },
+    {
+      "id": "F002",
+      "severity": "high",
+      "title": "Keep inspection grading bound to the verified main checker",
+      "file": "tests/codex_review_run.py",
+      "line_start": 3760,
+      "line_end": 3765,
+      "trigger": "The operator or another process edits the checker/schema or switches the harness checkout while the container review is running.",
+      "execution_path": "establish_trusted_main verifies the checkout before launching Codex. After the potentially 1800-second review, _execute_inspection checks the PR's remote head but directly executes checker_argv, which points to REPO_ROOT/tests/codex_report_status.py. It never repeats audit_inputs or compares the recorded hashes. Cross-grading occurs only when the reviewed PR changed an audited input.",
+      "consequence": "A different checker can grade the report while provenance still claims trusted main. Switching the checkout to an untrusted branch can execute that branch's Python on the host; even an ordinary concurrent edit can produce completion under unrecorded grading rules.",
+      "evidence": "The trusted _execute_reserved path explicitly re-audits and compares inputs immediately before grading; the new inspection path omits that safeguard. Plan 85.1-06 explicitly requests the same re-audit. An in-memory orchestration check confirmed that the checkout checker is invoked after simulated state change without calling audit_inputs. Existing orchestration tests mock provenance and checker output but do not mutate audited inputs during review.",
+      "suggested_fix": "Always materialize and execute the checker/schema from the verified main_sha in a private directory retained through grading. Also reject changes to recorded audited inputs before reporting completion. Add a regression that replaces the checker/schema during the mocked review and proves the replacement is never executed.",
+      "reproduced": false,
+      "reproduction_command": null,
+      "hypothesis": "Actual concurrent checkout replacement was not executed in the read-only sandbox. Static tracing and mocked orchestration establish the missing revalidation and mutable checker path; the host-execution consequence requires that path to change during the review."
+    }
+  ],
+  "limitations": [
+    "Full pytest was not rerun because this sandbox is read-only and the suite requires temporary files. Harness evidence for the exact head reports 3022 passed, 1 skipped, and exit 0.",
+    "No live Docker, Codex authentication, GitHub API, or network validation was performed.",
+    "The completion-gate reproduction substituted record bytes at the safe-reader boundary; it exercised the real parser and gate without writing files.",
+    "The concurrent-checker scenario was traced and checked with mocked orchestration, not a real checkout switch.",
+    "Several initial read outputs were truncated; affected scope was subsequently inspected through smaller reads."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

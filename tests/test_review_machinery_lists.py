@@ -31,6 +31,10 @@ RECORD_TEXT = RECORD_PATH.read_text(encoding="utf-8")
 # AUDITED_INPUTS, with a reason -- anything else is drift.
 POLICY_ONLY = {
     "docs/review-checkpoint-record.md": "the record template is review machinery but not a Codex grader input",
+    "docker/codex-review/Dockerfile": (
+        "the untrusted-review container image is review machinery (it defines the isolation boundary)"
+        " but not a Codex grader input"
+    ),
 }
 CHECKLIST_OMITS = {
     ".claude/schemas/codex-review-findings.schema.json": (
@@ -47,8 +51,11 @@ EXPECTED_EXCLUDES = (
     ":(exclude,glob).planning/**/*.md",
 )
 
-# Matches a repository path whether or not it is wrapped in backticks.
-_PATH_RE = re.compile(r"(?:docs|tests|\.claude|\.github)/[A-Za-z0-9_./-]+\.(?:md|py|json|cjs)")
+# Matches a repository path whether or not it is wrapped in backticks. The
+# extension alternative covers the usual docs/tests/scripts files; the
+# "/Dockerfile" alternative additionally matches the extension-less review
+# image definition (docker/codex-review/Dockerfile).
+_PATH_RE = re.compile(r"(?:docs|tests|\.claude|\.github|docker)/[A-Za-z0-9_./-]+(?:\.(?:md|py|json|cjs)|/Dockerfile)")
 
 
 def _normalize_path(raw: str) -> str:
@@ -314,7 +321,7 @@ def test_emptying_policy_machinery_parenthetical_is_flagged() -> None:
         POLICY_TEXT,
         "the review machinery (`docs/codex-adversarial-review-contract.md`, `docs/review-checkpoint-record.md`,"
         " `tests/codex_review_run.py`, `tests/codex_report_status.py`,"
-        " `.claude/schemas/codex-review-findings.schema.json`)",
+        " `.claude/schemas/codex-review-findings.schema.json`, `docker/codex-review/Dockerfile`)",
         "the review machinery (see elsewhere)",
     )
     problems = machinery_list_problems(mutated, RECORD_TEXT, AUDITED_INPUTS, EXCLUDE_PATHSPECS)

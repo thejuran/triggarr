@@ -1,8 +1,9 @@
 ---
 phase: 85-follow-on-ci-improvements-acceptance-usability
 verified: 2026-10-27T23:10:00Z
-status: human_needed
-score: 10/10 code-level requirement truths verified; 8 items pending human/GitHub confirmation (none code-level failed)
+status: passed
+score: 10/10 code-level requirement truths verified; 7 of 8 human/GitHub items confirmed 2026-10-28 (see 85-HUMAN-UAT.md); P5 deferred to the next release (CHANGELOG wording, not code)
+re_verified: 2026-10-28T21:45:00Z
 has_blocking_gaps: false
 overrides_applied: 0
 gaps: []
@@ -32,6 +33,8 @@ human_verification:
     expected: "Migration succeeds; readiness check reports the D-12 checklist correctly for the real PR; a second concurrent PR's register entry is shown not to erase or satisfy this PR's (ACCEPT-02)."
     why_human: "The live `REVIEW_DISPOSITIONS`/`REVIEW_BLOCKERS` GitHub repository variables are still schema 1 as of this verification; migrating them is an owner-gated action against production state that this verification must not perform. The schema-2 logic itself is proven by unit/fixture tests only so far."
 ---
+
+> **Re-verification 2026-10-28 (post-merge).** PR #36 merged as `0309313` after owner acceptance at `5a97e1f` (Codex INCOMPLETE for diff size; owner-approved vibe-check full-PR fallback, `codex/5a97e1f98982-fallback.json`). Human items: P1 pass (CI run 40751931306, ~5 min), P2 pass (coverage provenance matches head), P3 pass (Release run 40760474648: release job has no contents: write; :main/:dev published), P4 pass (Dependabot opened #37-#42; rolled up and merged as #46), P6 pass (throwaway draft PR #43, owner-decided deviation: docker lockfile mismatch and actionlint both failed CI ready as designed), Codex item resolved via the fallback, register migration pass (schema 2, readiness ready). **P5 deferred:** the next release's CHANGELOG entry must state wheels/sdists are no longer attached (tracked in `.planning/backlog/MAINTENANCE.md`). Two CI traps found by the fallback review were fixed post-merge in #44 and #45.
 
 # Phase 85: Follow-on CI Improvements & Acceptance Usability — Verification Report
 

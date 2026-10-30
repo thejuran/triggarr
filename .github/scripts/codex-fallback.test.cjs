@@ -6,9 +6,15 @@ const {
   REVIEWER_KINDS,
   DISALLOWED_REVIEWERS,
   OWNER_DECISIONS,
+  INSPECTION_REVIEW_MODE,
+  inspectionOnlyCompleteness,
+  codexStatusFromOutput,
   validateFallback,
   runCli,
+  CI_NOT_INDEPENDENT_REASON,
 } = require('./codex-fallback.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -253,12 +259,35 @@ test('trusted head: an untrusted-mode refusal record never opens the fallback', 
   ));
 });
 
+test('trusted head: an inspection-only result never opens the fallback', () => {
+  const record = validRecord();
+  const context = validContext({
+    codexStatus: {complete: false, attempt: 2, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE},
+  });
+  const {reasons} = validateFallback(record, context);
+  assert.ok(reasons.includes(
+    'an inspection-only result does not open the fallback for a trusted head; run the trusted Codex pass'
+  ));
+});
+
 test('valid untrusted-head record with its recorded refusal is ok', () => {
   const refusalOut = `.planning/phases/${PHASE_DIR}/codex/${HEAD12}-task1-a1`;
   const record = validRecord({codex_out: refusalOut});
   const context = validContext({
     headTrust: 'untrusted',
     codexStatus: {complete: false, attempt: 1, out: refusalOut, reviewMode: 'untrusted-refused'},
+  });
+  const result = validateFallback(record, context);
+  assert.deepEqual(result, {ok: true, reasons: []});
+});
+
+test('untrusted head with a legitimate INCOMPLETE inspection-only result at attempt 2 is ok', () => {
+  const record = validRecord();
+  const context = validContext({
+    headTrust: 'untrusted',
+    codexStatus: {
+      complete: false, invalidEvidence: false, attempt: 2, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE,
+    },
   });
   const result = validateFallback(record, context);
   assert.deepEqual(result, {ok: true, reasons: []});
@@ -271,20 +300,49 @@ test('untrusted head without its recorded refusal needs one', () => {
     codexStatus: {complete: false, attempt: 1, out: CODEX_OUT, reviewMode: undefined},
   });
   const {reasons} = validateFallback(record, context);
-  assert.ok(reasons.includes('untrusted head needs its recorded INCOMPLETE Codex refusal for this head'));
+  assert.ok(reasons.includes(
+    'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+  ));
+});
+
+test('untrusted head whose only record is a trusted-mode incomplete still needs the inspection-only result', () => {
+  const record = validRecord();
+  const context = validContext({
+    headTrust: 'untrusted',
+    codexStatus: {complete: false, attempt: 2, out: CODEX_OUT, reviewMode: 'trusted-local-tests'},
+  });
+  const {reasons} = validateFallback(record, context);
+  assert.ok(reasons.includes(
+    'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+  ));
 });
 
 test('untrusted head whose Codex record claims complete is never ok', () => {
   const record = validRecord();
   const context = validContext({
     headTrust: 'untrusted',
-    codexStatus: {complete: true, attempt: 1, out: CODEX_OUT, reviewMode: 'trusted-local-tests'},
+    codexStatus: {complete: true, attempt: 1, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE},
   });
   const {ok, reasons} = validateFallback(record, context);
   assert.equal(ok, false);
-  assert.ok(reasons.includes(
-    'Codex evidence claims complete for an untrusted head; untrusted runs are refused until Phase 85.1'
-  ));
+  assert.ok(reasons.includes('Codex is complete for this head; a fallback is not used'));
+});
+
+test('test_invalid_evidence_never_opens_fallback: invalid evidence is never rescued, at attempt 2 or attempt 3', () => {
+  for (const attempt of [2, 3]) {
+    const record = validRecord();
+    const context = validContext({
+      headTrust: 'untrusted',
+      codexStatus: {
+        complete: false, invalidEvidence: true, attempt, out: CODEX_OUT, reviewMode: INSPECTION_REVIEW_MODE,
+      },
+    });
+    const {ok, reasons} = validateFallback(record, context);
+    assert.equal(ok, false, `attempt ${attempt} must not pass`);
+    assert.ok(reasons.includes(
+      'Codex evidence claims completion but is not valid for this head and attempt; a fallback cannot rescue invalid evidence — rerun the inspection-only review'
+    ), JSON.stringify(reasons));
+  }
 });
 
 test('missing head trust fails closed', () => {
@@ -305,6 +363,272 @@ test('an unsupported fallback schema is rejected', () => {
   const record = validRecord({schema: 2});
   const {reasons} = validateFallback(record, validContext());
   assert.ok(reasons.includes('unsupported fallback schema'));
+});
+
+// --- D-07/D-12: inspectionOnlyCompleteness, the shared completeness predicate ---
+
+function inspectionStatus(overrides = {}) {
+  return {status: 'complete', inspected_head: HEAD, inspected_base: BASE, ...overrides};
+}
+
+function inspectionMeta(overrides = {}) {
+  return {
+    meta_version: 2, head: HEAD, base: BASE, label: 'task1', attempt: 2, review_mode: INSPECTION_REVIEW_MODE,
+    harness_head: BASE, audited_inputs_changed_in_diff: [], ...overrides,
+  };
+}
+
+function validCiEvidence(overrides = {}) {
+  const ciReady = {
+    id: 1, name: 'CI ready', head_sha: HEAD, status: 'completed', conclusion: 'success', html_url: 'https://x/1',
+    ...overrides,
+  };
+  return {check_runs: [ciReady], ci_ready: ciReady};
+}
+
+function verifiedBoundary(overrides = {}) {
+  return {
+    boundary_version: 1, verdict: 'verified', reasons: [], head: HEAD, label: 'task1', attempt: 2,
+    checked_at: DECIDED_AT, image_ref: 'codex-review:local', image_id: `sha256:${'a'.repeat(64)}`,
+    codex_version: '0.153.4', credential_mode: 'copied-login', network: 'default', mounts: [],
+    env_names: [], canary: 'ok', schema_sha256: 'b'.repeat(64), ...overrides,
+  };
+}
+
+function validProvenance(overrides = {}) {
+  return {
+    established: true, main_ref: 'refs/remotes/origin/main', main_sha: BASE, harness_head: BASE, base: BASE,
+    base_on_main: true, grader_ref: BASE, grader_source: 'trusted-origin-main', ...overrides,
+  };
+}
+
+// The predicate with this file's CODEX_OUT (-a2, matching inspectionMeta's
+// attempt), a valid trusted-main provenance and valid CI evidence unless a
+// test overrides them.
+function predicate(args) {
+  return inspectionOnlyCompleteness({
+    provenance: validProvenance(), ciEvidence: validCiEvidence(), out: CODEX_OUT, ...args,
+  });
+}
+
+test('inspectionOnlyCompleteness: complete status, bound, verified boundary, no base required is complete', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: false,
+  });
+  assert.deepEqual(result, {complete: true, invalidEvidence: false, reasons: []});
+});
+
+test('inspectionOnlyCompleteness: an incomplete status is a legitimate incomplete, never invalid evidence', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: {status: 'incomplete', reasons: ['boundary unverified']}, baseStatus: null,
+    boundary: null, head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, false);
+  assert.ok(result.reasons.includes('Codex status is incomplete'));
+});
+
+test('inspectionOnlyCompleteness: a missing boundary makes a complete claim invalid evidence', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: null,
+    head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+  assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head, label and attempt'));
+});
+
+test('inspectionOnlyCompleteness: an unverified, wrong-head, or wrong-attempt boundary is invalid evidence', () => {
+  for (const boundary of [
+    verifiedBoundary({verdict: 'unverified'}),
+    verifiedBoundary({head: 'f'.repeat(40)}),
+    verifiedBoundary({attempt: 1}),
+  ]) {
+    const result = predicate({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(boundary));
+    assert.equal(result.invalidEvidence, true, JSON.stringify(boundary));
+    assert.ok(result.reasons.includes('inspection-only result has no verified isolation boundary for this head, label and attempt'));
+  }
+});
+
+test('inspectionOnlyCompleteness: a missing required base-status blocks with the grader-changed reason', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: true,
+  });
+  assert.equal(result.complete, false);
+  assert.ok(result.reasons.includes("grader changed in this diff: the trusted-main checker's base-status is missing"));
+});
+
+test('inspectionOnlyCompleteness: an incomplete required base-status blocks with the grader-changed reason', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: {status: 'incomplete'}, boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: true,
+  });
+  assert.equal(result.complete, false);
+  assert.ok(result.reasons.includes('grader changed in this diff: the trusted-main checker did not confirm completeness'));
+});
+
+test('inspectionOnlyCompleteness: a complete but unbound required base-status blocks with the grader-changed reason', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(),
+    baseStatus: {status: 'complete', inspected_head: 'f'.repeat(40), inspected_base: BASE},
+    boundary: verifiedBoundary(), head: HEAD, baseRequired: true,
+  });
+  assert.equal(result.complete, false);
+  assert.ok(result.reasons.includes(
+    'grader changed in this diff: the base checker status is not bound to this head and base (inspected_head/inspected_base differ)'
+  ));
+});
+
+test('inspectionOnlyCompleteness: a complete and bound required base-status is complete', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: inspectionStatus(), boundary: verifiedBoundary(),
+    head: HEAD, baseRequired: true,
+  });
+  assert.deepEqual(result, {complete: true, invalidEvidence: false, reasons: []});
+});
+
+// --- D-07/D-12: codexStatusFromOutput end-to-end over inspection-only output files ---
+
+function inspectionOutputFiles(overrides = {}) {
+  const out = overrides.out || CODEX_OUT;
+  const files = {
+    [`${out}.status.json`]: JSON.stringify(overrides.status || inspectionStatus()),
+    [`${out}.meta.json`]: JSON.stringify(overrides.meta || inspectionMeta()),
+  };
+  if (overrides.boundary !== undefined) {
+    if (overrides.boundary !== null) files[`${out}.boundary.json`] = JSON.stringify(overrides.boundary);
+  } else {
+    files[`${out}.boundary.json`] = JSON.stringify(verifiedBoundary());
+  }
+  if (overrides.provenance !== undefined) {
+    if (overrides.provenance !== null) files[`${out}.grader-provenance.json`] = JSON.stringify(overrides.provenance);
+  } else {
+    files[`${out}.grader-provenance.json`] = JSON.stringify(validProvenance());
+  }
+  if (overrides.ciEvidence !== undefined) {
+    if (overrides.ciEvidence !== null) files[`${out}.ci-evidence.json`] = JSON.stringify(overrides.ciEvidence);
+  } else {
+    files[`${out}.ci-evidence.json`] = JSON.stringify(validCiEvidence());
+  }
+  return files;
+}
+
+function stubReadFile(files) {
+  return path => {
+    if (!Object.hasOwn(files, path)) throw new Error(`ENOENT: no such file: ${path}`);
+    return files[path];
+  };
+}
+
+test('codexStatusFromOutput: a complete claim with a missing boundary.json is invalid evidence, at attempt 2', () => {
+  const files = inspectionOutputFiles({boundary: null});
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+
+  const {ok, reasons} = validateFallback(validRecord({codex_out: CODEX_OUT}), validContext({
+    headTrust: 'untrusted', codexStatus: result,
+  }));
+  assert.equal(ok, false);
+  assert.ok(reasons.includes(
+    'Codex evidence claims completion but is not valid for this head and attempt; a fallback cannot rescue invalid evidence — rerun the inspection-only review'
+  ), JSON.stringify(reasons));
+});
+
+test('codexStatusFromOutput: a genuinely incomplete inspection-only result at attempt 1 still needs attempt 2 or a historical refusal', () => {
+  const files = inspectionOutputFiles({
+    status: {status: 'incomplete', reasons: ['boundary unverified']},
+    meta: inspectionMeta({attempt: 1}),
+    boundary: null,
+  });
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, false);
+
+  const {ok, reasons} = validateFallback(validRecord({codex_out: CODEX_OUT}), validContext({
+    headTrust: 'untrusted', codexStatus: result,
+  }));
+  assert.equal(ok, false);
+  assert.ok(reasons.includes(
+    'untrusted head needs its INCOMPLETE inspection-only Codex result for this head (attempt 2 or later) or its recorded untrusted-refused result'
+  ), JSON.stringify(reasons));
+});
+
+test('codexStatusFromOutput: a complete, bound, verified-boundary inspection-only result is complete', () => {
+  const files = inspectionOutputFiles();
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, true);
+  assert.equal(result.invalidEvidence, false);
+  assert.equal(result.boundaryVerdict, 'verified');
+});
+
+// --- WR-05: grader provenance and output-prefix attempt, as the Python gate ---
+
+test('inspectionOnlyCompleteness: missing or unestablished grader provenance makes a complete claim invalid evidence', () => {
+  for (const provenance of [
+    null, [], {established: false, reasons: ['x']}, validProvenance({base_on_main: false}),
+    validProvenance({grader_source: 'base'}),
+  ]) {
+    const result = predicate({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      provenance, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(provenance));
+    assert.equal(result.invalidEvidence, true, JSON.stringify(provenance));
+    assert.ok(result.reasons.includes('grader provenance not established from origin/main'), JSON.stringify(result));
+  }
+});
+
+test('inspectionOnlyCompleteness: a meta head or attempt that differs from the output prefix is invalid evidence', () => {
+  for (const [meta, boundary, out] of [
+    [inspectionMeta({attempt: 3}), verifiedBoundary({attempt: 3}), CODEX_OUT],
+    [inspectionMeta(), verifiedBoundary(), CODEX_OUT.replace(/-a2$/, '-a1')],
+    [inspectionMeta(), verifiedBoundary(), undefined],
+  ]) {
+    const result = predicate({
+      meta, status: inspectionStatus(), baseStatus: null, boundary, out, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, String(out));
+    assert.ok(result.reasons.includes('inspection-only meta does not match the output prefix (head, label or attempt)'));
+  }
+});
+
+test('codexStatusFromOutput: a complete claim with no .grader-provenance.json is invalid evidence', () => {
+  const files = inspectionOutputFiles({provenance: null});
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+});
+
+test('codexStatusFromOutput: trusted-local-tests records never carry invalidEvidence', () => {
+  const files = {
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'complete', inspected_head: HEAD, inspected_base: BASE}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'trusted-local-tests',
+      audited_inputs_changed_in_diff: [],
+    }),
+  };
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, true);
+  assert.equal(result.invalidEvidence, false);
+});
+
+test('codexStatusFromOutput: untrusted-refused records never carry invalidEvidence', () => {
+  const files = {
+    [`${CODEX_OUT}.status.json`]: JSON.stringify({status: 'incomplete', reasons: ['refused']}),
+    [`${CODEX_OUT}.meta.json`]: JSON.stringify({
+      meta_version: 2, head: HEAD, base: BASE, attempt: 1, review_mode: 'untrusted-refused',
+      audited_inputs_changed_in_diff: [],
+    }),
+  };
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(files));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, false);
 });
 
 // --- CR-01 regressions: records built from empty sub-objects, not mutations of the valid fixture ---
@@ -601,4 +925,279 @@ test('runCli validate rejects Codex output whose meta names no base', () => {
 test('runCli validate accepts a fallback whose base matches the Codex evidence base', () => {
   const {exitCode, errors} = runValidate(cliFiles());
   assert.equal(exitCode, 0, errors.join('\n'));
+});
+
+// --- Codex 2aa2cc8 F001: every record of the selected attempt is bound together ---
+
+const PROVENANCE_BINDING_REASON = "grader provenance does not name this review's grader and reviewed base";
+
+test('inspectionOnlyCompleteness: Codex 2aa2cc8 F001 reproduction is not complete', () => {
+  const head = HEAD;
+  const base = BASE;
+  const result = inspectionOnlyCompleteness({
+    meta: {head, base, label: 'old-review', attempt: 1},
+    status: {status: 'complete', inspected_head: head, inspected_base: base},
+    boundary: {verdict: 'verified', head, label: 'old-review', attempt: 1},
+    provenance: {
+      established: true, base_on_main: true, grader_source: 'trusted-origin-main', base: 'c'.repeat(40),
+      main_sha: 'd'.repeat(40), harness_head: 'e'.repeat(40), grader_ref: 'f'.repeat(40),
+    },
+    ciEvidence: validCiEvidence(),
+    out: `.planning/phases/x/codex/${head.slice(0, 12)}-new-review-a1`, head, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+  assert.ok(result.reasons.includes('inspection-only meta does not match the output prefix (head, label or attempt)'));
+  assert.ok(result.reasons.includes(PROVENANCE_BINDING_REASON), JSON.stringify(result.reasons));
+});
+
+test('inspectionOnlyCompleteness: a meta label that differs from the output prefix is invalid evidence', () => {
+  const result = predicate({
+    meta: inspectionMeta({label: 'old-review'}), status: inspectionStatus(), baseStatus: null,
+    boundary: verifiedBoundary({label: 'old-review'}), head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.reasons, ['inspection-only meta does not match the output prefix (head, label or attempt)']);
+});
+
+test('inspectionOnlyCompleteness: a boundary for another label is invalid evidence', () => {
+  const result = predicate({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null,
+    boundary: verifiedBoundary({label: 'old-review'}), head: HEAD, baseRequired: false,
+  });
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.reasons, ['inspection-only result has no verified isolation boundary for this head, label and attempt']);
+});
+
+test('inspectionOnlyCompleteness: provenance must name the grader and reviewed base the meta records', () => {
+  const D = 'd'.repeat(40);
+  for (const [overrides, metaOverrides] of [
+    [{base: 'c'.repeat(40)}, {}],
+    [{main_sha: D}, {}],
+    [{grader_ref: D}, {}],
+    [{harness_head: D}, {}],
+    [{main_sha: D, harness_head: D, grader_ref: D}, {}],
+    [{base: null}, {}],
+    [{main_sha: 'not-a-sha', harness_head: 'not-a-sha', grader_ref: 'not-a-sha'}, {harness_head: 'not-a-sha'}],
+  ]) {
+    const result = predicate({
+      meta: inspectionMeta(metaOverrides), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      provenance: validProvenance(overrides), head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(overrides));
+    assert.deepEqual(result.reasons, [PROVENANCE_BINDING_REASON], JSON.stringify(overrides));
+  }
+});
+
+test('inspectionOnlyCompleteness: provenance.established must be exactly true', () => {
+  for (const established of [1, 'yes', [1]]) {
+    const result = predicate({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      provenance: validProvenance({established}), head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(established));
+    assert.deepEqual(result.reasons, ['grader provenance not established from origin/main']);
+  }
+});
+
+test('inspectionOnlyCompleteness: CI evidence must exist and be for this head', () => {
+  for (const ciEvidence of [
+    null, [], {check_runs: []}, {check_runs: [], ci_ready: null}, validCiEvidence({head_sha: 'c'.repeat(40)}),
+  ]) {
+    const result = predicate({
+      meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+      ciEvidence, head: HEAD, baseRequired: false,
+    });
+    assert.equal(result.complete, false, JSON.stringify(ciEvidence));
+    assert.deepEqual(result.reasons, ['CI evidence is not bound to this head'], JSON.stringify(ciEvidence));
+  }
+});
+
+test('codexStatusFromOutput: reads <out>.ci-evidence.json; without it a complete claim is invalid evidence', () => {
+  const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(inspectionOutputFiles({ciEvidence: null})));
+  assert.equal(result.complete, false);
+  assert.equal(result.invalidEvidence, true);
+});
+
+// --- BM iter-3 IN-05: the CI-independence stop needs only one attempt -------
+//
+// A fork or non-bot head that changes .github/ is stopped before anything is
+// reviewed, with exactly this one reason; a retry cannot change that, so the
+// fallback is accepted after attempt 1 in exactly that case and nowhere else.
+
+const CI_STOP_REASON =
+  'fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required';
+const CODEX_OUT_A1 = CODEX_OUT.replace(/-a2$/, '-a1');
+
+function ciStopStatusAt1(reasons) {
+  const files = inspectionOutputFiles({
+    out: CODEX_OUT_A1,
+    status: {status: 'incomplete', reasons, qualified_ids: [], finding_count: 0, inspected_head: null, inspected_base: null},
+    meta: inspectionMeta({attempt: 1}),
+    boundary: null,
+    provenance: null,
+  });
+  return codexStatusFromOutput(CODEX_OUT_A1, stubReadFile(files));
+}
+
+test('CI_NOT_INDEPENDENT_REASON mirrors tests/codex_review_run.py CI_NOT_INDEPENDENT_REASON', () => {
+  const runner = fs.readFileSync(path.join(__dirname, '../../tests/codex_review_run.py'), 'utf8');
+  const block = runner.match(/^CI_NOT_INDEPENDENT_REASON = \(\n([\s\S]*?)^\)/m);
+  assert.ok(block, 'CI_NOT_INDEPENDENT_REASON not found in tests/codex_review_run.py');
+  const pyText = [...block[1].matchAll(/"([^"]*)"/g)].map(m => m[1]).join('');
+  assert.equal(CI_NOT_INDEPENDENT_REASON, pyText);
+  assert.equal(CI_NOT_INDEPENDENT_REASON, CI_STOP_REASON);
+});
+
+test('validateFallback: an untrusted head stopped by the CI-independence rule is eligible after attempt 1', () => {
+  const codexStatus = ciStopStatusAt1([CI_STOP_REASON]);
+  assert.equal(codexStatus.complete, false);
+  assert.equal(codexStatus.invalidEvidence, false);
+  const {ok, reasons} = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+    headTrust: 'untrusted', codexStatus, ciIndependenceRequired: true,
+  }));
+  assert.equal(ok, true, JSON.stringify(reasons));
+});
+
+test('validateFallback: attempt 1 is not enough when the CI-independence reason is not the only reason', () => {
+  for (const reasons of [[CI_STOP_REASON, 'interrupted by SIGINT'], ['boundary unverified'], [], [`${CI_STOP_REASON} `]]) {
+    const codexStatus = ciStopStatusAt1(reasons);
+    const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+      headTrust: 'untrusted', codexStatus, ciIndependenceRequired: true,
+    }));
+    assert.equal(result.ok, false, JSON.stringify(reasons));
+    assert.ok(result.reasons.some(r => r.includes('attempt 2 or later')), JSON.stringify(result.reasons));
+  }
+});
+
+test('validateFallback: the CI-independence attempt-1 exception never applies to a trusted head', () => {
+  const codexStatus = ciStopStatusAt1([CI_STOP_REASON]);
+  const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+    headTrust: 'trusted', codexStatus, ciIndependenceRequired: true,
+  }));
+  assert.equal(result.ok, false);
+});
+
+// --- BM iter-4 IN-02: the attempt-1 exception re-verifies that the rule covers the head ---
+//
+// The status file alone is not enough: the caller must have checked that the
+// CI-independence rule covers this head (fork, or non-owner non-bot author) and
+// that its .github/ changed or could not be determined (ciIndependenceRequired).
+
+test('IN-02 validateFallback: the attempt-1 exception needs re-verified CI-independence coverage', () => {
+  const codexStatus = ciStopStatusAt1([CI_STOP_REASON]);
+  for (const ciIndependenceRequired of [undefined, false, 'true', 1]) {
+    const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+      headTrust: 'untrusted', codexStatus, ciIndependenceRequired,
+    }));
+    assert.equal(result.ok, false, String(ciIndependenceRequired));
+    assert.ok(result.reasons.some(r => r.includes('attempt 2 or later')), JSON.stringify(result.reasons));
+  }
+  const ok = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+    headTrust: 'untrusted', codexStatus, ciIndependenceRequired: true,
+  }));
+  assert.equal(ok.ok, true, JSON.stringify(ok.reasons));
+});
+
+function ciStopCliFiles() {
+  return {
+    '/tmp/fallback.json': JSON.stringify(validRecord({codex_out: CODEX_OUT_A1})),
+    ...inspectionOutputFiles({
+      out: CODEX_OUT_A1,
+      status: {status: 'incomplete', reasons: [CI_STOP_REASON], qualified_ids: [], finding_count: 0, inspected_head: null, inspected_base: null},
+      meta: inspectionMeta({attempt: 1}),
+      boundary: null,
+      provenance: null,
+    }),
+  };
+}
+
+const PR_RULE_KEY = JSON.stringify(['gh', 'pr', 'view', '90', '--repo', 'thejuran/triggarr', '--json', 'author,isCrossRepository']);
+const GITHUB_DIFF_KEY = JSON.stringify(['git', 'diff', '--name-only', '--no-renames', `${BASE}..${HEAD}`, '--', '.github']);
+
+function runCiStopCli({prInfo, githubDiff, prAuthor = 'outsider'}) {
+  const files = ciStopCliFiles();
+  const errors = [];
+  const logs = [];
+  const exec = (cmd, args) => {
+    const key = JSON.stringify([cmd, ...args]);
+    if (key === PR_RULE_KEY) {
+      if (prInfo instanceof Error) throw prInfo;
+      return JSON.stringify(prInfo);
+    }
+    if (key === GITHUB_DIFF_KEY) {
+      if (githubDiff instanceof Error) throw githubDiff;
+      return githubDiff;
+    }
+    throw new Error(`unexpected exec call: ${key}`);
+  };
+  const exitCode = runCli(
+    ['validate', '--file', '/tmp/fallback.json', '--pr', '90', '--head', HEAD, '--base', BASE,
+      '--pr-author', prAuthor, '--head-trust', 'untrusted', '--codex-out', CODEX_OUT_A1],
+    {readFileSync: stubReadFile(files), exec, log: (...a) => logs.push(a.join(' ')), error: (...a) => errors.push(a.join(' '))},
+  );
+  return {exitCode, errors, logs};
+}
+
+test('IN-02 runCli: an attempt-1 CI-independence stop for a fork head that changed .github/ is valid', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prInfo: {author: {login: 'outsider', is_bot: false}, isCrossRepository: true}, githubDiff: '.github/x.json\n',
+  });
+  assert.equal(exitCode, 0, JSON.stringify(errors));
+});
+
+test('IN-02 runCli: an undeterminable .github/ change set still counts (fail closed toward the fallback rule)', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prInfo: {author: {login: 'collaborator', is_bot: false}, isCrossRepository: false}, githubDiff: new Error('fatal: bad object'),
+  });
+  assert.equal(exitCode, 0, JSON.stringify(errors));
+  assert.ok(errors.some(e => e.includes('fatal: bad object')), JSON.stringify(errors));
+});
+
+test('IN-02 runCli: an attempt-1 stop record for a Dependabot head the rule does not cover is refused', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prAuthor: 'app/dependabot',
+    prInfo: {author: {login: 'app/dependabot', is_bot: true}, isCrossRepository: false}, githubDiff: '.github/x.json\n',
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('attempt 2 or later')), JSON.stringify(errors));
+});
+
+test('IN-02 runCli: an attempt-1 stop record for a fork head whose .github/ did not change is refused', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prInfo: {author: {login: 'outsider', is_bot: false}, isCrossRepository: true}, githubDiff: '',
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('attempt 2 or later')), JSON.stringify(errors));
+});
+
+test('IN-02 runCli: when the PR cannot be read, the attempt-1 exception is not granted and the error is logged', () => {
+  const {exitCode, errors} = runCiStopCli({prInfo: new Error('gh: HTTP 502'), githubDiff: '.github/x.json\n'});
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('gh: HTTP 502')), JSON.stringify(errors));
+  assert.ok(errors.some(e => e.includes('attempt 2 or later')), JSON.stringify(errors));
+});
+
+// --- BM iter-4 IN-03: the CI evidence must show CI ready concluded success ---
+
+test('IN-03 codexStatusFromOutput: CI evidence for this head whose CI ready did not succeed is invalid evidence', () => {
+  for (const override of [
+    {conclusion: 'failure'}, {conclusion: null}, {status: 'in_progress', conclusion: null}, {status: 'queued'},
+    {conclusion: 'neutral'},
+  ]) {
+    const result = codexStatusFromOutput(CODEX_OUT, stubReadFile(inspectionOutputFiles({ciEvidence: validCiEvidence(override)})));
+    assert.equal(result.complete, false, JSON.stringify(override));
+    assert.equal(result.invalidEvidence, true, JSON.stringify(override));
+  }
+  const ok = codexStatusFromOutput(CODEX_OUT, stubReadFile(inspectionOutputFiles()));
+  assert.equal(ok.complete, true);
+});
+
+test('IN-03 inspectionOnlyCompleteness names the non-passing CI ready', () => {
+  const ciEvidence = validCiEvidence({conclusion: 'failure'});
+  const result = inspectionOnlyCompleteness({
+    meta: inspectionMeta(), status: inspectionStatus(), baseStatus: null, boundary: verifiedBoundary(),
+    provenance: validProvenance(), ciEvidence, out: CODEX_OUT, head: HEAD, baseRequired: false,
+  });
+  assert.deepEqual(result.reasons, ['CI evidence does not show a CI ready run that completed with success']);
 });
