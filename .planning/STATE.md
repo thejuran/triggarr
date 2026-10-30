@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 85.1 complete as an owner exception -- isolation machinery on main (PR #48); live criterion 3 unmet on current Codex models; bot/fork PRs keep the vibe-check fallback. Phase 86 next"
-stopped_at: "Phase 85.1 closed as an owner exception 2026-10-30: post-merge live review on PR #52 INCOMPLETE because the default Codex model is code-mode-only; owner kept the D-16 vibe-check fallback (no code change; quick task 261030-oaf researched and stopped). Next: Phase 86"
-last_updated: "2026-10-30T22:21:30Z"
-last_activity: "2026-10-30 -- PR #53 (Dependabot rollup #49-#52) accepted by the owner at 081b151 and merged as d5a4467; post-merge CI and Release runs passed; STATE history through v2.12 archived"
+status: "Phase 86 context gathered -- pilot set, comparison method, measurement rules and retirement bar decided; ready for planning"
+stopped_at: "Phase 86 context gathered 2026-10-30 (86-CONTEXT.md, D-01..D-18); next: /bm:plan-phase 86"
+last_updated: "2026-10-30T23:20:00Z"
+last_activity: "2026-10-30 -- Phase 86 discuss-phase: pilot set #48/#36/#44 + two new pilot PRs (Refresh-counts skip-per-record, card-template structured kind); fresh same-head vibe-check comparison on Refresh-counts; retirement bar fixed before results"
 progress:
   total_phases: 7
   completed_phases: 5
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 86 — Pilot & Reference Record (Phase 85.1 closed as an owner exception)
+**Current focus:** Phase 86 — Pilot & Reference Record (context gathered; planning next)
 
 > **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 is unreleased. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 85.1 (Isolated Codex Review for Untrusted PRs) — COMPLETE (owner exception; live criterion 3 unmet)
-Plan: 10 of 10 executed (85.1-01..85.1-10); D-03 live run INCOMPLETE on PR #52, closed by owner exception
-Status: Phase 85.1 complete as an owner exception -- machinery on main via PR #48 and boundary verified; the live inspection-only review cannot complete on current Codex models (default model is code-mode-only); bot/fork PRs keep the D-16 vibe-check fallback; reopening tracked in backlog/MAINTENANCE.md
-Last activity: 2026-10-30 -- Phase 85.1 closed as an owner exception; quick task 261030-oaf stopped at research
+Phase: 86 (Pilot & Reference Record) — context gathered, not yet planned
+Plan: 0 of TBD
+Status: Phase 86 context gathered on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind); previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback)
+Last activity: 2026-10-30 -- Phase 86 discuss-phase (86-CONTEXT.md)
 
 ### v2.13 milestone shape
 
@@ -68,6 +68,7 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 - 2026-10-21 (v2.13 roadmap): 28 requirements mapped to 5 phases (82-86) with 100% coverage, no orphans. REVIEW-01 (BM update) folded into the start of Phase 83 rather than a standalone phase, per the granularity rule against single-requirement phases, while keeping its owner-approval gate as that phase's first explicit success criterion. PLANCHK (84) kept fully independent per owner instruction. CIMAINT + ACCEPT grouped into Phase 85 since both extend the Phase 82 CI baseline and CIMAINT-06 feeds Phase 83's risk-based review.
 - 2026-10-21 (v2.12 closeout): the owner confirmed the review blueprint and the CI reference-baseline plan as written; they form the CI & Review Workflow milestone. No BM settings, CLAUDE.md, CI or acceptance changes until that milestone implements them.
 
+- 2026-10-30 (Phase 86 discuss, owner): pilot = #48, #36, #44 + two new separate PRs (Refresh-counts skips a malformed record per item; card-template structured reason kind); PILOT-02 comparison is fresh on the Refresh-counts PR's first head; proof-based judging; retire routine vibe-check only if it made no proven unique catch (bar fixed before results). See 86-CONTEXT.md.
 - 2026-10-30 (Phase 85.1 closeout, owner): kept the D-16 vibe-check fallback for bot/fork PRs rather than pinning `gpt-5.5` or allowlisting the code-mode notice; closed Phase 85.1 as an exception with live criterion 3 unmet (85.1-REVIEW-EVIDENCE.md).
 
 Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are recorded above in "v2.12 milestone shape" / "Key v2.12 Phasing Rationale", derived from the approved design spec `docs/superpowers/specs/2026-10-08-search-correctness-design.md` (locked grading definitions §3, per-phase behavior + acceptance §4, ordering rationale §5).
@@ -123,13 +124,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 ## Session Continuity
 
 Last session: 2026-10-30T21:19:13Z
-Stopped at: Phase 85.1 closed as an owner exception; next: Phase 86 (Pilot & Reference Record)
-Resume file: .planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-REVIEW-EVIDENCE.md
+Stopped at: Phase 86 context gathered; next: /bm:plan-phase 86
+Resume file: .planning/phases/86-pilot-reference-record/86-CONTEXT.md
 
 ## Operator Next Steps
 
-- Phase 86 (Pilot & Reference Record): `/bm:discuss-phase 86` or `/bm:plan-phase 86`; cut its branch from `planning/cleanup-2026-10-30` so the held planning commits ride along
+- Phase 86 (Pilot & Reference Record): `/bm:plan-phase 86` on branch `phase-86-pilot-reference-record` (carries the held planning commits); the two new pilot PRs are cut from `main` as separate PRs (86-CONTEXT D-04)
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule
-- Follow-up carried from v2.12: "Refresh counts" marks an instance disconnected on one malformed record while scheduled cycles skip it per item -- decide whether to align (backlog/MAINTENANCE.md)
+- Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)
 - `.planning/` is excluded locally (`.git/info/exclude`): tracked planning files are carried by Git, new ones need `git add -f`
