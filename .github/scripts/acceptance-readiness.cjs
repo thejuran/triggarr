@@ -298,6 +298,7 @@ function readiness(input) {
     pr, prAuthor, prAuthorIsBot, isCrossRepository, draft, open,
     head, baseSha, mergeBase, checks, comments, checksError, commentsError,
     workflowRuns, workflowRunsError, dispositions, blockers, codex = {}, fallback, ciDefinitionsChanged,
+    ciDefinitionsError,
   } = input;
 
   const items = [];
@@ -327,12 +328,18 @@ function readiness(input) {
   } else {
     const ciItem = ciReadyItem(checks, head, workflowRuns, workflowRunsError);
     if (ciItem.status === 'ok' && ciIndependenceRequired) {
+      // BM iter-4 IN-01: only a determined change is stated as a fact; an
+      // unknown change set is shown as unknown (with the git error, when one
+      // was recorded) and still treated as a change.
+      const why = ciDefinitionsChanged === true
+        ? 'this fork or non-bot untrusted head changes files under .github/, so its own files decided what CI ran '
+          + 'and what counts as passing'
+        : 'whether this fork or non-bot untrusted head changed files under .github/ is unknown '
+          + `(${ciDefinitionsError ? `git diff failed: ${ciDefinitionsError}` : 'not computed'}); treated as changed`;
       items.push({
         name: 'CI ready',
         status: 'not-independent',
-        detail: `${ciItem.detail}, but not independent evidence: this fork or non-bot untrusted head changes files `
-          + 'under .github/, so its own files decided what CI ran and what counts as passing; '
-          + 'the Codex item needs the owner-approved fallback',
+        detail: `${ciItem.detail}, but not independent evidence: ${why}; the Codex item needs the owner-approved fallback`,
       });
     } else {
       items.push(ciItem);
@@ -603,8 +610,11 @@ function runCli(argv, {exec, readFile} = {}) {
   // Only a head the CI-independence rule covers needs its .github/ change set
   // (IN-07); the reviewed range is the runner's (merge-base..head), and
   // --no-renames keeps a rename into or out of .github/ visible. A failed read
-  // leaves it unknown, which readiness() treats as a change (fail closed).
+  // leaves it unknown, which readiness() treats as a change (fail closed); the
+  // git error is logged and shown, never dropped (BM iter-4 IN-01). The command
+  // has no credentials in it, so its message is safe to print.
   let ciDefinitionsChanged = null;
+  let ciDefinitionsError = null;
   const author = {login: prInfo.author?.login, is_bot: Boolean(prInfo.author?.is_bot)};
   if (ciIndependenceRuleApplies({isCrossRepository: Boolean(prInfo.isCrossRepository), author})) {
     try {
@@ -612,8 +622,15 @@ function runCli(argv, {exec, readFile} = {}) {
         'diff', '--name-only', '--no-renames', `${mergeBase}..${head}`, '--', CI_DEFINITION_PATHSPEC,
       ]);
       ciDefinitionsChanged = String(changed).trim().length > 0;
-    } catch {
+    } catch (err) {
       ciDefinitionsChanged = null;
+      // execFileSync puts git's stderr after the "Command failed" line; keep both, on one line.
+      ciDefinitionsError = String(err?.message || err).trim().split('\n').map(line => line.trim()).filter(Boolean)
+        .join(' / ').slice(0, 500);
+      console.error(
+        `could not determine whether files under .github/ changed (git diff ${mergeBase}..${head}): `
+        + `${ciDefinitionsError}; treated as changed`,
+      );
     }
   }
 
@@ -648,6 +665,7 @@ function runCli(argv, {exec, readFile} = {}) {
     codex: {status, baseStatus, meta, auditedChanged, boundary, provenance, ciEvidence, out: opts.codexOut},
     fallback,
     ciDefinitionsChanged,
+    ciDefinitionsError,
   });
 
   console.log(renderChecklist(result));
