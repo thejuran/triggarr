@@ -1644,3 +1644,47 @@ test('IN-01 runCli: a failed .github/ diff is logged and shown as unknown, and r
   assert.ok(!ciLine.includes('changes files under .github/'), ciLine);
   assert.ok(output.includes('- Codex: BLOCKED'), output);
 });
+
+// --- BM iter-4 IN-02: readiness grants the attempt-1 exception only to a head the rule covers ---
+
+function ciStopInput(variant, ciDefinitionsChanged) {
+  const stop = {
+    status: 'incomplete',
+    reasons: ['fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent; owner fallback required'],
+  };
+  const out = inspectionOnlyOut();
+  const input = inspectionOnlyBaseline(variant, {status: stop, attempt: 1, out, boundary: null, provenance: null});
+  input.ciDefinitionsChanged = ciDefinitionsChanged;
+  input.fallback = validFallback({codex_out: out});
+  return input;
+}
+
+test('IN-02: an attempt-1 stop record for a Dependabot head (rule does not cover it) does not open the fallback', () => {
+  for (const variant of [
+    {prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: false},
+    {prAuthor: 'app/dependabot', prAuthorIsBot: true, isCrossRepository: false},
+  ]) {
+    const codex = item(readiness(ciStopInput(variant, true)), 'Codex');
+    assert.equal(codex.status, 'blocked', codex.detail);
+    assert.ok(codex.detail.includes('attempt 2 or later'), codex.detail);
+  }
+});
+
+test('IN-02: an attempt-1 stop record for a covered head whose .github/ did not change does not open the fallback', () => {
+  const codex = item(readiness(ciStopInput({prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true}, false)), 'Codex');
+  assert.equal(codex.status, 'blocked', codex.detail);
+  assert.ok(codex.detail.includes('attempt 2 or later'), codex.detail);
+});
+
+test('IN-02: an attempt-1 stop record for a covered head with a changed or unknown .github/ opens the fallback', () => {
+  for (const changed of [true, null, undefined]) {
+    for (const variant of [
+      {prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true},
+      {prAuthor: 'collaborator', prAuthorIsBot: false, isCrossRepository: false},
+    ]) {
+      const result = readiness(ciStopInput(variant, changed));
+      assert.equal(item(result, 'Codex').status, 'ok', `${variant.prAuthor} ${changed}: ${item(result, 'Codex').detail}`);
+      assert.equal(result.ready, true);
+    }
+  }
+});

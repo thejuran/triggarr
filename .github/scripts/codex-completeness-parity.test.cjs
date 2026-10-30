@@ -51,6 +51,11 @@ function validCiEvidence(overrides = {}) {
   return {check_runs: [ciReady], ci_ready: ciReady};
 }
 
+// Author shapes for rows that exercise the CI-independence rule (ciRule).
+const COVERED_FORK = Object.freeze({prAuthor: 'outsider', prAuthorIsBot: false, isCrossRepository: true});
+const COVERED_COLLABORATOR = Object.freeze({prAuthor: 'collaborator', prAuthorIsBot: false, isCrossRepository: false});
+const DEPENDABOT = Object.freeze({prAuthor: 'dependabot[bot]', prAuthorIsBot: true, isCrossRepository: false});
+
 // --- Fixture table: rows covering completeness and fallback-eligibility -----
 //
 // provenance defaults to a valid trusted-main record when a row omits it;
@@ -228,10 +233,18 @@ const ROWS = [
     fallbackEligible: false,
   },
   // --- BM iter-3 IN-05: the CI-independence stop is fallback-eligible at attempt 1 ---
-  {
-    label: 'ci-not-independent-stop-attempt-1',
+  // BM iter-4 IN-02: only for a head the rule covers whose .github/ changed or
+  // is unknown (ciRule); the status file alone never opens the exception.
+  ...[
+    ['ci-not-independent-stop-attempt-1', COVERED_FORK, true, true],
+    ['ci-not-independent-stop-attempt-1-github-unknown', COVERED_COLLABORATOR, null, true],
+    ['ci-not-independent-stop-attempt-1-github-unchanged', COVERED_FORK, false, false],
+    ['ci-not-independent-stop-attempt-1-bot-head', DEPENDABOT, true, false],
+  ].map(([label, author, ciDefinitionsChanged, fallbackEligible]) => ({
+    label,
     headTrust: 'untrusted',
     attempt: 1,
+    ciRule: {...author, ciDefinitionsChanged},
     meta: {audited_inputs_changed_in_diff: []},
     status: {
       status: 'incomplete',
@@ -241,8 +254,8 @@ const ROWS = [
     boundary: null,
     provenance: null,
     expectComplete: false,
-    fallbackEligible: true,
-  },
+    fallbackEligible,
+  })),
   {
     label: 'ci-not-independent-plus-another-reason-attempt-1',
     headTrust: 'untrusted',
@@ -356,12 +369,26 @@ function validFallbackFor(prefix) {
   };
 }
 
+function authorFor(row) {
+  if (row.ciRule) return row.ciRule;
+  return row.headTrust === 'untrusted' ? DEPENDABOT : {prAuthor: 'thejuran', prAuthorIsBot: false, isCrossRepository: false};
+}
+
+// The same rule readiness() applies: covered head, and .github/ changed or unknown.
+function ciIndependenceRequiredFor(row) {
+  const {prAuthor, prAuthorIsBot, isCrossRepository, ciDefinitionsChanged} = {ciDefinitionsChanged: false, ...authorFor(row)};
+  return ciIndependenceRuleApplies({isCrossRepository, author: {login: prAuthor, is_bot: prAuthorIsBot}})
+    && ciDefinitionsChanged !== false;
+}
+
 function readinessInputFor(row, prefix, meta, fallback) {
+  const author = authorFor(row);
   return {
     pr: PR,
-    prAuthor: row.headTrust === 'untrusted' ? 'dependabot[bot]' : 'thejuran',
-    prAuthorIsBot: row.headTrust === 'untrusted',
-    isCrossRepository: false,
+    prAuthor: author.prAuthor,
+    prAuthorIsBot: author.prAuthorIsBot,
+    isCrossRepository: author.isCrossRepository,
+    ciDefinitionsChanged: row.ciRule ? row.ciRule.ciDefinitionsChanged : false,
     draft: false,
     open: true,
     head: HEAD,
@@ -417,8 +444,8 @@ for (const row of ROWS.filter(r => r.fallbackEligible !== null)) {
     const fromOutput = codexStatusFromOutput(prefix, readFile);
     const direct = validateFallback(fallback, {
       pr: PR, head: HEAD, base: BASE,
-      prAuthor: row.headTrust === 'untrusted' ? 'dependabot[bot]' : 'thejuran',
-      headTrust: row.headTrust, codexStatus: fromOutput,
+      prAuthor: authorFor(row).prAuthor,
+      headTrust: row.headTrust, codexStatus: fromOutput, ciIndependenceRequired: ciIndependenceRequiredFor(row),
     });
 
     const result = readiness(readinessInputFor(row, prefix, meta, fallback));

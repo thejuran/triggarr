@@ -1054,7 +1054,7 @@ test('validateFallback: an untrusted head stopped by the CI-independence rule is
   assert.equal(codexStatus.complete, false);
   assert.equal(codexStatus.invalidEvidence, false);
   const {ok, reasons} = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
-    headTrust: 'untrusted', codexStatus,
+    headTrust: 'untrusted', codexStatus, ciIndependenceRequired: true,
   }));
   assert.equal(ok, true, JSON.stringify(reasons));
 });
@@ -1063,7 +1063,7 @@ test('validateFallback: attempt 1 is not enough when the CI-independence reason 
   for (const reasons of [[CI_STOP_REASON, 'interrupted by SIGINT'], ['boundary unverified'], [], [`${CI_STOP_REASON} `]]) {
     const codexStatus = ciStopStatusAt1(reasons);
     const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
-      headTrust: 'untrusted', codexStatus,
+      headTrust: 'untrusted', codexStatus, ciIndependenceRequired: true,
     }));
     assert.equal(result.ok, false, JSON.stringify(reasons));
     assert.ok(result.reasons.some(r => r.includes('attempt 2 or later')), JSON.stringify(result.reasons));
@@ -1073,7 +1073,107 @@ test('validateFallback: attempt 1 is not enough when the CI-independence reason 
 test('validateFallback: the CI-independence attempt-1 exception never applies to a trusted head', () => {
   const codexStatus = ciStopStatusAt1([CI_STOP_REASON]);
   const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
-    headTrust: 'trusted', codexStatus,
+    headTrust: 'trusted', codexStatus, ciIndependenceRequired: true,
   }));
   assert.equal(result.ok, false);
+});
+
+// --- BM iter-4 IN-02: the attempt-1 exception re-verifies that the rule covers the head ---
+//
+// The status file alone is not enough: the caller must have checked that the
+// CI-independence rule covers this head (fork, or non-owner non-bot author) and
+// that its .github/ changed or could not be determined (ciIndependenceRequired).
+
+test('IN-02 validateFallback: the attempt-1 exception needs re-verified CI-independence coverage', () => {
+  const codexStatus = ciStopStatusAt1([CI_STOP_REASON]);
+  for (const ciIndependenceRequired of [undefined, false, 'true', 1]) {
+    const result = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+      headTrust: 'untrusted', codexStatus, ciIndependenceRequired,
+    }));
+    assert.equal(result.ok, false, String(ciIndependenceRequired));
+    assert.ok(result.reasons.some(r => r.includes('attempt 2 or later')), JSON.stringify(result.reasons));
+  }
+  const ok = validateFallback(validRecord({codex_out: CODEX_OUT_A1}), validContext({
+    headTrust: 'untrusted', codexStatus, ciIndependenceRequired: true,
+  }));
+  assert.equal(ok.ok, true, JSON.stringify(ok.reasons));
+});
+
+function ciStopCliFiles() {
+  return {
+    '/tmp/fallback.json': JSON.stringify(validRecord({codex_out: CODEX_OUT_A1})),
+    ...inspectionOutputFiles({
+      out: CODEX_OUT_A1,
+      status: {status: 'incomplete', reasons: [CI_STOP_REASON], qualified_ids: [], finding_count: 0, inspected_head: null, inspected_base: null},
+      meta: inspectionMeta({attempt: 1}),
+      boundary: null,
+      provenance: null,
+    }),
+  };
+}
+
+const PR_RULE_KEY = JSON.stringify(['gh', 'pr', 'view', '90', '--repo', 'thejuran/triggarr', '--json', 'author,isCrossRepository']);
+const GITHUB_DIFF_KEY = JSON.stringify(['git', 'diff', '--name-only', '--no-renames', `${BASE}..${HEAD}`, '--', '.github']);
+
+function runCiStopCli({prInfo, githubDiff, prAuthor = 'outsider'}) {
+  const files = ciStopCliFiles();
+  const errors = [];
+  const logs = [];
+  const exec = (cmd, args) => {
+    const key = JSON.stringify([cmd, ...args]);
+    if (key === PR_RULE_KEY) {
+      if (prInfo instanceof Error) throw prInfo;
+      return JSON.stringify(prInfo);
+    }
+    if (key === GITHUB_DIFF_KEY) {
+      if (githubDiff instanceof Error) throw githubDiff;
+      return githubDiff;
+    }
+    throw new Error(`unexpected exec call: ${key}`);
+  };
+  const exitCode = runCli(
+    ['validate', '--file', '/tmp/fallback.json', '--pr', '90', '--head', HEAD, '--base', BASE,
+      '--pr-author', prAuthor, '--head-trust', 'untrusted', '--codex-out', CODEX_OUT_A1],
+    {readFileSync: stubReadFile(files), exec, log: (...a) => logs.push(a.join(' ')), error: (...a) => errors.push(a.join(' '))},
+  );
+  return {exitCode, errors, logs};
+}
+
+test('IN-02 runCli: an attempt-1 CI-independence stop for a fork head that changed .github/ is valid', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prInfo: {author: {login: 'outsider', is_bot: false}, isCrossRepository: true}, githubDiff: '.github/x.json\n',
+  });
+  assert.equal(exitCode, 0, JSON.stringify(errors));
+});
+
+test('IN-02 runCli: an undeterminable .github/ change set still counts (fail closed toward the fallback rule)', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prInfo: {author: {login: 'collaborator', is_bot: false}, isCrossRepository: false}, githubDiff: new Error('fatal: bad object'),
+  });
+  assert.equal(exitCode, 0, JSON.stringify(errors));
+  assert.ok(errors.some(e => e.includes('fatal: bad object')), JSON.stringify(errors));
+});
+
+test('IN-02 runCli: an attempt-1 stop record for a Dependabot head the rule does not cover is refused', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prAuthor: 'app/dependabot',
+    prInfo: {author: {login: 'app/dependabot', is_bot: true}, isCrossRepository: false}, githubDiff: '.github/x.json\n',
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('attempt 2 or later')), JSON.stringify(errors));
+});
+
+test('IN-02 runCli: an attempt-1 stop record for a fork head whose .github/ did not change is refused', () => {
+  const {exitCode, errors} = runCiStopCli({
+    prInfo: {author: {login: 'outsider', is_bot: false}, isCrossRepository: true}, githubDiff: '',
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('attempt 2 or later')), JSON.stringify(errors));
+});
+
+test('IN-02 runCli: when the PR cannot be read, the attempt-1 exception is not granted and the error is logged', () => {
+  const {exitCode, errors} = runCiStopCli({prInfo: new Error('gh: HTTP 502'), githubDiff: '.github/x.json\n'});
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some(e => e.includes('gh: HTTP 502')), JSON.stringify(errors));
+  assert.ok(errors.some(e => e.includes('attempt 2 or later')), JSON.stringify(errors));
 });
