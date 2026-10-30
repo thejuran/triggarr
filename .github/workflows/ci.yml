@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload test evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results
           path: test-results.xml
@@ -76,7 +76,7 @@ jobs:
           node .github/scripts/coverage-provenance.cjs write --coverage coverage.xml --test-exit "$TEST_EXIT" --test-seconds "$TEST_SECONDS" --out coverage-provenance.json
 
       - name: Upload coverage evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -166,7 +166,7 @@ jobs:
           docker image inspect triggarr:ci-test --format '{{.Id}}' > image-id.txt
           docker save triggarr:ci-test -o image.tar
           sha256sum image.tar > image.tar.sha256
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: audited-image
           path: |
@@ -378,7 +378,7 @@ jobs:
           failure() &&
           hashFiles('e2e-artifacts/credential/scan-complete.json') != '' &&
           hashFiles('e2e-artifacts/pages/scan-complete.json') != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: browser-e2e-failure
           path: e2e-artifacts
