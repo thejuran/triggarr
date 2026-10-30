@@ -606,6 +606,16 @@ def _pr_merge_base(pr_base: str, head: str, command_runner: CommandRunner) -> st
     return merge_base
 
 
+def _is_recognised_bot(login: object, is_bot_flag: object) -> bool:
+    """The one bot rule: gh reports is_bot, or the login ends in "[bot]".
+
+    Shared by verify_trust (a bot head is never trusted for local tests) and
+    the CI-independence rule (a same-repository bot head is exempt, SA-04);
+    acceptance-readiness.cjs headTrustFor() applies the same rule.
+    """
+    return bool(is_bot_flag) or (isinstance(login, str) and login.endswith("[bot]"))
+
+
 def _verify_trust_pr(run: ReviewRun, command_runner: CommandRunner, match: re.Match[str]) -> dict[str, object]:
     slug, number = match.group(1), match.group(2)
     if slug != REPO_SLUG:
@@ -629,7 +639,7 @@ def _verify_trust_pr(run: ReviewRun, command_runner: CommandRunner, match: re.Ma
         ) from exc
     author = data.get("author") or {}
     login = author.get("login", "")
-    is_bot = bool(author.get("is_bot")) or login.endswith("[bot]")
+    is_bot = _is_recognised_bot(login, author.get("is_bot"))
     if data.get("isCrossRepository"):
         raise RunnerError(f"PR #{number} is cross-repository (fork): not a trusted origin for local test execution")
     if is_bot:
@@ -990,9 +1000,11 @@ def inspect_untrusted_pr(run: ReviewRun, command_runner: CommandRunner) -> dict[
             f" not {run.base}"
         )
     author = data.get("author") or {}
+    login = author.get("login", "")
     return {
         "number": int(number),
-        "author_login": author.get("login", ""),
+        "author_login": login,
+        "author_is_bot": _is_recognised_bot(login, author.get("is_bot")),
         "is_cross_repository": bool(data.get("isCrossRepository")),
         "head_ref_oid": data.get("headRefOid"),
         "base_ref_oid": pr_base,
@@ -1088,23 +1100,46 @@ def _changed_paths(run: ReviewRun, pathspecs: tuple[str, ...], command_runner: C
 # os-scan-exceptions.json, image_lock_consistency.py, ...; BM iter-3 WR-01).
 # So when a fork head changes anything under .github/ (including a rename,
 # deletion, or replacing .github itself), its "CI ready" is not independent
-# evidence. Same-repository PRs (Dependabot) are not affected.
+# evidence.
+#
+# SA-04 (owner ruling 2026-10-30, "extend"): the same holds for a
+# same-repository branch whose author is neither an owner (TRUSTED_AUTHORS)
+# nor a recognised bot (_is_recognised_bot, verify_trust's own rule). Only
+# same-repository bot heads (Dependabot bumping action pins) and owner heads
+# are exempt.
 CI_DEFINITION_PATHSPECS = (".github",)
-FORK_CI_NOT_INDEPENDENT_REASON = (
-    "fork PR changes files under .github/; CI evidence is not independent; owner fallback required"
+CI_NOT_INDEPENDENT_REASON = (
+    "fork or non-bot untrusted PR changes files under .github/; CI evidence is not independent;"
+    " owner fallback required"
 )
 
 
-def fork_ci_independence_problem(
+def ci_independence_rule_applies(pr_info: dict[str, object]) -> bool:
+    """True for a fork head, or a same-repository head by a non-owner, non-bot author (SA-03, SA-04).
+
+    Fails closed: an author that cannot be identified is neither an owner
+    nor a recognised bot, so the rule applies.
+    """
+    if pr_info.get("is_cross_repository"):
+        return True
+    login = pr_info.get("author_login")
+    login = login if isinstance(login, str) else ""
+    if _is_recognised_bot(login, pr_info.get("author_is_bot")):
+        return False
+    return login not in TRUSTED_AUTHORS
+
+
+def ci_independence_problem(
     run: ReviewRun, pr_info: dict[str, object], command_runner: CommandRunner
 ) -> str | None:
-    """Return FORK_CI_NOT_INDEPENDENT_REASON when a fork head changes anything under .github/, else None (SA-03).
+    """Return CI_NOT_INDEPENDENT_REASON when a head the rule covers changes anything under .github/, else None.
 
-    Only a cross-repository PR is checked. The changed-path list is read
-    with the safe git prefix and a byte bound; a list too long to read is
-    treated as a change (fail closed).
+    Only heads ci_independence_rule_applies() covers are checked (a fork,
+    or a non-owner, non-bot same-repository head). The changed-path list is
+    read with the safe git prefix and a byte bound; a list too long to read
+    is treated as a change (fail closed).
     """
-    if not pr_info.get("is_cross_repository"):
+    if not ci_independence_rule_applies(pr_info):
         return None
     output = _git_bounded(
         [
@@ -1124,7 +1159,7 @@ def fork_ci_independence_problem(
         MAX_INSPECTION_INPUT_BYTES,
     )
     if output is None or output.strip(b"\0\n"):
-        return FORK_CI_NOT_INDEPENDENT_REASON
+        return CI_NOT_INDEPENDENT_REASON
     return None
 
 
@@ -4113,7 +4148,7 @@ def _execute_inspection(
     makes the run INCOMPLETE. Returns 0 (COMPLETE) or 3 (INCOMPLETE).
     """
     if stop_reason is not None:
-        # The head is not reviewed at all (SA-03 fork rule, or an oversize input).
+        # The head is not reviewed at all (SA-03/SA-04 CI-independence rule, or an oversize input).
         return _inspection_incomplete(run, stop_reason)
     if input_stats.get("oversize"):
         return _inspection_incomplete(run, "inspection input exceeds MAX_INSPECTION_INPUT_BYTES")
@@ -4276,11 +4311,11 @@ def _execute_untrusted(run: ReviewRun, command_runner: CommandRunner) -> int:
     inputs = audit_inputs(command_runner)
     harness_head = _git_stdout(["git", "rev-parse", "HEAD"], command_runner).strip()
     audited_changed = audited_inputs_changed(run, command_runner)
-    # A head that is not reviewed (SA-03 fork rule, or an oversize input,
+    # A head that is not reviewed (SA-03/SA-04 CI-independence rule, or an oversize input,
     # Codex 0aeeeda F001) is never rendered into a prompt: the reservation
     # records only a note, and _execute_inspection records INCOMPLETE with
     # *stop_reason* before anything else runs.
-    stop_reason = fork_ci_independence_problem(run, pr_info, command_runner)
+    stop_reason = ci_independence_problem(run, pr_info, command_runner)
     if stop_reason is not None:
         input_text = ""
         input_stats: dict[str, object] = {"bytes": 0, "files_included": 0, "files_omitted": 0, "oversize": False}
