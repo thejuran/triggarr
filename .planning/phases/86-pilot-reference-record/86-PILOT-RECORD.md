@@ -302,14 +302,14 @@ not committed; they are listed with their results in `86-REVIEW-EVIDENCE.md`
 | Finding ID | Reviewer | Summary (plain words) | Label (D-09) | Proof or reason | Unique to |
 |---|---|---|---|---|---|
 | VC-arch-001 (+ bugs-001, imp-001 merged) | vibe-check | On Sonarr, Refresh counts checks air dates before it drops unmonitored episodes, so it logs "skipped malformed record" warnings the scheduled cycle never logs. Counts are unaffected. | confirmed consequential defect | Proof test P1 fails at H1 on both queues: "Sonarr: Skipped 1 missing-queue record(s) with malformed date data (ids=[5])" for an unmonitored episode. These are misleading warnings in System Logs. | — (also BM WR-01) |
-| VC-cov-001 | vibe-check | No test covers the Sonarr missing-queue tag screening step. | unproven | The test gap is real (coverage shows L2117/L2121 never run). The test the finding asks for (P3) passes at H1, so no defect sits behind the gap. | — |
-| VC-cov-002 | vibe-check | No test checks that the returned upgrade-queue list is the screened one. | unproven | The test gap is real. The requested test (P4, all three apps) passes at H1, so no defect was shown. | — |
-| VC-cov-003 (sub-threshold, filtered) | vibe-check | The new correction to the "monitored" count is never tested with a record actually dropped. | unproven | The test gap is real. P5 (Radarr) and P5c (Lidarr) drop a record with no `id` and pass at H1; both counts are right. | — |
-| VC-cov-004 (sub-threshold, filtered) | vibe-check | Radarr/Lidarr never test the "upgrade-queue tag can't be resolved" path. | unproven | The test gap is real. P6 passes at H1: the returned list is empty and the instance stays connected. | — |
+| VC-cov-001 | vibe-check | No test covers the Sonarr missing-queue tag screening step. | unproven | The test gap is real (coverage shows L2117/L2121 never run). One test written for the gap (P3: a series whose tags are not a list, with a missing-queue tag set) passes at H1. That shows only that the specific case tested behaves correctly at H1; it does not establish that the surrounding code is correct in general, so no defect was demonstrated rather than none exists. | — |
+| VC-cov-002 | vibe-check | No test checks that the returned upgrade-queue list is the screened one. | unproven | The test gap is real. One test written for the gap (P4: a null upgrade-queue record, all three apps) passes at H1. That shows only that the specific case tested behaves correctly at H1; it does not establish that the surrounding code is correct in general, so no defect was demonstrated rather than none exists. | — |
+| VC-cov-003 (sub-threshold, filtered) | vibe-check | The new correction to the "monitored" count is never tested with a record actually dropped. | unproven | The test gap is real. Tests P5 (Radarr) and P5c (Lidarr), each dropping one record with no `id`, pass at H1, with the expected monitored and eligible counts for that case. That shows only that the specific case tested behaves correctly at H1; it does not establish that the surrounding code is correct in general, so no defect was demonstrated rather than none exists. | — |
+| VC-cov-004 (sub-threshold, filtered) | vibe-check | Radarr/Lidarr never test the "upgrade-queue tag can't be resolved" path. | unproven | The test gap is real. Test P6 (one unresolvable upgrade-queue tag, Radarr and Lidarr) passes at H1: the returned list is empty and the instance stays connected. That shows only that the specific case tested behaves correctly at H1; it does not establish that the surrounding code is correct in general, so no defect was demonstrated rather than none exists. | — |
 | BM WR-01 | BM | Same Sonarr ordering problem as VC-arch-001. | confirmed consequential defect | Proof test P1 (as above). BM also reproduced it with its own probe. | — (also vibe-check) |
 | BM WR-02 | BM | The code comments promise the returned upgrade-queue list contains no malformed record, but records with a bad `id`/tags still come through. | unproven | The mismatch reproduces: P2 fails at H1 for Radarr and Lidarr. But no consequence can be shown, because the only caller (`routes.py`) discards that list. | — |
 | BM IN-01 | BM | Radarr/Lidarr build a fully-filtered upgrade list and never use it. | unproven | Accurate when read at H1, but it has no effect on behavior (logs only), so there is no consequence to demonstrate. | — |
-| BM IN-02 | BM | The end-to-end refresh test does not check the upgrade queue; there is no refresh test for a Radarr release date without a timezone or a non-integer `id`. | unproven | The test gap is real. The requested tests (P4, P5, P5b) pass at H1, so no defect was shown. | — |
+| BM IN-02 | BM | The end-to-end refresh test does not check the upgrade queue; there is no refresh test for a Radarr release date without a timezone or a non-integer `id`. | unproven | The test gap is real. Tests written for the named cases (P4, P5, P5b) pass at H1. That shows only that the specific case tested behaves correctly at H1; it does not establish that the surrounding code is correct in general, so no defect was demonstrated rather than none exists. | — |
 | BM IN-03 | BM | Three tests call `monkeypatch.undo()` partway through, which would also undo any future shared fixture's patches. | unproven | Latent: no current fixture patches in that scope, so no failure can be reproduced. | — |
 | (none) | Codex | Codex reported no findings (verdict `no-findings`, review complete). Its limitations note says the new real-client tests don't assert what survives in the upgrade queue, which is the same gap as VC-cov-002 and BM IN-02. | — | — | — |
 
@@ -338,8 +338,10 @@ its own and reproduced it. Neither side found a defect the other missed.
 
 Beyond that shared catch, both sides pointed out the same kind of thing: places
 where tests could be stronger. Vibe-check named four gaps and BM named one
-broader one. I wrote the missing tests and every one passes, so the code behind
-those gaps works. BM also noticed that a code comment promises more than the code
+broader one. I wrote one or two tests for each gap and every one passes at H1.
+That shows those specific cases behave correctly; it does not prove the
+surrounding code correct in general, so these stay "unproven" rather than
+"false positive". BM also noticed that a code comment promises more than the code
 does (the returned upgrade list can still hold a record with no ID). That is
 true, but nothing uses that list today, so it has no effect yet. Codex found
 nothing to report and noted the same test gap in passing.
@@ -351,11 +353,15 @@ ran nine model agents to the paired side's two.
 Measured against the retirement bar committed before any of this ran: on this PR,
 vibe-check found **no proven defect that BM + Codex missed.**
 
+Owner tally decision (2026-10-30): "Approve tally for H1 0318246. Continue with 86-04. Correct the passing-test wording to avoid claiming broader correctness than the tests establish. This approves only the comparison tally; retirement remains a separate decision using the full pilot evidence, including PR #36’s two later-fixed misses."
+
+Per that decision, the wording for the passing tests above was corrected before this record was committed: a passing test now supports only the case it covers. This approval covers the comparison tally only. The PILOT-03 retirement decision is separate and uses the full pilot evidence, including PR #36's two later-fixed misses.
+
 ## Owner decisions log
 
 | PR | Date | Question | Answer |
 |---|---|---|---|
-| Refresh-counts (H1 `03182462100e`) | 2026-10-30 | (none yet; the PILOT-02 tally approval is pending in 86-03 Task 3) | — |
+| Refresh-counts (H1 `03182462100e`) | 2026-10-30 | Approve the PILOT-02 tally at H1 (86-03 Task 3)? | "Approve tally for H1 0318246. Continue with 86-04. Correct the passing-test wording to avoid claiming broader correctness than the tests establish. This approves only the comparison tally; retirement remains a separate decision using the full pilot evidence, including PR #36’s two later-fixed misses." |
 
 ## PILOT-03 recommendation and decisions
 
