@@ -196,7 +196,95 @@ None recorded yet.
 
 ## Scorecards
 
-Filled in by plan 86-01 Task 2.
+Columns are the D-10 metrics. Counting method (per the Measurement rules
+above): a finding dispositioned *fixed*, with a reproduction or regression
+test, counts as a confirmed consequential defect; a finding dispositioned
+*false_positive* counts as a false positive; anything else recorded against
+a finding (`nonblocking_debt`, pending, accepted residual, partially fixed)
+is counted as **unproven (record does not say)** rather than guessed at.
+Revision rounds count distinct reviewed heads/attempts, not individual
+findings. Review time, usage/cost and owner effort read **not recorded**
+unless a cited source states the value (D-11); owner-effort's counting rule
+(D-12) is not applied retroactively to these three PRs (see Measurement
+rules above) — their recorded owner decisions are quoted, not tallied.
+
+### PR #48 — Isolated Codex review for untrusted PRs (security-sensitive; larger change)
+
+Final PR head `82b34111f6c71903f4ad9e4db8c8956ced598a59`, merged
+2026-10-30T21:16:10Z. Counts below are totaled across the whole PR's review
+history — 7 reviewed local-checkpoint/PR heads
+(`cc33f1578995` → `0aeeedaa4f89` → `2aa2cc81e110` → `c7c34a56209e` →
+`3eda4277ebae` → `f033b7e391e8` → `82b34111f6c7`), i.e. 5 fix rounds between
+the first and final head (D-08).
+
+| Reviewer | Confirmed defects | False positives | Later-found misses | Revision rounds | Review time | Usage/cost | Owner effort |
+|---|---|---|---|---|---|---|---|
+| BM | 22 (CR-01, WR-01/02/04-08/10, WR-01-03, SA-03, IN-03, WR-01, SA-04, IN-05, IN-07, IN-01-04 — each dispositioned `fixed` with BM's next-iteration verification) | 0 | none recorded (D-14 cutoff: Phase 86 PR acceptance) | 7 BM review iterations across the 7 heads above | not recorded | not recorded | not recorded (D-12 postdates this record; see Measurement rules) |
+| Codex | 9 (`a2:F001`, `a2:F002`, `a1:F002` at `cc33f15`; `a1:F001` at `0aeeedaa`; `F001`, `F002` at `2aa2cc8`; `a1:F001`, `a2:F001` at `c7c34a5`; `a1:F001` at `3eda427` — each dispositioned `fixed`) | 0 | none recorded (D-14 cutoff) | 7 attempts/heads (2 attempts each at `cc33f15`, `c7c34a5`, `f033b7e`; 1 each elsewhere) | not recorded | not recorded (per-head command counts are logged in each head's own `.last.json` under `codex/`, but no committed record totals them for the PR) | not recorded |
+| vibe-check | 0 | 1 (`tests/codex_review_run.py:3445` git-read item — owner dismissed, verified via a scratch-repo reproduction) | none recorded (D-14 cutoff) | 1 (ran only on the final head `82b34111f6c7`, after the 5 fix rounds above) | not recorded | 13 raised, 2 reported, 11 filtered (as reported by `/vibe-check:deep-review`) | not recorded |
+| Greptile | n/a | n/a | n/a | n/a | n/a | did not run (committed record says "pending on this head (optional; free tier only)"; `gh pr checks 48` shows no Greptile check on the merged head) | n/a |
+
+**D-08 note on the vibe-check row:** the vibe-check result above ran only on
+the final head, after five BM/Codex fix rounds already found and fixed by
+the owner's review — it is cited here as PR #48's own scorecard color only,
+and is **not comparison evidence** for the PILOT-02 fresh-head comparison.
+
+1 item is still open as an accepted residual rather than fixed or
+false-positive at merge (`codex:82b34111f6c7:a2:F001`, low severity, owner
+"backlog F001; push and open the PR") — counted above as neither confirmed
+nor false positive (folded into "unproven" territory, not tallied as a
+separate column per the D-10 column set).
+
+Sources: `.planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-REVIEW-EVIDENCE.md` (all seven per-head records and their Dispositions tables); `gh pr view 48 --json additions,deletions,changedFiles,mergedAt`; `gh pr checks 48`.
+
+### PR #36 — Phase 85 follow-on CI improvements & acceptance usability (larger change; large-PR failure-mode evidence)
+
+Final PR head `5a97e1f98982b47672ba108e357a024e0f2a44e2`, merged
+2026-10-28T20:01:20Z (195 changed files, +31530/-293).
+
+| Reviewer | Confirmed defects | False positives | Later-found misses | Revision rounds | Review time | Usage/cost | Owner effort |
+|---|---|---|---|---|---|---|---|
+| BM | 8 (iteration-1's 2 critical + 4 warning, fixed across rounds 1-4 at `252fe61`/`094028e`/`eae6d34`, counted as 6 by the record's own count rather than itemized; plus iteration-6's WR-01/WR-02, fixed at `06ac793`/`684ae13`) | 0 | 2 (the two CI traps the vibe-check fallback review found and this PR's own BM passes did not flag — see vibe-check row; fixed post-merge in PR #44) | 8 BM review iterations (iteration 1, phase-execution; iterations 2-5, fix-round re-reviews; iterations 6-8, post-push) | not recorded | not recorded | not recorded |
+| Codex | 1 (`codex:fb8da6e2abe5:a1:F001`/`a2:F001`, drain-timeout bytes/str `TypeError`, fixed at `2f2e8fc` with a regression test that failed before and passed after) | 0 | 2 (same two CI traps the vibe-check fallback found; Codex's own two attempts on this head did not flag them — INCOMPLETE/PENDING: both attempts self-declared incomplete, diff and 27 plan files exceeded output limits) | 2 attempts (`a1`, `a2`), both INCOMPLETE/PENDING — no completed Codex round on this PR (**D-01: this is the pilot's recorded evidence of how the workflow fails on very large PRs**) | not recorded | commands run: a1 28, a2 19 (as reported in `.last.json`) | not recorded |
+| vibe-check | 0 confirmed via reproduction (25 findings total, all dispositioned `nonblocking_debt` — 18 deferred, 7 accepted, 0 critical/warning) | 0 | 0 (it found the misses itself, before BM/Codex's own passes concluded) | 1 full deep-review pass (8 lanes), run as the **owner-approved fallback for Codex's incomplete pass**, not as routine vibe-check | not recorded | 25 findings raised (as reported); 0 critical/0 warning | not recorded |
+| Greptile | n/a | n/a | n/a | n/a | n/a | did not run (committed record: "not run on this head (optional since 2026-10-22)"; confirmed by `gh pr checks 36`) | n/a |
+
+**D-01 note on the Codex row:** PR #36's Codex pass never completed (diff too
+large for one pass, even across 2 attempts); the owner approved vibe-check as
+the recorded fallback. This is the pilot's own documented instance of the
+paired workflow failing on a very large PR, named in D-01.
+
+**Later-found-misses detail:** two CI traps — "Dependabot's github-actions
+group rewrites checkout/setup-buildx pins, breaking the pinned-SHA no-skip
+tests" and "the CI wiring test reads tool pins from a phase planning file
+that archiving would delete" — were among the vibe-check fallback review's
+25 findings (named `impact-001` and `arch-002`/`impact-002` in PR #44's own
+checkpoint comment) and were fixed post-merge in PR #44
+(`b0e1ee4`, `3b3713b`). Neither BM's nor Codex's own passes on PR #36 flagged
+either one; both are later-found misses against the D-14 cutoff (Phase 86 PR
+acceptance has not yet occurred, so the cutoff has not closed).
+
+Sources: `.planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-CHECKPOINT-5a97e1f98982.md`; `.planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-REVIEW-EVIDENCE.md` ("Post-plan review record", "Post-execution deep review and BM iterations 6-7", "Accepted residual risk"); `.planning/phases/85-follow-on-ci-improvements-acceptance-usability/85-VERIFICATION.md` (post-merge note); `gh pr view 36 --json additions,deletions,changedFiles,mergedAt`; `gh pr checks 36`; PR #44 checkpoint comment (`gh pr view 44 --comments`).
+
+### PR #44 — Phase 85 follow-up: Dependabot-safe no-skip tests, archive-safe tool pins (small fix)
+
+Single PR head `0385e717049cf90a82c6e23b04fa53d4a83b19e9`, merged
+2026-10-28T20:22:24Z (23 changed files, +1224/-67). This PR is itself the fix
+for the two later-found misses recorded against PR #36's BM and Codex rows
+above.
+
+| Reviewer | Confirmed defects | False positives | Later-found misses | Revision rounds | Review time | Usage/cost | Owner effort |
+|---|---|---|---|---|---|---|---|
+| BM | 0 (1 info item, `bm:85:it9:IN-05`, dispositioned `nonblocking_debt` — unproven, not a confirmed defect) | 0 | none recorded (D-14 cutoff; this PR is only ~2 days old as of Phase 86 planning, so the window for anything new to surface is short — see D-14's own caveat) | 1 (single head, no fix round needed) | not recorded | not recorded | not recorded |
+| Codex | 0 | 0 | none recorded | 1 attempt, complete, `verdict: no-findings` | not recorded | not recorded | not recorded |
+| vibe-check | n/a | n/a | n/a | n/a | n/a | not run — risk assessed moderate, not high; no additional vibe-check recommended | n/a |
+| Greptile | n/a | n/a | n/a | n/a | n/a | did not run (committed record: "not run on this head (optional)"; confirmed by `gh pr checks 44`) | n/a |
+
+Sources: PR #44 checkpoint comment (`gh pr view 44 --comments`); `gh pr view 44 --json additions,deletions,changedFiles,mergedAt,commits`; `gh pr checks 44`.
+
+### Refresh-counts PR (filled in by 86-08)
+
+### Card-template PR (filled in by 86-08)
 
 ## PILOT-02 comparison result
 
