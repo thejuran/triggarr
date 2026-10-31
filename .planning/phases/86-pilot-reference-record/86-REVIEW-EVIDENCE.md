@@ -166,3 +166,127 @@ async def test_p2_returned_cutoff_excludes_record_without_id(app):
 ```
 
 `_run` calls the helper with `_make_test_state()`, `_instance_config()` and `make_settings()`, and captures WARNING logs with a loguru `StringIO` sink. These are the same helpers `tests/test_refresh_counts.py` uses.
+
+### Head 1062097a7676fddcdde3caf500f96ba1ea04d65c (final head)
+
+PR comment: (to be filled in by 86-07 when the PR is opened)
+
+```markdown
+<!-- review-checkpoint head=1062097a7676fddcdde3caf500f96ba1ea04d65c -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `1062097a7676fddcdde3caf500f96ba1ea04d65c` (local checkpoint, no PR yet) |
+| PR base SHA | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` (merge-base with origin/main) |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| Codex inspected base (`inspected_base_sha`) | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` |
+
+Reconciliation: All fields match; no reconciliation needed.
+
+### Classification
+
+{"schema":1,"head":"1062097a7676fddcdde3caf500f96ba1ea04d65c","classification":"code","classes_present":["code"],"rationale":"H1 plus the 86-04 batched revision: refresh_sonarr_counts runs filter_monitored before the airDateUtc screen on both chains (engine.py), with a regression test (tests/test_refresh_counts.py). Runtime code and tests only.","supersedes_head":"03182462100e9f71defc9408245410d2b99110a5"}
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr, local checkpoint (not pushed), head `1062097a7676fddcdde3caf500f96ba1ea04d65c`, base `d5a4467a4c38f8f675fb057d9a77bcc3030c379d`. Whole-PR review (H1 plus the batched revision `a794c8a` test, `1062097` fix).
+- **Risk:** moderate, unchanged from H1. The revision adds one `filter_monitored` call per Sonarr refresh chain. Counts cannot change, because `filter_sonarr_episodes` already drops unmonitored episodes; only log lines change. The H1 failure scenarios still apply to the PR as a whole.
+- **Recommended review:** BM standard depth on the full PR, plus the paired Codex pass; routine vibe-check (code class).
+- **Required evidence:** the WR-01 regression test, `test_refresh_sonarr_counts_unmonitored_tzless_airdate_not_logged_as_malformed` (fails at H1, passes at H_final); full suite and ruff at H_final.
+- **What this recommendation cannot establish:** behavior against live Radarr/Sonarr/Lidarr payload variants not represented in fixtures; how the dashboard renders the counts in a browser.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no additional vibe-check recommended.
+- **Routine vibe-check status:** ran on this head (`/vibe-check:deep-review`, stock invocation, range `d5a4467..1062097`). Because the H1 pass left state, it ran as pass 2: it reviewed the change since H1 and rechecked every carried H1 finding at H_final. Exact-head local coverage was prepared first and its provenance `check` passed. Report: `vibe-check/1062097a7676-refresh-routine.{md,json}`. Result: the Sonarr ordering finding was resolved on recheck by all three agents that raised it. Two test-gap rows remain (Warning: Sonarr missing-tag path untested; Medium: returned cutoff list not asserted). No product defect.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | review after fixes (`/bm:code-review 86 --files=triggarr/search/engine.py,tests/test_refresh_counts.py,tests/test_malformed_records_client_path.py`) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow file/step: `bm/5.0.3/workflows/code-review.md:spawn_reviewer` |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-refresh-1062097a7676.md` |
+| Status | complete (2 warning, 3 info, 1 set aside for a ruling) |
+
+As at H1: `diff_base` was the merge-base; no catalog skill; the report was not committed to the pilot branch, so H_final stayed the tip.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (trusted mode; `.status.json` complete, 0 findings, `inspected_head` = H_final) |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `codex/1062097a7676-pilot-refresh-final-a1.{prompt.txt,meta.json,jsonl,last.json,status.json,pytest.txt}` |
+| Review complete | `review_complete: true`, `incomplete_reasons: []` (report schema v2) |
+| Coverage | All three changed files including all test changes; non-object records traced through client pagination and all six refresh queues; nested objects, tags, integer keys, timezone-less dates, monitoring and release filters vs scheduled-cycle behavior; unresolved tags, retained counts, scoped stamps, recovery, backstops; refresh route locking, rate limiting, rendering, discarded return values; no CI/acceptance/audit/publication policy changes |
+| Exclusions | Planning markdown other than changed `*-PLAN.md`, `.planning/**/*.jsonl`, generated review artifacts under `.planning/**/codex/**`; files outside the working copy |
+| Commands run | 15, all exit 0 (as reported in `.last.json`) |
+| Limitations | Pytest not rerun in the read-only sandbox (harness: 3281 passed, 1 skipped); no live services; "new real-client success tests assert missing eligibility but do not assert surviving cutoff contents or Sonarr cutoff counts" |
+
+Findings: none (verdict `no-findings`).
+
+### Greptile
+
+not run: not pushed
+
+### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| all | — | not run: not pushed |
+
+Local evidence: full suite at H_final: 3281 passed, 1 skipped. This was run three times: the 86-04 final-head gate with HEAD asserted, the vibe-check coverage run, and `codex/1062097a7676-pilot-refresh-final-a1.pytest.txt`. `ruff check triggarr/ tests/` is clean.
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:03182462100e:WR-01` | bm | `03182462100e9f71defc9408245410d2b99110a5` | fixed | regression test fails at H1, passes at H_final; vibe-check recheck resolved (architecture, bugs, impact); BM and Codex on H_final raise nothing on it | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:WR-01` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | Same issue as H1 `WR-02`, now with more examples: the returned cutoff list can hold records with a bad `id` or tags, or unmonitored ones. The approved H1 tally labelled it unproven, because the only caller (`routes.py`) discards the list. | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:WR-02` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | Design note: the refresh filter chains duplicate the cycle chains, and they drifted once (fixed in this PR). There is no current behavioral defect. Candidate backlog item: a shared per-app chain helper, or a parity test. | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:IN-01` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | same as H1 `IN-01` | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:IN-02` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | test gap; same family as H1 `IN-02` and vibe-check cov-002 | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:IN-03` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | docstring wording ("an other-unexpected-fault") | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:SA-01` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | decided (owner, D-02) | Skips are visible only in System Logs. This is the owner's recorded decision in 86-CONTEXT D-02: "No new dashboard warning." Nothing new to rule on. | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `vibe-check:1062097a7676:cov-001` | vibe-check | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | Sonarr missing-tag path untested; H1 proof test P3 passed for its case | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `vibe-check:1062097a7676:cov-002` | vibe-check | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | returned cutoff list not asserted; H1 proof test P4 passed for its case | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+
+### Incomplete items
+
+- Greptile and CI: not run (not pushed; 86-07).
+- No new confirmed defect on H_final, so there is no owner fix-vs-debt decision under the Triage rule.
+```
+
+#### Original vs. refreshed findings (H1 → H_final)
+
+| H1 finding | Status at H_final |
+|---|---|
+| BM WR-01 / vibe-check arch-001 (+bugs-001, imp-001): Sonarr ordering logs misleading skips | **Fixed.** The regression test passes; vibe-check resolved it on recheck; BM and Codex on H_final no longer raise it. |
+| BM WR-02: comment overstates what the returned cutoff list guarantees | Carried forward as BM H_final WR-01, with more examples; still nonblocking debt, since no caller reads the list. |
+| BM IN-01: Radarr/Lidarr `filtered_cutoff` built and discarded | Carried forward (H_final IN-01) |
+| BM IN-02: e2e test doesn't check the cutoff side | Carried forward (H_final IN-02) |
+| BM IN-03: `monkeypatch.undo()` midway | Not re-raised at H_final (BM raised docstring wording instead). It remains in the H1 record as nonblocking debt. |
+| vibe-check cov-001: Sonarr missing-tag path untested | Carried forward; vibe-check recheck says it still applies (Warning 82) |
+| vibe-check cov-002: returned cutoff list not asserted | Carried forward; recheck says it still applies (Medium 72) |
+| vibe-check cov-003, cov-004 (sub-threshold at H1) | Not re-raised |
+| Codex: no findings | Codex at H_final: no findings |
+
+New at H_final: BM WR-02 (duplicated chains, design note); BM SA-01 (already decided by D-02); vibe-check cov-003 (sub-threshold: the new cutoff-variant test doesn't assert the cutoff count).
+
+#### Review time and usage at H_final (D-13)
+
+| Reviewer | Start (UTC) | End (UTC) | Wall clock | Usage printed |
+|---|---|---|---|---|
+| BM | 2026-10-31T01:09:28Z | 2026-10-31T01:11:46Z | 2 min 18 s | none; harness reported 83k reviewer subagent tokens |
+| Codex (paired) | 2026-10-31T01:09:19Z | 2026-10-31T01:11:51Z | 2 min 32 s (incl. full-suite run) | `.jsonl` `turn.completed`: input 529,508 tokens (446,208 cached), output 3,072, reasoning 144 |
+| vibe-check (routine, pass 2) | 2026-10-31T01:12:05Z | 2026-10-31T01:16:57Z | 4 min 52 s (plus 111 s exact-head coverage beforehand) | none from the tool; harness subagent tokens: triage 85k, bugs 70k, security 73k, architecture 62k, impact 66k, test-sufficiency 73k, compliance 77k, language-python 79k, framework-fastapi 72k |
+
+BM and Codex ran at the same time on the frozen head. Vibe-check started after both had finished.
