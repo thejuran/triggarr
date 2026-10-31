@@ -69,7 +69,7 @@ Each task was committed atomically on `pilot-refresh-counts-skip-malformed` (cut
 
 No `refactor(86-02):` commit was needed — tests and ruff were clean after Task 2's implementation with no follow-up cleanup required.
 
-**H1: `03182462100e9f71defc9408245410d2b99110a5`**
+H1: 03182462100e9f71defc9408245410d2b99110a5
 
 ## Files Created/Modified
 
