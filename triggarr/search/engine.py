@@ -2109,6 +2109,7 @@ async def refresh_sonarr_counts(
         missing_searchable_count: int | None = None
         if not scope.missing_unresolved:
             filtered_missing = _screen_queue(missing_episodes, app_label="Sonarr", queue="missing", tally=screen_tally)
+            filtered_missing = filter_monitored(filtered_missing)
             filtered_missing = _screen_queue(
                 filtered_missing, app_label="Sonarr", queue="missing", tally=screen_tally, date_fields=("airDateUtc",)
             )
@@ -2135,8 +2136,9 @@ async def refresh_sonarr_counts(
         cutoff_screened: list[dict] = []
         if not scope.cutoff_unresolved:
             cutoff_screened = _screen_queue(cutoff_episodes, app_label="Sonarr", queue="cutoff", tally=screen_tally)
+            filtered_cutoff = filter_monitored(cutoff_screened)
             filtered_cutoff = _screen_queue(
-                cutoff_screened, app_label="Sonarr", queue="cutoff", tally=screen_tally, date_fields=("airDateUtc",)
+                filtered_cutoff, app_label="Sonarr", queue="cutoff", tally=screen_tally, date_fields=("airDateUtc",)
             )
             filtered_cutoff = filter_sonarr_episodes(filtered_cutoff)
             if scope.cutoff_tag_id is not None:
