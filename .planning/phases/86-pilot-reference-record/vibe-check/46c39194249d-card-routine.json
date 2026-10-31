@@ -1,0 +1,249 @@
+{
+ "tool": "vibe-check deep-review 2.12.0",
+ "mode": "range, pass 1",
+ "range": "d5a4467a4c38f8f675fb057d9a77bcc3030c379d..46c39194249d1e7bcd2362a91d238d0997539f3f",
+ "head": "46c39194249d1e7bcd2362a91d238d0997539f3f",
+ "coverage": "exact-head local (provenance check passed)",
+ "agents": {
+  "architecture": {
+   "agent": "architecture",
+   "findings": [
+    {
+     "id": "arch-001",
+     "file": "triggarr/search/outcome.py",
+     "line": 264,
+     "title": "Reason-kind vocabulary is bare string literals, unlike the module's own GRADE_* constants",
+     "severity": "low",
+     "category": "pattern-consistency",
+     "cwe": null,
+     "agent_confidence": 45,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "The five reason kinds ('fetch_failed', 'failure', 'unevaluated', 'malformed', 'eligible_not_searched') are written as inline literals at six append sites in cycle_view. The same module already keeps a closed string vocabulary as module constants (GRADE_SUCCESS/PARTIAL/FAILED/NOTHING_NEEDED, used by grade_cycle and GRADE_LABELS). Because there is no shared constant, the closed set exists only as a copy in tests (_ALLOWED_REASON_KINDS in tests/test_outcome.py) and as literals in cycle_grade.html ('unevaluated', 'malformed'). pending: confirm whether the GRADE_* constants are an intentional convention or a one-off; the template also compares grades as literals, so the deviation may be deliberate.",
+     "current_code": "reasons.append({\"text\": _truncate(text), \"count\": count, \"kind\": \"failure\"})",
+     "why_it_matters": "The whole point of D-03 is that the card should depend on a structured key instead of display text. If that key lives in three places with nothing tying them together, a later rename or new kind can silently drop rows into the template's 'other' bucket and change the summary wording, which is the same kind of drift the change set out to remove.",
+     "fix_hint": "define REASON_KIND_* constants (and a REASON_KINDS frozenset) next to GRADE_* in outcome.py; import the set in tests instead of redeclaring it",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    }
+   ],
+   "agent_notes": [
+    "Producer/consumer topology is tight: cycle_view (triggarr/search/outcome.py) is called from one place, triggarr/web/routes.py:402. It is computed live on each request from the persisted LastCycleRecord, and its reasons list is read only by triggarr/templates/partials/cycle_grade.html. Because the view dict is never persisted, older saved state can't reach the template without 'kind'/'skip_count'. The schema change is additive and safe for existing records.",
+    "The change improves separation of concerns. The template no longer parses display text (prefix/suffix matching and split(' ')[0] | int) to classify and count rows. The producer that writes the wording now owns classification, so display-copy edits can't break card grouping. This is consistent with D-03 as described in the docstring.",
+    "The template reads r.skip_count with no default. That is safe only because every 'malformed' append site sets skip_count, and test_cycle_view_every_reason_has_kind enforces it. It is a correctness invariant, not an architecture finding, and is noted for the bugs/test lanes.",
+    "No import changes, no new dependencies, no cycles, no cross-module reach-in. outcome.py still imports only the stdlib (plus a TYPE_CHECKING-only import of triggarr.state).",
+    "No intent doc for 86-05 was found under .planning/phases/86-pilot-reference-record/ on this branch (only review/scratch artifacts), so intent_doc_match is null throughout. The D-03 rationale is quoted from the in-code docstring and test docstring only."
+   ]
+  },
+  "bugs": {
+   "agent": "bugs",
+   "findings": [],
+   "agent_notes": [
+    "Checked the whole diff (triggarr/search/outcome.py, triggarr/templates/partials/cycle_grade.html, tests/test_outcome.py) against the one place that builds the view: triggarr/web/routes.py:402 calls cycle_view(). No other code or test builds `last_cycle.reasons` dicts by hand, so every row the template reads comes from cycle_view.",
+    "Every reason row now gets a `kind` when it is created, at all six places rows are added. Every row with kind == 'malformed' also gets an integer `skip_count`: `n` from _as_count on the per-queue path, and malformed_skipped from _as_count on the legacy path. The template's `ns.malformed_total + r.skip_count` therefore never hits an undefined value or a non-integer.",
+    "The new kind-based grouping sorts rows the same way the old text matching did. Fetch-error and failure rows end in ')' and the eligible row ends in 'cycle', so the old matching already counted them as 'other'. The per-queue and legacy malformed rows map to 'malformed' as before, and unevaluated rows map to 'unevaluated'. The skipped-records summary condition (malformed_skipped == ns.malformed_total) gives the same result as before. Before this change, a shortened row whose first word did not parse as a number counted as 0; it now counts the real number, so this is a correctness improvement."
+   ]
+  },
+  "codex-adversarial": {
+   "agent": "codex-adversarial",
+   "findings": [],
+   "agent_notes": [
+    "No substantive regression found in the branch diff. All rendering paths receive the structured fields, including legacy records. Validation passed: 58 outcome tests and 48 mixed-outcome template cases."
+   ]
+  },
+  "compliance": {
+   "agent": "compliance",
+   "findings": [],
+   "agent_notes": [
+    "Checked global ~/.claude/CLAUDE.md Security/Correctness rules and triggarr/CLAUDE.md Code Conventions against outcome.py, test_outcome.py, cycle_grade.html \u2014 no violations. The new skip_count field is only read under kind=='malformed', and both outcome.py construction sites (lines 316, 324) set kind+skip_count together, so the invariant is provable in-diff and this isn't an unguarded-nullable-access violation. No other call site in the repo builds a parallel 'reasons' structure, so the kind-based refactor doesn't leave an inconsistent legacy pattern behind. Line-length, logging, secrets, and exception-handling rules are all clear."
+   ]
+  },
+  "impact": {
+   "agent": "impact",
+   "findings": [],
+   "agent_notes": [
+    "Producer/consumer map (read): the only code that builds `reasons` is `cycle_view` in triggarr/search/outcome.py:219-360. Its only production caller is triggarr/web/routes.py:402, which calls it on each request from the persisted `last_cycle` record. Its only template consumer is triggarr/templates/partials/cycle_grade.html, included by app_card.html. No other template, JSON endpoint or test builds a `reasons` list for this template. A grep of tests/ outside test_outcome.py found only tests/test_search.py:5181, which reads `reason[\"text\"]` and is unaffected by the new keys.",
+    "Schema / persistence: none. `kind` and `skip_count` are added only to the view dict built at render time. `LastCycleRecord` (triggarr/state.py:55-75), `CycleTally.to_record` and the shape of state.json are unchanged. Records written before this change render correctly because the kinds are worked out from the persisted record each time, so no migration is needed and rolling back is safe.",
+    "Public API: the change only adds keys to `cycle_view`. Its signature and return type (`dict | None`) are unchanged, and existing `text` and `count` values are byte-identical. engine.py and scheduler.py import other names from outcome.py and do not read `reasons`. The only test churn is equality assertions in tests/test_outcome.py, which the diff already updates.",
+    "Template safety: `r.skip_count` is used only inside the `r.kind == 'malformed'` branch. Both places that create malformed rows (outcome.py:316 and :324) always set `skip_count`, and the value comes from `_as_count`, which returns a non-negative int. The Jinja environment (routes.py:76) uses the default `Undefined`, so a malformed row missing `skip_count` would raise UndefinedError on `+`. That cannot happen today because `cycle_view` is the only producer. If a future second producer of `reasons` were added without the new keys, the dashboard card would fail to render. That is a future-proofing concern, not a defect in this diff.",
+    "Behavior change, and it is a fix: the old classification in cycle_grade.html matched on display text, using `endswith('skipped')` / `endswith('\u2014 malformed data')` and `split(' ')[0] | int(0)`. It could misclassify a failure or fetch reason whose text happened to end in 'skipped', and it broke when `_truncate` cut the text. Classifying by the structured `kind` removes both problems. For every input that is well-formed today, the counts (`unevaluated`, `malformed`, `malformed_total`, `other`) come out the same: the old `int(first token)` and the new `skip_count` carry the same number `n` / `malformed_skipped`. The eligible_not_searched and fetch_failed rows fall into `other` under both versions, so the summary label each branch selects does not change.",
+    "Performance: negligible. Each reason dict gains one or two small keys, there are at most a handful of rows per instance card, and no new queries, I/O or loops are added.",
+    "Blast radius: 3 files and one UI surface, the 'last cycle' summary and detail list on each instance card on the dashboard. If this diff had a bug, the worst realistic outcome is a wrong summary label ('Show N skipped records' instead of 'Show N failure reasons') or, for the hypothetical missing-key case, a template error on the dashboard and card partial. Search scheduling, state persistence and the arr API calls are not touched.",
+    "Verdict: shippable as-is. No blocking or located defects found."
+   ]
+  },
+  "language-python": {
+   "agent": "language-python",
+   "findings": [],
+   "agent_notes": [
+    "Reviewed triggarr/search/outcome.py and tests/test_outcome.py changes (adding a structured `kind`/`skip_count` to reason dicts in cycle_view). No mutable-default-argument, bare-except, is-vs-eq, missing-context-manager, or Any/Optional-handling issues in the diff. `reasons: list[dict[str, object]] = []` is a local variable, not a function default, so it's not a mutable-default-argument finding. The dict literals mixing str/int values are consistent with the existing `dict[str, object]` annotation. cycle_grade.html changes are Jinja2 template logic, outside this agent's Python-specific scope."
+   ]
+  },
+  "security": {
+   "agent": "security",
+   "findings": [],
+   "agent_notes": [
+    "Diff is a pure data-model refactor: reasons now carry a structured kind (fetch_failed/failure/unevaluated/malformed/eligible_not_searched) and malformed rows carry a numeric skip_count, replacing text-pattern matching (startswith/endswith) and fragile text-parsing (`r.text.split(' ')[0] | int(0)`) in triggarr/templates/partials/cycle_grade.html. skip_count and count are produced by _as_count() (triggarr/search/outcome.py:207-211), which always coerces to a non-negative int, so the template's direct use of r.skip_count is at least as safe as the prior parse-from-text approach. Reason text is still rendered via `{{ r.text }}` under Jinja2 autoescape=True (triggarr/web/routes.py:78), unchanged by this diff, and _truncate() still bounds length. No new user input, SQL, subprocess, secrets, or auth logic touched by this change."
+   ]
+  },
+  "test-sufficiency": {
+   "agent": "test-sufficiency",
+   "findings": [
+    {
+     "id": "cov-001",
+     "file": "triggarr/templates/partials/cycle_grade.html",
+     "line": 24,
+     "title": "Card template's switch to structured reason kinds has no measured or diff-visible rendering test",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "medium",
+     "confidence": 62,
+     "agent_confidence": 62,
+     "in_diff": true,
+     "current_code": "{% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+     "problem": "The dashboard card now groups and counts problem rows using the new 'kind' label and 'skip_count' number instead of reading the display text. Coverage measurement does not include this template. The test changes in this diff only check the data that feeds the card, not the card the user sees. Nothing in the supplied evidence shows a test that renders the card and checks the grouped counts, such as the malformed-records total or the not-evaluated count.",
+     "why_it_matters": "This template is what the owner sees after each search cycle. If the grouping logic in the template breaks, for example by misreading the new fields or counting rows in the wrong group, the card could show wrong totals and none of the changed tests would catch it, even though the Python side is about 97% covered.",
+     "fix_hint": "add or point to a rendering test that feeds cycle_grade.html a view containing unevaluated, malformed (per-queue and legacy) and failure rows, then checks the grouped counts and the malformed_total sum",
+     "intent_doc_match": null,
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    },
+    {
+     "id": "cov-002",
+     "file": "triggarr/search/outcome.py",
+     "line": 273,
+     "title": "Bad-entry skip paths in the failure-reason and unevaluated loops never run in tests",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "low",
+     "confidence": 55,
+     "agent_confidence": 55,
+     "in_diff": false,
+     "current_code": "273:1b[50% (1/2)] 274:0 276:1b[50% (1/2)] 277:0 289:1b[50% (1/2)] 290:0 292:1b[50% (1/2)] 293:0",
+     "problem": "cycle_view reads saved cycle records. The coverage report shows that four lines never run in any test: 274, 277, 290 and 293. They sit inside the loops that turn failure reasons and unevaluated queues into card rows, and each loop has two conditions where only one side was ever exercised. These appear to be the paths that skip a malformed or wrong-typed entry.",
+     "why_it_matters": "These paths handle bad or tampered saved data. They are not new in this change, but they decide whether a corrupted record crashes the card or is quietly skipped, and today no test proves they work.",
+     "fix_hint": "add cycle_view cases whose failure_reasons and unevaluated lists contain non-dict or wrong-typed entries, and assert they are skipped without a crash",
+     "intent_doc_match": null,
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    },
+    {
+     "id": "cov-003",
+     "file": "tests/test_outcome.py",
+     "line": 171,
+     "title": "New all-kinds test adds 'malformed' by hand instead of taking it from the legacy view",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "low",
+     "confidence": 45,
+     "agent_confidence": 45,
+     "in_diff": true,
+     "current_code": "all_kinds_seen = kinds_seen | {\"malformed\"} | {r[\"kind\"] for r in view_eligible[\"reasons\"]}",
+     "problem": "The new test is meant to show that all five reason kinds actually appear. However, it adds 'malformed' as a fixed value instead of reading the kinds from the legacy-malformed view. The final all-kinds-seen check therefore cannot fail on the legacy path, and that path is only covered by the separate check on its first row.",
+     "why_it_matters": "The impact is small because the legacy row is checked directly a few lines earlier. Even so, the test's 'every kind is seen' claim is weaker than it looks.",
+     "fix_hint": "build all_kinds_seen from the kinds in view_legacy['reasons'] instead of a hardcoded {'malformed'}",
+     "intent_doc_match": null,
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    }
+   ],
+   "agent_notes": [
+    "triggarr/search/outcome.py at the reviewed head: 97.3% of lines and 92.6% of branches covered across 3271 passing tests (cobertura, which includes branch data).",
+    "Every changed reason-building line in outcome.py runs in at least one test: fetch_failed (L266-268), failure (L283), unevaluated (L299-301), per-queue malformed (L316), legacy malformed (L324) and eligible_not_searched (L345). The updated equality assertions in test_outcome.py pin both kind and skip_count, and the new test checks that only malformed rows carry skip_count.",
+    "The only uncovered lines in outcome.py (L274, L277, L290, L293) come from older guard paths, not lines changed in this diff.",
+    "cycle_grade.html is not measured by coverage.py, so this report has no line or branch data for the template change. The main untested risk sits there (cov-001)."
+   ]
+  }
+ },
+ "scored": {
+  "scored_by_script": true,
+  "findings": [
+   {
+    "id": "cov-001",
+    "file": "triggarr/templates/partials/cycle_grade.html",
+    "line": 24,
+    "title": "Card template's switch to structured reason kinds has no measured or diff-visible rendering test",
+    "category": "test-coverage",
+    "cwe": null,
+    "severity": "medium",
+    "agent_confidence": 62,
+    "in_diff": true,
+    "current_code": "{% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+    "problem": "The dashboard card now groups and counts problem rows using the new 'kind' label and 'skip_count' number instead of reading the display text. Coverage measurement does not include this template. The test changes in this diff only check the data that feeds the card, not the card the user sees. Nothing in the supplied evidence shows a test that renders the card and checks the grouped counts, such as the malformed-records total or the not-evaluated count.",
+    "why_it_matters": "This template is what the owner sees after each search cycle. If the grouping logic in the template breaks, for example by misreading the new fields or counting rows in the wrong group, the card could show wrong totals and none of the changed tests would catch it, even though the Python side is about 97% covered.",
+    "fix_hint": "add or point to a rendering test that feeds cycle_grade.html a view containing unevaluated, malformed (per-queue and legacy) and failure rows, then checks the grouped counts and the malformed_total sum",
+    "intent_doc_match": null,
+    "silenced_marker_nearby": false,
+    "needs_verification": null,
+    "agent": "test-sufficiency",
+    "source_window": [
+     "  {% elif r.kind == 'malformed' %}",
+     "    {% set ns.malformed = ns.malformed + 1 %}",
+     "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+     "  {% else %}",
+     "    {% set ns.other = ns.other + 1 %}"
+    ],
+    "canonical_line_content": "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+    "orchestrator_score": 74,
+    "band": "medium",
+    "attribution": [
+     "test-sufficiency"
+    ],
+    "stable_hash": "597aa37d8cc564d6ca526c10b08dd024617bf41b1a6de20f6512b3a4670aac43",
+    "status": "new",
+    "members": [
+     {
+      "file": "triggarr/templates/partials/cycle_grade.html",
+      "line": 24,
+      "title": "Card template's switch to structured reason kinds has no measured or diff-visible rendering test",
+      "category": "test-coverage",
+      "severity": "medium",
+      "agent": "test-sufficiency",
+      "agent_confidence": 62,
+      "problem": "The dashboard card now groups and counts problem rows using the new 'kind' label and 'skip_count' number instead of reading the display text. Coverage measurement does not include this template. The test changes in this diff only check the data that feeds the card, not the card the user sees. Nothing in the supplied evidence shows a test that renders the card and checks the grouped counts, such as the malformed-records total or the not-evaluated count.",
+      "source_window": [
+       "  {% elif r.kind == 'malformed' %}",
+       "    {% set ns.malformed = ns.malformed + 1 %}",
+       "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+       "  {% else %}",
+       "    {% set ns.other = ns.other + 1 %}"
+      ],
+      "cwe": null,
+      "why_it_matters": "This template is what the owner sees after each search cycle. If the grouping logic in the template breaks, for example by misreading the new fields or counting rows in the wrong group, the card could show wrong totals and none of the changed tests would catch it, even though the Python side is about 97% covered.",
+      "fix_hint": "add or point to a rendering test that feeds cycle_grade.html a view containing unevaluated, malformed (per-queue and legacy) and failure rows, then checks the grouped counts and the malformed_total sum",
+      "current_code": "{% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+      "intent_doc_match": null
+     }
+    ],
+    "snapshot": {
+     "at_pass": 1,
+     "file": "triggarr/templates/partials/cycle_grade.html",
+     "line": 24,
+     "canonical_line_content": "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+     "band": "medium"
+    }
+   }
+  ],
+  "fixed_since_last": [],
+  "filtered": [
+   {
+    "file": "triggarr/search/outcome.py",
+    "line": 264,
+    "title": "Reason-kind vocabulary is bare string literals, unlike the module's own GRADE_* constants",
+    "reason": "sub-threshold"
+   },
+   {
+    "file": "triggarr/search/outcome.py",
+    "line": 273,
+    "title": "Bad-entry skip paths in the failure-reason and unevaluated loops never run in tests",
+    "reason": "sub-threshold"
+   },
+   {
+    "file": "tests/test_outcome.py",
+    "line": 171,
+    "title": "New all-kinds test adds 'malformed' by hand instead of taking it from the legacy view",
+    "reason": "sub-threshold"
+   }
+  ]
+ }
+}

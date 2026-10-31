@@ -290,3 +290,124 @@ New at H_final: BM WR-02 (duplicated chains, design note); BM SA-01 (already dec
 | vibe-check (routine, pass 2) | 2026-10-31T01:12:05Z | 2026-10-31T01:16:57Z | 4 min 52 s (plus 111 s exact-head coverage beforehand) | none from the tool; harness subagent tokens: triage 85k, bugs 70k, security 73k, architecture 62k, impact 66k, test-sufficiency 73k, compliance 77k, language-python 79k, framework-fastapi 72k |
 
 BM and Codex ran at the same time on the frozen head. Vibe-check started after both had finished.
+
+## Card-template PR
+
+Branch `pilot-card-reason-kind`, cut from `origin/main` at
+`d5a4467a4c38f8f675fb057d9a77bcc3030c379d`. Local checkpoint only; nothing pushed.
+
+Scope: UI-template change; no visible difference. 86-05's divergence analysis
+concluded **no reachable divergence**. Old text matching and new kind-based
+classification group every reason row the same way for every input the
+application's own code can produce. Divergence needs either text that
+`_sanitize_exc` and the fixed unevaluated-row prefix never generate, or tampered
+records (for example, malformed or eligible counts of 70+ digits). So 86-05
+Task 2 (owner decision on a visible change) did not run.
+
+### Head 46c39194249d1e7bcd2362a91d238d0997539f3f (H1)
+
+PR comment: (to be filled in by 86-07 when the PR is opened)
+
+```markdown
+<!-- review-checkpoint head=46c39194249d1e7bcd2362a91d238d0997539f3f -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `46c39194249d1e7bcd2362a91d238d0997539f3f` (local checkpoint, no PR yet) |
+| PR base SHA | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` (merge-base with origin/main) |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| Codex inspected base (`inspected_base_sha`) | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` |
+
+Reconciliation: All fields match; no reconciliation needed.
+
+### Classification
+
+{"schema":1,"head":"46c39194249d1e7bcd2362a91d238d0997539f3f","classification":"code","classes_present":["code"],"rationale":"cycle_view() (triggarr/search/outcome.py) adds a structured kind/skip_count to each reason row and cycle_grade.html classifies by kind instead of display text; plus tests. Runtime code and a template; no agent instructions, workflows or policy.","supersedes_head":null}
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr, local checkpoint (not pushed), head `46c39194249d1e7bcd2362a91d238d0997539f3f`, base `d5a4467a4c38f8f675fb057d9a77bcc3030c379d`. Whole-PR review: the card's reason rows are classified by a structured `kind` instead of display text, with no visible change intended (D-03).
+- **Risk:** low. The worst realistic failure is a wrong summary label on the dashboard card ("Show N skipped records" instead of "Show N failure reasons"), or a template error if a malformed row ever lacked `skip_count`. Both construction sites set it, and a test enforces that. Nothing persisted changes, and search behavior is untouched.
+- **Recommended review:** BM standard on the full PR, plus the paired Codex pass; routine vibe-check (code class).
+- **Required evidence:** `cycle_view` dict tests pinning `kind`/`skip_count`; existing card rendering tests unchanged and passing; full suite and ruff at H1.
+- **What this recommendation cannot establish:** browser rendering, and labels for tampered records outside what the application writes.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no additional vibe-check recommended.
+- **Routine vibe-check status:** ran on this head (`/vibe-check:deep-review`, stock, range `d5a4467..46c3919`, pass 1); exact-head local coverage was prepared first and its provenance `check` passed. Report: `vibe-check/46c39194249d-card-routine.{md,json}`. Result: 1 Medium (no rendering test for the template switch), 3 sub-threshold; no product defect.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | explicit `/bm:code-review 86 --files=triggarr/search/outcome.py,triggarr/templates/partials/cycle_grade.html,tests/test_outcome.py,tests/test_app_cards.py` |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow file/step: `bm/5.0.3/workflows/code-review.md:spawn_reviewer` |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-card-46c39194249d.md` |
+| Status | complete (1 warning, 2 info, 1 set aside) |
+
+As on the Refresh-counts PR: `diff_base` was the merge-base; no catalog skill was inserted; the report was not committed to the pilot branch, so H1 stayed the tip.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (trusted mode; `.status.json` complete, 0 findings, `inspected_head` = H1) |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `codex/46c39194249d-pilot-card-a1.{prompt.txt,meta.json,last.json,status.json,pytest.txt}`; `.jsonl` withheld (see Withheld files below) |
+| Review complete | `review_complete: true`, `incomplete_reasons: []` (report schema v2) |
+| Coverage | All changes in the three files; all six reason-construction paths, count validation, legacy aggregate fallback, malformed state, truncation, ordering; persisted records traced through `cycle_view` into connected and unreachable card templates; existing rendering assertions; no persisted schema or shared state; escaping and policy |
+| Exclusions | Planning markdown other than changed `*-PLAN.md`, planning JSONL, generated artifacts under `.planning/**/codex/**` |
+| Commands run | 12, as reported in `.last.json` (exit codes 0 and 1; exit 1 = searches with no match) |
+| Limitations | Pytest not rerun in the read-only sandbox (harness: 3271 passed, 1 skipped); "Existing rendering tests protect current labels but do not explicitly mutate display wording to prove classification remains independent of text"; no browser verification |
+
+Findings: none (verdict `no-findings`).
+
+### Greptile
+
+not run: not pushed
+
+### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| all | — | not run: not pushed |
+
+Local evidence: full suite at H1 3271 passed, 1 skipped (86-05 final-head gate with HEAD asserted; this plan's coverage run; `codex/46c39194249d-pilot-card-a1.pytest.txt`); `ruff check triggarr/ tests/` clean (86-05).
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:46c39194249d:WR-01` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (D-09: unproven; real test gap, no defect) | Reproduced: with the pre-change `cycle_grade.html` swapped into the H1 working tree (uncommitted, then restored), `tests/test_app_cards.py` + `tests/test_outcome.py` gave 148 passed. The new template behaves correctly. BM's example divergence needs a tampered record, for which the new label is the correct one. | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `bm:46c39194249d:IN-01` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | kind names are string literals in three places; no current mismatch (test enforces the closed set) | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `bm:46c39194249d:IN-02` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | test hardcodes `"malformed"` in its seen-set and has a redundant subset assert; legacy row checked directly elsewhere | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `bm:46c39194249d:SA-01` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven; predates this PR) | A tampered record can show both malformed rows and an "eligible not searched" row; records the app writes don't produce it. A candidate later-phase tightening. | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `vibe-check:46c39194249d:cov-001` | vibe-check | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | same gap as `bm:…:WR-01`; same reproduction | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `vibe-check:46c39194249d:arch-001`, `cov-002`, `cov-003` (sub-threshold) | vibe-check | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | arch-001 = BM IN-01; cov-003 = BM IN-02; cov-002 guard paths predate this PR | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+
+D-09 tally for this head: confirmed 0, false positive 0, unproven 5 BM-side (WR-01, IN-01, IN-02, SA-01; Codex 0) and 4 vibe-check-side (cov-001 reported; arch-001, cov-002, cov-003 filtered).
+
+### Incomplete items
+
+- Greptile and CI: not run (not pushed; 86-07).
+```
+
+#### Withheld files
+
+- `codex/46c39194249d-pilot-card-a1.jsonl` failed publication-gate check 3 (local user name). One event in Codex's transcript is an `ls -l` listing that shows the file owner. Codex files are never edited after grading, so the file was moved out of the repository to a private location on the owner's machine instead of being redacted. The graded report (`.last.json`), status (`.status.json`), prompt, meta and pytest evidence for this attempt all passed the gate and are published. Codex completion is graded from `.last.json`, so it does not depend on the withheld transcript. No re-run was needed for completeness; the token-usage figures below were read from the transcript before it was withheld.
+
+#### Review time and usage at H1 (D-13)
+
+| Reviewer | Start (UTC) | End (UTC) | Wall clock | Usage printed |
+|---|---|---|---|---|
+| BM | 2026-10-31T01:31:38Z | 2026-10-31T01:33:37Z | 1 min 59 s | none; harness reported 44k reviewer subagent tokens |
+| Codex (paired) | 2026-10-31T01:31:31Z | 2026-10-31T01:33:42Z | 2 min 11 s (incl. full-suite run) | `.jsonl` `turn.completed`: input 220,995 tokens (153,856 cached), output 2,097, reasoning 123 |
+| vibe-check (routine) | 2026-10-31T01:33:37Z | 2026-10-31T01:37:46Z | 4 min 9 s (plus 105 s exact-head coverage beforehand, run while BM and Codex were active) | none from the tool; harness subagent tokens: triage 50k, bugs 72k, security 77k, architecture 69k, impact 73k, test-sufficiency 68k, compliance 84k, language-python 72k |

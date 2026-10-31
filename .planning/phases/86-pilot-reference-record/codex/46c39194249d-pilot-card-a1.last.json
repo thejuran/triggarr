@@ -1,0 +1,90 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "46c39194249d1e7bcd2362a91d238d0997539f3f",
+  "inspected_base_sha": "d5a4467a4c38f8f675fb057d9a77bcc3030c379d",
+  "pr_url": "none",
+  "scope": "Full requested diff, including tests and changed phase plans. Three changed files; no changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. Structured reason kinds and validated skip counts preserve existing card behavior, including legacy saved records. Harness evidence at the inspected head reports 3271 passed and 1 skipped.",
+  "coverage": [
+    "Inspected all changes in tests/test_outcome.py, triggarr/search/outcome.py, and triggarr/templates/partials/cycle_grade.html.",
+    "Checked all six reason-construction paths, count validation, legacy aggregate fallback, malformed state, truncation, and reason ordering.",
+    "Traced persisted cycle records through cycle_view and card context construction into connected and unreachable card templates.",
+    "Reviewed existing rendering assertions for singular/plural counts, mismatched totals, Failed grades, mixed reasons, and eligible-work fallback.",
+    "Confirmed the change adds no persisted schema requirement or shared mutable state; reviewed escaping and found no security or policy weakening.",
+    "Verified harness evidence identifies the requested head and successful full-suite execution."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files, planning JSONL transcripts, and generated artifacts under .planning/**/codex/**."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e d5a4467a4c38f8f675fb057d9a77bcc3030c379d",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff d5a4467a4c38f8f675fb057d9a77bcc3030c379d..46c39194249d1e7bcd2362a91d238d0997539f3f -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect full scoped diff."
+    },
+    {
+      "command": "git diff d5a4467a4c38f8f675fb057d9a77bcc3030c379d..46c39194249d1e7bcd2362a91d238d0997539f3f -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check changed phase plans; none found."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; git status --short; rg -n 'cycle_view|cycle_grade|last_cycle|malformed_total' triggarr tests; cat triggarr/templates/partials/cycle_grade.html; cat triggarr/search/outcome.py; cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Read evidence, implementation, and project configuration; locate callers."
+    },
+    {
+      "command": "git status --short",
+      "exit_code": 0,
+      "purpose": "Confirm only harness evidence is untracked."
+    },
+    {
+      "command": "tail -n 3 .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test totals."
+    },
+    {
+      "command": "rg -n 'cycle_view\\(|cycle_grade.html' triggarr tests",
+      "exit_code": 0,
+      "purpose": "Locate production consumers and tests."
+    },
+    {
+      "command": "rg -n '^def test_|^async def test_' tests/test_outcome.py tests/test_web.py | tail -n 65",
+      "exit_code": 0,
+      "purpose": "Identify relevant regression coverage."
+    },
+    {
+      "command": "rg -n 'skipped record|failure reason|Show .*detail|malformed_total' tests",
+      "exit_code": 0,
+      "purpose": "Locate card-label assertions."
+    },
+    {
+      "command": "sed -n '1,190p' triggarr/web/helpers.py",
+      "exit_code": 1,
+      "purpose": "Attempt to locate surrounding helpers; file does not exist."
+    },
+    {
+      "command": "sed -n '345,415p' triggarr/web/routes.py; sed -n '1,65p' triggarr/templates/partials/app_card.html; sed -n '490,850p' tests/test_app_cards.py; sed -n '380,445p' tests/test_outcome.py; sed -n '516,635p' tests/test_outcome.py; ls -ld .venv .venv/bin/python",
+      "exit_code": 0,
+      "purpose": "Inspect actual caller, both template inclusion paths, regression assertions, and local runtime availability."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only environment; test execution evidence comes from the harness.",
+    "Existing rendering tests protect current labels but do not explicitly mutate display wording to prove classification remains independent of text.",
+    "Broad search output was truncated; relevant implementation and regression assertions were inspected directly. No browser verification was performed."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
