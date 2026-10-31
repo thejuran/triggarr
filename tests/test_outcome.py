@@ -400,7 +400,7 @@ def test_cycle_view_partial_http_status_reason() -> None:
     }
     view = cycle_view(record, "Radarr")
     assert view is not None
-    assert view["reasons"] == [{"text": "Command rejected by Radarr (HTTP 500)", "count": 3}]
+    assert view["reasons"] == [{"text": "Command rejected by Radarr (HTTP 500)", "count": 3, "kind": "failure"}]
     assert view["grade_label"] == "Partial"
     assert view["has_detail"] is True
     assert view["reason_count"] == 1
@@ -446,14 +446,14 @@ def test_cycle_view_malformed_skipped_plural() -> None:
     record = {"grade": "partial", "accepted": 1, "failed": 0, "malformed_skipped": 2}
     view = cycle_view(record, "Radarr")
     assert view is not None
-    assert {"text": "2 malformed records skipped", "count": 1} in view["reasons"]
+    assert {"text": "2 malformed records skipped", "count": 1, "kind": "malformed", "skip_count": 2} in view["reasons"]
 
 
 def test_cycle_view_malformed_skipped_singular() -> None:
     record = {"grade": "partial", "accepted": 1, "failed": 0, "malformed_skipped": 1}
     view = cycle_view(record, "Radarr")
     assert view is not None
-    assert {"text": "1 malformed record skipped", "count": 1} in view["reasons"]
+    assert {"text": "1 malformed record skipped", "count": 1, "kind": "malformed", "skip_count": 1} in view["reasons"]
 
 
 def test_cycle_view_malformed_by_queue_missing_singular() -> None:
@@ -467,7 +467,12 @@ def test_cycle_view_malformed_by_queue_missing_singular() -> None:
     }
     view = cycle_view(record, "Radarr")
     assert view is not None
-    assert {"text": "1 missing-queue record skipped — malformed data", "count": 1} in view["reasons"]
+    assert {
+        "text": "1 missing-queue record skipped — malformed data",
+        "count": 1,
+        "kind": "malformed",
+        "skip_count": 1,
+    } in view["reasons"]
     assert not any(r["text"] == "1 malformed record skipped" for r in view["reasons"])
 
 
@@ -481,7 +486,12 @@ def test_cycle_view_malformed_by_queue_cutoff_plural() -> None:
     }
     view = cycle_view(record, "Radarr")
     assert view is not None
-    assert {"text": "2 upgrade-queue records skipped — malformed data", "count": 1} in view["reasons"]
+    assert {
+        "text": "2 upgrade-queue records skipped — malformed data",
+        "count": 1,
+        "kind": "malformed",
+        "skip_count": 2,
+    } in view["reasons"]
     assert not any(r["text"] == "2 malformed records skipped" for r in view["reasons"])
 
 
@@ -498,8 +508,8 @@ def test_cycle_view_malformed_by_queue_both_queues_ordered() -> None:
     assert view is not None
     malformed_rows = [r for r in view["reasons"] if "malformed data" in r["text"]]
     assert malformed_rows == [
-        {"text": "1 missing-queue record skipped — malformed data", "count": 1},
-        {"text": "2 upgrade-queue records skipped — malformed data", "count": 1},
+        {"text": "1 missing-queue record skipped — malformed data", "count": 1, "kind": "malformed", "skip_count": 1},
+        {"text": "2 upgrade-queue records skipped — malformed data", "count": 1, "kind": "malformed", "skip_count": 2},
     ]
 
 
@@ -523,9 +533,12 @@ def test_cycle_view_malformed_by_queue_tampered_falls_back() -> None:
         }
         view = cycle_view(record, "Radarr")
         assert view is not None, f"crashed on tampered malformed_by_queue={raw!r}"
-        assert {"text": "1 malformed record skipped", "count": 1} in view["reasons"], (
-            f"expected legacy fallback row for tampered malformed_by_queue={raw!r}"
-        )
+        assert {
+            "text": "1 malformed record skipped",
+            "count": 1,
+            "kind": "malformed",
+            "skip_count": 1,
+        } in view["reasons"], f"expected legacy fallback row for tampered malformed_by_queue={raw!r}"
         assert not any("malformed data" in r["text"] for r in view["reasons"])
 
 
@@ -556,7 +569,7 @@ def test_cycle_view_fetch_error_row() -> None:
     view = cycle_view(record, "Lidarr")
     assert view is not None
     assert view["fetch_failed"] is True
-    assert {"text": "Couldn't reach Lidarr (HTTP 503)", "count": 1} in view["reasons"]
+    assert {"text": "Couldn't reach Lidarr (HTTP 503)", "count": 1, "kind": "fetch_failed"} in view["reasons"]
 
 
 def test_cycle_view_success_has_detail_false() -> None:
@@ -629,7 +642,11 @@ def test_cycle_view_eligible_backstop_row_plural() -> None:
     }
     view = cycle_view(record, "Radarr")
     assert view is not None
-    assert {"text": "3 eligible items not searched this cycle", "count": 1} in view["reasons"]
+    assert {
+        "text": "3 eligible items not searched this cycle",
+        "count": 1,
+        "kind": "eligible_not_searched",
+    } in view["reasons"]
     assert view["has_detail"] is True
 
 
@@ -642,7 +659,11 @@ def test_cycle_view_eligible_backstop_row_singular() -> None:
     }
     view = cycle_view(record, "Radarr")
     assert view is not None
-    assert {"text": "1 eligible item not searched this cycle", "count": 1} in view["reasons"]
+    assert {
+        "text": "1 eligible item not searched this cycle",
+        "count": 1,
+        "kind": "eligible_not_searched",
+    } in view["reasons"]
 
 
 def test_cycle_view_eligible_backstop_never_on_nothing_needed() -> None:
@@ -679,5 +700,54 @@ def test_cycle_view_unhashable_unevaluated_queue_is_skipped() -> None:
     view = cycle_view(record, "Radarr")
     assert view is not None
     assert view["reasons"] == [
-        {"text": "Cutoff unmet queue not evaluated: malformed data (TypeError)", "count": 1}
+        {"text": "Cutoff unmet queue not evaluated: malformed data (TypeError)", "count": 1, "kind": "unevaluated"}
     ]
+
+
+_ALLOWED_REASON_KINDS = {"fetch_failed", "failure", "unevaluated", "malformed", "eligible_not_searched"}
+
+
+def test_cycle_view_every_reason_has_kind() -> None:
+    """Phase 86 D-03: every reason dict carries a structured 'kind' from a fixed allowed
+    set, set at its construction site -- never derived from display text. This exercises
+    all six append sites: fetch-error, failure-reason, unevaluated-queue, per-queue
+    malformed, legacy aggregate malformed (separate call, mutually exclusive with
+    per-queue malformed) and the eligible-not-searched backstop (separate call, since it
+    only fires when nothing else -- fetch/unevaluated/malformed -- is present)."""
+    record_most_kinds = {
+        "grade": "partial",
+        "accepted": 1,
+        "failed": 1,
+        "fetch_error": "HTTP 503",
+        "failure_reasons": [{"reason": "HTTP 500", "count": 1}],
+        "unevaluated": [{"queue": "missing", "reason": "tag 'x' not found"}],
+        "malformed_skipped": 3,
+        "malformed_by_queue": {"missing": 1, "cutoff": 2},
+    }
+    view_most = cycle_view(record_most_kinds, "Radarr")
+    assert view_most is not None
+    assert len(view_most["reasons"]) >= 4
+    kinds_seen = {r["kind"] for r in view_most["reasons"]}
+    assert kinds_seen <= _ALLOWED_REASON_KINDS
+    assert kinds_seen == {"fetch_failed", "failure", "unevaluated", "malformed"}
+    for r in view_most["reasons"]:
+        if r["kind"] == "malformed":
+            assert isinstance(r["skip_count"], int)
+
+    record_legacy_malformed = {"grade": "partial", "accepted": 1, "failed": 0, "malformed_skipped": 1}
+    view_legacy = cycle_view(record_legacy_malformed, "Radarr")
+    assert view_legacy is not None
+    assert view_legacy["reasons"][0]["kind"] == "malformed"
+    assert view_legacy["reasons"][0]["skip_count"] == 1
+
+    record_eligible = {"grade": "failed", "accepted": 0, "failed": 0, "eligible": {"missing": 2}}
+    view_eligible = cycle_view(record_eligible, "Radarr")
+    assert view_eligible is not None
+    assert {r["kind"] for r in view_eligible["reasons"]} == {"eligible_not_searched"}
+
+    all_kinds_seen = kinds_seen | {"malformed"} | {r["kind"] for r in view_eligible["reasons"]}
+    assert all_kinds_seen == _ALLOWED_REASON_KINDS
+    for r in view_most["reasons"] + view_legacy["reasons"] + view_eligible["reasons"]:
+        assert r["kind"] in _ALLOWED_REASON_KINDS
+        if r["kind"] != "malformed":
+            assert "skip_count" not in r
