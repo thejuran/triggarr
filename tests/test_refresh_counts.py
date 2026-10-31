@@ -15,6 +15,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import io
 import time
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,6 +26,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
+from loguru import logger
 
 from tests.conftest import make_settings
 from triggarr.db import init_db
@@ -345,22 +347,27 @@ async def test_refresh_lidarr_counts_does_not_touch_searched_log():
 
 
 # ---------------------------------------------------------------------------
-# Malformed nested data fault tests (rewrite-3 requirement)
+# Malformed-record skip tests (D-02/D-02a): a malformed record no longer
+# disconnects the whole instance -- it is skipped and logged per item via
+# _screen_queue, matching what the scheduled cycles already do, and the
+# surviving good record in the same page is still counted.
 # ---------------------------------------------------------------------------
 
 
-async def test_refresh_sonarr_counts_malformed_cutoff_data_returns_none():
-    """Rewrite-3: malformed cutoff episode (series=non-dict) -> deduplicate_to_seasons raises
-    AttributeError -> helper returns None (does NOT propagate exception), sets disconnected."""
+async def test_refresh_sonarr_counts_malformed_cutoff_record_skipped_stays_connected():
+    """D-02: a malformed cutoff episode (series=non-dict) is skipped per item via
+    _screen_queue before deduplicate_to_seasons ever sees it -- the instance stays
+    connected and the good missing episode is still counted."""
     good_ep = _make_sonarr_episode(series_id=10, season_number=1, episode_id=100)
-    # Malformed cutoff: series is a non-dict string -> ep.get("series", {}).get("title", ...) raises
+    # Malformed cutoff: series is a non-dict string -- _screen_queue's nested_key
+    # check catches this before deduplicate_to_seasons would raise AttributeError.
     malformed_cutoff_ep = {
         "id": 999,
         "seriesId": 1,
         "seasonNumber": 2,
         "monitored": True,
         "airDateUtc": (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
-        "series": "not-a-dict",  # triggers AttributeError in deduplicate_to_seasons
+        "series": "not-a-dict",
     }
 
     client = AsyncMock()
@@ -372,28 +379,29 @@ async def test_refresh_sonarr_counts_malformed_cutoff_data_returns_none():
     settings = make_settings()
     instance_config = _instance_config()
 
-    # Must NOT raise; must return None
-    result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+    finally:
+        logger.remove(handler_id)
 
-    assert result is None
+    assert result is not None
     ist = state["sonarr"]["Default"]
-    assert ist["connected"] is False
-    assert ist["unreachable_since"] is not None
-    # NO-PARTIAL-STATE: missing_eligible and cutoff_searchable must not be inconsistently set
-    # Either both are set or neither is set (consistent disconnected state)
-    # The key assertion: it's not the case that missing_eligible is set but cutoff_searchable is None
-    # (which would indicate a half-updated count set)
-    missing_eligible = ist.get("missing_eligible")
-    cutoff_searchable = ist.get("cutoff_searchable")
-    assert not (missing_eligible is not None and cutoff_searchable is None), (
-        f"Half-updated count state: missing_eligible={missing_eligible!r} "
-        f"but cutoff_searchable={cutoff_searchable!r}"
-    )
+    assert ist["connected"] is True
+    assert ist["unreachable_since"] is None
+    assert ist["missing_eligible"] == 1
+    assert ist["missing_searchable"] == 1
+    assert ist["cutoff_searchable"] == 0
+    log_text = sink.getvalue()
+    assert "Skipped 1" in log_text
+    assert "upgrade-queue" in log_text
 
 
-async def test_refresh_sonarr_counts_malformed_missing_data_returns_none():
-    """Rewrite-3: malformed missing episode (series=non-dict) -> helper returns None, disconnected."""
-    # Malformed missing: series is a non-dict -> deduplicate_to_seasons raises AttributeError
+async def test_refresh_sonarr_counts_malformed_missing_record_skipped_stays_connected():
+    """D-02: a malformed missing episode (series=non-dict) is skipped per item
+    alongside a good missing episode in the same queue -- the instance stays
+    connected and only the good episode is counted."""
     malformed_missing_ep = {
         "id": 100,
         "seriesId": 10,
@@ -402,42 +410,45 @@ async def test_refresh_sonarr_counts_malformed_missing_data_returns_none():
         "airDateUtc": (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
         "series": "not-a-dict",
     }
-    good_cutoff = _make_sonarr_episode(series_id=30, season_number=2, episode_id=300)
+    good_missing_ep = _make_sonarr_episode(series_id=20, season_number=1, episode_id=200)
 
     client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=[malformed_missing_ep])
-    client.get_wanted_cutoff = AsyncMock(return_value=[good_cutoff])
+    client.get_wanted_missing = AsyncMock(return_value=[malformed_missing_ep, good_missing_ep])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.get_library_count = AsyncMock(return_value=5)
 
     state = _make_test_state()
     settings = make_settings()
     instance_config = _instance_config()
 
-    result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+    finally:
+        logger.remove(handler_id)
 
-    assert result is None
+    assert result is not None
     ist = state["sonarr"]["Default"]
-    assert ist["connected"] is False
-    assert ist["unreachable_since"] is not None
-    # NO-PARTIAL-STATE: no half-updated eligible/searchable set
-    missing_eligible = ist.get("missing_eligible")
-    cutoff_searchable = ist.get("cutoff_searchable")
-    assert not (missing_eligible is not None and cutoff_searchable is None), (
-        f"Half-updated count state on missing-side fault: missing_eligible={missing_eligible!r} "
-        f"but cutoff_searchable={cutoff_searchable!r}"
-    )
+    assert ist["connected"] is True
+    assert ist["unreachable_since"] is None
+    assert ist["missing_eligible"] == 1  # good episode only
+    log_text = sink.getvalue()
+    assert "Skipped 1" in log_text
+    assert "missing-queue" in log_text
 
 
-async def test_refresh_radarr_counts_malformed_tag_data_returns_none():
-    """Rewrite-3: tag configured + item with non-iterable tags -> filter_by_tag raises TypeError
-    -> helper returns None (does NOT propagate), sets disconnected."""
-    # Item with tags=5 (non-iterable int) -> `tag_id in get_tags(item)` raises TypeError
+async def test_refresh_radarr_counts_malformed_tag_record_skipped_stays_connected():
+    """D-02a: tag configured + one item with non-iterable tags is skipped per
+    item before filter_by_tag ever sees it -- the instance stays connected and
+    the good tagged, monitored item is still counted."""
     malformed_item = {"id": 1, "title": "Movie A", "monitored": True, "tags": 5}
+    good_item = {"id": 2, "title": "Movie B", "monitored": True, "tags": [42]}
     # Configure a tag so filter_by_tag is actually called
     instance_config = _instance_config(missing_tag="mytag")
 
     client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=[malformed_item])
+    client.get_wanted_missing = AsyncMock(return_value=[malformed_item, good_item])
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.get_library_count = AsyncMock(return_value=1)
     # Return a tag that resolves so filter_by_tag runs
@@ -446,15 +457,56 @@ async def test_refresh_radarr_counts_malformed_tag_data_returns_none():
     state = _make_test_state()
     settings = make_settings()
 
-    result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        result = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
+    finally:
+        logger.remove(handler_id)
 
-    assert result is None
+    assert result is not None
     ist = state["radarr"]["Default"]
-    assert ist["connected"] is False
-    assert ist["unreachable_since"] is not None
-    # NO-PARTIAL-STATE: missing_eligible must not be left in a partial state
-    # (i.e., if we're disconnected, eligible counts should not be populated)
-    assert ist.get("missing_eligible") is None or ist.get("connected") is False
+    assert ist["connected"] is True
+    assert ist["unreachable_since"] is None
+    assert ist["missing_eligible"] == 1
+    assert ist["missing_monitored"] == 1  # counts only the good item
+    log_text = sink.getvalue()
+    assert "Skipped 1" in log_text
+    assert "missing-queue" in log_text
+
+
+async def test_refresh_lidarr_counts_malformed_artist_record_skipped_stays_connected():
+    """D-02: tag configured + one album whose artist is not a dict is skipped
+    per item before filter_by_tag ever sees it -- the instance stays connected
+    and the good tagged, monitored album is still counted."""
+    malformed_album = {"id": 1, "title": "Album A", "monitored": True, "artist": "not-a-dict"}
+    good_album = {"id": 2, "title": "Album B", "monitored": True, "artist": {"id": 5, "tags": [42]}}
+    instance_config = _instance_config(missing_tag="mytag")
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(return_value=[malformed_album, good_album])
+    client.get_wanted_cutoff = AsyncMock(return_value=[])
+    client.get_library_count = AsyncMock(return_value=1)
+    client.get_tags = AsyncMock(return_value=[Tag(id=42, label="mytag")])
+
+    state = _make_test_state()
+    settings = make_settings()
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        result = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
+    finally:
+        logger.remove(handler_id)
+
+    assert result is not None
+    ist = state["lidarr"]["Default"]
+    assert ist["connected"] is True
+    assert ist["unreachable_since"] is None
+    assert ist["missing_eligible"] == 1
+    log_text = sink.getvalue()
+    assert "Skipped 1" in log_text
+    assert "missing-queue" in log_text
 
 
 # ---------------------------------------------------------------------------
@@ -616,8 +668,15 @@ async def test_refresh_radarr_counts_resolved_tag_stamps_scoped_counts():
     assert state["radarr"]["Default"]["scoped_count_tags"]["missing"] == "4k"
 
 
-async def test_refresh_radarr_counts_skipped_missing_survives_cutoff_data_fault():
-    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts."""
+async def test_refresh_radarr_counts_skipped_missing_survives_cutoff_data_fault(monkeypatch):
+    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts.
+
+    D-02a note: non-iterable tags are now skipped per item by _screen_queue
+    rather than reaching filter_by_tag, so this fault is forced directly on
+    filter_by_tag to still exercise the "other unexpected fault" backstop.
+    """
+    import triggarr.search.engine as engine
+
     state = _make_test_state()
     ist = state["radarr"]["Default"]
     ist["missing_monitored"] = 9
@@ -626,13 +685,18 @@ async def test_refresh_radarr_counts_skipped_missing_survives_cutoff_data_fault(
     instance_config = _instance_config(missing_tag="gone", cutoff_tag="4k")
     settings = make_settings()
 
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
+
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
-    client.get_wanted_cutoff = AsyncMock(return_value=[{"id": 2, "title": "Movie B", "monitored": True, "tags": 5}])
+    client.get_wanted_cutoff = AsyncMock(return_value=[{"id": 2, "title": "Movie B", "monitored": True, "tags": [5]}])
     client.get_library_count = AsyncMock(return_value=10)
     client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
 
-    # Refresh 1: cutoff's malformed "tags" (non-iterable int) raises TypeError in filter_by_tag.
+    # Refresh 1: an unexpected fault in the cutoff chain's filter_by_tag (backstop).
     result1 = await refresh_radarr_counts(client, state, "Default", instance_config, settings)
 
     assert result1 is None
@@ -642,7 +706,8 @@ async def test_refresh_radarr_counts_skipped_missing_survives_cutoff_data_fault(
     assert ist["scoped_count_tags"] == {"missing": "gone"}
     assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
 
-    # Refresh 2: well-formed cutoff record; missing tag still unresolved.
+    # Refresh 2: fault removed; missing tag still unresolved.
+    monkeypatch.undo()
     client.get_wanted_cutoff = AsyncMock(return_value=[
         {"id": 2, "title": "Movie B", "monitored": True, "tags": [5]},
     ])
@@ -656,16 +721,28 @@ async def test_refresh_radarr_counts_skipped_missing_survives_cutoff_data_fault(
     assert ist["scoped_count_tags"]["missing"] == "gone"
 
 
-async def test_refresh_radarr_counts_resolved_missing_still_cleared_on_its_own_data_fault():
-    """D-05 revision 2 regression: a resolved missing queue's own data fault still clears it."""
+async def test_refresh_radarr_counts_resolved_missing_still_cleared_on_its_own_data_fault(monkeypatch):
+    """D-05 revision 2 regression: a resolved missing queue's own data fault still clears it.
+
+    D-02a note: a non-object record is now skipped per item by _screen_queue
+    rather than reaching filter_monitored, so this fault is forced directly on
+    filter_monitored to still exercise the "other unexpected fault" backstop.
+    """
+    import triggarr.search.engine as engine
+
     state = _make_test_state()
     ist = state["radarr"]["Default"]
     ist["missing_eligible"] = 7
     instance_config = _instance_config(cutoff_tag="gone")
     settings = make_settings()
 
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_monitored", _boom)
+
     client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=["garbage"])
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Movie A", "monitored": True}])
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.get_library_count = AsyncMock(return_value=10)
     client.get_tags = AsyncMock(return_value=[])
@@ -829,8 +906,16 @@ async def test_refresh_lidarr_counts_resolved_tag_stamps_scoped_counts():
     assert state["lidarr"]["Default"]["scoped_count_tags"]["missing"] == "4k"
 
 
-async def test_refresh_lidarr_counts_skipped_missing_survives_cutoff_data_fault():
-    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts."""
+async def test_refresh_lidarr_counts_skipped_missing_survives_cutoff_data_fault(monkeypatch):
+    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts.
+
+    D-02 note: non-iterable artist.tags is now skipped per item by
+    _screen_queue rather than reaching filter_by_tag, so this fault is forced
+    directly on filter_by_tag to still exercise the "other unexpected fault"
+    backstop.
+    """
+    import triggarr.search.engine as engine
+
     state = _make_test_state()
     ist = state["lidarr"]["Default"]
     ist["missing_monitored"] = 9
@@ -839,15 +924,20 @@ async def test_refresh_lidarr_counts_skipped_missing_survives_cutoff_data_fault(
     instance_config = _instance_config(missing_tag="gone", cutoff_tag="4k")
     settings = make_settings()
 
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_by_tag", _boom)
+
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Album A", "monitored": True}])
     client.get_wanted_cutoff = AsyncMock(return_value=[
-        {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": 5}},
+        {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": [5]}},
     ])
     client.get_library_count = AsyncMock(return_value=10)
     client.get_tags = AsyncMock(return_value=[Tag(id=5, label="4k")])
 
-    # Refresh 1: cutoff's malformed "artist.tags" (non-iterable int) raises TypeError.
+    # Refresh 1: an unexpected fault in the cutoff chain's filter_by_tag (backstop).
     result1 = await refresh_lidarr_counts(client, state, "Default", instance_config, settings)
 
     assert result1 is None
@@ -857,7 +947,8 @@ async def test_refresh_lidarr_counts_skipped_missing_survives_cutoff_data_fault(
     assert ist["scoped_count_tags"] == {"missing": "gone"}
     assert ist["unresolved_tag_scopes"] == {"missing": "gone"}
 
-    # Refresh 2: well-formed cutoff record; missing tag still unresolved.
+    # Refresh 2: fault removed; missing tag still unresolved.
+    monkeypatch.undo()
     client.get_wanted_cutoff = AsyncMock(return_value=[
         {"id": 2, "title": "Album B", "monitored": True, "artist": {"tags": [5]}},
     ])
@@ -871,16 +962,28 @@ async def test_refresh_lidarr_counts_skipped_missing_survives_cutoff_data_fault(
     assert ist["scoped_count_tags"]["missing"] == "gone"
 
 
-async def test_refresh_lidarr_counts_resolved_missing_still_cleared_on_its_own_data_fault():
-    """D-05 revision 2 regression: a resolved missing queue's own data fault still clears it."""
+async def test_refresh_lidarr_counts_resolved_missing_still_cleared_on_its_own_data_fault(monkeypatch):
+    """D-05 revision 2 regression: a resolved missing queue's own data fault still clears it.
+
+    D-02 note: a non-object record is now skipped per item by _screen_queue
+    rather than reaching filter_monitored, so this fault is forced directly on
+    filter_monitored to still exercise the "other unexpected fault" backstop.
+    """
+    import triggarr.search.engine as engine
+
     state = _make_test_state()
     ist = state["lidarr"]["Default"]
     ist["missing_eligible"] = 7
     instance_config = _instance_config(cutoff_tag="gone")
     settings = make_settings()
 
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "filter_monitored", _boom)
+
     client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=["garbage"])
+    client.get_wanted_missing = AsyncMock(return_value=[{"id": 1, "title": "Album A", "monitored": True}])
     client.get_wanted_cutoff = AsyncMock(return_value=[])
     client.get_library_count = AsyncMock(return_value=10)
     client.get_tags = AsyncMock(return_value=[])
@@ -1007,8 +1110,16 @@ async def test_refresh_sonarr_counts_inactive_cutoff_unresolved_never_widens():
     assert ist["unresolved_tag_scopes"] == {"cutoff": "gone"}
 
 
-async def test_refresh_sonarr_counts_skipped_missing_survives_cutoff_data_fault():
-    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts."""
+async def test_refresh_sonarr_counts_skipped_missing_survives_cutoff_data_fault(monkeypatch):
+    """D-05 revision 2: a cutoff-side data fault never erases a skipped missing queue's counts.
+
+    D-02 note: a malformed "series" record is now skipped per item by
+    _screen_queue before deduplicate_to_seasons ever sees it, so this fault is
+    forced directly on deduplicate_to_seasons to still exercise the "other
+    unexpected fault" backstop.
+    """
+    import triggarr.search.engine as engine
+
     state = _make_test_state()
     ist = state["sonarr"]["Default"]
     ist["missing_eligible"] = 7
@@ -1018,22 +1129,20 @@ async def test_refresh_sonarr_counts_skipped_missing_survives_cutoff_data_fault(
     instance_config = _instance_config(missing_tag="gone")
     settings = make_settings()
 
-    malformed_cutoff_ep = {
-        "id": 999,
-        "seriesId": 1,
-        "seasonNumber": 2,
-        "monitored": True,
-        "airDateUtc": (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
-        "series": "not-a-dict",  # triggers AttributeError in deduplicate_to_seasons
-    }
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "deduplicate_to_seasons", _boom)
 
     client = AsyncMock()
     client.get_wanted_missing = AsyncMock(return_value=[_make_sonarr_episode(series_id=5, episode_id=5)])
-    client.get_wanted_cutoff = AsyncMock(return_value=[malformed_cutoff_ep])
+    client.get_wanted_cutoff = AsyncMock(
+        return_value=[_make_sonarr_episode(series_id=1, season_number=2, episode_id=999)]
+    )
     client.get_library_count = AsyncMock(return_value=10)
     client.get_tags = AsyncMock(return_value=[])
 
-    # Refresh 1: cutoff's malformed "series" raises AttributeError in deduplicate_to_seasons.
+    # Refresh 1: an unexpected fault in the cutoff chain's deduplicate_to_seasons (backstop).
     result1 = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
 
     assert result1 is None
@@ -1043,7 +1152,8 @@ async def test_refresh_sonarr_counts_skipped_missing_survives_cutoff_data_fault(
     assert ist["scoped_count_tags"]["missing"] == "gone"
     assert ist["cutoff_searchable"] is None  # cutoff's scope resolved -- cleared on its own fault
 
-    # Refresh 2: well-formed cutoff episode; missing tag still unresolved.
+    # Refresh 2: fault removed; missing tag still unresolved.
+    monkeypatch.undo()
     client.get_wanted_cutoff = AsyncMock(return_value=[_make_sonarr_episode(series_id=30, episode_id=300)])
 
     result2 = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
@@ -1055,8 +1165,16 @@ async def test_refresh_sonarr_counts_skipped_missing_survives_cutoff_data_fault(
     assert ist["cutoff_searchable"] == 1
 
 
-async def test_refresh_sonarr_counts_skipped_cutoff_survives_missing_data_fault():
-    """D-05 revision 2: a missing-side data fault never erases a skipped cutoff queue's counts."""
+async def test_refresh_sonarr_counts_skipped_cutoff_survives_missing_data_fault(monkeypatch):
+    """D-05 revision 2: a missing-side data fault never erases a skipped cutoff queue's counts.
+
+    D-02 note: a malformed "series" record is now skipped per item by
+    _screen_queue before deduplicate_to_seasons ever sees it, so this fault is
+    forced directly on deduplicate_to_seasons to still exercise the "other
+    unexpected fault" backstop.
+    """
+    import triggarr.search.engine as engine
+
     state = _make_test_state()
     ist = state["sonarr"]["Default"]
     ist["missing_eligible"] = 7
@@ -1066,17 +1184,13 @@ async def test_refresh_sonarr_counts_skipped_cutoff_survives_missing_data_fault(
     instance_config = _instance_config(cutoff_tag="gone")
     settings = make_settings()
 
-    malformed_missing_ep = {
-        "id": 500,
-        "seriesId": 9,
-        "seasonNumber": 1,
-        "monitored": True,
-        "airDateUtc": (datetime.now(UTC) - timedelta(days=1)).isoformat().replace("+00:00", "Z"),
-        "series": "not-a-dict",
-    }
+    def _boom(*_args, **_kwargs):
+        raise TypeError("unexpected shape")
+
+    monkeypatch.setattr(engine, "deduplicate_to_seasons", _boom)
 
     client = AsyncMock()
-    client.get_wanted_missing = AsyncMock(return_value=[malformed_missing_ep])
+    client.get_wanted_missing = AsyncMock(return_value=[_make_sonarr_episode(series_id=9, episode_id=500)])
     client.get_wanted_cutoff = AsyncMock(return_value=[_make_sonarr_episode(series_id=7, episode_id=7)])
     client.get_library_count = AsyncMock(return_value=10)
     client.get_tags = AsyncMock(return_value=[])
