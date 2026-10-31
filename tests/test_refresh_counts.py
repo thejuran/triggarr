@@ -438,6 +438,40 @@ async def test_refresh_sonarr_counts_malformed_missing_record_skipped_stays_conn
     assert "missing-queue" in log_text
 
 
+@pytest.mark.parametrize("queue", ["missing", "cutoff"])
+async def test_refresh_sonarr_counts_unmonitored_tzless_airdate_not_logged_as_malformed(queue):
+    """D-02: like run_sonarr_cycle, the refresh drops unmonitored episodes before
+    the airDateUtc screen, so an unmonitored episode with a timezone-less air
+    date is never logged as a skipped malformed record (86-03 WR-01)."""
+    unmonitored_ep = _make_sonarr_episode(series_id=5, episode_id=5, monitored=False)
+    unmonitored_ep["airDateUtc"] = "2026-01-01T00:00:00"  # no timezone
+    good_ep = _make_sonarr_episode(series_id=6, episode_id=6)
+
+    client = AsyncMock()
+    client.get_wanted_missing = AsyncMock(
+        return_value=[unmonitored_ep, good_ep] if queue == "missing" else [good_ep]
+    )
+    client.get_wanted_cutoff = AsyncMock(return_value=[unmonitored_ep] if queue == "cutoff" else [])
+    client.get_library_count = AsyncMock(return_value=2)
+
+    state = _make_test_state()
+    settings = make_settings()
+    instance_config = _instance_config()
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        result = await refresh_sonarr_counts(client, state, "Default", instance_config, settings)
+    finally:
+        logger.remove(handler_id)
+
+    assert result is not None
+    ist = state["sonarr"]["Default"]
+    assert ist["connected"] is True
+    assert ist["missing_eligible"] == 1
+    assert "malformed date" not in sink.getvalue()
+
+
 async def test_refresh_radarr_counts_malformed_tag_record_skipped_stays_connected():
     """D-02a: tag configured + one item with non-iterable tags is skipped per
     item before filter_by_tag ever sees it -- the instance stays connected and
