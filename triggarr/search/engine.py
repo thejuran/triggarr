@@ -1874,9 +1874,11 @@ async def refresh_radarr_counts(
 
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
-      (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -- clears the scoped count fields of queues
-          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+      (b) DATA failure: a malformed record is skipped per item and logged, the
+          same as the scheduled cycle (_screen_queue, D-02a) -- the instance
+          stays connected. The except below is now the backstop for any OTHER
+          unexpected fault: it clears the scoped count fields of queues whose
+          tag scope resolved; an unresolved or undetermined tag-scoped queue
           keeps its last good counts and stamp (Phase 79 D-05), returns None.
       (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
           at their previous values, never widened, and its tuple slot is [].
@@ -1890,8 +1892,8 @@ async def refresh_radarr_counts(
         get_tags_fn: Optional cache-aware tag resolver (RES-03 parity).
 
     Returns:
-        3-tuple (filtered_missing, raw_cutoff, cutoff_tag_id) on success, or
-        None on fetch failure or malformed-data fault.
+        3-tuple (filtered_missing, screened_cutoff, cutoff_tag_id) on success, or
+        None on fetch failure or an other-unexpected-fault.
     """
     if instance_name not in state.get("radarr", {}):
         logger.warning("Radarr: instance {name} not in state -- skipping count refresh", name=instance_name)
@@ -1900,8 +1902,10 @@ async def refresh_radarr_counts(
 
     # --- FETCH PHASE ---
     try:
-        missing = await client.get_wanted_missing()
-        cutoff = await client.get_wanted_cutoff()
+        # Non-object records come back as sent and are skipped per item by the
+        # screening below (D-02a), matching the scheduled cycle's fetch.
+        missing = await client.get_wanted_missing(allow_non_object_records=True)
+        cutoff = await client.get_wanted_cutoff(allow_non_object_records=True)
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Radarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
         _mark_unreachable(ist)
@@ -1921,8 +1925,14 @@ async def refresh_radarr_counts(
     ist["cutoff_count"] = len(cutoff)
     ist["total_items"] = total_items
 
-    # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
+    # --- FILTER/TAG PHASE (a malformed record is skipped per item via
+    # _screen_queue below, D-02a; the except is the backstop for any other
+    # unexpected fault) ---
     scope: _TagScope | None = None
+    # Throwaway tally: exists only so _screen_queue can log and count
+    # per-item skips -- never persisted to ist or surfaced on the dashboard
+    # (D-02a: no new dashboard warning).
+    screen_tally = CycleTally()
     try:
         scope = await _resolve_tag_scope(
             instance_config=instance_config,
@@ -1939,20 +1949,45 @@ async def refresh_radarr_counts(
         missing_monitored_count: int | None = None
         missing_eligible_count: int | None = None
         if not scope.missing_unresolved:
-            filtered_missing = filter_monitored(missing)
+            filtered_missing = _screen_queue(missing, app_label="Radarr", queue="missing", tally=screen_tally)
+            filtered_missing = filter_monitored(filtered_missing)
+            if scope.missing_tag_id is not None:
+                filtered_missing = _screen_queue(
+                    filtered_missing, app_label="Radarr", queue="missing", tally=screen_tally, tags_at=("tags",)
+                )
             missing_monitored_count = len(filtered_missing)
             if scope.missing_tag_id is not None:
                 filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _radarr_tags)
             if settings.general.skip_unreleased:
-                filtered_missing = filter_unreleased_movies(filtered_missing)
+                screened = _screen_queue(
+                    filtered_missing, app_label="Radarr", queue="missing", tally=screen_tally,
+                    date_fields=("digitalRelease", "physicalRelease"),
+                )
+                missing_monitored_count -= len(filtered_missing) - len(screened)
+                filtered_missing = filter_unreleased_movies(screened)
+            screened = _screen_queue(
+                filtered_missing, app_label="Radarr", queue="missing", tally=screen_tally, key_fields=("id",)
+            )
+            missing_monitored_count -= len(filtered_missing) - len(screened)
+            filtered_missing = screened
             missing_eligible_count = len(filtered_missing)
 
-        # Cutoff filter chain on a local copy (Radarr has no cutoff_searchable ist write)
+        # Cutoff filter chain on a local copy (Radarr has no cutoff_searchable ist
+        # write); cutoff_screened is also what the tuple returns, so a malformed
+        # record never flows out of this helper.
         filtered_cutoff: list[dict] = []
+        cutoff_screened: list[dict] = []
         if not scope.cutoff_unresolved:
-            filtered_cutoff = filter_monitored(cutoff)
+            cutoff_screened = _screen_queue(cutoff, app_label="Radarr", queue="cutoff", tally=screen_tally)
+            filtered_cutoff = filter_monitored(cutoff_screened)
             if scope.cutoff_tag_id is not None:
+                filtered_cutoff = _screen_queue(
+                    filtered_cutoff, app_label="Radarr", queue="cutoff", tally=screen_tally, tags_at=("tags",)
+                )
                 filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _radarr_tags)
+            filtered_cutoff = _screen_queue(
+                filtered_cutoff, app_label="Radarr", queue="cutoff", tally=screen_tally, key_fields=("id",)
+            )
 
         # Commit eligible counts to ist only after successful filtering (no-partial-state
         # guarantee); a tag-unresolved missing queue's fields are never committed.
@@ -1962,8 +1997,10 @@ async def refresh_radarr_counts(
             _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
-        # Malformed nested record (non-dict series/artist, non-iterable tags, etc.)
-        # Treat as upstream-DATA failure: same disconnected outcome as a fetch failure.
+        # A single malformed record no longer reaches here -- _screen_queue
+        # above skips and logs it per item (D-02a). This is the backstop for
+        # any other unexpected fault; treat it as an upstream-DATA failure:
+        # same disconnected outcome as a fetch failure.
         logger.warning(
             "Radarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
@@ -1975,7 +2012,7 @@ async def refresh_radarr_counts(
         )
         return None
 
-    return (filtered_missing, cutoff if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
+    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
 
 
 async def refresh_sonarr_counts(
@@ -1997,9 +2034,11 @@ async def refresh_sonarr_counts(
 
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
-      (b) DATA failure: filter/dedup/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -- clears the scoped count fields of queues
-          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+      (b) DATA failure: a malformed record is skipped per item and logged, the
+          same as the scheduled cycle (_screen_queue, D-02) -- the instance
+          stays connected. The except below is now the backstop for any OTHER
+          unexpected fault: it clears the scoped count fields of queues whose
+          tag scope resolved; an unresolved or undetermined tag-scoped queue
           keeps its last good counts and stamp (Phase 79 D-05), returns None.
       (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
           at their previous values, never widened, and its tuple slot is [].
@@ -2013,8 +2052,8 @@ async def refresh_sonarr_counts(
         get_tags_fn: Optional cache-aware tag resolver (RES-03 parity).
 
     Returns:
-        3-tuple (filtered_missing_seasons, raw_cutoff_episodes, cutoff_tag_id) on success, or
-        None on fetch failure or malformed-data fault.
+        3-tuple (filtered_missing_seasons, screened_cutoff_episodes, cutoff_tag_id)
+        on success, or None on fetch failure or an other-unexpected-fault.
     """
     if instance_name not in state.get("sonarr", {}):
         logger.warning("Sonarr: instance {name} not in state -- skipping count refresh", name=instance_name)
@@ -2023,8 +2062,10 @@ async def refresh_sonarr_counts(
 
     # --- FETCH PHASE ---
     try:
-        missing_episodes = await client.get_wanted_missing()
-        cutoff_episodes = await client.get_wanted_cutoff()
+        # Non-object records come back as sent and are skipped per item by the
+        # screening below (D-02), matching the scheduled cycle's fetch.
+        missing_episodes = await client.get_wanted_missing(allow_non_object_records=True)
+        cutoff_episodes = await client.get_wanted_cutoff(allow_non_object_records=True)
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Sonarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
         _mark_unreachable(ist)
@@ -2044,8 +2085,14 @@ async def refresh_sonarr_counts(
     ist["cutoff_count"] = len(cutoff_episodes)
     ist["total_items"] = total_items
 
-    # --- FILTER/DEDUP/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
+    # --- FILTER/DEDUP/TAG PHASE (a malformed record is skipped per item via
+    # _screen_queue below, D-02; the except is the backstop for any other
+    # unexpected fault) ---
     scope: _TagScope | None = None
+    # Throwaway tally: exists only so _screen_queue can log and count
+    # per-item skips -- never persisted to ist or surfaced on the dashboard
+    # (D-02: no new dashboard warning).
+    screen_tally = CycleTally()
     try:
         scope = await _resolve_tag_scope(
             instance_config=instance_config,
@@ -2061,20 +2108,47 @@ async def refresh_sonarr_counts(
         missing_eligible_count: int | None = None
         missing_searchable_count: int | None = None
         if not scope.missing_unresolved:
-            filtered_missing = filter_sonarr_episodes(missing_episodes)
+            filtered_missing = _screen_queue(missing_episodes, app_label="Sonarr", queue="missing", tally=screen_tally)
+            filtered_missing = _screen_queue(
+                filtered_missing, app_label="Sonarr", queue="missing", tally=screen_tally, date_fields=("airDateUtc",)
+            )
+            filtered_missing = filter_sonarr_episodes(filtered_missing)
             if scope.missing_tag_id is not None:
+                filtered_missing = _screen_queue(
+                    filtered_missing, app_label="Sonarr", queue="missing", tally=screen_tally,
+                    nested_key="series", tags_at=("series", "tags"),
+                )
                 filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)
+            filtered_missing = _screen_queue(
+                filtered_missing, app_label="Sonarr", queue="missing", tally=screen_tally,
+                key_fields=("seriesId", "seasonNumber"), nested_key="series",
+            )
             missing_seasons = deduplicate_to_seasons(filtered_missing)
             missing_eligible_count = len(filtered_missing)
             missing_searchable_count = len(missing_seasons)
 
-        # Cutoff filter/dedup chain on a local copy
+        # Cutoff filter/dedup chain on a local copy; cutoff_screened is also
+        # what the tuple returns, so a malformed record never flows out of
+        # this helper.
         cutoff_seasons: list[dict] = []
         cutoff_searchable_count: int | None = None
+        cutoff_screened: list[dict] = []
         if not scope.cutoff_unresolved:
-            filtered_cutoff = filter_sonarr_episodes(cutoff_episodes)
+            cutoff_screened = _screen_queue(cutoff_episodes, app_label="Sonarr", queue="cutoff", tally=screen_tally)
+            filtered_cutoff = _screen_queue(
+                cutoff_screened, app_label="Sonarr", queue="cutoff", tally=screen_tally, date_fields=("airDateUtc",)
+            )
+            filtered_cutoff = filter_sonarr_episodes(filtered_cutoff)
             if scope.cutoff_tag_id is not None:
+                filtered_cutoff = _screen_queue(
+                    filtered_cutoff, app_label="Sonarr", queue="cutoff", tally=screen_tally,
+                    nested_key="series", tags_at=("series", "tags"),
+                )
                 filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _sonarr_tags)
+            filtered_cutoff = _screen_queue(
+                filtered_cutoff, app_label="Sonarr", queue="cutoff", tally=screen_tally,
+                key_fields=("seriesId", "seasonNumber"), nested_key="series",
+            )
             cutoff_seasons = deduplicate_to_seasons(filtered_cutoff)
             cutoff_searchable_count = len(cutoff_seasons)
 
@@ -2089,8 +2163,10 @@ async def refresh_sonarr_counts(
             _stamp_scoped_counts(ist, "cutoff", instance_config.cutoff_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
-        # Malformed nested record (non-dict series, non-iterable tags, etc.)
-        # Treat as upstream-DATA failure: same disconnected outcome as a fetch failure.
+        # A single malformed record no longer reaches here -- _screen_queue
+        # above skips and logs it per item (D-02). This is the backstop for
+        # any other unexpected fault; treat it as an upstream-DATA failure:
+        # same disconnected outcome as a fetch failure.
         logger.warning(
             "Sonarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
@@ -2102,7 +2178,7 @@ async def refresh_sonarr_counts(
         )
         return None
 
-    return (missing_seasons, cutoff_episodes if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
+    return (missing_seasons, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
 
 
 async def refresh_lidarr_counts(
@@ -2123,9 +2199,11 @@ async def refresh_lidarr_counts(
 
     FAILURE CONTRACT (extends D-04):
       (a) FETCH failure: sets connected=False + unreachable_since, returns None.
-      (b) DATA failure: filter/tag phase raises (AttributeError, KeyError, TypeError)
-          on a malformed nested record -- clears the scoped count fields of queues
-          whose tag scope resolved; an unresolved or undetermined tag-scoped queue
+      (b) DATA failure: a malformed record is skipped per item and logged, the
+          same as the scheduled cycle (_screen_queue, D-02) -- the instance
+          stays connected. The except below is now the backstop for any OTHER
+          unexpected fault: it clears the scoped count fields of queues whose
+          tag scope resolved; an unresolved or undetermined tag-scoped queue
           keeps its last good counts and stamp (Phase 79 D-05), returns None.
       (c) TAG UNRESOLVED (Phase 79 D-05/OQ1): that queue's scoped counts are left
           at their previous values, never widened, and its tuple slot is [].
@@ -2139,8 +2217,8 @@ async def refresh_lidarr_counts(
         get_tags_fn: Optional cache-aware tag resolver (RES-03 parity).
 
     Returns:
-        3-tuple (filtered_missing, raw_cutoff, cutoff_tag_id) on success, or
-        None on fetch failure or malformed-data fault.
+        3-tuple (filtered_missing, screened_cutoff, cutoff_tag_id) on success, or
+        None on fetch failure or an other-unexpected-fault.
     """
     if instance_name not in state.get("lidarr", {}):
         logger.warning("Lidarr: instance {name} not in state -- skipping count refresh", name=instance_name)
@@ -2149,8 +2227,10 @@ async def refresh_lidarr_counts(
 
     # --- FETCH PHASE ---
     try:
-        missing = await client.get_wanted_missing()
-        cutoff = await client.get_wanted_cutoff()
+        # Non-object records come back as sent and are skipped per item by the
+        # screening below (D-02), matching the scheduled cycle's fetch.
+        missing = await client.get_wanted_missing(allow_non_object_records=True)
+        cutoff = await client.get_wanted_cutoff(allow_non_object_records=True)
     except (httpx.HTTPError, pydantic.ValidationError) as exc:
         logger.warning("Lidarr: Count refresh aborted -- {exc}", exc=_sanitize_exc(exc))
         _mark_unreachable(ist)
@@ -2170,8 +2250,14 @@ async def refresh_lidarr_counts(
     ist["cutoff_count"] = len(cutoff)
     ist["total_items"] = total_items
 
-    # --- FILTER/TAG PHASE (narrow catch: malformed nested record -> disconnected + None) ---
+    # --- FILTER/TAG PHASE (a malformed record is skipped per item via
+    # _screen_queue below, D-02; the except is the backstop for any other
+    # unexpected fault) ---
     scope: _TagScope | None = None
+    # Throwaway tally: exists only so _screen_queue can log and count
+    # per-item skips -- never persisted to ist or surfaced on the dashboard
+    # (D-02: no new dashboard warning).
+    screen_tally = CycleTally()
     try:
         scope = await _resolve_tag_scope(
             instance_config=instance_config,
@@ -2188,18 +2274,42 @@ async def refresh_lidarr_counts(
         missing_monitored_count: int | None = None
         missing_eligible_count: int | None = None
         if not scope.missing_unresolved:
-            filtered_missing = filter_monitored(missing)
+            tagged_missing = scope.missing_tag_id is not None
+            filtered_missing = _screen_queue(missing, app_label="Lidarr", queue="missing", tally=screen_tally)
+            filtered_missing = filter_monitored(filtered_missing)
+            if tagged_missing:
+                filtered_missing = _screen_queue(
+                    filtered_missing, app_label="Lidarr", queue="missing", tally=screen_tally,
+                    nested_key="artist", tags_at=("artist", "tags"),
+                )
             missing_monitored_count = len(filtered_missing)
-            if scope.missing_tag_id is not None:
+            if tagged_missing:
                 filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _lidarr_tags)
+            screened = _screen_queue(
+                filtered_missing, app_label="Lidarr", queue="missing", tally=screen_tally, key_fields=("id",)
+            )
+            missing_monitored_count -= len(filtered_missing) - len(screened)
+            filtered_missing = screened
             missing_eligible_count = len(filtered_missing)
 
-        # Cutoff filter chain on a local copy (Lidarr has no cutoff_searchable ist write)
+        # Cutoff filter chain on a local copy (Lidarr has no cutoff_searchable ist
+        # write); cutoff_screened is also what the tuple returns, so a malformed
+        # record never flows out of this helper.
         filtered_cutoff: list[dict] = []
+        cutoff_screened: list[dict] = []
         if not scope.cutoff_unresolved:
-            filtered_cutoff = filter_monitored(cutoff)
-            if scope.cutoff_tag_id is not None:
+            tagged_cutoff = scope.cutoff_tag_id is not None
+            cutoff_screened = _screen_queue(cutoff, app_label="Lidarr", queue="cutoff", tally=screen_tally)
+            filtered_cutoff = filter_monitored(cutoff_screened)
+            if tagged_cutoff:
+                filtered_cutoff = _screen_queue(
+                    filtered_cutoff, app_label="Lidarr", queue="cutoff", tally=screen_tally,
+                    nested_key="artist", tags_at=("artist", "tags"),
+                )
                 filtered_cutoff = filter_by_tag(filtered_cutoff, scope.cutoff_tag_id, _lidarr_tags)
+            filtered_cutoff = _screen_queue(
+                filtered_cutoff, app_label="Lidarr", queue="cutoff", tally=screen_tally, key_fields=("id",)
+            )
 
         # Commit eligible counts to ist only after successful filtering (no-partial-state
         # guarantee); a tag-unresolved missing queue's fields are never committed.
@@ -2209,7 +2319,10 @@ async def refresh_lidarr_counts(
             _stamp_scoped_counts(ist, "missing", instance_config.missing_tag or None)
 
     except (AttributeError, KeyError, TypeError) as exc:
-        # Malformed nested record -> upstream-DATA failure: same disconnected outcome as fetch failure.
+        # A single malformed record no longer reaches here -- _screen_queue
+        # above skips and logs it per item (D-02). This is the backstop for
+        # any other unexpected fault; treat it as an upstream-DATA failure:
+        # same disconnected outcome as a fetch failure.
         logger.warning(
             "Lidarr: Count refresh data fault ({etype}) -- treating as disconnected",
             etype=type(exc).__name__,
@@ -2221,4 +2334,4 @@ async def refresh_lidarr_counts(
         )
         return None
 
-    return (filtered_missing, cutoff if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
+    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)
