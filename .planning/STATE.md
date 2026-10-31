@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 planned -- 10 plans in 10 sequential waves, plan check passed; ready to execute"
-stopped_at: "Phase 86 planned 2026-10-30 (86-01..86-10, plan check passed after 3 revisions + owner-approved extra pass); next: /bm:execute-phase 86"
-last_updated: "2026-10-31T00:30:00Z"
-last_activity: "2026-10-30 -- Phase 86 plan-phase: research, pattern map, 10 plans; owner added Radarr to the Refresh-counts fix (D-02a)"
+status: "Phase 86 executing -- 86-01, 86-02 finished; 86-03 paused at the owner tally checkpoint (PILOT-02 comparison recorded at H1 03182462100e)"
+stopped_at: "86-03 Task 3 (blocking): owner approves the PILOT-02 tally in 86-PILOT-RECORD.md; then 86-04 (batched revision on the Refresh-counts branch)"
+last_updated: "2026-10-31T00:52:00Z"
+last_activity: "2026-10-30 -- Phase 86 execution: 86-01 pilot record + bar, 86-02 Refresh-counts H1, 86-03 same-head comparison recorded (037ee7d)"
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 65
-  completed_plans: 55
+  completed_plans: 57
   percent: 71
 ---
 
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 86 — Pilot & Reference Record (planned; execution next)
+**Current focus:** Phase 86 — Pilot & Reference Record (executing; 86-03 owner tally checkpoint)
 
 > **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 is unreleased. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 86 (Pilot & Reference Record) — planned, not yet executed
-Plan: 0 of 10
-Status: Phase 86 planned (10 plans) on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind); previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback)
-Last activity: 2026-10-30 -- Phase 86 plan-phase (86-01..86-10 PLAN.md; Radarr included per owner decision D-02a)
+Phase: 86 (Pilot & Reference Record) — executing
+Plan: 2 of 10 finished; 86-03 at its owner checkpoint (Task 3)
+Status: Phase 86 executing (10 plans) on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind); previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback)
+Last activity: 2026-10-30 -- Phase 86 execution: 86-01 (bbabaf8..0a74c46), 86-02 (pilot branch H1 0318246, summary f1b8a1d), 86-03 comparison 037ee7d; Refresh-counts pilot branch is local only
 
 ### v2.13 milestone shape
 
