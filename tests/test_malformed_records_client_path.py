@@ -9,6 +9,7 @@ behind that validation never runs on real data).
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock, patch
 
 import aiosqlite
 import httpx
@@ -24,6 +25,8 @@ from triggarr.db import init_db
 from triggarr.models.config import InstanceConfig
 from triggarr.search.engine import (
     refresh_lidarr_counts,
+    refresh_radarr_counts,
+    refresh_sonarr_counts,
     run_lidarr_cycle,
     run_radarr_cycle,
     run_sonarr_cycle,
@@ -40,6 +43,7 @@ _GOOD = {
 }
 _CLIENTS = {"radarr": RadarrClient, "sonarr": SonarrClient, "lidarr": LidarrClient}
 _CYCLES = {"radarr": run_radarr_cycle, "sonarr": run_sonarr_cycle, "lidarr": run_lidarr_cycle}
+_REFRESH = {"radarr": refresh_radarr_counts, "sonarr": refresh_sonarr_counts, "lidarr": refresh_lidarr_counts}
 
 
 def _page(records: list, *, page: int = 1, page_size: int = 50, total: int | None = None) -> dict:
@@ -105,8 +109,9 @@ async def test_wanted_fetch_keeps_non_object_records_when_allowed(app):
 
 @pytest.mark.parametrize("app", ["radarr", "sonarr", "lidarr"])
 async def test_wanted_fetch_default_still_rejects_non_object_records(app):
-    """The default stays strict, so every other caller (count refresh included)
-    behaves exactly as before."""
+    """The default stays strict, so a caller that never opts in to
+    ``allow_non_object_records`` behaves exactly as before (D-02/D-02a: count
+    refresh now opts in, same as the scheduled cycles)."""
     fake = _FakeArr({"missing": [_GOOD[app], None]})
     client = _client(app, fake)
     try:
@@ -270,16 +275,80 @@ async def test_radarr_missing_chain_fault_keeps_previous_counts(tmp_path, monkey
     assert fake.posts == []
 
 
-async def test_refresh_counts_unchanged_for_non_object_record(tmp_path):
-    """Out of scope for PR #28 and recorded as a follow-up: Refresh counts keeps
-    its strict fetch, so a null record still marks the instance unreachable
-    there, and it does so without raising."""
-    fake = _FakeArr({"missing": [_GOOD["lidarr"], None]})
-    client = _client("lidarr", fake)
-    state = _state("lidarr")
+@pytest.mark.parametrize("app", ["radarr", "sonarr", "lidarr"])
+async def test_refresh_counts_skips_non_object_record(app):
+    """Resolves the PR #28 follow-up (D-02/D-02a): Refresh counts now fetches
+    with ``allow_non_object_records=True``, the same as the scheduled cycles,
+    so a null wanted record reaches per-item screening (_screen_queue) instead
+    of rejecting the whole page -- the instance stays connected and the good
+    record in the same page is still counted. This test drives the real
+    Radarr/Sonarr/Lidarr client over httpx.MockTransport, so the fetch flag is
+    part of what's tested here, not just the screening."""
+    fake = _FakeArr({"missing": [_GOOD[app], None], "cutoff": [None, _GOOD[app]]})
+    client = _client(app, fake)
+    state = _state(app)
     try:
         config = InstanceConfig(url="http://arr.test", api_key="test-key", enabled=True)
-        await refresh_lidarr_counts(client, state, "Default", config, make_settings())
+        result = await _REFRESH[app](client, state, "Default", config, make_settings())
     finally:
         await client.close()
-    assert state["lidarr"]["Default"]["connected"] is False
+    assert result is not None
+    ist = state[app]["Default"]
+    assert ist["connected"] is True
+    assert ist["unreachable_since"] is None
+    assert ist["missing_eligible"] == 1
+
+
+class _BadEnvelopeArr(_FakeArr):
+    """Fake *arr that serves an invalid wanted-list envelope (missing totalRecords)."""
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "GET" and ("/wanted/missing" in path or "/wanted/cutoff" in path):
+            return httpx.Response(200, json={"page": 1, "pageSize": 50, "sortKey": "id", "records": []})
+        return super().handler(request)
+
+
+class _ServerErrorArr(_FakeArr):
+    """Fake *arr that returns HTTP 500 for every wanted-list request."""
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "GET" and ("/wanted/missing" in path or "/wanted/cutoff" in path):
+            return httpx.Response(500)
+        return super().handler(request)
+
+
+@pytest.mark.parametrize("app", ["radarr", "sonarr", "lidarr"])
+async def test_refresh_counts_invalid_envelope_still_disconnects(app):
+    """Guard (pins the fetch-failure contract, D-02/D-02a): enabling
+    allow_non_object_records does not widen it -- an invalid wanted-list
+    envelope (the ``RawPaginatedResponse`` fields themselves, not a record)
+    still disconnects the instance and returns None."""
+    fake = _BadEnvelopeArr({})
+    client = _client(app, fake)
+    state = _state(app)
+    try:
+        config = InstanceConfig(url="http://arr.test", api_key="test-key", enabled=True)
+        result = await _REFRESH[app](client, state, "Default", config, make_settings())
+    finally:
+        await client.close()
+    assert result is None
+    assert state[app]["Default"]["connected"] is False
+
+
+@pytest.mark.parametrize("app", ["radarr", "sonarr", "lidarr"])
+async def test_refresh_counts_http_error_still_disconnects(app):
+    """Guard (pins the fetch-failure contract, D-02/D-02a): an HTTP error from
+    the wanted endpoint still disconnects the instance and returns None."""
+    fake = _ServerErrorArr({})
+    client = _client(app, fake)
+    state = _state(app)
+    try:
+        config = InstanceConfig(url="http://arr.test", api_key="test-key", enabled=True)
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await _REFRESH[app](client, state, "Default", config, make_settings())
+    finally:
+        await client.close()
+    assert result is None
+    assert state[app]["Default"]["connected"] is False
