@@ -109,6 +109,16 @@ None beyond the deviation above. One ruff line-length violation (123 > 120 chars
 - No PR opened yet — per the plan, this plan only produces the branch and H1; opening the PR, running reviews, and owner acceptance are 86-03/86-04's responsibility.
 - The branch's merge-base with `origin/main` is exactly `origin/main`'s tip at cut time (`d5a4467`), confirming clean branch provenance for the Codex trust check.
 
+## Self-Check: PASSED
+
+- FOUND: `triggarr/search/engine.py`
+- FOUND: `tests/test_refresh_counts.py`
+- FOUND: `tests/test_malformed_records_client_path.py`
+- FOUND: `.planning/phases/86-pilot-reference-record/86-02-SUMMARY.md`
+- FOUND commit `7f5680a` (Task 1, RED)
+- FOUND commit `0318246` (Task 2, GREEN, = H1)
+- FOUND commit `f1b8a1d` (plan metadata: SUMMARY.md on the phase branch)
+
 ---
 *Phase: 86-pilot-reference-record*
 *Completed: 2026-10-30*
