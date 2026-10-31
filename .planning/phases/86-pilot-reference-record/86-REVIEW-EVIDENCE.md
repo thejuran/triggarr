@@ -629,3 +629,11 @@ D-09 tally for this head: confirmed 0, false positive 0, unproven 5 BM-side (WR-
 
 1 so far (push approval).
 ````
+
+## PR #54 acceptance
+
+- Owner approval, quoted word for word (2026-10-30): "Approve review acceptance for PR #54 at 1062097a7676fddcdde3caf500f96ba1ea04d65c, run 41158788888."
+- Register slices `54:1062097a7676fddcdde3caf500f96ba1ea04d65c` were written (blockers `{"open":[]}`, dispositions `{"items":{}}`) and verified by read-back.
+- Attempt 1 of run 41158788888 was created before the register write, so it was cancelled and re-run. The owner approved attempt 2.
+- Step 5 recheck immediately before submission: head unchanged, run waiting on attempt 2, `review-acceptance` pending with `current_user_can_approve` true, readiness "Ready to request approval", main unchanged at `d5a4467`.
+- Submitted via the pending-deployments endpoint (environment `review-acceptance`; deployment 7452918282 for sha `1062097…`). Review acceptance run 41158788888 attempt 2 completed with **success**. PR merge state is CLEAN.
