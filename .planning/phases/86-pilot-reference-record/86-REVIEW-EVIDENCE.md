@@ -169,7 +169,7 @@ async def test_p2_returned_cutoff_excludes_record_without_id(app):
 
 ### Head 1062097a7676fddcdde3caf500f96ba1ea04d65c (final head)
 
-PR comment: (to be filled in by 86-07 when the PR is opened)
+PR comment: https://github.com/thejuran/triggarr/pull/54#issuecomment-6537692648 (PR #54; CI run 41158788891; Review acceptance run 41158788888)
 
 ```markdown
 <!-- review-checkpoint head=1062097a7676fddcdde3caf500f96ba1ea04d65c -->
@@ -306,7 +306,7 @@ Task 2 (owner decision on a visible change) did not run.
 
 ### Head 46c39194249d1e7bcd2362a91d238d0997539f3f (H1)
 
-PR comment: (to be filled in by 86-07 when the PR is opened)
+PR comment: https://github.com/thejuran/triggarr/pull/55#issuecomment-6537692830 (PR #55; CI run 41158791610; Review acceptance run 41158791675)
 
 ```markdown
 <!-- review-checkpoint head=46c39194249d1e7bcd2362a91d238d0997539f3f -->
@@ -415,3 +415,217 @@ D-09 tally for this head: confirmed 0, false positive 0, unproven 5 BM-side (WR-
 #### Final head (86-06 Task 2)
 
 H_final = H1 (`46c39194249d1e7bcd2362a91d238d0997539f3f`). D-09 triage found no confirmed defect on the card-template PR, so no revision was made. The BM review, paired Codex pass and routine vibe-check recorded above for H1 are this PR's final-head evidence. `git rev-list --count 46c3919..pilot-card-reason-kind` is 0.
+
+
+## Durable copy: PR #54 checkpoint comment
+
+Posted 2026-10-30 at https://github.com/thejuran/triggarr/pull/54#issuecomment-6537692648. The text below is exactly as posted.
+
+````markdown
+<!-- review-checkpoint head=1062097a7676fddcdde3caf500f96ba1ea04d65c -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `1062097a7676fddcdde3caf500f96ba1ea04d65c` (PR #54) |
+| PR base SHA | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` (merge-base with origin/main) |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| Codex inspected base (`inspected_base_sha`) | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` |
+
+Reconciliation: All fields match; no reconciliation needed.
+
+### Classification
+
+{"schema":1,"head":"1062097a7676fddcdde3caf500f96ba1ea04d65c","classification":"code","classes_present":["code"],"rationale":"H1 plus the 86-04 batched revision: refresh_sonarr_counts runs filter_monitored before the airDateUtc screen on both chains (engine.py), with a regression test (tests/test_refresh_counts.py). Runtime code and tests only.","supersedes_head":"03182462100e9f71defc9408245410d2b99110a5"}
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr, PR #54 (reviewed as a local checkpoint before the push; same head), head `1062097a7676fddcdde3caf500f96ba1ea04d65c`, base `d5a4467a4c38f8f675fb057d9a77bcc3030c379d`. Whole-PR review (H1 plus the batched revision `a794c8a` test, `1062097` fix).
+- **Risk:** moderate, unchanged from H1. The revision adds one `filter_monitored` call per Sonarr refresh chain. Counts cannot change, because `filter_sonarr_episodes` already drops unmonitored episodes; only log lines change. The H1 failure scenarios still apply to the PR as a whole.
+- **Recommended review:** BM standard depth on the full PR, plus the paired Codex pass; routine vibe-check (code class).
+- **Required evidence:** the WR-01 regression test, `test_refresh_sonarr_counts_unmonitored_tzless_airdate_not_logged_as_malformed` (fails at H1, passes at H_final); full suite and ruff at H_final.
+- **What this recommendation cannot establish:** behavior against live Radarr/Sonarr/Lidarr payload variants not represented in fixtures; how the dashboard renders the counts in a browser.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no additional vibe-check recommended.
+- **Routine vibe-check status:** ran on this head (`/vibe-check:deep-review`, stock invocation, range `d5a4467..1062097`). Because the H1 pass left state, it ran as pass 2: it reviewed the change since H1 and rechecked every carried H1 finding at H_final. Exact-head local coverage was prepared first and its provenance `check` passed. Report: `vibe-check/1062097a7676-refresh-routine.{md,json}`. Result: the Sonarr ordering finding was resolved on recheck by all three agents that raised it. Two test-gap rows remain (Warning: Sonarr missing-tag path untested; Medium: returned cutoff list not asserted). No product defect.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | review after fixes (`/bm:code-review 86 --files=triggarr/search/engine.py,tests/test_refresh_counts.py,tests/test_malformed_records_client_path.py`) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow file/step: `bm/5.0.3/workflows/code-review.md:spawn_reviewer` |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-refresh-1062097a7676.md` |
+| Status | complete (2 warning, 3 info, 1 set aside for a ruling) |
+
+As at H1: `diff_base` was the merge-base; no catalog skill; the report was not committed to the pilot branch, so H_final stayed the tip.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (trusted mode; `.status.json` complete, 0 findings, `inspected_head` = H_final) |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `codex/1062097a7676-pilot-refresh-final-a1.{prompt.txt,meta.json,jsonl,last.json,status.json,pytest.txt}` |
+| Review complete | `review_complete: true`, `incomplete_reasons: []` (report schema v2) |
+| Coverage | All three changed files including all test changes; non-object records traced through client pagination and all six refresh queues; nested objects, tags, integer keys, timezone-less dates, monitoring and release filters vs scheduled-cycle behavior; unresolved tags, retained counts, scoped stamps, recovery, backstops; refresh route locking, rate limiting, rendering, discarded return values; no CI/acceptance/audit/publication policy changes |
+| Exclusions | Planning markdown other than changed `*-PLAN.md`, `.planning/**/*.jsonl`, generated review artifacts under `.planning/**/codex/**`; files outside the working copy |
+| Commands run | 15, all exit 0 (as reported in `.last.json`) |
+| Limitations | Pytest not rerun in the read-only sandbox (harness: 3281 passed, 1 skipped); no live services; "new real-client success tests assert missing eligibility but do not assert surviving cutoff contents or Sonarr cutoff counts" |
+
+Findings: none (verdict `no-findings`).
+
+### Greptile
+
+did not run on this head (optional since 2026-10-22)
+
+### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| CI ready (test, lint, secrets, actionlint, dependencies, docker, image-smoke, browser-e2e, os-scan) | 41158788891 | pass |
+| CodeQL (Analyze python/actions/javascript-typescript) | 41158787037 | pass |
+| Review acceptance | 41158788888 | pending (owner acceptance) |
+
+Readiness (`acceptance-readiness.cjs --pr 54 --codex-out .planning/phases/86-pilot-reference-record/codex/1062097a7676-pilot-refresh-final-a1`): **Ready to request approval** (PR open, not draft, head matches, CI ready success, CodeQL success, Greptile did not run (optional), acceptance gate dry run ok with 0 Greptile findings, Codex complete). Register slices `54:1062097…` written empty for blockers and dispositions.
+
+Local evidence: full suite at H_final: 3281 passed, 1 skipped. This was run three times: the 86-04 final-head gate with HEAD asserted, the vibe-check coverage run, and `codex/1062097a7676-pilot-refresh-final-a1.pytest.txt`. `ruff check triggarr/ tests/` is clean.
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:03182462100e:WR-01` | bm | `03182462100e9f71defc9408245410d2b99110a5` | fixed | regression test fails at H1, passes at H_final; vibe-check recheck resolved (architecture, bugs, impact); BM and Codex on H_final raise nothing on it | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:WR-01` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | Same issue as H1 `WR-02`, now with more examples: the returned cutoff list can hold records with a bad `id` or tags, or unmonitored ones. The approved H1 tally labelled it unproven, because the only caller (`routes.py`) discards the list. | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:WR-02` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | Design note: the refresh filter chains duplicate the cycle chains, and they drifted once (fixed in this PR). There is no current behavioral defect. Candidate backlog item: a shared per-app chain helper, or a parity test. | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:IN-01` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | same as H1 `IN-01` | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:IN-02` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | test gap; same family as H1 `IN-02` and vibe-check cov-002 | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:IN-03` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | docstring wording ("an other-unexpected-fault") | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `bm:1062097a7676:SA-01` | bm | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | decided (owner, D-02) | Skips are visible only in System Logs. This is the owner's recorded decision in 86-CONTEXT D-02: "No new dashboard warning." Nothing new to rule on. | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `vibe-check:1062097a7676:cov-001` | vibe-check | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | Sonarr missing-tag path untested; H1 proof test P3 passed for its case | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+| `vibe-check:1062097a7676:cov-002` | vibe-check | `1062097a7676fddcdde3caf500f96ba1ea04d65c` | nonblocking_debt | returned cutoff list not asserted; H1 proof test P4 passed for its case | `1062097a7676fddcdde3caf500f96ba1ea04d65c` |
+
+### Incomplete items
+
+- Greptile did not run (optional). Nothing else is incomplete for review.
+- No new confirmed defect on H_final, so there is no owner fix-vs-debt decision under the Triage rule.
+
+### Owner effort (D-12)
+
+2 so far (PILOT-02 tally approval; push approval).
+
+The first-head (H1 `0318246`) record and the PILOT-02 comparison are kept in the phase record (`86-REVIEW-EVIDENCE.md`, `86-PILOT-RECORD.md`). This comment covers the pushed head only.
+````
+
+
+## Durable copy: PR #55 checkpoint comment
+
+Posted 2026-10-30 at https://github.com/thejuran/triggarr/pull/55#issuecomment-6537692830. The text below is exactly as posted.
+
+````markdown
+<!-- review-checkpoint head=46c39194249d1e7bcd2362a91d238d0997539f3f -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `46c39194249d1e7bcd2362a91d238d0997539f3f` (PR #55) |
+| PR base SHA | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` (merge-base with origin/main) |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| Codex inspected base (`inspected_base_sha`) | `d5a4467a4c38f8f675fb057d9a77bcc3030c379d` |
+
+Reconciliation: All fields match; no reconciliation needed.
+
+### Classification
+
+{"schema":1,"head":"46c39194249d1e7bcd2362a91d238d0997539f3f","classification":"code","classes_present":["code"],"rationale":"cycle_view() (triggarr/search/outcome.py) adds a structured kind/skip_count to each reason row and cycle_grade.html classifies by kind instead of display text; plus tests. Runtime code and a template; no agent instructions, workflows or policy.","supersedes_head":null}
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr, PR #55 (reviewed as a local checkpoint before the push; same head), head `46c39194249d1e7bcd2362a91d238d0997539f3f`, base `d5a4467a4c38f8f675fb057d9a77bcc3030c379d`. Whole-PR review: the card's reason rows are classified by a structured `kind` instead of display text, with no visible change intended (D-03).
+- **Risk:** low. The worst realistic failure is a wrong summary label on the dashboard card ("Show N skipped records" instead of "Show N failure reasons"), or a template error if a malformed row ever lacked `skip_count`. Both construction sites set it, and a test enforces that. Nothing persisted changes, and search behavior is untouched.
+- **Recommended review:** BM standard on the full PR, plus the paired Codex pass; routine vibe-check (code class).
+- **Required evidence:** `cycle_view` dict tests pinning `kind`/`skip_count`; existing card rendering tests unchanged and passing; full suite and ruff at H1.
+- **What this recommendation cannot establish:** browser rendering, and labels for tampered records outside what the application writes.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no additional vibe-check recommended.
+- **Routine vibe-check status:** ran on this head (`/vibe-check:deep-review`, stock, range `d5a4467..46c3919`, pass 1); exact-head local coverage was prepared first and its provenance `check` passed. Report: `vibe-check/46c39194249d-card-routine.{md,json}`. Result: 1 Medium (no rendering test for the template switch), 3 sub-threshold; no product defect.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | explicit `/bm:code-review 86 --files=triggarr/search/outcome.py,triggarr/templates/partials/cycle_grade.html,tests/test_outcome.py,tests/test_app_cards.py` |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow file/step: `bm/5.0.3/workflows/code-review.md:spawn_reviewer` |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-card-46c39194249d.md` |
+| Status | complete (1 warning, 2 info, 1 set aside) |
+
+As on the Refresh-counts PR: `diff_base` was the merge-base; no catalog skill was inserted; the report was not committed to the pilot branch, so H1 stayed the tip.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (trusted mode; `.status.json` complete, 0 findings, `inspected_head` = H1) |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `codex/46c39194249d-pilot-card-a1.{prompt.txt,meta.json,last.json,status.json,pytest.txt}`; `.jsonl` withheld (see Withheld files below) |
+| Review complete | `review_complete: true`, `incomplete_reasons: []` (report schema v2) |
+| Coverage | All changes in the three files; all six reason-construction paths, count validation, legacy aggregate fallback, malformed state, truncation, ordering; persisted records traced through `cycle_view` into connected and unreachable card templates; existing rendering assertions; no persisted schema or shared state; escaping and policy |
+| Exclusions | Planning markdown other than changed `*-PLAN.md`, planning JSONL, generated artifacts under `.planning/**/codex/**` |
+| Commands run | 12, as reported in `.last.json` (exit codes 0 and 1; exit 1 = searches with no match) |
+| Limitations | Pytest not rerun in the read-only sandbox (harness: 3271 passed, 1 skipped); "Existing rendering tests protect current labels but do not explicitly mutate display wording to prove classification remains independent of text"; no browser verification |
+
+Findings: none (verdict `no-findings`).
+
+### Greptile
+
+did not run on this head (optional since 2026-10-22)
+
+### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| CI ready (test, lint, secrets, actionlint, dependencies, docker, image-smoke, browser-e2e, os-scan) | 41158791610 | pass |
+| CodeQL (Analyze python/actions/javascript-typescript) | 41158789982 | pass (the CodeQL summary check shows `skipping` on this head) |
+| Review acceptance | 41158791675 | pending (not presented: after #54 merges this PR is integrated with main and re-reviewed, per 86-10) |
+
+Readiness: not run for acceptance on this head. It will be behind main once #54 merges, so acceptance moves to the integrated head (86-10).
+
+Local evidence: full suite at H1 3271 passed, 1 skipped (86-05 final-head gate with HEAD asserted; this plan's coverage run; `codex/46c39194249d-pilot-card-a1.pytest.txt`); `ruff check triggarr/ tests/` clean (86-05).
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:46c39194249d:WR-01` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (D-09: unproven; real test gap, no defect) | Reproduced: with the pre-change `cycle_grade.html` swapped into the H1 working tree (uncommitted, then restored), `tests/test_app_cards.py` + `tests/test_outcome.py` gave 148 passed. The new template behaves correctly. BM's example divergence needs a tampered record, for which the new label is the correct one. | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `bm:46c39194249d:IN-01` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | kind names are string literals in three places; no current mismatch (test enforces the closed set) | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `bm:46c39194249d:IN-02` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | test hardcodes `"malformed"` in its seen-set and has a redundant subset assert; legacy row checked directly elsewhere | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `bm:46c39194249d:SA-01` | bm | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven; predates this PR) | A tampered record can show both malformed rows and an "eligible not searched" row; records the app writes don't produce it. A candidate later-phase tightening. | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `vibe-check:46c39194249d:cov-001` | vibe-check | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | same gap as `bm:…:WR-01`; same reproduction | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+| `vibe-check:46c39194249d:arch-001`, `cov-002`, `cov-003` (sub-threshold) | vibe-check | `46c39194249d1e7bcd2362a91d238d0997539f3f` | nonblocking_debt (unproven) | arch-001 = BM IN-01; cov-003 = BM IN-02; cov-002 guard paths predate this PR | `46c39194249d1e7bcd2362a91d238d0997539f3f` |
+
+D-09 tally for this head: confirmed 0, false positive 0, unproven 5 BM-side (WR-01, IN-01, IN-02, SA-01; Codex 0) and 4 vibe-check-side (cov-001 reported; arch-001, cov-002, cov-003 filtered).
+
+### Incomplete items
+
+- Greptile did not run (optional). Nothing else is incomplete for review.
+
+### Owner effort (D-12)
+
+1 so far (push approval).
+````
