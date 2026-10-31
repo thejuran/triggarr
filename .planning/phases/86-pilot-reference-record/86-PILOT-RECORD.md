@@ -362,6 +362,8 @@ Per that decision, the wording for the passing tests above was corrected before 
 | PR | Date | Question | Answer |
 |---|---|---|---|
 | Refresh-counts (H1 `03182462100e`) | 2026-10-30 | Approve the PILOT-02 tally at H1 (86-03 Task 3)? | "Approve tally for H1 0318246. Continue with 86-04. Correct the passing-test wording to avoid claiming broader correctness than the tests establish. This approves only the comparison tally; retirement remains a separate decision using the full pilot evidence, including PR #36’s two later-fixed misses." |
+| Refresh-counts (H_final `1062097a7676`) | 2026-10-30 | Push decision (86-07 Task 1): push both, run another /deep-review first, or hold one? (/deep-review offered; routine vibe-check deep review already on record for this head) | "push both" |
+| Card-template (H_final `46c39194249d`) | 2026-10-30 | Push decision (86-07 Task 1): push both, run another /deep-review first, or hold one? Also offered: add the card rendering test first (not chosen) | "push both" |
 
 ## PILOT-03 recommendation and decisions
 
