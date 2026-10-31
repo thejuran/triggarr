@@ -237,6 +237,12 @@ def cycle_view(record: object, app_label: str) -> dict | None:
     only the aggregate ``malformed_skipped`` integer (no ``malformed_by_queue``
     key, or a tampered/unusable value) falls back to the original generic
     "N malformed record(s) skipped" row, so pre-Phase-80 state still renders.
+
+    Each reason also carries a structured ``kind`` (one of ``fetch_failed``,
+    ``failure``, ``unevaluated``, ``malformed``, ``eligible_not_searched``),
+    set once here at the row's construction, and a numeric ``skip_count`` on
+    malformed rows -- so the card groups and counts rows without matching
+    display text (Phase 86, D-03).
     """
     if not isinstance(record, dict):
         return None
@@ -257,7 +263,9 @@ def cycle_view(record: object, app_label: str) -> dict | None:
     fetch_error = record.get("fetch_error")
     fetch_failed = isinstance(fetch_error, str) and bool(fetch_error)
     if fetch_failed:
-        reasons.append({"text": _truncate(f"Couldn't reach {app_label} ({fetch_error})"), "count": 1})
+        reasons.append(
+            {"text": _truncate(f"Couldn't reach {app_label} ({fetch_error})"), "count": 1, "kind": "fetch_failed"}
+        )
 
     raw_failure_reasons = record.get("failure_reasons")
     if isinstance(raw_failure_reasons, list):
@@ -272,7 +280,7 @@ def cycle_view(record: object, app_label: str) -> dict | None:
                 text = f"Command rejected by {app_label} ({reason})"
             else:
                 text = f"Search command to {app_label} failed ({reason})"
-            reasons.append({"text": _truncate(text), "count": count})
+            reasons.append({"text": _truncate(text), "count": count, "kind": "failure"})
 
     raw_unevaluated = record.get("unevaluated")
     unevaluated_rows = 0
@@ -288,7 +296,9 @@ def cycle_view(record: object, app_label: str) -> dict | None:
             label = _UNEVALUATED_QUEUE_LABELS.get(queue) if isinstance(queue, str) else None
             if label is None:
                 continue
-            reasons.append({"text": _truncate(f"{label} queue not evaluated: {reason}"), "count": 1})
+            reasons.append(
+                {"text": _truncate(f"{label} queue not evaluated: {reason}"), "count": 1, "kind": "unevaluated"}
+            )
             unevaluated_rows += 1
 
     raw_malformed_by_queue = record.get("malformed_by_queue")
@@ -303,7 +313,7 @@ def cycle_view(record: object, app_label: str) -> dict | None:
                 text = f"1 {label} record skipped — malformed data"
             else:
                 text = f"{n} {label} records skipped — malformed data"
-            reasons.append({"text": _truncate(text), "count": 1})
+            reasons.append({"text": _truncate(text), "count": 1, "kind": "malformed", "skip_count": n})
             malformed_rows_appended += 1
 
     if malformed_rows_appended == 0 and malformed_skipped > 0:
@@ -311,7 +321,7 @@ def cycle_view(record: object, app_label: str) -> dict | None:
             text = "1 malformed record skipped"
         else:
             text = f"{malformed_skipped} malformed records skipped"
-        reasons.append({"text": _truncate(text), "count": 1})
+        reasons.append({"text": _truncate(text), "count": 1, "kind": "malformed", "skip_count": malformed_skipped})
 
     # Amended R-01 backstop: explain a clean Failed grade caused by eligible
     # work that never got dispatched, so the card is never blank.
@@ -332,7 +342,7 @@ def cycle_view(record: object, app_label: str) -> dict | None:
                 if eligible_total == 1
                 else f"{eligible_total} eligible items not searched this cycle"
             )
-            reasons.append({"text": _truncate(text), "count": 1})
+            reasons.append({"text": _truncate(text), "count": 1, "kind": "eligible_not_searched"})
 
     has_detail = (grade in (GRADE_PARTIAL, GRADE_FAILED) or unevaluated_rows > 0) and len(reasons) > 0
 

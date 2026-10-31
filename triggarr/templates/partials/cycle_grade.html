@@ -17,11 +17,11 @@
 {% if app.last_cycle.has_detail %}
 {% set ns = namespace(malformed=0, malformed_total=0, unevaluated=0, other=0) %}
 {% for r in app.last_cycle.reasons %}
-  {% if r.text.startswith('Missing queue not evaluated: ') or r.text.startswith('Cutoff unmet queue not evaluated: ') %}
+  {% if r.kind == 'unevaluated' %}
     {% set ns.unevaluated = ns.unevaluated + 1 %}
-  {% elif r.text.endswith('— malformed data') or r.text.endswith('skipped') %}
+  {% elif r.kind == 'malformed' %}
     {% set ns.malformed = ns.malformed + 1 %}
-    {% set ns.malformed_total = ns.malformed_total + (r.text.split(' ')[0] | int(0)) %}
+    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}
   {% else %}
     {% set ns.other = ns.other + 1 %}
   {% endif %}
