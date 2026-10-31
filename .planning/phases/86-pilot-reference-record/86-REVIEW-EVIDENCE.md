@@ -411,3 +411,7 @@ D-09 tally for this head: confirmed 0, false positive 0, unproven 5 BM-side (WR-
 | BM | 2026-10-31T01:31:38Z | 2026-10-31T01:33:37Z | 1 min 59 s | none; harness reported 44k reviewer subagent tokens |
 | Codex (paired) | 2026-10-31T01:31:31Z | 2026-10-31T01:33:42Z | 2 min 11 s (incl. full-suite run) | `.jsonl` `turn.completed`: input 220,995 tokens (153,856 cached), output 2,097, reasoning 123 |
 | vibe-check (routine) | 2026-10-31T01:33:37Z | 2026-10-31T01:37:46Z | 4 min 9 s (plus 105 s exact-head coverage beforehand, run while BM and Codex were active) | none from the tool; harness subagent tokens: triage 50k, bugs 72k, security 77k, architecture 69k, impact 73k, test-sufficiency 68k, compliance 84k, language-python 72k |
+
+#### Final head (86-06 Task 2)
+
+H_final = H1 (`46c39194249d1e7bcd2362a91d238d0997539f3f`). D-09 triage found no confirmed defect on the card-template PR, so no revision was made. The BM review, paired Codex pass and routine vibe-check recorded above for H1 are this PR's final-head evidence. `git rev-list --count 46c3919..pilot-card-reason-kind` is 0.
