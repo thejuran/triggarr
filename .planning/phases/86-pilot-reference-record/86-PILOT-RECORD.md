@@ -288,11 +288,74 @@ Sources: PR #44 checkpoint comment (`gh pr view 44 --comments`); `gh pr view 44 
 
 ## PILOT-02 comparison result
 
-Filled in by plan 86-03.
+**Comparison head H1:** `03182462100e9f71defc9408245410d2b99110a5`
+(branch `pilot-refresh-counts-skip-malformed`, base `d5a4467a4c38f8f675fb057d9a77bcc3030c379d`).
+All three reviewers completed on H1. They ran in the pre-registered order:
+vibe-check first, then BM, then the paired Codex pass. No vibe-check output
+reached BM or Codex (the Codex prompt contains no vibe-check text), and H1 was
+not changed while any of them ran. The comparison is complete.
+
+Every finding was judged by proof (D-09). Proof tests were written against H1 and
+not committed; they are listed with their results in `86-REVIEW-EVIDENCE.md`
+(Refresh-counts PR, H1, "Proof tests used for D-09 judging").
+
+| Finding ID | Reviewer | Summary (plain words) | Label (D-09) | Proof or reason | Unique to |
+|---|---|---|---|---|---|
+| VC-arch-001 (+ bugs-001, imp-001 merged) | vibe-check | On Sonarr, Refresh counts checks air dates before it drops unmonitored episodes, so it logs "skipped malformed record" warnings the scheduled cycle never logs. Counts are unaffected. | confirmed consequential defect | Proof test P1 fails at H1 on both queues: "Sonarr: Skipped 1 missing-queue record(s) with malformed date data (ids=[5])" for an unmonitored episode. These are misleading warnings in System Logs. | — (also BM WR-01) |
+| VC-cov-001 | vibe-check | No test covers the Sonarr missing-queue tag screening step. | unproven | The test gap is real (coverage shows L2117/L2121 never run). The test the finding asks for (P3) passes at H1, so no defect sits behind the gap. | — |
+| VC-cov-002 | vibe-check | No test checks that the returned upgrade-queue list is the screened one. | unproven | The test gap is real. The requested test (P4, all three apps) passes at H1, so no defect was shown. | — |
+| VC-cov-003 (sub-threshold, filtered) | vibe-check | The new correction to the "monitored" count is never tested with a record actually dropped. | unproven | The test gap is real. P5 (Radarr) and P5c (Lidarr) drop a record with no `id` and pass at H1; both counts are right. | — |
+| VC-cov-004 (sub-threshold, filtered) | vibe-check | Radarr/Lidarr never test the "upgrade-queue tag can't be resolved" path. | unproven | The test gap is real. P6 passes at H1: the returned list is empty and the instance stays connected. | — |
+| BM WR-01 | BM | Same Sonarr ordering problem as VC-arch-001. | confirmed consequential defect | Proof test P1 (as above). BM also reproduced it with its own probe. | — (also vibe-check) |
+| BM WR-02 | BM | The code comments promise the returned upgrade-queue list contains no malformed record, but records with a bad `id`/tags still come through. | unproven | The mismatch reproduces: P2 fails at H1 for Radarr and Lidarr. But no consequence can be shown, because the only caller (`routes.py`) discards that list. | — |
+| BM IN-01 | BM | Radarr/Lidarr build a fully-filtered upgrade list and never use it. | unproven | Accurate when read at H1, but it has no effect on behavior (logs only), so there is no consequence to demonstrate. | — |
+| BM IN-02 | BM | The end-to-end refresh test does not check the upgrade queue; there is no refresh test for a Radarr release date without a timezone or a non-integer `id`. | unproven | The test gap is real. The requested tests (P4, P5, P5b) pass at H1, so no defect was shown. | — |
+| BM IN-03 | BM | Three tests call `monkeypatch.undo()` partway through, which would also undo any future shared fixture's patches. | unproven | Latent: no current fixture patches in that scope, so no failure can be reproduced. | — |
+| (none) | Codex | Codex reported no findings (verdict `no-findings`, review complete). Its limitations note says the new real-client tests don't assert what survives in the upgrade queue, which is the same gap as VC-cov-002 and BM IN-02. | — | — | — |
+
+**Per-reviewer tally**
+
+| Reviewer | Confirmed | False positive | Unproven | Unique confirmed |
+|---|---|---|---|---|
+| vibe-check | 1 | 0 | 4 | 0 |
+| BM | 1 | 0 | 4 | 0 |
+| Codex | 0 | 0 | 0 | 0 |
+| BM + Codex (paired side) | 1 | 0 | 4 | 0 |
+
+**Review time and usage (measured live, D-13)**
+
+| Reviewer | Start (UTC) | End (UTC) | Wall clock | Usage printed |
+|---|---|---|---|---|
+| vibe-check | 2026-10-31T00:36:29Z | 2026-10-31T00:42:38Z | 6 min 9 s (plus 110 s to prepare exact-head coverage beforehand) | The tool printed none. The harness reported subagent token totals: triage 48k, bugs 104k, security 100k, architecture 102k, impact 101k, test-sufficiency 94k, compliance 107k, language-python 112k, framework-fastapi 104k. Vibe-check's own Codex pass printed none. |
+| BM | 2026-10-31T00:42:59Z | 2026-10-31T00:45:20Z | 2 min 21 s | The tool printed none. The harness reported 76k reviewer subagent tokens. |
+| Codex (paired) | 2026-10-31T00:45:25Z | 2026-10-31T00:48:04Z | 2 min 39 s (including about 93 s for the full-suite run) | From the `.jsonl` `turn.completed` record: input 630,831 tokens (543,360 cached), output 3,626, reasoning 149 |
+
+**In plain terms (for the owner).** Both sides found the same real problem:
+Refresh counts on Sonarr puts misleading "skipped malformed record" warnings in
+System Logs for episodes Triggarr would never search. Counts are not affected.
+Vibe-check reached it through three of its reviewers at once; BM reached it on
+its own and reproduced it. Neither side found a defect the other missed.
+
+Beyond that shared catch, both sides pointed out the same kind of thing: places
+where tests could be stronger. Vibe-check named four gaps and BM named one
+broader one. I wrote the missing tests and every one passes, so the code behind
+those gaps works. BM also noticed that a code comment promises more than the code
+does (the returned upgrade list can still hold a record with no ID). That is
+true, but nothing uses that list today, so it has no effect yet. Codex found
+nothing to report and noted the same test gap in passing.
+
+On cost, vibe-check took a little longer: about 6 minutes, plus 2 minutes
+to prepare coverage, against about 5 minutes for BM and Codex together. It also
+ran nine model agents to the paired side's two.
+
+Measured against the retirement bar committed before any of this ran: on this PR,
+vibe-check found **no proven defect that BM + Codex missed.**
 
 ## Owner decisions log
 
-Filled in by all plans.
+| PR | Date | Question | Answer |
+|---|---|---|---|
+| Refresh-counts (H1 `03182462100e`) | 2026-10-30 | (none yet; the PILOT-02 tally approval is pending in 86-03 Task 3) | — |
 
 ## PILOT-03 recommendation and decisions
 
