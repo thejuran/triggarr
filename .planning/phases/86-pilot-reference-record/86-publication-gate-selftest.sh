@@ -3,7 +3,8 @@
 # Usage, from anywhere: bash <this file> <path to 86-publication-gate.sh>
 # Builds throwaway git repositories under mktemp and checks clean, matching,
 # unreadable-file and empty-list cases, the credential-shape hand-review entry
-# rules (exact path, dedicated section, accepted disposition only), a staged
+# rules (exact path, dedicated section, accepted disposition only), the same rules
+# for hash-bound public-infrastructure hand-review entries, a staged
 # match hidden by an unstaged redaction, plus invocation from zsh.
 gate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 [ -f "$gate" ] || { echo "selftest: gate script not found: $1" >&2; exit 2; }
@@ -46,6 +47,27 @@ hit; ev "- $A: not a credential -- "; expect "accepted entry with no reason bloc
 hit; ev "- \`$p/vibe-check/a1.txt\`: not a credential -- other file"; expect "same-basename different-file entry blocks" block "$NO"
 hit; ev "- \`a1.txt\`: not a credential -- basename only"; expect "basename-only entry blocks" block "$NO"
 hit; ev "- $A: not a credential -- fixture"; ev "## Credential-shape hand review"; expect "duplicate hand-review section blocks" block "exactly one"
+# Public-infrastructure hand review: same rules, plus the entry is bound to the file's current SHA-256.
+pub() { fresh; echo "see /home/someone/x" >> "$r/$p/vibe-check/v.md"; ev "## Public-infrastructure hand review"; }
+sum() { { shasum -a 256 < "$1" 2>/dev/null || sha256sum < "$1"; } | cut -d' ' -f1; }
+acc() { ev "- $V sha256 \`$(sum "$r/$p/vibe-check/v.md")\`: not private infrastructure -- ${1-placeholder fixture path}"; }
+V="\`$p/vibe-check/v.md\`"; NP="no accepted Public-infrastructure hand review entry"
+pub; acc; ( cd "$r" && git add -A ); expect "accepted public-infrastructure entry with the current hash passes" pass ""
+pub; expect "public-infrastructure hit with no entry blocks" block "$NP: $p/vibe-check/v.md"
+pub; acc; echo "and /home/other/y" >> "$r/$p/vibe-check/v.md"; expect "entry for a file changed since review (wrong hash) blocks" block "$NP"
+pub; ev "- $V: not private infrastructure -- no hash given"; expect "public-infrastructure entry without a hash blocks" block "$NP"
+pub; acc ""; expect "public-infrastructure entry with no reason blocks" block "$NP"
+pub; acc; ev "- $V: private -- second look"; expect "second conflicting line for the same path blocks" block "$NP"
+pub; acc; ev "## Public-infrastructure hand review"; expect "two public-infrastructure sections block" block "exactly one '## Public-infrastructure hand review'"
+fresh; echo "see /home/someone/x" >> "$r/$p/vibe-check/v.md"
+expect "missing public-infrastructure section blocks" block "exactly one '## Public-infrastructure hand review'"
+pub; echo "box.ts.net" >> "$r/$p/codex/a1.txt"; expect "every unreviewed hit is named (first file)" block "$NP: $p/codex/a1.txt"
+expect "every unreviewed hit is named (second file)" block "$NP: $p/vibe-check/v.md"
+acc; expect "an entry for one file does not excuse another" block "$NP: $p/codex/a1.txt"
+pub; whoami >> "$r/$p/vibe-check/v.md"; acc; ( cd "$r" && git add -A )
+expect "user name hit is not excused by a public-infrastructure entry" block "local user name check: matching"
+pub; hostname -s >> "$r/$p/vibe-check/v.md"; acc; ( cd "$r" && git add -A )
+expect "host name hit is not excused by a public-infrastructure entry" block "local host name check: matching"
 fresh; printf 'token = "%s%s"\n' "gh""p_" "x7Qp2LmZ9sKt4VwR8yB3nC6dF1gH5jA0eU2i" >> "$r/$p/codex/a1.txt"
 expect "gitleaks finding blocks" block "gitleaks exit 1"
 fresh; chmod 000 "$r/$p/vibe-check/v.md"; expect "unreadable file blocks (grep exit 2)" block "grep error (exit 2)"
