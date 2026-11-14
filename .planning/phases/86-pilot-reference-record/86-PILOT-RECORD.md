@@ -366,6 +366,8 @@ Per that decision, the wording for the passing tests above was corrected before 
 | Card-template (H_final `46c39194249d`) | 2026-10-30 | Push decision (86-07 Task 1): push both, run another /deep-review first, or hold one? Also offered: add the card rendering test first (not chosen) | "push both" |
 | PR #54 Refresh-counts (`1062097a7676`) | 2026-10-30 | Owner acceptance (86-07 Task 3): approve review acceptance for PR #54 at the exact head and run? | "Approve review acceptance for PR #54 at 1062097a7676fddcdde3caf500f96ba1ea04d65c, run 41158788888." |
 | PR #54 Refresh-counts (`1062097a7676`) | 2026-11-13 | Merge (86-07 Task 3): the session reported the PR accepted, all checks passing and ready for the owner to merge | "merge pr 54" (Claude ran the merge under the owner's account at the accepted head; merge commit `b80c3e26cf94`) |
+| Main-CI fix (not a pilot PR) | 2026-11-13 | CI on main failed after the #54 merge for date-driven reasons: ship the fix as its own PR from main, or fold it into PR #55? | "1" (one separate fix PR from main) |
+| PR #57 main-CI fix (`49403734406a`) | 2026-11-13 | Push decision: push now, run another /deep-review first, or hold? (/deep-review offered; routine vibe-check deep review already on record for this head) | "1" (push now) |
 
 ## PILOT-03 recommendation and decisions
 

@@ -752,3 +752,111 @@ No confirmed defect, so no revision was made and this head is final for the push
 #### Withheld files
 
 - `codex/49403734406a-main-ci-fix-a1.jsonl` failed publication-gate check 3 (the home-directory path pattern). One event in Codex's transcript quotes a line of the repository's own test file that contains a made-up home path for a fake user; it is not a real machine path. The gate has no exemption for this check and Codex files are never edited after grading, so the file was moved out of the repository to a private location on the owner's machine. The graded report (`.last.json`), status (`.status.json`), prompt, meta and pytest evidence for this attempt all passed the gate and are published. Codex completion is graded from the report, not the transcript.
+
+## Durable copy: PR #57 checkpoint comment
+
+Posted 2026-11-13 (local) at https://github.com/thejuran/triggarr/pull/57#issuecomment-6871288453. The text below is exactly as posted.
+
+````markdown
+<!-- review-checkpoint head=49403734406a7c0073def56b5fc5740b81fcf30e -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `49403734406a7c0073def56b5fc5740b81fcf30e` (PR #57) |
+| PR base SHA | `b80c3e26cf9456dde7245350d7033f6feb94db0f` (PR base, main) |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `49403734406a7c0073def56b5fc5740b81fcf30e` |
+| Codex inspected base (`inspected_base_sha`) | `b80c3e26cf9456dde7245350d7033f6feb94db0f` |
+
+Reconciliation: All fields match; no reconciliation needed.
+
+### Classification
+
+{"schema":1,"head":"49403734406a7c0073def56b5fc5740b81fcf30e","classification":"code","classes_present":["code","sensitive"],"rationale":"uv.lock (a runtime dependency bump) and tests/test_codex_review_container.py are code. That test file is not on the policy's sensitive list, but it tests the review machinery (tests/codex_review_run.py), so it is classified upward (D-18) and the risk note covers it as sensitive content.","supersedes_head":null}
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr PR #57, head `49403734406a7c0073def56b5fc5740b81fcf30e`, base `b80c3e26cf9456dde7245350d7033f6feb94db0f`. Whole-PR review: one patch-level dependency bump and a test-fixture clock freeze. No application code and no change to the runner itself.
+- **Risk:** low. Dependency: a patch release of a library the app only carries through FastAPI; worst case is a startup or import regression, which the full suite and CI's image-smoke and browser checks would show. Test change: the worst realistic failure is that freezing the clock hides a real credential-age defect in the runner; the 7-day boundary tests pass their own fixed time directly and are unaffected, and the runner has one clock read.
+- **Recommended review:** BM standard on both files, plus the paired Codex pass; routine vibe-check (code class).
+- **Required evidence:** the changed test file and the full suite passing at the head; the same tests passing with the fixed date moved years away from today; CI's own pip-audit command clean against the new lock; `uv lock --check`.
+- **What this recommendation cannot establish:** the content of the upstream 1.45.2 release beyond its published hashes, and CI's container and browser jobs, which run only after a push.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no additional vibe-check recommended.
+- **Routine vibe-check status:** ran on this head (`/vibe-check:deep-review`, stock, range `b80c3e2..4940373`, pass 1); exact-head local coverage was prepared first and its provenance `check` passed. Report: `vibe-check/49403734406a-mainfix-routine.{md,json}`. Result: 0 reported, 1 below threshold (missing type hints, cosmetic). Six lanes ran; test-sufficiency did not (coverage has no rows for the changed files), and vibe-check's own Codex lane was skipped as unauthenticated. Triage set `uv.lock` aside, so vibe-check covered the test file only.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | explicit `/bm:code-review` (`86 --files=tests/test_codex_review_container.py,uv.lock`) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow file/step: `workflows/code-review.md:resolve_depth` |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-mainfix-49403734406a.md` |
+| Status | complete: 0 critical, 0 warning, 2 info, 1 set-aside |
+
+The reviewer was given the true diff base (`b80c3e2`) instead of the workflow's phase-commit guess, so it read the changed hunks of both files.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (`.status.json`: complete, 0 findings, trusted mode) |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `codex/49403734406a-main-ci-fix-a1.{prompt.txt,meta.json,last.json,status.json,pytest.txt}`; `.jsonl` withheld (see Withheld files below) |
+| Review complete | `review_complete`: true; `incomplete_reasons`: [] |
+| Coverage | Complete diff: tests/test_codex_review_container.py and uv.lock. Phase-plan diff: no changed plan files. Clock substitution, timestamp parsing, credential freshness and future-skew boundaries, stale-credential rejection, entry-point callers, and monkeypatch lifetime. Dependency references, locked CI installation and audits, and hash-checked production installation. |
+| Exclusions | Planning markdown other than phase plans, planning JSONL transcripts, and generated review artifacts under .planning/. |
+| Commands run | `git rev-parse HEAD` (0); `git cat-file -e b80c3e26cf9456dde7245350d7033f6feb94db0f` (0); `git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..49403734406a7c0073def56b5fc5740b81fcf30` (0); `git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..49403734406a7c0073def56b5fc5740b81fcf30` (0); `cat .codex-review-evidence/pytest.txt; sed -n '1,130p' tests/test_codex_review_container.p` (0); `rg -n 'datetime|timedelta|last_refresh|MAX.*AGE|def .*main' scripts/codex_review*; cat pyp` (0); `rg -n 'datetime|last_refresh|def credential_preflight|def verify_boundary_main|def main' t` (0); `sed -n '1159,1228p' tests/test_codex_review_container.py; sed -n '2128,2170p' tests/test_c` (0) |
+| Limitations | Did not independently run pytest in the read-only sandbox; used the exact-head harness evidence. Did not independently verify the external CVE advisory, package artifacts, or live dependency-audit result because review reads were restricted to this working copy. Reported exit codes for grouped shell commands are their aggregate shell exit codes. |
+
+Findings: none. Verdict `no-findings`. Harness pytest on the exact head: 3281 passed, 1 skipped.
+
+### Greptile
+
+not run on this head
+
+### CI
+
+CI run 43553365431 (attempt 1): **failed**. Review acceptance run 43553365315: waiting, not requested.
+
+| Required check | Run ID | Result |
+|---|---|---|
+| test | 43553365431 | pass |
+| dependencies | 43553365431 | pass |
+| lint | 43553365431 | pass |
+| secrets | 43553365431 | pass |
+| actionlint | 43553365431 | pass |
+| docker | 43553365431 | pass |
+| image-smoke | 43553365431 | pass |
+| browser-e2e | 43553365431 | pass |
+| os-scan | 43553365431 | **fail**: 2 blocking findings |
+| CI ready | 43553365431 | fail (because of os-scan) |
+| CodeQL / Analyze | 43553363332 | pass |
+
+The two failures this PR set out to fix (`test`, `dependencies`) pass. `os-scan` was skipped on main's failed run, so its result is new here: CVE-2026-76844 and CVE-2026-85091 (HIGH) in the Debian package `zlib1g` of the `python:3.13-slim` base image, installed `1:1.3.dfsg+really1.3.1-1+b1`, fixed in `1:1.3.dfsg+really1.3.1-1+deb13u1`. Reproduced locally from the run's audited image with the same scanner version and gate script. The upstream base image (built 2026-11-05) still carries the old package, so a plain rebuild does not clear it; the fixed package is available from Debian's repository. Not caused by this PR's changes.
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:49403734406a:IN-01` | bm | `49403734406a` | nonblocking_debt | `_FrozenDatetime.now()` with no timezone returns an aware value where the real one returns a naive one. The runner's only clock read passes `UTC` (`tests/codex_review_run.py:1660`), so nothing reaches it. Three vibe-check lanes noted the same and none called it a defect. | `49403734406a` |
+| `bm:49403734406a:IN-02` | bm | `49403734406a` | nonblocking_debt | Docstring of `_BoundaryFixture` does not mention the clock freeze, and the line sits between two `delenv` calls. Readability only. | `49403734406a` |
+| `bm:49403734406a:SA-01` | bm | `49403734406a` | nonblocking_debt (owner ruling open) | The runner's entry points take no injected clock, so tests must patch the module's `datetime`. A future test that reaches them without `_BoundaryFixture` would start failing about a week after it is written. Changing the runner is a sensitive-file change outside this PR. | `49403734406a` |
+| `vibe-check:49403734406a:lang-py-001` | vibe-check | `49403734406a` | nonblocking_debt | Missing type hints on the `now()` override; below the reporting threshold. | `49403734406a` |
+
+No confirmed defect, so no revision was made and this head is final for the push decision.
+
+### Incomplete items
+
+- CI is failing on `os-scan` (see CI). This head cannot be accepted as it stands; the owner decides the remedy (docs/os-scan-policy.md: base-image rebuild or a time-limited owner-approved exception).
+- Greptile did not run.
+- vibe-check's internal Codex lane was skipped (`unauthenticated`); the paired Codex review above is complete.
+````
