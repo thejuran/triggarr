@@ -17,14 +17,14 @@ The target sequence for every real change, once this is fully set up:
 1. **Plan.** Work is described and scoped before any code is written.
 2. **Implement on a feature branch.** Never commit directly to the default branch.
 3. **Classify.** Before review starts, decide what kind of change this is — ordinary documentation, a sensitive change to agent instructions or automation, or application code — because that decision controls how much review happens next (see "Content-based review classification" below).
-4. **BM review, plus an independent Codex pass on the exact same commit.** BM's own code review runs first; a separate AI system (Codex) then reviews the identical commit independently, so one reviewer's blind spots aren't the only check.
-5. **A risk note, and a vibe-check when risk is high.** Every reviewed commit gets a short, explicit risk assessment (low/moderate/high, with concrete failure scenarios). When risk is assessed high, a heavier review pass ("vibe-check" — see the instruction-enforced section below) is required for that commit, and the record notes that it ran and where its report is. Below high risk it is not run routinely.
+4. **A risk note, and a vibe-check when risk is high.** Every reviewed commit gets a short, explicit risk assessment (low/moderate/high, with concrete failure scenarios); it comes before the review because it sets how deep that review goes. When risk is assessed high, a heavier review pass ("vibe-check" — see the instruction-enforced section below) is required for that commit; it runs right after the review in step 5, and the record notes that it ran and where its report is. Below high risk it is not run routinely.
+5. **BM review, plus an independent Codex pass on the exact same commit.** BM's own code review runs first; a separate AI system (Codex) then reviews the identical commit independently, so one reviewer's blind spots aren't the only check.
 6. **A checkpoint record for that exact commit ("head").** One record per reviewed commit, naming the full commit identifier (the "SHA" — a long hexadecimal string that uniquely and permanently identifies one exact snapshot of the code), what was reviewed, and what was found. Earlier records are never edited or deleted, even after the matching GitHub conversation thread is marked resolved.
 7. **CI.** GitHub's automated checks (tests, builds, security scans) run and must pass.
 8. **Exact-commit owner acceptance.** The human owner explicitly approves that specific commit — not "the PR in general" — before it can merge.
 9. **The owner merges.** Approval does not merge anything by itself; merging is a separate, explicit step.
 
-Steps 4-8 repeat on a fresh commit whenever a fix changes the code: evidence from an earlier commit never carries over to a later one.
+Steps 3-8 repeat on a fresh commit whenever a fix changes the code: evidence from an earlier commit never carries over to a later one.
 
 ## GitHub-enforced requirements
 
