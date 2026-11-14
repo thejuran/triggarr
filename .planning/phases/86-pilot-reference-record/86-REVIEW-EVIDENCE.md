@@ -1178,3 +1178,9 @@ No confirmed defect, so no fix round followed integration. Register entries `55:
 - Step 5 recheck immediately before submission: PR open and not a draft, head unchanged, run waiting on attempt 2 and associated with PR #55 at that head, one pending `review-acceptance` environment with `current_user_can_approve` true, readiness "Ready to request approval", main unchanged at `aeead4b`.
 - Submitted via the pending-deployments endpoint (environment `review-acceptance`; deployment 7782901603 for sha `5d58264…`). Review acceptance run 43559074842 attempt 2 completed with **success**. All 15 checks pass; PR merge state is clean.
 
+Merged: 7f6b5d4b567c06ce9a4764b94352366ef008c22b (by owner)
+
+- PR #55 merged 2026-11-14T05:05:32Z as a merge commit. Main moved from `aeead4b` to `7f6b5d4`.
+- How it was merged: the owner instructed "merge pr 55" in the Claude CLI session after the acceptance check passed, and Claude ran the merge under the owner's GitHub account, pinned to the accepted head (`--match-head-commit 5d58264e93a21b100d01e80503b9a7d064253d36`). The plan had the owner run the merge personally; the decision was the owner's.
+- Recheck immediately before the merge: head unchanged, merge state CLEAN, main unchanged at `aeead4b`.
+- CI on main after the merge: run 43559822786 on `7f6b5d4` completed with success; every mandatory job passed.

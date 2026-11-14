@@ -372,6 +372,7 @@ Per that decision, the wording for the passing tests above was corrected before 
 | PR #57 main-CI fix (`8e3d6b49f6b5`) | 2026-11-13 | Owner acceptance: approve review acceptance for PR #57 at the exact head and run? | "Approve review acceptance for PR #57 at 8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc, run 43556379926" |
 | PR #57 main-CI fix (`8e3d6b49f6b5`) | 2026-11-13 | Merge: the session reported the acceptance check passed and the PR mergeable, and asked whether the owner would merge or instruct the merge | "merge pr 57" (Claude ran the merge under the owner's account at the accepted head; merge commit `aeead4b601d7`) |
 | PR #55 Card-template (`5d58264e93a2`, integration head) | 2026-11-14 | Owner acceptance (86-10 Task 3): approve review acceptance for PR #55 at the exact head and run? | "Approve review acceptance for PR #55 at 5d58264e93a21b100d01e80503b9a7d064253d36, run 43559074842" |
+| PR #55 Card-template (`5d58264e93a2`, integration head) | 2026-11-14 | Merge (86-10 Task 3): the session reported the acceptance check passed and the PR mergeable, and asked whether the owner would merge or instruct the merge | "merge pr 55" (Claude ran the merge under the owner's account at the accepted head; merge commit `7f6b5d4b567c`) |
 
 ## PILOT-03 recommendation and decisions
 
