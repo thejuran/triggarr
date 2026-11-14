@@ -192,7 +192,22 @@ has at least one PR; none is stretched to fill a category it does not fit.
 
 ### Gaps
 
-None recorded yet.
+Checked against evidence on 2026-11-14: the **UI** category (D-05) is covered
+only by the card-template PR (#55), and 86-05's divergence analysis found no
+reachable divergence between the old text-matching classification and the
+new structured-`kind` classification for any input the application's own
+code produces (see that PR's scorecard, "D-03 note", below). So the pilot
+has no PR that shows the paired review process catching, or missing, a
+defect in something a user would actually see rendered differently; "UI
+coverage" here means a template refactor behaved identically, not that a
+visible UI change was exercised. This is recorded as a gap rather than
+stretched to claim visible-UI review coverage.
+
+The other four D-05 categories hold up against the evidence without a
+misfit: small fix (#44), state/error-path logic (Refresh-counts, #54,
+moderate size across three apps per D-07/D-02a), security-sensitive (#48),
+and larger change (#36 and #48, both reviewed as whole-PR passes with
+multiple fix rounds).
 
 ## Scorecards
 
@@ -282,9 +297,87 @@ above.
 
 Sources: PR #44 checkpoint comment (`gh pr view 44 --comments`); `gh pr view 44 --json additions,deletions,changedFiles,mergedAt,commits`; `gh pr checks 44`.
 
-### Refresh-counts PR (filled in by 86-08)
+### PR #54 — Refresh counts skip malformed records (state/error-path logic)
 
-### Card-template PR (filled in by 86-08)
+Comparison head (H1) `03182462100e9f71defc9408245410d2b99110a5`; accepted
+and merged final head `1062097a7676fddcdde3caf500f96ba1ea04d65c`, merged
+2026-11-14T03:23:00Z, merge commit `b80c3e26cf9456dde7245350d7033f6feb94db0f`.
+One finding-driven fix round (the 86-04 batched revision that fixed the
+confirmed defect found at H1); no integration head, since this PR merged
+first and nothing else landed on main ahead of it.
+
+| Reviewer | Confirmed defects | False positives | Later-found misses | Revision rounds | Review time | Usage/cost | Owner effort |
+|---|---|---|---|---|---|---|---|
+| BM | 1 (`bm:03182462100e:WR-01`: Sonarr logs misleading "skipped malformed record" warnings for unmonitored episodes it would never search; confirmed by proof test P1; fixed in the 86-04 revision, verified fixed at H_final by the regression test, a vibe-check recheck and BM/Codex's own H_final passes raising nothing on it) | 0 | none recorded (D-14 cutoff: the Phase 86 PR is not yet accepted as of this writing) | 1 (the 86-04 batched revision) | H1 2026-10-31T00:42:59Z–00:45:20Z (2 min 21 s); H_final 2026-10-31T01:09:28Z–01:11:46Z (2 min 18 s) | Tool printed none at either head; harness reported 76k reviewer subagent tokens at H1, 83k at H_final | 4 |
+| Codex | 0 (verdict `no-findings`, complete, at both H1 and H_final) | 0 | none recorded | 1 (86-04 batched revision; Codex ran one complete attempt at each of H1 and H_final) | H1 2026-10-31T00:45:25Z–00:48:04Z (2 min 39 s, incl. ~93 s full-suite run); H_final 2026-10-31T01:09:19Z–01:11:51Z (2 min 32 s, incl. full-suite run) | H1 `.jsonl` `turn.completed`: input 630,831 tokens (543,360 cached), output 3,626, reasoning 149. H_final: input 529,508 tokens (446,208 cached), output 3,072, reasoning 144 | 4 |
+| vibe-check | 1 (`VC-arch-001` + `bugs-001`/`imp-001` merged: the same Sonarr ordering defect BM also reached independently at H1; confirmed by proof test P1 — not a unique catch, both sides found it) | 0 | 0 (the other four H1 findings, cov-001..004, were judged unproven rather than missed; nothing has surfaced later as of this writing) | 1 (86-04 batched revision); ran as the pre-registered PILOT-02 comparison pass at H1 and as the routine pass 2 at H_final | H1 2026-10-31T00:36:29Z–00:42:38Z (6 min 9 s, plus 110 s coverage prep); H_final 2026-10-31T01:12:05Z–01:16:57Z (4 min 52 s, plus 111 s coverage prep) | Tool itself printed none at either head. Harness subagent tokens — H1: triage 48k, bugs 104k, security 100k, architecture 102k, impact 101k, test-sufficiency 94k, compliance 107k, language-python 112k, framework-fastapi 104k. H_final: triage 85k, bugs 70k, security 73k, architecture 62k, impact 66k, test-sufficiency 73k, compliance 77k, language-python 79k, framework-fastapi 72k | 4 |
+| Greptile | n/a | n/a | n/a | n/a | n/a | did not run on either head (not pushed at H1; "optional since 2026-10-22" at the pushed, accepted head per PR #54's durable checkpoint comment) | n/a |
+
+**D-07/D-02a note:** this PR's H1 vibe-check run is the pre-registered
+PILOT-02 fresh comparison (see "PILOT-02 comparison method" and "PILOT-02
+comparison result" below). Its size is recorded as moderate across all
+three apps — Sonarr, Lidarr and, per the owner's 2026-10-30 D-02a extension,
+Radarr — not inflated to large to make the comparison look more dramatic.
+
+Owner effort (4) is the count of this PR's rows in "## Owner decisions log"
+below: the PILOT-02 tally approval, the push approval, the acceptance
+approval, and the merge approval.
+
+Sources: `86-REVIEW-EVIDENCE.md` (Refresh-counts PR, heads `03182462100e`
+and `1062097a7676`, their Dispositions tables and "Review time and usage at
+H_final" table); `86-PILOT-RECORD.md` "PILOT-02 comparison result" and
+"Owner decisions log"; `gh pr view 54 --json mergedAt,mergeCommit`.
+
+### PR #55 — Card-template structured reason kind (UI)
+
+Pre-integration head (H1) `46c39194249d1e7bcd2362a91d238d0997539f3f`;
+integration head `5d58264e93a21b100d01e80503b9a7d064253d36` (origin/main
+merged in once after PR #54, and PR #57 — a maintenance fix, not a pilot
+PR — merged); accepted and merged final head is the same integration head,
+merged 2026-11-14T05:05:32Z, merge commit
+`7f6b5d4b567c06ce9a4764b94352366ef008c22b`. No finding-driven fix round:
+D-09 triage found no confirmed defect at H1 or at the integration head, so
+H_final = H1 = H_merge throughout.
+
+| Reviewer | Confirmed defects | False positives | Later-found misses | Revision rounds | Review time | Usage/cost | Owner effort |
+|---|---|---|---|---|---|---|---|
+| BM | 0 (every finding at both H1 and the integration head — WR-01, IN-01, IN-02, IN-03, SA-01 — dispositioned `nonblocking_debt`/unproven, none fixed or false_positive) | 0 | 0 | 0 (no confirmed defect, no fix round) | H1 2026-10-31T01:31:38Z–01:33:37Z (1 min 59 s); integration head 2026-11-14T04:43:50Z–04:46:14Z (2 min 24 s) | Tool printed none at either head; harness reported 44k reviewer subagent tokens at H1, 72k at the integration head | 3 |
+| Codex | 0 (verdict `no-findings`, complete, at both H1 and the integration head) | 0 | 0 | 0 | H1 2026-10-31T01:31:31Z–01:33:42Z (2 min 11 s, incl. full-suite run); integration head 2026-11-14T04:43:40Z–04:45:52Z (2 min 12 s) | H1 `.jsonl` `turn.completed`: input 220,995 tokens (153,856 cached), output 2,097, reasoning 123. Integration head: none printed | 3 |
+| vibe-check | 0 (H1's one Medium — no rendering test for the template switch — was unproven/nonblocking_debt, not confirmed; rechecked and reported resolved at the integration head) | 0 | 0 | 0 | H1 2026-10-31T01:33:37Z–01:37:46Z (4 min 9 s, plus 105 s coverage prep); integration head coverage prep 2026-11-14T04:47Z–04:50Z (~3 min), review 04:50:37Z–04:56:01Z (5 min 24 s) | H1: tool printed none; harness subagent tokens triage 50k, bugs 72k, security 77k, architecture 69k, impact 73k, test-sufficiency 68k, compliance 84k, language-python 72k. Integration head: tool printed none; harness reported about 620k subagent tokens across triage and 7 lanes (per-lane breakdown not itemized in the source record) | 3 |
+| Greptile | n/a | n/a | n/a | n/a | n/a | did not run on either head | n/a |
+
+Integration re-reviews: 1 (`5d58264e93a2`) — origin/main (carrying PR #54
+and PR #57) was merged into the PR branch once, with a plain two-parent
+merge commit and no conflicts. No confirmed defect was found at that head,
+so this is a re-review, not a revision round; its review time, usage and
+owner-effort figures above already include the integration-head part
+(marked "integration head" in each cell).
+
+**D-03 note:** this PR is the backlog's "Card-template text-matching
+refactor". `cycle_grade.html` now classifies reason rows by a structured
+`kind` field instead of matching `outcome.py`'s rendered display strings.
+86-05's divergence analysis found no reachable divergence between the old
+and new classification for any input the application's own code produces —
+honestly, a UI-template change with no visible difference, not a case that
+exercised visible-UI review coverage (see "Gaps" above).
+
+Owner effort (3) is the count of this PR's rows in "## Owner decisions log"
+below: the push approval, the acceptance approval, and the merge approval.
+
+Sources: `86-REVIEW-EVIDENCE.md` (Card-template PR, heads `46c39194249d`
+and `5d58264e93a2`, their Dispositions tables and review-time tables, plus
+"Card-template PR: integration with main (86-10)"); `86-PILOT-RECORD.md`
+"Owner decisions log"; `gh pr view 55 --json mergedAt,mergeCommit`.
+
+### Cross-PR summary
+
+| PR | Category (D-05) | Reviewers that ran | Confirmed defects found by each | Unique catches |
+|---|---|---|---|---|
+| #48 | security-sensitive; larger change | BM, Codex, vibe-check (final head only, D-08) | BM 22; Codex 9; vibe-check 0 | none (vibe-check's one reported item was a false positive) |
+| #36 | larger change; large-PR failure-mode evidence | BM; Codex (both attempts INCOMPLETE/PENDING for size); vibe-check (owner-approved fallback) | BM 8; Codex 1 (fixed in PR #44); vibe-check 0 confirmed via reproduction | vibe-check 2 (the two CI traps neither BM's nor Codex's own passes on this PR flagged; fixed post-merge in PR #44) |
+| #44 | small fix | BM; Codex | BM 0; Codex 0 | none |
+| Refresh-counts (#54) | state/error-path logic | vibe-check (PILOT-02 comparison + routine pass 2); BM; Codex | BM 1; Codex 0; vibe-check 1 (same defect as BM, found independently) | none — both sides caught the one real defect; neither missed one the other found |
+| Card-template (#55) | UI | BM; Codex; vibe-check (two passes) | BM 0; Codex 0; vibe-check 0 | none |
 
 ## PILOT-02 comparison result
 
