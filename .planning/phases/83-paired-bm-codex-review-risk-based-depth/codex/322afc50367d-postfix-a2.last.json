@@ -42,7 +42,7 @@
       "purpose": "Inventory changed files."
     },
     {
-      "command": "cat /Users/julianamacbook/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a2.pytest.txt",
+      "command": "cat ~/triggarr/.planning/phases/83-paired-bm-codex-review-risk-based-depth/codex/322afc50367d-postfix-a2.pytest.txt",
       "exit_code": 0,
       "purpose": "Read authorized exact-head test evidence."
     },

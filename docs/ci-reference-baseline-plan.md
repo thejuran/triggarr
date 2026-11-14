@@ -2,6 +2,8 @@
 
 Recorded: 2026-10-18. Status: deferred proposal, not an active workflow change.
 
+> **Note, 2026-11-14.** This plan's wording on vibe-check (BM recommends it at high risk and records the owner's choice; "when selected"; no "mandatory vibe-check") was superseded by the owner's 2026-11-14 PILOT-03 decision: vibe-check is required when a checkpoint's risk is assessed high, and Claude runs it. See `CLAUDE.md` ("Review-workflow rollout (v2.13)") and `.planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md`. The body below is left as written on 2026-10-18.
+
 ## Intent and timing
 
 Make Triggarr the reference for other repositories: meaningful tests, enforceable acceptance, and publication of the artifact that actually passed checks. Finish v2.12 under the existing workflow first. At closeout, read this plan alongside [the review blueprint](bm-greptile-codex-blueprint.md), refresh the evidence, and present implementation scope for owner confirmation. This is not a v2.12 blocker or a new product milestone.

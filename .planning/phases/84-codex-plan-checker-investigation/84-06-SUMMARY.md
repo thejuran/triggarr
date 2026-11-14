@@ -98,17 +98,17 @@ None.
 
 Verified no 84-06 deliverable files exist (all correctly absent):
 ```
-$ test -d /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-revised && echo FOUND || echo ABSENT
+$ test -d ~/scratch/planchk-pilot/inputs/phase81-revised && echo FOUND || echo ABSENT
 ABSENT
-$ test -d /Users/julianamacbook/scratch/planchk-pilot/packets/revision-r2 && echo FOUND || echo ABSENT
+$ test -d ~/scratch/planchk-pilot/packets/revision-r2 && echo FOUND || echo ABSENT
 ABSENT
-$ test -d /Users/julianamacbook/scratch/planchk-pilot/runs/revision && echo FOUND || echo ABSENT
+$ test -d ~/scratch/planchk-pilot/runs/revision && echo FOUND || echo ABSENT
 ABSENT
-$ test -d /Users/julianamacbook/scratch/planchk-pilot/adjudication/revision-r2 && echo FOUND || echo ABSENT
+$ test -d ~/scratch/planchk-pilot/adjudication/revision-r2 && echo FOUND || echo ABSENT
 ABSENT
-$ grep -q "Revised snapshot" /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md && echo FOUND || echo ABSENT
+$ grep -q "Revised snapshot" ~/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md && echo FOUND || echo ABSENT
 ABSENT
-$ grep -q "## Revision round" /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-COMPARISON-REPORT.md && echo FOUND || echo ABSENT
+$ grep -q "## Revision round" ~/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-COMPARISON-REPORT.md && echo FOUND || echo ABSENT
 ABSENT
 ```
 Verified `84-INPUT-LABEL-CORRECTION.md` and `84-05-SUMMARY.md` exist and carry the

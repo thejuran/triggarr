@@ -28,17 +28,17 @@ tech-stack:
 
 key-files:
   created:
-    - /Users/julianamacbook/scratch/planchk-pilot/harness/run_matched_checker.py (the matched-run harness; stdlib only)
-    - /Users/julianamacbook/scratch/planchk-pilot/harness/PROGRESS-84-02-T1.txt
-    - /Users/julianamacbook/scratch/planchk-pilot/settings/run-settings.json
-    - /Users/julianamacbook/scratch/planchk-pilot/settings/run-settings-n2-unreachable.json
-    - /Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router-missing/ (negative-case plugin routing to an unserved model id)
-    - /Users/julianamacbook/scratch/planchk-pilot/fixtures/defective/ (toy copy with 3 planted defects)
-    - /Users/julianamacbook/scratch/planchk-pilot/prompts/ (5 driver prompt files for E1-E5/N4)
-    - /Users/julianamacbook/scratch/planchk-pilot/runs/pilot-workdirs/ (fresh per-exercise workdirs for E3/E4/E5)
-    - /Users/julianamacbook/scratch/planchk-pilot/toy-bounce.sh (scratch bounce script for E5)
-    - /Users/julianamacbook/scratch/planchk-pilot/runs/pilot/ (5 full matched-run evidence sets, E1-E5)
-    - /Users/julianamacbook/scratch/planchk-pilot/runs/negative/ (5 full matched-run evidence sets, N1-N5)
+    - ~/scratch/planchk-pilot/harness/run_matched_checker.py (the matched-run harness; stdlib only)
+    - ~/scratch/planchk-pilot/harness/PROGRESS-84-02-T1.txt
+    - ~/scratch/planchk-pilot/settings/run-settings.json
+    - ~/scratch/planchk-pilot/settings/run-settings-n2-unreachable.json
+    - ~/scratch/planchk-pilot/plugins/planchk-router-missing/ (negative-case plugin routing to an unserved model id)
+    - ~/scratch/planchk-pilot/fixtures/defective/ (toy copy with 3 planted defects)
+    - ~/scratch/planchk-pilot/prompts/ (5 driver prompt files for E1-E5/N4)
+    - ~/scratch/planchk-pilot/runs/pilot-workdirs/ (fresh per-exercise workdirs for E3/E4/E5)
+    - ~/scratch/planchk-pilot/toy-bounce.sh (scratch bounce script for E5)
+    - ~/scratch/planchk-pilot/runs/pilot/ (5 full matched-run evidence sets, E1-E5)
+    - ~/scratch/planchk-pilot/runs/negative/ (5 full matched-run evidence sets, N1-N5)
     - .planning/phases/84-codex-plan-checker-investigation/84-PILOT-EVIDENCE.md (local only, git-excluded, never committed per D-16)
   modified: []
 
@@ -86,13 +86,13 @@ No task-level code commits in Triggarr: every file this plan's Tasks 1-3 create 
 
 ## Files Created/Modified
 
-- `/Users/julianamacbook/scratch/planchk-pilot/harness/run_matched_checker.py` -- the matched-run harness (stdlib only)
-- `/Users/julianamacbook/scratch/planchk-pilot/settings/run-settings.json` -- shared permission settings for every real matched run
-- `/Users/julianamacbook/scratch/planchk-pilot/settings/run-settings-n2-unreachable.json` -- N2-only settings variant with an `env.ANTHROPIC_BASE_URL` override
-- `/Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router-missing/` -- N1's unavailable-model negative plugin
-- `/Users/julianamacbook/scratch/planchk-pilot/fixtures/defective/` -- toy copy with 3 planted defects (E2/E3)
-- `/Users/julianamacbook/scratch/planchk-pilot/prompts/*.txt` -- driver prompts for E1-E5 and N4
-- `/Users/julianamacbook/scratch/planchk-pilot/runs/pilot/` and `runs/negative/` -- all 10 exercises' full evidence sets (`.status.json`, `.result.txt`, `.routes.jsonl`, `.stream.jsonl`, `.meta.json`, `.prompt.txt`)
+- `~/scratch/planchk-pilot/harness/run_matched_checker.py` -- the matched-run harness (stdlib only)
+- `~/scratch/planchk-pilot/settings/run-settings.json` -- shared permission settings for every real matched run
+- `~/scratch/planchk-pilot/settings/run-settings-n2-unreachable.json` -- N2-only settings variant with an `env.ANTHROPIC_BASE_URL` override
+- `~/scratch/planchk-pilot/plugins/planchk-router-missing/` -- N1's unavailable-model negative plugin
+- `~/scratch/planchk-pilot/fixtures/defective/` -- toy copy with 3 planted defects (E2/E3)
+- `~/scratch/planchk-pilot/prompts/*.txt` -- driver prompts for E1-E5 and N4
+- `~/scratch/planchk-pilot/runs/pilot/` and `runs/negative/` -- all 10 exercises' full evidence sets (`.status.json`, `.result.txt`, `.routes.jsonl`, `.stream.jsonl`, `.meta.json`, `.prompt.txt`)
 - `.planning/phases/84-codex-plan-checker-investigation/84-PILOT-EVIDENCE.md` -- the full PLANCHK-02 exercise matrix (local only, never committed)
 - `.planning/phases/84-codex-plan-checker-investigation/84-02-SUMMARY.md` -- this file (only file this plan commits)
 
@@ -106,7 +106,7 @@ See `key-decisions` in the frontmatter above. Headline: the hook route (proven l
 
 **1. [Rule 3 - Blocking] `--permission-mode bypassPermissions` ignores `--settings` deny rules**
 - **Found during:** Task 1, pre-flight live testing before any real exercise ran.
-- **Issue:** The plan's own interfaces block does not specify a permission mode; using `bypassPermissions` (Plan 01's precedent for non-interactive sessions) was tested first and found to bypass `run-settings.json`'s deny rules entirely -- a prompt reading `/Users/julianamacbook/triggarr/CLAUDE.md` under `bypassPermissions` succeeded despite an explicit `Read(triggarr/**)` deny rule.
+- **Issue:** The plan's own interfaces block does not specify a permission mode; using `bypassPermissions` (Plan 01's precedent for non-interactive sessions) was tested first and found to bypass `run-settings.json`'s deny rules entirely -- a prompt reading `~/triggarr/CLAUDE.md` under `bypassPermissions` succeeded despite an explicit `Read(triggarr/**)` deny rule.
 - **Fix:** Live-tested `acceptEdits` (honors deny rules, but hangs forever on the first Bash/Agent call in non-interactive `-p` mode -- confirmed by a 110s timeout producing zero output) and `dontAsk` (honors deny rules AND resolves hangs by silently denying anything not explicitly allowed). Hardcoded `--permission-mode dontAsk` into the harness.
 - **Cost if wrong:** If `dontAsk`'s silent-deny-by-default behavior had instead silently crippled the checker's own tool access without surfacing a visible denial, exercises could misreport reduced-capability runs as full-capability passes. Mitigated by directly inspecting each run's own `permission_denied` system events in its `stream.jsonl` rather than assuming the mode worked as intended.
 - **Files modified:** `harness/run_matched_checker.py` (`build_claude_argv`).
@@ -199,11 +199,11 @@ None -- no external service configuration required. (Any eventual Triggarr activ
 Verified file existence:
 - FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-02-SUMMARY.md`
 - FOUND: `.planning/phases/84-codex-plan-checker-investigation/84-PILOT-EVIDENCE.md`
-- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/harness/run_matched_checker.py`
-- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/settings/run-settings.json`
-- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/settings/run-settings-n2-unreachable.json`
-- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/plugins/planchk-router-missing/hooks/register.js`
-- FOUND: `/Users/julianamacbook/scratch/planchk-pilot/fixtures/defective/.planning/phases/01-toy-math/01-01-PLAN.md`
+- FOUND: `~/scratch/planchk-pilot/harness/run_matched_checker.py`
+- FOUND: `~/scratch/planchk-pilot/settings/run-settings.json`
+- FOUND: `~/scratch/planchk-pilot/settings/run-settings-n2-unreachable.json`
+- FOUND: `~/scratch/planchk-pilot/plugins/planchk-router-missing/hooks/register.js`
+- FOUND: `~/scratch/planchk-pilot/fixtures/defective/.planning/phases/01-toy-math/01-01-PLAN.md`
 - FOUND: all 5 `runs/pilot/*.status.json` (E1-E5) and all 5 `runs/negative/*.status.json` (N1-N5)
 
 Verified self-test:
@@ -214,12 +214,12 @@ self-test: PASS
 
 Verified isolation baseline unchanged (re-ran Plan 01's exact 6-file hash set):
 ```
-d960bba5a481769d61942134d0f75ddc08d533e5d0276da9b298560054b85180  /Users/julianamacbook/triggarr/.claude/settings.json
-f29e534c78f6be042eb7d613894da7b7992571fc7fd1749c02d6cfc92cd05fce  /Users/julianamacbook/triggarr/.claude/settings.local.json
-dc67df4088177b8709875f57dd8cb8f33eeb382fe28d1de13ed35a9a1a3ae8f4  /Users/julianamacbook/triggarr/CLAUDE.md
-8d94bb5b3bf6785356fef0479b022cf18a0f39e12f9b763eb371352330b63073  /Users/julianamacbook/triggarr/.planning/config.json
-935b3274499b9b320da2449ddcb85bce981b4b318d772c6900056981d17c5cae  /Users/julianamacbook/.claude/settings.json
-26b235552ac087f4ea4ace098e67d8ed316d9d26b749a8a8910d95d3825347da  /Users/julianamacbook/.claude/settings.local.json
+d960bba5a481769d61942134d0f75ddc08d533e5d0276da9b298560054b85180  ~/triggarr/.claude/settings.json
+f29e534c78f6be042eb7d613894da7b7992571fc7fd1749c02d6cfc92cd05fce  ~/triggarr/.claude/settings.local.json
+dc67df4088177b8709875f57dd8cb8f33eeb382fe28d1de13ed35a9a1a3ae8f4  ~/triggarr/CLAUDE.md
+8d94bb5b3bf6785356fef0479b022cf18a0f39e12f9b763eb371352330b63073  ~/triggarr/.planning/config.json
+935b3274499b9b320da2449ddcb85bce981b4b318d772c6900056981d17c5cae  ~/.claude/settings.json
+26b235552ac087f4ea4ace098e67d8ed316d9d26b749a8a8910d95d3825347da  ~/.claude/settings.local.json
 ```
 All 6 match the Plan 01 baseline exactly. `grep -rl planchk` over Triggarr `.claude` and global `~/.claude/settings*.json` returns no matches.
 

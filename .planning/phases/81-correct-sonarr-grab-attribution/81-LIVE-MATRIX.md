@@ -92,7 +92,7 @@ Sanitized (`grep -rniE "apikey=|x-api-key: [A-Za-z0-9]{8}|password.*=.*[a-zA-Z0-
 
 ### Plan 81-08: independent review #1 response (2026-10-20)
 
-Review saved at `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-v4-gate-review-1.md` (5 blockers, 12 warnings, a false-pass list, and a note that the live wiring now passes W10/B4's then-stale mapping concern). Owner approved the split "Yes, as described": owner did the `sonarr-v4` UI follow-ups (usenet indexers confirmed disabled, the `~/v4test/` -> `/data/torrents/` remote path mapping added); the executor did the WUD fix and the script revision below, then stopped — no gate run, no freeze.
+Review saved at `~/Cowork/mediaserver/v5test-results/81-v4-gate-review-1.md` (5 blockers, 12 warnings, a false-pass list, and a note that the live wiring now passes W10/B4's then-stale mapping concern). Owner approved the split "Yes, as described": owner did the `sonarr-v4` UI follow-ups (usenet indexers confirmed disabled, the `~/v4test/` -> `/data/torrents/` remote path mapping added); the executor did the WUD fix and the script revision below, then stopped — no gate run, no freeze.
 
 **1. WUD exclusion (B5), applied live:** Edited `/volume1/docker/v4test/docker-compose.yml` only (backup `docker-compose.yml.bak-pre-wud-exclusion-20261020-140312`; no prod edit, no v5test edit) to add `labels: ["wud.watch=false"]` to `sonarr-v4` and `seedsyncarr-v4test`, then recreated only those two containers. Confirmed: both labels present post-recreate; image tags and config volumes unchanged; `sonarr-v4` still reports `4.0.20.3014`; the owner's wiring (indexers, Deluge client, remote mapping, 0 monitored series) survived the recreate untouched; production compose md5 unchanged (`505283129afbd7aa85d8ab6411372149`); all three v5-sandbox containers' `StartedAt` unchanged. WUD's own `/api/containers` no longer lists either v4test container (previously `sonarr-v4` was listed with `updateAvailable: True` / `5.0.0-develop`, per the review). Evidence: `v5test-results/81-v4-4-wud-exclusion.txt`.
 
@@ -775,7 +775,7 @@ Plans 07 and 08 act only within this authorized scope. Any row not produced live
 Sanitized result files only -- no API keys, no production URLs, no raw Sonarr/Triggarr config dumps.
 
 - NAS: `/volume1/docker/v5test/results/`
-- Laptop: `/Users/julianamacbook/Cowork/mediaserver/v5test-results/`
+- Laptop: `~/Cowork/mediaserver/v5test-results/`
 
 Both locations already hold the 2026-10-12 isolation/setup evidence (`v5test-results.md` and its numbered step files) and the empty "Phase 81 compatibility checks" table that Plans 07/08 are expected to fill in once authorized. Nothing in this plan added, removed, or touched any file at either location.
 

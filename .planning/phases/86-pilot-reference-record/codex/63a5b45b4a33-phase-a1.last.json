@@ -1,0 +1,188 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "63a5b45b4a33ae84e7a34313d05275812d4d4650",
+  "inspected_base_sha": "7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Whole net change between the requested base and head, including changed phase plans; excluding planning prose, raw transcripts, and generated review artifacts as instructed.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. Reviewed the publication gate, self-test, policy changes, adoption guide, and all 136 changed plans. Fourteen read-only exception-parser checks, shell syntax checks, and the diff check passed. Harness evidence reports 3282 tests passed and 1 skipped on the requested head.",
+  "coverage": [
+    "Confirmed HEAD and base object existence; confirmed HEAD remained unchanged at completion.",
+    "Inspected all seven changed agent-instruction and policy documents, including the adoption guide, against the recorded PILOT-03 decisions.",
+    "Reviewed trusted versus untrusted head handling, required high-risk review, exact-head fallback approval, pending-review blocking, and manual acceptance boundaries.",
+    "Reviewed publication-gate file enumeration, ignored/untracked files, staged/worktree differences, symlink rejection, byte-wise matching, error handling, gitleaks invocation, and hash-bound exceptions.",
+    "Inspected every self-test case and its success/failure assertions.",
+    "Executed 14 checks against the actual AWK exception parser: current hash, stale hash, superseded entry, pending disposition, duplicate section, empty reason, and wrong path for both exception types.",
+    "Inspected ten newly added Phase 86 plans, including review independence, branch transitions, test assertions, publication procedures, integration, and acceptance.",
+    "Programmatically compared all 126 modified existing plans: 124 contain only home-path substitutions; inspected the additional substitutions in the other two.",
+    "Inspected the .gsd S03 UAT path change.",
+    "Read relevant contract, execution-summary, and decision-record context; historical review verdicts were not used as correctness evidence."
+  ],
+  "exclusions": [
+    ".planning/**/*.md other than *-PLAN.md, except selected background context.",
+    ".planning/**/codex/** and .planning/**/*.jsonl.",
+    "Six generated vibe-check JSON reports under .planning/phases/86-pilot-reference-record/vibe-check/; one was consulted as background.",
+    "Application code unchanged by this range; no separate whole-application audit."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Identify inspected head."
+    },
+    {
+      "command": "git cat-file -e 7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff --stat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..63a5b45b4a33ae84e7a34313d05275812d4d4650 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory primary diff."
+    },
+    {
+      "command": "git diff --name-only 7f6b5d4b567c06ce9a4764b94352366ef008c22b..63a5b45b4a33ae84e7a34313d05275812d4d4650 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory changed plans."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..63a5b45b4a33ae84e7a34313d05275812d4d4650 -- CLAUDE.md docs .gsd .planning/phases/86-pilot-reference-record/86-publication-gate.sh .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Inspect implementation and documentation changes; truncated portions were read separately."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read exact-head harness test evidence."
+    },
+    {
+      "command": "git diff --numstat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..63a5b45b4a33ae84e7a34313d05275812d4d4650 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Measure changed-plan scope."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- CLAUDE.md docs/review-checkpoint-record.md docs/review-classification-policy.md docs/bm-greptile-codex-blueprint.md docs/buildomator-greptile-pilot.md docs/ci-reference-baseline-plan.md",
+      "exit_code": 0,
+      "purpose": "Inspect policy changes."
+    },
+    {
+      "command": "cat docs/review-workflow-adoption.md .planning/phases/86-pilot-reference-record/86-publication-gate.sh",
+      "exit_code": 0,
+      "purpose": "Read adoption guidance and gate."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- docs/review-checkpoint-record.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Read policy portions truncated previously."
+    },
+    {
+      "command": "sed -n '1,88p' docs/review-workflow-adoption.md",
+      "exit_code": 0,
+      "purpose": "Read adoption-guide opening and requirements."
+    },
+    {
+      "command": "python3 - <<'PY'\nimport subprocess, collections\nb='7f6b5d4b567c06ce9a4764b94352366ef008c22b'\ns=subprocess.check_output(['git','diff','--unified=0',b+'..HEAD','--',':(glob).planning/**/*-PLAN.md'],text=True)\nfor block in s.split('diff --git ')[1:]:\n lines=block.splitlines(); old=[x[1:] for x in lines if x.startswith('-') and not x.startswith('---')]; new=[x[1:] for x in lines if x.startswith('+') and not x.startswith('+++')]\n if 'new file mode' in block: continue\n print(lines[0], 'REPLACEMENT_ONLY' if [x.replace('~','~') for x in old]==new else 'OTHER')\n if [x.replace('~','~') for x in old]!=new:\n  print('\\n'.join(x for x in lines if x.startswith(('+','-','@@'))))\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt plan comparison; shell could not create heredoc temporary file. Retried without a heredoc."
+    },
+    {
+      "command": "python3 -c 'import subprocess\nb=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"\ns=subprocess.check_output([\"git\",\"diff\",\"--unified=0\",b+\"..HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True)\nn=0\nfor block in s.split(\"diff --git \")[1:]:\n lines=block.splitlines(); old=[x[1:] for x in lines if x.startswith(\"-\") and not x.startswith(\"---\")]; new=[x[1:] for x in lines if x.startswith(\"+\") and not x.startswith(\"+++\")]\n if \"new file mode\" in block: continue\n if [x.replace(\"~\",\"~\") for x in old]==new: n+=1\n else:\n  print(lines[0]); print(\"\\n\".join(x for x in lines if x.startswith((\"+\",\"-\",\"@@\"))))\nprint(\"Pure home-path redaction plans:\",n)'",
+      "exit_code": 0,
+      "purpose": "Validate mechanical substitutions across existing plans."
+    },
+    {
+      "command": "python3 -c 'import subprocess\ns=subprocess.check_output([\"git\",\"diff\",\"--unified=0\",\"7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True)\nfor block in s.split(\"diff --git \")[1:]:\n if \"new file mode\" in block: continue\n old=[x[1:] for x in block.splitlines() if x.startswith(\"-\") and not x.startswith(\"---\")]; new=[x[1:] for x in block.splitlines() if x.startswith(\"+\") and not x.startswith(\"+++\")]\n assert len(old)==len(new)\n for a,b in zip(old,new):\n  if a.replace(\"~\",\"~\")!=b: print(block.splitlines()[0],\"\\nOLD:\",a,\"\\nNEW:\",b)'",
+      "exit_code": 0,
+      "purpose": "Inspect every nonmechanical existing-plan change."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect preregistration and gate-generation plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect refresh-counts implementation plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect independent comparison and publication plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect revision and final-head review plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-05-PLAN.md .planning/phases/86-pilot-reference-record/86-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect card-template implementation and review plans."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect publication and first-PR acceptance plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-08-PLAN.md .planning/phases/86-pilot-reference-record/86-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect decision, adoption-guide, and handoff plans."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-10-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect integration and fresh-head acceptance plan."
+    },
+    {
+      "command": "sed -n '170,220p' .planning/phases/86-pilot-reference-record/86-01-PLAN.md\nsed -n '105,118p' .planning/phases/86-pilot-reference-record/86-02-PLAN.md\nsed -n '85,98p' docs/review-workflow-adoption.md\ncat .planning/phases/86-pilot-reference-record/86-01-SUMMARY.md",
+      "exit_code": 0,
+      "purpose": "Read previously truncated portions and historical execution context."
+    },
+    {
+      "command": "sed -n '70,170p' .planning/phases/86-pilot-reference-record/86-01-PLAN.md\nsed -n '1,170p' docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Finish embedded-script inspection and consult trust/fallback contract."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate.sh && bash -n .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Check both shell scripts' syntax."
+    },
+    {
+      "command": "git diff --check 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Check primary diff integrity."
+    },
+    {
+      "command": "git diff --name-only 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'\nrg -n 'PILOT-03|2026-11-14|Corrections|automatic|automatically' .planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md",
+      "exit_code": 0,
+      "purpose": "Reconcile file coverage and locate decision evidence."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/vibe-check/03182462100e-refresh-comparison.json",
+      "exit_code": 0,
+      "purpose": "Consult generated comparison report as background, not approval."
+    },
+    {
+      "command": "python3 -c 'from pathlib import Path\nimport os,subprocess\ns=Path(\".planning/phases/86-pilot-reference-record/86-publication-gate.sh\").read_text()\na=s.index(\"awk \")+5\nz=s.index(chr(39)+\" \\\"$ev\\\"\",a)\nprogram=s[a:z]\nh=\"a\"*64; old=\"b\"*64\nfor section,disposition in [(\"Credential-shape hand review\",\"not a credential -- \"),(\"Public-infrastructure hand review\",\"not private infrastructure -- \")]:\n env=dict(os.environ,X=\"fixture.txt\",S=section,H=h,D=disposition)\n header=\"## \"+section+\"\\n\"\n def entry(v,reason=\"fixture\"):\n  return \"- `fixture.txt` sha256 `\"+v+\"`: \"+disposition+reason+\"\\n\"\n cases=[(\"current\",header+entry(h),0),(\"stale\",header+entry(old),1),(\"superseded\",header+entry(old)+entry(h),0),(\"pending\",header+entry(h)+\"- `fixture.txt`: pending hand review\\n\",1),(\"duplicate section\",header+entry(h)+header,3),(\"empty reason\",header+entry(h,\"\"),1),(\"other path\",header+entry(h).replace(\"fixture.txt\",\"other.txt\"),1)]\n for name,data,want in cases:\n  r=subprocess.run([\"awk\",program],input=data,text=True,env=env,capture_output=True)\n  assert r.returncode==want,(section,name,r.returncode,r.stderr)\n  print(section,name,r.returncode)\nprint(\"14 parser checks passed\")'",
+      "exit_code": 0,
+      "purpose": "Exercise actual exception parser without filesystem writes."
+    },
+    {
+      "command": "git status --short\n git rev-parse HEAD\nsed -n '664,705p' .planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md\nsed -n '1,12p' docs/ci-reference-baseline-plan.md",
+      "exit_code": 0,
+      "purpose": "Confirm final checkout state and decision provenance."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox. Exact-head harness evidence reports exit 0, 3282 passed, and 1 skipped.",
+    "Did not execute the complete publication gate or self-test because they create temporary files and repositories. Validation comprised static inspection, shell syntax checks, and 14 in-memory parser checks.",
+    "Live GitHub settings were not queried; reviewed the adoption guide's claims against repository context only.",
+    "Concurrent edits during a gate run were considered statically, not exercised end to end."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

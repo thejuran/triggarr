@@ -1,0 +1,94 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "5d58264e93a21b100d01e80503b9a7d064253d36",
+  "inspected_base_sha": "aeead4b601d7a26b927656bf1a07ab8c66fde58f",
+  "pr_url": "none",
+  "scope": "Local checkpoint: classify last-cycle card reason rows using structured kinds; full requested diff and changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. All six reason construction sites provide the expected metadata, and card rendering preserves existing summary rules. Harness evidence reports 3282 passed and 1 skipped at the inspected head.",
+  "coverage": [
+    "Inspected the complete three-file in-scope diff; the phase-plan diff was empty.",
+    "Checked all reason kinds, numeric skip counts, legacy aggregate fallback, invalid persisted values, mixed reasons, and mismatched totals.",
+    "Traced dashboard, polling, manual-search, and refresh rendering through _build_app_context and cycle_view.",
+    "Reviewed outcome tests and existing card assertions for singular/plural labels, failed grades, unevaluated queues, mixed failures, and eligible-work fallback.",
+    "Checked security and policy impact: escaping remains unchanged; no CI, acceptance, audit, or publication policies changed."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed phase plans, planning JSONL transcripts, and generated codex review artifacts as requested."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e aeead4b601d7a26b927656bf1a07ab8c66fde58f",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff aeead4b601d7a26b927656bf1a07ab8c66fde58f..5d58264e93a21b100d01e80503b9a7d064253d36 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect full scoped diff."
+    },
+    {
+      "command": "git diff aeead4b601d7a26b927656bf1a07ab8c66fde58f..5d58264e93a21b100d01e80503b9a7d064253d36 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check changed phase plans."
+    },
+    {
+      "command": "git status --short",
+      "exit_code": 0,
+      "purpose": "Check working-copy state."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "cat triggarr/search/outcome.py",
+      "exit_code": 0,
+      "purpose": "Inspect normalization and reason construction."
+    },
+    {
+      "command": "cat triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Inspect complete card summary logic."
+    },
+    {
+      "command": "rg -n 'cycle_view|cycle_grade|last_cycle|malformed.*skipped' tests/test_web.py tests/test_outcome.py triggarr/web/routes.py pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Locate callers and regression coverage."
+    },
+    {
+      "command": "rg -n 'Show .*|cycle_grade|cycle_view\\(' tests/test* triggarr/templates triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Locate card rendering assertions."
+    },
+    {
+      "command": "sed -n '340,420p' triggarr/web/routes.py; sed -n '379,755p' tests/test_outcome.py; rg -n 'build_app_context|cycle_grade.html' triggarr/web/routes.py triggarr/templates; ls -d .venv",
+      "exit_code": 0,
+      "purpose": "Inspect context construction, outcome tests, and rendering entry points."
+    },
+    {
+      "command": "sed -n '450,850p' tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Review card label regression assertions."
+    },
+    {
+      "command": "sed -n '470,500p' triggarr/web/routes.py; sed -n '1070,1105p' triggarr/web/routes.py; sed -n '1180,1225p' triggarr/web/routes.py; cat triggarr/templates/partials/app_card.html; git diff --check aeead4b601d7a26b927656bf1a07ab8c66fde58f..5d58264e93a21b100d01e80503b9a7d064253d36",
+      "exit_code": 0,
+      "purpose": "Trace rendering callers and check diff whitespace."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; execution evidence comes from the harness file.",
+    "Existing card tests protect current wording but do not directly test that changing display text leaves structured classification unchanged.",
+    "No browser-based visual verification was performed."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

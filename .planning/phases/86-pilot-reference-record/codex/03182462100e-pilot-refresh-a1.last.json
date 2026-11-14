@@ -1,0 +1,122 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "03182462100e9f71defc9408245410d2b99110a5",
+  "inspected_base_sha": "d5a4467a4c38f8f675fb057d9a77bcc3030c379d",
+  "pr_url": "none",
+  "scope": "Local checkpoint: Refresh counts skips malformed records individually for Radarr, Sonarr and Lidarr.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. Inspected all three changed files; no phase plans changed. Independently ran 44 relevant tests successfully. Harness evidence reports 3279 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "Complete in-scope diff, including both changed test files and all three refresh helpers.",
+    "Per-item screening, raw versus eligible counts, monitored/tag/date filtering, and Sonarr season deduplication.",
+    "Real-client pagination validation, non-object records, invalid envelopes, and HTTP failures.",
+    "Unresolved tag scopes, preservation of previous counts, unexpected-fault backstops, and recovery tests.",
+    "Refresh route callers, locking, rate limiting, tag caching, and discarded helper return values.",
+    "Security and policy impact: no changes to authentication, CI, acceptance, audit, or publication controls.",
+    "Regression tests exercise the real client opt-in and mixed malformed/valid records; changed backstop tests explicitly inject unexpected faults."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files, planning JSONL transcripts, and generated review artifacts under .planning/.",
+    "No changed phase plan files were present."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkpoint."
+    },
+    {
+      "command": "git cat-file -e d5a4467a4c38f8f675fb057d9a77bcc3030c379d",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff d5a4467a4c38f8f675fb057d9a77bcc3030c379d..03182462100e9f71defc9408245410d2b99110a5 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read full scope; truncated portions were subsequently reread separately."
+    },
+    {
+      "command": "git diff d5a4467a4c38f8f675fb057d9a77bcc3030c379d..03182462100e9f71defc9408245410d2b99110a5 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check changed plans."
+    },
+    {
+      "command": "git diff --stat d5a4467a4c38f8f675fb057d9a77bcc3030c379d..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory changed files."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; rg -n 'refresh_.*counts|def _screen_queue' triggarr; ls -d .venv",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and locate callers and environment."
+    },
+    {
+      "command": "git diff d5a4467a4c38f8f675fb057d9a77bcc3030c379d..HEAD -- tests/test_refresh_counts.py",
+      "exit_code": 0,
+      "purpose": "Inspect changed refresh tests."
+    },
+    {
+      "command": "rg -n 'refresh_.*counts|def _screen_queue' triggarr; tail -n 3 .codex-review-evidence/pytest.txt; ls -d .venv",
+      "exit_code": 0,
+      "purpose": "Recover concise caller inventory and test summary."
+    },
+    {
+      "command": "sed -n '100,245p' triggarr/search/engine.py; sed -n '1850,1948p' triggarr/search/engine.py",
+      "exit_code": 0,
+      "purpose": "Inspect screening and refresh contracts."
+    },
+    {
+      "command": "sed -n '1090,1265p' triggarr/web/routes.py; rg -n 'def .*cutoff|def .*snapshot|filter_by_tag|deduplicate_to_seasons' triggarr/search/counts.py triggarr/search/filters.py triggarr/web/routes.py",
+      "exit_code": 2,
+      "purpose": "Inspect route; two guessed module paths did not exist."
+    },
+    {
+      "command": "git diff d5a4467a4c38f8f675fb057d9a77bcc3030c379d..HEAD -- triggarr/search/engine.py",
+      "exit_code": 0,
+      "purpose": "Inspect complete production diff without truncation."
+    },
+    {
+      "command": "git diff d5a4467a4c38f8f675fb057d9a77bcc3030c379d..HEAD -- tests/test_refresh_counts.py",
+      "exit_code": 0,
+      "purpose": "Reread complete test diff without combined-output truncation."
+    },
+    {
+      "command": "rg -n 'def filter_|def deduplicate|allow_non_object_records|RawPaginated' triggarr/clients triggarr/search; sed -n '1,130p' tests/test_malformed_records_client_path.py; sed -n '1,160p' tests/test_refresh_counts.py; sed -n '1,75p' triggarr/search/engine.py",
+      "exit_code": 0,
+      "purpose": "Inspect client integration, fixtures, and tag extractors."
+    },
+    {
+      "command": "sed -n '389,500p' triggarr/search/engine.py; sed -n '1020,1105p' triggarr/search/engine.py; sed -n '175,240p' triggarr/clients/base.py; rg -n 'def _resolve_tag_scope|def _clear_data_fault_counts|class RawPaginated' triggarr/search/engine.py triggarr/models/arr.py; sed -n '1,110p' tests/conftest.py",
+      "exit_code": 0,
+      "purpose": "Trace filters, scheduled-cycle parity, pagination, and fixtures."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider tests/test_refresh_counts.py tests/test_malformed_records_client_path.py -q -k 'test_refresh and not route'",
+      "exit_code": 1,
+      "purpose": "Attempt focused tests; pytest capture required unavailable writable temporary storage."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --capture=sys -p no:cacheprovider tests/test_refresh_counts.py tests/test_malformed_records_client_path.py -q -k 'test_refresh and not route'",
+      "exit_code": 1,
+      "purpose": "Retry without file capture: 44 passed, 28 setup errors caused by unavailable temporary storage."
+    },
+    {
+      "command": "sed -n '730,890p' triggarr/search/engine.py; sed -n '1,58p' triggarr/models/arr.py; git status --short",
+      "exit_code": 0,
+      "purpose": "Inspect tag-resolution and envelope boundaries; confirm working-copy status."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest --capture=sys -p no:cacheprovider tests/test_refresh_counts.py tests/test_malformed_records_client_path.py -q -k 'refresh_radarr_counts or refresh_sonarr_counts or refresh_lidarr_counts or refresh_counts_skips_non_object_record or refresh_counts_invalid_envelope_still_disconnects or refresh_counts_http_error_still_disconnects'",
+      "exit_code": 0,
+      "purpose": "Run supported focused tests: 44 passed, 44 deselected."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Read-only sandbox prevented independent execution of tests requiring temporary files. Full-suite evidence comes from the harness; the focused 44-test run completed independently.",
+    "No live Radarr, Sonarr, or Lidarr services were exercised.",
+    "New real-client refresh tests assert missing eligibility and connectivity but do not explicitly assert surviving cutoff contents or Sonarr cutoff counts; surrounding tests and code tracing supplied additional coverage."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

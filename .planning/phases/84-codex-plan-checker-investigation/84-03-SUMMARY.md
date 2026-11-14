@@ -8,9 +8,9 @@ tags: [phase-81, hash-manifest, provenance, d-08, d-09, d-10, time-machine, blin
 # Dependency graph
 requires: []
 provides:
-  - "Frozen, hashed, provenance-tagged ORIGINAL set for all nine 81-01..09-PLAN.md plus 81-CONTEXT/RESEARCH/PATTERNS/VALIDATION.md, consolidated at /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/ -- the full D-09 bar met, not a partial set"
+  - "Frozen, hashed, provenance-tagged ORIGINAL set for all nine 81-01..09-PLAN.md plus 81-CONTEXT/RESEARCH/PATTERNS/VALIDATION.md, consolidated at ~/scratch/planchk-pilot/inputs/phase81-best/ -- the full D-09 bar met, not a partial set"
   - "True pre-resequence originals of 81-08-PLAN.md and 81-09-PLAN.md, recovered read-only from a MaguffyNAS Time Machine backup (2026-10-19 17:40:44 local) after the owner granted Full Disk Access, confirmed pre-cutoff and mutually consistent with 81-01..07"
-  - "A frozen source-commit snapshot (98e01b6bf884) with its .git/info/exclude and tracked/ignored listing, under /Users/julianamacbook/scratch/planchk-pilot/inputs/source/"
+  - "A frozen source-commit snapshot (98e01b6bf884) with its .git/info/exclude and tracked/ignored listing, under ~/scratch/planchk-pilot/inputs/source/"
   - "An evidence-based D-09 cutoff (2026-10-19 22:34:01 -0400), re-tested (not adopted) against git/transcript/session evidence, confirming the research's recommendation"
   - "Nine-point mutual-consistency check (plan numbering, depends_on resolution, frontmatter phase field, requirements-union-vs-ROADMAP match, no forward references, no post-cutoff files) -- all pass"
   - "Set label: ORIGINAL, to carry into every later report (84-04, 84-05) -- SUPERSEDED 2026-10-26: corrected to 'post-review, not original' per 84-INPUT-LABEL-CORRECTION.md (in-text R1-R6 revision markers already present in the frozen plans)"
@@ -29,15 +29,15 @@ tech-stack:
 key-files:
   created:
     - .planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md (local only, git-excluded, never committed per D-16; now complete through Task 3 -- Cutoff, per-file table, Time Machine, consistency checks, Set label: ORIGINAL, Comparison input dir, Label to carry forward)
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-candidate/ (14 Phase-81 docs + ROADMAP.md, frozen read-only)
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/ (13 files recovered from the Oct 19 17:40:44 TM backup, frozen read-only)
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/ (13-file consolidated ORIGINAL comparison set, frozen read-only)
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884/ (frozen source-tree snapshot, 662 tracked files)
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884-git-info-exclude.txt
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884-81-phasedir-tracked-listing.txt
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884.files.sha256
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256 (706 rows, verifies clean)
-    - /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-reconstructed/ (created in Task 1, confirmed empty at close -- never used, because the label is ORIGINAL not PARTIAL/RECONSTRUCTED)
+    - ~/scratch/planchk-pilot/inputs/phase81-candidate/ (14 Phase-81 docs + ROADMAP.md, frozen read-only)
+    - ~/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/ (13 files recovered from the Oct 19 17:40:44 TM backup, frozen read-only)
+    - ~/scratch/planchk-pilot/inputs/phase81-best/ (13-file consolidated ORIGINAL comparison set, frozen read-only)
+    - ~/scratch/planchk-pilot/inputs/source/98e01b6bf884/ (frozen source-tree snapshot, 662 tracked files)
+    - ~/scratch/planchk-pilot/inputs/source/98e01b6bf884-git-info-exclude.txt
+    - ~/scratch/planchk-pilot/inputs/source/98e01b6bf884-81-phasedir-tracked-listing.txt
+    - ~/scratch/planchk-pilot/inputs/source/98e01b6bf884.files.sha256
+    - ~/scratch/planchk-pilot/inputs/manifest.sha256 (706 rows, verifies clean)
+    - ~/scratch/planchk-pilot/inputs/phase81-reconstructed/ (created in Task 1, confirmed empty at close -- never used, because the label is ORIGINAL not PARTIAL/RECONSTRUCTED)
   modified: []
 
 key-decisions:
@@ -47,7 +47,7 @@ key-decisions:
   - "81-08/81-09-PLAN.md TRUE ORIGINALS RECOVERED from Time Machine (mtimes 2026-10-18 16:15:16 / 16:41:25, both >24h before the cutoff) -- supersedes Task 1's 'cutoff satisfied: no' rows, which only had the post-resequence (2026-10-19 22:34:01 commit 5e0070e, further revised) on-disk content available"
   - "Set label: ORIGINAL -- the full D-09 bar (all 9 plans + CONTEXT/RESEARCH/PATTERNS/VALIDATION, pre-cutoff, verified source, mutually consistent) is met in full; D-10's reconstructed-benchmark fallback was not triggered -- SUPERSEDED 2026-10-26: 'met in full' describes only the provenance/consistency bar as scoped (pre-cutoff timestamps, verified source, mutual consistency); it does not establish pre-review originality. The frozen plans contain in-text revision markers showing they already reflect an owner review's fixes. Corrected label: 'post-review, not original' per 84-INPUT-LABEL-CORRECTION.md."
   - "REQUIREMENTS.md: recorded UNAVAILABLE for the pre-cutoff set -- removed from git 2026-06-04, not re-tracked until 2026-10-21 (after cutoff, different v2.13 scope); current on-disk copy postdates the cutoff so the plan's own on-disk-fallback rule does not apply. Confirmed this does NOT block the ORIGINAL label, which the plan's Step B text scopes to the 9 plans + 4 context docs only"
-  - "Built a consolidated /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/ directory (not explicitly named in Task 3's <files> list) so 84-04/84-05 have a single unambiguous 13-file comparison path instead of needing to reassemble it from phase81-candidate/ + phase81-timemachine/2026-10-19-174044/ -- see Deviations"
+  - "Built a consolidated ~/scratch/planchk-pilot/inputs/phase81-best/ directory (not explicitly named in Task 3's <files> list) so 84-04/84-05 have a single unambiguous 13-file comparison path instead of needing to reassemble it from phase81-candidate/ + phase81-timemachine/2026-10-19-174044/ -- see Deviations"
   - "Source snapshot anchor corrected from the plan's stated 81-01-PLAN.md mtime (16:37:43) to the actual earliest 81-0N-PLAN.md mtime, 81-07-PLAN.md at 16:15:16 -- Rule 1 bug-fix in the plan's own stated fact; same commit selected either way (no intervening commits in that window)"
 
 requirements-completed: [PLANCHK-03]
@@ -103,7 +103,7 @@ was recovered is corrected.**
 - Built the best-available nine-plan set (81-01..07 from `phase81-candidate/`, byte-identical either way; 81-08/09 from the TM recovery) and ran every required mutual-consistency check: plan numbers 01..09 contiguous (pass); every `depends_on` resolves inside the 01-09 set (pass); frontmatter `phase:` field identical across all nine (pass); the union of the nine plans' `requirements:` fields (ATTR-01..06, SONARRV5-01..03 -- 9 IDs) matches the cutoff `ROADMAP.md`'s (git `83496da`) Phase 81 requirements line **exactly, 9-for-9** (pass); no plan references a plan number above 09 (pass); no plan file postdates the cutoff (pass, latest mtime 2026-10-18 17:14:02, ~29h margin).
 - **Set label: ORIGINAL.** All 13 required inputs (9 plans + CONTEXT/RESEARCH/PATTERNS/VALIDATION) predate the cutoff, come from a verified source, and pass every consistency check -- the strict D-09 bar met in full, not a partial-credit label. `REQUIREMENTS.md` (UNAVAILABLE) and the current on-disk `ROADMAP.md` are outside the 13-item ORIGINAL criterion per the plan's own Step B wording, so they do not affect this label.
 - Per D-10, the reconstructed-benchmark step (Step C) applies "only when the label is not ORIGINAL" -- not triggered. `phase81-reconstructed/` (created empty in Task 1) stays empty; confirmed zero occurrences of `"type":"user"` anywhere in it.
-- Assembled `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/` -- a consolidated, frozen 13-file copy of the final ORIGINAL set, drawn from the two verified sources, so 84-04/84-05 have one unambiguous comparison directory (see Deviations: this directory was not named in Task 3's `<files>` list but is needed for the output to be directly usable).
+- Assembled `~/scratch/planchk-pilot/inputs/phase81-best/` -- a consolidated, frozen 13-file copy of the final ORIGINAL set, drawn from the two verified sources, so 84-04/84-05 have one unambiguous comparison directory (see Deviations: this directory was not named in Task 3's `<files>` list but is needed for the output to be directly usable).
 - Wrote `84-HASH-MANIFEST.md`'s "Comparison input dir" and "Label to carry into every report" lines, both literal (non-markdown-heading) lines as the plan's automated verify requires.
 - Ran both tasks' exact `<verify>` commands and every `<acceptance_criteria>` line; all pass (see Self-Check below for the literal commands and their exit codes).
 
@@ -116,11 +116,11 @@ No task-level commits. Tasks 1-3's deliverables are either the git-excluded `84-
 ## Files Created/Modified
 
 - `.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md` -- now complete: Cutoff evidence, per-file provenance/hash/cutoff table, source-snapshot record, Time Machine recovery (owner choice, timezone check, access mechanics, per-file comparison, result), Task 3 consistency checks, Set label: ORIGINAL, Comparison input dir, Label to carry forward (local only, never committed)
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-candidate/` -- 14 frozen Phase-81 docs + pre-cutoff ROADMAP.md (Task 1)
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/` -- 13 files recovered read-only from the Oct 19 17:40:44 TM backup (Task 2)
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/` -- 13-file consolidated, frozen ORIGINAL comparison set (Task 3)
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/source/98e01b6bf884/` + 3 metadata files -- frozen source-commit snapshot (Task 1)
-- `/Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256` -- aggregate shasum manifest, grew from 680 to 706 rows across Tasks 2-3, verifies clean throughout
+- `~/scratch/planchk-pilot/inputs/phase81-candidate/` -- 14 frozen Phase-81 docs + pre-cutoff ROADMAP.md (Task 1)
+- `~/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/` -- 13 files recovered read-only from the Oct 19 17:40:44 TM backup (Task 2)
+- `~/scratch/planchk-pilot/inputs/phase81-best/` -- 13-file consolidated, frozen ORIGINAL comparison set (Task 3)
+- `~/scratch/planchk-pilot/inputs/source/98e01b6bf884/` + 3 metadata files -- frozen source-commit snapshot (Task 1)
+- `~/scratch/planchk-pilot/inputs/manifest.sha256` -- aggregate shasum manifest, grew from 680 to 706 rows across Tasks 2-3, verifies clean throughout
 - `.planning/phases/84-codex-plan-checker-investigation/84-03-SUMMARY.md` -- this file (complete, replacing the paused partial version)
 
 ## Decisions Made
@@ -142,7 +142,7 @@ See `key-decisions` in the frontmatter above for the full list. The headline dec
 **2. [Rule 2 - Missing critical functionality] Built a consolidated `phase81-best/` comparison directory not named in Task 3's `<files>` list**
 - **Found during:** Task 3, Step D (final pointer)
 - **Issue:** The plan's Step A language ("Build the best available nine-plan set") implies constructing an actual resolved set, but Task 3's `<files>` frontmatter list only names `84-HASH-MANIFEST.md`, `phase81-reconstructed/`, and `manifest.sha256` -- not a merged directory. Without one, the "Comparison input dir" pointer would have to reference two different source directories (`phase81-candidate/` for 81-01..07 + context docs, `phase81-timemachine/2026-10-19-174044/` for 81-08/09), leaving 84-04/84-05 to reassemble the set themselves from scattered paths.
-- **Fix:** Created `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/`, a `cp -p` consolidation of the 13 verified files from their respective verified sources, frozen (`chmod -R a-w`) and hashed into `manifest.sha256`. This is explicitly covered by 84-CONTEXT.md's "Claude's Discretion: Exact scratch directory name/layout and packet assembly mechanics."
+- **Fix:** Created `~/scratch/planchk-pilot/inputs/phase81-best/`, a `cp -p` consolidation of the 13 verified files from their respective verified sources, frozen (`chmod -R a-w`) and hashed into `manifest.sha256`. This is explicitly covered by 84-CONTEXT.md's "Claude's Discretion: Exact scratch directory name/layout and packet assembly mechanics."
 - **Cost if wrong:** Low -- if this directory turns out unwanted, 84-04/84-05 can ignore it and read `phase81-candidate/` + `phase81-timemachine/2026-10-19-174044/` directly per the per-file table; no information was lost or altered, only duplicated under a third, clearly-labelled path, and `84-HASH-MANIFEST.md` documents exactly which file came from which source directory so the duplication is traceable.
 - **Files modified:** none outside `~/scratch/planchk-pilot/inputs/` (D-06/D-16 scope; not part of the Triggarr tracked tree).
 - **Commit:** N/A (scratch artifact, never committed).
@@ -162,7 +162,7 @@ None remaining. The one piece of user setup this plan ever needed -- Full Disk A
 
 ## Next Phase Readiness
 
-- The Phase 81 input side of PLANCHK-03 is fully resolved: `/Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/` is the frozen, hashed, ORIGINAL-labelled 13-file comparison set that 84-04/84-05 should hand to both checkers (ordinary BM vs. Codex-routed).
+- The Phase 81 input side of PLANCHK-03 is fully resolved: `~/scratch/planchk-pilot/inputs/phase81-best/` is the frozen, hashed, ORIGINAL-labelled 13-file comparison set that 84-04/84-05 should hand to both checkers (ordinary BM vs. Codex-routed).
 - `84-HASH-MANIFEST.md`'s "Label to carry into every report: ORIGINAL" must be repeated verbatim in every subsequent 84-04/84-05 report per D-09/D-10's evidence-honesty requirement.
 - No blockers. Time Machine, the active checkout, and STATE.md/ROADMAP.md were never touched by this plan (orchestrator owns those writes per this plan's explicit scope).
 
@@ -174,23 +174,23 @@ None remaining. The one piece of user setup this plan ever needed -- Full Disk A
 
 Verified file existence:
 ```
-$ test -f /Users/julianamacbook/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md && echo FOUND
+$ test -f ~/triggarr/.planning/phases/84-codex-plan-checker-investigation/84-HASH-MANIFEST.md && echo FOUND
 FOUND
-$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/manifest.sha256 && echo FOUND
+$ test -f ~/scratch/planchk-pilot/inputs/manifest.sha256 && echo FOUND
 FOUND
-$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/81-08-PLAN.md && echo FOUND
+$ test -f ~/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/81-08-PLAN.md && echo FOUND
 FOUND
-$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/81-09-PLAN.md && echo FOUND
+$ test -f ~/scratch/planchk-pilot/inputs/phase81-timemachine/2026-10-19-174044/81-09-PLAN.md && echo FOUND
 FOUND
-$ test -f /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/81-01-PLAN.md && echo FOUND
+$ test -f ~/scratch/planchk-pilot/inputs/phase81-best/81-01-PLAN.md && echo FOUND
 FOUND
-$ test $(ls /Users/julianamacbook/scratch/planchk-pilot/inputs/phase81-best/*.md | wc -l) -eq 13 && echo "13 files confirmed"
+$ test $(ls ~/scratch/planchk-pilot/inputs/phase81-best/*.md | wc -l) -eq 13 && echo "13 files confirmed"
 13 files confirmed
 ```
 
 Verified manifest integrity:
 ```
-$ cd /Users/julianamacbook/scratch/planchk-pilot/inputs && shasum -a 256 -c manifest.sha256 >/tmp/final-manifest-check.log 2>&1; echo "exit:$?"
+$ cd ~/scratch/planchk-pilot/inputs && shasum -a 256 -c manifest.sha256 >/tmp/final-manifest-check.log 2>&1; echo "exit:$?"
 exit:0
 $ wc -l < /tmp/final-manifest-check.log
 706

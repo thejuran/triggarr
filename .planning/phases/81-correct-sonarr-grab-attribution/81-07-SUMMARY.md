@@ -24,14 +24,14 @@ tech-stack:
 
 key-files:
   created:
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-1-fingerprint-before.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-2-verify-searches-off.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-3-verify-searches-on.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-3-deluge-check.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-4-db-check-1-post-search.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-4-db-check-final.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-4-v5-grab-history-identity-gap.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-5-fingerprint-after.txt
+    - ~/Cowork/mediaserver/v5test-results/81-1-fingerprint-before.txt
+    - ~/Cowork/mediaserver/v5test-results/81-2-verify-searches-off.txt
+    - ~/Cowork/mediaserver/v5test-results/81-3-verify-searches-on.txt
+    - ~/Cowork/mediaserver/v5test-results/81-3-deluge-check.txt
+    - ~/Cowork/mediaserver/v5test-results/81-4-db-check-1-post-search.txt
+    - ~/Cowork/mediaserver/v5test-results/81-4-db-check-final.txt
+    - ~/Cowork/mediaserver/v5test-results/81-4-v5-grab-history-identity-gap.txt
+    - ~/Cowork/mediaserver/v5test-results/81-5-fingerprint-after.txt
   modified:
     - .planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md
 
@@ -93,14 +93,14 @@ _Note: this plan has no TDD tasks -- it is a live-environment verification run, 
 ## Files Created/Modified
 
 - `.planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md` - Build identity (before/after), full gate narrative, Task 2 controlled-run findings, complete Matrix table results, owner review, baseline restore record
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-1-fingerprint-before.txt` - Pre-deploy sandbox fingerprint (docker-only, passwordless)
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-2-verify-searches-off.txt` - Owner-run isolation gate 1 (sanitized)
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-3-verify-searches-on.txt` - Owner-run isolation gate 2 (sanitized)
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-3-deluge-check.txt` - Owner-run Deluge-destination check (sanitized)
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-4-db-check-1-post-search.txt` - Triggarr DB snapshot immediately after the controlled SeasonSearch
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-4-db-check-final.txt` - Triggarr DB snapshot after baseline restore (still uncredited)
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-4-v5-grab-history-identity-gap.txt` - The root-cause evidence: raw grab-history response shape vs. the working episode-lookup alternative
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-5-fingerprint-after.txt` - Post-run sandbox fingerprint, confirming no WUD interruption
+- `~/Cowork/mediaserver/v5test-results/81-1-fingerprint-before.txt` - Pre-deploy sandbox fingerprint (docker-only, passwordless)
+- `~/Cowork/mediaserver/v5test-results/81-2-verify-searches-off.txt` - Owner-run isolation gate 1 (sanitized)
+- `~/Cowork/mediaserver/v5test-results/81-3-verify-searches-on.txt` - Owner-run isolation gate 2 (sanitized)
+- `~/Cowork/mediaserver/v5test-results/81-3-deluge-check.txt` - Owner-run Deluge-destination check (sanitized)
+- `~/Cowork/mediaserver/v5test-results/81-4-db-check-1-post-search.txt` - Triggarr DB snapshot immediately after the controlled SeasonSearch
+- `~/Cowork/mediaserver/v5test-results/81-4-db-check-final.txt` - Triggarr DB snapshot after baseline restore (still uncredited)
+- `~/Cowork/mediaserver/v5test-results/81-4-v5-grab-history-identity-gap.txt` - The root-cause evidence: raw grab-history response shape vs. the working episode-lookup alternative
+- `~/Cowork/mediaserver/v5test-results/81-5-fingerprint-after.txt` - Post-run sandbox fingerprint, confirming no WUD interruption
 
 ## Decisions Made
 
@@ -156,4 +156,4 @@ None - no external service configuration required. This plan only exercised the 
 
 ## Self-Check: PASSED
 
-All 10 claimed files confirmed present on disk (`81-LIVE-MATRIX.md`, this `81-07-SUMMARY.md`, and all 8 sanitized evidence files under `/Users/julianamacbook/Cowork/mediaserver/v5test-results/`). All 7 claimed commit hashes (`61e59e2`, `9b3be1a`, `a91eee9`, `ba6b084`, `c475a78`, `b5fca06`, `777c523`) confirmed present via `git log --oneline --all`. No missing items.
+All 10 claimed files confirmed present on disk (`81-LIVE-MATRIX.md`, this `81-07-SUMMARY.md`, and all 8 sanitized evidence files under `~/Cowork/mediaserver/v5test-results/`). All 7 claimed commit hashes (`61e59e2`, `9b3be1a`, `a91eee9`, `ba6b084`, `c475a78`, `b5fca06`, `777c523`) confirmed present via `git log --oneline --all`. No missing items.

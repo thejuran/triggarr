@@ -32,10 +32,10 @@ tech-stack:
 
 key-files:
   created:
-    - /Users/julianamacbook/Cowork/mediaserver/SANDBOX-sonarr-v4.md
-    - /Users/julianamacbook/Cowork/mediaserver/setup-sonarr-v4-test.sh (frozen, sha256 00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e)
-    - /Users/julianamacbook/Cowork/mediaserver/setup-sonarr-v4-test-pre-review.sh
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-v4-{1..19}-*.txt (20 sanitized evidence files)
+    - ~/Cowork/mediaserver/SANDBOX-sonarr-v4.md
+    - ~/Cowork/mediaserver/setup-sonarr-v4-test.sh (frozen, sha256 00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e)
+    - ~/Cowork/mediaserver/setup-sonarr-v4-test-pre-review.sh
+    - ~/Cowork/mediaserver/v5test-results/81-v4-{1..19}-*.txt (20 sanitized evidence files)
   modified:
     - .planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md
 
@@ -106,10 +106,10 @@ _Note: this plan has no TDD tasks -- it is a live-environment verification run, 
 ## Files Created/Modified
 
 - `.planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md` - Full v4 sandbox narrative (provisioning, two gate-script reviews, credential checkpoint, controlled run, probes, owner reviews and corrections), updated Matrix table (v4 Live column filled in; v5+v4 tag/pagination cells corrected to unverified-live)
-- `/Users/julianamacbook/Cowork/mediaserver/SANDBOX-sonarr-v4.md` - v4 sandbox layout, ports, isolation rules, teardown, and the no-sudo-needed/design-choice rationale
-- `/Users/julianamacbook/Cowork/mediaserver/setup-sonarr-v4-test.sh` - The frozen gate script (sha256 `00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e`)
-- `/Users/julianamacbook/Cowork/mediaserver/setup-sonarr-v4-test-pre-review.sh` - Pre-first-review copy, kept for diffing
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-v4-{1..19}-*.txt` (20 files) - Sanitized evidence: fingerprints, gate outputs (off/on, both passes and the one failure), wiring check, WUD exclusion, probe inserts and repeat-check results, enable-and-credit record, pre-enable/post-import eligibility checks
+- `~/Cowork/mediaserver/SANDBOX-sonarr-v4.md` - v4 sandbox layout, ports, isolation rules, teardown, and the no-sudo-needed/design-choice rationale
+- `~/Cowork/mediaserver/setup-sonarr-v4-test.sh` - The frozen gate script (sha256 `00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e`)
+- `~/Cowork/mediaserver/setup-sonarr-v4-test-pre-review.sh` - Pre-first-review copy, kept for diffing
+- `~/Cowork/mediaserver/v5test-results/81-v4-{1..19}-*.txt` (20 files) - Sanitized evidence: fingerprints, gate outputs (off/on, both passes and the one failure), wiring check, WUD exclusion, probe inserts and repeat-check results, enable-and-credit record, pre-enable/post-import eligibility checks
 
 ## Decisions Made
 
@@ -175,4 +175,4 @@ None beyond the owner actions already part of this plan's design (wiring indexer
 
 ## Self-Check: PASSED
 
-All 5 named tracked/external files confirmed present on disk (`SANDBOX-sonarr-v4.md`, `setup-sonarr-v4-test.sh`, `setup-sonarr-v4-test-pre-review.sh`, `81-LIVE-MATRIX.md`, this `81-08-SUMMARY.md`). All 20 sanitized evidence files confirmed present under `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-v4-*`. All 13 claimed Task commit hashes confirmed present via `git log --oneline --all`. The frozen gate script's live sha256 (`00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e`) matches the value recorded throughout this summary and the Matrix. No missing items.
+All 5 named tracked/external files confirmed present on disk (`SANDBOX-sonarr-v4.md`, `setup-sonarr-v4-test.sh`, `setup-sonarr-v4-test-pre-review.sh`, `81-LIVE-MATRIX.md`, this `81-08-SUMMARY.md`). All 20 sanitized evidence files confirmed present under `~/Cowork/mediaserver/v5test-results/81-v4-*`. All 13 claimed Task commit hashes confirmed present via `git log --oneline --all`. The frozen gate script's live sha256 (`00ca2909606dbd6f6e66c3ea86ef1e9ce7c49bc32e546a925fd95103a249d77e`) matches the value recorded throughout this summary and the Matrix. No missing items.

@@ -123,7 +123,7 @@ All under `~/scratch/planchk-activation/`:
 - Negative check (session `b27e9bb9-4178-4c7a-b820-1e0966f7144f`, method scratch-plugin-dir-fallback): completed in 12.2s (bound 300s); result contains `planchk-router: refusing bm:bm-plan-checker spawn`; `modelUsage` keys exactly `["claude-opus-5-5[1m]"]`; gateway route log for that session shows only `anthropic claude-opus-5-5` (2), no codex lines; debug log confirms the PreToolUse guard registered and fired, and the module hook was correctly not loaded.
 - `uv run pytest tests/ -x -q`: **2432 passed**, 0 failed (38 pre-existing deprecation warnings, unrelated to this change).
 - `uv run ruff check triggarr/ tests/`: **All checks passed!**
-- `git status --porcelain` in `/Users/julianamacbook/triggarr`: empty after every step; `.claude/settings.local.json` confirmed untracked (`git ls-files --error-unmatch` fails as expected) and ignored (`git check-ignore -q` succeeds).
+- `git status --porcelain` in `~/triggarr`: empty after every step; `.claude/settings.local.json` confirmed untracked (`git ls-files --error-unmatch` fails as expected) and ignored (`git check-ignore -q` succeeds).
 
 ## Known Stubs
 

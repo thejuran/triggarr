@@ -105,7 +105,7 @@ None in the Rule 1-4 sense -- this execution made no code changes itself in any 
 
 ## User Setup Required
 
-None - no external service configuration required for Task 3. The scratch directory used for local image verification (`/private/tmp/claude-501/-Users-julianamacbook-triggarr/72ccd835-a846-4599-a5e0-d8ba995139ed/scratchpad/ci82`) holds the round-2 `audited-image` artifact files from the last code-bearing run (round 3 made no code changes, so no new image was built or downloaded for it). The loaded Docker image tag was removed from the local daemon after each identity check. No NAS or other image was touched.
+None - no external service configuration required for Task 3. The scratch directory used for local image verification (`/private/tmp/claude-501/-Users-{user}-triggarr/72ccd835-a846-4599-a5e0-d8ba995139ed/scratchpad/ci82`) holds the round-2 `audited-image` artifact files from the last code-bearing run (round 3 made no code changes, so no new image was built or downloaded for it). The loaded Docker image tag was removed from the local daemon after each identity check. No NAS or other image was touched.
 
 ## Known Stubs
 

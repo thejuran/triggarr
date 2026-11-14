@@ -45,8 +45,8 @@ Output: Updated model validation, route handling, HTML inputs, and tests.
 </objective>
 
 <execution_context>
-@/Users/julianamacbook/.claude/get-shit-done/workflows/execute-plan.md
-@/Users/julianamacbook/.claude/get-shit-done/templates/summary.md
+@~/.claude/get-shit-done/workflows/execute-plan.md
+@~/.claude/get-shit-done/templates/summary.md
 </execution_context>
 
 <context>
@@ -82,7 +82,7 @@ Output: Updated model validation, route handling, HTML inputs, and tests.
    - Change `min="1"` to `min="0"` on the `search_cutoff_count` input.
   </action>
   <verify>
-    <automated>cd /Users/julianamacbook/triggarr && uv run python -c "
+    <automated>cd ~/triggarr && uv run python -c "
 from triggarr.models.config import ArrConfig
 # 0 missing, positive cutoff -- should work
 a = ArrConfig(enabled=True, search_missing_count=0, search_cutoff_count=5)
@@ -125,7 +125,7 @@ print('All model validation checks passed')
    - Add `test_save_settings_accepts_zero_missing_with_positive_cutoff` test: POST to /settings with radarr enabled, `radarr_search_missing_count=0`, `radarr_search_cutoff_count=5`, sonarr disabled. Assert response is 303 redirect to /settings AND config file WAS written successfully.
   </action>
   <verify>
-    <automated>cd /Users/julianamacbook/triggarr && uv run pytest tests/test_validation.py tests/test_web.py -x -q</automated>
+    <automated>cd ~/triggarr && uv run pytest tests/test_validation.py tests/test_web.py -x -q</automated>
   </verify>
   <done>
     - test_below_minimum_clamped updated for 0-minimum scenario
@@ -141,7 +141,7 @@ print('All model validation checks passed')
 <verification>
 Run the full test suite and linter to confirm no regressions:
 ```bash
-cd /Users/julianamacbook/triggarr && uv run pytest tests/ -x -q && uv run ruff check triggarr/ tests/
+cd ~/triggarr && uv run pytest tests/ -x -q && uv run ruff check triggarr/ tests/
 ```
 </verification>
 

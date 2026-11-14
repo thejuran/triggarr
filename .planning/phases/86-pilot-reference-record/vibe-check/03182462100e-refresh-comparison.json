@@ -1,0 +1,505 @@
+{
+ "tool": "vibe-check deep-review 2.12.0",
+ "mode": "range",
+ "range": "d5a4467a4c38f8f675fb057d9a77bcc3030c379d..03182462100e9f71defc9408245410d2b99110a5",
+ "head": "03182462100e9f71defc9408245410d2b99110a5",
+ "coverage": "exact-head local (provenance check passed)",
+ "agents": {
+  "architecture": {
+   "agent": "architecture",
+   "findings": [
+    {
+     "id": "arch-001",
+     "file": "triggarr/search/engine.py",
+     "line": 2112,
+     "title": "Sonarr Refresh counts checks air dates before the monitored filter, unlike the scheduled Sonarr cycle",
+     "severity": "low",
+     "category": "pattern-consistency",
+     "confidence": 85,
+     "agent_confidence": 85,
+     "cwe": null,
+     "in_diff": true,
+     "current_code": "filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)\n            filtered_missing = _screen_queue(\n                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)\n            )\n            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+     "problem": "The codebase already has an established screening order. It is used at 4 places in run_sonarr_cycle (engine.py 1368-1373 for missing, 1415-1420 for cutoff) and the same rule appears in the Radarr and Lidarr cycles. The order is: drop non-object records, then filter_monitored, then check air dates, then filter_sonarr_episodes. The cycle's comment states the rule: each field is checked 'just before the step that reads it', so that 'an unmonitored ... episode is never counted for a field nothing reads.' refresh_sonarr_counts leaves out filter_monitored before the airDateUtc check, in both the missing chain (2111-2115) and the cutoff chain (2137-2141). As a result, Refresh counts logs an unmonitored episode with a timezone-less air date as a 'Skipped N ... malformed date' record, while the scheduled cycle silently drops it as unmonitored. The final counts are the same either way, because filter_sonarr_episodes drops unmonitored episodes anyway.",
+     "why_it_matters": "The diff's own docstrings say the refresh path is 'the same as the scheduled cycle', but Sonarr already differs on the first copy. The skip-warning count in System Logs now depends on which path ran, so an operator comparing logs gets confusing extra warnings. It also shows the duplicated chains can drift apart.",
+     "fix_hint": "Insert filter_monitored(...) between the bare _screen_queue and the airDateUtc _screen_queue in both Sonarr refresh chains, matching run_sonarr_cycle 1368-1373 / 1415-1420",
+     "intent_doc_match": null,
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    }
+   ],
+   "agent_notes": [
+    "Duplication (below the rule of three, so not a finding): each app's filter/screen chain now exists in exactly 2 copies. Radarr is in run_radarr_cycle (1084-1104 / 1131-1137) and refresh_radarr_counts (1952-1990). Sonarr is in run_sonarr_cycle (1368-1385 / 1415-1432) and refresh_sonarr_counts (2111-2152). Lidarr is in run_lidarr_cycle (1700-1713 / 1741-1750) and refresh_lidarr_counts (2278-2312). The refresh copies existed before this diff in a shorter form (filter_monitored/filter_by_tag only); the diff adds the screening stages to each. arch-001 is evidence the copies already differ on Sonarr. If a third consumer of these chains appears, pull a per-app 'screen and filter queue' helper that both the cycle and the refresh path call.",
+    "Radarr and Lidarr refresh chains match their scheduled cycles step for step: the same screen stages (bare, then tags_at, then date_fields for Radarr skip_unreleased, then key_fields id), the same missing_monitored_count subtraction after the date and ID screens, and the same Lidarr gating of the tag screen behind tagged_missing / tagged_cutoff. Consistent with the established pattern.",
+    "The refresh helpers create a throwaway CycleTally() only because _screen_queue requires a tally argument. CycleTally's docstring (outcome.py 91-97) describes it as a per-cycle accumulator that becomes a persisted record, and the refresh path never calls to_record, so nothing leaks into the dashboard. This uses the type for something it wasn't designed for rather than crossing a module boundary: engine.py already imported CycleTally, so no new coupling. If more non-cycle callers appear, consider making the tally optional in _screen_queue (default None means log only).",
+    "The return-tuple change from raw cutoff to cutoff_screened has no production effect. The only production caller, triggarr/web/routes.py 1165-1172, awaits the helper and discards the return value (the 'Codex rewrite-2' comment). Only tests read the tuple. No caller is broken.",
+    "Stale comment outside the diff: the comments at triggarr/web/routes.py 1157-1158 and 1177-1179 still describe a None return as covering the 'rewrite-3 data fault' from malformed records. A single malformed record now goes through the per-item skip instead. The catch-tuple rationale is still correct, but the comment no longer matches the behavior.",
+    "ist['cutoff_count'] / ist['missing_count'] are still len() of the raw fetched list (engine.py ~1924-1925, 2084-2085, 2249-2250). With allow_non_object_records=True, non-object records that the strict fetch used to reject now count toward these raw totals. pending: confirm _fetch_wanted_queues in the scheduled cycles computes the same raw-length counts, so both paths agree (not verified here).",
+    "Fetch-failure contract unchanged: httpx.HTTPError and pydantic.ValidationError still go through _mark_unreachable and return None. The new parametrized tests in tests/test_malformed_records_client_path.py (_BadEnvelopeArr, _ServerErrorArr) lock this in for all three apps through the real clients.",
+    "The tests that switch to monkeypatching engine.filter_by_tag / filter_monitored / deduplicate_to_seasons to reach the backstop except are reasonable. The real malformed-record inputs can no longer reach that except, so forcing a fault in the function is the only way left to exercise the backstop. No intent doc for 86-02 (D-02/D-02a) was found on this branch (.planning/phases/86-pilot-reference-record holds only a scratch file), so intent_doc_match is null throughout."
+   ]
+  },
+  "bugs": {
+   "agent": "bugs",
+   "findings": [
+    {
+     "id": "bugs-001",
+     "file": "triggarr/search/engine.py",
+     "line": 2112,
+     "title": "Sonarr Refresh counts checks dates before dropping unmonitored episodes, which the scheduled cycle does not do",
+     "category": "logic-error",
+     "cwe": null,
+     "severity": "low",
+     "agent_confidence": 70,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "In refresh_sonarr_counts, both the missing chain (line 2112) and the cutoff chain (line 2138) run the airDateUtc date check on every episode before filter_sonarr_episodes removes unmonitored ones. The scheduled cycle (engine.py:1369-1372 and 1416-1419) calls filter_monitored first. Its comments say a record the queue would never search is 'never counted for a field nothing reads'. As a result, Refresh counts logs an unmonitored episode with a timezone-less air date as a skipped malformed record, while the scheduled cycle on the same data says nothing. The counts are not affected, because filter_sonarr_episodes would have dropped that episode anyway. The Radarr and Lidarr refresh chains do drop unmonitored records before their later checks, so only Sonarr differs.",
+     "current_code": "filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)\nfiltered_missing = _screen_queue(\n    filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)\n)\nfiltered_missing = filter_sonarr_episodes(filtered_missing)",
+     "fix_hint": "call filter_monitored before the date_fields _screen_queue stage in both the missing and cutoff chains, matching run_sonarr_cycle",
+     "why_it_matters": "The diff says Refresh counts now matches the scheduled cycle, but on Sonarr it logs skipped-record warnings the cycle never logs. That puts misleading malformed-data warnings in System Logs for episodes nobody would search.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    }
+   ],
+   "agent_notes": [
+    "Checked the missing_monitored_count adjustments in Radarr and Lidarr refresh against run_radarr_cycle (engine.py:1084-1105) and run_lidarr_cycle (engine.py:1700-1714). They follow the same order and arithmetic.",
+    "The routes.py caller (routes.py:1166) throws away the helpers' return tuple, so returning cutoff_screened instead of the raw cutoff list changes nothing for any current caller.",
+    "ist['missing_count'] / ['cutoff_count'] now include non-object records in len(). This matches the scheduled cycle (engine.py:1036/1038), so it is not reported."
+   ]
+  },
+  "codex-adversarial": {
+   "agent": "codex-adversarial",
+   "findings": [],
+   "agent_notes": [
+    "No substantive blocking defect found in the branch diff. All 44 targeted refresh-counts tests passed; the full test selection could not run in the read-only environment."
+   ]
+  },
+  "compliance": {
+   "agent": "compliance",
+   "findings": [],
+   "agent_notes": [
+    "Checked root CLAUDE.md (triggarr) security/logging/SecretStr/atomic-write/pytest rules and global ~/.claude/CLAUDE.md rules against tests/test_malformed_records_client_path.py, tests/test_refresh_counts.py, and triggarr/search/engine.py. No AGENTS.md present in repo. New test patterns (logger.add+io.StringIO sink capture, local 'import triggarr.search.engine as engine' for monkeypatch) match pre-existing conventions already used elsewhere in the test suite (tests/test_startup.py, tests/test_logging.py, tests/test_attribution_client_path.py), so not flagged as new-pattern deviations. No mutable-default-arg, bare-except, or line-length issues found (those are explicitly linter-owned per CLAUDE.md anyway). No hardcoded secrets, no print()/stdlib logging usage, no sensitive-data logging introduced. Did not evaluate the project's process-level Review-workflow rules (Codex adversarial pass, PR classification, checkpoint records) since those are not observable from the code diff itself."
+   ]
+  },
+  "framework-fastapi": {
+   "agent": "framework-fastapi",
+   "findings": [],
+   "agent_notes": [
+    "Diff is confined to triggarr/search/engine.py (non-FastAPI business logic for count refresh) plus its tests; grepped for FastAPI constructs (routes, Depends, response_model, middleware, BaseSettings, UploadFile) and found none in engine.py.",
+    "The only FastAPI touchpoint is the unchanged refresh_counts route handler in triggarr/web/routes.py, which already catches a disjoint exception set (httpx.HTTPError/pydantic.ValidationError/aiosqlite.Error/OSError) from the one the engine functions handle internally (AttributeError/KeyError/TypeError -> None); this diff does not alter that contract, so no new route-level gap was introduced.",
+    "All changes here (the _screen_queue per-item skip logic, CycleTally throwaway tally, monkeypatched backstop tests, new fetch-failure guard tests) are plain Python/business-logic concerns in scope for bugs/language-python, not FastAPI mechanisms."
+   ]
+  },
+  "impact": {
+   "agent": "impact",
+   "findings": [
+    {
+     "id": "imp-001",
+     "file": "triggarr/search/engine.py",
+     "line": 2112,
+     "title": "Sonarr Refresh counts checks air dates before filtering out unmonitored episodes, unlike the scheduled cycle",
+     "category": "blast-radius",
+     "cwe": null,
+     "severity": "low",
+     "agent_confidence": 50,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "In refresh_sonarr_counts the order is: skip non-object records, check `date_fields=(\"airDateUtc\",)`, then `filter_sonarr_episodes`. The scheduled cycle (engine.py:1368-1373) runs `filter_monitored` before the date check, and the cycle's own comments say an unmonitored record must never be counted as malformed for a field nothing reads. So an unmonitored episode with an `airDateUtc` that has no timezone is logged as 'Skipped 1 missing-queue record(s) with malformed date data' on Refresh counts but stays silent on the scheduled cycle. The same holds for the cutoff chain at engine.py:2138. The counts do not change, because `filter_sonarr_episodes` drops unmonitored episodes either way. The only difference is extra warning lines in System Logs on refresh.",
+     "current_code": "filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)\n            filtered_missing = _screen_queue(\n                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)\n            )\n            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+     "fix_hint": "Insert filter_monitored() between the non-object screen and the date screen in both Sonarr refresh chains, matching run_sonarr_cycle at engine.py:1368-1373",
+     "why_it_matters": "The diff says Refresh counts now matches the scheduled cycle, but the two paths log differently for the same data. Operators reading System Logs would see skip warnings for records the cycle never flags.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    }
+   ],
+   "agent_notes": [
+    "Public API: the signatures of refresh_radarr_counts, refresh_sonarr_counts and refresh_lidarr_counts are unchanged. The second slot of the returned tuple changes from the raw cutoff list to the screened cutoff list, so non-object records are removed from it. The only production caller, triggarr/web/routes.py:1166-1173, awaits the helper and throws the return value away. That makes the tuple change invisible in production; only tests read the tuple.",
+    "Behavior change, intended (D-02/D-02a): a null or malformed wanted record no longer marks the instance disconnected during a manual Refresh counts. It is skipped, logged per reason, and the rest of the page is still counted. Real fetch failures (HTTP error, invalid page envelope) still disconnect, and new parametrized tests cover both for all three apps.",
+    "Count parity with the scheduled cycle holds. I compared the refresh chains line by line with run_radarr_cycle (engine.py:1084-1137), run_sonarr_cycle (1368-1431) and run_lidarr_cycle (1700-1750). The adjustments that subtract skipped records from missing_monitored match exactly, and so do the screen stages for key fields, tags and nested objects. missing_count and cutoff_count still use len() of the raw list, null records included, which is also what the cycle does (engine.py:1036/1038, 1321/1323, 1651/1653). The one difference found is the Sonarr date-check ordering (imp-001), which affects logs only.",
+    "The per-refresh CycleTally (screen_tally) is local and never written to ist, so no dashboard warning text or persisted state changes and nothing needs migrating. There are no database or schema changes.",
+    "Performance: each queue now gets up to 4 extra linear passes. Wanted lists are already fully loaded in memory, so even at tens of thousands of records this costs very little. Logging is capped at one warning per skip reason per queue, each listing at most 10 IDs, so a heavily malformed library cannot flood the logs.",
+    "The broad `except (AttributeError, KeyError, TypeError)` stays as a backstop, and the D-05 tests now force faults through monkeypatched filter_by_tag, filter_monitored or deduplicate_to_seasons, so that backstop is still exercised. A minor point: the routes.py:1160 comment still calls this a 'rewrite-3 data fault' path. It is stale but harmless.",
+    "Blast radius: engine.py is imported by scheduler.py and routes.py, but only the routes.py Refresh counts endpoint reaches the changed functions. The scheduled cycles are untouched. Affected users are those who click Refresh counts while their Radarr, Sonarr or Lidarr wanted list contains a malformed record. Those users get a better outcome: the instance stays connected and the counts are correct.",
+    "Verdict: shippable as-is. One low-severity logging difference from the scheduled cycle (imp-001) is optional to fix."
+   ]
+  },
+  "language-python": {
+   "agent": "language-python",
+   "findings": [],
+   "agent_notes": [
+    "Reviewed triggarr/search/engine.py (refresh_radarr_counts, refresh_sonarr_counts, refresh_lidarr_counts) and both test files against the Python-specific checklist (mutable defaults, bare except, is-vs-eq, type hints, context managers, perf). No findings: the except (AttributeError, KeyError, TypeError) blocks are pre-existing narrow catches (unchanged logic, comment-only updates) that log with context and return None, not silent swallows. _screen_queue/_malformed_reason/CycleTally (triggarr/search/engine.py:110-213, triggarr/search/outcome.py:91) are pre-existing infra reused here, not new in this diff. New local vars typed `int | None` (missing_monitored_count etc.) are always assigned an int via len() before any `-=` use within the same guarded branch, so no real Optional-misuse. Verified `allow_non_object_records` kwarg exists on RadarrClient/SonarrClient/LidarrClient.get_wanted_missing/get_wanted_cutoff (triggarr/clients/radarr.py:25-34, sonarr.py:70-91, lidarr.py:31-52) and matches existing call sites (triggarr/search/engine.py:1001-1002, 1286-1287, 1616-1617), so the new fetch calls are not introducing an invalid keyword argument. Test additions (tests/test_refresh_counts.py, tests/test_malformed_records_client_path.py) correctly acquire/release the loguru sink handler (`handler_id = logger.add(...)` before try, `logger.remove(handler_id)` in finally) and close the httpx client in finally; no resource leaks."
+   ]
+  },
+  "security": {
+   "agent": "security",
+   "findings": [],
+   "agent_notes": [
+    "Diff confined to in-memory record screening/filtering in triggarr/search/engine.py (refresh_radarr_counts, refresh_sonarr_counts, refresh_lidarr_counts) and their tests. No SQL, subprocess, HTML rendering, secret handling, auth, or SSRF code paths touched.",
+    "The allow_non_object_records flag and _screen_queue per-record validation are pre-existing (triggarr/clients/base.py:176-190, triggarr/search/engine.py:156-193), already exercised by the scheduled cycles; this diff only extends the same validated pattern to the refresh_*_counts helpers. Envelope-level validation (RawPaginatedResponse) is unchanged and still enforced regardless of the flag, confirmed by the new test_refresh_counts_invalid_envelope_still_disconnects case.",
+    "_log_malformed_skip (unchanged, engine.py:196-213) logs only a skip count and up to 10 record id values, never exception text or full record payloads, consistent with the project's logging conventions."
+   ]
+  },
+  "test-sufficiency": {
+   "agent": "test-sufficiency",
+   "findings": [
+    {
+     "id": "cov-001",
+     "file": "triggarr/search/engine.py",
+     "line": 2116,
+     "title": "Sonarr count refresh never tests the new tag-screening step for a missing-queue tag",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "medium",
+     "agent_confidence": 88,
+     "confidence": 88,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "When a Sonarr instance has a missing-queue tag set, Refresh counts now runs a new check that drops episodes with a malformed series or series tags before tag filtering. No test runs this path. The check at L2117 and the tag filter at L2121 both have zero hits, and the tag condition at L2116 shows 50% branch coverage (only the 'no tag configured' side runs).",
+     "current_code": "if scope.missing_tag_id is not None:\n    filtered_missing = _screen_queue(\n        filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,\n        nested_key=\"series\", tags_at=(\"series\", \"tags\"),\n    )\n    filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)",
+     "fix_hint": "add a refresh_sonarr_counts test with missing_tag set, one good tagged episode and one with series='not-a-dict' or non-list series.tags; assert it stays connected, missing_eligible == 1 and a 'Skipped 1' missing-queue log",
+     "why_it_matters": "This change is meant to keep one bad record from disconnecting the whole instance. For tag-scoped Sonarr missing counts, nothing confirms that actually happens. If the check is wrong, the dashboard shows the instance as disconnected or shows wrong counts, and no test catches it. The Sonarr cutoff side, Radarr and Lidarr each have a covered equivalent.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    },
+    {
+     "id": "cov-002",
+     "file": "triggarr/search/engine.py",
+     "line": 2015,
+     "title": "No test checks that the screened cutoff list (not the raw one) is what Refresh counts returns",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "medium",
+     "agent_confidence": 65,
+     "confidence": 65,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "All three refresh helpers now return the screened cutoff list (cutoff_screened) instead of the raw one, so a malformed record can't leak to callers. The new tests only check that the result is not None and check the counts in state. None of them looks at the returned cutoff list, even test_refresh_counts_skips_non_object_record, which feeds a null cutoff record. The same applies to the return lines at L2181 (Sonarr) and L2337 (Lidarr).",
+     "current_code": "return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+     "fix_hint": "in test_refresh_counts_skips_non_object_record assert None not in result[1] (and that the good record is present) for all three apps",
+     "why_it_matters": "The code comments say outright that a malformed record must never leave this helper. If someone later returns the raw list again, whatever reads this result could get a null record and crash, and every current test would still pass.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    },
+    {
+     "id": "cov-003",
+     "file": "triggarr/search/engine.py",
+     "line": 1966,
+     "title": "New monitored-count correction is never tested with a record actually dropped",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "low",
+     "agent_confidence": 60,
+     "confidence": 60,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "Radarr (L1966, L1971) and Lidarr (L2291) now lower missing_monitored after counting, when a later check drops a record for a bad release date or a missing id. These lines run in tests, but every new malformed-record test drops its record earlier, at the non-object or tags check, so the reduction is always zero. Coverage only shows that the lines execute; it can't show that the subtraction is ever non-zero, and no test feeds a record missing 'id' or carrying a malformed digitalRelease/physicalRelease.",
+     "current_code": "missing_monitored_count -= len(filtered_missing) - len(screened)",
+     "fix_hint": "add Radarr and Lidarr refresh tests with a monitored record lacking 'id' (and, for Radarr, a malformed release date) and assert missing_monitored and missing_eligible both exclude it",
+     "why_it_matters": "This is new count arithmetic. A sign or ordering mistake would make the dashboard's 'monitored' number disagree with 'eligible' without any error. The tests only prove the line runs, not that it gives the right number.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    },
+    {
+     "id": "cov-004",
+     "file": "triggarr/search/engine.py",
+     "line": 1980,
+     "title": "Radarr and Lidarr count refresh never test the cutoff-tag-unresolved path",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "low",
+     "agent_confidence": 70,
+     "confidence": 70,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "The 'cutoff queue tag scope resolved' condition has only 50% branch coverage in Radarr (L1980) and Lidarr (L2300). Only the resolved side runs, so the unresolved side (skip screening, return an empty cutoff list) never runs in these helpers after this change. Sonarr's equivalent at L2136 covers both sides.",
+     "current_code": "if not scope.cutoff_unresolved:\n    cutoff_screened = _screen_queue(cutoff, app_label=\"Radarr\", queue=\"cutoff\", tally=screen_tally)",
+     "fix_hint": "add Radarr and Lidarr refresh tests with a cutoff_tag that does not resolve; assert the tuple's cutoff slot is [] and the instance stays connected",
+     "why_it_matters": "The change moved the returned cutoff list to a new variable that starts out empty. Nothing confirms that the unresolved-tag case still returns an empty list and keeps the last good counts in these two apps.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    }
+   ],
+   "agent_notes": [
+    "Overall for triggarr/search/engine.py at the reviewed head: 97.3% lines / 94.85% branches (3279 tests passed). Cobertura branch data was available and used.",
+    "Covered well: the fetch-failure contract (HTTP error and invalid envelope, L1909-1911 and the Sonarr/Lidarr equivalents) for all three apps through the real clients; non-object record skip through the real clients; Radarr missing/cutoff tag screening (L1954/1959/1983 at 100% branch); Lidarr tag screening (L2280/2286 at 100%); the Sonarr cutoff tag path (L2142 at 100%); the 'other unexpected fault' backstop, now exercised by monkeypatching filter_by_tag, filter_monitored and deduplicate_to_seasons.",
+    "Radarr skip_unreleased condition (L1961) has 50% branch coverage: only the enabled side runs in refresh tests. Low risk, because the disabled side just skips a filter.",
+    "Lines 1899-1900, 1918-1919, 2059-2060, 2078-2079, 2224-2225 and 2243-2244 (instance not in state, library-count fetch failure) are uncovered but were not changed by this diff, so no finding was raised.",
+    "Schema note: findings carry both 'agent_confidence' (the schema field) and 'confidence' (requested by the orchestrator prompt) with the same value."
+   ]
+  }
+ },
+ "scored": {
+  "scored_by_script": true,
+  "findings": [
+   {
+    "id": "arch-001",
+    "file": "triggarr/search/engine.py",
+    "line": 2112,
+    "title": "Sonarr Refresh counts checks air dates before the monitored filter, unlike the scheduled Sonarr cycle",
+    "severity": "low",
+    "category": "pattern-consistency",
+    "agent_confidence": 85,
+    "cwe": null,
+    "in_diff": true,
+    "current_code": "filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)\n            filtered_missing = _screen_queue(\n                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)\n            )\n            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+    "problem": "The codebase already has an established screening order. It is used at 4 places in run_sonarr_cycle (engine.py 1368-1373 for missing, 1415-1420 for cutoff) and the same rule appears in the Radarr and Lidarr cycles. The order is: drop non-object records, then filter_monitored, then check air dates, then filter_sonarr_episodes. The cycle's comment states the rule: each field is checked 'just before the step that reads it', so that 'an unmonitored ... episode is never counted for a field nothing reads.' refresh_sonarr_counts leaves out filter_monitored before the airDateUtc check, in both the missing chain (2111-2115) and the cutoff chain (2137-2141). As a result, Refresh counts logs an unmonitored episode with a timezone-less air date as a 'Skipped N ... malformed date' record, while the scheduled cycle silently drops it as unmonitored. The final counts are the same either way, because filter_sonarr_episodes drops unmonitored episodes anyway.",
+    "why_it_matters": "The diff's own docstrings say the refresh path is 'the same as the scheduled cycle', but Sonarr already differs on the first copy. The skip-warning count in System Logs now depends on which path ran, so an operator comparing logs gets confusing extra warnings. It also shows the duplicated chains can drift apart.",
+    "fix_hint": "Insert filter_monitored(...) between the bare _screen_queue and the airDateUtc _screen_queue in both Sonarr refresh chains, matching run_sonarr_cycle 1368-1373 / 1415-1420",
+    "intent_doc_match": null,
+    "silenced_marker_nearby": false,
+    "needs_verification": null,
+    "agent": "architecture",
+    "source_window": [
+     "        if not scope.missing_unresolved:",
+     "            filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)",
+     "            filtered_missing = _screen_queue(",
+     "                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)",
+     "            )"
+    ],
+    "canonical_line_content": "            filtered_missing = _screen_queue(",
+    "orchestrator_score": 79,
+    "band": "medium",
+    "attribution": [
+     "bugs",
+     "architecture",
+     "impact"
+    ],
+    "stable_hash": "832cbe882f1cf3d53326a3acbe491029e4e582f06eed06960df800e3fad84bad",
+    "status": "new",
+    "members": [
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2112,
+      "title": "Sonarr Refresh counts checks air dates before the monitored filter, unlike the scheduled Sonarr cycle",
+      "category": "pattern-consistency",
+      "severity": "low",
+      "agent": "architecture",
+      "agent_confidence": 85,
+      "problem": "The codebase already has an established screening order. It is used at 4 places in run_sonarr_cycle (engine.py 1368-1373 for missing, 1415-1420 for cutoff) and the same rule appears in the Radarr and Lidarr cycles. The order is: drop non-object records, then filter_monitored, then check air dates, then filter_sonarr_episodes. The cycle's comment states the rule: each field is checked 'just before the step that reads it', so that 'an unmonitored ... episode is never counted for a field nothing reads.' refresh_sonarr_counts leaves out filter_monitored before the airDateUtc check, in both the missing chain (2111-2115) and the cutoff chain (2137-2141). As a result, Refresh counts logs an unmonitored episode with a timezone-less air date as a 'Skipped N ... malformed date' record, while the scheduled cycle silently drops it as unmonitored. The final counts are the same either way, because filter_sonarr_episodes drops unmonitored episodes anyway.",
+      "source_window": [
+       "        if not scope.missing_unresolved:",
+       "            filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)",
+       "            filtered_missing = _screen_queue(",
+       "                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)",
+       "            )"
+      ],
+      "cwe": null,
+      "why_it_matters": "The diff's own docstrings say the refresh path is 'the same as the scheduled cycle', but Sonarr already differs on the first copy. The skip-warning count in System Logs now depends on which path ran, so an operator comparing logs gets confusing extra warnings. It also shows the duplicated chains can drift apart.",
+      "fix_hint": "Insert filter_monitored(...) between the bare _screen_queue and the airDateUtc _screen_queue in both Sonarr refresh chains, matching run_sonarr_cycle 1368-1373 / 1415-1420",
+      "current_code": "filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)\n            filtered_missing = _screen_queue(\n                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)\n            )\n            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+      "intent_doc_match": null
+     },
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2112,
+      "title": "Sonarr Refresh counts checks dates before dropping unmonitored episodes, which the scheduled cycle does not do",
+      "category": "logic-error",
+      "severity": "low",
+      "agent": "bugs",
+      "agent_confidence": 70,
+      "problem": "In refresh_sonarr_counts, both the missing chain (line 2112) and the cutoff chain (line 2138) run the airDateUtc date check on every episode before filter_sonarr_episodes removes unmonitored ones. The scheduled cycle (engine.py:1369-1372 and 1416-1419) calls filter_monitored first. Its comments say a record the queue would never search is 'never counted for a field nothing reads'. As a result, Refresh counts logs an unmonitored episode with a timezone-less air date as a skipped malformed record, while the scheduled cycle on the same data says nothing. The counts are not affected, because filter_sonarr_episodes would have dropped that episode anyway. The Radarr and Lidarr refresh chains do drop unmonitored records before their later checks, so only Sonarr differs.",
+      "source_window": [
+       "        if not scope.missing_unresolved:",
+       "            filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)",
+       "            filtered_missing = _screen_queue(",
+       "                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)",
+       "            )"
+      ],
+      "cwe": null,
+      "why_it_matters": "The diff says Refresh counts now matches the scheduled cycle, but on Sonarr it logs skipped-record warnings the cycle never logs. That puts misleading malformed-data warnings in System Logs for episodes nobody would search.",
+      "fix_hint": "call filter_monitored before the date_fields _screen_queue stage in both the missing and cutoff chains, matching run_sonarr_cycle",
+      "current_code": "filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)\nfiltered_missing = _screen_queue(\n    filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)\n)\nfiltered_missing = filter_sonarr_episodes(filtered_missing)",
+      "intent_doc_match": null
+     },
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2112,
+      "title": "Sonarr Refresh counts checks air dates before filtering out unmonitored episodes, unlike the scheduled cycle",
+      "category": "blast-radius",
+      "severity": "low",
+      "agent": "impact",
+      "agent_confidence": 50,
+      "problem": "In refresh_sonarr_counts the order is: skip non-object records, check `date_fields=(\"airDateUtc\",)`, then `filter_sonarr_episodes`. The scheduled cycle (engine.py:1368-1373) runs `filter_monitored` before the date check, and the cycle's own comments say an unmonitored record must never be counted as malformed for a field nothing reads. So an unmonitored episode with an `airDateUtc` that has no timezone is logged as 'Skipped 1 missing-queue record(s) with malformed date data' on Refresh counts but stays silent on the scheduled cycle. The same holds for the cutoff chain at engine.py:2138. The counts do not change, because `filter_sonarr_episodes` drops unmonitored episodes either way. The only difference is extra warning lines in System Logs on refresh.",
+      "source_window": [
+       "        if not scope.missing_unresolved:",
+       "            filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)",
+       "            filtered_missing = _screen_queue(",
+       "                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)",
+       "            )"
+      ],
+      "cwe": null,
+      "why_it_matters": "The diff says Refresh counts now matches the scheduled cycle, but the two paths log differently for the same data. Operators reading System Logs would see skip warnings for records the cycle never flags.",
+      "fix_hint": "Insert filter_monitored() between the non-object screen and the date screen in both Sonarr refresh chains, matching run_sonarr_cycle at engine.py:1368-1373",
+      "current_code": "filtered_missing = _screen_queue(missing_episodes, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally)\n            filtered_missing = _screen_queue(\n                filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally, date_fields=(\"airDateUtc\",)\n            )\n            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+      "intent_doc_match": null
+     }
+    ],
+    "snapshot": {
+     "at_pass": 1,
+     "file": "triggarr/search/engine.py",
+     "line": 2112,
+     "canonical_line_content": "            filtered_missing = _screen_queue(",
+     "band": "medium"
+    }
+   },
+   {
+    "id": "cov-001",
+    "file": "triggarr/search/engine.py",
+    "line": 2116,
+    "title": "Sonarr count refresh never tests the new tag-screening step for a missing-queue tag",
+    "category": "test-coverage",
+    "cwe": null,
+    "severity": "medium",
+    "agent_confidence": 88,
+    "in_diff": true,
+    "intent_doc_match": null,
+    "problem": "When a Sonarr instance has a missing-queue tag set, Refresh counts now runs a new check that drops episodes with a malformed series or series tags before tag filtering. No test runs this path. The check at L2117 and the tag filter at L2121 both have zero hits, and the tag condition at L2116 shows 50% branch coverage (only the 'no tag configured' side runs).",
+    "current_code": "if scope.missing_tag_id is not None:\n    filtered_missing = _screen_queue(\n        filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,\n        nested_key=\"series\", tags_at=(\"series\", \"tags\"),\n    )\n    filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)",
+    "fix_hint": "add a refresh_sonarr_counts test with missing_tag set, one good tagged episode and one with series='not-a-dict' or non-list series.tags; assert it stays connected, missing_eligible == 1 and a 'Skipped 1' missing-queue log",
+    "why_it_matters": "This change is meant to keep one bad record from disconnecting the whole instance. For tag-scoped Sonarr missing counts, nothing confirms that actually happens. If the check is wrong, the dashboard shows the instance as disconnected or shows wrong counts, and no test catches it. The Sonarr cutoff side, Radarr and Lidarr each have a covered equivalent.",
+    "silenced_marker_nearby": false,
+    "needs_verification": null,
+    "agent": "test-sufficiency",
+    "source_window": [
+     "            )",
+     "            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+     "            if scope.missing_tag_id is not None:",
+     "                filtered_missing = _screen_queue(",
+     "                    filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,"
+    ],
+    "canonical_line_content": "            if scope.missing_tag_id is not None:",
+    "orchestrator_score": 80,
+    "band": "warning",
+    "attribution": [
+     "test-sufficiency"
+    ],
+    "stable_hash": "fd66b10f66c3d3adfdb7a9dc1c02f0435f98443777971864da3f5689da229d93",
+    "status": "new",
+    "members": [
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2116,
+      "title": "Sonarr count refresh never tests the new tag-screening step for a missing-queue tag",
+      "category": "test-coverage",
+      "severity": "medium",
+      "agent": "test-sufficiency",
+      "agent_confidence": 88,
+      "problem": "When a Sonarr instance has a missing-queue tag set, Refresh counts now runs a new check that drops episodes with a malformed series or series tags before tag filtering. No test runs this path. The check at L2117 and the tag filter at L2121 both have zero hits, and the tag condition at L2116 shows 50% branch coverage (only the 'no tag configured' side runs).",
+      "source_window": [
+       "            )",
+       "            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+       "            if scope.missing_tag_id is not None:",
+       "                filtered_missing = _screen_queue(",
+       "                    filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,"
+      ],
+      "cwe": null,
+      "why_it_matters": "This change is meant to keep one bad record from disconnecting the whole instance. For tag-scoped Sonarr missing counts, nothing confirms that actually happens. If the check is wrong, the dashboard shows the instance as disconnected or shows wrong counts, and no test catches it. The Sonarr cutoff side, Radarr and Lidarr each have a covered equivalent.",
+      "fix_hint": "add a refresh_sonarr_counts test with missing_tag set, one good tagged episode and one with series='not-a-dict' or non-list series.tags; assert it stays connected, missing_eligible == 1 and a 'Skipped 1' missing-queue log",
+      "current_code": "if scope.missing_tag_id is not None:\n    filtered_missing = _screen_queue(\n        filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,\n        nested_key=\"series\", tags_at=(\"series\", \"tags\"),\n    )\n    filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)",
+      "intent_doc_match": null
+     }
+    ],
+    "snapshot": {
+     "at_pass": 1,
+     "file": "triggarr/search/engine.py",
+     "line": 2116,
+     "canonical_line_content": "            if scope.missing_tag_id is not None:",
+     "band": "warning"
+    }
+   },
+   {
+    "id": "cov-002",
+    "file": "triggarr/search/engine.py",
+    "line": 2015,
+    "title": "No test checks that the screened cutoff list (not the raw one) is what Refresh counts returns",
+    "category": "test-coverage",
+    "cwe": null,
+    "severity": "medium",
+    "agent_confidence": 65,
+    "in_diff": true,
+    "intent_doc_match": null,
+    "problem": "All three refresh helpers now return the screened cutoff list (cutoff_screened) instead of the raw one, so a malformed record can't leak to callers. The new tests only check that the result is not None and check the counts in state. None of them looks at the returned cutoff list, even test_refresh_counts_skips_non_object_record, which feeds a null cutoff record. The same applies to the return lines at L2181 (Sonarr) and L2337 (Lidarr).",
+    "current_code": "return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+    "fix_hint": "in test_refresh_counts_skips_non_object_record assert None not in result[1] (and that the good record is present) for all three apps",
+    "why_it_matters": "The code comments say outright that a malformed record must never leave this helper. If someone later returns the raw list again, whatever reads this result could get a null record and crash, and every current test would still pass.",
+    "silenced_marker_nearby": false,
+    "needs_verification": null,
+    "agent": "test-sufficiency",
+    "source_window": [
+     "        return None",
+     "",
+     "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+     "",
+     ""
+    ],
+    "canonical_line_content": "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+    "orchestrator_score": 77,
+    "band": "medium",
+    "attribution": [
+     "test-sufficiency"
+    ],
+    "stable_hash": "a7bf3b2cc7093a57644ff9ddc1037054cd47c945f11b5ac43971f030d1a05356",
+    "status": "new",
+    "members": [
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2015,
+      "title": "No test checks that the screened cutoff list (not the raw one) is what Refresh counts returns",
+      "category": "test-coverage",
+      "severity": "medium",
+      "agent": "test-sufficiency",
+      "agent_confidence": 65,
+      "problem": "All three refresh helpers now return the screened cutoff list (cutoff_screened) instead of the raw one, so a malformed record can't leak to callers. The new tests only check that the result is not None and check the counts in state. None of them looks at the returned cutoff list, even test_refresh_counts_skips_non_object_record, which feeds a null cutoff record. The same applies to the return lines at L2181 (Sonarr) and L2337 (Lidarr).",
+      "source_window": [
+       "        return None",
+       "",
+       "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+       "",
+       ""
+      ],
+      "cwe": null,
+      "why_it_matters": "The code comments say outright that a malformed record must never leave this helper. If someone later returns the raw list again, whatever reads this result could get a null record and crash, and every current test would still pass.",
+      "fix_hint": "in test_refresh_counts_skips_non_object_record assert None not in result[1] (and that the good record is present) for all three apps",
+      "current_code": "return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+      "intent_doc_match": null
+     }
+    ],
+    "snapshot": {
+     "at_pass": 1,
+     "file": "triggarr/search/engine.py",
+     "line": 2015,
+     "canonical_line_content": "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+     "band": "medium"
+    }
+   }
+  ],
+  "fixed_since_last": [],
+  "filtered": [
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 2112,
+    "title": "Sonarr Refresh counts checks dates before dropping unmonitored episodes, which the scheduled cycle does not do",
+    "reason": "absorbed-into: 832cbe882f1cf3d53326a3acbe491029e4e582f06eed06960df800e3fad84bad"
+   },
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 2112,
+    "title": "Sonarr Refresh counts checks air dates before filtering out unmonitored episodes, unlike the scheduled cycle",
+    "reason": "absorbed-into: 832cbe882f1cf3d53326a3acbe491029e4e582f06eed06960df800e3fad84bad"
+   },
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 1966,
+    "title": "New monitored-count correction is never tested with a record actually dropped",
+    "reason": "sub-threshold"
+   },
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 1980,
+    "title": "Radarr and Lidarr count refresh never test the cutoff-tag-unresolved path",
+    "reason": "sub-threshold"
+   }
+  ],
+  "nv_dropped_weak": 2
+ }
+}

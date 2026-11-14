@@ -64,9 +64,9 @@ Output: checker inspection-only mode, the inspection-only fixed prompt, and the 
 </objective>
 
 <execution_context>
-@/Users/julianamacbook/.claude/plugins/cache/gsd-plugin/bm/5.0.3/workflows/execute-plan.md
-@/Users/julianamacbook/.claude/plugins/cache/gsd-plugin/bm/5.0.3/templates/summary.md
-@/Users/julianamacbook/.claude/plugins/cache/gsd-plugin/bm/5.0.3/references/tdd.md
+@~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/workflows/execute-plan.md
+@~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/templates/summary.md
+@~/.claude/plugins/cache/gsd-plugin/bm/5.0.3/references/tdd.md
 </execution_context>
 
 <context>

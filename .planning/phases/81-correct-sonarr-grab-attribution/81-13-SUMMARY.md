@@ -30,25 +30,25 @@ tech-stack:
 
 key-files:
   created:
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-0-preflight.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-0-state-backup.json
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-0-v4-gate-preflight-read-only.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-1-change-list.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-2-prep-m.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-2-v4-gate-pre.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-2-v5-gate-pre.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-3-v5-missing-phase-m.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-3-v4-missing-phase-m.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-4-v5-cutoff-phase-c.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-4-v4-cutoff-phase-c.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-4-v4-c1-files-added.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-4-v4-gate-mid.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-5-v4-gate-post.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-5-v5-gate-post.txt
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-5-fingerprint-after.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-0-preflight.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-0-state-backup.json
+    - ~/Cowork/mediaserver/v5test-results/81-13-0-v4-gate-preflight-read-only.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-1-change-list.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-2-prep-m.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-2-v4-gate-pre.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-2-v5-gate-pre.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-3-v5-missing-phase-m.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-3-v4-missing-phase-m.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-4-v5-cutoff-phase-c.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-4-v4-cutoff-phase-c.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-4-v4-c1-files-added.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-4-v4-gate-mid.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-5-v4-gate-post.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-5-v5-gate-post.txt
+    - ~/Cowork/mediaserver/v5test-results/81-13-5-fingerprint-after.txt
   modified:
     - .planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md
-    - /Users/julianamacbook/Cowork/mediaserver/v5test-results.md
+    - ~/Cowork/mediaserver/v5test-results.md
 
 key-decisions:
   - "Owner's D-A..D-D decisions (approve the change list + key-level state restore; page_size 10; D-C option C1 reflink copy; D-D tag-move exclusion) were given before this session started and recorded verbatim rather than re-asked"
@@ -109,8 +109,8 @@ _Note: this plan has no TDD tasks -- it is a live-environment verification run, 
 ## Files Created/Modified
 
 - `.planning/phases/81-correct-sonarr-grab-attribution/81-LIVE-MATRIX.md` - Full 81-13 narrative (preflight, owner decisions, seedsyncarr-v4test checkpoint, Task 3-6 execution detail, per-pass (a)/(b)/(c) breakdown, upgradeAllowed deviation record), six Matrix cells updated with precise 81-13 results, every prior plan's wording preserved
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results.md` - Three new 81-13 rows added to the Phase 81 compatibility checks table
-- `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-*.txt` (16 files) and `81-13-0-state-backup.json` - Sanitized evidence: preflight, change list, per-phase/per-sandbox missing and cutoff evidence, the v4 C1 file list, all four gate runs, before/after fingerprints
+- `~/Cowork/mediaserver/v5test-results.md` - Three new 81-13 rows added to the Phase 81 compatibility checks table
+- `~/Cowork/mediaserver/v5test-results/81-13-*.txt` (16 files) and `81-13-0-state-backup.json` - Sanitized evidence: preflight, change list, per-phase/per-sandbox missing and cutoff evidence, the v4 C1 file list, all four gate runs, before/after fingerprints
 
 ## Decisions Made
 
@@ -168,4 +168,4 @@ None beyond the owner actions already part of this plan's design: answering D-A.
 
 ## Self-Check: PASSED
 
-All 16 claimed sanitized evidence files confirmed present under `/Users/julianamacbook/Cowork/mediaserver/v5test-results/81-13-*` plus `81-13-0-state-backup.json`. The external `v5test-results.md` and this `81-13-SUMMARY.md` confirmed present. All 5 claimed Task commit hashes (`54f254c`, `ed14582`, `c42d517`, `edb62ff`, `5a5db32`) confirmed present via `git log --oneline --all`. `grep -rniE "apikey|x-api-key: [A-Za-z0-9]{8}|\"path\"|/data/media"` over every `81-13-*` evidence file confirmed empty. `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/STATE.md` and `docs/bm-greptile-codex-blueprint.md` were never staged or committed by this plan (confirmed via `git status --short`: all three remain unstaged, pre-existing owner edits, untouched throughout). No missing items.
+All 16 claimed sanitized evidence files confirmed present under `~/Cowork/mediaserver/v5test-results/81-13-*` plus `81-13-0-state-backup.json`. The external `v5test-results.md` and this `81-13-SUMMARY.md` confirmed present. All 5 claimed Task commit hashes (`54f254c`, `ed14582`, `c42d517`, `edb62ff`, `5a5db32`) confirmed present via `git log --oneline --all`. `grep -rniE "apikey|x-api-key: [A-Za-z0-9]{8}|\"path\"|/data/media"` over every `81-13-*` evidence file confirmed empty. `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/STATE.md` and `docs/bm-greptile-codex-blueprint.md` were never staged or committed by this plan (confirmed via `git status --short`: all three remain unstaged, pre-existing owner edits, untouched throughout). No missing items.

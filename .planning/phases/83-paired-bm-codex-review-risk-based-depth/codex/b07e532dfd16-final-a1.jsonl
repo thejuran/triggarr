@@ -1,6 +1,6 @@
 {"type":"thread.started","thread_id":"01a16ae2-38c0-7530-9ce6-60d377d51f9b"}
 {"type":"item.completed","item":{"id":"item_0","type":"error","message":"`[features].codex_hooks` is deprecated. Use `[features].hooks` instead. (Enable it with `--enable hooks` or `[features].hooks` in config.toml. See https://developers.openai.com/codex/config-basic#feature-flags for details.)"}}
-{"type":"item.completed","item":{"id":"item_1","type":"error","message":"failed to parse hooks config /Users/julianamacbook/.codex/hooks.json: unknown field `SessionStart`, expected `description` or `hooks` at line 2 column 16"}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"failed to parse hooks config ~/.codex/hooks.json: unknown field `SessionStart`, expected `description` or `hooks` at line 2 column 16"}}
 {"type":"turn.started"}
 {"type":"item.completed","item":{"id":"item_2","type":"error","message":"Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest."}}
 {"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"I’ll verify the checkout, inspect the full scoped diff and test evidence, then trace the changed behavior through its callers and error paths.\n"}}

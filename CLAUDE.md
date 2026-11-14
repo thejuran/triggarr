@@ -51,8 +51,8 @@ from per-checkpoint review; per-PR review follows the classification policy belo
   clean. `/bm:review --codex` is a **plan** review and never counts as this independent
   code review (D-05).
 - Record every checkpoint per [the review checkpoint record](docs/review-checkpoint-record.md):
-  one PR comment per head SHA, a RISK-01 note, and an explicit vibe-check recommendation
-  with the owner's recorded decision whenever risk is high.
+  one PR comment per head SHA, a RISK-01 note, and, whenever risk is high, the required
+  vibe-check (RISK-02) with a record that it ran and where its report is.
 - Quick tasks only run BM's own review (and therefore the paired Codex pass) in full
   mode: pass `--full` to `/bm:quick`, or review does not run at all.
 - Phase-execution review fires once, after all of a phase's plans have completed, not
@@ -68,8 +68,8 @@ complete. Batch pushes and hold docs-only commits until the next substantive pus
 See [the activation checklist](docs/buildomator-greptile-pilot.md) for the full
 protections.
 
-This standing instruction authorizes only running the read-only Codex review; it
-approves no PR and waives no review.
+This standing instruction authorizes only running the read-only Codex review and, at a
+high-risk checkpoint, the required vibe-check; it approves no PR and waives no review.
 
 ## Planning file format
 
@@ -90,8 +90,26 @@ limitation rather than claiming its display was verified.
 ## Review-workflow rollout (v2.13)
 
 [The BM + Greptile + Codex blueprint](docs/bm-greptile-codex-blueprint.md) is being
-implemented across Phases 83-86 of this milestone (v2.13). Routine vibe-check stays
-in force until the owner decides otherwise in Phase 86 (PILOT-03). Greptile is optional
+implemented across Phases 83-86 of this milestone (v2.13). Routine vibe-check on every
+"code"-class PR ended by owner decision in Phase 86 (PILOT-03, 2026-11-14). Vibe-check is
+required when a checkpoint's risk is assessed high; it is not run routinely below high
+risk. At high risk the checkpoint record's Vibe-check (RISK-02) section states the
+rationale and scope of the required vibe-check. That vibe-check is required, not a
+recommendation the owner may decline. Claude starts it automatically, right after the BM
+review and the paired Codex pass, on the same exact commit, without asking first (owner
+decision, 2026-11-14), and records per head that it ran and where its report is; the
+owner decides what to do with its findings. The automatic start applies only to trusted
+heads (the owner's own branches of this repository, by the trust test in
+`docs/codex-adversarial-review-contract.md`): for a bot, fork or other untrusted head
+Claude does not start vibe-check automatically and never checks out or executes that
+head; it records the vibe-check as REQUIRED, NOT YET RUN (PENDING) for that head and asks
+the owner how to proceed, and the existing rules for untrusted heads are unchanged. It
+never substitutes for Codex, never waives
+a finding and never reduces coverage. Unchanged, and a different thing: on any head whose
+Codex pass stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or
+another independent reviewer) as the recorded fallback for that exact head; vibe-check
+counts as that fallback only with the owner's explicit approval for that head. Bot/fork
+PRs are the standing case where this is expected (Phase 85.1 exception). Greptile is optional
 since 2026-10-22 (owner decision): it runs while free credits last, paid credits are
 not bought, and it is not a required check.
 

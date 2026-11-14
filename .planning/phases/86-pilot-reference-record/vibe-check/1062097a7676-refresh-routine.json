@@ -1,0 +1,482 @@
+{
+ "tool": "vibe-check deep-review 2.12.0",
+ "mode": "range, pass 2 (incremental from H1 0318246, carried findings rechecked)",
+ "range": "03182462100e9f71defc9408245410d2b99110a5..1062097a7676fddcdde3caf500f96ba1ea04d65c",
+ "head": "1062097a7676fddcdde3caf500f96ba1ea04d65c",
+ "coverage": "exact-head local (provenance check passed)",
+ "agents": {
+  "architecture": {
+   "agent": "architecture",
+   "findings": [],
+   "recheck_verdicts": [
+    {
+     "token": "R1",
+     "verdict": "resolved",
+     "reason": "At HEAD, refresh_sonarr_counts calls filter_monitored before the airDateUtc _screen_queue on both the missing chain (engine.py:2112-2115) and the cutoff chain (engine.py:2139-2142). This is the same order run_sonarr_cycle uses at engine.py:1369-1372 and 1416-1419."
+    },
+    {
+     "token": "R2",
+     "verdict": "resolved",
+     "reason": "This is the same prior finding as R1. In both Sonarr refresh chains, the monitored filter now runs before the air-date screen, matching the scheduled Sonarr cycle. The new parametrized test test_refresh_sonarr_counts_unmonitored_tzless_airdate_not_logged_as_malformed covers both queues."
+    }
+   ],
+   "agent_notes": [
+    "The fix follows an existing pattern. refresh_radarr_counts (engine.py:1953, 1982) and refresh_lidarr_counts (engine.py:2281, 2305) already call filter_monitored right after the first key-field screen and before any date or tag screen. All three refresh helpers now use the same order as their run_*_cycle counterparts.",
+    "In the cutoff chain, cutoff_screened stays as the output of the first key-field screen only. filter_monitored now writes to filtered_cutoff, so the value the helper returns (per the comment, 'cutoff_screened is also what the tuple returns') still holds monitored and unmonitored records. That matches what it returned before the reorder: the old code also returned cutoff_screened before the monitored filter. No contract change.",
+    "Already true before this diff, not introduced by it: refresh_sonarr_counts repeats the screen \u2192 monitored \u2192 date-screen \u2192 filter_sonarr_episodes \u2192 tag-screen \u2192 filter_by_tag \u2192 key-screen \u2192 deduplicate_to_seasons chain from run_sonarr_cycle almost line for line, and the Radarr and Lidarr pairs do the same. Two copies of this chain per app is exactly why the order drifted (WR-01). A shared per-app filter-chain helper would stop that drift. This diff only lines the copies up and adds no new copy, so under the rule of three it is not a finding.",
+    "The new test is in tests/test_refresh_counts.py and uses the file's existing helpers (_make_sonarr_episode, _make_test_state, make_settings, _instance_config) and its add-then-remove loguru sink pattern with try/finally. It is consistent with the neighbouring tests.",
+    "There are no new imports or dependencies and no cross-module coupling changes. filter_monitored is defined in engine.py itself (line 288)."
+   ]
+  },
+  "bugs": {
+   "agent": "bugs",
+   "findings": [],
+   "agent_notes": [
+    "Checked HEAD triggarr/search/engine.py:2111-2141. refresh_sonarr_counts now runs filter_monitored before the airDateUtc screen on both queues. That is the same order run_sonarr_cycle uses at engine.py:1368-1372 (missing) and 1415-1419 (cutoff).",
+    "The cutoff tuple return still yields cutoff_screened, the list from before the monitored filter. That behaviour predates this diff and the diff does not change it.",
+    "The new test's assertion `\"malformed date\" not in sink.getvalue()` is not vacuous. _malformed_reason returns \"date\" for a date with no timezone (engine.py:149-152), and _log_malformed_skip prints \"malformed {key} data\", so without the fix the log would contain \"malformed date data\" and the test would fail."
+   ],
+   "recheck_verdicts": [
+    {
+     "token": "R3",
+     "verdict": "resolved",
+     "reason": "engine.py:2112 and 2139 now call filter_monitored before the airDateUtc _screen_queue stage, the same order as run_sonarr_cycle at engine.py:1369 and 1416."
+    }
+   ]
+  },
+  "codex-adversarial": {
+   "agent": "codex-adversarial",
+   "findings": [],
+   "agent_notes": [
+    "No substantive defect found. The earlier monitored filter preserves existing eligibility rules and date validation for monitored episodes while removing misleading warnings. All 11 Sonarr count-refresh tests passed."
+   ]
+  },
+  "compliance": {
+   "agent": "compliance",
+   "findings": [],
+   "agent_notes": [
+    "engine.py change inserts filter_monitored between the two _screen_queue calls in refresh_sonarr_counts's missing and cutoff chains; this exactly mirrors the existing placement in the sibling refresh_radarr_counts (engine.py ~1953) and refresh_lidarr_counts (engine.py ~2281) functions added in the prior commit (0318246), so it follows rather than deviates from the repo's established convention per CLAUDE.md precedence rules.",
+    "test_refresh_counts.py's new test uses the same logger.add(sink)/try-finally-logger.remove(handler_id) pattern already used 5+ times earlier in the same file (lines 382-534), consistent with Loguru-based logging convention and the resource-release-on-every-path rule.",
+    "No SecretStr, subprocess, SQL, innerHTML/dangerouslySetInnerHTML, hardcoded-secret, or sensitive-logging concerns apply to this diff -- neither file touches those surfaces.",
+    "No new except clauses or bare except were introduced; the existing broad except (AttributeError, KeyError, TypeError) backstop in refresh_sonarr_counts is unchanged by this diff."
+   ]
+  },
+  "framework-fastapi": {
+   "agent": "framework-fastapi",
+   "findings": [],
+   "agent_notes": [
+    "Diff touches only triggarr/search/engine.py (refresh_sonarr_counts business logic) and its test file; no FastAPI routes, Depends, response_model, Pydantic models, BackgroundTasks, lifespan/settings, or UploadFile handling appear in or near the changed lines -- out of this agent's lane."
+   ]
+  },
+  "impact": {
+   "agent": "impact",
+   "findings": [],
+   "agent_notes": [
+    "Scope: two lines change in refresh_sonarr_counts (triggarr/search/engine.py:2112 and :2139\u20132141). Both add filter_monitored() between the first record-shape _screen_queue pass and the airDateUtc date screen, on the missing chain and the cutoff chain. One parametrized regression test is added in tests/test_refresh_counts.py.",
+    "Parity: the refresh chain now runs its steps in the same order as run_sonarr_cycle (engine.py:1368\u20131372 for missing, :1415\u20131419 for cutoff): shape screen, filter_monitored, airDateUtc screen, filter_sonarr_episodes, tag screen and filter, key screen, dedup. That closes the earlier difference between the refresh path and the scheduled path.",
+    "Count semantics do not change. filter_sonarr_episodes (engine.py:426\u2013451) already drops any episode whose monitored flag is not set to true. So filtering unmonitored records earlier only changes which records reach the airDateUtc screen. An unmonitored episode with a timezone-less or malformed air date is now dropped quietly instead of being logged as a skipped malformed record. missing_eligible, missing_searchable and cutoff_searchable come out the same for every input.",
+    "Return value unchanged: the function still returns cutoff_screened, the list after the first shape screen only, before filter_monitored. Whatever consumes that tuple in triggarr/web/routes.py:1163 (the refresh dispatch table) gets the same data as before. The new filtered_cutoff local is assigned first by filter_monitored and then overwritten by the date screen, so no variable scoping changes.",
+    "Type safety: filter_monitored calls item.get, and its input has already been through the shape _screen_queue pass, which skips records that are not objects (D-02). No new AttributeError path reaches the (AttributeError, KeyError, TypeError) backstop at engine.py:2170.",
+    "Blast radius: limited to the manual Refresh-counts action for Sonarr instances, reached through routes.py. No public signature, state schema or persisted-field change. Radarr and Lidarr refresh paths (engine.py:1953/1982 and 2281/2305) already had this order and are untouched. Performance: adds one O(n) list comprehension per queue, which is negligible next to the HTTP fetch.",
+    "Test: the new parametrized test checks both the missing and the cutoff queue. In each, an unmonitored episode with a timezone-less airDateUtc must produce no 'malformed date' warning, the instance must stay connected, and missing_eligible must be 1. That pins the fix on both changed lines.",
+    "Verdict: shippable as-is; no blocking impact."
+   ],
+   "recheck_verdicts": [
+    {
+     "token": "R4",
+     "verdict": "resolved",
+     "reason": "At HEAD, filter_monitored now runs before the airDateUtc _screen_queue on both the missing (engine.py:2112) and cutoff (engine.py:2139) refresh chains, the same order run_sonarr_cycle uses at engine.py:1369/1416."
+    }
+   ]
+  },
+  "language-python": {
+   "agent": "language-python",
+   "findings": [],
+   "agent_notes": [
+    "Diff limited to two filter_monitored() insertions in triggarr/search/engine.py (lines 2112, 2139) and one new parametrized test in tests/test_refresh_counts.py (lines 441-472). Reviewed both files in full surrounding context (engine.py 2018-2184, filter_monitored def at 288-299, test file imports/helpers). No mutable default args, bare except, is-vs-eq, missing context managers, or type-hint convention breaks introduced by this diff; the new test's logger.add/try/finally/logger.remove pattern matches the established idiom at test_refresh_counts.py:424-429."
+   ]
+  },
+  "security": {
+   "agent": "security",
+   "findings": [],
+   "agent_notes": [
+    "Diff is a narrow filter-ordering fix in refresh_sonarr_counts (triggarr/search/engine.py) moving filter_monitored before the airDateUtc _screen_queue pass, plus a matching regression test. No injection, XSS, secrets, auth, data-exposure, path-traversal, SSRF, deserialization, or mass-assignment sinks touched; no protections weakened or removed."
+   ]
+  },
+  "test-sufficiency": {
+   "agent": "test-sufficiency",
+   "findings": [
+    {
+     "id": "cov-001",
+     "file": "triggarr/search/engine.py",
+     "line": 2117,
+     "title": "Sonarr Refresh counts: the missing-queue tag-filter step never runs in any test",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "medium",
+     "agent_confidence": 90,
+     "confidence": 90,
+     "in_diff": false,
+     "intent_doc_match": null,
+     "problem": "When a tag is set for Sonarr's missing queue, Refresh counts takes an extra step: it checks each episode's series tags and keeps only the matching ones. No test turns that step on. The coverage report shows the check at L2117 always going the same way, and the tag-screening and tag-filtering lines at L2118 and L2122 never run. The fix in this change reorders the steps just above it, so the tag path now gets different input than before and nothing has checked it.",
+     "current_code": "if scope.missing_tag_id is not None:\n    filtered_missing = _screen_queue(... nested_key=\"series\", tags_at=(\"series\", \"tags\"))\n    filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)",
+     "fix_hint": "Add a Sonarr refresh test with a missing-queue tag configured: one matching episode, one non-matching episode, and one record with malformed series tags. Assert the eligible count and that the instance stays connected.",
+     "why_it_matters": "Tag-scoped counts are what the dashboard shows for users who limit searches by tag. If this path breaks, Sonarr could show wrong counts or disconnect the instance over one bad record, and no test would catch it. The cutoff side of the same code is tested, so the missing side is the gap.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    },
+    {
+     "id": "cov-002",
+     "file": "triggarr/search/engine.py",
+     "line": 2015,
+     "title": "No test checks that Refresh counts returns the cleaned cutoff list, not the raw one",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "medium",
+     "agent_confidence": 80,
+     "confidence": 80,
+     "in_diff": false,
+     "intent_doc_match": null,
+     "problem": "Radarr's Refresh counts returns the cutoff list after bad records have been removed (`cutoff_screened`), so callers never receive a malformed item. The return line runs in tests, but the only test that checks the returned cutoff list (tests/test_refresh_counts.py:655) uses all-valid records. The cleaned list and the raw list are identical there, so a change back to returning the raw list would still pass.",
+     "current_code": "return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+     "fix_hint": "Add a refresh test with one malformed cutoff record and assert the returned cutoff list leaves it out.",
+     "why_it_matters": "This return value is the only thing stopping a malformed record from reaching the code that uses the cutoff list. If it quietly went back to the raw list, the crash this phase fixes could come back somewhere else, with no failing test to warn about it.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    },
+    {
+     "id": "cov-003",
+     "file": "tests/test_refresh_counts.py",
+     "line": 441,
+     "title": "New cutoff-variant test only checks the missing-queue count, not the cutoff counts",
+     "category": "test-coverage",
+     "cwe": null,
+     "severity": "low",
+     "agent_confidence": 60,
+     "confidence": 60,
+     "in_diff": true,
+     "intent_doc_match": null,
+     "problem": "The new test runs twice, once per queue. In the cutoff run, the unmonitored episode is only in the cutoff queue, but the test only checks the missing-queue count and that no 'malformed date' warning was logged. It never checks that the cutoff count leaves out the unmonitored episode.",
+     "current_code": "assert ist[\"missing_eligible\"] == 1\nassert \"malformed date\" not in sink.getvalue()",
+     "fix_hint": "In the cutoff run, also assert the cutoff searchable count is 0.",
+     "why_it_matters": "The fix adds the monitored-only filter to both queues. This test proves the warning is gone, but on the cutoff side it does not prove the count is right.",
+     "silenced_marker_nearby": false,
+     "needs_verification": null
+    }
+   ],
+   "agent_notes": [
+    "Overall engine.py at this head: 97.3% of lines and 94.9% of branches run in tests (3281 tests passed).",
+    "The two lines this diff adds (filter_monitored at L2112 and L2139) both run. The new test covers both queues and protects against the unmonitored, timezone-less air-date warning coming back.",
+    "Branch gaps remain in the refresh functions: the defensive checks at L1898, L2058 and L2225 are each only half tested, with L1899-1900, L2059-2060 and L2226-2227 never run; the handlers at L1918-1919, L2078-2079 and L2245-2246 never run either. These look like guard code that is not normally reached, and they predate this diff."
+   ],
+   "recheck_verdicts": [
+    {
+     "token": "R5",
+     "verdict": "still-applies",
+     "reason": "Coverage at HEAD shows the missing-tag check at L2117 always going the same way, and the tag-screen and filter lines L2118 and L2122 never run; this diff adds no tagged Sonarr refresh test."
+    },
+    {
+     "token": "R6",
+     "verdict": "still-applies",
+     "reason": "Same evidence as R5: the Sonarr missing-tag screening step (L2118-2122) still has 0 hits at HEAD."
+    },
+    {
+     "token": "R7",
+     "verdict": "still-applies",
+     "reason": "The only assertion on the returned cutoff list (test_refresh_counts.py:655) uses all-valid records, so it cannot tell the cleaned list from the raw one; this diff adds no such test."
+    },
+    {
+     "token": "R8",
+     "verdict": "still-applies",
+     "reason": "Same evidence as R7: no test passes a malformed cutoff record and checks that the returned list leaves it out."
+    }
+   ]
+  }
+ },
+ "scored": {
+  "scored_by_script": true,
+  "findings": [
+   {
+    "id": "cov-001",
+    "file": "triggarr/search/engine.py",
+    "line": 2117,
+    "title": "Sonarr Refresh counts: the missing-queue tag-filter step never runs in any test",
+    "category": "test-coverage",
+    "cwe": null,
+    "severity": "medium",
+    "agent_confidence": 90,
+    "in_diff": false,
+    "intent_doc_match": null,
+    "problem": "When a tag is set for Sonarr's missing queue, Refresh counts takes an extra step: it checks each episode's series tags and keeps only the matching ones. No test turns that step on. The coverage report shows the check at L2117 always going the same way, and the tag-screening and tag-filtering lines at L2118 and L2122 never run. The fix in this change reorders the steps just above it, so the tag path now gets different input than before and nothing has checked it.",
+    "current_code": "if scope.missing_tag_id is not None:\n    filtered_missing = _screen_queue(... nested_key=\"series\", tags_at=(\"series\", \"tags\"))\n    filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)",
+    "fix_hint": "Add a Sonarr refresh test with a missing-queue tag configured: one matching episode, one non-matching episode, and one record with malformed series tags. Assert the eligible count and that the instance stays connected.",
+    "why_it_matters": "Tag-scoped counts are what the dashboard shows for users who limit searches by tag. If this path breaks, Sonarr could show wrong counts or disconnect the instance over one bad record, and no test would catch it. The cutoff side of the same code is tested, so the missing side is the gap.",
+    "silenced_marker_nearby": false,
+    "needs_verification": null,
+    "agent": "test-sufficiency",
+    "source_window": [
+     "            )",
+     "            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+     "            if scope.missing_tag_id is not None:",
+     "                filtered_missing = _screen_queue(",
+     "                    filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,"
+    ],
+    "canonical_line_content": "            if scope.missing_tag_id is not None:",
+    "orchestrator_score": 82,
+    "band": "warning",
+    "attribution": [
+     "test-sufficiency"
+    ],
+    "stable_hash": "2e37ca255757753ac4754db1f946bf54e8ebc143dd00fec8f4c67c98df5f0c23",
+    "status": "new",
+    "members": [
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2117,
+      "title": "Sonarr Refresh counts: the missing-queue tag-filter step never runs in any test",
+      "category": "test-coverage",
+      "severity": "medium",
+      "agent": "test-sufficiency",
+      "agent_confidence": 90,
+      "problem": "When a tag is set for Sonarr's missing queue, Refresh counts takes an extra step: it checks each episode's series tags and keeps only the matching ones. No test turns that step on. The coverage report shows the check at L2117 always going the same way, and the tag-screening and tag-filtering lines at L2118 and L2122 never run. The fix in this change reorders the steps just above it, so the tag path now gets different input than before and nothing has checked it.",
+      "source_window": [
+       "            )",
+       "            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+       "            if scope.missing_tag_id is not None:",
+       "                filtered_missing = _screen_queue(",
+       "                    filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,"
+      ],
+      "cwe": null,
+      "why_it_matters": "Tag-scoped counts are what the dashboard shows for users who limit searches by tag. If this path breaks, Sonarr could show wrong counts or disconnect the instance over one bad record, and no test would catch it. The cutoff side of the same code is tested, so the missing side is the gap.",
+      "fix_hint": "Add a Sonarr refresh test with a missing-queue tag configured: one matching episode, one non-matching episode, and one record with malformed series tags. Assert the eligible count and that the instance stays connected.",
+      "current_code": "if scope.missing_tag_id is not None:\n    filtered_missing = _screen_queue(... nested_key=\"series\", tags_at=(\"series\", \"tags\"))\n    filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)",
+      "intent_doc_match": null
+     },
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2116,
+      "title": "Sonarr count refresh never tests the new tag-screening step for a missing-queue tag",
+      "category": "test-coverage",
+      "severity": "medium",
+      "agent": "test-sufficiency",
+      "agent_confidence": 88,
+      "problem": "When a Sonarr instance has a missing-queue tag set, Refresh counts now runs a new check that drops episodes with a malformed series or series tags before tag filtering. No test runs this path. The check at L2117 and the tag filter at L2121 both have zero hits, and the tag condition at L2116 shows 50% branch coverage (only the 'no tag configured' side runs).",
+      "source_window": [
+       "            )",
+       "            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+       "            if scope.missing_tag_id is not None:",
+       "                filtered_missing = _screen_queue(",
+       "                    filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,"
+      ],
+      "cwe": null,
+      "why_it_matters": "This change is meant to keep one bad record from disconnecting the whole instance. For tag-scoped Sonarr missing counts, nothing confirms that actually happens. If the check is wrong, the dashboard shows the instance as disconnected or shows wrong counts, and no test catches it. The Sonarr cutoff side, Radarr and Lidarr each have a covered equivalent.",
+      "fix_hint": "add a refresh_sonarr_counts test with missing_tag set, one good tagged episode and one with series='not-a-dict' or non-list series.tags; assert it stays connected, missing_eligible == 1 and a 'Skipped 1' missing-queue log",
+      "current_code": "if scope.missing_tag_id is not None:\n    filtered_missing = _screen_queue(\n        filtered_missing, app_label=\"Sonarr\", queue=\"missing\", tally=screen_tally,\n        nested_key=\"series\", tags_at=(\"series\", \"tags\"),\n    )\n    filtered_missing = filter_by_tag(filtered_missing, scope.missing_tag_id, _sonarr_tags)",
+      "intent_doc_match": null,
+      "obligation": {
+       "stable_hash": "fd66b10f66c3d3adfdb7a9dc1c02f0435f98443777971864da3f5689da229d93",
+       "orchestrator_score": 80,
+       "band": "warning",
+       "attribution": [
+        "test-sufficiency"
+       ],
+       "snapshot": {
+        "at_pass": 2,
+        "file": "triggarr/search/engine.py",
+        "line": 2116,
+        "canonical_line_content": "            filtered_missing = filter_sonarr_episodes(filtered_missing)",
+        "band": "warning"
+       }
+      }
+     }
+    ],
+    "snapshot": {
+     "at_pass": 2,
+     "file": "triggarr/search/engine.py",
+     "line": 2117,
+     "canonical_line_content": "            if scope.missing_tag_id is not None:",
+     "band": "warning"
+    }
+   },
+   {
+    "id": "cov-002",
+    "file": "triggarr/search/engine.py",
+    "line": 2015,
+    "title": "No test checks that Refresh counts returns the cleaned cutoff list, not the raw one",
+    "category": "test-coverage",
+    "cwe": null,
+    "severity": "medium",
+    "agent_confidence": 80,
+    "in_diff": false,
+    "intent_doc_match": null,
+    "problem": "Radarr's Refresh counts returns the cutoff list after bad records have been removed (`cutoff_screened`), so callers never receive a malformed item. The return line runs in tests, but the only test that checks the returned cutoff list (tests/test_refresh_counts.py:655) uses all-valid records. The cleaned list and the raw list are identical there, so a change back to returning the raw list would still pass.",
+    "current_code": "return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+    "fix_hint": "Add a refresh test with one malformed cutoff record and assert the returned cutoff list leaves it out.",
+    "why_it_matters": "This return value is the only thing stopping a malformed record from reaching the code that uses the cutoff list. If it quietly went back to the raw list, the crash this phase fixes could come back somewhere else, with no failing test to warn about it.",
+    "silenced_marker_nearby": false,
+    "needs_verification": null,
+    "agent": "test-sufficiency",
+    "source_window": [
+     "        return None",
+     "",
+     "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+     "",
+     ""
+    ],
+    "canonical_line_content": "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+    "orchestrator_score": 72,
+    "band": "medium",
+    "attribution": [
+     "test-sufficiency"
+    ],
+    "stable_hash": "23ddaf1562af09c7781500ce2861c16544678dc29abc9e49cfcc2986cf3372ad",
+    "status": "new",
+    "members": [
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2015,
+      "title": "No test checks that Refresh counts returns the cleaned cutoff list, not the raw one",
+      "category": "test-coverage",
+      "severity": "medium",
+      "agent": "test-sufficiency",
+      "agent_confidence": 80,
+      "problem": "Radarr's Refresh counts returns the cutoff list after bad records have been removed (`cutoff_screened`), so callers never receive a malformed item. The return line runs in tests, but the only test that checks the returned cutoff list (tests/test_refresh_counts.py:655) uses all-valid records. The cleaned list and the raw list are identical there, so a change back to returning the raw list would still pass.",
+      "source_window": [
+       "        return None",
+       "",
+       "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+       "",
+       ""
+      ],
+      "cwe": null,
+      "why_it_matters": "This return value is the only thing stopping a malformed record from reaching the code that uses the cutoff list. If it quietly went back to the raw list, the crash this phase fixes could come back somewhere else, with no failing test to warn about it.",
+      "fix_hint": "Add a refresh test with one malformed cutoff record and assert the returned cutoff list leaves it out.",
+      "current_code": "return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+      "intent_doc_match": null
+     },
+     {
+      "file": "triggarr/search/engine.py",
+      "line": 2015,
+      "title": "No test checks that the screened cutoff list (not the raw one) is what Refresh counts returns",
+      "category": "test-coverage",
+      "severity": "medium",
+      "agent": "test-sufficiency",
+      "agent_confidence": 65,
+      "problem": "All three refresh helpers now return the screened cutoff list (cutoff_screened) instead of the raw one, so a malformed record can't leak to callers. The new tests only check that the result is not None and check the counts in state. None of them looks at the returned cutoff list, even test_refresh_counts_skips_non_object_record, which feeds a null cutoff record. The same applies to the return lines at L2181 (Sonarr) and L2337 (Lidarr).",
+      "source_window": [
+       "        return None",
+       "",
+       "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+       "",
+       ""
+      ],
+      "cwe": null,
+      "why_it_matters": "The code comments say outright that a malformed record must never leave this helper. If someone later returns the raw list again, whatever reads this result could get a null record and crash, and every current test would still pass.",
+      "fix_hint": "in test_refresh_counts_skips_non_object_record assert None not in result[1] (and that the good record is present) for all three apps",
+      "current_code": "return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+      "intent_doc_match": null,
+      "obligation": {
+       "stable_hash": "a7bf3b2cc7093a57644ff9ddc1037054cd47c945f11b5ac43971f030d1a05356",
+       "orchestrator_score": 77,
+       "band": "medium",
+       "attribution": [
+        "test-sufficiency"
+       ],
+       "snapshot": {
+        "at_pass": 1,
+        "file": "triggarr/search/engine.py",
+        "line": 2015,
+        "canonical_line_content": "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+        "band": "medium"
+       }
+      }
+     }
+    ],
+    "snapshot": {
+     "at_pass": 2,
+     "file": "triggarr/search/engine.py",
+     "line": 2015,
+     "canonical_line_content": "    return (filtered_missing, cutoff_screened if not scope.cutoff_unresolved else [], scope.cutoff_tag_id)",
+     "band": "medium"
+    }
+   }
+  ],
+  "fixed_since_last": [],
+  "filtered": [
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 2116,
+    "title": "Sonarr count refresh never tests the new tag-screening step for a missing-queue tag",
+    "reason": "absorbed-into: 2e37ca255757753ac4754db1f946bf54e8ebc143dd00fec8f4c67c98df5f0c23"
+   },
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 2015,
+    "title": "No test checks that the screened cutoff list (not the raw one) is what Refresh counts returns",
+    "reason": "absorbed-into: 23ddaf1562af09c7781500ce2861c16544678dc29abc9e49cfcc2986cf3372ad"
+   },
+   {
+    "file": "tests/test_refresh_counts.py",
+    "line": 441,
+    "title": "New cutoff-variant test only checks the missing-queue count, not the cutoff counts",
+    "reason": "sub-threshold"
+   }
+  ],
+  "resolved": [
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 2112,
+    "title": "Sonarr Refresh counts checks air dates before the monitored filter, unlike the scheduled Sonarr cycle",
+    "band": "medium",
+    "stable_hash": "832cbe882f1cf3d53326a3acbe491029e4e582f06eed06960df800e3fad84bad",
+    "agent": "architecture",
+    "resolution": {
+     "source": "recheck",
+     "agents": [
+      "architecture"
+     ],
+     "verdict": "resolved",
+     "head_sha": "1062097a7676fddcdde3caf500f96ba1ea04d65c",
+     "at_pass": 2,
+     "reason": "At HEAD, refresh_sonarr_counts calls filter_monitored before the airDateUtc _screen_queue on both the missing chain (engine.py:2112-2115) and the cutoff chain (engine.py:2139-2142). This is the same order run_sonarr_cycle uses at engine.py:1369-1372 and 1416-1419."
+    }
+   },
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 2112,
+    "title": "Sonarr Refresh counts checks dates before dropping unmonitored episodes, which the scheduled cycle does not do",
+    "band": null,
+    "stable_hash": null,
+    "agent": "bugs",
+    "resolution": {
+     "source": "recheck",
+     "agents": [
+      "bugs"
+     ],
+     "verdict": "resolved",
+     "head_sha": "1062097a7676fddcdde3caf500f96ba1ea04d65c",
+     "at_pass": 2,
+     "reason": "engine.py:2112 and 2139 now call filter_monitored before the airDateUtc _screen_queue stage, the same order as run_sonarr_cycle at engine.py:1369 and 1416."
+    }
+   },
+   {
+    "file": "triggarr/search/engine.py",
+    "line": 2112,
+    "title": "Sonarr Refresh counts checks air dates before filtering out unmonitored episodes, unlike the scheduled cycle",
+    "band": null,
+    "stable_hash": null,
+    "agent": "impact",
+    "resolution": {
+     "source": "recheck",
+     "agents": [
+      "impact"
+     ],
+     "verdict": "resolved",
+     "head_sha": "1062097a7676fddcdde3caf500f96ba1ea04d65c",
+     "at_pass": 2,
+     "reason": "At HEAD, filter_monitored now runs before the airDateUtc _screen_queue on both the missing (engine.py:2112) and cutoff (engine.py:2139) refresh chains, the same order run_sonarr_cycle uses at engine.py:1369/1416."
+    }
+   }
+  ]
+ }
+}

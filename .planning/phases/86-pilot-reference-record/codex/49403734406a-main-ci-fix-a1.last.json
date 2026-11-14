@@ -1,0 +1,68 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "49403734406a7c0073def56b5fc5740b81fcf30e",
+  "inspected_base_sha": "b80c3e26cf9456dde7245350d7033f6feb94db0f",
+  "pr_url": "none",
+  "scope": "Restore CI: opentelemetry-api 1.45.2 and deterministic boundary-fixture clocks.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found in the complete scoped diff. The clock patch preserves credential-age validation, and CI and production consume the updated lockfile. Harness evidence for the exact head reports 3281 passed and 1 skipped.",
+  "coverage": [
+    "Complete diff: tests/test_codex_review_container.py and uv.lock.",
+    "Phase-plan diff: no changed plan files.",
+    "Clock substitution, timestamp parsing, credential freshness and future-skew boundaries, stale-credential rejection, entry-point callers, and monkeypatch lifetime.",
+    "Dependency references, locked CI installation and audits, and hash-checked production installation."
+  ],
+  "exclusions": [
+    "Planning markdown other than phase plans, planning JSONL transcripts, and generated review artifacts under .planning/."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e b80c3e26cf9456dde7245350d7033f6feb94db0f",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..49403734406a7c0073def56b5fc5740b81fcf30e -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete scoped implementation diff."
+    },
+    {
+      "command": "git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..49403734406a7c0073def56b5fc5740b81fcf30e -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect phase-plan changes."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; sed -n '1,130p' tests/test_codex_review_container.py; sed -n '1840,2180p' tests/test_codex_review_container.py",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and fixture context."
+    },
+    {
+      "command": "rg -n 'datetime|timedelta|last_refresh|MAX.*AGE|def .*main' scripts/codex_review*; cat pyproject.toml; rg -n 'opentelemetry|pytest|uv sync|uv export|audit' .github Dockerfile uv.lock; git status --short",
+      "exit_code": 0,
+      "purpose": "Locate dependency and CI consumers and inspect worktree status; runner lookup was corrected in the next command."
+    },
+    {
+      "command": "rg -n 'datetime|last_refresh|def credential_preflight|def verify_boundary_main|def main' tests/codex_review_run.py; rg -n '^def test_.*(credential|refresh|boundary_main|main_)|timedelta\\(days=|datetime\\.' tests/test_codex_review_container.py; cat pyproject.toml; cat Dockerfile",
+      "exit_code": 0,
+      "purpose": "Inspect clock consumers, relevant tests, dependency configuration, and production installation."
+    },
+    {
+      "command": "sed -n '1159,1228p' tests/test_codex_review_container.py; sed -n '2128,2170p' tests/test_codex_review_container.py; sed -n '3016,3100p' tests/test_codex_review_container.py; sed -n '1630,1675p' tests/codex_review_run.py; sed -n '2913,2960p' tests/codex_review_run.py; sed -n '4179,4245p' tests/codex_review_run.py; sed -n '4734,4795p' tests/codex_review_run.py; rg -n -C 5 opentelemetry uv.lock; sed -n '235,249p' .github/workflows/ci.yml; git diff --check b80c3e26cf9456dde7245350d7033f6feb94db0f..49403734406a7c0073def56b5fc5740b81fcf30e",
+      "exit_code": 0,
+      "purpose": "Trace freshness validation and entry points, inspect assertions and dependency audit, and check diff whitespace."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; used the exact-head harness evidence.",
+    "Did not independently verify the external CVE advisory, package artifacts, or live dependency-audit result because review reads were restricted to this working copy.",
+    "Reported exit codes for grouped shell commands are their aggregate shell exit codes."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

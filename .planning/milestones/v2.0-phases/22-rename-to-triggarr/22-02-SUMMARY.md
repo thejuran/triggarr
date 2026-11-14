@@ -109,7 +109,7 @@ Each task was committed atomically:
 None - plan executed exactly as written.
 
 ## Issues Encountered
-- Virtual environment had stale interpreter path from `/Users/julianamacbook/fetcharr/` -- recreated with `uv sync --extra dev`
+- Virtual environment had stale interpreter path from `~/fetcharr/` -- recreated with `uv sync --extra dev`
 - test_search.py hangs on execution (pre-existing issue documented in 22-01 SUMMARY) -- all 220 other tests pass
 
 ## User Setup Required

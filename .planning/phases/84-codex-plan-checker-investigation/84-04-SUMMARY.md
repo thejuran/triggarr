@@ -32,15 +32,15 @@ key-files:
   created:
     - .planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md (local only, git-excluded, never committed per D-16; Record sha256 e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a acknowledged by the owner; the file's own text was not edited to add an "Owner acknowledgment" section -- the acknowledgment is instead recorded in the separate evidence file below, per explicit continuation instruction, so the acknowledged hash is never altered by the act of recording acknowledgment of it)
     - .planning/phases/84-codex-plan-checker-investigation/84-CRITERIA-ACK.md (local only, git-excluded, never committed; acknowledged hash, UTC timestamp, owner's verbatim reply, the two accepted judgment calls, the three cosmetic issues left unedited by owner choice)
-    - /Users/julianamacbook/scratch/planchk-pilot/evaluator-only/ (mode 700; answer-key-initial.md, answer-key-revision.md, contamination-phrases.txt, adoption-criteria.locked.md)
-    - /Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py
-    - /Users/julianamacbook/scratch/planchk-pilot/harness/check_fallback_parity.py
-    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/ (frozen, 133 files)
-    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt
-    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1.sha256
-    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-drivers.sha256
-    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1.check.txt
-    - /Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1.progress
+    - ~/scratch/planchk-pilot/evaluator-only/ (mode 700; answer-key-initial.md, answer-key-revision.md, contamination-phrases.txt, adoption-criteria.locked.md)
+    - ~/scratch/planchk-pilot/harness/check_packet.py
+    - ~/scratch/planchk-pilot/harness/check_fallback_parity.py
+    - ~/scratch/planchk-pilot/packets/blind-r1/ (frozen, 133 files)
+    - ~/scratch/planchk-pilot/packets/blind-r1-driver.txt
+    - ~/scratch/planchk-pilot/packets/blind-r1.sha256
+    - ~/scratch/planchk-pilot/packets/blind-r1-drivers.sha256
+    - ~/scratch/planchk-pilot/packets/blind-r1.check.txt
+    - ~/scratch/planchk-pilot/packets/blind-r1.progress
   modified: []
 
 key-decisions:
@@ -48,7 +48,7 @@ key-decisions:
   - "Checker invocation alias resolved live: sonnet (bm-sdk query resolve-model bm-plan-checker, model_profile balanced) -- matches 84-RESEARCH.md's expectation"
   - "Route: hook (carried from 84-RUNTIME-VERDICT.md); no fallback-agent driver or --agents-file needed; blind-r1-driver.txt is used byte-for-byte by both arms"
   - "Effort: max (carried from 84-PILOT-EVIDENCE.md's 'Effort accepted: max', string-equality-checked against the criteria record)"
-  - ".planning/REQUIREMENTS.md and /Users/julianamacbook/Cowork/mediaserver/v5test-results.md (+ v5test-results/) recorded UNAVAILABLE in the packet README rather than substituted with a wrong-era copy -- the latter also postdates the cutoff and falls inside the actual manual-review window"
+  - ".planning/REQUIREMENTS.md and ~/Cowork/mediaserver/v5test-results.md (+ v5test-results/) recorded UNAVAILABLE in the packet README rather than substituted with a wrong-era copy -- the latter also postdates the cutoff and falls inside the actual manual-review window"
   - "Revision 4's §6 launch precondition is MET for every participating backend (Codex, Anthropic/ordinary arm, parent/orchestrator) on the basis of four dated owner attestations recorded verbatim in 84-ADOPTION-CRITERIA.md §6 item 2 (plan tiers; no separate API billing; Claude extra usage confirmed off after being briefly on) plus prior read-only evidence -- Plan 05 must re-check this immediately before its first run"
   - "Owner acknowledged revision 4 verbatim ('acknowledged') on 2026-10-26, accepting as written two orchestrator-presented judgment calls (the Codex proxy-internals limitation as disclosed-non-blocking against §6; 'no api billing' read as covering both accounts) and declining to request three listed cosmetic cleanups -- recorded in a separate, git-excluded 84-CRITERIA-ACK.md rather than inside 84-ADOPTION-CRITERIA.md itself, so the acknowledged Record sha256 is never altered by the act of recording the acknowledgment"
 
@@ -73,7 +73,7 @@ completed: 2026-10-26
 ## Accomplishments
 
 ### Task 1 — Evaluator-only answer keys and the locked criteria record
-- Created `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/` at mode 700 and wrote `answer-key-initial.md` (K1-K7, the blueprint's 7 evaluator-only reproduction checks verbatim-in-substance plus the credit rule), `answer-key-revision.md` (R1-R4, the 4 later revision-round findings), and `contamination-phrases.txt` (26 lowercase, finding-specific phrases; confirmed no "name reuse"/"stable identity" line, since those distinctions must remain discussable in the packet).
+- Created `~/scratch/planchk-pilot/evaluator-only/` at mode 700 and wrote `answer-key-initial.md` (K1-K7, the blueprint's 7 evaluator-only reproduction checks verbatim-in-substance plus the credit rule), `answer-key-revision.md` (R1-R4, the 4 later revision-round findings), and `contamination-phrases.txt` (26 lowercase, finding-specific phrases; confirmed no "name reuse"/"stable identity" line, since those distinctions must remain discussable in the packet).
 - Wrote `84-ADOPTION-CRITERIA.md`: D-12, D-13, D-14 (all seven bullets), D-15, D-17, D-18 copied verbatim from `84-CONTEXT.md`; the fixed scoring rules (hit/real-finding/false-positive definitions, the D-12 mean-and-floor bar, the D-13 FP-cap formula, per-D-14-item evidence sources, answer-key-validity handling, D-15's "any unmet item -> not met", D-17's run order and one-retry rule, D-18's harness ceiling and doctor-state check); the matched-run settings (parent alias opus, checker alias **sonnet** resolved live via `bm-sdk query resolve-model bm-plan-checker`, Route: hook, Effort: max copied from and string-equal to `84-PILOT-EVIDENCE.md`'s "Effort accepted: max", shared settings file, fresh session/packet per run, blind adjudicator); the Input label (ORIGINAL, carried from `84-HASH-MANIFEST.md`); and known limitations (BM-4.9.1-vs-5.0.3 checker version, the `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` prerequisite, E4/E5's 900s-ceiling shortfall, the agentId-absent correlation method) carried forward rather than re-discovered.
 - Computed and recorded `Record sha256: 3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69` over the record's content, then copied the file byte-identically into `evaluator-only/adoption-criteria.locked.md` and `chmod a-w` it.
 - Ran the task's exact automated `<verify>` command: **exit 0.**
@@ -330,7 +330,7 @@ Before recording the acknowledgment, the hash and the locked copy were independe
 this session: the sha256 of the record's content up to (not including) the `Record sha256:` line
 (line-joined with `\n`, no trailing newline) was recomputed with Python and matched
 `e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a` exactly; `cmp` against
-`/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/adoption-criteria.locked.md` exited 0
+`~/scratch/planchk-pilot/evaluator-only/adoption-criteria.locked.md` exited 0
 (byte-identical), and that locked copy remains mode 444 (non-writable).
 
 Per explicit continuation instruction, **`84-ADOPTION-CRITERIA.md` itself was not modified** to add
@@ -392,10 +392,10 @@ No task-level code commits in Triggarr: every file Tasks 1-2 create or modify is
 
 - `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md` — locked criteria record, revised four times on 2026-10-26 per the owner's five (revision 1), three (revision 2), five-plus-consolidation (revision 3), then three-plus-one-correction (revision 4) requested changes; revision 3 restructured the record into D-12..D-18 verbatim plus nine single-authority sections (§2-§9) and a "Revision history" holding all superseded wording; revision 4 fixed §8's sampling (one shared pre-window/post-window sample for all four evidence types), §6's Codex billing certainty (replaced with cited evidence plus the proxy-binary limitation), added §6's hard launch precondition (initially BLOCKED on every row, then resolved to MET for every participating backend by four dated owner attestations recorded verbatim in §6), and corrected §8's session-id wording (session match ⇒ session exclusivity only, never checker attribution by default); `Record sha256: e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a` (supersedes `35cc8a51d3c881f7df0b110aabc4ed667143fe2431732aac5e961b68a0e3fa93`, which supersedes `24ac86fa77b17fcf75c388faae7dfe1adf37a99e9b4c028eb4336c8892dd7796`, which supersedes `f33e8101e7df4690889a2bcf8fe73af95a1ff28d0b0fe58bb4a619e700fa3b05`, which supersedes `3ba93ce18d217542813bd8daad6c285b76fc82bd90fc6d9de1be36385e000e69`); **this hash is now acknowledged by the owner** (2026-10-26); the file's own text was not edited to add the plan's "Owner acknowledgment" section (local only, never committed, per D-16)
 - `.planning/phases/84-codex-plan-checker-investigation/84-CRITERIA-ACK.md` — the acknowledgment evidence record (local only, never committed, git-excluded)
-- `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/` — answer keys, contamination phrases, the locked criteria's read-only copy (mode 700)
-- `/Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py` — contamination and route-parity checks (stdlib only)
-- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/` — the frozen, 133-file blind comparison packet
-- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress` — driver prompt and freeze/verification evidence
+- `~/scratch/planchk-pilot/evaluator-only/` — answer keys, contamination phrases, the locked criteria's read-only copy (mode 700)
+- `~/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py` — contamination and route-parity checks (stdlib only)
+- `~/scratch/planchk-pilot/packets/blind-r1/` — the frozen, 133-file blind comparison packet
+- `~/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress` — driver prompt and freeze/verification evidence
 - `.planning/phases/84-codex-plan-checker-investigation/84-04-SUMMARY.md` — this file (partial; the only file this pause commits)
 
 ## ADOPTION-CRITERIA sha256: e293d6e6ecabf24470e11e0528e0c849b8bc5cbdefea8c5651887298ffc2457a
@@ -441,7 +441,7 @@ See `key-decisions` in the frontmatter above. Headline: every value needed by Pl
 - **Issue:** The plan requires redacting "private hostnames, IPs, usernames and any credential-like strings" from the two runbook files before they enter a packet that a Codex-routed (external-backend) checker will read in Plan 05. The source files contain a real NAS hostname, a real personal seedbox domain, a real username, a real LAN IP, and several internal container hostnames.
 - **Fix:** Wrote a longest-match-first literal-string redaction script (ordered to avoid partial-match collisions, e.g. `nyx.usbx.me` before `jules1651`), applied it, then ran a residual-token grep over the redacted output confirming zero remaining occurrences of every identified private token before the files entered the frozen packet. Logged counts only (HOST=92, IP=1, USER=14, SECRET=0), never the original values, per the plan's own instruction and this project's CLAUDE.md ("never log sensitive data").
 - **Cost if wrong:** High if missed — an unredacted leak would send the owner's real infrastructure topology, personal domain and username to an external LLM backend via model-gateway. Mitigated by the explicit residual-token verification step before freezing, not just trusting the redaction script's own reported counts.
-- **Files modified:** `packets/blind-r1/sandbox-runbook/SANDBOX-sonarr-v5.md`, `RUNBOOK-sonarr-v5-test.md` (new, redacted copies only — the originals at `/Users/julianamacbook/Cowork/mediaserver/` were never modified).
+- **Files modified:** `packets/blind-r1/sandbox-runbook/SANDBOX-sonarr-v5.md`, `RUNBOOK-sonarr-v5-test.md` (new, redacted copies only — the originals at `~/Cowork/mediaserver/` were never modified).
 - **Commit:** N/A (scratch files, not committed).
 
 ---
@@ -489,10 +489,10 @@ One not-a-bug issue beyond the three Task 1-2 auto-fixed deviations: Task 3's ow
 
 Verified file existence (all FOUND):
 - `.planning/phases/84-codex-plan-checker-investigation/84-ADOPTION-CRITERIA.md`
-- `/Users/julianamacbook/scratch/planchk-pilot/evaluator-only/answer-key-initial.md`, `answer-key-revision.md`, `contamination-phrases.txt`, `adoption-criteria.locked.md`
-- `/Users/julianamacbook/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py`
-- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress`
-- `/Users/julianamacbook/scratch/planchk-pilot/packets/blind-r1/REVIEWER-BRIEF.md`, `README.md`
+- `~/scratch/planchk-pilot/evaluator-only/answer-key-initial.md`, `answer-key-revision.md`, `contamination-phrases.txt`, `adoption-criteria.locked.md`
+- `~/scratch/planchk-pilot/harness/check_packet.py`, `check_fallback_parity.py`
+- `~/scratch/planchk-pilot/packets/blind-r1-driver.txt`, `blind-r1.sha256`, `blind-r1-drivers.sha256`, `blind-r1.check.txt`, `blind-r1.progress`
+- `~/scratch/planchk-pilot/packets/blind-r1/REVIEWER-BRIEF.md`, `README.md`
 
 Verified commit exists: `git log --oneline --all | grep -q 390534d` → FOUND.
 
