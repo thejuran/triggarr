@@ -1,0 +1,195 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "4066d538e12d38ab8612dc651965fbfb38dca2f5",
+  "inspected_base_sha": "7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Whole net change between the specified commits, excluding planning markdown other than changed *-PLAN.md files, raw review transcripts, and generated review artifacts.",
+  "verdict": "findings",
+  "summary": "One medium-severity publication-gate finding: a credential hand-review approval remains valid after the reviewed file changes. Harness evidence reports 3282 tests passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "All seven changed CLAUDE.md/docs files, including the complete adoption guide and review-policy changes.",
+    "Publication gate and self-test: error handling, staged-content validation, exception parsing, stale approvals, and regression assertions.",
+    "All 136 changed plan files: 124 verified as exact home-path substitutions; the remaining two modified plans and ten new Phase 86 plans inspected.",
+    ".gsd/milestones/M001/slices/S03/S03-UAT.md path change.",
+    "Relevant credential-publication contract, checkpoint triage rules, caller instructions, and recorded PILOT-03 decisions.",
+    "Isolated execution of the actual credential exception parser; shell syntax checks; final tracked-worktree cleanliness."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files; selected decision records were read only as intent background.",
+    ".planning/**/codex/** and .planning/**/*.jsonl.",
+    "Six generated vibe-check JSON reports under .planning/phases/86-pilot-reference-record/vibe-check/; excluded as generated review artifacts."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..4066d538e12d38ab8612dc651965fbfb38dca2f5 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..4066d538e12d38ab8612dc651965fbfb38dca2f5 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed plans; truncated output was recovered through subsequent comparisons and reads."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..4066d538e12d38ab8612dc651965fbfb38dca2f5 -- CLAUDE.md docs .gsd",
+      "exit_code": 0,
+      "purpose": "Inspect instruction and documentation changes."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..4066d538e12d38ab8612dc651965fbfb38dca2f5 -- ':(glob)**/*.sh'",
+      "exit_code": 0,
+      "purpose": "Inspect complete gate and self-test additions."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence and verify its commit."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..4066d538e12d38ab8612dc651965fbfb38dca2f5 -- docs/review-classification-policy.md docs/review-checkpoint-record.md docs/review-workflow-adoption.md",
+      "exit_code": 0,
+      "purpose": "Inspect policy and adoption changes in detail."
+    },
+    {
+      "command": "python3 - <<'PY'\nimport subprocess,difflib,collections\nb='7f6b5d4b567c06ce9a4764b94352366ef008c22b'; h='4066d538e12d38ab8612dc651965fbfb38dca2f5'\npaths=subprocess.check_output(['git','diff','--name-only',b+'..'+h,'--',':(glob).planning/**/*-PLAN.md'],text=True).splitlines()\nclean=[]; other=[]\nfor p in paths:\n a=subprocess.run(['git','show',b+':'+p],capture_output=True,text=True).stdout\n z=subprocess.check_output(['git','show',h+':'+p],text=True)\n if a.replace('~','~')==z: clean.append(p)\n else:\n  other.append(p)\n  print(''.join(difflib.unified_diff(a.replace('~','~').splitlines(True),z.splitlines(True),fromfile=p+' normalized base',tofile=p)))\nprint('EXACT HOME-PATH REPLACEMENTS',len(clean));print('\\n'.join(clean));print('OTHER',len(other))\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt plan normalization; shell heredoc temporary-file creation was denied."
+    },
+    {
+      "command": "python3 -c 'import subprocess,difflib\nb=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; h=\"4066d538e12d38ab8612dc651965fbfb38dca2f5\"\npaths=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b+\"..\"+h,\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines()\nclean=[]; other=[]\nfor p in paths:\n a=subprocess.run([\"git\",\"show\",b+\":\"+p],capture_output=True,text=True).stdout\n z=subprocess.check_output([\"git\",\"show\",h+\":\"+p],text=True)\n if a.replace(\"~\",\"~\")==z: clean.append(p)\n else:\n  other.append(p)\n  print(\"\".join(difflib.unified_diff(a.replace(\"~\",\"~\").splitlines(True),z.splitlines(True),fromfile=p+\" normalized base\",tofile=p)))\nprint(\"EXACT HOME-PATH REPLACEMENTS\",len(clean));print(\"\\n\".join(clean));print(\"OTHER\",len(other))'",
+      "exit_code": 0,
+      "purpose": "Verify mechanical substitutions across 124 plans and identify remaining substantive changes."
+    },
+    {
+      "command": "sed -n '35,63p' docs/review-workflow-adoption.md; ",
+      "exit_code": 0,
+      "purpose": "Recover adoption-guide text truncated in earlier output."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect publication-gate specification and pilot preregistration."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect refresh-counts implementation and regression-test instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect independent comparison, evidence publication, and failure handling."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect revision and exact-head review instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-05-PLAN.md .planning/phases/86-pilot-reference-record/86-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect template equivalence, review, and publication instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect push, checkpoint, and owner-acceptance boundaries."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-08-PLAN.md .planning/phases/86-pilot-reference-record/86-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect decision recording, adoption guidance, and policy follow-through."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-10-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect integration, fresh-review, and acceptance sequence."
+    },
+    {
+      "command": "rg -n 'PILOT-03 decision|Corrections|2026-11-14|high risk|automatically' .planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md",
+      "exit_code": 0,
+      "purpose": "Check recorded intent behind changed standing instructions."
+    },
+    {
+      "command": "rg -n '32|credential|hand.review|gitleaks|immutable|Triage|unproven|false positive|debt' docs/codex-adversarial-review-contract.md docs/review-checkpoint-record.md .github/scripts/acceptance-readiness.cjs tests/codex_review_run.py",
+      "exit_code": 0,
+      "purpose": "Trace credential checks and review-policy surrounding code."
+    },
+    {
+      "command": "git diff --name-status 7f6b5d4b567c06ce9a4764b94352366ef008c22b..4066d538e12d38ab8612dc651965fbfb38dca2f5 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Reconcile coverage and generated-artifact exclusions."
+    },
+    {
+      "command": "python3 -c 'import subprocess\nb=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; h=\"4066d538e12d38ab8612dc651965fbfb38dca2f5\"\ns=subprocess.check_output([\"git\",\"diff\",\"--unified=0\",b+\"..\"+h,\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True)\np=\"\"\nfor l in s.splitlines():\n if l.startswith(\"+++ b/\"): p=l[6:]\n elif l.startswith(\"+\") and not l.startswith(\"+++\") and \"~\" in l and any(x in l for x in [\"Path(\",\"open(\",\"cwd\", \"pathlib\", \"sys.path\", \"argv\", \"sys.executable\"]): print(p+\": \"+l)\n'",
+      "exit_code": 0,
+      "purpose": "Examine home-path substitutions in programmatic invocation contexts."
+    },
+    {
+      "command": "sed -n '148,165p' docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Read surrounding triage and coverage requirements."
+    },
+    {
+      "command": "nl -ba .planning/phases/86-pilot-reference-record/86-publication-gate.sh",
+      "exit_code": 0,
+      "purpose": "Confirm finding location and complete execution path."
+    },
+    {
+      "command": "python3 -c 'from pathlib import Path\nimport subprocess,os,re\ns=Path(\".planning/phases/86-pilot-reference-record/86-publication-gate.sh\").read_text()\nprogram=s.split(\"reviewed() { X=$1 S=$2 M=$3 awk \")[1].split(chr(39))[1]\nenv=dict(os.environ,X=\".planning/phases/86-pilot-reference-record/vibe-check/example.md\",S=\"Credential-shape hand review\",M=\": not a credential -- \")\nevidence=\"## Credential-shape hand review\\n- `\"+env[\"X\"]+\"`: not a credential -- fixture identifier reviewed previously\\n\"\nfor content in [\"fixture id \"+\"a\"*32,\"fixture id \"+\"a\"*32+\"\\nnew value \"+\"b\"*32]:\n assert re.search(r\"(^|[^0-9a-f])[0-9a-f]{32}([^0-9a-f]|$)\",content)\n result=subprocess.run([\"awk\",program],input=evidence,text=True,env=env)\n print(\"credential matches:\",len(re.findall(r\"[0-9a-f]{32}\",content)),\"reviewed exit:\",result.returncode)\n assert result.returncode==0\n'",
+      "exit_code": 0,
+      "purpose": "Demonstrate that the actual parser accepts the same approval before and after an additional credential-shaped value appears."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate.sh .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Check publication-gate shell syntax."
+    },
+    {
+      "command": "git status --porcelain --untracked-files=no",
+      "exit_code": 0,
+      "purpose": "Confirm no tracked files changed."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Check self-test shell syntax separately."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Bind credential hand-review approvals to the reviewed content",
+      "file": ".planning/phases/86-pilot-reference-record/86-publication-gate.sh",
+      "line_start": 61,
+      "line_end": 66,
+      "trigger": "A previously approved file is updated with another 32-character lowercase hexadecimal value, then staged, while its existing credential hand-review entry remains.",
+      "execution_path": "The 32-hex scan returns only the filename. Line 65 calls reviewed() with the path and a constant disposition prefix, without a content hash or identity of the reviewed matches. The old entry succeeds regardless of the added value. Staging the update makes the final index/worktree comparison succeed too.",
+      "consequence": "A newly introduced Radarr/Sonarr-style API key can bypass the required fresh hand review when gitleaks does not recognize it. The contract explicitly identifies these prefixless keys as a gap requiring the supplemental scan. Mutable evidence Markdown and redacted reports are covered by this gate, so Codex-output immutability alone does not prevent the sequence.",
+      "evidence": "The isolated execution of the script's actual awk parser returned exit 0 for both a file with one previously reviewed synthetic hex value and a file with an additional synthetic hex value, using the same approval. The self-test covers stale hashes for public-infrastructure exceptions but has no corresponding stale-credential-approval case.",
+      "suggested_fix": "Bind credential exceptions to a digest of the reviewed content or reviewed match set, and require renewed review when it changes. Add a regression that approves a harmless hex value, adds a second value at the same path, stages it, and expects the gate to block.",
+      "reproduced": true,
+      "reproduction_command": "python3 -c 'from pathlib import Path; import subprocess,os; s=Path(\".planning/phases/86-pilot-reference-record/86-publication-gate.sh\").read_text(); p=s.split(\"reviewed() { X=$1 S=$2 M=$3 awk \")[1].split(chr(39))[1]; e=dict(os.environ,X=\".planning/phases/86-pilot-reference-record/vibe-check/example.md\",S=\"Credential-shape hand review\",M=\": not a credential -- \"); record=\"## Credential-shape hand review\\n- `\"+e[\"X\"]+\"`: not a credential -- fixture identifier reviewed previously\\n\"; print(subprocess.run([\"awk\",p],input=record,text=True,env=e).returncode)'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Pytest was not rerun in the read-only sandbox; the supplied harness evidence reports 3282 passed, 1 skipped, and exit 0 on the exact inspected head.",
+    "The publication-gate self-test requires temporary repositories and writes, so it was inspected but not executed. F001 was reproduced at the actual exception-parser boundary, not through an end-to-end publication run.",
+    "Live GitHub configuration was not queried because the review was restricted to files inside this working copy.",
+    "Large initial diff output was truncated; subsequent targeted reads and programmatic comparisons recovered the in-scope material."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
