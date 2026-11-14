@@ -7,7 +7,7 @@
 # dedicated section, accepted disposition only), letter-case variants, a staged
 # match hidden by an unstaged redaction, a covered file that is not staged
 # (untracked or locally ignored), a match after a byte that is not valid UTF-8,
-# plus invocation from zsh.
+# a covered symbolic link, plus invocation from zsh.
 gate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 [ -f "$gate" ] || { echo "selftest: gate script not found: $1" >&2; exit 2; }
 p=.planning/phases/86-pilot-reference-record
@@ -110,4 +110,7 @@ fresh; echo "see /home/someone/x" > "$r/$p/86-REVIEW.md"; ( cd "$r" && git add -
 expect "match in the default-named review report blocks" block "public-infrastructure check: matching"
 fresh; echo "clean report" > "$r/$p/86-REVIEW.md"; expect "untracked default-named review report blocks" block "$NS: $p/86-REVIEW.md"
 fresh; echo "not review evidence" > "$r/$p/86-NOTES.md"; expect "untracked file outside the covered locations does not block" pass ""
+# git publishes a symbolic link's own text, not the target the scans would read, so a covered symlink blocks.
+fresh; ( cd "$r" && ln -s ../vibe-check/v.md "$p/codex/link.md" && git add -A )
+expect "staged symlink to a clean file blocks and is named" block "covered file is a symbolic link; publish a regular file: $p/codex/link.md"
 echo "selftest: $pass passed, $bad failed"; [ "$bad" -eq 0 ]

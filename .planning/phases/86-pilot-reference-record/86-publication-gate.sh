@@ -6,6 +6,7 @@
 # flags that hide changes, or obfuscated values).
 # Exit 0 only when every tracked review artifact passes. Any match, read error,
 # tool error, empty file list, covered file that is in the working tree but not staged,
+# covered file that is a symbolic link,
 # or staged content that differs from the scanned working copy exits non-zero (fails
 # closed). Two checks accept a written hand
 # review from 86-REVIEW-EVIDENCE.md: the public-infrastructure check and the 32-hex
@@ -32,6 +33,15 @@ while IFS= read -r -d '' f; do nu=1
   echo "covered file is not staged; stage it with git add -f, then re-run: $f" >&2
 done < "$t/others"
 [ "$nu" -eq 0 ] || fail "covered files listed above are in the working tree but not staged, so they were not scanned"
+# git publishes a symbolic link's own text, but every scan below would read its target,
+# so a covered path that is a symlink in the working tree or in the index (mode 120000) blocks.
+git ls-files -s -z -- "${P[@]}" > "$t/modes" || fail "git ls-files -s failed"
+ns=0
+while IFS= read -r -d '' e; do f=${e#*$'\t'}
+  if [ -L "$f" ] || [ "${e%% *}" = 120000 ]; then ns=1
+    echo "covered file is a symbolic link; publish a regular file: $f" >&2; fi
+done < "$t/modes"
+[ "$ns" -eq 0 ] || fail "covered files listed above are symbolic links, so the text git would publish was not scanned"
 # grep exit codes: 0 = match (block), 1 = no match (pass), 2+ = error such as an unreadable file (block)
 nohit() { label=$1; shift; grep -l "$@" -- "${F[@]}"; r=$?
   [ "$r" -eq 1 ] && return 0
