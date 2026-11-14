@@ -32,6 +32,13 @@ fresh; check "local path blocks when invoked from zsh" block "public-infrastruct
   zsh -c "echo 'box.ts.net' >> '$p/86-PILOT-RECORD.md' && bash '$gate' '$p'"
 fresh; whoami >> "$r/$p/codex/a1.txt"; expect "user name blocks" block "local user name check: matching"
 fresh; hostname -s >> "$r/$p/codex/a1.txt"; expect "host name blocks" block "local host name check: matching"
+# The three name checks ignore letter case (swap turns every letter into its other case).
+swap() { tr 'a-zA-Z' 'A-Za-z'; }
+fresh; whoami | swap >> "$r/$p/codex/a1.txt"; expect "user name in the other letter case blocks" block "local user name check: matching"
+fresh; hostname -s | swap >> "$r/$p/codex/a1.txt"; expect "host name in the other letter case blocks" block "local host name check: matching"
+fresh; echo "see /HOME/someone/x" >> "$r/$p/vibe-check/v.md"; expect "upper-case local path blocks" block "public-infrastructure check: matching"
+fresh; echo "BOX.TS.NET" >> "$r/$p/vibe-check/v.md"; expect "upper-case host suffix blocks" block "public-infrastructure check: matching"
+fresh; echo "on the Tailnet" >> "$r/$p/vibe-check/v.md"; expect "capitalised network word blocks" block "public-infrastructure check: matching"
 hit() { fresh; printf 'id %s\n' "$(printf '%032d' 0 | tr 0 a)" >> "$r/$p/codex/a1.txt"; }
 ev() { printf -- "$1\n" >> "$r/$p/86-REVIEW-EVIDENCE.md"; }
 A="\`$p/codex/a1.txt\`"; NO="no accepted Credential-shape hand review entry"

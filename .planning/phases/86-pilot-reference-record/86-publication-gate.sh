@@ -55,7 +55,8 @@ reviewed() { X=$1 S=$2 M=$3 awk '
   END { if (n != 1) exit 3; exit (ok && !bad) ? 0 : 1 }' "$ev"; }
 sha() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 < "$1"
   elif command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1"; fi | cut -d' ' -f1; }
-px=$(grep -lE '/Users/|/home/|\.ts\.net|tailnet|tailscale' -- "${F[@]}"); r=$?
+# The public-infrastructure, local user name and local host name checks ignore letter case (-i).
+px=$(grep -liE '/Users/|/home/|\.ts\.net|tailnet|tailscale' -- "${F[@]}"); r=$?
 [ -z "$px" ] || printf '%s\n' "$px"
 [ "$r" -le 1 ] || fail "public-infrastructure check: grep error (exit $r)"
 nb=0; ps="Public-infrastructure hand review"
@@ -70,8 +71,8 @@ while IFS= read -r x; do
   else fail "public-infrastructure hit: cannot read $ev (exit $r): $x"; fi
 done <<< "$px"
 [ "$nb" -eq 0 ] || fail "public-infrastructure check: matching files listed above lack an accepted, hash-matching hand review entry"
-nohit "local user name check" -F -e "$u"
-nohit "local host name check" -F -e "$h"
+nohit "local user name check" -i -F -e "$u"
+nohit "local host name check" -i -F -e "$h"
 hx=$(grep -lE '(^|[^0-9a-f])[0-9a-f]{32}([^0-9a-f]|$)' -- "${F[@]}"); r=$?
 [ "$r" -le 1 ] || fail "32-hex scan: grep error (exit $r)"
 while IFS= read -r x; do
