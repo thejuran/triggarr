@@ -1,0 +1,237 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "17eb05200e4804b300164bd7b7e987e3ba1b4771",
+  "inspected_base_sha": "7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Phase 86 net change against the supplied base, including changed *-PLAN.md executor instructions.",
+  "verdict": "findings",
+  "summary": "Two findings: a potential publication-gate bypass through symlink targets, and reproduced incompatibility between the plans’ hand-review entry format and the gate. Harness evidence reports 3282 passed and 1 skipped on the requested head.",
+  "coverage": [
+    "Publication-gate script and complete self-test: staged/worktree consistency, untracked and ignored files, case sensitivity, hash-bound exceptions, conflicting dispositions, scan errors and missing files.",
+    "All seven changed policy/adoption documents and CLAUDE.md changes, checked against the existing Codex trust and fallback contract.",
+    "All 136 changed plan files: ten new Phase 86 plans read in full; 126 existing plans checked through whole-file substitution comparisons and inspection of changed text.",
+    ".gsd/milestones/M001/slices/S03/S03-UAT.md path substitution.",
+    "Owner-decision excerpts read as intent, without treating prior reviewers’ conclusions as correctness evidence.",
+    "Both shell scripts pass bash syntax checks; actual exception parser exercised with old and current entry formats."
+  ],
+  "exclusions": [
+    "Planning Markdown other than *-PLAN.md files.",
+    "Raw transcripts, JSONL streams and generated review artifacts under .planning/, including the six vibe-check JSON reports.",
+    "External files, live GitHub configuration and previously reviewed application changes."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Obtain scoped diff; truncated output recovered through subsequent targeted reads."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Obtain plan diff; truncated output recovered through targeted reads and comparisons."
+    },
+    {
+      "command": "git diff --stat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md' ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory primary diff."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- CLAUDE.md docs",
+      "exit_code": 0,
+      "purpose": "Inspect instruction and policy changes."
+    },
+    {
+      "command": "git diff --stat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory all changed plans."
+    },
+    {
+      "command": "cat docs/review-workflow-adoption.md",
+      "exit_code": 0,
+      "purpose": "Read adoption guide."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- docs/review-checkpoint-record.md docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Recover complete policy hunks."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect gate creation instructions and embedded scripts."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-02-PLAN.md .planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect implementation and comparison plans."
+    },
+    {
+      "command": "sed -n '130,204p' .planning/phases/86-pilot-reference-record/86-02-PLAN.md; sed -n '1,90p' .planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Recover truncated plan portions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect refresh review-loop plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-05-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect template-change plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect template review-loop plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect publication and acceptance plan."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-08-PLAN.md .planning/phases/86-pilot-reference-record/86-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect decision and adoption plans."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-10-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect integration and fresh-evidence plan."
+    },
+    {
+      "command": "python3 - <<'PY'\nimport subprocess, collections\nb='7f6b5d4b567c06ce9a4764b94352366ef008c22b'; h='17eb05200e4804b300164bd7b7e987e3ba1b4771'\npaths=subprocess.check_output(['git','diff','--name-only',b+'..'+h,'--',':(glob).planning/**/*-PLAN.md'],text=True).splitlines()\nn=0\nfor p in paths:\n    if '/86-pilot-reference-record/' in p: continue\n    old=subprocess.check_output(['git','show',b+':'+p],text=True)\n    new=subprocess.check_output(['git','show',h+':'+p],text=True)\n    if new==old.replace('~','~'):\n        n+=1\n    else:\n        print(subprocess.check_output(['git','diff','--unified=1',b+'..'+h,'--',p],text=True))\nprint('Exact whole-file ~ -> ~ substitutions:',n)\nprint('Total changed plan files:',len(paths))\nPY",
+      "exit_code": 1,
+      "purpose": "Comparison attempt blocked because zsh could not create a heredoc temporary file; retried without a heredoc."
+    },
+    {
+      "command": "python3 -c 'import subprocess\nb=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; h=\"17eb05200e4804b300164bd7b7e987e3ba1b4771\"\npaths=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b+\"..\"+h,\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines()\nn=0\nfor p in paths:\n if \"/86-pilot-reference-record/\" in p: continue\n old=subprocess.check_output([\"git\",\"show\",b+\":\"+p],text=True)\n new=subprocess.check_output([\"git\",\"show\",h+\":\"+p],text=True)\n if new==old.replace(\"~\",\"~\"): n+=1\n else: print(subprocess.check_output([\"git\",\"diff\",\"--unified=1\",b+\"..\"+h,\"--\",p],text=True))\nprint(\"Exact whole-file home-path substitutions:\",n)\nprint(\"Total changed plan files:\",len(paths))'",
+      "exit_code": 0,
+      "purpose": "Verify 124 existing plans contain only uniform home-path substitutions; identify two exceptions."
+    },
+    {
+      "command": "python3 -c 'import subprocess,difflib\nb=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; h=\"17eb05200e4804b300164bd7b7e987e3ba1b4771\"\nfor p in subprocess.check_output([\"git\",\"diff\",\"--name-only\",b+\"..\"+h,\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines():\n if \"/86-pilot-reference-record/\" in p: continue\n old=subprocess.check_output([\"git\",\"show\",b+\":\"+p],text=True).replace(\"~\",\"~\")\n new=subprocess.check_output([\"git\",\"show\",h+\":\"+p],text=True)\n if old!=new: print(\"\".join(difflib.unified_diff(old.splitlines(True),new.splitlines(True),fromfile=p,tofile=p,n=1)))'",
+      "exit_code": 0,
+      "purpose": "Inspect all changes beyond uniform path substitutions."
+    },
+    {
+      "command": "git diff --unified=0 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- ':(glob).planning/**/*-PLAN.md' ':(exclude,glob).planning/phases/86-pilot-reference-record/*' | rg '^\\+' | sort -u",
+      "exit_code": 0,
+      "purpose": "Inspect distinct changed plan lines; recover truncation in subsequent slices."
+    },
+    {
+      "command": "git diff --unified=0 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- ':(glob).planning/**/*-PLAN.md' ':(exclude,glob).planning/phases/86-pilot-reference-record/*' | rg '^\\+[^+]' | sort -u | sed -n '75,120p'",
+      "exit_code": 0,
+      "purpose": "Inspect distinct plan substitutions."
+    },
+    {
+      "command": "git diff --unified=0 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- ':(glob).planning/**/*-PLAN.md' ':(exclude,glob).planning/phases/86-pilot-reference-record/*' | rg '^\\+[^+]' | sort -u | sed -n '121,205p'",
+      "exit_code": 0,
+      "purpose": "Inspect distinct plan substitutions."
+    },
+    {
+      "command": "git diff --unified=0 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- ':(glob).planning/**/*-PLAN.md' ':(exclude,glob).planning/phases/86-pilot-reference-record/*' | rg '^\\+[^+]' | sort -u | sed -n '206,245p'",
+      "exit_code": 0,
+      "purpose": "Inspect distinct plan substitutions."
+    },
+    {
+      "command": "git diff --unified=0 7f6b5d4b567c06ce9a4764b94352366ef008c22b..17eb05200e4804b300164bd7b7e987e3ba1b4771 -- ':(glob).planning/**/*-PLAN.md' ':(exclude,glob).planning/phases/86-pilot-reference-record/*' | rg '^\\+[^+]' | sort -u | sed -n '1,74p;246,400p'",
+      "exit_code": 0,
+      "purpose": "Complete inspection of distinct plan substitutions."
+    },
+    {
+      "command": "cat docs/codex-adversarial-review-contract.md",
+      "exit_code": 0,
+      "purpose": "Check surrounding trust, fallback, evidence and publication contracts."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate.sh .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Syntax-check gate; second filename is a positional argument, so self-test checked separately below."
+    },
+    {
+      "command": "nl -ba .planning/phases/86-pilot-reference-record/86-publication-gate.sh; nl -ba .planning/phases/86-pilot-reference-record/86-03-PLAN.md | sed -n '65,79p'; sed -n '1,90p' CLAUDE.md; sed -n '100,123p' docs/review-workflow-adoption.md",
+      "exit_code": 0,
+      "purpose": "Locate findings and recover surrounding instruction/guide text."
+    },
+    {
+      "command": "python3 -c 'import os,pathlib,subprocess\ns=pathlib.Path(\".planning/phases/86-pilot-reference-record/86-publication-gate.sh\").read_text()\nq=chr(39); awk=s.split(\" M=$3 awk \"+q,1)[1].split(q+\" \\\"$ev\\\"\",1)[0]\np=\".planning/phases/86-pilot-reference-record/codex/example.txt\"; tick=chr(96)\nenv=dict(os.environ,X=p,S=\"Credential-shape hand review\",M=\" sha256 \"+tick+\"a\"*64+tick+\": not a credential -- \")\nfor label,entry in [(\"plan format\",\"- \"+tick+p+tick+\": not a credential -- fixture\"),(\"current format\",\"- \"+tick+p+tick+env[\"M\"]+\"fixture\")]:\n r=subprocess.run([\"awk\",awk],input=\"## Credential-shape hand review\\n\"+entry+\"\\n\",text=True,env=env)\n print(label+\": exit \"+str(r.returncode))'",
+      "exit_code": 0,
+      "purpose": "Reproduce parser rejection of prescribed plan format and acceptance of hash-bound format."
+    },
+    {
+      "command": "git status --short; rg -n 'publication-gate|symlink' tests/test_codex_review_contract.py tests/test_codex_review_run.py .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Check relevant tests, unchanged checkout and final head."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Syntax-check self-test separately."
+    },
+    {
+      "command": "rg -n 'Owner decision \\(PILOT-03|Corrections|2026-11-14|automatically|high risk' .planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md",
+      "exit_code": 0,
+      "purpose": "Check recorded intent for policy changes."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Reject symlink artifacts or scan their indexed link text",
+      "file": ".planning/phases/86-pilot-reference-record/86-publication-gate.sh",
+      "line_start": 89,
+      "line_end": 97,
+      "trigger": "An author stages a covered report as a symlink to a clean report at an absolute private path.",
+      "execution_path": "git ls-files includes the symlink. grep, hashing and cp follow its target and inspect the target's contents. The final git diff succeeds when the symlink itself matches the index, but Git commits the link text, not those target contents.",
+      "consequence": "The gate can report PASS while publishing an unscanned absolute home path or hostname in the symlink blob. This can result from ordinary use of links to reference scratch reports, without deliberate evasion.",
+      "evidence": "The file list contains no mode information or symlink rejection. All content checks dereference filesystem paths, while lines 94–99 assume worktree/index equality proves that the scanned bytes are the committed bytes. The self-test covers regular files only.",
+      "suggested_fix": "Reject symlink artifacts, preferably by checking index modes as well as filesystem type, or materialize and scan exact index blobs. Add a regression with a staged symlink whose clean target has a private absolute pathname.",
+      "reproduced": false,
+      "reproduction_command": null,
+      "hypothesis": "A staged symlink to a clean readable report will pass the current checks even when its indexed link text contains /Users/ or /home/. Filesystem reproduction was not run because the sandbox prohibits fixture creation."
+    },
+    {
+      "id": "F002",
+      "severity": "low",
+      "title": "Update executor plans to use hash-bound hand-review entries",
+      "file": ".planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "line_start": 73,
+      "line_end": 75,
+      "trigger": "An executor follows the plan to hand-review a harmless 32-character hexadecimal match.",
+      "execution_path": "The plan directs it to write '- `<path>`: not a credential -- <reason>', stage the files and invoke the gate. The gate requires ' sha256 `<current hash>`' between the path and disposition, so reviewed() rejects the prescribed entry.",
+      "consequence": "Following the instructions cannot clear a legitimate hand-review exception. Plans 04, 06, 07 and 10 repeat the incompatible format; plan 01 also embeds the older script and self-test as byte-for-byte implementation instructions.",
+      "evidence": "Executed the actual awk parser extracted from the committed gate: the plan-format entry returned 1, while the otherwise identical hash-bound entry returned 0. Existing self-tests intentionally reject hash-free entries but do not check agreement with executor instructions.",
+      "suggested_fix": "Update the plan examples and embedded implementation instructions to the current hash-bound contract, or replace duplicated script bodies with references to the committed scripts.",
+      "reproduced": true,
+      "reproduction_command": "python3 -c 'import os,pathlib,subprocess\ns=pathlib.Path(\".planning/phases/86-pilot-reference-record/86-publication-gate.sh\").read_text()\nq=chr(39); awk=s.split(\" M=$3 awk \"+q,1)[1].split(q+\" \\\"$ev\\\"\",1)[0]\np=\".planning/phases/86-pilot-reference-record/codex/example.txt\"; tick=chr(96)\nenv=dict(os.environ,X=p,S=\"Credential-shape hand review\",M=\" sha256 \"+tick+\"a\"*64+tick+\": not a credential -- \")\nfor label,entry in [(\"plan format\",\"- \"+tick+p+tick+\": not a credential -- fixture\"),(\"current format\",\"- \"+tick+p+tick+env[\"M\"]+\"fixture\")]:\n r=subprocess.run([\"awk\",awk],input=\"## Credential-shape hand review\\n\"+entry+\"\\n\",text=True,env=env)\n print(label+\": exit \"+str(r.returncode))'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest or the filesystem-writing publication-gate self-test in the read-only sandbox. Harness evidence reports exit 0 on the exact requested head.",
+    "F002 was reproduced at the actual parser level; the complete publication workflow was not executed.",
+    "Live GitHub settings and historical pilot measurements were not independently revalidated externally.",
+    "Initial large outputs were truncated; relevant scoped content was recovered through smaller reads and whole-file comparisons.",
+    "No files were edited, committed, pushed or published."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
