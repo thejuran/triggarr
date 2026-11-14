@@ -98,7 +98,13 @@ rationale and scope of the required vibe-check. That vibe-check is required, not
 recommendation the owner may decline. Claude starts it automatically, right after the BM
 review and the paired Codex pass, on the same exact commit, without asking first (owner
 decision, 2026-11-14), and records per head that it ran and where its report is; the
-owner decides what to do with its findings. It never substitutes for Codex, never waives
+owner decides what to do with its findings. The automatic start applies only to trusted
+heads (the owner's own branches of this repository, by the trust test in
+`docs/codex-adversarial-review-contract.md`): for a bot, fork or other untrusted head
+Claude does not start vibe-check automatically and never checks out or executes that
+head; it records the vibe-check as REQUIRED, NOT YET RUN (PENDING) for that head and asks
+the owner how to proceed, and the existing rules for untrusted heads are unchanged. It
+never substitutes for Codex, never waives
 a finding and never reduces coverage. Unchanged, and a different thing: on any head whose
 Codex pass stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or
 another independent reviewer) as the recorded fallback for that exact head; vibe-check
