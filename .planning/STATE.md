@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 executed and verified locally -- pilot PRs merged (#54, #55); PILOT-01..04 recorded; phase PR reviewed locally (BM, Codex, required vibe-check) at 63a5b45; push and Phase 86 PR next, in review"
-stopped_at: "Phase 86 review loop finished locally: BM iteration 6 (0 critical, 0 warning), paired Codex no findings and the required high-risk vibe-check clean at 63a5b45; verification 4/4 with 5 human-needed items (86-HUMAN-UAT.md). Next: owner go-ahead for the single end-of-phase push and the Phase 86 PR"
-last_updated: "2026-11-14T17:08:40Z"
-last_activity: "2026-11-14 -- Phase 86: review loop on the phase PR content (six BM iterations, paired Codex per head, required vibe-check two passes); owner decisions recorded (Claude starts the required high-risk vibe-check on trusted heads; hand-review exceptions in the publication gate; one-more-round stopping rule); verification 4/4, human-needed items pending the push"
+status: "Phase 86 complete -- PR #59 merged as e5e1584 (main CI passing); PILOT-01..04 recorded; all v2.13 phases executed; milestone audit next"
+stopped_at: "Phase 86 PR #59 accepted (review acceptance run 43620557671) and merged by the owner as e5e1584 (2026-11-14T20:11:46Z); main CI run 43636188254 and the post-merge Release run 43636707792 both passing. Next: milestone audit (/bm:audit-milestone), then milestone closeout"
+last_updated: "2026-11-14T20:27:01Z"
+last_activity: "2026-11-14 -- Phase 86 PR #59 pushed (head 6ca643d), per-head checkpoint comment, owner settled codex:6ca643dcf210:a1:F001 as non-blocking debt; later-found-misses update and checkpoint record added at head 92b9dac; owner approved review acceptance (run 43620557671) and merged as e5e1584; main CI and the post-merge Release workflow both passing"
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 65
   completed_plans: 65
-  percent: 71
+  percent: 86
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 86 — Pilot & Reference Record (executed, all 10 plans finished; once-per-phase review and the Phase 86 PR next)
+**Current focus:** Phase 86 complete (PR #59 merged as `e5e1584`); v2.13 milestone audit and closeout next
 
 > **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 is unreleased. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 86 (Pilot & Reference Record) — executed, verified locally, in review
+Phase: 86 (Pilot & Reference Record) — COMPLETE (merged, PR #59 as `e5e1584`)
 Plan: 10 of 10 finished (Phase 86 has ten plans, 86-01..86-10)
-Status: Phase 86 executed (10 plans) on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind) merged; PILOT-01..04 recorded including the owner's PILOT-03 decisions; previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback); next: the phase's once-per-phase review and the Phase 86 PR
-Last activity: 2026-11-14 -- Phase 86 execution: 86-01..86-10 all finished; PR #54, PR #57 and PR #55 merged (main at 7f6b5d4, CI passing); 86-09 (adoption guide, PILOT-03 follow-through, planning hand-off) completes the phase's plans
+Status: Phase 86 complete. PR #59 (phase PR: pilot & reference record, PILOT-03 decisions, adoption guide) accepted at head `92b9daca2775` (review acceptance run 43620557671) and merged by the owner as `e5e1584` (2026-11-14T20:11:46Z); main CI (run 43636188254) and the post-merge Release workflow (run 43636707792) both passing. All v2.13 phases (82, 83, 84, 85, 85.1, 86) are now executed. Next: the milestone audit (`/bm:audit-milestone`), then milestone closeout.
+Last activity: 2026-11-14 -- Phase 86 PR #59 pushed and accepted; owner merged as `e5e1584`; main CI and the post-merge Release workflow both green; milestone audit next.
 
 ### v2.13 milestone shape
 
@@ -124,13 +124,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-11-14T05:36:37Z
-Stopped at: 86-09 finished (last plan of 10): adoption guide, PILOT-03 follow-through, planning hand-off; next: the phase's once-per-phase review and the Phase 86 PR
-Resume file: none (all ten Phase 86 plans are finished; the next step is the phase's once-per-phase review and PR, not a plan file)
+Last session: 2026-11-14T20:27:01Z
+Stopped at: Phase 86 PR #59 accepted (run 43620557671) and merged as e5e1584; main CI and the post-merge Release workflow both passing. Next: the v2.13 milestone audit (/bm:audit-milestone), then milestone closeout
+Resume file: none (Phase 86 is merged; the next step is the milestone audit, not a plan file)
 
 ## Operator Next Steps
 
-- Phase 86 (Pilot & Reference Record): all ten plans finished and the once-per-phase review ran locally on branch `phase-86-pilot-reference-record` (classification sensitive, risk high; BM iteration 6 with 0 critical and 0 warning, paired Codex with no findings and the required vibe-check clean at `63a5b45`; record in 86-REVIEW-EVIDENCE.md). Remaining, in order: owner go-ahead, one push and one ready-for-review Phase 86 PR, per-head checkpoint comment, CI, update later-found misses in 86-PILOT-RECORD.md before acceptance (D-14), exact-commit owner acceptance, owner merges; then the milestone audit. Backlog from the review loop is listed under "Stopping rule" in 86-REVIEW-EVIDENCE.md (not yet copied into backlog/MAINTENANCE.md)
+- Phase 86 is complete: PR #59 (push, checkpoint comments, exact-commit owner acceptance at `92b9daca2775`, run 43620557671) merged by the owner as `e5e1584`; main CI and the post-merge Release workflow both pass. Next: the v2.13 milestone audit and closeout (`/bm:audit-milestone`). This held planning branch (`planning/post-phase-86`) is pushed with the next substantive push, not on its own (no docs-only PRs). The Roadmaps page still needs the owner's own check for a "Planning files disagree" warning now that Phase 86 is ticked complete — no tool access to the rendered page from this session. The review-loop backlog named under "Stopping rule" in 86-REVIEW-EVIDENCE.md is now filed in `backlog/MAINTENANCE.md` ("Phase 86 review-loop follow-ups")
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule; add an unreleased CHANGELOG section covering the two security fixes from PR #57 (`opentelemetry-api` 1.45.2, `zlib1g` upgrade in the image)
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)

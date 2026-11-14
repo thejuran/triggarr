@@ -222,7 +222,7 @@ Full phase details: [milestones/v2.12-ROADMAP.md](milestones/v2.12-ROADMAP.md)
 - [x] **Phase 84: Codex Plan-Checker Investigation** - Record whether a narrowly scoped hook can route only the plan checker, and how it compares on the original Phase 81 plans — separately gated, nothing activated without approval (verified 2026-10-26: hook routing proven; blind comparison invalid — input was post-review, not original; owner chose to adopt anyway, activation is a separate quick task)
 - [x] **Phase 85: Follow-on CI Improvements & Acceptance Usability** - Dependency/image/lint/coverage/permissions hardening plus an acceptance register usable under real PR traffic (merged 2026-10-28, PR #36; follow-ups #44, #45)
 - [x] **Phase 85.1: Isolated Codex Review for Untrusted PRs** (INSERTED) - Bot/fork PRs get the paired Codex review through an enforced isolation boundary instead of the interim per-PR fallback (merged 2026-10-30, PR #48; closed as an owner exception: live criterion 3 unmet on current Codex models, bot/fork PRs keep the vibe-check fallback)
-- [ ] **Phase 86: Pilot & Reference Record** - 3-5 real PRs run the paired workflow; the owner records a retirement decision and reusable guidance is written
+- [x] **Phase 86: Pilot & Reference Record** - 3-5 real PRs run the paired workflow; the owner records a retirement decision and reusable guidance is written (merged 2026-11-14, PR #59)
 
 ### Phase 82: CI Tests What We Ship
 
@@ -380,43 +380,43 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 86-01-PLAN.md — Pilot record: D-15 retirement bar and PILOT-02 method committed before any results; scorecards for #48, #36, #44 from committed evidence
+- [x] 86-01-PLAN.md — Pilot record: D-15 retirement bar and PILOT-02 method committed before any results; scorecards for #48, #36, #44 from committed evidence
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 86-02-PLAN.md — TDD: Refresh counts skips a malformed record per item for Radarr, Sonarr and Lidarr (D-02, D-02a), on its own pilot branch
+- [x] 86-02-PLAN.md — TDD: Refresh counts skips a malformed record per item for Radarr, Sonarr and Lidarr (D-02, D-02a), on its own pilot branch
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 86-03-PLAN.md — PILOT-02: vibe-check vs. BM + Codex on the Refresh-counts PR's first head, independently; proof-based tally approved by the owner
+- [x] 86-03-PLAN.md — PILOT-02: vibe-check vs. BM + Codex on the Refresh-counts PR's first head, independently; proof-based tally approved by the owner
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 86-04-PLAN.md — Refresh-counts PR: one batched fix for confirmed defects, then fresh BM, Codex and routine vibe-check on the final head
+- [x] 86-04-PLAN.md — Refresh-counts PR: one batched fix for confirmed defects, then fresh BM, Codex and routine vibe-check on the final head
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 86-05-PLAN.md — TDD: card template groups reason rows by a structured kind instead of display text (D-03), on its own pilot branch
+- [x] 86-05-PLAN.md — TDD: card template groups reason rows by a structured kind instead of display text (D-03), on its own pilot branch
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 86-06-PLAN.md — Card-template PR: full review, proof-based triage, final-head evidence
+- [x] 86-06-PLAN.md — Card-template PR: full review, proof-based triage, final-head evidence
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 86-07-PLAN.md — Push both pilot PRs, per-head checkpoint comments; exact-commit owner acceptance of the first; the owner merges it
+- [x] 86-07-PLAN.md — Push both pilot PRs, per-head checkpoint comments; exact-commit owner acceptance of the first; the owner merges it
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 86-10-PLAN.md — Second pilot PR: merge the new main in (no rebase), fresh exact-head evidence, exact-commit owner acceptance; the owner merges
+- [x] 86-10-PLAN.md — Second pilot PR: merge the new main in (no rebase), fresh exact-head evidence, exact-commit owner acceptance; the owner merges
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
-- [ ] 86-08-PLAN.md — All five scorecards, category gaps, backlog items settled; PILOT-03 recommendation and the owner's decisions
+- [x] 86-08-PLAN.md — All five scorecards, category gaps, backlog items settled; PILOT-03 recommendation and the owner's decisions
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 86-09-PLAN.md — Adoption guide `docs/review-workflow-adoption.md` (PILOT-04); PILOT-03 follow-through; planning hand-off
+- [x] 86-09-PLAN.md — Adoption guide `docs/review-workflow-adoption.md` (PILOT-04); PILOT-03 follow-through; planning hand-off
 
 Pilot PRs: #54 (Refresh counts skips a malformed record, merged) and #55 (card-template structured reason kind, merged).
 
@@ -443,7 +443,7 @@ Pilot PRs: #54 (Refresh counts skips a malformed record, merged) and #55 (card-t
 | 84. Codex Plan-Checker Investigation | 6/7 (84-06 not performed) | Complete (comparison invalid: post-review input; adoption not recommended, owner override to adopt; activation pending as quick task) | 2026-10-26 |
 | 85. Follow-on CI Improvements & Acceptance Usability | 19/19 | Complete (merged PR #36; Codex incomplete for size, owner-approved vibe-check fallback; UAT P5 at next release) | 2026-10-28 |
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
-| 86. Pilot & Reference Record | 0/10 | Planned | - |
+| 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 
 ## Following milestone: Reliability
 

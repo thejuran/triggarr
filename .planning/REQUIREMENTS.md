@@ -65,10 +65,10 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 
 ### Pilot and reference record
 
-- [ ] **PILOT-01**: 3–5 representative PRs run under the paired workflow, drawn from suitable authorized work (this milestone's own PRs and owner-authorized maintenance or backlog work). Aim to include a small fix, state/error-path logic, a UI or security-sensitive change and at least one larger change; no product change is invented to fill a category, and any category without suitable work is recorded as a gap. Each PR records, per reviewer: confirmed consequential defects, false positives, later-found misses, revision rounds, review time, observable usage/cost and owner effort.
-- [ ] **PILOT-02**: At least one substantial pilot PR gets a recorded side-by-side comparison of vibe-check against the paired workflow. This is in addition to routine vibe-check, which continues on every pilot PR that the current process requires it for until the owner retires it.
-- [ ] **PILOT-03**: The owner's decisions are recorded: whether to retire routine vibe-check, and whether BM/Codex completion stays a manual owner check or the existing acceptance gate is extended to require those reports. Recording the decisions completes this requirement. If extension is chosen, it is scheduled as its own later reviewed change (FUT-03) and is not required before this milestone closes, unless the owner explicitly pulls it in.
-- [ ] **PILOT-04**: Reusable adoption guidance for other repositories is written, distinguishing instruction-enforced from GitHub-enforced requirements and listing what not to copy blindly.
+- [x] **PILOT-01**: 3–5 representative PRs run under the paired workflow, drawn from suitable authorized work (this milestone's own PRs and owner-authorized maintenance or backlog work). Aim to include a small fix, state/error-path logic, a UI or security-sensitive change and at least one larger change; no product change is invented to fill a category, and any category without suitable work is recorded as a gap. Each PR records, per reviewer: confirmed consequential defects, false positives, later-found misses, revision rounds, review time, observable usage/cost and owner effort.
+- [x] **PILOT-02**: At least one substantial pilot PR gets a recorded side-by-side comparison of vibe-check against the paired workflow. This is in addition to routine vibe-check, which continues on every pilot PR that the current process requires it for until the owner retires it.
+- [x] **PILOT-03**: The owner's decisions are recorded: whether to retire routine vibe-check, and whether BM/Codex completion stays a manual owner check or the existing acceptance gate is extended to require those reports. Recording the decisions completes this requirement. If extension is chosen, it is scheduled as its own later reviewed change (FUT-03) and is not required before this milestone closes, unless the owner explicitly pulls it in.
+- [x] **PILOT-04**: Reusable adoption guidance for other repositories is written, distinguishing instruction-enforced from GitHub-enforced requirements and listing what not to copy blindly.
 
 ## Future Requirements
 
@@ -125,10 +125,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACCEPT-01 | Phase 85 | Pending |
 | ACCEPT-02 | Phase 85 | Pending |
 | ACCEPT-03 | Phase 85 | Pending |
-| PILOT-01 | Phase 86 | Pending |
-| PILOT-02 | Phase 86 | Pending |
-| PILOT-03 | Phase 86 | Pending |
-| PILOT-04 | Phase 86 | Pending |
+| PILOT-01 | Phase 86 | Complete |
+| PILOT-02 | Phase 86 | Complete |
+| PILOT-03 | Phase 86 | Complete |
+| PILOT-04 | Phase 86 | Complete |
 
 **Coverage:**
 - v2.13 requirements: 31 total
