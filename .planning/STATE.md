@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 executing -- pilot PR #54 and main CI fix PR #57 merged, main CI passing; pilot PR #55 open, behind main; next plan 86-10"
-stopped_at: "PR #57 (main-CI fix) merged as aeead4b601d7a26b927656bf1a07ab8c66fde58f; CI on main passing again (run 43557418199). Next: 86-10 brings PR #55 up to date with main and re-reviews its new head"
-last_updated: "2026-11-14T04:41:39Z"
+status: "Phase 86 executing -- PR #54 and PR #57 merged; pilot PR #55 in review at integration head 5d58264 (CI passing), paused at owner acceptance (86-10)"
+stopped_at: "86-10 Task 3 (blocking): PR #55 at integration head 5d58264e93a21b100d01e80503b9a7d064253d36 has passing CI, BM, Codex and routine vibe-check with no confirmed defect, and the readiness check reports ready. Paused at owner exact-commit acceptance (Review acceptance run 43559074842 attempt 2); owner merges"
+last_updated: "2026-11-14T05:03:22Z"
 last_activity: "2026-11-13 -- Phase 86 execution: 86-07 finished (PR #54 merged); main CI restored by PR #57 (opentelemetry-api 1.45.2, date-independent review-tooling tests, zlib1g upgrade in the image), merged as aeead4b"
 progress:
   total_phases: 7
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 ## Current Position
 
 Phase: 86 (Pilot & Reference Record) — executing
-Plan: 7 of 10 finished; next 86-10 (second pilot PR: merge main in, fresh evidence, owner acceptance)
+Plan: 7 of 10 finished; 86-10 at Task 3 (owner acceptance of PR #55 at the integration head)
 Status: Phase 86 executing (10 plans) on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind); previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback)
 Last activity: 2026-11-13 -- Phase 86 execution: 86-01..86-07 finished; PR #54 and PR #57 merged (main at aeead4b, CI passing); PR #55 (pilot-card-reason-kind, 46c3919) open and behind main
 
@@ -130,7 +130,7 @@ Resume file: .planning/phases/86-pilot-reference-record/86-10-PLAN.md
 
 ## Operator Next Steps
 
-- Phase 86 (Pilot & Reference Record): `/bm:execute-phase 86` on branch `phase-86-pilot-reference-record` continues with 86-10 (PR #55: merge main in, re-review the new head, owner acceptance), then 86-08 and 86-09
+- Phase 86 (Pilot & Reference Record): accept and merge PR #55 at head `5d58264` (86-10 Task 3; run 43559074842 attempt 2), then `/bm:execute-phase 86` continues with 86-08 and 86-09
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)

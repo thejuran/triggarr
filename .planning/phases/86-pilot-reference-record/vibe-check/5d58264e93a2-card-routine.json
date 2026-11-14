@@ -1,0 +1,179 @@
+{
+  "medium_acknowledgments": {},
+  "passes": [
+    {
+      "pass_number": 1,
+      "head_sha": "46c39194249d1e7bcd2362a91d238d0997539f3f",
+      "timestamp": "2026-10-31T01:37:46Z",
+      "mode": "deep",
+      "diff_range": "d5a4467a4c38f8f675fb057d9a77bcc3030c379d..46c39194249d1e7bcd2362a91d238d0997539f3f",
+      "agents_run": [
+        "bugs",
+        "security",
+        "architecture",
+        "impact",
+        "test-sufficiency",
+        "compliance",
+        "language-python"
+      ],
+      "findings": [
+        {
+          "id": "cov-001",
+          "file": "triggarr/templates/partials/cycle_grade.html",
+          "line": 24,
+          "title": "Card template's switch to structured reason kinds has no measured or diff-visible rendering test",
+          "category": "test-coverage",
+          "cwe": null,
+          "severity": "medium",
+          "agent_confidence": 62,
+          "in_diff": true,
+          "current_code": "{% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+          "problem": "The dashboard card now groups and counts problem rows using the new 'kind' label and 'skip_count' number instead of reading the display text. Coverage measurement does not include this template. The test changes in this diff only check the data that feeds the card, not the card the user sees. Nothing in the supplied evidence shows a test that renders the card and checks the grouped counts, such as the malformed-records total or the not-evaluated count.",
+          "why_it_matters": "This template is what the owner sees after each search cycle. If the grouping logic in the template breaks, for example by misreading the new fields or counting rows in the wrong group, the card could show wrong totals and none of the changed tests would catch it, even though the Python side is about 97% covered.",
+          "fix_hint": "add or point to a rendering test that feeds cycle_grade.html a view containing unevaluated, malformed (per-queue and legacy) and failure rows, then checks the grouped counts and the malformed_total sum",
+          "intent_doc_match": null,
+          "silenced_marker_nearby": false,
+          "needs_verification": null,
+          "agent": "test-sufficiency",
+          "source_window": [
+            "  {% elif r.kind == 'malformed' %}",
+            "    {% set ns.malformed = ns.malformed + 1 %}",
+            "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+            "  {% else %}",
+            "    {% set ns.other = ns.other + 1 %}"
+          ],
+          "canonical_line_content": "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+          "orchestrator_score": 74,
+          "band": "medium",
+          "attribution": [
+            "test-sufficiency"
+          ],
+          "stable_hash": "597aa37d8cc564d6ca526c10b08dd024617bf41b1a6de20f6512b3a4670aac43",
+          "status": "new",
+          "members": [
+            {
+              "file": "triggarr/templates/partials/cycle_grade.html",
+              "line": 24,
+              "title": "Card template's switch to structured reason kinds has no measured or diff-visible rendering test",
+              "category": "test-coverage",
+              "severity": "medium",
+              "agent": "test-sufficiency",
+              "agent_confidence": 62,
+              "problem": "The dashboard card now groups and counts problem rows using the new 'kind' label and 'skip_count' number instead of reading the display text. Coverage measurement does not include this template. The test changes in this diff only check the data that feeds the card, not the card the user sees. Nothing in the supplied evidence shows a test that renders the card and checks the grouped counts, such as the malformed-records total or the not-evaluated count.",
+              "source_window": [
+                "  {% elif r.kind == 'malformed' %}",
+                "    {% set ns.malformed = ns.malformed + 1 %}",
+                "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+                "  {% else %}",
+                "    {% set ns.other = ns.other + 1 %}"
+              ],
+              "cwe": null,
+              "why_it_matters": "This template is what the owner sees after each search cycle. If the grouping logic in the template breaks, for example by misreading the new fields or counting rows in the wrong group, the card could show wrong totals and none of the changed tests would catch it, even though the Python side is about 97% covered.",
+              "fix_hint": "add or point to a rendering test that feeds cycle_grade.html a view containing unevaluated, malformed (per-queue and legacy) and failure rows, then checks the grouped counts and the malformed_total sum",
+              "current_code": "{% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+              "intent_doc_match": null
+            }
+          ],
+          "snapshot": {
+            "at_pass": 1,
+            "file": "triggarr/templates/partials/cycle_grade.html",
+            "line": 24,
+            "canonical_line_content": "    {% set ns.malformed_total = ns.malformed_total + r.skip_count %}",
+            "band": "medium"
+          }
+        }
+      ],
+      "filtered": [
+        {
+          "file": "triggarr/search/outcome.py",
+          "line": 264,
+          "title": "Reason-kind vocabulary is bare string literals, unlike the module's own GRADE_* constants",
+          "reason": "sub-threshold"
+        },
+        {
+          "file": "triggarr/search/outcome.py",
+          "line": 273,
+          "title": "Bad-entry skip paths in the failure-reason and unevaluated loops never run in tests",
+          "reason": "sub-threshold"
+        },
+        {
+          "file": "tests/test_outcome.py",
+          "line": 171,
+          "title": "New all-kinds test adds 'malformed' by hand instead of taking it from the legacy view",
+          "reason": "sub-threshold"
+        }
+      ],
+      "codex": {
+        "status": "joined",
+        "reason": null,
+        "verdict": "approve",
+        "findings": 0
+      }
+    },
+    {
+      "pass_number": 2,
+      "head_sha": "5d58264e93a21b100d01e80503b9a7d064253d36",
+      "timestamp": "2026-11-14T04:56:01Z",
+      "mode": "deep",
+      "diff_range": "aeead4b601d7a26b927656bf1a07ab8c66fde58f..5d58264e93a21b100d01e80503b9a7d064253d36",
+      "agents_run": [
+        "bugs",
+        "security",
+        "architecture",
+        "impact",
+        "test-sufficiency",
+        "compliance",
+        "language-python"
+      ],
+      "findings": [],
+      "filtered": [
+        {
+          "file": "triggarr/search/outcome.py",
+          "line": 267,
+          "title": "New reason-kind vocabulary uses bare string literals while the module's sibling enum (grades) uses named constants",
+          "reason": "sub-threshold"
+        },
+        {
+          "file": "triggarr/templates/partials/cycle_grade.html",
+          "line": 20,
+          "title": "No test pins the bug the kind-based card grouping was meant to fix",
+          "reason": "sub-threshold"
+        },
+        {
+          "file": "triggarr/search/outcome.py",
+          "line": 273,
+          "title": "Tampered-entry guards in the failure and unevaluated loops never run in tests",
+          "reason": "sub-threshold"
+        }
+      ],
+      "reviewed_tree": "5d58264e93a21b100d01e80503b9a7d064253d36",
+      "codex": {
+        "status": "skipped",
+        "reason": "unauthenticated",
+        "verdict": null,
+        "findings": 0
+      },
+      "resolved": [
+        {
+          "file": "triggarr/templates/partials/cycle_grade.html",
+          "line": 24,
+          "title": "Card template's switch to structured reason kinds has no measured or diff-visible rendering test",
+          "band": "medium",
+          "stable_hash": "597aa37d8cc564d6ca526c10b08dd024617bf41b1a6de20f6512b3a4670aac43",
+          "agent": "test-sufficiency",
+          "resolution": {
+            "source": "recheck",
+            "agents": [
+              "test-sufficiency"
+            ],
+            "verdict": "resolved",
+            "head_sha": "5d58264e93a21b100d01e80503b9a7d064253d36",
+            "at_pass": 2,
+            "reason": "Existing card-render tests in tests/test_app_cards.py exercise the template's kind-based unevaluated, malformed and other branches and the skip_count sum at HEAD. The remaining gap, a test for wording that looks like a skip or not-evaluated message, is reported separately as cov-001 (low).",
+            "verified_blob": "448489479602b0aef70d2c3a53db37d1bb406897"
+          }
+        }
+      ]
+    }
+  ]
+}

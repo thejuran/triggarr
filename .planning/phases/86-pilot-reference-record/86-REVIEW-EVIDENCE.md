@@ -1022,3 +1022,150 @@ Merged: aeead4b601d7a26b927656bf1a07ab8c66fde58f (by owner)
 - Recheck immediately before the merge: head unchanged, 15 of 15 checks passing including Review acceptance, merge state CLEAN, main unchanged at `b80c3e2`.
 - A first attempt that combined the merge with a wait loop was refused by a local pre-run hook before anything executed; the merge was then issued as a single command.
 - CI on main after the merge: run 43557418199 on `aeead4b` completed with success; every mandatory job passed (test, dependencies, lint, secrets, actionlint, docker, image-smoke, browser-e2e, os-scan, CI ready).
+
+## Card-template PR: integration with main (86-10)
+
+Continues the "Card-template PR" section above. After PR #54 merged (and PR #57, which restored CI on main), `origin/main` (`aeead4b601d7a26b927656bf1a07ab8c66fde58f`) was merged into `pilot-card-reason-kind` once, with a plain two-parent merge commit created by `git commit` (no rebase, no force-push). No conflicts.
+
+### Head 5d58264e93a21b100d01e80503b9a7d064253d36 (integration head)
+
+H_merge and H_final are the same commit: no confirmed defect was found, so there was no fix round after integration.
+
+Local review round, as recorded before the push:
+
+```
+PR: 55
+Pre-integration head: 46c39194249d1e7bcd2362a91d238d0997539f3f
+H_merge: 5d58264e93a21b100d01e80503b9a7d064253d36
+Reviewed head: 5d58264e93a21b100d01e80503b9a7d064253d36 (integration head)
+  Gate: focused tests 148 passed; full suite 3282 passed, 1 skipped; ruff clean; HEAD asserted before and after.
+  BM: 2026-11-14T04:43:50Z to 04:46:14Z, standard/standard; 0 critical, 1 warning (WR-01 test gap), 3 info. Usage: harness reported 72k reviewer subagent tokens.
+  Codex pilot-card-merge a1: 2026-11-14T04:43:40Z to 04:45:52Z; complete, no findings. Usage: none printed.
+  Vibe-check pass 2: 2026-11-14T04:50:37Z to 04:56:01Z (coverage prep 04:47Z to 04:50Z); 7 lanes; 0 reported, 3 below threshold, 1 resolved on recheck. Usage: harness reported about 620k subagent tokens across triage and 7 lanes.
+  No confirmed defect; no owner fix decision needed. H_final = H_merge.
+```
+
+PR comment: https://github.com/thejuran/triggarr/pull/55#issuecomment-6872112603 (PR #55; CI run 43559074846; Review acceptance run 43559074842, attempt 2 pending). The text below is exactly as posted.
+
+````markdown
+<!-- review-checkpoint head=5d58264e93a21b100d01e80503b9a7d064253d36 -->
+
+Integration head: origin/main merged in after PR #54 merged, as `5d58264e93a21b100d01e80503b9a7d064253d36`; not a fix round. Main at the time of the merge was `aeead4b601d7a26b927656bf1a07ab8c66fde58f`, which also contains PR #57 (the fix that restored CI on main).
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `5d58264e93a21b100d01e80503b9a7d064253d36` (PR #55) |
+| PR base SHA | `aeead4b601d7a26b927656bf1a07ab8c66fde58f` (PR base, main; also the merge-base) |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `5d58264e93a21b100d01e80503b9a7d064253d36` |
+| Codex inspected base (`inspected_base_sha`) | `aeead4b601d7a26b927656bf1a07ab8c66fde58f` |
+
+Reconciliation: All fields match; no reconciliation needed. The head is a two-parent merge commit (parents: the previously reviewed head `46c39194249d1e7bcd2362a91d238d0997539f3f` and main `aeead4b601d7a26b927656bf1a07ab8c66fde58f`), merged without conflicts.
+
+### Classification
+
+{"schema":1,"head":"5d58264e93a21b100d01e80503b9a7d064253d36","classification":"code","classes_present":["code"],"rationale":"Net change against main is unchanged from the previous head: cycle_view() (triggarr/search/outcome.py) adds a structured kind/skip_count to each reason row and cycle_grade.html classifies by kind instead of display text; plus tests. Runtime code and a template; no agent instructions, workflows or policy. The merge itself adds only content already on main.","supersedes_head":"46c39194249d1e7bcd2362a91d238d0997539f3f"}
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr PR #55, head `5d58264e93a21b100d01e80503b9a7d064253d36`, base `aeead4b601d7a26b927656bf1a07ab8c66fde58f`. Whole-PR review of the PR's net change at the integration head: the card's reason rows are classified by a structured `kind` instead of display text, with no visible change intended (D-03). Beyond the previously reviewed head, this head adds only what main gained: PR #54 (Refresh counts skips a malformed record) and PR #57 (dependency patch, date-independent review-tooling tests, `zlib1g` upgrade in the image).
+- **Risk:** low. The worst realistic failure is a wrong summary label on the dashboard card, or a template error if a malformed row ever lacked `skip_count` (both construction sites set it, and a test enforces that). The merge touched disjoint files and merged without conflicts; main's `engine.py` changes are in the count-refresh functions, which do not produce the persisted record `cycle_view` reads. Nothing persisted changes.
+- **Recommended review:** BM standard on the PR's three files at this head, the paired Codex pass, and routine vibe-check (code class).
+- **Required evidence:** focused outcome and card tests; full suite and lint with the head asserted; CI on the merged head.
+- **What this recommendation cannot establish:** browser rendering beyond the CI browser suite, and labels for tampered records outside what the application writes.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no additional vibe-check recommended.
+- **Routine vibe-check status:** ran on this head (`/vibe-check:deep-review`, stock, range `aeead4b..5d58264`, pass 2 on the branch's state file); exact-head local coverage was prepared first and its provenance `check` passed. Report: `vibe-check/5d58264e93a2-card-routine.{md,json}`. Result: 0 reported, 3 below threshold; pass 1's Medium (no rendering test for the template switch) was rechecked as resolved by the lane that raised it, which re-filed the remaining gap as a low-severity note. Seven lanes ran; vibe-check's own Codex lane was skipped as unauthenticated. This pass reviewed the PR's net change; the content merged in from main was reviewed under PR #54 and PR #57.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | explicit `/bm:code-review` scope (reviewer run on `tests/test_outcome.py`, `triggarr/search/outcome.py`, `triggarr/templates/partials/cycle_grade.html`) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow file/step: `workflows/code-review.md:resolve_depth` |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-card-5d58264e93a2.md` |
+| Status | complete: 0 critical, 1 warning, 3 info. Convention tier not run (a local hook refused the command that included it; its rule packs cover JS/TS only) |
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (`.status.json`: complete, 0 findings, trusted mode; readiness check: "Codex: ok — complete") |
+| Fallback | none |
+| Attempts | 1 (label `pilot-card-merge`) |
+| Raw output paths | `.prompt.txt`, `.meta.json`, `.jsonl`, `.last.json`, `.status.json`, `.pytest.txt` under `.planning/phases/86-pilot-reference-record/codex/5d58264e93a2-pilot-card-merge-a1` |
+| Review complete | `review_complete`: true; `incomplete_reasons`: [] |
+| Coverage | Inspected the complete three-file in-scope diff; the phase-plan diff was empty. Checked all reason kinds, numeric skip counts, legacy aggregate fallback, invalid persisted values, mixed reasons, and mismatched totals. Traced dashboard, polling, manual-search, and refresh rendering through _build_app_context and cycle_view. Reviewed outcome tests and existing card assertions for singular/plural labels, failed grades, unevaluated queues, mixed failures, and eligible-work fallback. Checked security and policy impact: escaping remains unchanged; no CI, acceptance, audit, or publication policies changed. |
+| Exclusions | Planning markdown other than changed phase plans, planning JSONL transcripts, and generated codex review artifacts as requested. |
+| Commands run | 13, as reported in `.last.json` (exit codes 0) |
+| Limitations | Did not independently run pytest in the read-only sandbox; execution evidence comes from the harness file. Existing card tests protect current wording but do not directly test that changing display text leaves structured classification unchanged. No browser-based visual verification was performed. |
+
+Findings: none. Verdict `no-findings`. Harness pytest on the exact head: 3282 passed, 1 skipped.
+
+### Greptile
+
+not run on this head
+
+### CI
+
+CI run 43559074846 (attempt 1): success. Review acceptance run 43559074842: attempt 2 waiting for the owner (attempt 1 was created before the register entries were written, so it was cancelled and re-run).
+
+| Required check | Run ID | Result |
+|---|---|---|
+| test | 43559074846 | pass |
+| dependencies | 43559074846 | pass |
+| lint | 43559074846 | pass |
+| secrets | 43559074846 | pass |
+| actionlint | 43559074846 | pass |
+| docker | 43559074846 | pass |
+| image-smoke | 43559074846 | pass |
+| browser-e2e | 43559074846 | pass |
+| os-scan | 43559074846 | pass |
+| CI ready | 43559074846 | pass |
+| CodeQL / Analyze | 43559069542 | pass |
+
+### Original vs. refreshed findings
+
+| Finding at the previous head (`46c39194249d`) | Outcome at this head |
+|---|---|
+| BM WR-01 / vibe-check cov-001: no card test checks that the template uses `kind` | carried forward. BM raises it again as WR-01 (warning). Vibe-check's lane now rates its Medium resolved (existing card tests render every changed branch) and keeps the narrower gap as a low note |
+| BM IN-01: kind names are string literals | carried forward (BM IN-02, vibe-check arch-001) |
+| BM IN-02: the test hardcodes "malformed" | carried forward (BM IN-03) |
+| BM SA-01: a tampered record can show two explanations (predates the PR) | not raised at this head |
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:5d58264e93a2:WR-01` and `vibe-check:5d58264e93a2:cov-001` | bm, vibe-check | `5d58264e93a2` | nonblocking_debt (unproven under D-09: a test gap, not a defect) | No test fails if the template returns to matching display text. BM rendered old and new templates against 10,752 generated records: output differs only where a failure reason's truncated text ends in "skipped", which the old template counted as a skipped record. No such text was found among what the application writes (86-05). The owner was offered the extra card test before the first push and did not choose it. | `5d58264e93a2` |
+| `bm:5d58264e93a2:IN-01` | bm | `5d58264e93a2` | nonblocking_debt | `r.skip_count` is read without a fallback; both construction sites set it and `test_cycle_view_every_reason_has_kind` pins that. | `5d58264e93a2` |
+| `bm:5d58264e93a2:IN-02` and `vibe-check:5d58264e93a2:arch-001` | bm, vibe-check | `5d58264e93a2` | nonblocking_debt | Reason kinds are bare string literals in three places. Style; a misspelling would fall into the "other" bucket. | `5d58264e93a2` |
+| `bm:5d58264e93a2:IN-03` | bm | `5d58264e93a2` | nonblocking_debt | The all-kinds test adds "malformed" by hand. | `5d58264e93a2` |
+| `vibe-check:5d58264e93a2:cov-002` | vibe-check | `5d58264e93a2` | nonblocking_debt | Tampered-entry guards in `cycle_view` never run in tests; not changed by this PR. | `5d58264e93a2` |
+
+No confirmed defect, so no fix round followed integration. Register entries `55:5d58264e93a21b100d01e80503b9a7d064253d36` are written and read back (blockers `{"open":[]}`, dispositions `{"items":{}}`; no Greptile findings exist). Readiness check: "Ready to request approval".
+
+### Incomplete items
+
+- Greptile did not run (optional).
+- vibe-check's internal Codex lane was skipped (`unauthenticated`); the paired Codex review is complete.
+- BM's convention tier did not run.
+
+### Owner effort (D-12)
+
+1 so far on this PR (push approval at the previous head).
+````
+
+#### Notes on this round
+
+- The vibe-check pass reviewed the PR's net change against main at this head (the range named on the command line). The tool's instructions can also be read as "review only what changed since the last pass", which here would have been PR #54's and PR #57's already-merged content. The reading used is stated in `vibe-check/5d58264e93a2-card-routine.md`.
+- A local pre-run hook refused one of the BM reviewer's combined commands (it included the convention check); the reviewer did not retry it. The convention tier is recorded as not run.
+- All Codex outputs for this head passed the publication gate, including the transcript; nothing was withheld.
+
