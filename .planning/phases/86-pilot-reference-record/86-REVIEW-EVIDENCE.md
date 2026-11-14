@@ -1015,3 +1015,10 @@ Register entries `57:8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc` are written and r
 - Step 5 recheck immediately before submission: PR open and not a draft, head unchanged, run waiting on attempt 2 and associated with PR #57 at that head, one pending `review-acceptance` environment with `current_user_can_approve` true, readiness "Ready to request approval", main unchanged at `b80c3e2`.
 - Submitted via the pending-deployments endpoint (environment `review-acceptance`; deployment 7782591030 for sha `8e3d6b4…`). Review acceptance run 43556379926 attempt 2 completed with **success**. PR merge state is clean.
 
+Merged: aeead4b601d7a26b927656bf1a07ab8c66fde58f (by owner)
+
+- PR #57 merged 2026-11-14T04:35:30Z (2026-11-13 local) as a merge commit. Main moved from `b80c3e2` to `aeead4b`.
+- How it was merged: the owner instructed "merge pr 57" in the Claude CLI session after the acceptance check passed, and Claude ran the merge under the owner's GitHub account, pinned to the accepted head (`--match-head-commit 8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc`).
+- Recheck immediately before the merge: head unchanged, 15 of 15 checks passing including Review acceptance, merge state CLEAN, main unchanged at `b80c3e2`.
+- A first attempt that combined the merge with a wait loop was refused by a local pre-run hook before anything executed; the merge was then issued as a single command.
+- CI on main after the merge: run 43557418199 on `aeead4b` completed with success; every mandatory job passed (test, dependencies, lint, secrets, actionlint, docker, image-smoke, browser-e2e, os-scan, CI ready).

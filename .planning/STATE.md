@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 executing -- PR #54 merged; main CI fix PR #57 accepted at 8e3d6b4, open, not merged; 86-10 follows"
-stopped_at: "PR #57 (main-CI fix) accepted by the owner at 8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc (run 43556379926 attempt 2, success); not merged yet. Owner merges, or instructs the merge; then 86-10 for PR #55"
-last_updated: "2026-11-14T04:33:43Z"
-last_activity: "2026-11-13 -- Phase 86 execution: 86-07 finished; PR #54 (Refresh counts skips a malformed record) merged to main as b80c3e2 on the owner's instruction"
+status: "Phase 86 executing -- pilot PR #54 and main CI fix PR #57 merged, main CI passing; pilot PR #55 open, behind main; next plan 86-10"
+stopped_at: "PR #57 (main-CI fix) merged as aeead4b601d7a26b927656bf1a07ab8c66fde58f; CI on main passing again (run 43557418199). Next: 86-10 brings PR #55 up to date with main and re-reviews its new head"
+last_updated: "2026-11-14T04:41:39Z"
+last_activity: "2026-11-13 -- Phase 86 execution: 86-07 finished (PR #54 merged); main CI restored by PR #57 (opentelemetry-api 1.45.2, date-independent review-tooling tests, zlib1g upgrade in the image), merged as aeead4b"
 progress:
   total_phases: 7
   completed_phases: 5
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 Phase: 86 (Pilot & Reference Record) — executing
 Plan: 7 of 10 finished; next 86-10 (second pilot PR: merge main in, fresh evidence, owner acceptance)
 Status: Phase 86 executing (10 plans) on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind); previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback)
-Last activity: 2026-11-13 -- Phase 86 execution: 86-01..86-07 finished; PR #54 merged (main at b80c3e2); PR #55 (pilot-card-reason-kind, 46c3919) open and behind main
+Last activity: 2026-11-13 -- Phase 86 execution: 86-01..86-07 finished; PR #54 and PR #57 merged (main at aeead4b, CI passing); PR #55 (pilot-card-reason-kind, 46c3919) open and behind main
 
 ### v2.13 milestone shape
 
@@ -89,7 +89,7 @@ For v2.13: Phase 83 is the shared substrate for Phase 86 (the paired review work
 
 ### Blockers/Concerns
 
-- 2026-11-13: CI on main is failing (run 43551352373 on `b80c3e2`), which blocks 86-10 because PR #55 would inherit both failures once main is merged in. Neither comes from PR #54, which changed only `triggarr/search/engine.py` and two test files. (1) `dependencies`: pip-audit now reports CVE-2026-126360 in `opentelemetry-api` 1.45.1, a shipped dependency; fixed in 1.45.2. (2) `test`: 11 tests in `tests/test_codex_review_container.py` fail because the code paths they exercise read the real clock while the fixture sign-in date is fixed at 2026-10-28, now older than the 7-day limit. The other mandatory jobs were skipped as a result.
+- 2026-11-13 (resolved the same day): CI on main failed after the PR #54 merge for three date-driven reasons (a new `opentelemetry-api` advisory, review-tooling tests that read the real clock, and two HIGH `zlib1g` findings in the base image). PR #57 fixed all three; main CI passes at `aeead4b`. The temporary Dockerfile step it added is tracked for removal in backlog/MAINTENANCE.md.
 - _[Security-sensitive detail removed before publication; the full record is kept privately.]_
 
 ### Future Milestones
@@ -130,7 +130,6 @@ Resume file: .planning/phases/86-pilot-reference-record/86-10-PLAN.md
 
 ## Operator Next Steps
 
-- Fix CI on main first: PR #57 is accepted at head `8e3d6b4`; merge it, then confirm CI on main passes
 - Phase 86 (Pilot & Reference Record): `/bm:execute-phase 86` on branch `phase-86-pilot-reference-record` continues with 86-10 (PR #55: merge main in, re-review the new head, owner acceptance), then 86-08 and 86-09
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule
