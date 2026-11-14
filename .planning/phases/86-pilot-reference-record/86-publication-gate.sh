@@ -2,7 +2,8 @@
 # Phase 86 evidence publication gate re-check (86-01 Task 3).
 # Run from the repository root, always through bash: bash <this file> [phase-dir]
 # Exit 0 only when every tracked review artifact passes. Any match, read error,
-# tool error or empty file list exits non-zero (fails closed).
+# tool error, empty file list or staged content that differs from the scanned
+# working copy exits non-zero (fails closed).
 d=${1:-.planning/phases/86-pilot-reference-record}
 fail() { echo "publication gate BLOCKED: $*" >&2; exit 1; }
 command -v gitleaks >/dev/null 2>&1 || fail "gitleaks not installed"
@@ -50,4 +51,10 @@ for f in "${F[@]}"; do
 done
 gitleaks detect --no-git --redact --source "$t/copy" >/dev/null 2>&1; r=$?
 [ "$r" -eq 0 ] || fail "gitleaks exit $r (1 = finding, other = error)"
+# Every check above read the working tree, but a commit publishes the index. A covered
+# path whose staged content differs from its working copy was not scanned as it will be
+# committed, so it blocks (git diff exit codes: 0 = same, 1 = differs, other = error).
+git diff --name-only --exit-code -- "${F[@]}"; r=$?
+[ "$r" -ne 1 ] || fail "index and working tree differ for the files listed above: stage the scanned content, then re-run"
+[ "$r" -eq 0 ] || fail "git diff error (exit $r)"
 echo "publication gate: PASS (${#F[@]} tracked artifacts)"

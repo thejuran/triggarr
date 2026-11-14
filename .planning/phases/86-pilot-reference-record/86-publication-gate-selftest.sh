@@ -3,8 +3,8 @@
 # Usage, from anywhere: bash <this file> <path to 86-publication-gate.sh>
 # Builds throwaway git repositories under mktemp and checks clean, matching,
 # unreadable-file and empty-list cases, the credential-shape hand-review entry
-# rules (exact path, dedicated section, accepted disposition only), plus
-# invocation from zsh.
+# rules (exact path, dedicated section, accepted disposition only), a staged
+# match hidden by an unstaged redaction, plus invocation from zsh.
 gate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 [ -f "$gate" ] || { echo "selftest: gate script not found: $1" >&2; exit 2; }
 p=.planning/phases/86-pilot-reference-record
@@ -34,7 +34,8 @@ hit() { fresh; printf 'id %s\n' "$(printf '%032d' 0 | tr 0 a)" >> "$r/$p/codex/a
 ev() { printf -- "$1\n" >> "$r/$p/86-REVIEW-EVIDENCE.md"; }
 A="\`$p/codex/a1.txt\`"; NO="no accepted Credential-shape hand review entry"
 hit; expect "unreviewed 32-hex hit blocks" block "$NO"
-ev "- $A: not a credential -- test fixture id, not an API key"; expect "accepted entry for the exact path passes" pass ""
+ev "- $A: not a credential -- test fixture id, not an API key"; ( cd "$r" && git add -A )
+expect "accepted entry for the exact path passes" pass ""
 hit; ev "Codex output in $p/codex/a1.txt and a1.txt was read."
 ev "## Refresh-counts PR"; ev "See $A for the transcript."; expect "ordinary citation of the path blocks" block "$NO"
 hit; ev "## Withheld files"; ev "- $A: not a credential -- wrong section"; expect "accepted entry outside the section blocks" block "$NO"
@@ -52,4 +53,7 @@ fresh; rm "$r/$p/codex/a1.txt"; expect "tracked file missing from worktree block
 r=$(mktemp -d); dirs+=("$r"); ( cd "$r" && git init -q ); expect "empty file list blocks" block "no tracked review artifacts"
 fresh; ( cd "$r" && git mv "$p/vibe-check/v.md" "$p/vibe-check/v two.md" ); expect "file name with a space passes" pass ""
 echo "see /Users/x" >> "$r/$p/vibe-check/v two.md"; expect "file name with a space blocks" block "public-infrastructure check: matching"
+fresh; echo "see /home/someone/x" >> "$r/$p/vibe-check/v.md"; ( cd "$r" && git add -A ); echo "clean vibe report" > "$r/$p/vibe-check/v.md"
+expect "staged match with a redacted working copy blocks" block "index and working tree differ"
+( cd "$r" && git add -A ); expect "passes once the redacted copy is staged" pass ""
 echo "selftest: $pass passed, $bad failed"; [ "$bad" -eq 0 ]
