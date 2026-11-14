@@ -469,4 +469,150 @@ Per that decision, the wording for the passing tests above was corrected before 
 
 ## PILOT-03 recommendation and decisions
 
-Filled in by plan 86-08.
+**Bar check before writing this recommendation.** `git diff
+bbabaf8be53a85e60431dbb03d71c837a6b1afb5 HEAD -- 86-PILOT-RECORD.md`, read
+line by line for the "## Retirement bar (D-15, fixed before results)"
+section only, shows no added or removed line inside it. The bar below is
+unchanged since that commit (86-01 Task 1, 2026-10-30 — before any
+Refresh-counts code, review or comparison result existed):
+
+> The bar is fixed now, before any comparison result exists. Recommend **retiring routine vibe-check only if, on the fresh comparison and across the pilot, vibe-check found no proven defect (D-09) that BM + Codex missed.** If it found one, recommend keeping routine vibe-check, or keeping it for the risk level where it made the unique catch. The owner makes the final decision; the bar shapes Claude's recommendation only.
+
+### Decision 1: routine vibe-check
+
+The PILOT-02 comparison completed (see "PILOT-02 comparison result" above:
+all three reviewers finished independently on H1, and the owner approved
+the tally on 2026-10-30). Applying the bar mechanically:
+
+**On the fresh comparison (Refresh-counts PR, H1):** vibe-check's one
+confirmed consequential defect (`VC-arch-001` plus `bugs-001`/`imp-001`
+merged — the Sonarr ordering warning) was also reached independently by BM
+(`bm:03182462100e:WR-01`), which reproduced it with its own probe. Zero
+unique catches on the fresh comparison.
+
+**Across the rest of the pilot:**
+
+- PR #48's vibe-check ran only on the final head, after five BM/Codex fix
+  rounds had already found and fixed everything (D-08). It reported one
+  finding, and that one was a false positive (owner-dismissed, verified via
+  a scratch-repo reproduction). Cited here only with that D-08 limitation;
+  no unique catch.
+- PR #44 and both heads of the Card-template PR (#55): vibe-check found
+  nothing beyond unproven test-gap notes that BM or Codex also noted. No
+  unique catch.
+- **PR #36:** vibe-check — running the full 8-lane deep review as the
+  owner-approved fallback because Codex could not complete on this
+  195-file diff — found two confirmed consequential defects that neither
+  BM's eight review iterations nor Codex's two incomplete attempts on this
+  PR ever flagged:
+  1. Dependabot's `github-actions` group rewrites the pinned
+     `checkout`/`setup-buildx` SHAs, breaking the pinned-SHA no-skip tests
+     (named `impact-001` in PR #44's checkpoint comment). Confirmed: fixed
+     post-merge in PR #44 (`b0e1ee4`), anchoring the test on a stable
+     prefix instead of the exact pinned SHA.
+  2. The CI wiring test reads Trivy/actionlint pins from a phase planning
+     file that archiving the milestone would delete (named
+     `arch-002`/`impact-002`). Confirmed: fixed post-merge in PR #44
+     (`3b3713b`), moving the pins to a tracked non-planning file
+     (`.github/tool-pins.env`).
+
+  Both are within the D-14 cutoff (found and fixed before the Phase 86 PR
+  is accepted). PR #36's own RISK-01 note assessed it **high** risk ("a
+  defect in the gate/guard/harness can let an unreviewed head be accepted
+  or block every merge").
+
+So the bar's second branch applies: vibe-check found proven defects BM +
+Codex missed, once, on a high-risk PR where Codex's own pass could not
+complete at all. **My recommendation is to keep vibe-check, scoped to
+high-risk checkpoints** (the same trigger RISK-02 already uses), rather
+than keep running it on every "code"-class PR regardless of risk, which is
+today's standing rule. Reasoning: the one place it added confirmed, unique
+value in this pilot was exactly a high-risk, large-diff case where the
+paired workflow's Codex half failed to complete; the one place it was
+measured head-to-head against a *complete* paired workflow at moderate risk
+(the fresh comparison), it cost more time and ran far more subagents (nine
+versus two) for a catch both sides already had independently. Keeping it
+everywhere, not just at high risk, is also a legitimate reading of the
+bar's "or keeping it" branch — it is just not what this pilot's evidence
+singles out.
+
+**D-16 standing items (unaffected by this decision either way):**
+
+1. **Bot/fork PRs keep the vibe-check fallback.** Per Phase 85.1's owner
+   exception, a bot or fork PR's Codex pass that stays INCOMPLETE/PENDING
+   after its retry is still accepted only through the owner-approved
+   vibe-check (or another independent reviewer) fallback.
+2. **BM still recommends an extra vibe-check whenever a checkpoint's own
+   risk assessment comes out high (RISK-02).** This is the same trigger
+   this recommendation proposes making the *only* one for "code"-class
+   PRs generally, not an additional rule layered on top of a narrower
+   routine one.
+
+**In plain terms for the owner.** User impact: nothing here changes what
+end users see; it is about how reliably Triggarr's own safety net catches
+a broken pin or a future-breaking test before it ships, not about search or
+refresh behavior. Risk: dropping vibe-check everywhere removes the only
+reviewer that caught real problems on the one PR where the paired workflow
+(BM + Codex) is proven not yet reliable — a very large, high-risk diff.
+Time: vibe-check cost roughly 4-6 minutes per head in this pilot (sometimes
+run twice on the same PR) and ran up to nine model agents versus BM and
+Codex's two; narrowing it to high risk keeps that cost only where the
+evidence shows it is worth paying. Maintenance: a universal rule is simpler
+to state and follow (no risk judgment call); narrowing it to high risk
+reuses a judgment the process already makes today for RISK-02, so it adds
+no new kind of decision, just removes a second, broader trigger.
+
+### Decision 2: BM/Codex completion check
+
+Options:
+
+- **(a) Keep the manual owner check** — the acceptance checklist
+  (`docs/review-checkpoint-record.md`, "Owner acceptance checklist"), which
+  already shows the owner BM's and Codex's status, requested versus actual
+  depth, and any fallback, before the owner approves.
+- **(b) Extend the existing acceptance gate** to mechanically require
+  current, exact-head BM/Codex reports before the GitHub `review-acceptance`
+  check can pass. If chosen, this is scheduled as **FUT-03**: its own later
+  reviewed change to the gate, after this milestone, unless the owner
+  explicitly pulls it in now.
+
+Pilot evidence (the five pilot PRs — #48, #36, #44, #54, #55):
+
+- Codex's report was missing, stale, or on the wrong commit at acceptance
+  time on **1 of 5** pilot PRs: PR #36, where both Codex attempts stayed
+  INCOMPLETE/PENDING because the diff was too large for one pass. The
+  manual checklist surfaced that status in plain text, and the owner made
+  a separate, explicit decision to approve the vibe-check deep review as
+  the recorded fallback before acceptance proceeded ("Fallback via full
+  deep review (Recommended)", then "Approve the vibe-check deep-review
+  fallback for PR #36 at head 5a97e1f98982"). On the other four PRs (#48,
+  #44, #54, #55), Codex was complete on the exact accepted head every
+  time.
+- The manual check cost one owner decision per PR at minimum (the
+  acceptance approval itself) across all five PRs, plus the one extra
+  fallback-approval decision on PR #36. It did not silently pass an
+  incomplete report on any PR in this pilot — the one incompleteness case
+  was caught and handled, not missed.
+- **What an extension would prevent:** a human slip — approving a head
+  whose Codex report the owner did not actually notice was missing, stale,
+  or for the wrong commit. Nothing in this pilot shows that slip actually
+  happening.
+- **What an extension would not prevent:** it cannot judge whether a review
+  was thorough or a fix correct (the blueprint's own limit,
+  `docs/bm-greptile-codex-blueprint.md`: "A report-presence check can
+  enforce completeness and SHA binding; it cannot prove the reviewer was
+  thorough or a fix is correct"), and building it is itself a change to
+  acceptance-gate code (`acceptance-readiness.cjs`/`review-acceptance.yml`)
+  that would need its own review before being trusted to enforce anything.
+
+**Claude's recommendation:** keep the manual owner check (option a). The
+one incompleteness case this pilot produced was caught by the existing
+checklist, not missed by it, so there is no pilot evidence yet that a human
+slip is actually occurring. Extension would add new gate code to build,
+test and maintain, for a failure mode this pilot has not shown happening.
+If a future PR's incomplete or stale report ever does slip through the
+manual checklist, that incident — not this pilot — is the trigger to
+revisit FUT-03.
+
+Owner decision (PILOT-03 decision 1): pending
+Owner decision (PILOT-03 decision 2): pending
