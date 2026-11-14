@@ -68,8 +68,8 @@ complete. Batch pushes and hold docs-only commits until the next substantive pus
 See [the activation checklist](docs/buildomator-greptile-pilot.md) for the full
 protections.
 
-This standing instruction authorizes only running the read-only Codex review; it
-approves no PR and waives no review.
+This standing instruction authorizes only running the read-only Codex review and, at a
+high-risk checkpoint, the required vibe-check; it approves no PR and waives no review.
 
 ## Planning file format
 
@@ -93,12 +93,17 @@ limitation rather than claiming its display was verified.
 implemented across Phases 83-86 of this milestone (v2.13). Routine vibe-check on every
 "code"-class PR ended by owner decision in Phase 86 (PILOT-03, 2026-11-14). Vibe-check is
 required when a checkpoint's risk is assessed high; it is not run routinely below high
-risk. At high risk BM's risk note still states the vibe-check line (RISK-02); that one
-vibe-check is required, not a recommendation the owner may decline, and the checkpoint
-records that it ran and where its report is. Unchanged: on any head whose Codex pass
-stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or another
-independent reviewer) as the recorded fallback for that exact head; bot/fork PRs are
-the standing case where this is expected (Phase 85.1 exception). Greptile is optional
+risk. At high risk the checkpoint record's Vibe-check (RISK-02) section states the
+rationale and scope of the required vibe-check. That vibe-check is required, not a
+recommendation the owner may decline. Claude starts it automatically, right after the BM
+review and the paired Codex pass, on the same exact commit, without asking first (owner
+decision, 2026-11-14), and records per head that it ran and where its report is; the
+owner decides what to do with its findings. It never substitutes for Codex, never waives
+a finding and never reduces coverage. Unchanged, and a different thing: on any head whose
+Codex pass stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or
+another independent reviewer) as the recorded fallback for that exact head; vibe-check
+counts as that fallback only with the owner's explicit approval for that head. Bot/fork
+PRs are the standing case where this is expected (Phase 85.1 exception). Greptile is optional
 since 2026-10-22 (owner decision): it runs while free credits last, paid credits are
 not bought, and it is not a required check.
 
