@@ -6,7 +6,8 @@
 # credential-shape and public-infrastructure checks (exact path, current SHA-256,
 # dedicated section, accepted disposition only), letter-case variants, a staged
 # match hidden by an unstaged redaction, a covered file that is not staged
-# (untracked or locally ignored), plus invocation from zsh.
+# (untracked or locally ignored), a match after a byte that is not valid UTF-8,
+# plus invocation from zsh.
 gate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 [ -f "$gate" ] || { echo "selftest: gate script not found: $1" >&2; exit 2; }
 p=.planning/phases/86-pilot-reference-record
@@ -81,6 +82,12 @@ pub; whoami >> "$r/$p/vibe-check/v.md"; acc; ( cd "$r" && git add -A )
 expect "user name hit is not excused by a public-infrastructure entry" block "local user name check: matching"
 pub; hostname -s >> "$r/$p/vibe-check/v.md"; acc; ( cd "$r" && git add -A )
 expect "host name hit is not excused by a public-infrastructure entry" block "local host name check: matching"
+# A byte that is not valid UTF-8 must not hide the rest of its line (the gate scans byte-wise).
+inv() { fresh; printf "bytes \\377\\376 then $1\\n" "${@:2}" >> "$r/$p/codex/a1.txt"; ( cd "$r" && git add -A ); }
+inv "see /home/someone/x"; expect "local path after an invalid byte on the same line blocks" block "public-infrastructure check: matching"
+inv "id %s" "$(printf '%032d' 0 | tr 0 a)"; expect "32-hex value after an invalid byte on the same line blocks" block "$NO"
+inv "%s" "$(whoami)"; expect "user name after an invalid byte on the same line blocks" block "local user name check: matching"
+inv "%s" "$(hostname -s)"; expect "host name after an invalid byte on the same line blocks" block "local host name check: matching"
 fresh; printf 'token = "%s%s"\n' "gh""p_" "x7Qp2LmZ9sKt4VwR8yB3nC6dF1gH5jA0eU2i" >> "$r/$p/codex/a1.txt"
 expect "gitleaks finding blocks" block "gitleaks exit 1"
 fresh; chmod 000 "$r/$p/vibe-check/v.md"; expect "unreadable file blocks (grep exit 2)" block "grep error (exit 2)"

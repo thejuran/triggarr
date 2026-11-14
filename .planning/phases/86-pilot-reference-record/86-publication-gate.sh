@@ -12,6 +12,7 @@
 # check (each entry bound to the file's exact path and current SHA-256).
 # The local user name and local host name checks have no exception.
 d=${1:-.planning/phases/86-pilot-reference-record}
+export LC_ALL=C   # search bytes, not characters: a byte that is not valid UTF-8 must not hide the rest of its line
 fail() { echo "publication gate BLOCKED: $*" >&2; exit 1; }
 command -v gitleaks >/dev/null 2>&1 || fail "gitleaks not installed"
 t=$(mktemp -d) || fail "mktemp failed"
