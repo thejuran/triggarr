@@ -261,7 +261,7 @@ Final PR head `5a97e1f98982b47672ba108e357a024e0f2a44e2`, merged
 |---|---|---|---|---|---|---|---|
 | BM | 8 (iteration-1's 2 critical + 4 warning, fixed across rounds 1-4 at `252fe61`/`094028e`/`eae6d34`, counted as 6 by the record's own count rather than itemized; plus iteration-6's WR-01/WR-02, fixed at `06ac793`/`684ae13`) | 0 | 2 (the two CI traps the vibe-check fallback review found and this PR's own BM passes did not flag — see vibe-check row; fixed post-merge in PR #44) | 8 BM review iterations (iteration 1, phase-execution; iterations 2-5, fix-round re-reviews; iterations 6-8, post-push) | not recorded | not recorded | not recorded |
 | Codex | 1 (`codex:fb8da6e2abe5:a1:F001`/`a2:F001`, drain-timeout bytes/str `TypeError`, fixed at `2f2e8fc` with a regression test that failed before and passed after) | 0 | 2 (same two CI traps the vibe-check fallback found; Codex's own two attempts on this head did not flag them — INCOMPLETE/PENDING: both attempts self-declared incomplete, diff and 27 plan files exceeded output limits) | 2 attempts (`a1`, `a2`), both INCOMPLETE/PENDING — no completed Codex round on this PR (**D-01: this is the pilot's recorded evidence of how the workflow fails on very large PRs**) | not recorded | commands run: a1 28, a2 19 (as reported in `.last.json`) | not recorded |
-| vibe-check | 0 confirmed via reproduction (25 findings total, all dispositioned `nonblocking_debt` — 18 deferred, 7 accepted, 0 critical/warning) | 0 | 0 (it found the misses itself, before BM/Codex's own passes concluded) | 1 full deep-review pass (8 lanes), run as the **owner-approved fallback for Codex's incomplete pass**, not as routine vibe-check | not recorded | 25 findings raised (as reported); 0 critical/0 warning | not recorded |
+| vibe-check | 0 at the time of PR #36 (25 findings total, all dispositioned `nonblocking_debt` — 18 deferred, 7 accepted, 0 critical/warning; none reproduced then); 2 later confirmed by reproduction when fixed in PR #44 (`impact-001`: commit `b0e1ee4`, "Verified: with both pins bumped, the old tests fail 2 and the new pass 87/87"; `arch-002`/`impact-002`: commit `3b3713b`, "Verified: passes with the phase dir moved away") | 0 | 0 (it found the misses itself, before BM/Codex's own passes concluded) | 1 full deep-review pass (8 lanes), run as the **owner-approved fallback for Codex's incomplete pass**, not as routine vibe-check | not recorded | 25 findings raised (as reported); 0 critical/0 warning | not recorded |
 | Greptile | n/a | n/a | n/a | n/a | n/a | did not run (committed record: "not run on this head (optional since 2026-10-22)"; confirmed by `gh pr checks 36`) | n/a |
 
 **D-01 note on the Codex row:** PR #36's Codex pass never completed (diff too
@@ -374,7 +374,7 @@ and `5d58264e93a2`, their Dispositions tables and review-time tables, plus
 | PR | Category (D-05) | Reviewers that ran | Confirmed defects found by each | Unique catches |
 |---|---|---|---|---|
 | #48 | security-sensitive; larger change | BM, Codex, vibe-check (final head only, D-08) | BM 22; Codex 9; vibe-check 0 | none (vibe-check's one reported item was a false positive) |
-| #36 | larger change; large-PR failure-mode evidence | BM; Codex (both attempts INCOMPLETE/PENDING for size); vibe-check (owner-approved fallback) | BM 8; Codex 1 (fixed in PR #44); vibe-check 0 confirmed via reproduction | vibe-check 2 (the two CI traps neither BM's nor Codex's own passes on this PR flagged; fixed post-merge in PR #44) |
+| #36 | larger change; large-PR failure-mode evidence | BM; Codex (both attempts INCOMPLETE/PENDING for size); vibe-check (owner-approved fallback) | BM 8; Codex 1 (fixed in PR #44); vibe-check 0 at the time of PR #36, 2 later confirmed by reproduction when fixed in PR #44 (`b0e1ee4`, `3b3713b`) | vibe-check 2 (the two CI traps neither BM's nor Codex's own passes on this PR flagged; fixed post-merge in PR #44) |
 | #44 | small fix | BM; Codex | BM 0; Codex 0 | none |
 | Refresh-counts (#54) | state/error-path logic | vibe-check (PILOT-02 comparison + routine pass 2); BM; Codex | BM 1; Codex 0; vibe-check 1 (same defect as BM, found independently) | none — both sides caught the one real defect; neither missed one the other found |
 | Card-template (#55) | UI | BM; Codex; vibe-check (two passes) | BM 0; Codex 0; vibe-check 0 | none |
@@ -500,9 +500,10 @@ unique catches on the fresh comparison.
   finding, and that one was a false positive (owner-dismissed, verified via
   a scratch-repo reproduction). Cited here only with that D-08 limitation;
   no unique catch.
-- PR #44 and both heads of the Card-template PR (#55): vibe-check found
-  nothing beyond unproven test-gap notes that BM or Codex also noted. No
-  unique catch.
+- PR #44: vibe-check did not run (risk assessed moderate, not high), so
+  this PR gives no vibe-check evidence either way.
+- Both heads of the Card-template PR (#55): vibe-check found nothing
+  beyond an unproven test-gap note that BM also noted. No unique catch.
 - **PR #36:** vibe-check — running the full 8-lane deep review as the
   owner-approved fallback because Codex could not complete on this
   195-file diff — found two confirmed consequential defects that neither
@@ -510,14 +511,21 @@ unique catches on the fresh comparison.
   PR ever flagged:
   1. Dependabot's `github-actions` group rewrites the pinned
      `checkout`/`setup-buildx` SHAs, breaking the pinned-SHA no-skip tests
-     (named `impact-001` in PR #44's checkpoint comment). Confirmed: fixed
-     post-merge in PR #44 (`b0e1ee4`), anchoring the test on a stable
-     prefix instead of the exact pinned SHA.
+     (named `impact-001` in PR #44's checkpoint comment). Confirmed by
+     reproduction when fixed post-merge in PR #44 (`b0e1ee4`, whose commit
+     message records "Verified: with both pins bumped, the old tests fail 2
+     and the new pass 87/87"), anchoring the test on a stable prefix
+     instead of the exact pinned SHA.
   2. The CI wiring test reads Trivy/actionlint pins from a phase planning
      file that archiving the milestone would delete (named
-     `arch-002`/`impact-002`). Confirmed: fixed post-merge in PR #44
-     (`3b3713b`), moving the pins to a tracked non-planning file
-     (`.github/tool-pins.env`).
+     `arch-002`/`impact-002`). Confirmed by reproduction when fixed
+     post-merge in PR #44 (`3b3713b`, whose commit message records
+     "Verified: passes with the phase dir moved away"), moving the pins to
+     a tracked non-planning file (`.github/tool-pins.env`).
+
+  That reproduction is the D-09 proof for both. At PR #36's own acceptance
+  neither had been reproduced: all 25 of the fallback review's findings
+  were dispositioned `nonblocking_debt` then (see PR #36's scorecard).
 
   Both are within the D-14 cutoff (found and fixed before the Phase 86 PR
   is accepted). PR #36's own RISK-01 note assessed it **high** risk ("a
@@ -622,3 +630,30 @@ Owner decision (PILOT-03 decision 1): "take all recommendations" (owner, 2026-11
 Owner decision (PILOT-03 decision 2): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: keep the manual owner check (option a) as the BM/Codex completion check at acceptance; the acceptance-gate extension (FUT-03) was not chosen; FUT-03 stays an unscheduled future option and nothing is built for it in Phase 86.
 
 Owner decision (PILOT-03 decision 3): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: the Phase 86 PR will include the update to the vibe-check sentences in CLAUDE.md's "Review-workflow rollout" paragraph and in `docs/review-checkpoint-record.md`, rather than leaving it as a recorded follow-up; noted that this makes the Phase 86 PR an instruction change, classified sensitive.
+
+## Corrections (2026-11-14, after code review iteration 1)
+
+Code review iteration 1 (`86-REVIEW.md`, SA-02) found two places where this
+record contradicted itself. They were corrected on 2026-11-14. No decision,
+no owner quotation, no row of the owner decisions log and no word of the
+retirement bar was changed.
+
+1. **PR #36 scorecard, vibe-check row, and the matching cross-PR summary
+   cell.** They read "0 confirmed via reproduction", while the PILOT-03
+   section called two of the same findings confirmed defects. Both are now
+   stated the same way: 0 at the time of PR #36 (all 25 findings were
+   dispositioned `nonblocking_debt`, none reproduced then); 2 later
+   confirmed by reproduction when fixed in PR #44. The proof is in the fix
+   commits' own messages: `b0e1ee4` ("Verified: with both pins bumped, the
+   old tests fail 2 and the new pass 87/87") and `3b3713b` ("Verified:
+   passes with the phase dir moved away"). The PILOT-03 section now cites
+   that same proof for D-09 instead of resting on "fixed post-merge" alone.
+2. **PILOT-03 "Across the rest of the pilot", PR #44.** The bullet said
+   vibe-check found only test-gap notes on PR #44. Vibe-check did not run
+   on PR #44 (its scorecard row: not run, risk assessed moderate). The
+   bullet now says so. The Card-template PR (#55) part of the same bullet
+   was narrowed to what its scorecard and `86-REVIEW-EVIDENCE.md` support:
+   one unproven test-gap note, the same gap BM raised as WR-01.
+
+Neither correction changes the result measured against the bar: vibe-check's
+only unique proven catches in the pilot remain the two on PR #36.
