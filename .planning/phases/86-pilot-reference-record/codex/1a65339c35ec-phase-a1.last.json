@@ -1,0 +1,228 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "1a65339c35ec80b216a27afe0354df1cd5a395b1",
+  "inspected_base_sha": "7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Whole net change between the specified base and head, including 136 changed plan files and the publication-gate scripts; excluding generated review artifacts and other planning markdown as requested.",
+  "verdict": "findings",
+  "summary": "Found one publication-gate gap and one redaction-instruction regression. The PILOT-03 policy changes consistently require vibe-check at high risk and preserve the Codex fallback. Harness evidence reports 3282 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "All six changed agent-instruction and review-policy documents, including the complete adoption guide.",
+    "Both new publication-gate scripts: file enumeration, error handling, credential dispositions, staging behavior, and self-test coverage.",
+    "All 136 changed plans: ten new Phase 86 plans read in full; 126 existing plans checked through exact transformation comparisons and replacement-context inspection.",
+    "The .gsd S03 UAT path change.",
+    "Owner decision records read as intent background; acceptance procedure, checkpoint template, classification policy, acceptance workflow, and relevant readiness checks inspected for consistency.",
+    "Harness test evidence verified against the inspected head; shell syntax checked; the no-op redaction instruction reproduced with synthetic input."
+  ],
+  "exclusions": [
+    ".planning/**/codex/** and .planning/**/*.jsonl.",
+    "Planning markdown other than changed *-PLAN.md files; selected records were read only as background.",
+    "Six generated JSON review reports under .planning/phases/86-pilot-reference-record/vibe-check/.",
+    "Files outside the working copy and live external service configuration."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify the inspected checkpoint."
+    },
+    {
+      "command": "git cat-file -e 7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+      "exit_code": 0,
+      "purpose": "Confirm the requested base exists."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..1a65339c35ec80b216a27afe0354df1cd5a395b1 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect the requested primary diff; truncated output was followed by narrower reads."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..1a65339c35ec80b216a27afe0354df1cd5a395b1 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect the plan diff; truncated output was followed by complete new-plan reads and transformation audits."
+    },
+    {
+      "command": "git diff --stat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..1a65339c35ec80b216a27afe0354df1cd5a395b1 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory primary changes."
+    },
+    {
+      "command": "git diff --stat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory all 136 changed plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read exact-head harness test evidence."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- CLAUDE.md docs .gsd",
+      "exit_code": 0,
+      "purpose": "Inspect document changes."
+    },
+    {
+      "command": "cat docs/review-workflow-adoption.md",
+      "exit_code": 0,
+      "purpose": "Read the complete adoption guide."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- docs/review-classification-policy.md",
+      "exit_code": 0,
+      "purpose": "Inspect classification and mixed-change requirements."
+    },
+    {
+      "command": "python3 - <<'PY'\nimport subprocess,difflib\nb='7f6b5d4b567c06ce9a4764b94352366ef008c22b'\nfs=subprocess.check_output(['git','diff','--name-only',b,'HEAD','--',':(glob).planning/**/*-PLAN.md'],text=True).splitlines()\nn=0\nfor f in fs:\n r=subprocess.run(['git','show',b+':'+f],capture_output=True,text=True)\n if r.returncode: continue\n old=r.stdout; new=open(f).read()\n normalized=old.replace('~','~')\n if normalized==new: n+=1\n else:\n  print(f)\n  print(''.join(difflib.unified_diff(normalized.splitlines(True),new.splitlines(True))))\nprint('Exact home-path-only replacements:',n)\nprint('New plans:',*[f for f in fs if '/86-' in f],sep='\\n')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt a plan transformation audit; the shell could not create its heredoc temporary file. Retried successfully with python3 -c."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect preregistration, publication-gate requirements, and embedded scripts."
+    },
+    {
+      "command": "python3 -c 'import subprocess,difflib; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b,\"HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines(); n=0\nfor f in fs:\n r=subprocess.run([\"git\",\"show\",b+\":\"+f],capture_output=True,text=True)\n if r.returncode: continue\n old=r.stdout.replace(\"~\",\"~\"); new=open(f).read()\n if old==new: n+=1\n else: print(f); print(\"\".join(difflib.unified_diff(old.splitlines(True),new.splitlines(True))))\nprint(\"Exact home-path-only replacements:\",n)'",
+      "exit_code": 0,
+      "purpose": "Confirm 125 existing plans changed only by home-path replacement and inspect the remaining plan's username-placeholder replacements."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-02-PLAN.md .planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect implementation and independent-comparison plans; recover truncated portions in the next read."
+    },
+    {
+      "command": "sed -n '100,220p' .planning/phases/86-pilot-reference-record/86-02-PLAN.md; sed -n '1,90p' .planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete inspection of plans 86-02 and 86-03."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect revision and final-head review instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-05-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect template-equivalence and owner scope-decision safeguards."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect card-template review and revision instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect push, checks, checkpoint comments, and acceptance sequencing."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-08-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect scorecard methodology and PILOT-03 decision requirements."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect adoption-guide and policy-update requirements."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-10-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect integration, fresh-review, and exact-head acceptance requirements."
+    },
+    {
+      "command": "cat CLAUDE.md docs/review-classification-policy.md docs/review-checkpoint-record.md",
+      "exit_code": 0,
+      "purpose": "Read surrounding active instructions and acceptance template."
+    },
+    {
+      "command": "rg -n 'Owner decision \\(PILOT|2026-11-14|decision 3|risk|FUT-03' .planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md; cat docs/owner-cli-acceptance.md; rg -n 'codex|fallback|environment:|ref:|head_sha|headSha' .github/workflows/review-acceptance.yml .github/scripts/acceptance-readiness.cjs .github/scripts/acceptance-gate.cjs",
+      "exit_code": 2,
+      "purpose": "Check recorded intent and acceptance boundaries. The final search named a nonexistent acceptance-gate.cjs; the actual review-acceptance workflow was subsequently read."
+    },
+    {
+      "command": "python3 -c 'import subprocess; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b,\"HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines(); refs=0; lines=[]\nfor f in fs:\n if \"/86-pilot-reference-record/\" in f: continue\n d=subprocess.check_output([\"git\",\"diff\",\"-U0\",b,\"HEAD\",\"--\",f],text=True)\n for s in d.splitlines():\n  if not s.startswith(\"+\") or s.startswith(\"+++\"): continue\n  if s.startswith(\"+@\") or s.startswith(\"+    - ~/\"): refs+=1; continue\n  lines.append((f,s))\nprint(\"Simple execution-context/read-first path lines:\",refs)\nfor f,s in lines: print(f+\": \"+s)'",
+      "exit_code": 0,
+      "purpose": "Inspect changed plan lines beyond simple reference-path replacements."
+    },
+    {
+      "command": "python3 -c 'import subprocess; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b,\"HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines()\nfor f in fs:\n if \"/86-pilot-reference-record/\" in f or \"/quick/\" in f: continue\n d=subprocess.check_output([\"git\",\"diff\",\"-U0\",b,\"HEAD\",\"--\",f],text=True)\n for s in d.splitlines():\n  if not s.startswith(\"+\") or s.startswith(\"+++\"): continue\n  x=s[1:].strip()\n  if x.startswith((\"@\",\"- ~/\",\"- path:\",\"- from:\",\"to:\",\"<files>\",\"<automated>\",\"cd ~/\")): continue\n  print(f+\": \"+x)'",
+      "exit_code": 0,
+      "purpose": "Inspect nontrivial prose and harness instructions affected by path replacement."
+    },
+    {
+      "command": "python3 -c 'import subprocess,re; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b,\"HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines(); seen=set()\nfor f in fs:\n if \"/86-pilot-reference-record/\" in f: continue\n d=subprocess.check_output([\"git\",\"diff\",\"-U0\",b,\"HEAD\",\"--\",f],text=True)\n for s in d.splitlines():\n  if not s.startswith(\"+\") or s.startswith(\"+++\"): continue\n  for m in re.finditer(\"~\",s):\n   x=s[max(0,m.start()-55):m.end()+65]\n   if x not in seen: print(f.rsplit(\"/\",1)[-1]+\": \"+x); seen.add(x)\nprint(\"Unique replacement contexts:\",len(seen))'",
+      "exit_code": 0,
+      "purpose": "Inspect replacement semantics across existing plans; recover the truncated middle in a later targeted read."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate.sh .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Check shell syntax without executing mutating fixtures."
+    },
+    {
+      "command": "rg -n 'publication-gate|replaces ~ with ~|redact' tests .planning/phases/84-codex-plan-checker-investigation/84-02-PLAN.md; nl -ba .planning/phases/86-pilot-reference-record/86-publication-gate.sh; sed -n '95,128p' .planning/phases/84-codex-plan-checker-investigation/84-02-PLAN.md; git status --short",
+      "exit_code": 0,
+      "purpose": "Check regression coverage, finding locations, surrounding instructions, and unchanged working-copy state."
+    },
+    {
+      "command": "python3 -c 'from pathlib import Path; p=Path(\".planning/phases/84-codex-plan-checker-investigation/84-02-PLAN.md\"); instruction=p.read_text(); assert \"redaction that replaces ~ with ~\" in instruction; sample=\"/Users/example/scratch/planchk-pilot/toy\"; actual=sample.replace(\"~\", \"~\"); assert actual==sample; print(\"The prescribed replacement preserves the entire private home path.\")'",
+      "exit_code": 0,
+      "purpose": "Reproduce the plan's no-op redaction with synthetic input."
+    },
+    {
+      "command": "python3 -c 'import subprocess,re; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b,\"HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines(); seen=set(); rows=[]\nfor f in fs:\n if \"/86-pilot-reference-record/\" in f: continue\n for s in subprocess.check_output([\"git\",\"diff\",\"-U0\",b,\"HEAD\",\"--\",f],text=True).splitlines():\n  if not s.startswith(\"+\") or s.startswith(\"+++\"): continue\n  for m in re.finditer(\"~\",s):\n   x=s[max(0,m.start()-55):m.end()+65]\n   if x not in seen: rows.append(f.rsplit(\"/\",1)[-1]+\": \"+x); seen.add(x)\nprint(\"\\n\".join(rows[200:320]))'",
+      "exit_code": 0,
+      "purpose": "Recover the middle of the replacement-context inspection."
+    },
+    {
+      "command": "sed -n '1,110p' docs/buildomator-greptile-pilot.md; sed -n '1,125p' docs/bm-greptile-codex-blueprint.md; cat .github/workflows/review-acceptance.yml",
+      "exit_code": 0,
+      "purpose": "Cross-check surrounding policy and actual server-side acceptance enforcement."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Scan staged content before authorizing publication",
+      "file": ".planning/phases/86-pilot-reference-record/86-publication-gate.sh",
+      "line_start": 48,
+      "line_end": 51,
+      "trigger": "An artifact containing sensitive content is staged, then redacted in the working tree without staging the corrected version before the gate runs.",
+      "execution_path": "The plans stage artifacts before invoking this gate. git ls-files supplies indexed filenames, but grep, awk, and cp all read working-tree contents. Gitleaks scans those working-tree copies. A subsequent ordinary git commit publishes the older indexed content.",
+      "consequence": "The gate can report PASS while the commit still contains a private path or credential that the gate was intended to block.",
+      "evidence": "Lines 11–14 enumerate names only; lines 17, 26, and 38 read working files; line 49 copies working files. There is no staged-content extraction or index/worktree equality check. The self-test never stages a sensitive version and then leaves a clean unstaged replacement.",
+      "suggested_fix": "Scan an immutable snapshot of the index, including the hand-review record, or reject any index/worktree mismatch for covered paths. Add a regression that stages sensitive content, redacts only the working copy, and requires the gate to block.",
+      "reproduced": false,
+      "reproduction_command": null,
+      "hypothesis": "Static execution-path finding. A disposable Git fixture would demonstrate PASS with sensitive bytes still in the index; creating that fixture was not permitted in this read-only workspace."
+    },
+    {
+      "id": "F002",
+      "severity": "low",
+      "title": "Preserve the redaction operation when anonymizing the plan",
+      "file": ".planning/phases/84-codex-plan-checker-investigation/84-02-PLAN.md",
+      "line_start": 106,
+      "line_end": 106,
+      "trigger": "An executor implements the harness's stdout redaction literally from the revised Step A.",
+      "execution_path": "The path-anonymization edit changed the source operand of the replacement into '~', leaving the instruction 'replaces ~ with ~'. The resulting operation preserves all input before stream.jsonl is written.",
+      "consequence": "The prescribed redaction no longer removes private home paths, contradicting the plan's home-path redaction requirement.",
+      "evidence": "The current instruction explicitly specifies an identity replacement. A synthetic absolute home path remained unchanged when that replacement was applied. The five specified harness self-tests contain no redaction assertion.",
+      "suggested_fix": "Describe replacing the expanded runtime home directory, such as str(Path.home()), with the literal '~'. Add a synthetic home-path redaction assertion without restoring a personal path to the plan.",
+      "reproduced": true,
+      "reproduction_command": "python3 -c 'from pathlib import Path; p=Path(\".planning/phases/84-codex-plan-checker-investigation/84-02-PLAN.md\"); instruction=p.read_text(); assert \"redaction that replaces ~ with ~\" in instruction; sample=\"/Users/example/scratch/planchk-pilot/toy\"; actual=sample.replace(\"~\", \"~\"); assert actual==sample; print(\"The prescribed replacement preserves the entire private home path.\")'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Pytest was not rerun in the read-only sandbox. The supplied harness evidence records exit 0, 3282 passed, and 1 skipped on the exact inspected head.",
+    "The publication-gate self-test and a staged-content reproduction require filesystem mutations and were not executed; both scripts passed bash syntax checking.",
+    "The redaction reproduction verifies the plan's prescribed operation, not an external generated harness.",
+    "Live GitHub settings and external tools were not queried; review was restricted to this working copy.",
+    "Large initial outputs were truncated; scoped reads and programmatic transformation checks supplied the remaining in-scope coverage."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
