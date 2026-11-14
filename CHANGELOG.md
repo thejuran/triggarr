@@ -2,35 +2,31 @@
 
 ## v2.12.1 (2026-11-14)
 
-Security updates for the Docker image and its dependencies, plus two small fixes to Refresh counts and the dashboard cards.
+A security update for the Docker image, plus two small fixes to Refresh counts and the dashboard cards.
 
 * Security:
-
-  * `opentelemetry-api` updated to 1.45.2 (CVE-2026-126360). It is installed as a dependency of FastAPI.
 
   * The Docker image upgrades `zlib1g` (CVE-2026-76844, CVE-2026-85091). The image build fails if the fixed version is not installed.
 
 * Fixes:
 
-  * Refresh counts no longer marks an instance as disconnected when one record from Radarr, Sonarr or Lidarr is malformed. The bad record is skipped and counted, the same way a scheduled cycle handles it.
+  * Refresh counts no longer marks an instance as disconnected when one record from Radarr, Sonarr or Lidarr is malformed. The bad record is skipped and logged, and the instance stays connected.
 
-  * Dashboard cards group the last cycle's reasons by kind. Skipped and unevaluated rows are no longer labelled as failures, and a red Failed card always says "failure reason(s)".
+  * On a dashboard card with no failed searches, skipped-record and unevaluated rows are no longer labelled as failures: the card says "skipped record(s)" or "detail(s)". A red Failed card always says "failure reason(s)".
 
 * Improvements:
 
   * The Docker image installs its Python dependencies from the project lockfile with hash checking, so the published image runs the same versions that were tested.
 
-  * Dependency updates: FastAPI 0.162.4, Starlette 1.10.0, APScheduler 3.11.3, python-multipart 0.0.33.
+  * Dependency updates: FastAPI 0.162.4, Starlette 1.10.0, APScheduler 3.11.3, python-multipart 0.0.33. FastAPI now depends on `opentelemetry-api`, which v2.12.0 did not include; this release ships 1.45.2, which has the fix for CVE-2026-126360.
 
 * Upgrade notes:
 
   * Python wheel and sdist files are no longer attached to GitHub releases. The Docker image is the release deliverable.
 
-  * FastAPI 0.162 adds opt-in OpenTelemetry auto-configuration. If your container environment sets `FASTAPI_OTEL_AUTO_CONFIGURE=true` together with an OTLP endpoint, the web UI fails at startup with an error. Leave the variable unset (the default) and nothing changes.
-
 * Internal:
 
-  * Before publishing, the build pipeline starts the exact image it will publish, runs browser regression tests against it, and rejects a release tag that disagrees with the package version. The published image is the tested image, not a rebuild.
+  * Before publishing, the build pipeline starts the exact image it will publish, runs browser regression tests against it, and rejects a release tag that disagrees with the package version.
 
   * Image OS-package scanning, workflow linting and grouped dependency updates were added, and `:main`/`:dev` images are published without repository write permission.
 

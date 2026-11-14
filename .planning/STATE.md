@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
 status: "Awaiting next milestone -- v2.13 CI & Review Workflow closed 2026-11-14 (audit: tech debt accepted by the owner, no blockers); not a versioned release, production stays on v2.12.0"
-stopped_at: "v2.13 closed and archived 2026-11-14 on the held local branch planning/post-phase-86 (unpushed; rides with the next substantive push). No git tag was created: v2.13 was not cut as a release. Next: /bm:new-milestone for Reliability, or the owner's decision to cut a release from main first"
-last_updated: "2026-11-14T20:46:05Z"
-last_activity: "2026-11-14 -- v2.13 milestone audit (31/31 requirements, 8/8 seams wired, 4/4 flows) and closeout: archives written, ROADMAP collapsed, PROJECT/MILESTONES/RETROSPECTIVE updated"
+stopped_at: "v2.13 closed and archived 2026-11-14. v2.12.1 patch release prepared on the local branch release-v2.12.1 (Dependabot #58 rolled in, version 2.12.1, CHANGELOG entry), not pushed, no tag; local BM and Codex reviews run per head. Next: owner go-ahead to push and open the release PR, then acceptance, merge, and the v2.12.1 tag on the main merge commit"
+last_updated: "2026-11-14T21:02:02Z"
+last_activity: "2026-11-14 -- v2.13 milestone audit and closeout; v2.12.1 patch release prepared locally (owner decision: ship the unreleased fixes as a patch release, not as v2.13.0)"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -136,14 +136,14 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-14T20:46:05Z
-Stopped at: v2.13 milestone audited and closed; archives written; commits held on the local branch `planning/post-phase-86` (unpushed)
+Last session: 2026-11-14T21:02:02Z
+Stopped at: v2.13 closed; v2.12.1 patch release prepared locally on `release-v2.12.1` (not pushed)
 Resume file: none (no milestone is active; start the next one with `/bm:new-milestone`)
 
 ## Operator Next Steps
 
 - Start the next milestone, Reliability, with `/bm:new-milestone` (requirements and phase numbers are defined there). The held planning branch `planning/post-phase-86` is pushed with the next substantive push, not on its own (no docs-only PRs)
-- Decide whether to cut a release from main before Reliability: main carries unreleased user-facing fixes and security updates since v2.12.0. A release needs the CHANGELOG entry (including the wheel/sdist note), the version bump, the open Dependabot PR #58 rolled in, and the `/deep-review` offer before the tag
+- v2.12.1 patch release (owner decision 2026-11-14): local branch `release-v2.12.1` carries Dependabot #58, the version bump and the CHANGELOG entry (which states that wheel/sdist are no longer release assets, closing Phase 85 UAT item 5 once released). Remaining: owner go-ahead to push and open the PR, CI, exact-commit owner acceptance, merge, then the `v2.12.1` tag on the main merge commit that CI ran on (first tag-triggered run of the reworked release pipeline), release text shown to the owner before publishing, deploy and walkthrough
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (version decided when it is cut): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule; add an unreleased CHANGELOG section covering the two security fixes from PR #57 (`opentelemetry-api` 1.45.2, `zlib1g` upgrade in the image)
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)
