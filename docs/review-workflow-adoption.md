@@ -28,7 +28,7 @@ Steps 4-8 repeat on a fresh commit whenever a fix changes the code: evidence fro
 
 ## GitHub-enforced requirements
 
-These are true because GitHub itself blocks a merge that doesn't satisfy them — not because an instruction file says so. Every item below was re-checked against this repository's live GitHub configuration while writing this guide (commands listed in this plan's summary), not copied from an earlier research note.
+These are true because GitHub itself enforces them — it blocks a merge that doesn't satisfy them or, for action pinning, refuses to run a workflow that breaks the rule — not because an instruction file says so. Every item below was read back from this repository's live GitHub configuration rather than copied from an earlier research note: the ruleset, its required checks and the acceptance environment while writing this guide, and all five items again (including the action-pinning setting and the CodeQL setup, which the first pass had not read from GitHub) on 2026-11-14 during review of this guide.
 
 ### A branch protection ruleset
 
@@ -58,9 +58,9 @@ These are true because GitHub itself blocks a merge that doesn't satisfy them �
 
 **What it is:** every third-party step in a GitHub Actions workflow (`uses: owner/action@something`) can be pinned to a mutable tag like `@v4`, which can later be moved by the action's maintainer (or an attacker who compromises their account) to point at different code without your workflow file changing at all — or pinned to a full 40-character commit hash, which cannot be moved. This repository pins every third-party action to its full commit hash, with a version number in a trailing comment purely for a human reader's convenience.
 
-**How to set it up:** there is no GitHub setting for this; it's a convention enforced by whoever reviews workflow-file changes, ideally backed by an automated check that fails if any `uses:` line in a workflow file isn't a 40-character hex string.
+**How to set it up:** in the repository's Settings, under Actions → General, turn on "Require actions to be pinned to a full-length commit SHA". GitHub then refuses to run a workflow that uses an unpinned action; this repository has the setting on. A test that fails if any `uses:` line in a workflow file isn't a 40-character hex string is a useful second check, because it reports the problem in review rather than when the workflow fails to start.
 
-**What it does not prove:** that the pinned commit's code is itself safe — only that the code you reviewed when you pinned it can't silently change under you afterward.
+**What it does not prove:** that the pinned commit's code is itself safe — only that the code you reviewed when you pinned it can't silently change under you afterward. The setting stops the workflow run, not the merge directly, and anyone with administrator access to the repository's settings can turn it off.
 
 ### CodeQL
 
@@ -133,7 +133,7 @@ Everything below is specific to this repository, this moment, or this set of too
 - [ ] Create a GitHub branch-protection ruleset on the default branch: require pull requests, require the repository's own real status checks, and require branches to be up to date before merging.
 - [ ] Create a protected GitHub Environment for final acceptance, with the actual human approver(s) set as required reviewers, a workflow job that requests a deployment to it, and a required-deployments rule in the ruleset naming it.
 - [ ] Turn on CodeQL (or an equivalent static-analysis scanner for the target language) and add it to the required-status-checks list.
-- [ ] Pin every third-party GitHub Action used in the repository's workflows to a full commit SHA, never a movable tag, and consider a test that fails if a new unpinned action is ever added.
+- [ ] Pin every third-party GitHub Action used in the repository's workflows to a full commit SHA, never a movable tag; turn on the repository's "Require actions to be pinned to a full-length commit SHA" Actions setting so GitHub enforces it; and consider a test that fails if a new unpinned action is ever added.
 - [ ] Decide — and write down — whether a third-party review bot is in scope for this repository, on what tier, and whether it's a required check or disclosed-but-optional.
 - [ ] Define a per-commit checkpoint-record template and where it lives (a PR comment plus a durable local copy, or a local evidence file before a PR exists), with a rule that earlier records are never edited or deleted.
 - [ ] Define proof-based triage rules: a finding counts as confirmed only with a failing test or a reproduction; everything else is recorded as false positive or unproven, with the reason given.
