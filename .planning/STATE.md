@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 executing -- both new pilot PRs merged (#54, #55), main CI passing at 7f6b5d4; next plan 86-08 (scorecards and the routine vibe-check decision)"
-stopped_at: "86-10 finished: PR #55 accepted and merged (merge commit 7f6b5d4b567c06ce9a4764b94352366ef008c22b); CI on main passing (run 43559822786). Next: 86-08, then 86-09"
-last_updated: "2026-11-14T05:11:42Z"
-last_activity: "2026-11-14 -- Phase 86 execution: 86-10 finished; PR #55 (card reason rows grouped by structured kind) merged as 7f6b5d4 after integration with main; PR #57 restored main CI (aeead4b)"
+status: "Phase 86 executed -- both pilot PRs merged (#54, #55); PILOT-01..04 recorded; Phase 86 PR next, in review"
+stopped_at: "86-09 finished (last plan of 10): adoption guide written, PILOT-03 instruction-text follow-through applied, planning hand-off done. Next: the phase's once-per-phase review and the Phase 86 PR"
+last_updated: "2026-11-14T05:36:37Z"
+last_activity: "2026-11-14 -- Phase 86 execution: 86-09 finished (last plan); docs/review-workflow-adoption.md written (PILOT-04); CLAUDE.md and docs/review-checkpoint-record.md vibe-check wording updated per the owner's PILOT-03 decision; planning files hand off to the phase's once-per-phase review and PR"
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 65
-  completed_plans: 63
+  completed_plans: 65
   percent: 71
 ---
 
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-21)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 86 — Pilot & Reference Record (executing; 86-08 next: scorecards for the five pilot PRs and the owner's routine vibe-check decision)
+**Current focus:** Phase 86 — Pilot & Reference Record (executed, all 10 plans finished; once-per-phase review and the Phase 86 PR next)
 
 > **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 is unreleased. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-21)
 
 ## Current Position
 
-Phase: 86 (Pilot & Reference Record) — executing
-Plan: 8 of 10 finished; next 86-08 (scorecards, category gaps, PILOT-03 recommendation and owner decisions), then 86-09
-Status: Phase 86 executing (10 plans) on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind); previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback)
-Last activity: 2026-11-14 -- Phase 86 execution: 86-01..86-07 and 86-10 finished; PR #54, PR #57 and PR #55 merged (main at 7f6b5d4, CI passing)
+Phase: 86 (Pilot & Reference Record) — executed, in review
+Plan: 10 of 10 finished (Phase 86 has ten plans, 86-01..86-10)
+Status: Phase 86 executed (10 plans) on branch phase-86-pilot-reference-record (cut from planning/cleanup-2026-10-30); pilot PRs #48, #36, #44 plus two new separate pilot PRs (Refresh-counts fix, card-template structured kind) merged; PILOT-01..04 recorded including the owner's PILOT-03 decisions; previous phase 85.1 closed as an owner exception (bot/fork PRs keep the vibe-check fallback); next: the phase's once-per-phase review and the Phase 86 PR
+Last activity: 2026-11-14 -- Phase 86 execution: 86-01..86-10 all finished; PR #54, PR #57 and PR #55 merged (main at 7f6b5d4, CI passing); 86-09 (adoption guide, PILOT-03 follow-through, planning hand-off) completes the phase's plans
 
 ### v2.13 milestone shape
 
@@ -124,13 +124,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 ## Session Continuity
 
-Last session: 2026-11-14T05:11:42Z
-Stopped at: 86-10 finished (PR #55 merged); next: 86-08
-Resume file: .planning/phases/86-pilot-reference-record/86-08-PLAN.md
+Last session: 2026-11-14T05:36:37Z
+Stopped at: 86-09 finished (last plan of 10): adoption guide, PILOT-03 follow-through, planning hand-off; next: the phase's once-per-phase review and the Phase 86 PR
+Resume file: none (all ten Phase 86 plans are finished; the next step is the phase's once-per-phase review and PR, not a plan file)
 
 ## Operator Next Steps
 
-- Phase 86 (Pilot & Reference Record): `/bm:execute-phase 86` on branch `phase-86-pilot-reference-record` continues with 86-08 (scorecards and the routine vibe-check decision), then 86-09 (adoption guide)
+- Phase 86 (Pilot & Reference Record) is executed, all ten plans finished: run the once-per-phase review on branch `phase-86-pilot-reference-record` (classify the Phase 86 PR, BM code review with the paired read-only Codex pass, a RISK-01 note and vibe-check recommendation with the owner's decision, the `/deep-review` offer, one push and one ready-for-review PR, a checkpoint comment); before owner acceptance, update later-found misses in 86-PILOT-RECORD.md up to the D-14 cutoff; then the milestone audit
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule; add an unreleased CHANGELOG section covering the two security fixes from PR #57 (`opentelemetry-api` 1.45.2, `zlib1g` upgrade in the image)
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)

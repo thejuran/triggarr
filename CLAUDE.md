@@ -90,8 +90,12 @@ limitation rather than claiming its display was verified.
 ## Review-workflow rollout (v2.13)
 
 [The BM + Greptile + Codex blueprint](docs/bm-greptile-codex-blueprint.md) is being
-implemented across Phases 83-86 of this milestone (v2.13). Routine vibe-check stays
-in force until the owner decides otherwise in Phase 86 (PILOT-03). Greptile is optional
+implemented across Phases 83-86 of this milestone (v2.13). Routine vibe-check on every
+"code"-class PR ended by owner decision in Phase 86 (PILOT-03, 2026-11-14); vibe-check is
+now required only at a high-risk checkpoint (RISK-02). The D-16 standing items are
+unchanged: bot/fork PRs still get the vibe-check (or another independent reviewer)
+fallback when Codex stays INCOMPLETE/PENDING after its retry, and BM still recommends
+an extra vibe-check whenever a checkpoint's risk comes out high. Greptile is optional
 since 2026-10-22 (owner decision): it runs while free credits last, paid credits are
 not bought, and it is not a required check.
 

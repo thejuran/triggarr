@@ -76,7 +76,7 @@ Deferred; not in this roadmap.
 
 - **FUT-01**: Reusable shared workflow for other repositories — only after the pattern is proven in two repositories.
 - **FUT-02**: Seedsyncarr adoption (enforceable PR/check rules, exact-artifact publication, security/update coverage).
-- **FUT-03**: Automated acceptance-gate enforcement of BM/Codex report presence — scheduled only if the owner chooses it under PILOT-03; a separate reviewed change to the existing gate, after this milestone unless the owner pulls it in.
+- **FUT-03**: Automated acceptance-gate enforcement of BM/Codex report presence — scheduled only if the owner chooses it under PILOT-03; a separate reviewed change to the existing gate, after this milestone unless the owner pulls it in. (Not chosen under PILOT-03, 2026-11-14): the owner kept the manual owner checklist as the BM/Codex completion check; this item stays an unscheduled future option.
 
 ## Out of Scope
 

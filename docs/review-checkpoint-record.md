@@ -62,7 +62,7 @@ Reconciliation: <one line explaining any difference among the fields above, or "
 <when risk is not high:>
 - Risk below high: no additional vibe-check recommended.
 
-- **Routine vibe-check status:** <whether routine vibe-check ran for this code change, while the owner keeps that standing rule>
+- **Routine vibe-check status:** no longer required automatically for every "code"-class change (owner decision, Phase 86 PILOT-03, 2026-11-14); vibe-check now runs only when recommended above at a high-risk checkpoint. The D-16 standing items are unchanged: bot/fork PRs still get the vibe-check (or another independent reviewer) fallback when Codex stays INCOMPLETE/PENDING after its retry, and BM still recommends an extra vibe-check whenever a checkpoint's risk comes out high.
 
 Vibe-check never substitutes for a complete Codex pass, is never counted or recorded as Codex, never waives a finding and never reduces required coverage. When Codex stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or another independent reviewer) as the recorded fallback for that exact head (docs/codex-adversarial-review-contract.md, Owner-approved fallback).
 

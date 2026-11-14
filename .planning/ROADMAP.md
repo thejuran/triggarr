@@ -418,6 +418,8 @@ Plans:
 
 - [ ] 86-09-PLAN.md — Adoption guide `docs/review-workflow-adoption.md` (PILOT-04); PILOT-03 follow-through; planning hand-off
 
+Pilot PRs: #54 (Refresh counts skips a malformed record, merged) and #55 (card-template structured reason kind, merged).
+
 **Cross-cutting constraints:**
 
 - Every raw review output and record committed by this plan passed the evidence publication gate (gitleaks, 32-hex API-key-shape scan, public-infrastructure check across every staged file); no Codex file was edited after grading
