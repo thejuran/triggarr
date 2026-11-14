@@ -369,6 +369,7 @@ Per that decision, the wording for the passing tests above was corrected before 
 | Main-CI fix (not a pilot PR) | 2026-11-13 | CI on main failed after the #54 merge for date-driven reasons: ship the fix as its own PR from main, or fold it into PR #55? | "1" (one separate fix PR from main) |
 | PR #57 main-CI fix (`49403734406a`) | 2026-11-13 | Push decision: push now, run another /deep-review first, or hold? (/deep-review offered; routine vibe-check deep review already on record for this head) | "1" (push now) |
 | PR #57 main-CI fix (`49403734406a`) | 2026-11-13 | CI's image scan failed on two HIGH `zlib1g` findings in the base image: upgrade the package in the Dockerfile, approve a time-limited exception, or wait for upstream? | "1" (upgrade the package in the Dockerfile) |
+| PR #57 main-CI fix (`8e3d6b49f6b5`) | 2026-11-13 | Owner acceptance: approve review acceptance for PR #57 at the exact head and run? | "Approve review acceptance for PR #57 at 8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc, run 43556379926" |
 
 ## PILOT-03 recommendation and decisions
 

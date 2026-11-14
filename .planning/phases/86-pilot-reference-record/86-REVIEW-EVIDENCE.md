@@ -1007,3 +1007,11 @@ Register entries `57:8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc` are written and r
 - The version check exits 1 on the unpatched `python:3.13-slim` image.
 - The local build was for the machine's own architecture; CI's build on its own platform is the evidence for the shipped image.
 
+## PR #57 acceptance
+
+- Owner approval, quoted word for word (2026-11-13): "Approve review acceptance for PR #57 at 8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc, run 43556379926"
+- Register slices `57:8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc` were written before the checklist was presented (blockers `{"open":[]}`, dispositions `{"items":{}}`) and verified by read-back.
+- Attempt 1 of run 43556379926 was created before the register write, so it was cancelled and re-run. The owner approved attempt 2.
+- Step 5 recheck immediately before submission: PR open and not a draft, head unchanged, run waiting on attempt 2 and associated with PR #57 at that head, one pending `review-acceptance` environment with `current_user_can_approve` true, readiness "Ready to request approval", main unchanged at `b80c3e2`.
+- Submitted via the pending-deployments endpoint (environment `review-acceptance`; deployment 7782591030 for sha `8e3d6b4…`). Review acceptance run 43556379926 attempt 2 completed with **success**. PR merge state is clean.
+
