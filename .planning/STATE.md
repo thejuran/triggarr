@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 executing -- PR #54 and PR #57 merged; pilot PR #55 in review at integration head 5d58264 (CI passing), paused at owner acceptance (86-10)"
-stopped_at: "86-10 Task 3 (blocking): PR #55 at integration head 5d58264e93a21b100d01e80503b9a7d064253d36 has passing CI, BM, Codex and routine vibe-check with no confirmed defect, and the readiness check reports ready. Paused at owner exact-commit acceptance (Review acceptance run 43559074842 attempt 2); owner merges"
-last_updated: "2026-11-14T05:03:22Z"
+status: "Phase 86 executing -- PR #54 and PR #57 merged; pilot PR #55 accepted at 5d58264, open, not merged (86-10)"
+stopped_at: "86-10 Task 3: PR #55 accepted by the owner at 5d58264e93a21b100d01e80503b9a7d064253d36 (run 43559074842 attempt 2, success); not merged yet. Owner merges, or instructs the merge"
+last_updated: "2026-11-14T05:04:43Z"
 last_activity: "2026-11-13 -- Phase 86 execution: 86-07 finished (PR #54 merged); main CI restored by PR #57 (opentelemetry-api 1.45.2, date-independent review-tooling tests, zlib1g upgrade in the image), merged as aeead4b"
 progress:
   total_phases: 7

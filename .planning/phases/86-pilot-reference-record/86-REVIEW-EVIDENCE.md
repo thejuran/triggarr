@@ -1169,3 +1169,12 @@ No confirmed defect, so no fix round followed integration. Register entries `55:
 - A local pre-run hook refused one of the BM reviewer's combined commands (it included the convention check); the reviewer did not retry it. The convention tier is recorded as not run.
 - All Codex outputs for this head passed the publication gate, including the transcript; nothing was withheld.
 
+## PR #55 acceptance
+
+- Owner approval, quoted word for word (2026-11-14): "Approve review acceptance for PR #55 at 5d58264e93a21b100d01e80503b9a7d064253d36, run 43559074842"
+- Register slices `55:5d58264e93a21b100d01e80503b9a7d064253d36` were written before the checklist was presented (blockers `{"open":[]}`, dispositions `{"items":{}}`) and verified by read-back.
+- Attempt 1 of run 43559074842 was created before the register write, so it was cancelled and re-run. The owner approved attempt 2.
+- Behind-main check before presenting: main unchanged at `aeead4b`, which the head already contains.
+- Step 5 recheck immediately before submission: PR open and not a draft, head unchanged, run waiting on attempt 2 and associated with PR #55 at that head, one pending `review-acceptance` environment with `current_user_can_approve` true, readiness "Ready to request approval", main unchanged at `aeead4b`.
+- Submitted via the pending-deployments endpoint (environment `review-acceptance`; deployment 7782901603 for sha `5d58264…`). Review acceptance run 43559074842 attempt 2 completed with **success**. All 15 checks pass; PR merge state is clean.
+
