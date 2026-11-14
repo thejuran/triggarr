@@ -1,0 +1,36 @@
+{
+  "medium_acknowledgments": {},
+  "passes": [
+    {
+      "pass_number": 1,
+      "head_sha": "49403734406a7c0073def56b5fc5740b81fcf30e",
+      "timestamp": "2026-11-14T03:44:24Z",
+      "mode": "deep",
+      "diff_range": "b80c3e26cf9456dde7245350d7033f6feb94db0f..49403734406a7c0073def56b5fc5740b81fcf30e",
+      "agents_run": [
+        "bugs",
+        "security",
+        "architecture",
+        "impact",
+        "compliance",
+        "language-python"
+      ],
+      "findings": [],
+      "filtered": [
+        {
+          "file": "tests/test_codex_review_container.py",
+          "line": 93,
+          "title": "now() override omits type hints used elsewhere in file",
+          "reason": "sub-threshold"
+        }
+      ],
+      "reviewed_tree": "49403734406a7c0073def56b5fc5740b81fcf30e",
+      "codex": {
+        "status": "skipped",
+        "reason": "unauthenticated",
+        "verdict": null,
+        "findings": 0
+      }
+    }
+  ]
+}
