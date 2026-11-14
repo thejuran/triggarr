@@ -42,6 +42,15 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Security upgrade for zlib1g (CVE-2026-76844, CVE-2026-85091): the
+# python:3.13-slim base image still ships the unfixed package, and the
+# os-scan gate blocks HIGH findings that have a fix (docs/os-scan-policy.md).
+# Remove this step once the base image carries
+# zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install exactly the locked, hash-checked dependency set -- never
 # pyproject.toml's loose constraints -- so the image can't silently
 # diverge from the lockfile CI already audited (CIMAINT-01).
