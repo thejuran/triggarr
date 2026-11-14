@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Phase 86 evidence publication gate re-check (86-01 Task 3).
 # Run from the repository root, always through bash: bash <this file> [phase-dir]
+# Threat model: a backstop against ACCIDENTAL publication of private details by a
+# cooperative author. It is not designed to resist deliberate evasion (for example git
+# flags that hide changes, or obfuscated values).
 # Exit 0 only when every tracked review artifact passes. Any match, read error,
-# tool error, empty file list or staged content that differs from the scanned
-# working copy exits non-zero (fails closed). Two checks accept a written hand
+# tool error, empty file list, covered file that is in the working tree but not staged,
+# or staged content that differs from the scanned working copy exits non-zero (fails
+# closed). Two checks accept a written hand
 # review from 86-REVIEW-EVIDENCE.md: the public-infrastructure check (entry bound
 # to the file's exact path and current SHA-256) and the 32-hex check (exact path).
 # The local user name and local host name checks have no exception.
@@ -12,11 +16,21 @@ fail() { echo "publication gate BLOCKED: $*" >&2; exit 1; }
 command -v gitleaks >/dev/null 2>&1 || fail "gitleaks not installed"
 t=$(mktemp -d) || fail "mktemp failed"
 trap 'rm -rf "$t"' EXIT
-git ls-files -z -- "$d/codex" "$d/vibe-check" "$d/86-REVIEW-*.md" "$d/86-PILOT-RECORD.md" > "$t/list" \
-  || fail "git ls-files failed"
+# Covered locations (the one list both listings below use).
+P=("$d/codex" "$d/vibe-check" "$d/86-REVIEW-*.md" "$d/86-PILOT-RECORD.md")
+git ls-files -z -- "${P[@]}" > "$t/list" || fail "git ls-files failed"
 F=()
 while IFS= read -r -d '' f; do F+=("$f"); done < "$t/list"
 [ "${#F[@]}" -gt 0 ] || fail "no tracked review artifacts under $d"
+# The scans below read only files in the index. A file that exists under a covered
+# location but is not in the index (untracked, or locally ignored: --others without an
+# exclude option lists ignored files too) would be skipped, so it blocks instead.
+git ls-files -z --others -- "${P[@]}" > "$t/others" || fail "git ls-files --others failed"
+nu=0
+while IFS= read -r -d '' f; do nu=1
+  echo "covered file is not staged; stage it with git add -f, then re-run: $f" >&2
+done < "$t/others"
+[ "$nu" -eq 0 ] || fail "covered files listed above are in the working tree but not staged, so they were not scanned"
 # grep exit codes: 0 = match (block), 1 = no match (pass), 2+ = error such as an unreadable file (block)
 nohit() { label=$1; shift; grep -l "$@" -- "${F[@]}"; r=$?
   [ "$r" -eq 1 ] && return 0

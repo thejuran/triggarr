@@ -5,7 +5,8 @@
 # unreadable-file and empty-list cases, the credential-shape hand-review entry
 # rules (exact path, dedicated section, accepted disposition only), the same rules
 # for hash-bound public-infrastructure hand-review entries, a staged
-# match hidden by an unstaged redaction, plus invocation from zsh.
+# match hidden by an unstaged redaction, a covered file that is not staged
+# (untracked or locally ignored), plus invocation from zsh.
 gate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 [ -f "$gate" ] || { echo "selftest: gate script not found: $1" >&2; exit 2; }
 p=.planning/phases/86-pilot-reference-record
@@ -78,4 +79,12 @@ echo "see /Users/x" >> "$r/$p/vibe-check/v two.md"; expect "file name with a spa
 fresh; echo "see /home/someone/x" >> "$r/$p/vibe-check/v.md"; ( cd "$r" && git add -A ); echo "clean vibe report" > "$r/$p/vibe-check/v.md"
 expect "staged match with a redacted working copy blocks" block "index and working tree differ"
 ( cd "$r" && git add -A ); expect "passes once the redacted copy is staged" pass ""
+# A covered file that is in the working tree but not in the index (untracked or locally ignored) blocks.
+NS="covered file is not staged; stage it with git add -f, then re-run"
+fresh; echo "see /home/someone/x" > "$r/$p/codex/new.txt"; expect "untracked covered file blocks and is named" block "$NS: $p/codex/new.txt"
+( cd "$r" && git add -A ); expect "the same file is scanned once staged" block "public-infrastructure check: matching"
+fresh; echo ".planning/" >> "$r/.git/info/exclude"; echo "clean report" > "$r/$p/86-REVIEW-new.md"
+expect "locally ignored covered file blocks and is named" block "$NS: $p/86-REVIEW-new.md"
+( cd "$r" && git add -f "$p/86-REVIEW-new.md" ); expect "passes once the ignored file is force-added" pass ""
+fresh; echo "not review evidence" > "$r/$p/86-NOTES.md"; expect "untracked file outside the covered locations does not block" pass ""
 echo "selftest: $pass passed, $bad failed"; [ "$bad" -eq 0 ]
