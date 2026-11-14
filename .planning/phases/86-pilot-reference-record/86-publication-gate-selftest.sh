@@ -69,6 +69,8 @@ V="\`$p/vibe-check/v.md\`"; NP="no accepted Public-infrastructure hand review en
 pub; acc; ( cd "$r" && git add -A ); expect "accepted public-infrastructure entry with the current hash passes" pass ""
 pub; expect "public-infrastructure hit with no entry blocks" block "$NP: $p/vibe-check/v.md"
 pub; acc; echo "and /home/other/y" >> "$r/$p/vibe-check/v.md"; expect "entry for a file changed since review (wrong hash) blocks" block "$NP"
+pub; acc; echo "and /home/other/y" >> "$r/$p/vibe-check/v.md"; acc; ( cd "$r" && git add -A )
+expect "older accepted entry beside a fresh one is superseded and passes" pass ""
 pub; ev "- $V: not private infrastructure -- no hash given"; expect "public-infrastructure entry without a hash blocks" block "$NP"
 pub; acc ""; expect "public-infrastructure entry with no reason blocks" block "$NP"
 pub; acc; ev "- $V: private -- second look"; expect "second conflicting line for the same path blocks" block "$NP"
