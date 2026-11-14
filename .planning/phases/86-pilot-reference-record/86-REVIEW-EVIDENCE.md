@@ -1206,3 +1206,56 @@ Merged: 7f6b5d4b567c06ce9a4764b94352366ef008c22b (by owner)
 - How it was merged: the owner instructed "merge pr 55" in the Claude CLI session after the acceptance check passed, and Claude ran the merge under the owner's GitHub account, pinned to the accepted head (`--match-head-commit 5d58264e93a21b100d01e80503b9a7d064253d36`). The plan had the owner run the merge personally; the decision was the owner's.
 - Recheck immediately before the merge: head unchanged, merge state CLEAN, main unchanged at `aeead4b`.
 - CI on main after the merge: run 43559822786 on `7f6b5d4` completed with success; every mandatory job passed.
+
+## Phase 86 PR (local checkpoint before the end-of-phase push)
+
+Recorded by the orchestrator on 2026-11-14. This is the durable local record for the phase PR's reviewed head; the per-head PR comment in the `docs/review-checkpoint-record.md` format is posted when the PR exists.
+
+### Head 63a5b45b4a33ae84e7a34313d05275812d4d4650
+
+| Field | Value |
+|---|---|
+| Reviewed head | `63a5b45b4a33ae84e7a34313d05275812d4d4650` (local, not pushed) |
+| Base | `7f6b5d4b567c06ce9a4764b94352366ef008c22b` (`origin/main`, merged into the branch as a local merge commit) |
+| Tests at this head | `uv run pytest tests/ -q`: 3282 passed, 1 skipped (harness evidence `codex/63a5b45b4a33-phase-a1.pytest.txt`); ruff clean |
+
+**Classification:** `sensitive` (classes present: sensitive, ordinary-docs). Sensitive: `CLAUDE.md` and the review-policy documents under `docs/` are agent instructions and review/acceptance procedure; the publication-gate script and its self-test are a safeguard. Ordinary-docs: `docs/review-workflow-adoption.md` and the planning files. No application code.
+
+**Risk note (RISK-01):**
+- Scope: whole net change of the phase branch versus `origin/main`.
+- Risk: high. A wrong or ambiguous review instruction changes how every later PR is reviewed, and the edits widen Claude's standing authorization (it starts the required high-risk vibe-check itself on trusted heads).
+- Recommended review: BM standard + paired Codex on the exact head, plus the required vibe-check.
+- Cannot establish: that an agent will read the instructions as intended in every future situation; GitHub does not enforce the vibe-check rule.
+
+**Vibe-check (RISK-02):** required (risk high). Vibe-check status: ran, risk high. Started by Claude after BM and Codex, per the owner's 2026-11-14 decision. Deep review, two passes, five lanes (bugs, security, architecture, impact, compliance; test-sufficiency not dispatched: no usable coverage for the changed files).
+- Pass 1 at `833a58aa4e2ae09e3c6be43b1bc6b4018f12b595` (content identical to `910e98853c41a8ac0086d110f4bc1fb26b816b4b` outside review evidence): 11 raised, 1 reported (medium: an older accepted hand-review entry blocked its replacement with a misleading message; fails closed), 10 filtered. The vibe-check's own Codex run was skipped on this pass (`range-not-identical`: the path-filtered review diff cannot be expressed as a Codex range).
+- Owner chose "Apply all & rerun" on the pass-1 card. Fix `4e2341eeac4fd2b31dbcc2511d62f883c3629141`; regression case `63a5b45b4a33ae84e7a34313d05275812d4d4650` (fails before the fix, passes after; self-test 58 passed).
+- Pass 2 at `63a5b45b4a33ae84e7a34313d05275812d4d4650`: 0 reported; both pass-1 records resolved on recheck by the lanes that raised them; 3 low notes filtered; vibe-check's own Codex run joined, verdict approve, 0 findings.
+- Report location: the vibe-check state for this phase (two pass entries) in the tool's local state folder, not published; this section is the published summary.
+
+**BM review:** explicit review of the phase PR content, depth `standard` requested and actual. Six iterations, reports `86-REVIEW.md` (iteration 1) and `86-REVIEW-phase-<head12>.md` (iterations 2-6); fix reports `86-REVIEW-FIX.md`, `-FIX-2.md`, `-FIX-3.md`, `-FIX-4.md`.
+
+| Iteration | Head | Critical | Warning | Info |
+|---|---|---|---|---|
+| 1 | `48c96896caf5` (content identical to `500f6218ec4e`) | 1 | 8 | 5 |
+| 2 | `1a65339c35ec` | 0 | 3 | 8 |
+| 3 | `4066d538e12d` | 0 | 5 | 6 |
+| 4 | `17eb05200e48` | 0 | 1 | 3 |
+| 5 | `910e98853c41` | 0 | 0 | 2 |
+| 6 | `63a5b45b4a33` | 0 | 0 | 2 |
+
+**Codex (paired, trusted, read-only, local checkpoint):** one attempt per head, each `complete`.
+
+| Head | Findings | Outcome |
+|---|---|---|
+| `1a65339c35ec` | 2 (F001 medium, F002 low) | both fixed in round 2 (F001 confirmed by reproduction first) |
+| `4066d538e12d` | 1 (F001 medium) | fixed in round 3 (same defect as BM WR-05) |
+| `17eb05200e48` | 2 (F001 medium, F002 low) | F001 fixed in round 4; F002 backlog (executed plans show the older entry format; fails closed) |
+| `910e98853c41` | 1 (F001 low) | backlog (path-scrub artifact in an executed quick-task plan) |
+| `63a5b45b4a33` | 0, verdict `no-findings` | `review_complete: true`; `inspected_head` = this head |
+
+Raw output: `codex/<head12>-phase-a1.{prompt.txt,meta.json,last.json,status.json,pytest.txt}` for each head. Every `.jsonl` transcript for these five attempts is withheld: each failed the publication gate's local user name check, which has no exception, and was moved out of the repository to a private location on the owner's machine. Codex completion is graded from `.last.json`.
+
+**Stopping rule (owner, 2026-11-14):** after iteration 3 only critical and warning findings are fixed; minor items go to the backlog. Not fixed, for the backlog: BM iteration 3 IN-01..IN-06, SA-01, SA-02; iteration 4 IN-01..IN-03, SA-01; iteration 5 IN-01, IN-02; iteration 6 IN-01, IN-02, SA-01; Codex F002 at `17eb05200e48` and F001 at `910e98853c41`; the vibe-check's filtered low notes (the same-hash check in the superseded-entry rule; one sentence in this file's hand-review instructions; the rule restated in six documents).
+
+**Greptile, CI, owner acceptance:** not yet; they run on the pushed head.
