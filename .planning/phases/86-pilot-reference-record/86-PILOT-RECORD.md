@@ -469,6 +469,9 @@ Per that decision, the wording for the passing tests above was corrected before 
 | PILOT-03 decision 1 (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | PILOT-03 decision 1 (86-08 Task 3): retire routine vibe-check, keep it, or keep it only at a named risk level? | "take all recommendations" — adopting Claude's recommendation as presented: keep vibe-check, scoped to high-risk checkpoints only; stop running it on every "code"-class PR regardless of risk; the D-16 standing items are unchanged. |
 | PILOT-03 decision 2 (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | PILOT-03 decision 2 (86-08 Task 3): keep BM/Codex completion as a manual owner check, or extend the acceptance gate (FUT-03)? | "take all recommendations" — adopting Claude's recommendation as presented: keep the manual owner check (option a); the acceptance-gate extension (FUT-03) was not chosen. |
 | PILOT-03 decision 3 (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | PILOT-03 decision 3 (86-08 Task 3): since decision 1 changes the current process, should the Phase 86 PR also update the instruction text that puts it into effect (CLAUDE.md "Review-workflow rollout" paragraph; docs/review-checkpoint-record.md), or leave that as a recorded follow-up? | "take all recommendations" — adopting Claude's recommendation as presented: include the instruction-text update in the Phase 86 PR rather than leaving it as a follow-up; noted that this makes the Phase 86 PR an instruction change, classified sensitive. |
+| Who starts the required high-risk vibe-check (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | Who starts the vibe-check that is required at a high-risk checkpoint? Options offered: "Owner runs it", "Claude runs it after asking", "Claude runs it". | Selected the offered option "Claude runs it" (a selection from the offered options, not the owner's free text): Claude starts vibe-check automatically right after the BM review and the paired Codex pass at a high-risk checkpoint, on the same exact commit, the same way it runs Codex, without asking each time; the owner still decides what to do with its findings. |
+| Review-loop stopping rule for the Phase 86 PR (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | When does the review loop on the Phase 86 PR stop? | Selected the offered option "One more round, then stop" (a selection from the offered options, not the owner's free text): this one batched fix round, then one fresh BM + Codex re-review; after that only critical or warning findings get fixed, and leftover minor wording items go to the backlog. |
+| Consistency edits in the Phase 86 PR (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | About the consistency edits to the classification policy, the blueprint and the Greptile pilot doc: do they stay in the Phase 86 PR? | "keep the extra doc edits in this PR" |
 
 ## PILOT-03 recommendation and decisions
 
@@ -657,3 +660,49 @@ retirement bar was changed.
 
 Neither correction changes the result measured against the bar: vibe-check's
 only unique proven catches in the pilot remain the two on PR #36.
+
+### Added 2026-11-14, after code review iteration 2
+
+Code review iteration 2 (`86-REVIEW-phase-1a65339c35ec.md`, WR-01) found
+that the instruction files cite this record for "required at high risk"
+while this record did not say where that reading comes from. The four
+entries below record it, and three further owner decisions made on
+2026-11-14 after iteration 2. Three rows were added to the owner decisions
+log for entries 4 to 6. No existing row of that log, no
+`Owner decision (PILOT-03 decision N)` line, no owner quotation, no PR
+scorecard and no word of the retirement bar was changed.
+
+3. **Decision 1: where "required at high risk, not a recommendation the
+   owner may decline" comes from.** That reading of PILOT-03 decision 1
+   comes from the recommendation as it was presented to the owner before
+   their reply "take all recommendations". It was presented as "keep it as
+   a required step at high-risk checkpoints only", with the note that this
+   "would make it a standing requirement at high risk instead of a per-PR
+   call". Those two phrases are the presentation's wording, not the
+   owner's; the owner's words are the reply. Wording elsewhere in this
+   record that calls the high-risk vibe-check a recommendation (the
+   "Standing items unaffected by PILOT-03 (D-16)" section, the
+   recommendation's D-16 list, and the "RISK-02's high-risk recommendation"
+   clause in the decision 1 line and its log row) predates this entry and
+   is left as written.
+4. **Who starts the required high-risk vibe-check.** The owner selected the
+   offered option "Claude runs it" (a selection from offered options, not
+   free text): Claude starts vibe-check automatically right after the BM
+   review and the paired Codex pass at a high-risk checkpoint, on the same
+   exact commit, the same way it runs Codex, without asking each time; the
+   owner still decides what to do with its findings. The options not
+   selected were "Owner runs it" and "Claude runs it after asking". This
+   does not change the Codex-incomplete fallback, which still needs the
+   owner's explicit approval for the exact head before vibe-check counts as
+   the fallback.
+5. **Review-loop stopping rule for the Phase 86 PR.** The owner selected
+   the offered option "One more round, then stop" (a selection from offered
+   options, not free text): this one batched fix round, then one fresh BM +
+   Codex re-review; after that only critical or warning findings get fixed,
+   and leftover minor wording items go to the backlog.
+6. **Consistency edits stay in the Phase 86 PR.** The owner's message, word
+   for word: "keep the extra doc edits in this PR". It was about the
+   consistency edits to the classification policy, the blueprint and the
+   Greptile pilot doc.
+
+None of these entries changes the result measured against the bar.
