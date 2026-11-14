@@ -28,7 +28,7 @@ Steps 4-8 repeat on a fresh commit whenever a fix changes the code: evidence fro
 
 ## GitHub-enforced requirements
 
-These are true because GitHub itself enforces them — it blocks a merge that doesn't satisfy them or, for action pinning, refuses to run a workflow that breaks the rule — not because an instruction file says so. Every item below was read back from this repository's live GitHub configuration rather than copied from an earlier research note: the ruleset, its required checks and the acceptance environment while writing this guide, and all five items again (including the action-pinning setting and the CodeQL setup, which the first pass had not read from GitHub) on 2026-11-14 during review of this guide.
+These are true because GitHub itself enforces them — it blocks a merge that doesn't satisfy them or, for action pinning, refuses to run a workflow that breaks the rule — not because an instruction file says so. Every item below was read back from this repository's live GitHub configuration rather than copied from an earlier research note: the ruleset, its required checks and the acceptance environment while writing this guide, and all five items again (including the action-pinning setting and the CodeQL setup, which the first pass had not read from GitHub) on 2026-11-14 during review of this guide. The first pass's commands and results are listed in `86-09-SUMMARY.md`, in the same folder as the pilot record named under "What the pilot showed" below.
 
 ### A branch protection ruleset
 
@@ -88,7 +88,7 @@ These are true only because a written instruction file (in this repository, `CLA
 
 7. **A narrow, written procedure for relaying the owner's approval through the AI agent.** When the human owner wants to approve a specific commit by typing their decision in a chat session rather than clicking a button on GitHub, a written procedure defines exactly how that gets relayed: the agent must present the exact commit identifier and the completed review evidence first, never infer approval from "looks good" or "continue," and never reuse an approval for a different commit. What breaks if skipped: an AI agent could plausibly treat routine encouragement as if it were the specific approval decision, and GitHub would record the resulting approval from the owner's account exactly as if the owner had made it. GitHub enforces that the named account approved; only this procedure makes that approval the person's own decision.
 
-8. **One branch and one pull request per unit of work, with no documentation-only pull requests.** Related planning, implementation, and evidence commits ride together inside one pull request rather than being split into several smaller ones. What breaks if skipped: more pull requests means more pushes, and pushes are the thing that consumes a limited budget of third-party review credits (see "Greptile" below) — unnecessary pull requests burn that budget for no benefit.
+8. **One branch and one pull request per unit of work, with no documentation-only pull requests.** Related planning, implementation, and evidence commits ride together inside one pull request rather than being split into several smaller ones. What breaks if skipped: more pull requests means more pushes, and pushes are the thing that consumes a limited budget of third-party review credits (see "Greptile's free-tier posture" under "What not to copy blindly" below) — unnecessary pull requests burn that budget for no benefit.
 
 9. **Batched pushes.** Fixes from a review round are pushed together as one checkpoint rather than one commit at a time, and routine tracking or documentation commits are held locally until the next substantive push. What breaks if skipped: every push can trigger a fresh round of the same limited-budget review tooling and adds another checkpoint record to track, multiplying cost for no extra safety.
 
@@ -106,7 +106,7 @@ The five pull requests covered: a small fix, a larger security-sensitive change,
 
 **Nobody's review ever silently passed an incomplete result.** On the one pilot pull request where Codex could not finish, the process caught that and routed to an owner-approved fallback review instead of reporting the pull request as cleanly reviewed.
 
-**The owner's decisions (2026-11-14, recorded verbatim in the pilot record linked above):**
+**The owner's decisions (2026-11-14, recorded in the pilot record named above):**
 
 1. Running vibe-check automatically on every "code"-class change is retired. Vibe-check is required when a checkpoint's risk is assessed high; it is not run routinely below high risk. High risk is the one place this pilot actually showed it catching something the paired review missed. The fallback for a Codex pass that cannot complete (item 6 above) stays exactly as it was.
 2. Checking that the independent reviewer's report actually arrived, is current, and covers the right commit stays a manual item on the human owner's acceptance checklist, rather than becoming something GitHub itself mechanically blocks on. The one time in this pilot that a report was genuinely incomplete, the existing manual checklist caught it — it was not missed — so there was no pilot evidence that this manual step needed to become an automated gate.
