@@ -368,6 +368,7 @@ Per that decision, the wording for the passing tests above was corrected before 
 | PR #54 Refresh-counts (`1062097a7676`) | 2026-11-13 | Merge (86-07 Task 3): the session reported the PR accepted, all checks passing and ready for the owner to merge | "merge pr 54" (Claude ran the merge under the owner's account at the accepted head; merge commit `b80c3e26cf94`) |
 | Main-CI fix (not a pilot PR) | 2026-11-13 | CI on main failed after the #54 merge for date-driven reasons: ship the fix as its own PR from main, or fold it into PR #55? | "1" (one separate fix PR from main) |
 | PR #57 main-CI fix (`49403734406a`) | 2026-11-13 | Push decision: push now, run another /deep-review first, or hold? (/deep-review offered; routine vibe-check deep review already on record for this head) | "1" (push now) |
+| PR #57 main-CI fix (`49403734406a`) | 2026-11-13 | CI's image scan failed on two HIGH `zlib1g` findings in the base image: upgrade the package in the Dockerfile, approve a time-limited exception, or wait for upstream? | "1" (upgrade the package in the Dockerfile) |
 
 ## PILOT-03 recommendation and decisions
 

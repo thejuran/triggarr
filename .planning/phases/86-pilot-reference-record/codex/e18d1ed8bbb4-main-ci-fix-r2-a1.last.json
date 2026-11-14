@@ -1,0 +1,84 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "e18d1ed8bbb492c15b2d1b5a34384e697b7659ff",
+  "inspected_base_sha": "b80c3e26cf9456dde7245350d7033f6feb94db0f",
+  "pr_url": "none",
+  "scope": "Full requested diff: Dockerfile, tests/test_codex_review_container.py, uv.lock; changed phase plans (none).",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found. The clock patch is confined to test fixtures and preserves credential-age checks. Dependency and image changes retain the existing audit gates. Harness evidence at the inspected head reports 3281 passed and 1 skipped.",
+  "coverage": [
+    "Inspected every in-scope change and confirmed both commit identities.",
+    "Traced frozen time through boundary verification, credential parsing, stale-sign-in rejection, and entry-point tests.",
+    "Checked seven-day and future-skew regression assertions, cleanup failures, and successful boundary verification.",
+    "Reviewed production-image stages, locked dependency installation, FastAPI's opentelemetry-api dependency, CI vulnerability audits, and mandatory OS-scan policy.",
+    "Confirmed the requested phase-plan diff is empty."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed phase plans, raw review transcripts, and generated review artifacts under the requested excluded paths."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Identify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e b80c3e26cf9456dde7245350d7033f6feb94db0f",
+      "exit_code": 0,
+      "purpose": "Confirm base commit exists."
+    },
+    {
+      "command": "git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..e18d1ed8bbb492c15b2d1b5a34384e697b7659ff -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete primary diff."
+    },
+    {
+      "command": "git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..e18d1ed8bbb492c15b2d1b5a34384e697b7659ff -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed phase plans; none found."
+    },
+    {
+      "command": "git status --short; cat .codex-review-evidence/pytest.txt; cat Dockerfile; cat pyproject.toml",
+      "exit_code": 0,
+      "purpose": "Read checkout status, harness evidence, and build configuration."
+    },
+    {
+      "command": "rg -n 'datetime|_BoundaryFixture|_NOW|last_refresh|seven|7.day' scripts/codex_review_run.py tests/test_codex_review_container.py",
+      "exit_code": 2,
+      "purpose": "Locate time-sensitive tests; runner path was subsequently corrected."
+    },
+    {
+      "command": "rg --files .github scripts docs tests | rg 'scan|audit|docker|codex_review|ci'",
+      "exit_code": 0,
+      "purpose": "Locate surrounding policy and test files; scripts directory did not exist."
+    },
+    {
+      "command": "rg -n 'datetime|def credential_preflight|prepare_codex_home|def verify_boundary|def main' tests/codex_review_run.py; sed -n '1900,1985p' tests/test_codex_review_container.py; sed -n '2780,2880p' tests/test_codex_review_container.py; cat docs/os-scan-policy.md; rg -n -C 5 'opentelemetry|pytailwindcss' uv.lock",
+      "exit_code": 0,
+      "purpose": "Trace fixture consumers, dependency relationships, and OS audit requirements."
+    },
+    {
+      "command": "cat .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Review installation, image auditing, and mandatory CI gates."
+    },
+    {
+      "command": "sed -n '1620,1675p' tests/codex_review_run.py; sed -n '2913,2995p' tests/codex_review_run.py; sed -n '4179,4265p' tests/codex_review_run.py; sed -n '1160,1228p' tests/test_codex_review_container.py; sed -n '2120,2165p' tests/test_codex_review_container.py; sed -n '3000,3150p' tests/test_codex_review_container.py; rg -n 'zlib|apt-get|Dockerfile|require-hashes' tests/test_ci_followon_wiring.py tests/test_audit_lock_coverage.py .github/workflows/release.yml",
+      "exit_code": 1,
+      "purpose": "Inspect credential enforcement and entry-point regression assertions; final search found no matches."
+    },
+    {
+      "command": "git diff --check b80c3e26cf9456dde7245350d7033f6feb94db0f..e18d1ed8bbb492c15b2d1b5a34384e697b7659ff; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Check whitespace errors and reconfirm inspected head."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; reviewed the harness's successful run at the exact inspected head.",
+    "Did not build the production image or run vulnerability scanners. Actual zlib package resolution and advisory remediation remain unverified dynamically.",
+    "Restricted inspection to working-copy files; external package metadata and artifact hashes were not independently verified."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

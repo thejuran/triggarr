@@ -1,0 +1,74 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+  "inspected_base_sha": "b80c3e26cf9456dde7245350d7033f6feb94db0f",
+  "pr_url": "none",
+  "scope": "Full specified diff, including tests and changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found in the three changed files. The harness records 3281 passed and 1 skipped at the inspected head. No phase plans changed.",
+  "coverage": [
+    "Dockerfile: production zlib upgrade, minimum-version enforcement, failure propagation, and locked dependency installation.",
+    "uv.lock: opentelemetry-api version and artifact changes, dependency references, and CI audit integration.",
+    "tests/test_codex_review_container.py: frozen clock scope, entry-point callers, credential parsing, stale credentials, age boundaries, and cleanup assertions.",
+    "CI image consistency checks, vulnerability gates, and mandatory job enforcement.",
+    "Complete phase-plan diff: empty."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed phase plans, planning JSONL transcripts, and generated review artifacts under .planning/."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e b80c3e26cf9456dde7245350d7033f6feb94db0f",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete scoped diff."
+    },
+    {
+      "command": "git diff b80c3e26cf9456dde7245350d7033f6feb94db0f..8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed phase plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt Dockerfile pyproject.toml docs/os-scan-policy.md",
+      "exit_code": 0,
+      "purpose": "Read test evidence, build configuration, and scan policy."
+    },
+    {
+      "command": "rg -n 'datetime|_NOW|_BoundaryFixture|boundary_fixture|last_refresh|7.day' tests/test_codex_review_container.py scripts/codex_review_run.py; rg --files .github scripts tests | rg 'ci|docker|lock|scan|review'",
+      "exit_code": 0,
+      "purpose": "Locate clock usage and related checks; searches reported the nonexistent scripts directory, subsequently corrected."
+    },
+    {
+      "command": "rg -n 'datetime|credential_preflight|prepare_codex_home|def main|def verify_boundary_main' tests/codex_review_run.py; sed -n '1900,1985p' tests/test_codex_review_container.py; sed -n '2780,2960p' tests/test_codex_review_container.py; sed -n '3000,3160p' tests/test_codex_review_container.py; rg -n -C 4 'opentelemetry|pip-audit|uv export|build-push|platforms:|os-scan' uv.lock .github/workflows/ci.yml",
+      "exit_code": 0,
+      "purpose": "Trace fixture consumers, entry-point tests, dependency references, and CI gates."
+    },
+    {
+      "command": "sed -n '1140,1230p' tests/test_codex_review_container.py; cat tests/test_image_lock_consistency.py; git status --short; git diff --check b80c3e26cf9456dde7245350d7033f6feb94db0f..8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+      "exit_code": 0,
+      "purpose": "Inspect age-boundary assertions and image consistency tests; check working tree and whitespace."
+    },
+    {
+      "command": "sed -n '1620,1675p' tests/codex_review_run.py; sed -n '1755,1795p' tests/codex_review_run.py; sed -n '2910,2985p' tests/codex_review_run.py; sed -n '4179,4255p' tests/codex_review_run.py; sed -n '4734,4785p' tests/codex_review_run.py; sed -n '2138,2165p' tests/test_codex_review_container.py; sed -n '130,150p' .github/workflows/ci.yml; rg -n 'zlib|deb13u1|126360|76844|85091' tests .github Dockerfile uv.lock; git diff --name-only b80c3e26cf9456dde7245350d7033f6feb94db0f..8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+      "exit_code": 0,
+      "purpose": "Complete credential caller trace, inspect stale-state rejection and Docker build wiring, and confirm changed-file inventory."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; relied on the harness evidence for the exact inspected head.",
+    "Did not build the production image or run live package vulnerability scans. Package availability, downloaded artifact hashes, and advisory remediation versions were not independently verified externally.",
+    "No dedicated automated regression test for the new Docker zlib version guard was found."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

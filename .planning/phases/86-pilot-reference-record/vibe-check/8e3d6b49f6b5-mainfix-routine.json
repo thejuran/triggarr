@@ -1,0 +1,253 @@
+{
+  "medium_acknowledgments": {},
+  "passes": [
+    {
+      "pass_number": 1,
+      "head_sha": "49403734406a7c0073def56b5fc5740b81fcf30e",
+      "timestamp": "2026-11-14T03:44:24Z",
+      "mode": "deep",
+      "diff_range": "b80c3e26cf9456dde7245350d7033f6feb94db0f..49403734406a7c0073def56b5fc5740b81fcf30e",
+      "agents_run": [
+        "bugs",
+        "security",
+        "architecture",
+        "impact",
+        "compliance",
+        "language-python"
+      ],
+      "findings": [],
+      "filtered": [
+        {
+          "file": "tests/test_codex_review_container.py",
+          "line": 93,
+          "title": "now() override omits type hints used elsewhere in file",
+          "reason": "sub-threshold"
+        }
+      ],
+      "reviewed_tree": "49403734406a7c0073def56b5fc5740b81fcf30e",
+      "codex": {
+        "status": "skipped",
+        "reason": "unauthenticated",
+        "verdict": null,
+        "findings": 0
+      }
+    },
+    {
+      "pass_number": 2,
+      "head_sha": "e18d1ed8bbb492c15b2d1b5a34384e697b7659ff",
+      "timestamp": "2026-11-14T04:08:14Z",
+      "mode": "deep",
+      "diff_range": "49403734406a7c0073def56b5fc5740b81fcf30e..e18d1ed8bbb492c15b2d1b5a34384e697b7659ff",
+      "agents_run": [
+        "bugs",
+        "security",
+        "architecture",
+        "impact",
+        "compliance"
+      ],
+      "findings": [
+        {
+          "id": "compl-001",
+          "file": "Dockerfile",
+          "line": 51,
+          "title": "zlib1g security upgrade is unpinned, unlike every other dependency in this image",
+          "category": "rule-violation",
+          "cwe": null,
+          "severity": "medium",
+          "agent_confidence": 58,
+          "in_diff": true,
+          "intent_doc_match": null,
+          "problem": "Global CLAUDE.md: 'style, structure, architecture \u2014 yields to the existing codebase's conventions: before introducing a new pattern, check how the same problem is solved elsewhere in the repo and follow that.' Every other dependency resolution in this Dockerfile is pinned/hash-checked for reproducibility (ENV TAILWINDCSS_VERSION=v4.2.2, ENV UV_VERSION=0.12.17, and the Python deps installed with `--require-hashes` from a locked file specifically 'so the image can't silently diverge from the lockfile CI already audited (CIMAINT-01)'). The new `apt-get install --only-upgrade zlib1g` step instead takes whatever version the Debian mirror serves at build time, with no version pin and no check that the installed version actually meets the fix threshold the adjacent comment itself names (`zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1`).",
+          "current_code": "RUN apt-get update \\\n    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\\n    && rm -rf /var/lib/apt/lists/*",
+          "fix_hint": "Pin the exact package version (e.g. `zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1`) or add a post-install check that fails the build if the installed version is below the stated threshold, matching the pinning/verification discipline used elsewhere in this Dockerfile.",
+          "why_it_matters": "A floating `--only-upgrade` can silently produce a different result on different build days (or against a stale/regional mirror) with no build-time signal, so the image could still carry the unfixed package while the comment and commit message both claim the CVE is remediated -- undermining the exact reproducibility guarantee CIMAINT-01 was written to protect.",
+          "silenced_marker_nearby": false,
+          "needs_verification": null,
+          "agent": "compliance",
+          "source_window": [
+            "# zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.",
+            "RUN apt-get update \\",
+            "    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\",
+            "    && rm -rf /var/lib/apt/lists/*",
+            ""
+          ],
+          "canonical_line_content": "    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\",
+          "orchestrator_score": 90,
+          "band": "warning",
+          "attribution": [
+            "bugs",
+            "architecture",
+            "compliance"
+          ],
+          "stable_hash": "97fb14561c466c27ecf3a45c0843e94793421102e43b4adfdead4ce836ce552a",
+          "status": "new",
+          "members": [
+            {
+              "file": "Dockerfile",
+              "line": 51,
+              "title": "zlib1g security upgrade is unpinned, unlike every other dependency in this image",
+              "category": "rule-violation",
+              "severity": "medium",
+              "agent": "compliance",
+              "agent_confidence": 58,
+              "problem": "Global CLAUDE.md: 'style, structure, architecture \u2014 yields to the existing codebase's conventions: before introducing a new pattern, check how the same problem is solved elsewhere in the repo and follow that.' Every other dependency resolution in this Dockerfile is pinned/hash-checked for reproducibility (ENV TAILWINDCSS_VERSION=v4.2.2, ENV UV_VERSION=0.12.17, and the Python deps installed with `--require-hashes` from a locked file specifically 'so the image can't silently diverge from the lockfile CI already audited (CIMAINT-01)'). The new `apt-get install --only-upgrade zlib1g` step instead takes whatever version the Debian mirror serves at build time, with no version pin and no check that the installed version actually meets the fix threshold the adjacent comment itself names (`zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1`).",
+              "source_window": [
+                "# zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.",
+                "RUN apt-get update \\",
+                "    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\",
+                "    && rm -rf /var/lib/apt/lists/*",
+                ""
+              ],
+              "cwe": null,
+              "why_it_matters": "A floating `--only-upgrade` can silently produce a different result on different build days (or against a stale/regional mirror) with no build-time signal, so the image could still carry the unfixed package while the comment and commit message both claim the CVE is remediated -- undermining the exact reproducibility guarantee CIMAINT-01 was written to protect.",
+              "fix_hint": "Pin the exact package version (e.g. `zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1`) or add a post-install check that fails the build if the installed version is below the stated threshold, matching the pinning/verification discipline used elsewhere in this Dockerfile.",
+              "current_code": "RUN apt-get update \\\n    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\\n    && rm -rf /var/lib/apt/lists/*",
+              "intent_doc_match": null
+            },
+            {
+              "file": "Dockerfile",
+              "line": 51,
+              "title": "zlib1g upgrade step succeeds silently when the fixed version is not available",
+              "category": "logic-error",
+              "severity": "low",
+              "agent": "bugs",
+              "agent_confidence": 35,
+              "problem": "`apt-get install --only-upgrade zlib1g` exits 0 when no newer candidate exists, for example when the mirror or security pocket has not yet published 1:1.3.dfsg+really1.3.1-1+deb13u1, or when the build reuses a cached layer. The build then ships the vulnerable zlib1g, even though the comment says the step fixes the CVEs. Nothing in this step checks the installed version. pending: confirm the os-scan gate (docs/os-scan-policy.md) scans the final built image on every build. If it does, it already catches this case and the finding is moot.",
+              "source_window": [
+                "# zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.",
+                "RUN apt-get update \\",
+                "    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\",
+                "    && rm -rf /var/lib/apt/lists/*",
+                ""
+              ],
+              "cwe": null,
+              "why_it_matters": "An image built while the fix is missing, or from a cached layer, would ship the CVE-affected library while the Dockerfile says it has been patched.",
+              "fix_hint": "optionally assert the installed version with `dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' zlib1g)\" ge 1:1.3.dfsg+really1.3.1-1+deb13u1` so the build fails instead of silently no-opping",
+              "current_code": "RUN apt-get update \\\n    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\\n    && rm -rf /var/lib/apt/lists/*",
+              "intent_doc_match": null
+            },
+            {
+              "file": "Dockerfile",
+              "line": 50,
+              "title": "In-image apt upgrade adds an OS-scan fix route that the documented policy does not list",
+              "category": "pattern-consistency",
+              "severity": "low",
+              "agent": "architecture",
+              "agent_confidence": 35,
+              "problem": "docs/os-scan-policy.md (Where it applies, D-11) says a red os-scan is fixed by 'a base-image rebuild \u2014 via the monthly Docker base-image update PR, or a manual one \u2014 or a time-limited, owner-approved exception under 30 days'. This diff adds a third route that the policy does not list: an unpinned `apt-get install --only-upgrade` inside the production stage. Only a code comment marks when it should be removed. An exception would expire on its own; this step does not, and nothing reminds anyone to take it out. pending: confirm whether the base-image PR could not pick up the fix because the upstream python:3.13-slim tag had not been rebuilt yet. If so, this is a reasonable stopgap and the real gap is that the policy doc does not mention it.",
+              "source_window": [
+                "# Remove this step once the base image carries",
+                "# zlib1g >= 1:1.3.dfsg+really1.3.1-1+deb13u1.",
+                "RUN apt-get update \\",
+                "    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\",
+                "    && rm -rf /var/lib/apt/lists/*"
+              ],
+              "cwe": null,
+              "why_it_matters": "Without a removal trigger, an in-image upgrade tends to stay after the base image is fixed. It also means the image no longer exactly matches the base image the update workflow tracks, so when the scan turns red the team has three possible fixes, and the policy only describes two.",
+              "fix_hint": "either add in-image package upgrades as an allowed stopgap in docs/os-scan-policy.md with a removal trigger (e.g. tie removal to the monthly base-image PR checklist), or use a time-limited exception instead",
+              "current_code": "RUN apt-get update \\\n    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\\n    && rm -rf /var/lib/apt/lists/*",
+              "intent_doc_match": null
+            }
+          ],
+          "snapshot": {
+            "at_pass": 2,
+            "file": "Dockerfile",
+            "line": 51,
+            "canonical_line_content": "    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \\",
+            "band": "warning"
+          }
+        }
+      ],
+      "filtered": [
+        {
+          "file": "Dockerfile",
+          "line": 51,
+          "title": "zlib1g upgrade step succeeds silently when the fixed version is not available",
+          "reason": "absorbed-into: 97fb14561c466c27ecf3a45c0843e94793421102e43b4adfdead4ce836ce552a"
+        },
+        {
+          "file": "Dockerfile",
+          "line": 50,
+          "title": "In-image apt upgrade adds an OS-scan fix route that the documented policy does not list",
+          "reason": "absorbed-into: 97fb14561c466c27ecf3a45c0843e94793421102e43b4adfdead4ce836ce552a"
+        }
+      ],
+      "reviewed_tree": "e18d1ed8bbb492c15b2d1b5a34384e697b7659ff",
+      "codex": {
+        "status": "skipped",
+        "reason": "unauthenticated",
+        "verdict": null,
+        "findings": 0
+      }
+    },
+    {
+      "pass_number": 3,
+      "head_sha": "8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+      "timestamp": "2026-11-14T04:21:27Z",
+      "mode": "deep",
+      "diff_range": "e18d1ed8bbb492c15b2d1b5a34384e697b7659ff..8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+      "agents_run": [
+        "bugs",
+        "security",
+        "architecture",
+        "impact",
+        "compliance",
+        "language-python"
+      ],
+      "findings": [],
+      "filtered": [
+        {
+          "file": "Dockerfile",
+          "line": 50,
+          "title": "In-image apt upgrade adds an OS-scan fix route that the documented policy does not list",
+          "reason": "sub-threshold"
+        }
+      ],
+      "reviewed_tree": "8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+      "codex": {
+        "status": "skipped",
+        "reason": "unauthenticated",
+        "verdict": null,
+        "findings": 0
+      },
+      "resolved": [
+        {
+          "file": "Dockerfile",
+          "line": 51,
+          "title": "zlib1g security upgrade is unpinned, unlike every other dependency in this image",
+          "band": "warning",
+          "stable_hash": "97fb14561c466c27ecf3a45c0843e94793421102e43b4adfdead4ce836ce552a",
+          "agent": "compliance",
+          "resolution": {
+            "source": "recheck",
+            "agents": [
+              "compliance"
+            ],
+            "verdict": "resolved",
+            "head_sha": "8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+            "at_pass": 3,
+            "reason": "Dockerfile:55 now runs dpkg --compare-versions ... ge <fixed-version> after the --only-upgrade step, failing the build if the installed zlib1g isn't at least the CVE-fixed version, so the step can no longer silently keep the vulnerable package."
+          }
+        },
+        {
+          "file": "Dockerfile",
+          "line": 51,
+          "title": "zlib1g upgrade step succeeds silently when the fixed version is not available",
+          "band": null,
+          "stable_hash": null,
+          "agent": "bugs",
+          "resolution": {
+            "source": "recheck",
+            "agents": [
+              "bugs"
+            ],
+            "verdict": "resolved",
+            "head_sha": "8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc",
+            "at_pass": 3,
+            "reason": "Dockerfile:55 now runs `dpkg --compare-versions` against the fixed version as the last step of the `&&` chain, so if `--only-upgrade` installs nothing newer, the build fails instead of keeping the vulnerable zlib1g."
+          }
+        }
+      ]
+    }
+  ]
+}

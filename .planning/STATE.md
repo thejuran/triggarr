@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 executing -- PR #54 merged; 86-10 blocked: main CI fix PR #57 open, failing os-scan (base-image zlib), owner decision needed"
-stopped_at: "PR #57 (main-CI fix, head 49403734406a7c0073def56b5fc5740b81fcf30e) is open; its test and dependency jobs pass but os-scan fails on two HIGH zlib1g findings in the base image (CI run 43553365431). Owner decision needed on the remedy before acceptance; 86-10 waits on it"
-last_updated: "2026-11-14T03:54:09Z"
+status: "Phase 86 executing -- PR #54 merged; main CI fix PR #57 in review at 8e3d6b4 (CI passing), paused at owner acceptance; 86-10 follows"
+stopped_at: "PR #57 (main-CI fix) at head 8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc: CI passing, BM, Codex and routine vibe-check finished with no open defects, readiness check reports ready. Paused at owner exact-commit acceptance (Review acceptance run 43556379926 attempt 2); owner merges; then 86-10 for PR #55"
+last_updated: "2026-11-14T04:32:02Z"
 last_activity: "2026-11-13 -- Phase 86 execution: 86-07 finished; PR #54 (Refresh counts skips a malformed record) merged to main as b80c3e2 on the owner's instruction"
 progress:
   total_phases: 7
@@ -130,7 +130,7 @@ Resume file: .planning/phases/86-pilot-reference-record/86-10-PLAN.md
 
 ## Operator Next Steps
 
-- Fix CI on main first: PR #57 is open and fixes the test and dependency failures; decide the remedy for its failing os-scan (two HIGH `zlib1g` findings in the `python:3.13-slim` base image), then exact-commit acceptance and merge
+- Fix CI on main first: PR #57 at head `8e3d6b4` is ready for exact-commit owner acceptance (run 43556379926 attempt 2); owner merges it
 - Phase 86 (Pilot & Reference Record): `/bm:execute-phase 86` on branch `phase-86-pilot-reference-record` continues with 86-10 (PR #55: merge main in, re-review the new head, owner acceptance), then 86-08 and 86-09
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule

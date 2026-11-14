@@ -860,3 +860,150 @@ No confirmed defect, so no revision was made and this head is final for the push
 - Greptile did not run.
 - vibe-check's internal Codex lane was skipped (`unauthenticated`); the paired Codex review above is complete.
 ````
+
+## Main-CI fix PR: later heads
+
+### Head e18d1ed8bbb492c15b2d1b5a34384e697b7659ff (local only; superseded, never pushed)
+
+Added the Dockerfile step that upgrades `zlib1g` (owner decision 2026-11-13, option "1": upgrade the package in the Dockerfile). Reviewed locally before any push:
+
+- BM (standard, whole diff): 0 critical, 0 warning, 3 info. Report `86-REVIEW-mainfix-e18d1ed8bbb4.md`. IN-01: `apt-get install --only-upgrade` exits 0 when it upgrades nothing.
+- Codex `main-ci-fix-r2` a1: complete, no findings, inspected head `e18d1ed8bbb492c15b2d1b5a34384e697b7659ff`, base `b80c3e26cf9456dde7245350d7033f6feb94db0f`. Outputs `codex/e18d1ed8bbb4-main-ci-fix-r2-a1.*`.
+- Routine vibe-check pass 2: one Warning (score 90) on the same point as BM IN-01. Report `vibe-check/8e3d6b49f6b5-mainfix-routine.md`.
+- Triage: confirmed defect. Fixed in one batched revision (`8e3d6b4`), which also made the test clock's `now()` naive when no timezone is given (BM IN-03). No evidence from this head is counted for the next one.
+
+### Head 8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc
+
+PR comment: https://github.com/thejuran/triggarr/pull/57#issuecomment-6871751546 (PR #57; CI run 43556379938; Review acceptance run 43556379926, attempt 2). The text below is exactly as posted.
+
+````markdown
+<!-- review-checkpoint head=8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc` (PR #57) |
+| PR base SHA | `b80c3e26cf9456dde7245350d7033f6feb94db0f` (PR base, main) |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc` |
+| Codex inspected base (`inspected_base_sha`) | `b80c3e26cf9456dde7245350d7033f6feb94db0f` |
+
+Reconciliation: All fields match; no reconciliation needed.
+
+### Classification
+
+{"schema":1,"head":"8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc","classification":"code","classes_present":["code","sensitive"],"rationale":"Dockerfile (a build-time OS package upgrade with a version check), uv.lock (a runtime dependency bump) and tests/test_codex_review_container.py are code. That test file is not on the policy's sensitive list, but it tests the review machinery (tests/codex_review_run.py), so it is classified upward (D-18) and the risk note covers it as sensitive content.","supersedes_head":"49403734406a7c0073def56b5fc5740b81fcf30e"}
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr PR #57, head `8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc`, base `b80c3e26cf9456dde7245350d7033f6feb94db0f`. Whole-PR review of four commits: a patch-level dependency bump, a test-fixture clock freeze, and a Dockerfile step that upgrades the Debian package `zlib1g` in the production image and fails the build if the fixed version is not installed. No application code and no change to the review runner.
+- **Risk:** moderate, raised from low at the previous head because this head changes what ships in the image. Failure scenarios: the upgraded system library breaks compression at runtime (unlikely: a Debian security patch in the same upstream line; image-smoke and browser tests pass on the CI-built image); image builds now need Debian's mirrors and fail if they are unreachable or stop serving the fixed package (loud, never a bad image); freezing the test clock hides a real credential-age defect in the runner (the 7-day boundary tests pass their own fixed time and are unaffected).
+- **Recommended review:** BM standard on all three files, the paired Codex pass, and routine vibe-check (code class), each on this exact head.
+- **Required evidence:** CI's docker, image-smoke, browser-e2e and os-scan jobs on this head; full suite and lint; the dependency audit; the version check shown to fail on the unpatched base image.
+- **What this recommendation cannot establish:** whether Triggarr's code paths reach the affected zlib functions (not analysed; the upgrade removes the question); the content of the upstream packages beyond published hashes and Debian's tracker.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no additional vibe-check recommended.
+- **Routine vibe-check status:** ran (`/vibe-check:deep-review`, stock, three passes on one state file; pass 3 is on this head). Exact-head local coverage was prepared before each pass and its provenance `check` passed. Reports: `vibe-check/49403734406a-mainfix-routine.{md,json}` and `vibe-check/8e3d6b49f6b5-mainfix-routine.{md,json}`. Pass 2 (head `e18d1ed8bbb4`, not pushed) reported one Warning: the zlib upgrade step never checked the installed version. Pass 3 (this head): 0 reported; that Warning was rechecked as resolved by the lanes that raised it; one below-threshold note still applies (policy wording, see Dispositions). test-sufficiency did not run on any pass (coverage has no rows for the changed files), vibe-check's own Codex lane was skipped as unauthenticated, and pass 1's triage set `uv.lock` aside.
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | review after fixes (explicit `/bm:code-review` scope, reviewer run on `Dockerfile`, `tests/test_codex_review_container.py`, `uv.lock`) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow file/step: `workflows/code-review.md:resolve_depth` |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-mainfix-8e3d6b49f6b5.md` (earlier heads: `86-REVIEW-mainfix-49403734406a.md`, `86-REVIEW-mainfix-e18d1ed8bbb4.md`) |
+| Status | complete: 0 critical, 0 warning, 2 info, 4 set-aside |
+
+The reviewer was given the true diff base (`b80c3e2`) and reviewed the whole diff at this head afresh.
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (`.status.json`: complete, 0 findings, trusted mode; readiness check: "Codex: ok — complete") |
+| Fallback | none |
+| Attempts | 1 (label `main-ci-fix-r3`) |
+| Raw output paths | `codex/8e3d6b49f6b5-main-ci-fix-r3-a1.{prompt.txt,meta.json,last.json,status.json,pytest.txt}`; `.jsonl` withheld (see Withheld files in the durable copy) |
+| Review complete | `review_complete`: true; `incomplete_reasons`: [] |
+| Coverage | Dockerfile: production zlib upgrade, minimum-version enforcement, failure propagation, and locked dependency installation. uv.lock: opentelemetry-api version and artifact changes, dependency references, and CI audit integration. tests/test_codex_review_container.py: frozen clock scope, entry-point callers, credential parsing, stale credentials, age boundaries, and cleanup assertions. CI image consistency checks, vulnerability gates, and mandatory job enforcement. Complete phase-plan diff: empty. |
+| Exclusions | Planning markdown other than changed phase plans, planning JSONL transcripts, and generated review artifacts under .planning/. |
+| Commands run | 9, as reported in `.last.json` (exit codes 0) |
+| Limitations | Did not independently run pytest in the read-only sandbox; relied on the harness evidence for the exact inspected head. Did not build the production image or run live package vulnerability scans. Package availability, downloaded artifact hashes, and advisory remediation versions were not independently verified externally. No dedicated automated regression test for the new Docker zlib version guard was found. |
+
+Findings: none. Verdict `no-findings`. Harness pytest on the exact head: 3281 passed, 1 skipped.
+
+### Greptile
+
+not run on this head
+
+### CI
+
+CI run 43556379938 (attempt 1): success. Review acceptance run 43556379926: attempt 2 waiting for the owner (attempt 1 was created before the register entries were written, so it was cancelled and re-run).
+
+| Required check | Run ID | Result |
+|---|---|---|
+| test | 43556379938 | pass |
+| dependencies | 43556379938 | pass |
+| lint | 43556379938 | pass |
+| secrets | 43556379938 | pass |
+| actionlint | 43556379938 | pass |
+| docker | 43556379938 | pass |
+| image-smoke | 43556379938 | pass |
+| browser-e2e | 43556379938 | pass |
+| os-scan | 43556379938 | pass |
+| CI ready | 43556379938 | pass |
+| CodeQL / Analyze | 43556259507 | pass |
+
+The previous head `49403734406a` failed `os-scan` on CVE-2026-76844 and CVE-2026-85091 in `zlib1g` (run 43553365431); this head upgrades the package and the scan passes.
+
+### Original vs. refreshed findings
+
+| Finding (head raised) | Source | Outcome at this head |
+|---|---|---|
+| Upgrade step never checks the installed `zlib1g` version (`e18d1ed8bbb4`) | vibe-check Warning (compliance, bugs), BM IN-01 | fixed: a `dpkg --compare-versions` check fails the build; rechecked as resolved by compliance and bugs; shown to fail on the unpatched base image |
+| `_FrozenDatetime.now()` with no timezone returned an aware value (`49403734406a`, `e18d1ed8bbb4`) | BM IN-01 / IN-03 | fixed: returns a naive value |
+| Fix route not listed in `docs/os-scan-policy.md` (`e18d1ed8bbb4`) | vibe-check architecture, BM SA-01 | carried forward: owner ruling |
+| Nothing tracks removal of the temporary step (`e18d1ed8bbb4`) | BM IN-02 | carried forward as BM IN-01 at this head |
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `vibe-check:e18d1ed8bbb4:compl-001` | vibe-check | `e18d1ed8bbb4` | fixed | `Dockerfile:55` version check; pass-3 recheck verdicts "resolved" from compliance and bugs; `dpkg --compare-versions` exits 1 on the unpatched base image; CI `docker` and `os-scan` pass | `8e3d6b49f6b5` |
+| `bm:e18d1ed8bbb4:IN-01` | bm | `e18d1ed8bbb4` | fixed | same change | `8e3d6b49f6b5` |
+| `bm:e18d1ed8bbb4:IN-03` | bm | `e18d1ed8bbb4` | fixed | `tests/test_codex_review_container.py:95` returns a naive value when no timezone is given; file passes (312 passed, 1 skipped) | `8e3d6b49f6b5` |
+| `bm:8e3d6b49f6b5:IN-01` | bm | `8e3d6b49f6b5` | nonblocking_debt | No tracker entry prompts removal of the temporary zlib step once the base image is fixed. Harmless if left (the step becomes a no-op that still needs the mirrors). To be added to the maintenance backlog. | `8e3d6b49f6b5` |
+| `bm:8e3d6b49f6b5:IN-02` | bm | `8e3d6b49f6b5` | nonblocking_debt | The naive branch of the test clock returns UTC wall time where the real method returns local time, and `today()`/`utcnow()` are not overridden. Neither is reachable: the runner's only clock read is `datetime.now(UTC)`. | `8e3d6b49f6b5` |
+| `bm:8e3d6b49f6b5:SA-01` and `vibe-check:e18d1ed8bbb4:arch-001` | bm, vibe-check | `8e3d6b49f6b5` | nonblocking_debt (owner ruling open) | `docs/os-scan-policy.md` lists a base-image rebuild or an owner-approved exception; the owner chose a targeted in-image upgrade on 2026-11-13 because the upstream image has not been rebuilt. Whether to add this route to the policy is the owner's call. | `8e3d6b49f6b5` |
+| `bm:8e3d6b49f6b5:SA-02` | bm | `8e3d6b49f6b5` | nonblocking_debt | `CHANGELOG.md` has no unreleased section; both security fixes belong in the next release notes (release planning). | `8e3d6b49f6b5` |
+| `bm:8e3d6b49f6b5:SA-03` | bm | `8e3d6b49f6b5` | false_positive | Convention tool suggested renaming `Dockerfile` to camel case; a JS/TS rule that does not apply. | `8e3d6b49f6b5` |
+| `bm:8e3d6b49f6b5:SA-04` | bm | `8e3d6b49f6b5` | fixed | Reviewer could not build the image; CI's `docker`, `image-smoke` and `os-scan` jobs pass on this head, and a local build, scan (0 blocking) and smoke test passed. | `8e3d6b49f6b5` |
+| `bm:49403734406a:IN-02`, `bm:49403734406a:SA-01`, `vibe-check:49403734406a:lang-py-001` | bm, vibe-check | `49403734406a` | nonblocking_debt | Unchanged from the previous head's record: fixture docstring, no injected clock on the runner's entry points, missing type hints. | `8e3d6b49f6b5` |
+
+Register entries `57:8e3d6b49f6b5a923d7ee7202c3d5e56f7ec233dc` are written and read back (blockers `{"open":[]}`, dispositions `{"items":{}}`; no Greptile findings exist). Readiness check: "Ready to request approval".
+
+### Incomplete items
+
+- Greptile did not run (optional).
+- vibe-check's internal Codex lane was skipped (`unauthenticated`) and its test-sufficiency lane did not run; the paired Codex review is complete.
+- Owner rulings open, none blocking: policy wording for the in-image upgrade route; whether the runner should accept an injected clock.
+````
+
+#### Withheld files
+
+- `codex/8e3d6b49f6b5-main-ci-fix-r3-a1.jsonl` failed publication-gate check 3 (the home-directory path pattern) for the same reason as the first head's transcript: one event quotes a line of the repository's own test file that contains a made-up home path for a fake user. It was moved out of the repository to a private location on the owner's machine and not edited. The graded report, status, prompt, meta and pytest evidence passed the gate and are published.
+
+#### Local verification of the image change (before the push)
+
+- Built the image with the step; `zlib1g` is `1:1.3.dfsg+really1.3.1-1+deb13u1`.
+- Scanned it with Trivy 0.76.1 and the repository's `os-scan-gate.cjs`: blocking 0 (the previous head's CI-built image: blocking 2).
+- `tests.harness.image_smoke`: SMOKE PASSED.
+- The version check exits 1 on the unpatched `python:3.13-slim` image.
+- The local build was for the machine's own architecture; CI's build on its own platform is the evidence for the shipped image.
+
