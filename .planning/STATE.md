@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 executing -- pilot PR #54 merged (b80c3e2); pilot PR #55 open, behind main; next plan 86-10"
-stopped_at: "86-07 finished: PR #54 accepted and merged (merge commit b80c3e26cf9456dde7245350d7033f6feb94db0f). Next: 86-10 brings PR #55 up to date with main and re-reviews its new head"
-last_updated: "2026-11-14T03:24:18Z"
+status: "Phase 86 executing -- pilot PR #54 merged (b80c3e2); 86-10 blocked: CI on main fails for two date-driven reasons unrelated to the merge"
+stopped_at: "86-07 finished: PR #54 accepted and merged (merge commit b80c3e26cf9456dde7245350d7033f6feb94db0f). Main CI run 43551352373 failed (new opentelemetry-api advisory; review-tooling tests that read the real clock). Owner decision needed on how to fix main before 86-10 can bring PR #55 up to date"
+last_updated: "2026-11-14T03:26:54Z"
 last_activity: "2026-11-13 -- Phase 86 execution: 86-07 finished; PR #54 (Refresh counts skips a malformed record) merged to main as b80c3e2 on the owner's instruction"
 progress:
   total_phases: 7
@@ -89,6 +89,7 @@ For v2.13: Phase 83 is the shared substrate for Phase 86 (the paired review work
 
 ### Blockers/Concerns
 
+- 2026-11-13: CI on main is failing (run 43551352373 on `b80c3e2`), which blocks 86-10 because PR #55 would inherit both failures once main is merged in. Neither comes from PR #54, which changed only `triggarr/search/engine.py` and two test files. (1) `dependencies`: pip-audit now reports CVE-2026-126360 in `opentelemetry-api` 1.45.1, a shipped dependency; fixed in 1.45.2. (2) `test`: 11 tests in `tests/test_codex_review_container.py` fail because the code paths they exercise read the real clock while the fixture sign-in date is fixed at 2026-10-28, now older than the 7-day limit. The other mandatory jobs were skipped as a result.
 - _[Security-sensitive detail removed before publication; the full record is kept privately.]_
 
 ### Future Milestones
@@ -129,6 +130,7 @@ Resume file: .planning/phases/86-pilot-reference-record/86-10-PLAN.md
 
 ## Operator Next Steps
 
+- Fix CI on main first (owner decides how it ships): bump `opentelemetry-api` to 1.45.2 and make the Codex review-container tests independent of today's date
 - Phase 86 (Pilot & Reference Record): `/bm:execute-phase 86` on branch `phase-86-pilot-reference-record` continues with 86-10 (PR #55: merge main in, re-review the new head, owner acceptance), then 86-08 and 86-09
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule
