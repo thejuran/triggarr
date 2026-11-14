@@ -56,13 +56,12 @@ Reconciliation: <one line explaining any difference among the fields above, or "
 ### Vibe-check (RISK-02)
 
 <when risk is high:>
-- **Recommendation:** <explicit vibe-check recommendation with rationale and scope>
-- **Owner's decision:** "<the owner's decision, quoted verbatim>"
+- **Required vibe-check:** <rationale and scope of the vibe-check this head requires>
 
 <when risk is not high:>
-- Risk below high: no additional vibe-check recommended.
+- Risk below high: no vibe-check required or recommended.
 
-- **Routine vibe-check status:** no longer required automatically for every "code"-class change (owner decision, Phase 86 PILOT-03, 2026-11-14); vibe-check now runs only when recommended above at a high-risk checkpoint. The D-16 standing items are unchanged: bot/fork PRs still get the vibe-check (or another independent reviewer) fallback when Codex stays INCOMPLETE/PENDING after its retry, and BM still recommends an extra vibe-check whenever a checkpoint's risk comes out high.
+- **Vibe-check status:** <ran because risk is high: report location | not run because risk is below high | ran as the owner-approved Codex fallback for this head: report location>
 
 Vibe-check never substitutes for a complete Codex pass, is never counted or recorded as Codex, never waives a finding and never reduces required coverage. When Codex stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or another independent reviewer) as the recorded fallback for that exact head (docs/codex-adversarial-review-contract.md, Owner-approved fallback).
 
@@ -123,7 +122,8 @@ Findings:
 
 - Requested depth and actual depth are always both recorded. A BM depth reduction (for example, the >50-file deep-to-standard downgrade, or the quick-task path's hardcoded `quick` depth regardless of `workflow.code_review_depth`) is reported as what actually ran — it is never labelled with the requested depth (REVIEW-05).
 - A large high-risk review that BM would downgrade is split into explicit scopes, or gets additional review, rather than being accepted at the downgraded depth unexamined.
-- Evidence from an earlier head never counts for a later head (REVIEW-06). A new head needs its own BM review, its own Codex pass, and (when applicable) its own Greptile review and vibe-check.
+- Evidence from an earlier head never counts for a later head (REVIEW-06). A new head needs its own BM review, its own Codex pass, its own Greptile review when Greptile runs, and its own vibe-check when that head's risk is assessed high or when vibe-check is that head's owner-approved Codex fallback.
+- Vibe-check is required when a checkpoint's risk is assessed high; it is not run routinely below high risk (owner decision, Phase 86 PILOT-03, 2026-11-14, which ended routine vibe-check on every "code"-class change). At high risk the risk note states the vibe-check line (RISK-02), that one vibe-check is required rather than a recommendation the owner may decline, and the template's `Vibe-check status` field records that it ran and where its report is. Below high risk no vibe-check is required or recommended, unless it runs as the Codex fallback: on any head whose Codex pass stays INCOMPLETE/PENDING after its retry, the owner may approve vibe-check (or another independent reviewer) as the recorded fallback for that exact head, and bot/fork PRs are the standing case where this is expected. This rule is instruction-enforced; GitHub does not check it.
 - The head stays frozen while independent reviews run — no further commits land on that SHA while BM, Codex, Greptile, or vibe-check are still assessing it.
 - When BM cannot invoke Codex, or Codex has not yet returned a report, the record shows `Codex: PENDING, requested for FULL_SHA` until a report arrives (REVIEW-03). This is never written as "clean," "skipped and fine," or any other status that could be read as complete.
 - Untrusted heads (bot and fork PRs) get an inspection-only Codex review: the head is never checked out or executed, Codex runs in a disposable review container whose configuration is checked before every run, and the report is graded by the checker from a freshly fetched origin/main. The review container is not network-isolated: it uses Docker's default bridge network with no published ports, and its egress is not restricted to the model endpoint. The checkpoint records Codex complete only when `--completion-gate` and the readiness check both accept that attempt; otherwise it records INCOMPLETE/PENDING plus the Fallback row for that head. An inspection-only result that stays INCOMPLETE after its one automatic retry still needs the owner-approved fallback (D-16); wait and retry later block acceptance. Historical `untrusted-refused` records (from the interim period before Phase 85.1) are accepted only through a validated fallback (`--head-trust untrusted`).
@@ -176,7 +176,7 @@ Review status on this head:
 - Codex: <status, from docs/codex-adversarial-review-contract.md Invocation (tests/codex_review_run.py → tests/codex_report_status.py)>
 - Codex fallback (only if Codex is INCOMPLETE/PENDING): <path to <head12>-fallback.json and the validator's output>
 - Greptile: <status, or "did not run on this head">
-- Vibe-check: <status, or "not selected for this checkpoint">
+- Vibe-check: <ran because risk is high, with report location | not run because risk is below high | ran as the owner-approved Codex fallback for this head, with report location>
 - CI: <status>
 - Readiness check: <output of acceptance-readiness.cjs for this head>
 
