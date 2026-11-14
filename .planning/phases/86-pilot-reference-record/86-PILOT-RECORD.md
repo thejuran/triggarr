@@ -466,6 +466,9 @@ Per that decision, the wording for the passing tests above was corrected before 
 | PR #57 main-CI fix (`8e3d6b49f6b5`) | 2026-11-13 | Merge: the session reported the acceptance check passed and the PR mergeable, and asked whether the owner would merge or instruct the merge | "merge pr 57" (Claude ran the merge under the owner's account at the accepted head; merge commit `aeead4b601d7`) |
 | PR #55 Card-template (`5d58264e93a2`, integration head) | 2026-11-14 | Owner acceptance (86-10 Task 3): approve review acceptance for PR #55 at the exact head and run? | "Approve review acceptance for PR #55 at 5d58264e93a21b100d01e80503b9a7d064253d36, run 43559074842" |
 | PR #55 Card-template (`5d58264e93a2`, integration head) | 2026-11-14 | Merge (86-10 Task 3): the session reported the acceptance check passed and the PR mergeable, and asked whether the owner would merge or instruct the merge | "merge pr 55" (Claude ran the merge under the owner's account at the accepted head; merge commit `7f6b5d4b567c`) |
+| PILOT-03 decision 1 (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | PILOT-03 decision 1 (86-08 Task 3): retire routine vibe-check, keep it, or keep it only at a named risk level? | "take all recommendations" — adopting Claude's recommendation as presented: keep vibe-check, scoped to high-risk checkpoints only; stop running it on every "code"-class PR regardless of risk; the D-16 standing items are unchanged. |
+| PILOT-03 decision 2 (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | PILOT-03 decision 2 (86-08 Task 3): keep BM/Codex completion as a manual owner check, or extend the acceptance gate (FUT-03)? | "take all recommendations" — adopting Claude's recommendation as presented: keep the manual owner check (option a); the acceptance-gate extension (FUT-03) was not chosen. |
+| PILOT-03 decision 3 (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | PILOT-03 decision 3 (86-08 Task 3): since decision 1 changes the current process, should the Phase 86 PR also update the instruction text that puts it into effect (CLAUDE.md "Review-workflow rollout" paragraph; docs/review-checkpoint-record.md), or leave that as a recorded follow-up? | "take all recommendations" — adopting Claude's recommendation as presented: include the instruction-text update in the Phase 86 PR rather than leaving it as a follow-up; noted that this makes the Phase 86 PR an instruction change, classified sensitive. |
 
 ## PILOT-03 recommendation and decisions
 
@@ -614,5 +617,8 @@ If a future PR's incomplete or stale report ever does slip through the
 manual checklist, that incident — not this pilot — is the trigger to
 revisit FUT-03.
 
-Owner decision (PILOT-03 decision 1): pending
-Owner decision (PILOT-03 decision 2): pending
+Owner decision (PILOT-03 decision 1): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: keep vibe-check, but scoped to high-risk checkpoints only — stop running it on every "code"-class PR regardless of risk; the D-16 standing items (bot/fork fallback; RISK-02's high-risk recommendation) stay unchanged either way.
+
+Owner decision (PILOT-03 decision 2): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: keep the manual owner check (option a) as the BM/Codex completion check at acceptance; the acceptance-gate extension (FUT-03) was not chosen — scheduled as FUT-03, not built in Phase 86.
+
+Owner decision (PILOT-03 decision 3): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: the Phase 86 PR will include the update to the vibe-check sentences in CLAUDE.md's "Review-workflow rollout" paragraph and in `docs/review-checkpoint-record.md`, rather than leaving it as a recorded follow-up; noted that this makes the Phase 86 PR an instruction change, classified sensitive.
