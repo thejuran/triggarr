@@ -1,0 +1,217 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "92b9daca2775d984d0e3e27ce4884caedf1cc0c6",
+  "inspected_base_sha": "7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/59",
+  "scope": "Whole-PR net change against the specified base, including publication-gate scripts, policy and adoption documentation, and changed *-PLAN.md executor instructions.",
+  "verdict": "findings",
+  "summary": "One low-severity regression in an executor plan: replacing an absolute Python subprocess working directory with a literal tilde path breaks the smoke-test launch. No additional publication-gate or acceptance-policy defect identified within the stated threat model. Harness evidence reports 3282 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "Verified HEAD and existence of the specified base object.",
+    "Reviewed changes to CLAUDE.md and all six affected review-policy/adoption documents.",
+    "Reviewed the publication gate and its self-test: file discovery, ignored/untracked files, symlinks, byte-oriented scanning, hash-bound exceptions, conflicting dispositions, scanner errors, and index/worktree consistency.",
+    "Reviewed all ten new Phase 86 plans, including comparison independence, regression-test instructions, publication handling, integration sequencing, and exact-head owner acceptance.",
+    "Checked 126 modified older plans: 124 are exact home-path substitutions; inspected the two additional transformations and execution contexts affected by substitution.",
+    "Reviewed the S03 UAT path substitution.",
+    "Inspected surrounding Codex trust/fallback contract, acceptance workflow, fallback definitions, and relevant test references.",
+    "Checked shell syntax and whitespace; reproduced the Python tilde-path failure without modifying files."
+  ],
+  "exclusions": [
+    "Planning Markdown other than *-PLAN.md, except background consulted for intent.",
+    "Raw transcripts and generated review artifacts under .planning/, including codex outputs, JSONL streams, and the six vibe-check JSON reports; reviewer conclusions were not treated as correctness evidence.",
+    "Files outside the working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 7f6b5d4b567c06ce9a4764b94352366ef008c22b",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..92b9daca2775d984d0e3e27ce4884caedf1cc0c6 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Obtain primary diff; truncated output was followed by targeted reads."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..92b9daca2775d984d0e3e27ce4884caedf1cc0c6 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Obtain executor-plan diff; followed by targeted reads and transformation checks."
+    },
+    {
+      "command": "git diff --stat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md' ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inventory primary changes."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; git status --short; rg --files -g '*SKILL.md' -g AGENTS.md",
+      "exit_code": 1,
+      "purpose": "Read harness evidence and worktree status; rg found no matching instruction files."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-publication-gate.sh",
+      "exit_code": 0,
+      "purpose": "Inspect complete gate implementation."
+    },
+    {
+      "command": "git diff --name-only 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- ':(glob).planning/**/*-PLAN.md'; git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- CLAUDE.md docs .gsd",
+      "exit_code": 0,
+      "purpose": "Inventory plans and inspect policy/documentation changes."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- docs/review-checkpoint-record.md docs/review-classification-policy.md docs/buildomator-greptile-pilot.md docs/ci-reference-baseline-plan.md",
+      "exit_code": 0,
+      "purpose": "Inspect policy changes without the larger diff."
+    },
+    {
+      "command": "sed -n '1,83p' docs/review-workflow-adoption.md; git diff --numstat 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read adoption guide and quantify plan changes."
+    },
+    {
+      "command": "python3 - <<'PY'\nimport subprocess\nbase='7f6b5d4b567c06ce9a4764b94352366ef008c22b'\nfiles=subprocess.check_output(['git','diff','--name-only',base+'..HEAD','--',':(glob).planning/**/*-PLAN.md'],text=True).splitlines()\nfor f in files:\n old=subprocess.run(['git','show',base+':'+f],capture_output=True,text=True)\n new=open(f).read()\n if old.returncode==0 and old.stdout.replace('~','~')==new: print('EXACT home-path replacement:',f)\n else: print('OTHER:',f)\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt transformation check; shell could not create the here-document temporary file."
+    },
+    {
+      "command": "python3 -c 'import subprocess; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b+\"..HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\"],text=True).splitlines(); same=[]; other=[]\nfor f in fs:\n o=subprocess.run([\"git\",\"show\",b+\":\"+f],capture_output=True,text=True); n=open(f).read(); (same if o.returncode==0 and o.stdout.replace(\"~\",\"~\")==n else other).append(f)\nprint(\"Exact home-path replacements:\",len(same)); print(\"Other:\\n\"+\"\\n\".join(other))'",
+      "exit_code": 0,
+      "purpose": "Verify exact substitutions across all older plans and identify exceptions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect preregistration and publication-gate construction instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-02-PLAN.md .planning/phases/86-pilot-reference-record/86-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect implementation and independent comparison plans; reread truncated portions subsequently."
+    },
+    {
+      "command": "sed -n '145,220p' .planning/phases/86-pilot-reference-record/86-02-PLAN.md; sed -n '1,78p' .planning/phases/86-pilot-reference-record/86-03-PLAN.md; cat .planning/phases/86-pilot-reference-record/86-04-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete earlier reads and inspect revision/final-head review instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-05-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect template-refactor plan and visible-change safeguards."
+    },
+    {
+      "command": "git diff 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- docs/review-classification-policy.md; sed -n '1,18p' docs/review-workflow-adoption.md; sed -n '126,145p' .planning/phases/86-pilot-reference-record/86-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect classification and previously truncated plan instructions."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-06-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect card-review and revision workflow."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-07-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect push, checkpoint and acceptance sequencing."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-08-PLAN.md .planning/phases/86-pilot-reference-record/86-09-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect scoring, owner decisions and policy rollout plans."
+    },
+    {
+      "command": "cat .planning/phases/86-pilot-reference-record/86-10-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect integration, fresh-review and acceptance requirements."
+    },
+    {
+      "command": "python3 -c 'import subprocess,difflib; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"\nfor n in (\"02\",\"03\"):\n f=\".planning/phases/84-codex-plan-checker-investigation/84-\"+n+\"-PLAN.md\"; old=subprocess.check_output([\"git\",\"show\",b+\":\"+f],text=True).replace(\"~\",\"~\"); print(\"\".join(difflib.unified_diff(old.splitlines(True),open(f).readlines(),fromfile=f,tofile=f)))'",
+      "exit_code": 0,
+      "purpose": "Isolate nonmechanical changes in older plans."
+    },
+    {
+      "command": "python3 -c 'import subprocess; d=subprocess.check_output([\"git\",\"diff\",\"--unified=0\",\"7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\",\":(exclude,glob).planning/phases/86-*/**\"],text=True); seen=set()\nfor l in d.splitlines():\n if l.startswith(\"+\") and not l.startswith(\"+++\"):\n  if l not in seen: print(l); seen.add(l)'",
+      "exit_code": 0,
+      "purpose": "Inspect deduplicated older-plan additions."
+    },
+    {
+      "command": "python3 -c 'import subprocess,difflib; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"\nfor n in (\"02\",\"03\"):\n f=\".planning/phases/84-codex-plan-checker-investigation/84-\"+n+\"-PLAN.md\"; a=subprocess.check_output([\"git\",\"show\",b+\":\"+f],text=True).replace(\"~\",\"~\").splitlines(); z=open(f).read().splitlines(); print(f)\n for x in difflib.ndiff(a,z):\n  if x.startswith((\"- \",\"+ \")): print(x)'",
+      "exit_code": 0,
+      "purpose": "Read complete nonmechanical transformations."
+    },
+    {
+      "command": "sed -n '15,25p' docs/review-classification-policy.md; sed -n '1,30p' docs/review-workflow-adoption.md; rg -n 'redact|expanduser|cwd=|cwd |absolute|den(y|ies)|Read\\(' .planning/phases/84-codex-plan-checker-investigation/84-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Check mixed classification and path-handling context."
+    },
+    {
+      "command": "python3 -c 'import subprocess,re; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b+\"..HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\",\":(exclude,glob).planning/phases/86-*/**\"],text=True).splitlines(); seen=set()\nfor f in fs:\n old=subprocess.check_output([\"git\",\"show\",b+\":\"+f],text=True)\n for i,l in enumerate(old.splitlines(),1):\n  if \"~\" in l:\n   for m in re.finditer(re.escape(\"~\"),l):\n    c=l[max(0,m.start()-65):m.end()+100].replace(\"~\",\"~\")\n    if c not in seen: print(f.split(\"/\")[-1]+\":\"+str(i)+\": \"+c); seen.add(c)'",
+      "exit_code": 0,
+      "purpose": "Inspect execution contexts surrounding path substitutions."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate.sh .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh; rg -n 'publication-gate|32.*hex|gitleaks' tests .github docs/codex-adversarial-review-contract.md; git diff --check 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Check gate syntax, surrounding test references and diff whitespace."
+    },
+    {
+      "command": "python3 -c 'import subprocess,re; b=\"7f6b5d4b567c06ce9a4764b94352366ef008c22b\"; fs=subprocess.check_output([\"git\",\"diff\",\"--name-only\",b+\"..HEAD\",\"--\",\":(glob).planning/**/*-PLAN.md\",\":(exclude,glob).planning/phases/86-*/**\"],text=True).splitlines(); seen=set(); out=[]\nfor f in fs:\n old=subprocess.check_output([\"git\",\"show\",b+\":\"+f],text=True)\n for i,l in enumerate(old.splitlines(),1):\n  for m in re.finditer(re.escape(\"~\"),l):\n   c=l[max(0,m.start()-65):m.end()+100].replace(\"~\",\"~\")\n   if c not in seen: out.append(f.split(\"/\")[-1]+\":\"+str(i)+\": \"+c); seen.add(c)\nprint(\"\\n\".join(out[150:300]))'",
+      "exit_code": 0,
+      "purpose": "Read substitution contexts omitted from earlier output."
+    },
+    {
+      "command": "python3 -c 'import subprocess\ntry: subprocess.run([\"true\"],cwd=\"~/triggarr\",check=True)\nexcept FileNotFoundError as e: print(type(e).__name__+\": \"+str(e)); print(\"Literal tilde cwd is not expanded by subprocess\")'",
+      "exit_code": 0,
+      "purpose": "Reproduce subprocess failure for the changed plan instruction."
+    },
+    {
+      "command": "sed -n '1,165p' docs/codex-adversarial-review-contract.md; sed -n '1,100p' .github/workflows/review-acceptance.yml; sed -n '1,90p' .github/scripts/codex-fallback.cjs",
+      "exit_code": 0,
+      "purpose": "Check trust, fallback and acceptance boundaries."
+    },
+    {
+      "command": "nl -ba .planning/quick/261026-s2v-activate-the-codex-routed-plan-checker-f/261026-s2v-PLAN.md | sed -n '184,207p'; git status --short; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Locate finding and reconfirm unchanged checkout."
+    },
+    {
+      "command": "bash -n .planning/phases/86-pilot-reference-record/86-publication-gate-selftest.sh",
+      "exit_code": 0,
+      "purpose": "Check self-test shell syntax separately."
+    },
+    {
+      "command": "rg -n 'expanduser|Path.home|cwd|Finding 5' .planning/quick/261026-s2v-activate-the-codex-routed-plan-checker-f/*RESEARCH.md; git diff --name-only 7f6b5d4b567c06ce9a4764b94352366ef008c22b..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Check supporting intent for path expansion and reconcile final file inventory."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "low",
+      "title": "Expand home paths before passing them to the Python smoke runner",
+      "file": ".planning/quick/261026-s2v-activate-the-codex-routed-plan-checker-f/261026-s2v-PLAN.md",
+      "line_start": 194,
+      "line_end": 194,
+      "trigger": "An executor follows the modified smoke-run recipe and uses the stated ~/triggarr value as subprocess cwd.",
+      "execution_path": "Task 3 step 2 adapts run_smoke.py using a Python argv list and cwd. Unlike shell command arguments, subprocess cwd does not undergo tilde expansion. The launch fails before Claude starts; step 3 then requires recording INCOMPLETE and stopping.",
+      "consequence": "Re-executing this plan cannot complete its positive smoke verification without an undocumented correction. The --add-dir argv value has the same missing explicit expansion.",
+      "evidence": "The diff replaces the previous absolute cwd with ~/triggarr. A direct subprocess reproduction raised FileNotFoundError naming '~/triggarr'. Neither this instruction nor the searched research text specifies expanduser for these Python arguments. The pytest evidence does not exercise this executor recipe.",
+      "suggested_fix": "Keep paths portable by explicitly constructing cwd and --add-dir with Path.home() or Path(...).expanduser(), and stringify the expanded paths when building argv.",
+      "reproduced": true,
+      "reproduction_command": "python3 -c 'import subprocess\ntry: subprocess.run([\"true\"],cwd=\"~/triggarr\",check=True)\nexcept FileNotFoundError as e: print(type(e).__name__+\": \"+str(e)); print(\"Literal tilde cwd is not expanded by subprocess\")'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; used the harness-produced evidence for the exact inspected head.",
+    "Did not execute the publication gate or its self-test because they create temporary directories and repositories. Both scripts received syntax/static review.",
+    "Did not independently query live GitHub settings or external services; reviewed the repository's policy statements and implementation.",
+    "The finding reproduces the Python launch failure, not the complete external Claude smoke workflow."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

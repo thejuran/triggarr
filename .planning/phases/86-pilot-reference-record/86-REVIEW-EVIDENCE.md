@@ -1360,3 +1360,105 @@ Earlier heads' findings and their fixes are recorded per head in `86-REVIEW-EVID
 - `codex:6ca643dcf210:a1:F001` awaits the owner's disposition.
 - Later-found misses in `86-PILOT-RECORD.md` are updated before acceptance (D-14).
 - Blocker and disposition register entries for this head are written once the F001 disposition is settled.
+
+### Head 92b9daca2775d984d0e3e27ce4884caedf1cc0c6 (accepted and merged)
+
+Durable copy of the checkpoint comment posted on PR #59 (https://github.com/thejuran/triggarr/pull/59#issuecomment-6881443708), as posted.
+
+<!-- review-checkpoint head=92b9daca2775d984d0e3e27ce4884caedf1cc0c6 -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `92b9daca2775d984d0e3e27ce4884caedf1cc0c6` |
+| PR base SHA | `7f6b5d4b567c06ce9a4764b94352366ef008c22b` |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `92b9daca2775d984d0e3e27ce4884caedf1cc0c6` |
+| Codex inspected base (`inspected_base_sha`) | `7f6b5d4b567c06ce9a4764b94352366ef008c22b` |
+
+Reconciliation: Codex inspected the exact PR head. The BM review (iteration 6) and the required vibe-check (pass 2) ran on `63a5b45b4a33ae84e7a34313d05275812d4d4650`; the three commits after it (`4d49dcfaad46346e09029971de8a3c92a394cb3c`, `6ca643dcf21084cb7451dc4924ecb5fc7355fcac`, `92b9daca2775d984d0e3e27ce4884caedf1cc0c6`) change only files under `.planning/` (review evidence, the verification report, `STATE.md`, and in the last one the pilot record's later-found misses and dated corrections), so every file in BM's and vibe-check's review scope is byte-identical at this PR head (`git diff 63a5b45 92b9dac -- . ':(exclude).planning'` is empty). This head supersedes `6ca643dcf21084cb7451dc4924ecb5fc7355fcac`, whose comment stays as posted.
+
+### Classification
+
+```json
+{"schema":1,"head":"92b9daca2775d984d0e3e27ce4884caedf1cc0c6","classification":"sensitive","classes_present":["sensitive","ordinary-docs"],"rationale":"Range 7f6b5d4..92b9dac. Sensitive: CLAUDE.md and the review-policy documents (docs/review-checkpoint-record.md, docs/review-classification-policy.md, docs/bm-greptile-codex-blueprint.md, docs/buildomator-greptile-pilot.md, docs/ci-reference-baseline-plan.md) are agent instructions and review/acceptance procedure; the phase's publication-gate script and self-test are a safeguard. Ordinary-docs: docs/review-workflow-adoption.md, the .gsd path scrub and .planning/** (pilot record, plans, summaries, review reports, Codex evidence). No application code, tests, CI workflow or dependency change.","supersedes_head":"6ca643dcf21084cb7451dc4924ecb5fc7355fcac"}
+```
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr PR #59, head `92b9daca2775d984d0e3e27ce4884caedf1cc0c6`, base `7f6b5d4b567c06ce9a4764b94352366ef008c22b`; the review instructions for vibe-check, the adoption guide, the pilot record and the phase's publication gate; whole PR.
+- **Risk:** high — a wrong or ambiguous review instruction changes how every later PR is reviewed, and the edits widen Claude's standing authorization (it starts the required high-risk vibe-check itself on trusted heads). A defect in the publication gate could let a private detail in review evidence be published.
+- **Recommended review:** BM standard + paired Codex, full PR, plus the required vibe-check.
+- **Required evidence:** doc-guard tests and the full suite pass; the publication gate's self-test passes and the gate passes on the committed evidence; green CI.
+- **What this recommendation cannot establish:** that an agent will read the instructions as intended in every future situation; the vibe-check rule is instruction-enforced, GitHub does not check it.
+
+### Vibe-check (RISK-02)
+
+- **Required vibe-check:** risk is high (agent instructions and a safeguard change). Scope: the PR's net change outside planning prose and review evidence (10 files).
+- **Vibe-check status:** ran because risk is high: deep review, two passes, started by Claude after BM and Codex (owner decision, 2026-11-14). Pass 1 at `833a58aa4e2ae09e3c6be43b1bc6b4018f12b595`: one medium finding in the publication gate, fixed at the owner's "Apply all & rerun" (`4e2341eeac4fd2b31dbcc2511d62f883c3629141`, regression case `63a5b45b4a33ae84e7a34313d05275812d4d4650`). Pass 2 at `63a5b45b4a33ae84e7a34313d05275812d4d4650`: nothing reported, both pass-1 records resolved on recheck, vibe-check's own Codex run approved with 0 findings. Report location: summary in `.planning/phases/86-pilot-reference-record/86-REVIEW-EVIDENCE.md` ("Phase 86 PR (local checkpoint before the end-of-phase push)"); the tool's pass state is local and not published. The reviewed files are byte-identical at this PR head (see Reconciliation).
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | explicit `/bm:code-review` at the end of phase execution, then review after fixes (iterations 2-6) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow `workflows/code-review.md:compute_file_scope` (`--files`) |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-phase-63a5b45b4a33.md` (iteration 6, reviewed head `63a5b45b4a33`); earlier iterations `86-REVIEW.md` and `86-REVIEW-phase-<head12>.md` |
+| Status | complete — iteration 6: 0 critical, 0 warning, 2 info, 1 set aside |
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (trusted PR-URL run; `.status.json` complete; readiness check: "Codex: ok — complete") |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `.planning/phases/86-pilot-reference-record/codex/92b9daca2775-pr59-a1.{prompt.txt,meta.json,last.json,status.json,pytest.txt}` (local; committed with the next push); `.jsonl` withheld (it failed the publication gate's local user name check) |
+| Review complete | `review_complete: true`, `incomplete_reasons: []`, verdict `findings` |
+| Coverage | as reported: `CLAUDE.md` and all six affected review-policy/adoption documents; the publication gate and its self-test (file discovery, ignored/untracked files, symlinks, byte-oriented scanning, hash-bound exceptions, conflicting dispositions, scanner errors, index/working-tree consistency); all ten new Phase 86 plans and the other changed plans |
+| Exclusions | planning markdown other than `*-PLAN.md` (consulted as background only); raw transcripts and generated review artifacts under `.planning/`; files outside the working copy |
+| Commands run | as recorded in `.last.json` |
+| Limitations | pytest not rerun in the read-only sandbox (harness evidence: 3282 passed, 1 skipped at this head); the gate and its self-test were not executed (syntax and static review); live GitHub settings not queried |
+
+Findings:
+
+| Qualified ID | Severity | Location | Reproduced / hypothesis | Title |
+|---|---|---|---|---|
+| `codex:92b9daca2775:a1:F001` | low | `.planning/quick/261026-s2v-activate-the-codex-routed-plan-checker-f/261026-s2v-PLAN.md:194` | reproduced | Expand home paths before passing them to the Python smoke runner |
+
+### Greptile
+
+not run on this head (optional).
+
+### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| CI ready | 43620557667 | success (lint, test, dependencies, secrets, actionlint, docker, os-scan, browser-e2e, image-smoke all passed) |
+| CodeQL | 43620447998 | success |
+| Review acceptance | 43620557671 | attempt 2 waiting for owner approval (attempt 1 was created before this head's register entries were written and was cancelled) |
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `codex:92b9daca2775:a1:F001` | codex | `92b9daca2775d984d0e3e27ce4884caedf1cc0c6` | nonblocking_debt | Accurate and reproduced: the home-path scrub of 2026-10-30 left a literal tilde path in an already-executed quick-task plan, which a Python subprocess would not expand. The plan is finished and is not re-run. Same item as `codex:910e98853c41:a1:F001`, set aside under the owner's stopping rule (only critical and warning findings are fixed). | n/a |
+| `codex:6ca643dcf210:a1:F001` | codex | `6ca643dcf21084cb7451dc4924ecb5fc7355fcac` | nonblocking_debt | Raised on the previous head (medium): finished Phase 86 plans show the older hand-review entry format and plan 86-01 embeds the first version of the gate scripts. Owner's disposition, verbatim: "record it as non-blocking debt" (2026-11-14). The plans are unchanged at this head; Codex did not re-raise it. | n/a |
+| `bm:63a5b45b4a33:IN-01` | bm | `63a5b45b4a33ae84e7a34313d05275812d4d4650` | nonblocking_debt | Self-test pins the superseded-entry rule with one case in one section; behaviour verified correct by 44 reproduction cases. | `63a5b45b4a33ae84e7a34313d05275812d4d4650` |
+| `bm:63a5b45b4a33:IN-02` | bm | `63a5b45b4a33ae84e7a34313d05275812d4d4650` | nonblocking_debt | The superseded skip does not compare hashes; a complete reasoned entry for the current content is still required, so no unreviewed content passes. | `63a5b45b4a33ae84e7a34313d05275812d4d4650` |
+| `bm:63a5b45b4a33:SA-01` | bm | `63a5b45b4a33ae84e7a34313d05275812d4d4650` | nonblocking_debt | An older rejected line keeps blocking after a later accepted re-review; documented and fails closed. | `63a5b45b4a33ae84e7a34313d05275812d4d4650` |
+
+Earlier heads' findings and their fixes are recorded per head in `86-REVIEW-EVIDENCE.md` and the fix reports `86-REVIEW-FIX.md` to `86-REVIEW-FIX-4.md`.
+
+### Incomplete items
+
+- Owner exact-commit acceptance (Review acceptance run 43620557671, attempt 2).
+- Greptile did not run (optional).
+
+### After posting
+
+CI run 43620557667 finished with every job passing (lint, test, dependencies, secrets, actionlint, docker, os-scan, browser-e2e, image-smoke, CI ready); CodeQL run 43620447998 succeeded; Greptile did not run on this head (optional, free tier). The Codex trusted PR-URL attempt (`a1`) completed with one low finding, `codex:92b9daca2775:a1:F001` (a literal tilde path left by the 2026-10-30 path scrub in the already-executed quick-task plan `.planning/quick/261026-s2v-activate-the-codex-routed-plan-checker-f/261026-s2v-PLAN.md`), dispositioned `nonblocking_debt` under the owner's stopping rule (the plan is finished and is not re-run). The `.jsonl` transcript for this attempt is withheld, the same way earlier attempts' transcripts were: it failed the publication gate's local user name check, which has no exception, so it was moved out of the repository to a private location on the owner's machine and is not published; Codex completion is graded from `.last.json`, which is published. The readiness check reported "Ready to request approval". Review acceptance run 43620557671: attempt 1 was created before this head's register entries were written and was cancelled; attempt 2 was approved. The owner's approval, verbatim: "I approve review acceptance for PR #59 at 92b9daca2775d984d0e3e27ce4884caedf1cc0c6, run 43620557671" (owner, 2026-11-14). Claude transmitted that approval to the `review-acceptance` environment per `docs/owner-cli-acceptance.md`, and the acceptance job succeeded. The owner's merge instruction, verbatim: "merge pr 59" (owner, 2026-11-14). Claude ran the merge under the owner's account bound to the accepted head; merge commit `e5e158451a0e731dbe6012ee0bf3e6e179b2ee25`, merged 2026-11-14T20:11:46Z. CI on `main` at `e5e1584`: run 43636188254 succeeded (all jobs). The post-merge Release workflow run 43636707792 was checked once after this entry was drafted: `completed`/`success` on `e5e1584`.
