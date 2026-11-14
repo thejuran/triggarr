@@ -2,9 +2,9 @@
 # Self-test for the Phase 86 publication gate (86-01 Task 3).
 # Usage, from anywhere: bash <this file> <path to 86-publication-gate.sh>
 # Builds throwaway git repositories under mktemp and checks clean, matching,
-# unreadable-file and empty-list cases, the credential-shape hand-review entry
-# rules (exact path, dedicated section, accepted disposition only), the same rules
-# for hash-bound public-infrastructure hand-review entries, a staged
+# unreadable-file and empty-list cases, the hand-review entry rules for the
+# credential-shape and public-infrastructure checks (exact path, current SHA-256,
+# dedicated section, accepted disposition only), letter-case variants, a staged
 # match hidden by an unstaged redaction, a covered file that is not staged
 # (untracked or locally ignored), plus invocation from zsh.
 gate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
@@ -41,23 +41,28 @@ fresh; echo "BOX.TS.NET" >> "$r/$p/vibe-check/v.md"; expect "upper-case host suf
 fresh; echo "on the Tailnet" >> "$r/$p/vibe-check/v.md"; expect "capitalised network word blocks" block "public-infrastructure check: matching"
 hit() { fresh; printf 'id %s\n' "$(printf '%032d' 0 | tr 0 a)" >> "$r/$p/codex/a1.txt"; }
 ev() { printf -- "$1\n" >> "$r/$p/86-REVIEW-EVIDENCE.md"; }
+# Credential-shape hand review: the entry is bound to the file's current SHA-256, like the public-infrastructure one.
+sum() { { shasum -a 256 < "$1" 2>/dev/null || sha256sum < "$1"; } | cut -d' ' -f1; }
 A="\`$p/codex/a1.txt\`"; NO="no accepted Credential-shape hand review entry"
+cacc() { ev "- ${2-$A} sha256 \`$(sum "$r/$p/codex/a1.txt")\`: not a credential -- ${1-test fixture id, not an API key}"; }
 hit; expect "unreviewed 32-hex hit blocks" block "$NO"
-ev "- $A: not a credential -- test fixture id, not an API key"; ( cd "$r" && git add -A )
-expect "accepted entry for the exact path passes" pass ""
+cacc; ( cd "$r" && git add -A )
+expect "accepted entry for the exact path with the current hash passes" pass ""
+printf 'key %s\n' "$(printf '%032d' 0 | tr 0 b)" >> "$r/$p/codex/a1.txt"; ( cd "$r" && git add -A )
+expect "second 32-hex value added and staged after review blocks (stale hash)" block "$NO"
+hit; ev "- $A: not a credential -- path-only entry, no hash"; expect "credential entry without a hash blocks" block "$NO"
 hit; ev "Codex output in $p/codex/a1.txt and a1.txt was read."
 ev "## Refresh-counts PR"; ev "See $A for the transcript."; expect "ordinary citation of the path blocks" block "$NO"
-hit; ev "## Withheld files"; ev "- $A: not a credential -- wrong section"; expect "accepted entry outside the section blocks" block "$NO"
+hit; ev "## Withheld files"; cacc "wrong section"; expect "accepted entry outside the section blocks" block "$NO"
 hit; ev "- $A: credential -- withheld, owner told to rotate"; expect "rejected entry blocks" block "$NO"
 hit; ev "- $A: pending hand review"; expect "unreviewed (pending) entry blocks" block "$NO"
-hit; ev "- $A: not a credential -- fixture"; ev "- $A: credential -- second look"; expect "accepted plus rejected entry blocks" block "$NO"
-hit; ev "- $A: not a credential -- "; expect "accepted entry with no reason blocks" block "$NO"
-hit; ev "- \`$p/vibe-check/a1.txt\`: not a credential -- other file"; expect "same-basename different-file entry blocks" block "$NO"
-hit; ev "- \`a1.txt\`: not a credential -- basename only"; expect "basename-only entry blocks" block "$NO"
-hit; ev "- $A: not a credential -- fixture"; ev "## Credential-shape hand review"; expect "duplicate hand-review section blocks" block "exactly one"
+hit; cacc fixture; ev "- $A: credential -- second look"; expect "accepted plus rejected entry blocks" block "$NO"
+hit; cacc ""; expect "accepted entry with no reason blocks" block "$NO"
+hit; cacc "other file" "\`$p/vibe-check/a1.txt\`"; expect "same-basename different-file entry blocks" block "$NO"
+hit; cacc "basename only" "\`a1.txt\`"; expect "basename-only entry blocks" block "$NO"
+hit; cacc fixture; ev "## Credential-shape hand review"; expect "duplicate hand-review section blocks" block "exactly one"
 # Public-infrastructure hand review: same rules, plus the entry is bound to the file's current SHA-256.
 pub() { fresh; echo "see /home/someone/x" >> "$r/$p/vibe-check/v.md"; ev "## Public-infrastructure hand review"; }
-sum() { { shasum -a 256 < "$1" 2>/dev/null || sha256sum < "$1"; } | cut -d' ' -f1; }
 acc() { ev "- $V sha256 \`$(sum "$r/$p/vibe-check/v.md")\`: not private infrastructure -- ${1-placeholder fixture path}"; }
 V="\`$p/vibe-check/v.md\`"; NP="no accepted Public-infrastructure hand review entry"
 pub; acc; ( cd "$r" && git add -A ); expect "accepted public-infrastructure entry with the current hash passes" pass ""

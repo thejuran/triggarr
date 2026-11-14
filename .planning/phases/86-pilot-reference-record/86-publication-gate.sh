@@ -8,8 +8,8 @@
 # tool error, empty file list, covered file that is in the working tree but not staged,
 # or staged content that differs from the scanned working copy exits non-zero (fails
 # closed). Two checks accept a written hand
-# review from 86-REVIEW-EVIDENCE.md: the public-infrastructure check (entry bound
-# to the file's exact path and current SHA-256) and the 32-hex check (exact path).
+# review from 86-REVIEW-EVIDENCE.md: the public-infrastructure check and the 32-hex
+# check (each entry bound to the file's exact path and current SHA-256).
 # The local user name and local host name checks have no exception.
 d=${1:-.planning/phases/86-pilot-reference-record}
 fail() { echo "publication gate BLOCKED: $*" >&2; exit 1; }
@@ -44,8 +44,9 @@ h=$(hostname -s) && [ -n "$h" ] || fail "hostname failed"
 #   ## Public-infrastructure hand review
 #   - `<path>` sha256 `<64-hex of the file as scanned>`: not private infrastructure -- <reason>
 #   ## Credential-shape hand review
-#   - `<path>`: not a credential -- <reason>
-# Any other line in that section starting with the same path (rejected, pending) blocks.
+#   - `<path>` sha256 `<64-hex of the file as scanned>`: not a credential -- <reason>
+# Both forms bind the entry to the file's current SHA-256: a file that changes after its
+# review needs a fresh review and a new entry. Any other line in that section starting with the same path (rejected, pending) blocks.
 ev="$d/86-REVIEW-EVIDENCE.md"
 reviewed() { X=$1 S=$2 M=$3 awk '
   BEGIN { k = "- `" ENVIRON["X"] "`"; p = k ENVIRON["M"] }
@@ -77,7 +78,8 @@ hx=$(grep -lE '(^|[^0-9a-f])[0-9a-f]{32}([^0-9a-f]|$)' -- "${F[@]}"); r=$?
 [ "$r" -le 1 ] || fail "32-hex scan: grep error (exit $r)"
 while IFS= read -r x; do
   [ -n "$x" ] || continue
-  reviewed "$x" "Credential-shape hand review" ": not a credential -- "; r=$?
+  s=$(sha "$x"); [[ "$s" =~ ^[0-9a-f]{64}$ ]] || fail "32-hex hit: cannot hash (needs shasum or sha256sum): $x"
+  reviewed "$x" "Credential-shape hand review" " sha256 \`$s\`: not a credential -- "; r=$?
   [ "$r" -eq 0 ] && continue
   [ "$r" -eq 3 ] && fail "32-hex hit, but 86-REVIEW-EVIDENCE.md needs exactly one '## Credential-shape hand review' section: $x"
   [ "$r" -eq 1 ] && fail "32-hex hit has no accepted Credential-shape hand review entry: $x"

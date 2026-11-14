@@ -7,6 +7,10 @@ posted as that PR's per-head checkpoint comment, and a durable copy stays here.
 
 ## Credential-shape hand review
 
+Each entry is bound to the file's SHA-256 as reviewed, in the same form as the
+public-infrastructure entries below (`- <path in backticks> sha256 <64-hex in backticks>: not a credential -- <reason>`);
+a file that changes needs a fresh review and a new entry.
+
 none
 
 ## Public-infrastructure hand review
