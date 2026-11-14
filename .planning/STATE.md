@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
 status: "Phase 86 complete -- PR #59 merged as e5e1584 (main CI passing); PILOT-01..04 recorded; all v2.13 phases executed; milestone audit next"
-stopped_at: "Phase 86 PR #59 accepted (review acceptance run 43620557671) and merged by the owner as e5e1584 (2026-11-14T20:11:46Z); main CI run 43636188254 and the post-merge Release run 43636707792 both passing. Next: milestone audit (/bm:audit-milestone), then milestone closeout"
+stopped_at: "Phase 86 PR #59 accepted (review acceptance run 43620557671) and merged on the owner's instruction as e5e1584 (2026-11-14T20:11:46Z); main CI run 43636188254 and the post-merge Release run 43636707792 both passing. Next: milestone audit (/bm:audit-milestone), then milestone closeout"
 last_updated: "2026-11-14T20:27:01Z"
 last_activity: "2026-11-14 -- Phase 86 PR #59 pushed (head 6ca643d), per-head checkpoint comment, owner settled codex:6ca643dcf210:a1:F001 as non-blocking debt; later-found-misses update and checkpoint record added at head 92b9dac; owner approved review acceptance (run 43620557671) and merged as e5e1584; main CI and the post-merge Release workflow both passing"
 progress:
