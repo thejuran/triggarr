@@ -637,3 +637,10 @@ D-09 tally for this head: confirmed 0, false positive 0, unproven 5 BM-side (WR-
 - Attempt 1 of run 41158788888 was created before the register write, so it was cancelled and re-run. The owner approved attempt 2.
 - Step 5 recheck immediately before submission: head unchanged, run waiting on attempt 2, `review-acceptance` pending with `current_user_can_approve` true, readiness "Ready to request approval", main unchanged at `d5a4467`.
 - Submitted via the pending-deployments endpoint (environment `review-acceptance`; deployment 7452918282 for sha `1062097…`). Review acceptance run 41158788888 attempt 2 completed with **success**. PR merge state is CLEAN.
+
+Merged: b80c3e26cf9456dde7245350d7033f6feb94db0f (by owner)
+
+- Merged 2026-11-14T03:23:00Z (2026-11-13 local) as a merge commit, matching the repository's earlier PR merges. Main moved from `d5a4467` to `b80c3e2`.
+- How it was merged: the owner instructed "merge pr 54" in the Claude CLI session, and Claude ran the merge under the owner's GitHub account, pinned to the accepted head (`--match-head-commit 1062097a7676fddcdde3caf500f96ba1ea04d65c`). This differs from the plan, which had the owner run the merge personally (T-86-22). The decision to merge was the owner's.
+- Recheck immediately before the merge: head unchanged at `1062097…`, all 15 checks passing including Review acceptance (run 41158788888 attempt 2), merge state CLEAN, main unchanged at `d5a4467`.
+- PR #55 was not presented for acceptance. It is open at `46c39194249d1e7bcd2362a91d238d0997539f3f` and now behind main; 86-10 integrates it and gathers fresh exact-head evidence.
