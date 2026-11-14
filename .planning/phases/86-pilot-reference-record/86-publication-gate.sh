@@ -17,7 +17,7 @@ command -v gitleaks >/dev/null 2>&1 || fail "gitleaks not installed"
 t=$(mktemp -d) || fail "mktemp failed"
 trap 'rm -rf "$t"' EXIT
 # Covered locations (the one list both listings below use).
-P=("$d/codex" "$d/vibe-check" "$d/86-REVIEW-*.md" "$d/86-PILOT-RECORD.md")
+P=("$d/codex" "$d/vibe-check" "$d/86-REVIEW.md" "$d/86-REVIEW-*.md" "$d/86-PILOT-RECORD.md")
 git ls-files -z -- "${P[@]}" > "$t/list" || fail "git ls-files failed"
 F=()
 while IFS= read -r -d '' f; do F+=("$f"); done < "$t/list"

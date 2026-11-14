@@ -14,7 +14,7 @@ none
 Hand review of 2026-11-14, under the owner's decision of the same day to add hand-review
 exceptions to the publication gate's public-infrastructure check. Each entry is bound to
 the file's SHA-256 as reviewed; a file that changes needs a fresh review and a new entry.
-In the Codex report file every hit context was read; in the review file, its one hit line.
+In the Codex report file every hit context was read; in each review file, its one hit line.
 
 Withheld: the transcript `codex/1a65339c35ec-phase-a1.jsonl` for this attempt passed this check on hand review
 but then failed the gate's local user name check (two transcript lines show the local account name), which has
@@ -24,6 +24,7 @@ and pytest evidence for the attempt are published; Codex completion is graded fr
 
 - `.planning/phases/86-pilot-reference-record/codex/1a65339c35ec-phase-a1.last.json` sha256 `fd872aca618f78ecab960fe8893ce84696913fe6be118fbce2685b4ee85cf204`: not private infrastructure -- every hit is the gate's own search pattern, a rule description, or a placeholder fixture quoted while Codex reviewed the gate script; no real path, host or network name
 - `.planning/phases/86-pilot-reference-record/86-REVIEW-phase-1a65339c35ec.md` sha256 `f22b0a71b4686e524f38606aa27267fd4cbbaeaff323f69cb4d5e468de622846`: not private infrastructure -- the single hit (line 72) is the reviewer's list of what was searched for, in a sentence reporting that none was found; it names a category of private network name, not an actual one; no real path, host or network name
+- `.planning/phases/86-pilot-reference-record/86-REVIEW.md` sha256 `b3c118eaf8b1ab80dc8241cf3724aaac2a6fbf153fa2c7517b34a02906ef97ab`: not private infrastructure -- the single hit (line 42) is the reviewer's list of what was searched for, in a sentence reporting that none was found; it names a category of private network name, not an actual one; no real path, host or network name (file first covered by the gate on 2026-11-14, fix round 3 WR-03)
 
 ## Refresh-counts PR
 

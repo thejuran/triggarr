@@ -86,5 +86,9 @@ fresh; echo "see /home/someone/x" > "$r/$p/codex/new.txt"; expect "untracked cov
 fresh; echo ".planning/" >> "$r/.git/info/exclude"; echo "clean report" > "$r/$p/86-REVIEW-new.md"
 expect "locally ignored covered file blocks and is named" block "$NS: $p/86-REVIEW-new.md"
 ( cd "$r" && git add -f "$p/86-REVIEW-new.md" ); expect "passes once the ignored file is force-added" pass ""
+# The default report name (no suffix after REVIEW) is covered too.
+fresh; echo "see /home/someone/x" > "$r/$p/86-REVIEW.md"; ( cd "$r" && git add -A )
+expect "match in the default-named review report blocks" block "public-infrastructure check: matching"
+fresh; echo "clean report" > "$r/$p/86-REVIEW.md"; expect "untracked default-named review report blocks" block "$NS: $p/86-REVIEW.md"
 fresh; echo "not review evidence" > "$r/$p/86-NOTES.md"; expect "untracked file outside the covered locations does not block" pass ""
 echo "selftest: $pass passed, $bad failed"; [ "$bad" -eq 0 ]
