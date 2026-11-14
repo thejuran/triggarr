@@ -57,13 +57,17 @@ h=$(hostname -s) && [ -n "$h" ] || fail "hostname failed"
 #   ## Credential-shape hand review
 #   - `<path>` sha256 `<64-hex of the file as scanned>`: not a credential -- <reason>
 # Both forms bind the entry to the file's current SHA-256: a file that changes after its
-# review needs a fresh review and a new entry. Any other line in that section starting with the same path (rejected, pending) blocks.
+# review needs a fresh review and a new entry. An older accepted entry for the same path
+# (same form, a different well-formed sha256) is superseded and ignored. Any other line in
+# that section starting with the same path (rejected, pending) blocks.
 ev="$d/86-REVIEW-EVIDENCE.md"
-reviewed() { X=$1 S=$2 M=$3 awk '
-  BEGIN { k = "- `" ENVIRON["X"] "`"; p = k ENVIRON["M"] }
+reviewed() { X=$1 S=$2 H=$3 D=$4 awk '
+  BEGIN { k = "- `" ENVIRON["X"] "`"; h = " sha256 `"; d = "`: " ENVIRON["D"]; p = k h ENVIRON["H"] d }
   /^## / { ins = ($0 == "## " ENVIRON["S"]); n += ins; next }
   ins && substr($0, 1, length(p)) == p && substr($0, length(p) + 1) ~ /[^[:space:]]/ { ok = 1; next }
-  ins && substr($0, 1, length(k)) == k { bad = 1 }
+  ins && substr($0, 1, length(k)) == k { r = substr($0, length(k) + 1); o = substr(r, length(h) + 1, 64)
+    if (substr(r, 1, length(h)) == h && length(o) == 64 && o ~ /^[0-9a-f]+$/ && substr(r, length(h) + 65, length(d)) == d) next
+    bad = 1 }
   END { if (n != 1) exit 3; exit (ok && !bad) ? 0 : 1 }' "$ev"; }
 sha() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 < "$1"
   elif command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1"; fi | cut -d' ' -f1; }
@@ -75,7 +79,7 @@ nb=0; ps="Public-infrastructure hand review"
 while IFS= read -r x; do
   [ -n "$x" ] || continue
   s=$(sha "$x"); [[ "$s" =~ ^[0-9a-f]{64}$ ]] || fail "public-infrastructure hit: cannot hash (needs shasum or sha256sum): $x"
-  reviewed "$x" "$ps" " sha256 \`$s\`: not private infrastructure -- "; r=$?
+  reviewed "$x" "$ps" "$s" "not private infrastructure -- "; r=$?
   [ "$r" -eq 0 ] && continue
   nb=1
   if [ "$r" -eq 3 ]; then echo "public-infrastructure hit, but 86-REVIEW-EVIDENCE.md needs exactly one '## $ps' section: $x" >&2
@@ -90,7 +94,7 @@ hx=$(grep -lE '(^|[^0-9a-f])[0-9a-f]{32}([^0-9a-f]|$)' -- "${F[@]}"); r=$?
 while IFS= read -r x; do
   [ -n "$x" ] || continue
   s=$(sha "$x"); [[ "$s" =~ ^[0-9a-f]{64}$ ]] || fail "32-hex hit: cannot hash (needs shasum or sha256sum): $x"
-  reviewed "$x" "Credential-shape hand review" " sha256 \`$s\`: not a credential -- "; r=$?
+  reviewed "$x" "Credential-shape hand review" "$s" "not a credential -- "; r=$?
   [ "$r" -eq 0 ] && continue
   [ "$r" -eq 3 ] && fail "32-hex hit, but 86-REVIEW-EVIDENCE.md needs exactly one '## Credential-shape hand review' section: $x"
   [ "$r" -eq 1 ] && fail "32-hex hit has no accepted Credential-shape hand review entry: $x"
