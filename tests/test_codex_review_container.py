@@ -81,6 +81,19 @@ _NOW = datetime(2026, 10, 28, 12, 0, 0, tzinfo=UTC)
 _FIXTURE_REFRESH_TOKEN = "refresh-token-fixture-must-never-leak"  # noqa: S105 -- test fixture, not a real secret
 
 
+class _FrozenDatetime(datetime):
+    """Stands in for the runner's ``datetime`` so its clock reads return ``_NOW``.
+
+    Entry points such as ``main()`` and ``verify_boundary_main()`` take no ``now``
+    argument and read the real clock. Without this, fixture sign-in dates (set
+    relative to ``_NOW``) age past the 7-day limit as the calendar moves on.
+    """
+
+    @classmethod
+    def now(cls, tz=None):
+        return _NOW if tz is None else _NOW.astimezone(tz)
+
+
 def _auth_bytes(*, last_refresh: str, auth_mode: str = "chatgpt", refresh_token: str = _FIXTURE_REFRESH_TOKEN) -> bytes:
     return json.dumps(
         {
@@ -1923,6 +1936,7 @@ class _BoundaryFixture:
 
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: self.host_home))
         monkeypatch.delenv("CODEX_HOME", raising=False)
+        monkeypatch.setattr(codex_review_run, "datetime", _FrozenDatetime)
         monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
         monkeypatch.setattr(codex_review_run, "REPO_ROOT", self.repo_root)
 
