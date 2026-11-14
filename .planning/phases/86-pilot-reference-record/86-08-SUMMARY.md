@@ -28,7 +28,7 @@ key-files:
 
 key-decisions:
   - "PILOT-03 decision 1 — owner reply \"take all recommendations\" (2026-11-14), adopting Claude's recommendation as presented: routine vibe-check on every \"code\"-class PR ends; vibe-check becomes a required step only at high-risk checkpoints (the same RISK-02 trigger). The D-16 standing items (bot/fork Codex-fallback; RISK-02's high-risk vibe-check recommendation) are unchanged by this decision."
-  - "PILOT-03 decision 2 — owner reply \"take all recommendations\" (2026-11-14), adopting Claude's recommendation as presented: the BM/Codex completion check at acceptance stays the owner's manual checklist review (option a). The acceptance-gate extension (FUT-03) was not chosen — it remains scheduled as FUT-03, not built in Phase 86."
+  - "PILOT-03 decision 2 — owner reply \"take all recommendations\" (2026-11-14), adopting Claude's recommendation as presented: the BM/Codex completion check at acceptance stays the owner's manual checklist review (option a). The acceptance-gate extension (FUT-03) was not chosen; FUT-03 stays an unscheduled future option and nothing is built for it in Phase 86."
   - "PILOT-03 decision 3 — owner reply \"take all recommendations\" (2026-11-14), adopting Claude's recommendation as presented: YES, 86-09's Phase 86 PR will update the vibe-check sentences in CLAUDE.md's \"Review-workflow rollout\" paragraph and in docs/review-checkpoint-record.md to match decision 1, rather than leaving that as a recorded follow-up. This is noted in the record as making the Phase 86 PR an instruction change, classified sensitive."
 
 requirements-completed: [PILOT-01, PILOT-03]

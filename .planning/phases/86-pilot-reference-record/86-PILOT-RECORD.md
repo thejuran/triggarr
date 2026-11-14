@@ -619,6 +619,6 @@ revisit FUT-03.
 
 Owner decision (PILOT-03 decision 1): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: keep vibe-check, but scoped to high-risk checkpoints only — stop running it on every "code"-class PR regardless of risk; the D-16 standing items (bot/fork fallback; RISK-02's high-risk recommendation) stay unchanged either way.
 
-Owner decision (PILOT-03 decision 2): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: keep the manual owner check (option a) as the BM/Codex completion check at acceptance; the acceptance-gate extension (FUT-03) was not chosen — scheduled as FUT-03, not built in Phase 86.
+Owner decision (PILOT-03 decision 2): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: keep the manual owner check (option a) as the BM/Codex completion check at acceptance; the acceptance-gate extension (FUT-03) was not chosen; FUT-03 stays an unscheduled future option and nothing is built for it in Phase 86.
 
 Owner decision (PILOT-03 decision 3): "take all recommendations" (owner, 2026-11-14), adopting Claude's recommendation as presented: the Phase 86 PR will include the update to the vibe-check sentences in CLAUDE.md's "Review-workflow rollout" paragraph and in `docs/review-checkpoint-record.md`, rather than leaving it as a recorded follow-up; noted that this makes the Phase 86 PR an instruction change, classified sensitive.
