@@ -1,0 +1,120 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "9edabeb90dc5ed51ebb784dcd38bc520818f25eb",
+  "inspected_base_sha": "e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+  "pr_url": "none",
+  "scope": "Full specified base-to-head diff for v2.12.1, plus changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "Inspected all four changed files; no actionable defects found. No phase plans changed. Version and lock-reference checks passed. Harness evidence reports 3,282 passed and 1 skipped on the exact inspected head.",
+  "coverage": [
+    "Complete changes to CHANGELOG.md, pyproject.toml, triggarr/__init__.py and uv.lock.",
+    "Phase-plan diff inspected; empty.",
+    "Version consistency across package metadata, runtime version and lockfile; update-check callers and version regression assertions.",
+    "Dependency updates, removed pyee references, package sources, artifact hashes and lock dependency references.",
+    "Docker locked dependency installation, CI browser installation, release version identity and publication permissions.",
+    "Changelog parser and relevant existing malformed-record and dashboard-label implementation and regression tests.",
+    "Exact-head harness test evidence and whitespace validation."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md except explicitly included *-PLAN.md files",
+    "Independent audit of unchanged application and workflow code beyond relevant surrounding paths."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..9edabeb90dc5ed51ebb784dcd38bc520818f25eb -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete in-scope diff."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..9edabeb90dc5ed51ebb784dcd38bc520818f25eb -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed phase plans."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt pyproject.toml Dockerfile .github/workflows/ci.yml .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and build/release context."
+    },
+    {
+      "command": "rg -n 'refresh.count|skipped record|failure reason|detail\\(s\\)|__version__|playwright|pyee' triggarr tests .github scripts",
+      "exit_code": 2,
+      "purpose": "Locate relevant callers and tests; scripts directory does not exist."
+    },
+    {
+      "command": "git status --short; rg --files .github tests scripts | head -100",
+      "exit_code": 0,
+      "purpose": "Check working copy and enumerate relevant files; rg reported missing scripts directory."
+    },
+    {
+      "command": "cat tests/test_version.py tests/test_changelog.py triggarr/update_check.py",
+      "exit_code": 0,
+      "purpose": "Review version and changelog assertions and upgrade comparison."
+    },
+    {
+      "command": "rg -n 'playwright|browser|version|permissions:|publish|needs:' .github/workflows/release.yml .github/workflows/ci.yml tests/e2e/conftest.py",
+      "exit_code": 0,
+      "purpose": "Trace browser dependency consumption and release safeguards."
+    },
+    {
+      "command": "sed -n '1,90p' uv.lock; sed -n '1045,1160p' uv.lock; cat triggarr/templates/partials/cycle_grade.html",
+      "exit_code": 0,
+      "purpose": "Inspect lock metadata and dashboard-label implementation."
+    },
+    {
+      "command": "sed -n '1850,1930p' tests/test_refresh_counts.py; rg -n 'malformed|failure reasons|skipped record|details' tests/test_cycle_grade.py triggarr/search/counts.py",
+      "exit_code": 2,
+      "purpose": "Inspect route regressions; guessed grade/count file paths did not exist."
+    },
+    {
+      "command": "git diff --check e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..9edabeb90dc5ed51ebb784dcd38bc520818f25eb",
+      "exit_code": 0,
+      "purpose": "Check diff whitespace errors."
+    },
+    {
+      "command": "rg -n 'def refresh_.*counts|malformed|skipped record|failure reason' triggarr/search/engine.py tests/test_cycle_grade_labels.py tests/test_refresh_counts.py -g '*.py'",
+      "exit_code": 2,
+      "purpose": "Locate refresh implementation and malformed-record regressions; guessed label test path did not exist."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport ast, tomllib\nfrom pathlib import Path\np=tomllib.loads(Path('pyproject.toml').read_text())\nl=tomllib.loads(Path('uv.lock').read_text())\npackages={x['name']:x for x in l['package']}\nv=ast.literal_eval(ast.parse(Path('triggarr/__init__.py').read_text()).body[0].value)\nassert v == p['project']['version'] == packages['triggarr']['version'] == '2.12.1'\nfor package in l['package']:\n    deps=package.get('dependencies', [])+sum(package.get('optional-dependencies', {}).values(), [])\n    for dep in deps:\n        assert dep['name'] in packages, (package['name'],dep)\nassert 'pyee' not in packages\nassert '## v2.12.1 (2026-11-14)' in Path('CHANGELOG.md').read_text()\nprint('Version agreement, changelog header and lock dependency references passed')\nprint({n:packages[n]['version'] for n in ['fastapi','anyio','opentelemetry-api','starlette','python-multipart','playwright','pytest','ruff']})\nprint('Local virtual environment present:', Path('.venv').exists())\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt read-only consistency validation; shell heredoc temporary-file creation was denied."
+    },
+    {
+      "command": "sed -n '291,345p' .github/workflows/ci.yml; sed -n '1,75p' .github/workflows/release.yml; sed -n '100,165p' .github/workflows/release.yml; cat triggarr/changelog.py",
+      "exit_code": 0,
+      "purpose": "Inspect browser execution, release identity/permissions and changelog rendering."
+    },
+    {
+      "command": "python3 -B -c 'import ast,tomllib; from pathlib import Path; p=tomllib.loads(Path(\"pyproject.toml\").read_text()); l=tomllib.loads(Path(\"uv.lock\").read_text()); pk={x[\"name\"]:x for x in l[\"package\"]}; v=ast.literal_eval(ast.parse(Path(\"triggarr/__init__.py\").read_text()).body[0].value); assert v==p[\"project\"][\"version\"]==pk[\"triggarr\"][\"version\"]==\"2.12.1\"; assert all(d[\"name\"] in pk for x in l[\"package\"] for d in x.get(\"dependencies\",[])); assert \"pyee\" not in pk; print(\"Version and lock-reference checks passed\"); print({n:pk[n][\"version\"] for n in [\"fastapi\",\"opentelemetry-api\",\"starlette\",\"python-multipart\",\"playwright\",\"pytest\",\"ruff\"]}); print(\"Local venv exists:\",Path(\".venv\").exists())'",
+      "exit_code": 0,
+      "purpose": "Successfully validate version agreement and lock dependency references without temporary files."
+    },
+    {
+      "command": "sed -n '350,440p' tests/test_refresh_counts.py; sed -n '1928,1965p' triggarr/search/engine.py; rg -n 'failed.*malformed|failed.*mixed|Show 2 failure reasons' tests --glob '*.py'; git status --short",
+      "exit_code": 0,
+      "purpose": "Inspect meaningful malformed-record assertions, screening implementation, failed-card regressions and final working-copy status."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; relied on the supplied exact-head harness evidence for the full suite.",
+    "Did not execute Docker builds, browser regressions, vulnerability scans or publication workflows.",
+    "Did not independently download dependency artifacts or verify external advisory claims; review was restricted to the working copy.",
+    "Some broad surrounding-code outputs were truncated; focused reads recovered relevant context. The complete in-scope diff was available and inspected."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

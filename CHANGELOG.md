@@ -20,7 +20,7 @@ Security updates for the Docker image and its dependencies, plus two small fixes
 
   * The Docker image installs its Python dependencies from the project lockfile with hash checking, so the published image runs the same versions that were tested.
 
-  * Dependency updates in the image: FastAPI 0.162.4 (v2.12.0 shipped 0.158.1), Starlette 1.10.0 (was 1.9.0), python-multipart 0.0.33 (was 0.0.32).
+  * Dependency updates in the image: FastAPI 0.162.4 (v2.12.0 shipped 0.158.1), Starlette 1.10.0 (was 1.9.0), python-multipart 0.0.33 (was 0.0.32). Every other library in the image stays at the version v2.12.0 shipped.
 
 * Upgrade notes:
 
