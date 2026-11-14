@@ -94,7 +94,7 @@ These are true only because a written instruction file (in this repository, `CLA
 
 ## What the pilot showed
 
-This repository scored five real, already-authorized pull requests against the process above — no invented test cases; three were already merged and were scored afterwards from their committed review evidence, and two were run fresh — specifically to find out whether it actually works and whether the heavier "vibe-check" pass was still earning its cost. The full evidence, scorecards, and the owner's verbatim decisions are in `.planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md` (not reproduced here in full; this section only states the results in plain terms).
+This repository scored five real, already-authorized pull requests against the process above — no invented test cases; three were already merged and were scored afterwards from their committed review evidence, and two were run fresh — specifically to find out whether it actually works and whether the heavier "vibe-check" pass was still earning its cost. The full evidence, scorecards, and the owner's verbatim decisions are in `.planning/phases/86-pilot-reference-record/86-PILOT-RECORD.md` (not reproduced here in full; this section only states the results in plain terms). That path is inside the current milestone's phase folder; when the milestone is archived the folder may move under `.planning/milestones/`, so look there if the path no longer resolves.
 
 The five pull requests covered: a small fix, a larger security-sensitive change, another larger change (which turned out to be the pilot's most informative case, below), a state/error-handling logic fix, and a user-interface template change with no visible difference to end users.
 
@@ -106,7 +106,7 @@ The five pull requests covered: a small fix, a larger security-sensitive change,
 
 **Nobody's review ever silently passed an incomplete result.** On the one pilot pull request where Codex could not finish, the process caught that and routed to an owner-approved fallback review instead of reporting the pull request as cleanly reviewed.
 
-**The owner's decisions (2026-11-14, recorded in the pilot record named above):**
+**The owner's decisions (2026-11-14, recorded verbatim in the pilot record named above):**
 
 1. Running vibe-check automatically on every "code"-class change is retired. Vibe-check is required when a checkpoint's risk is assessed high; it is not run routinely below high risk. High risk is the one place this pilot actually showed it catching something the paired review missed. The fallback for a Codex pass that cannot complete (item 6 above) stays exactly as it was.
 2. Checking that the independent reviewer's report actually arrived, is current, and covers the right commit stays a manual item on the human owner's acceptance checklist, rather than becoming something GitHub itself mechanically blocks on. The one time in this pilot that a report was genuinely incomplete, the existing manual checklist caught it — it was not missed — so there was no pilot evidence that this manual step needed to become an automated gate.
