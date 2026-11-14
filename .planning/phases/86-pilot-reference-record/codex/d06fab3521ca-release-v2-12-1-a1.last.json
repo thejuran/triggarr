@@ -1,0 +1,97 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "d06fab3521ca37d0325847e19cd419decf634e54",
+  "inspected_base_sha": "e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Full specified branch diff for v2.12.1, plus changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found in the four changed files. Release versions agree, and updated dependency metadata supports the lockfile changes. Harness evidence reports 3282 passed and 1 skipped on the requested head.",
+  "coverage": [
+    "Inspected all changes to CHANGELOG.md, pyproject.toml, triggarr/__init__.py, and uv.lock.",
+    "Confirmed there are no changed phase plan files or other in-scope planning files.",
+    "Checked dependency Python requirements, FastAPI's added AnyIO dependency, and Playwright's removal of pyee against installed metadata.",
+    "Reviewed version consistency tests, changelog parsing and escaping, application initialization, and relevant test scaffolding.",
+    "Reviewed Docker lockfile consumption, browser installation and acceptance checks, and release version/image identity wiring.",
+    "Confirmed harness test evidence identifies the requested head and a successful test run."
+  ],
+  "exclusions": [
+    "Planning markdown other than phase plans, planning JSONL files, and generated artifacts under .planning/**/codex/**.",
+    "Unrelated pre-existing behavior outside the changed files."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..d06fab3521ca37d0325847e19cd419decf634e54 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete in-scope diff."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..d06fab3521ca37d0325847e19cd419decf634e54 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check changed phase plans; none found."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence."
+    },
+    {
+      "command": "git status --short; rg --files -g 'AGENTS.md' -g '*test*' -g '*workflow*' -g 'Dockerfile' -g 'pyproject.toml' -g '*release*' -g '*e2e*' .github tests triggarr | head -100",
+      "exit_code": 0,
+      "purpose": "Check worktree status and locate relevant surrounding files."
+    },
+    {
+      "command": "cat pyproject.toml Dockerfile .github/workflows/ci.yml .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Inspect dependency installation and release workflow context."
+    },
+    {
+      "command": "rg -n 'FastAPI|FASTAPI_OTEL|request.form|__version__|pyee|playwright|refresh.*count|failure reason' triggarr tests .github scripts; head -35 uv.lock; sed -n '1040,1150p' uv.lock",
+      "exit_code": 0,
+      "purpose": "Locate dependency callers and inspect lock metadata."
+    },
+    {
+      "command": "cat tests/test_version.py tests/test_changelog.py triggarr/web/app.py tests/e2e/conftest.py",
+      "exit_code": 1,
+      "purpose": "Inspect regression assertions and browser scaffolding; triggarr/web/app.py does not exist, and the actual entry point was subsequently inspected."
+    },
+    {
+      "command": "cat .github/workflows/release.yml; sed -n '320,425p' .github/workflows/ci.yml; cat tests/conftest.py",
+      "exit_code": 0,
+      "purpose": "Inspect release publication, browser acceptance, and default test collection."
+    },
+    {
+      "command": "git diff --check e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..d06fab3521ca37d0325847e19cd419decf634e54; ls -ld .venv .venv/bin/python; rg -n 'opentelemetry-api|apscheduler|starlette|version = \"(1.45.2|3.11.3|1.10.0)\"' uv.lock; rg -n 'FASTAPI_OTEL|otel|multipart|malformed' tests/test_startup.py tests/test_auth_routes.py tests/test_refresh_counts.py",
+      "exit_code": 0,
+      "purpose": "Check whitespace, runtime availability, documented dependency versions, and regression coverage."
+    },
+    {
+      "command": "rg -n '^(Version|Requires-Python|Requires-Dist):' .venv/lib/python3.13/site-packages/{fastapi,playwright,pytest,python_multipart,ruff}-*.dist-info/METADATA; rg -n 'FASTAPI_OTEL|RuntimeError|OTLP' .venv/lib/python3.13/site-packages/fastapi/ -g '*.py'; rg -n 'FastAPI\\(' triggarr; cat triggarr/changelog.py; git diff --name-only e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..d06fab3521ca37d0325847e19cd419decf634e54",
+      "exit_code": 0,
+      "purpose": "Validate installed dependency metadata, inspect changelog rendering, and confirm changed-file inventory."
+    },
+    {
+      "command": "sed -n '45,100p' triggarr/__main__.py; sed -n '1000,1065p' .venv/lib/python3.13/site-packages/fastapi/applications.py; rg -n 'auto_configure|OTLP|ImportError' .venv/lib/python3.13/site-packages/fastapi -g '*otel*' -g '*telemetry*'; sed -n '1,85p' .github/workflows/release.yml; git diff --check e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..d06fab3521ca37d0325847e19cd419decf634e54",
+      "exit_code": 0,
+      "purpose": "Inspect actual startup and telemetry configuration, release permissions, and final whitespace validation."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently rerun pytest in the read-only sandbox; relied on the supplied exact-head harness evidence.",
+    "The default pytest run excludes browser E2E tests. Docker builds, live browser tests, and publication were not executed.",
+    "Dependency archive hashes and vulnerability claims were not independently checked against external registries or advisory databases.",
+    "Some broad surrounding-code outputs were truncated; the complete in-scope diff was available and inspected."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
