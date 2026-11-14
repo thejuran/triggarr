@@ -14,9 +14,14 @@ none
 Hand review of 2026-11-14, under the owner's decision of the same day to add hand-review
 exceptions to the publication gate's public-infrastructure check. Each entry is bound to
 the file's SHA-256 as reviewed; a file that changes needs a fresh review and a new entry.
-In the two Codex files all 43 distinct hit contexts were read; in the review file, its one hit line.
+In the Codex report file every hit context was read; in the review file, its one hit line.
 
-- `.planning/phases/86-pilot-reference-record/codex/1a65339c35ec-phase-a1.jsonl` sha256 `bc5a36485b45efdb24c49cf2744ee240a1dab0ece923a5de35390167761194d6`: not private infrastructure -- every hit is the gate's own search pattern, a rule description, or a placeholder fixture quoted while Codex reviewed the gate script; no real path, host or network name
+Withheld: the transcript `codex/1a65339c35ec-phase-a1.jsonl` for this attempt passed this check on hand review
+but then failed the gate's local user name check (two transcript lines show the local account name), which has
+no exception. Codex files are never edited after grading, so it was moved out of the repository to a private
+location on the owner's machine and is not published. The graded report (`.last.json`), status, prompt, meta
+and pytest evidence for the attempt are published; Codex completion is graded from `.last.json`.
+
 - `.planning/phases/86-pilot-reference-record/codex/1a65339c35ec-phase-a1.last.json` sha256 `fd872aca618f78ecab960fe8893ce84696913fe6be118fbce2685b4ee85cf204`: not private infrastructure -- every hit is the gate's own search pattern, a rule description, or a placeholder fixture quoted while Codex reviewed the gate script; no real path, host or network name
 - `.planning/phases/86-pilot-reference-record/86-REVIEW-phase-1a65339c35ec.md` sha256 `f22b0a71b4686e524f38606aa27267fd4cbbaeaff323f69cb4d5e468de622846`: not private infrastructure -- the single hit (line 72) is the reviewer's list of what was searched for, in a sentence reporting that none was found; it names a category of private network name, not an actual one; no real path, host or network name
 
