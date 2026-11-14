@@ -374,7 +374,7 @@ and `5d58264e93a2`, their Dispositions tables and review-time tables, plus
 | PR | Category (D-05) | Reviewers that ran | Confirmed defects found by each | Unique catches |
 |---|---|---|---|---|
 | #48 | security-sensitive; larger change | BM, Codex, vibe-check (final head only, D-08) | BM 22; Codex 9; vibe-check 0 | none (vibe-check's one reported item was a false positive) |
-| #36 | larger change; large-PR failure-mode evidence | BM; Codex (both attempts INCOMPLETE/PENDING for size); vibe-check (owner-approved fallback) | BM 8; Codex 1 (fixed in PR #44); vibe-check 0 at the time of PR #36, 2 later confirmed by reproduction when fixed in PR #44 (`b0e1ee4`, `3b3713b`) | vibe-check 2 (the two CI traps neither BM's nor Codex's own passes on this PR flagged; fixed post-merge in PR #44) |
+| #36 | larger change; large-PR failure-mode evidence | BM; Codex (both attempts INCOMPLETE/PENDING for size); vibe-check (owner-approved fallback) | BM 8; Codex 1 (fixed within PR #36 at `2f2e8fc`); vibe-check 0 at the time of PR #36, 2 later confirmed by reproduction when fixed in PR #44 (`b0e1ee4`, `3b3713b`) | vibe-check 2 (the two CI traps neither BM's nor Codex's own passes on this PR flagged; fixed post-merge in PR #44) |
 | #44 | small fix | BM; Codex | BM 0; Codex 0 | none |
 | Refresh-counts (#54) | state/error-path logic | vibe-check (PILOT-02 comparison + routine pass 2); BM; Codex | BM 1; Codex 0; vibe-check 1 (same defect as BM, found independently) | none — both sides caught the one real defect; neither missed one the other found |
 | Card-template (#55) | UI | BM; Codex; vibe-check (two passes) | BM 0; Codex 0; vibe-check 0 | none |
