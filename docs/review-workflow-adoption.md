@@ -66,7 +66,7 @@ These are true because GitHub itself enforces them — it blocks a merge that do
 
 **What it is:** GitHub's own built-in static-analysis scanner (it reads code looking for patterns, without running it) for common categories of security bugs — things like injection flaws or unsafe deserialization. It is free for public repositories and needs no project-specific rules to start finding things.
 
-**How to set it up:** turn it on under Settings → Code security → Code scanning; GitHub adds a workflow that runs it and reports a "CodeQL" check you can then add to your required-status-checks list.
+**How to set it up:** turn it on under Settings → Code security → Code scanning and choose default setup, which is what this repository uses; GitHub then runs the scan itself, with no workflow file to add or maintain, and reports a "CodeQL" check you can then add to your required-status-checks list.
 
 **What it does not prove:** that your application's specific business logic is correct. CodeQL finds generic code-pattern bugs; it has no idea what your feature is supposed to do, so a logic error that doesn't match one of its known bug patterns will not be flagged.
 
