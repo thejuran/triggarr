@@ -91,7 +91,8 @@ class _FrozenDatetime(datetime):
 
     @classmethod
     def now(cls, tz=None):
-        return _NOW if tz is None else _NOW.astimezone(tz)
+        # Like the real method: naive when no timezone is given, aware otherwise.
+        return _NOW.replace(tzinfo=None) if tz is None else _NOW.astimezone(tz)
 
 
 def _auth_bytes(*, last_refresh: str, auth_mode: str = "chatgpt", refresh_token: str = _FIXTURE_REFRESH_TOKEN) -> bytes:
