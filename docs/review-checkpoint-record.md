@@ -1,6 +1,6 @@
 # Review checkpoint record
 
-Active from Phase 83 (v2.13). Owner-checked; GitHub does not enforce BM/Codex records (PILOT-03/FUT-03 decide later).
+Active from Phase 83 (v2.13). Owner-checked; GitHub does not enforce BM/Codex records (owner decision, PILOT-03, 2026-11-14: BM/Codex completion stays the owner's manual check at acceptance; the acceptance-gate extension FUT-03 was not chosen).
 
 ## Where the record lives
 
