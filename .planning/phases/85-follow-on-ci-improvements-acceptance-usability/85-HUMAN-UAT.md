@@ -8,7 +8,7 @@ updated: 2026-10-27T22:31:35Z
 
 ## Current Test
 
-[awaiting human testing]
+[awaiting the next release: item 5 (CHANGELOG wording, D-14). Item 7 is recorded as Codex INCOMPLETE with the owner-approved vibe-check fallback, counted under issues, not passed]
 
 ## Tests
 
@@ -47,9 +47,9 @@ result: pass (2026-10-28, owner go-ahead) — both variables migrated and verifi
 ## Summary
 
 total: 8
-passed: 0
-issues: 0
-pending: 8
+passed: 6
+issues: 1
+pending: 1
 skipped: 0
 blocked: 0
 

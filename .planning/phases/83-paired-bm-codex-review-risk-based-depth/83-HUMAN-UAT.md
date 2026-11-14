@@ -1,5 +1,5 @@
 ---
-status: resolved
+status: complete
 phase: 83-paired-bm-codex-review-risk-based-depth
 source: [83-VERIFICATION.md]
 started: 2026-10-23T22:20:50Z
@@ -8,7 +8,7 @@ updated: 2026-10-23T22:20:50Z
 
 ## Current Test
 
-[awaiting human testing]
+[none: all tests have recorded results]
 
 ## Tests
 

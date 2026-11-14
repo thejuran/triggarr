@@ -1,8 +1,9 @@
 ---
 phase: 86-pilot-reference-record
 verified: 2026-11-14T17:06:43Z
-status: human_needed
-score: 4/4 roadmap success criteria verified; 4/4 requirements (PILOT-01..04) satisfied
+status: passed
+score: 4/4 roadmap success criteria verified; 4/4 requirements (PILOT-01..04) satisfied; human checks recorded in 86-HUMAN-UAT.md (4 passed, Greptile skipped as optional)
+status_updated: 2026-11-14 (was human_needed; PR #59 pushed, CI passing, accepted and merged, Roadmaps page checked)
 has_blocking_gaps: false
 overrides_applied: 0
 human_verification:

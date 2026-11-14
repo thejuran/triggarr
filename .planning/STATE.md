@@ -2,39 +2,39 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Phase 86 complete -- PR #59 merged as e5e1584 (main CI passing); PILOT-01..04 recorded; all v2.13 phases executed; milestone audit next"
-stopped_at: "Phase 86 PR #59 accepted (review acceptance run 43620557671) and merged on the owner's instruction as e5e1584 (2026-11-14T20:11:46Z); main CI run 43636188254 and the post-merge Release run 43636707792 both passing. Next: milestone audit (/bm:audit-milestone), then milestone closeout"
-last_updated: "2026-11-14T20:27:01Z"
-last_activity: "2026-11-14 -- Phase 86 PR #59 pushed (head 6ca643d), per-head checkpoint comment, owner settled codex:6ca643dcf210:a1:F001 as non-blocking debt; later-found-misses update and checkpoint record added at head 92b9dac; owner approved review acceptance (run 43620557671) and merged as e5e1584; main CI and the post-merge Release workflow both passing"
+status: "Awaiting next milestone -- v2.13 CI & Review Workflow closed 2026-11-14 (audit: tech debt accepted by the owner, no blockers); not a versioned release, production stays on v2.12.0"
+stopped_at: "v2.13 closed and archived 2026-11-14 on the held local branch planning/post-phase-86 (unpushed; rides with the next substantive push). No git tag was created: v2.13 was not cut as a release. Next: /bm:new-milestone for Reliability, or the owner's decision to cut a release from main first"
+last_updated: "2026-11-14T20:46:05Z"
+last_activity: "2026-11-14 -- v2.13 milestone audit (31/31 requirements, 8/8 seams wired, 4/4 flows) and closeout: archives written, ROADMAP collapsed, PROJECT/MILESTONES/RETROSPECTIVE updated"
 progress:
-  total_phases: 7
+  total_phases: 6
   completed_phases: 6
   total_plans: 65
   completed_plans: 65
-  percent: 86
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-21)
+See: .planning/PROJECT.md (updated 2026-11-14)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Phase 86 complete (PR #59 merged as `e5e1584`); v2.13 milestone audit and closeout next
+**Current focus:** Between milestones. v2.13 CI & Review Workflow closed 2026-11-14; next milestone is Reliability (not started; `/bm:new-milestone`)
 
-> **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 is unreleased. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
+> **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 closed as a milestone on 2026-11-14 without a versioned release; main carries unreleased changes. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
 **Published-history note (2026-10-21):** before the first push, this unpushed branch's history was rewritten to remove private infrastructure and credential details from planning text and commit messages. Code, tests and config are byte-identical in every commit (checked commit by commit). Planning docs still cite pre-rewrite hashes; map them as follows: `b35470b` (sandbox build, revision label on `triggarr:phase81-b35470b66f`) → `69f5733`; `a2b8c1c` (full deep review) → `1915a7d`; `d14b71e` → `06519aa`; `9a1d423` (frozen deep-review commit) → `3e19e48`; `363060e` → `c2fb07a`; `b498475` → `91b7992`. The review and live evidence apply unchanged, because the code trees are identical.
 
 ## Current Position
 
-Phase: 86 (Pilot & Reference Record) — COMPLETE (merged, PR #59 as `e5e1584`)
-Plan: 10 of 10 finished (Phase 86 has ten plans, 86-01..86-10)
-Status: Phase 86 complete. PR #59 (phase PR: pilot & reference record, PILOT-03 decisions, adoption guide) accepted at head `92b9daca2775` (review acceptance run 43620557671) and merged by the owner as `e5e1584` (2026-11-14T20:11:46Z); main CI (run 43636188254) and the post-merge Release workflow (run 43636707792) both passing. All v2.13 phases (82, 83, 84, 85, 85.1, 86) are now executed. Next: the milestone audit (`/bm:audit-milestone`), then milestone closeout.
-Last activity: 2026-11-14 -- Phase 86 PR #59 pushed and accepted; owner merged as `e5e1584`; main CI and the post-merge Release workflow both green; milestone audit next.
+Phase: 86 (Pilot & Reference Record) — COMPLETE (merged, PR #59 as `e5e1584`); last phase of v2.13
+Plan: 10 of 10 finished
+Status: Awaiting next milestone. v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release.
+Last activity: 2026-11-14 -- milestone audit and closeout on the held local branch `planning/post-phase-86`.
 
-### v2.13 milestone shape
+### v2.13 milestone shape (closed 2026-11-14; kept as the record)
 
 Five phases derived from this milestone's 28 requirements (CISHIP, CIMAINT, ACCEPT, REVIEW, RISK, PLANCHK, PILOT), continuing phase numbering from v2.12's Phase 81 (starts at 82, not reset to 1). Owner-mandated sequencing (2026-10-21) drove the order, not a template: start with the shipped-artifact CI checks; put the gated BM update (REVIEW-01) early, folded into the start of the review-pairing phase rather than a standalone single-requirement phase; keep the Codex plan-checker investigation (PLANCHK) in its own phase so it cannot block or bundle into the review-pairing or CI phases; group the follow-on CI hardening with acceptance-register usability since both extend the Phase 82 baseline and one (CIMAINT-06's coverage artifact) directly feeds Phase 83's risk-based vibe-check test-sufficiency lane; and put the pilot last because it needs the paired workflow in place and draws its PRs from this milestone's own authorized work. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention.
 
@@ -122,16 +122,29 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 - `.planning/codebase/CONCERNS.md` -- v2.8 source audit (2026-05-25); file:line pointers
 - **Note:** `.planning/research/SUMMARY.md` is STALE (prior milestone) — v2.12 skipped research because the approved design spec resolved all technical decisions against the live codebase. Do NOT treat that SUMMARY.md as current research for v2.12 or v2.13.
 
+## Deferred Items
+
+Items acknowledged and deferred at milestone close on 2026-11-14:
+
+| Kind | Item | Status |
+|------|------|--------|
+| uat | Phase 85 UAT item 5: the next release's CHANGELOG states that Python wheel/sdist are no longer attached as release assets (D-14) | Deferred to the next release |
+| follow-up | Add a "superseded by PILOT-03" note to docs/bm-greptile-codex-blueprint.md | Deferred (rides with the next substantive PR) |
+| follow-up | Draft VALIDATION.md files for Phases 83, 85 and 86 (nyquist_compliant false) | Deferred (owner has not asked for them) |
+| follow-up | Tag-triggered publication is unverified until the next authorized release (Phase 82 waiver) | Deferred to the next release |
+| follow-up | Isolated Codex review for bot/fork PRs is incomplete on current Codex models (Phase 85.1 exception); vibe-check fallback stays | Deferred (reopening tracked in backlog/MAINTENANCE.md) |
+
 ## Session Continuity
 
-Last session: 2026-11-14T20:27:01Z
-Stopped at: Phase 86 PR #59 accepted (run 43620557671) and merged as e5e1584; main CI and the post-merge Release workflow both passing. Next: the v2.13 milestone audit (/bm:audit-milestone), then milestone closeout
-Resume file: none (Phase 86 is merged; the next step is the milestone audit, not a plan file)
+Last session: 2026-11-14T20:46:05Z
+Stopped at: v2.13 milestone audited and closed; archives written; commits held on the local branch `planning/post-phase-86` (unpushed)
+Resume file: none (no milestone is active; start the next one with `/bm:new-milestone`)
 
 ## Operator Next Steps
 
-- Phase 86 is complete: PR #59 (push, checkpoint comments, exact-commit owner acceptance at `92b9daca2775`, run 43620557671) merged by the owner as `e5e1584`; main CI and the post-merge Release workflow both pass. Next: the v2.13 milestone audit and closeout (`/bm:audit-milestone`). This held planning branch (`planning/post-phase-86`) is pushed with the next substantive push, not on its own (no docs-only PRs). The Roadmaps page still needs the owner's own check for a "Planning files disagree" warning now that Phase 86 is ticked complete — no tool access to the rendered page from this session. The review-loop backlog named under "Stopping rule" in 86-REVIEW-EVIDENCE.md is now filed in `backlog/MAINTENANCE.md` ("Phase 86 review-loop follow-ups")
+- Start the next milestone, Reliability, with `/bm:new-milestone` (requirements and phase numbers are defined there). The held planning branch `planning/post-phase-86` is pushed with the next substantive push, not on its own (no docs-only PRs)
+- Decide whether to cut a release from main before Reliability: main carries unreleased user-facing fixes and security updates since v2.12.0. A release needs the CHANGELOG entry (including the wheel/sdist note), the version bump, the open Dependabot PR #58 rolled in, and the `/deep-review` offer before the tag
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
-- Next release (v2.13.x): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule; add an unreleased CHANGELOG section covering the two security fixes from PR #57 (`opentelemetry-api` 1.45.2, `zlib1g` upgrade in the image)
+- Next release (version decided when it is cut): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule; add an unreleased CHANGELOG section covering the two security fixes from PR #57 (`opentelemetry-api` 1.45.2, `zlib1g` upgrade in the image)
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)
 - `.planning/` is excluded locally (`.git/info/exclude`): tracked planning files are carried by Git, new ones need `git add -f`

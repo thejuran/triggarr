@@ -10,9 +10,17 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 (released as v2.12.0). 2023 tests passing, ruff clean. 81 phases, 213 plans completed across 18 shipped milestones. Production runs v2.12.0 (schema v10).
+v2.13 CI & Review Workflow closed 2026-11-14. It is a CI and review-process milestone and was not cut as a versioned release: the latest release is v2.12.0 (2026-10-21), and production runs v2.12.0 (schema v10). Main carries unreleased changes since v2.12.0 (two small user-facing fixes, dependency and image security updates, lockfile-installed image dependencies). 3282 Python tests and 613 review/CI script tests passing, ruff clean. 87 phases, 278 plans completed across 19 milestones.
 
-**Latest milestone delivered (v2.12):**
+**Latest milestone delivered (v2.13):**
+- CI tests what we ship: the exact image to be published is started through its real entrypoint, a browser regression suite covers the connection-pill request loop and setup/login, and a release tag must agree with the package and image version. One required `CI ready` gate; a skipped job cannot pass it.
+- Review: every BM code review is paired with an independent, read-only Codex pass on the same commit; incomplete Codex evidence is never reported clean. Risk and depth are recorded per checkpoint. PRs are classified by content (ordinary docs, sensitive, code). Vibe-check is required at high risk only (owner decision 2026-11-14); Greptile is optional.
+- CI hardening: image dependencies installed from `uv.lock` with hash checks, grouped Dependabot updates, OS-package scan with a written policy, workflow lint, wheel validation, exact-commit coverage evidence, least-privilege publishing.
+- Acceptance: exact-commit owner acceptance through the protected `review-acceptance` environment, with a register that is safe under concurrent PRs and a readiness check before approval is requested.
+- Bot and fork PRs: an isolated inspection-only Codex path exists, but does not complete on current Codex models; these PRs keep the owner-approved vibe-check fallback (owner exception 2026-10-30).
+- Pilot: five real PRs, including two user-facing fixes now on main (Refresh counts skips a malformed record instead of disconnecting the instance; cards group last-cycle reasons by kind), plus `docs/review-workflow-adoption.md` for other repositories.
+
+**Prior milestone delivered (v2.12):**
 - Log hygiene: the reset token never reaches the in-app log viewer; every *arr HTTP error is logged through `_sanitize_exc`.
 - Honest cycle outcomes: each instance's last cycle is graded Success / Partial / Failed / Nothing needed; "last successful search" is split from "last checked"; SAFETY-03 counts Failed only.
 - Tag scope and robustness: an unresolved tag skips its queue (never widens); one malformed record is skipped per item instead of wedging the cycle; each Sonarr season gets at most one dispatch per cycle.
@@ -55,28 +63,15 @@ v2.12 Search Correctness & Trustworthy Feedback shipped 2026-10-21 (released as 
 - Security hardening: login rate limiter, CSP headers, SSRF IPv6 hardening, log sanitization
 - 109 auth-specific tests covering all middleware paths, session lifecycle, and edge cases
 
-## Current Milestone: v2.13 CI & Review Workflow
-
-**Goal:** Make Triggarr the reference repository for meaningful CI, publication of exactly the artifact that passed checks, and BM-led review paired with an independent Codex pass and risk-based vibe-check recommendations.
-
-**Target features:**
-- **CI tests what we ship:** the published image starts through its real entrypoint with isolated data; a small browser regression suite (connection-pill request loop, setup/login); release tags must agree with package and image versions. Each gate is proven by a deliberately broken case that fails.
-- **Paired BM + Codex review:** every BM code review (phase execution, quick tasks, explicit review, review after fixes) gets an independent Codex adversarial pass on the same commit, wired through `CLAUDE.md` and BM's supported settings. Missing, failed, skipped or stale Codex evidence stays incomplete.
-- **Risk-based review depth:** BM recommends quick/standard/deep at each checkpoint, explicitly suggests vibe-check when risk is high, and records the owner's choice.
-- **Content-based review classification:** ordinary docs/planning-only changes get a focused consistency review instead of routine Greptile, Codex code review and vibe-check. Agent instructions, workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and technical review whatever their file type, and mixed PRs follow their consequential changes. Phase 83 defines the policy; Phase 85 makes GitHub checks honor it without weakening code/control protection. Existing protections stay until then, and exact-commit owner acceptance stays for every PR.
-- **Codex plan-checker investigation:** verify whether a narrowly scoped `agent.spawn` hook can route only `bm:bm-plan-checker` through model-gateway, plus the blind comparison on the original Phase 81 plans (or record it as unavailable).
-- **Follow-on CI improvements:** lockfile-matched Docker dependencies, grouped Dependabot updates, OS image audit, workflow lint, `coverage.xml` with exact-commit provenance, and least-privilege publish permissions, each with explicit acceptance criteria.
-- **Pilot and reference record:** 3–5 representative PRs under the new workflow, results recorded, an owner decision on retiring routine vibe-check, and reusable guidance for other repositories.
-
-**Key context:** Scope confirmed by the owner 2026-10-21 as written in `docs/ci-reference-baseline-plan.md` and `docs/bm-greptile-codex-blueprint.md`. Greptile (Apex tier during the comparison), exact-commit owner acceptance through the protected `review-acceptance` environment, exact audited-image publication and full-SHA action pinning all stay. No custom orchestrator, no BM fork. Instruction-enforced requirements are labelled separately from GitHub-enforced checks. Phase numbering continues at 82. Phase 81 directories are kept (not cleared) because the blind comparison needs the original plan inputs.
-
 ## Next Milestone Goals
 
-Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
+Agreed in ROADMAP.md; versions and phase numbers are assigned at planning. No milestone is active until `/bm:new-milestone` starts one.
 
-- **CI & Review Workflow:** shipped-artifact CI checks (image startup, browser regressions, release-version consistency), paired BM/Codex review, risk-based vibe-check recommendations. Scope confirmed by the owner 2026-10-21, as written: `docs/bm-greptile-codex-blueprint.md` and `docs/ci-reference-baseline-plan.md`; next step is planning this milestone.
-- **Reliability:** state/config consistency (999.9), narrowed startup/shutdown resource lifecycle (999.13), ambiguous POST delivery/retry semantics.
+- **Reliability (next):** state/config consistency (999.9), narrowed startup/shutdown resource lifecycle (999.13), ambiguous POST delivery/retry semantics.
 - **Authentication Safety & Responsiveness:** bcrypt off the event loop (999.4), evidence-backed auth-boundary review (999.10).
+- **UI Redesign:** clearer status and actions on every screen and a phone layout, per the mockups in `docs/design/ui-redesign`.
+
+Open before the next release (not milestone scope): the CHANGELOG must state that wheel/sdist are no longer release assets and cover the unreleased security fixes; open Dependabot PRs are rolled in per the release rule.
 
 <details>
 <summary>Shipped milestone: v2.12 Search Correctness & Trustworthy Feedback (2026-10-21)</summary>
@@ -271,15 +266,17 @@ Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
 - ✓ A malformed *arr record never aborts a cycle; each Sonarr season gets at most one dispatch per cycle — v2.12 (Phase 80)
 - ✓ Sonarr grabs credit only the matching series+season search, once ever, counting distinct episodes, with a visible attribution cutover note; Sonarr v5 verified live on isolated sandboxes — v2.12 (Phase 81)
 
+- ✓ CI starts and exercises the shipped image, runs focused browser regressions, and rejects version mismatches before publication — v2.13 (Phase 82; tag-triggered publication unverified until the next release)
+- ✓ Every BM code review is paired with an exact-commit Codex adversarial pass; missing or stale evidence is incomplete — v2.13 (Phase 83)
+- ✓ Risk and review depth are recorded per checkpoint; vibe-check is required at high risk — v2.13 (Phase 83, amended by the PILOT-03 decision in Phase 86)
+- ✓ Docs/planning-only changes are reviewed by content-based classification, and GitHub checks honor it without weakening protection for code or control changes — v2.13 (Phases 83, 85)
+- ✓ Codex plan-checker routing investigated with recorded evidence — v2.13 (Phase 84: hook routing proven; blind comparison invalid because the recovered Phase 81 input was post-review)
+- ✓ Follow-on CI improvements (dependencies, updates, image audit, workflow lint, coverage, permissions) delivered with acceptance evidence — v2.13 (Phase 85)
+- ✓ Pilot results and reusable guidance recorded — v2.13 (Phase 86)
+
 ### Active
 
-- [ ] CI starts and exercises the shipped image, runs focused browser regressions, and rejects version mismatches before publication — v2.13
-- [ ] Every BM code review is paired with an exact-commit Codex adversarial pass; missing or stale evidence is incomplete — v2.13
-- [ ] BM recommends review depth per checkpoint and suggests vibe-check for high risk, recording the owner's choice — v2.13
-- [ ] Docs/planning-only changes are reviewed by content-based classification, and GitHub checks honor it without weakening protection for code or control changes — v2.13
-- [x] Codex plan-checker routing investigated with recorded evidence — v2.13 (Validated in Phase 84: hook routing proven; blind comparison invalid because the recovered Phase 81 input was post-review; owner chose to adopt, activation pending)
-- [ ] Follow-on CI improvements (dependencies, updates, image audit, workflow lint, coverage, permissions) delivered with acceptance evidence — v2.13
-- [ ] Pilot results and reusable guidance recorded — v2.13
+(None. Requirements for the next milestone, Reliability, are defined when `/bm:new-milestone` starts it.)
 
 ### Out of Scope
 
@@ -302,7 +299,7 @@ Agreed in ROADMAP.md; versions and phase numbers are assigned at planning:
 
 ## Context
 
-Shipped v2.12 (Search Correctness & Trustworthy Feedback) on 2026-10-21 as v2.12.0. 2023 tests passing. 81 phases, 213 plans across 18 shipped milestones. v2.12 added one runtime dependency, `tomlkit` (comment-preserving stable-ID backfill), and database schema v10 (forward-only; see docs/operations/upgrade-sonarr-attribution-v10.md). Earlier: v2.8 shipped 2026-06-01 with 961 tests.
+Closed v2.13 (CI & Review Workflow) on 2026-11-14; latest release is still v2.12.0 (2026-10-21). 3282 Python tests and 613 review/CI script tests passing. 87 phases, 278 plans across 19 milestones. v2.13 added no runtime dependency (dev-only: pytest-cov, Playwright); the image now installs from `uv.lock` with hash checks. Known debt: a temporary `zlib1g` upgrade step in the Dockerfile to remove once the base image carries the fix; tag-triggered publication unverified until the next release. v2.12 added one runtime dependency, `tomlkit` (comment-preserving stable-ID backfill), and database schema v10 (forward-only; see docs/operations/upgrade-sonarr-attribution-v10.md). Earlier: v2.8 shipped 2026-06-01 with 961 tests.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff, bcrypt, itsdangerous, Phosphor Icons (vendored regular weight).
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache. `:main`/`:dev` tags on main push, `:latest` + version tag on release.
@@ -376,6 +373,15 @@ Known tech debt (v2.12 deferrals in .planning/backlog/MAINTENANCE.md: shared pen
 | One-time attribution cutover; pre-fix pending Sonarr rows frozen as Legacy, old totals kept and labeled, not recomputed (v2.12) | Old attributions can't be corrected retroactively; honesty over rewriting history | ✓ Good — v2.12 |
 | Schema v10 is forward-only; recover by deploying a newer build (v2.12) | An older image against v10 double-counts stats; emergency restore documented, not rehearsed | — Pending (never exercised) |
 | Sonarr v5 identity via per-check episode lookups; held rows never terminal while an identity is unverified (v2.12) | v5 history omits season; never guess, never credit on missing identity, keep verified progress | ✓ Good — v2.12 |
+| CI publishes the exact image it tested, never a rebuild; one required aggregate gate (v2.13) | The published artifact must be the one that passed; a skipped job must not pass the gate | ✓ Good — v2.13; tag-triggered publication unverified until the next release |
+| Pair every BM code review with an independent read-only Codex pass on the same commit; incomplete is never clean (v2.13) | Independent lanes caught defects the native review missed in v2.12 | ✓ Good — v2.13; Codex cannot complete on very large diffs, fallback needed twice |
+| Review depth by content classification; no docs fast path in CI (v2.13) | Docs-only changes need less review, but agent instructions and workflows are control changes | ✓ Good — v2.13 |
+| End routine vibe-check; require it at high risk only, started automatically on trusted heads (PILOT-03, 2026-11-14) | The retirement bar was fixed before results: across the pilot, vibe-check found no proven defect that BM + Codex missed | — Pending (revisit after more PRs) |
+| Completion of BM/Codex reports stays a manual owner check, not a GitHub-enforced gate (PILOT-03; FUT-03 not chosen) | Owner adopted the recommendation to keep the manual owner checklist; gate extension stays an unscheduled option | — Pending |
+| Greptile optional; free tier only (2026-10-22) | Cost; Codex covers safeguard inspection | ✓ Good |
+| Keep the vibe-check fallback for bot/fork PRs instead of pinning a Codex model (Phase 85.1 exception, 2026-10-30) | The isolated path is incomplete on current default Codex models; a model pin was not wanted | ⚠️ Revisit when Codex models change |
+| Adopt the Codex-routed plan checker for this repository despite an invalid blind comparison (Phase 84, owner override) | Routing and fail-closed behavior were proven; the comparison input was post-review | — Pending |
+| Python wheel/sdist no longer attached as release assets (D-14, v2.13) | Owner decision 2026-10-26: releases ship the Docker image only | — Pending (CHANGELOG note due at the next release) |
 
 ## Evolution
 
@@ -395,4 +401,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-26 after Phase 84 (Codex plan-checker investigation)*
+*Last updated: 2026-11-14 after v2.13 milestone*

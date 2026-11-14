@@ -27,35 +27,35 @@ Every requirement whose acceptance claims a gate needs **positive and negative e
 
 ### Follow-on CI improvements
 
-- [ ] **CIMAINT-01**: The Docker image installs runtime dependencies from the same locked set CI tests (uv.lock), keeping compiled frontend assets and runtime behavior unchanged.
-- [ ] **CIMAINT-02**: Grouped, bounded automated update PRs exist for uv dependencies, SHA-pinned Actions and the Docker base image. No auto-merge; manual acceptance stays.
-- [ ] **CIMAINT-03**: The shipped image's OS packages are scanned, under a written policy for severity, fix availability, scanner errors and time-limited documented exceptions, defined before the gate is enforced. No duplicate equivalent scanners.
-- [ ] **CIMAINT-04**: Workflow changes are linted (actionlint). Skipping the lint when workflows are unchanged cannot let the required gate pass when mandatory validation was omitted.
-- [ ] **CIMAINT-05**: The built wheel's metadata is validated, and it is installed in a clean environment and started via the supported interface with packaged templates/assets present. Python distributions stay release deliverables unless the owner explicitly decides to drop them; if so, that decision is recorded instead. Owner decision 2026-10-26 (Phase 85 D-14): Python distributions are dropped. Releases ship the Docker image only; the wheel/sdist release assets and their distribution-only CI/release steps are removed, no clean-install wheel smoke test is built, and existing releases' assets are left untouched.
-- [ ] **CIMAINT-06**: The CI pytest run produces a branch-coverage `coverage.xml` artifact bound to the tested full commit SHA and run (PR head distinguished from the synthetic merge commit), without a percentage gate and without masking test failures. vibe-check's test-sufficiency lane can discover it; a wrong-commit or missing report is rejected as evidence. Test-runtime overhead is recorded.
-- [ ] **CIMAINT-07**: Publishing `:main`/`:dev` images no longer requires repository contents-write permission; only tagged GitHub release creation holds it.
+- [x] **CIMAINT-01**: The Docker image installs runtime dependencies from the same locked set CI tests (uv.lock), keeping compiled frontend assets and runtime behavior unchanged.
+- [x] **CIMAINT-02**: Grouped, bounded automated update PRs exist for uv dependencies, SHA-pinned Actions and the Docker base image. No auto-merge; manual acceptance stays.
+- [x] **CIMAINT-03**: The shipped image's OS packages are scanned, under a written policy for severity, fix availability, scanner errors and time-limited documented exceptions, defined before the gate is enforced. No duplicate equivalent scanners.
+- [x] **CIMAINT-04**: Workflow changes are linted (actionlint). Skipping the lint when workflows are unchanged cannot let the required gate pass when mandatory validation was omitted.
+- [x] **CIMAINT-05**: The built wheel's metadata is validated, and it is installed in a clean environment and started via the supported interface with packaged templates/assets present. Python distributions stay release deliverables unless the owner explicitly decides to drop them; if so, that decision is recorded instead. Owner decision 2026-10-26 (Phase 85 D-14): Python distributions are dropped. Releases ship the Docker image only; the wheel/sdist release assets and their distribution-only CI/release steps are removed, no clean-install wheel smoke test is built, and existing releases' assets are left untouched.
+- [x] **CIMAINT-06**: The CI pytest run produces a branch-coverage `coverage.xml` artifact bound to the tested full commit SHA and run (PR head distinguished from the synthetic merge commit), without a percentage gate and without masking test failures. vibe-check's test-sufficiency lane can discover it; a wrong-commit or missing report is rejected as evidence. Test-runtime overhead is recorded.
+- [x] **CIMAINT-07**: Publishing `:main`/`:dev` images no longer requires repository contents-write permission; only tagged GitHub release creation holds it.
 
 ### Acceptance usability
 
-- [ ] **ACCEPT-01**: Before final owner approval is requested, the PR is marked ready and the machine-checkable prerequisites are visible, so avoidable repeat approvals are not needed. SHA binding is unchanged.
-- [ ] **ACCEPT-02**: The acceptance register is shown to handle concurrent PRs without one PR's update erasing another's evidence or satisfying another PR's gate; until that is shown, final acceptance updates are serialized and the rule is documented.
-- [ ] **ACCEPT-03**: GitHub's required checks honor the REVIEW-07 classification without weakening protection for code or control changes. The mechanism is designed and then verified with four cases: an ordinary-docs PR, a sensitive-docs PR (e.g. agent instructions or a workflow file), a mixed docs-and-code PR, and a misclassified PR that claims ordinary docs but contains a consequential change and must still get the full checks. Required checks are never disabled ad hoc; exact-commit owner acceptance stays required for every PR. Until this is verified, existing protections are preserved and remaining automatic docs reviews are disclosed (see standing rules). Owner decision 2026-10-26 (Phase 85 D-01): there is no docs fast path. Every PR runs every required check whatever its classification; a classification can never reduce or skip a GitHub required check, and GitHub requires nothing that the policy exempts ordinary docs from (required checks: CI ready, CodeQL, Review acceptance). The mechanism is a permanent test that fails if any path filter or skip condition could let a PR bypass a required job (D-02). The ordinary-docs, sensitive-docs and misclassified cases are proven by that test with fixture diffs, not by separate GitHub runs; Phase 85's own mixed PR is the real GitHub run. Greptile still runs automatically while free credits last and is disclosed in each PR (D-03).
+- [x] **ACCEPT-01**: Before final owner approval is requested, the PR is marked ready and the machine-checkable prerequisites are visible, so avoidable repeat approvals are not needed. SHA binding is unchanged.
+- [x] **ACCEPT-02**: The acceptance register is shown to handle concurrent PRs without one PR's update erasing another's evidence or satisfying another PR's gate; until that is shown, final acceptance updates are serialized and the rule is documented.
+- [x] **ACCEPT-03**: GitHub's required checks honor the REVIEW-07 classification without weakening protection for code or control changes. The mechanism is designed and then verified with four cases: an ordinary-docs PR, a sensitive-docs PR (e.g. agent instructions or a workflow file), a mixed docs-and-code PR, and a misclassified PR that claims ordinary docs but contains a consequential change and must still get the full checks. Required checks are never disabled ad hoc; exact-commit owner acceptance stays required for every PR. Until this is verified, existing protections are preserved and remaining automatic docs reviews are disclosed (see standing rules). Owner decision 2026-10-26 (Phase 85 D-01): there is no docs fast path. Every PR runs every required check whatever its classification; a classification can never reduce or skip a GitHub required check, and GitHub requires nothing that the policy exempts ordinary docs from (required checks: CI ready, CodeQL, Review acceptance). The mechanism is a permanent test that fails if any path filter or skip condition could let a PR bypass a required job (D-02). The ordinary-docs, sensitive-docs and misclassified cases are proven by that test with fixture diffs, not by separate GitHub runs; Phase 85's own mixed PR is the real GitHub run. Greptile still runs automatically while free credits last and is disclosed in each PR (D-03).
 
 ### Paired BM + Codex review
 
-- [ ] **REVIEW-01**: Before any BM change, a baseline is recorded (current configuration saved, plugin and runtime versions) and the proposed target BM version's native review and fixer behavior is assessed: which review paths run review automatically, depth handling, fix loop, and whether it can invoke or request an external pass. The owner approves an exact target version and a bounded list of settings changes. BM is then updated through its supported procedure, the loaded version is confirmed with `/bm:version`, and only the approved settings change (expected: `workflow.code_review` on at `standard` depth); all other settings are preserved.
-- [ ] **REVIEW-02**: Every BM code-review run — phase execution, quick task, explicit review command, and review after fixes — is followed by an independent Codex adversarial pass on the same checkpoint commit (this pairs Codex with each code-review run; it does not force code-review runs for ordinary planning edits, per REVIEW-07), controlled by `CLAUDE.md` and supported BM configuration/instructions (no BM fork, no new orchestrator). Repository instructions fill only the gaps REVIEW-01 found in BM's native behavior; they do not duplicate it. Each path is demonstrated in practice.
-- [ ] **REVIEW-03**: If BM cannot invoke Codex, it requests the exact-SHA review explicitly and tracks it as pending. Missing, failed, skipped, wrong-commit or stale Codex evidence is reported as incomplete, never as a clean review — demonstrated with a negative case.
-- [ ] **REVIEW-04**: Each Codex report states the inspected full head and base SHAs, coverage, exclusions, commands run, findings (source/run-qualified ID, severity, location, trigger, path, consequence, evidence, suggested fix; reproduced vs hypothesis) and limitations. Finding dispositions survive bot thread resolution.
-- [ ] **REVIEW-05**: Each review records requested versus actual depth and the instruction/configuration files responsible; any BM effective-depth reduction (e.g. deep → standard above 50 files) is reported rather than labelled deep.
-- [ ] **REVIEW-06**: Checkpoint evidence is bound to one pushed head: Greptile reviews the same head as Codex, the head stays frozen while independent reviews run, and after any fix the affected tests, finding dispositions and every applicable review are refreshed for the new head, with the original findings preserved for comparison. Evidence from an earlier head never counts for a later one.
-- [ ] **REVIEW-07**: A written review-classification policy exists. Ordinary documentation and planning-only changes receive a focused consistency review; Greptile, independent Codex code review and vibe-check are not routinely required for them. Classification depends on content, not file extension: changes to agent instructions, executable workflows, hooks, permissions, acceptance or release policy, or operational procedures are sensitive and require a risk assessment (RISK-01) and the applicable technical review, even when they live in Markdown. A mixed PR follows the requirements of its most consequential change.
-- [ ] **REVIEW-08**: Each PR records its classification and the rationale against its exact head SHA, and is reclassified when the head changes. Blanket "every PR" review wording is removed from `CLAUDE.md` and the BM/repository instructions and replaced by the REVIEW-07 policy, while REVIEW-02's pairing of Codex with every BM code-review run is kept. Demonstrated on Phase 83's own sensitive-docs/mixed PR (owner decision 2026-10-22, Phase 83 D-14: the ordinary-docs-PR demonstration is removed because docs-only PRs are no longer opened; the policy still defines how ordinary docs/planning commits inside phase PRs are treated).
+- [x] **REVIEW-01**: Before any BM change, a baseline is recorded (current configuration saved, plugin and runtime versions) and the proposed target BM version's native review and fixer behavior is assessed: which review paths run review automatically, depth handling, fix loop, and whether it can invoke or request an external pass. The owner approves an exact target version and a bounded list of settings changes. BM is then updated through its supported procedure, the loaded version is confirmed with `/bm:version`, and only the approved settings change (expected: `workflow.code_review` on at `standard` depth); all other settings are preserved.
+- [x] **REVIEW-02**: Every BM code-review run — phase execution, quick task, explicit review command, and review after fixes — is followed by an independent Codex adversarial pass on the same checkpoint commit (this pairs Codex with each code-review run; it does not force code-review runs for ordinary planning edits, per REVIEW-07), controlled by `CLAUDE.md` and supported BM configuration/instructions (no BM fork, no new orchestrator). Repository instructions fill only the gaps REVIEW-01 found in BM's native behavior; they do not duplicate it. Each path is demonstrated in practice.
+- [x] **REVIEW-03**: If BM cannot invoke Codex, it requests the exact-SHA review explicitly and tracks it as pending. Missing, failed, skipped, wrong-commit or stale Codex evidence is reported as incomplete, never as a clean review — demonstrated with a negative case.
+- [x] **REVIEW-04**: Each Codex report states the inspected full head and base SHAs, coverage, exclusions, commands run, findings (source/run-qualified ID, severity, location, trigger, path, consequence, evidence, suggested fix; reproduced vs hypothesis) and limitations. Finding dispositions survive bot thread resolution.
+- [x] **REVIEW-05**: Each review records requested versus actual depth and the instruction/configuration files responsible; any BM effective-depth reduction (e.g. deep → standard above 50 files) is reported rather than labelled deep.
+- [x] **REVIEW-06**: Checkpoint evidence is bound to one pushed head: Greptile reviews the same head as Codex, the head stays frozen while independent reviews run, and after any fix the affected tests, finding dispositions and every applicable review are refreshed for the new head, with the original findings preserved for comparison. Evidence from an earlier head never counts for a later one.
+- [x] **REVIEW-07**: A written review-classification policy exists. Ordinary documentation and planning-only changes receive a focused consistency review; Greptile, independent Codex code review and vibe-check are not routinely required for them. Classification depends on content, not file extension: changes to agent instructions, executable workflows, hooks, permissions, acceptance or release policy, or operational procedures are sensitive and require a risk assessment (RISK-01) and the applicable technical review, even when they live in Markdown. A mixed PR follows the requirements of its most consequential change.
+- [x] **REVIEW-08**: Each PR records its classification and the rationale against its exact head SHA, and is reclassified when the head changes. Blanket "every PR" review wording is removed from `CLAUDE.md` and the BM/repository instructions and replaced by the REVIEW-07 policy, while REVIEW-02's pairing of Codex with every BM code-review run is kept. Demonstrated on Phase 83's own sensitive-docs/mixed PR (owner decision 2026-10-22, Phase 83 D-14: the ordinary-docs-PR demonstration is removed because docs-only PRs are no longer opened; the policy still defines how ordinary docs/planning commits inside phase PRs are treated).
 
 ### Risk-based review depth
 
-- [ ] **RISK-01**: At each checkpoint, BM's report records scope (PR, full head/base SHAs, affected behavior, full-PR vs follow-up), risk level with concrete failure scenarios, recommended depth and specialist focus, and the required evidence — refreshed when revisions change the SHA or risk.
-- [ ] **RISK-02**: When risk is high, BM explicitly recommends an additional vibe-check with rationale and scope, and records the owner's decision. It never substitutes vibe-check for Codex or Greptile, never waives findings and never reduces mandatory coverage. Demonstrated on a high-risk checkpoint.
+- [x] **RISK-01**: At each checkpoint, BM's report records scope (PR, full head/base SHAs, affected behavior, full-PR vs follow-up), risk level with concrete failure scenarios, recommended depth and specialist focus, and the required evidence — refreshed when revisions change the SHA or risk.
+- [x] **RISK-02**: When risk is high, BM explicitly recommends an additional vibe-check with rationale and scope, and records the owner's decision. It never substitutes vibe-check for Codex or Greptile, never waives findings and never reduces mandatory coverage. Demonstrated on a high-risk checkpoint.
 
 ### Codex plan-checker investigation
 
@@ -102,29 +102,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CISHIP-02 | Phase 82 | Complete |
 | CISHIP-03 | Phase 82 | Complete |
 | CISHIP-04 | Phase 82 | Complete |
-| REVIEW-01 | Phase 83 | Pending |
-| REVIEW-02 | Phase 83 | Pending |
-| REVIEW-03 | Phase 83 | Pending |
-| REVIEW-04 | Phase 83 | Pending |
-| REVIEW-05 | Phase 83 | Pending |
-| REVIEW-06 | Phase 83 | Pending |
-| REVIEW-07 | Phase 83 | Pending |
-| REVIEW-08 | Phase 83 | Pending |
-| RISK-01 | Phase 83 | Pending |
-| RISK-02 | Phase 83 | Pending |
+| REVIEW-01 | Phase 83 | Complete |
+| REVIEW-02 | Phase 83 | Complete |
+| REVIEW-03 | Phase 83 | Complete |
+| REVIEW-04 | Phase 83 | Complete |
+| REVIEW-05 | Phase 83 | Complete |
+| REVIEW-06 | Phase 83 | Complete |
+| REVIEW-07 | Phase 83 | Complete |
+| REVIEW-08 | Phase 83 | Complete |
+| RISK-01 | Phase 83 | Complete |
+| RISK-02 | Phase 83 | Complete |
 | PLANCHK-01 | Phase 84 | Complete (verified-present on 2.1.281; needs early-access CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1) |
 | PLANCHK-02 | Phase 84 | Complete (routing + fail-closed proven; full BM loop partially validated — revise/recheck not exercised) |
 | PLANCHK-03 | Phase 84 | Complete via recorded-unavailable route (true originals not recovered; recovered set was post-review; comparison invalid/not measurable) |
-| CIMAINT-01 | Phase 85 | Pending |
-| CIMAINT-02 | Phase 85 | Pending |
-| CIMAINT-03 | Phase 85 | Pending |
-| CIMAINT-04 | Phase 85 | Pending |
-| CIMAINT-05 | Phase 85 | Pending |
-| CIMAINT-06 | Phase 85 | Pending |
-| CIMAINT-07 | Phase 85 | Pending |
-| ACCEPT-01 | Phase 85 | Pending |
-| ACCEPT-02 | Phase 85 | Pending |
-| ACCEPT-03 | Phase 85 | Pending |
+| CIMAINT-01 | Phase 85 | Complete |
+| CIMAINT-02 | Phase 85 | Complete |
+| CIMAINT-03 | Phase 85 | Complete |
+| CIMAINT-04 | Phase 85 | Complete |
+| CIMAINT-05 | Phase 85 | Complete (the CHANGELOG note that wheel/sdist are no longer release assets is due at the next release, D-14) |
+| CIMAINT-06 | Phase 85 | Complete |
+| CIMAINT-07 | Phase 85 | Complete |
+| ACCEPT-01 | Phase 85 | Complete |
+| ACCEPT-02 | Phase 85 | Complete |
+| ACCEPT-03 | Phase 85 | Complete |
 | PILOT-01 | Phase 86 | Complete |
 | PILOT-02 | Phase 86 | Complete |
 | PILOT-03 | Phase 86 | Complete |
