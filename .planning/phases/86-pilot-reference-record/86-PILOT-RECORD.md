@@ -234,9 +234,9 @@ the first and final head (D-08).
 
 | Reviewer | Confirmed defects | False positives | Later-found misses | Revision rounds | Review time | Usage/cost | Owner effort |
 |---|---|---|---|---|---|---|---|
-| BM | 22 (CR-01, WR-01/02/04-08/10, WR-01-03, SA-03, IN-03, WR-01, SA-04, IN-05, IN-07, IN-01-04 — each dispositioned `fixed` with BM's next-iteration verification) | 0 | none recorded (D-14 cutoff: Phase 86 PR acceptance) | 7 BM review iterations across the 7 heads above | not recorded | not recorded | not recorded (D-12 postdates this record; see Measurement rules) |
-| Codex | 9 (`a2:F001`, `a2:F002`, `a1:F002` at `cc33f15`; `a1:F001` at `0aeeedaa`; `F001`, `F002` at `2aa2cc8`; `a1:F001`, `a2:F001` at `c7c34a5`; `a1:F001` at `3eda427` — each dispositioned `fixed`) | 0 | none recorded (D-14 cutoff) | 7 attempts/heads (2 attempts each at `cc33f15`, `c7c34a5`, `f033b7e`; 1 each elsewhere) | not recorded | not recorded (per-head command counts are logged in each head's own `.last.json` under `codex/`, but no committed record totals them for the PR) | not recorded |
-| vibe-check | 0 | 1 (`tests/codex_review_run.py:3445` git-read item — owner dismissed, verified via a scratch-repo reproduction) | none recorded (D-14 cutoff) | 1 (ran only on the final head `82b34111f6c7`, after the 5 fix rounds above) | not recorded | 13 raised, 2 reported, 11 filtered (as reported by `/vibe-check:deep-review`) | not recorded |
+| BM | 22 (CR-01, WR-01/02/04-08/10, WR-01-03, SA-03, IN-03, WR-01, SA-04, IN-05, IN-07, IN-01-04 — each dispositioned `fixed` with BM's next-iteration verification) | 0 | 1 (date-dependent boundary-fixture tests added in this PR at `956330a`: the fixture's sign-in date was fixed while the code under test read the real clock, so the tests began failing once the date passed the 7-day sign-in limit; found by CI on `main` at `b80c3e2`, fixed in PR #57 at `d824705`; see Later-found-misses detail below) | 7 BM review iterations across the 7 heads above | not recorded | not recorded | not recorded (D-12 postdates this record; see Measurement rules) |
+| Codex | 9 (`a2:F001`, `a2:F002`, `a1:F002` at `cc33f15`; `a1:F001` at `0aeeedaa`; `F001`, `F002` at `2aa2cc8`; `a1:F001`, `a2:F001` at `c7c34a5`; `a1:F001` at `3eda427` — each dispositioned `fixed`) | 0 | 1 (date-dependent boundary-fixture tests added in this PR at `956330a`: the fixture's sign-in date was fixed while the code under test read the real clock, so the tests began failing once the date passed the 7-day sign-in limit; found by CI on `main` at `b80c3e2`, fixed in PR #57 at `d824705`; see Later-found-misses detail below) | 7 attempts/heads (2 attempts each at `cc33f15`, `c7c34a5`, `f033b7e`; 1 each elsewhere) | not recorded | not recorded (per-head command counts are logged in each head's own `.last.json` under `codex/`, but no committed record totals them for the PR) | not recorded |
+| vibe-check | 0 | 1 (`tests/codex_review_run.py:3445` git-read item — owner dismissed, verified via a scratch-repo reproduction) | 1 (date-dependent boundary-fixture tests added in this PR at `956330a`: the fixture's sign-in date was fixed while the code under test read the real clock, so the tests began failing once the date passed the 7-day sign-in limit; found by CI on `main` at `b80c3e2`, fixed in PR #57 at `d824705`; see Later-found-misses detail below) | 1 (ran only on the final head `82b34111f6c7`, after the 5 fix rounds above) | not recorded | 13 raised, 2 reported, 11 filtered (as reported by `/vibe-check:deep-review`) | not recorded |
 | Greptile | n/a | n/a | n/a | n/a | n/a | did not run (committed record says "pending on this head (optional; free tier only)"; `gh pr checks 48` shows no Greptile check on the merged head) | n/a |
 
 **D-08 note on the vibe-check row:** the vibe-check result above ran only on
@@ -251,6 +251,16 @@ nor false positive (folded into "unproven" territory, not tallied as a
 separate column per the D-10 column set).
 
 Sources: `.planning/phases/85.1-isolated-codex-review-for-untrusted-prs/85.1-REVIEW-EVIDENCE.md` (all seven per-head records and their Dispositions tables); `gh pr view 48 --json additions,deletions,changedFiles,mergedAt`; `gh pr checks 48`.
+
+**Later-found-misses detail (added 2026-11-14, before Phase 86 PR acceptance, D-14):** the boundary-fixture tests in
+`tests/test_codex_review_container.py`, added in this PR at `956330a`, wrote a sign-in record dated one day before a
+fixed test date while the code under test compared it with the real clock. They passed when the PR was reviewed and
+merged (2026-10-30) and started failing once the real date passed the 7-day sign-in limit; CI on `main` failed at
+`b80c3e2` (2026-11-14) and PR #57 fixed it by freezing the runner's clock in those tests (`d824705`). Proof (D-09):
+the failing CI run on `main` and the regression-free run after the fix. None of BM's seven iterations, Codex's seven
+heads or vibe-check's final-head pass flagged the date dependence, so it counts once against each of the three
+reviewers. It is not a vibe-check-unique catch (vibe-check missed it too), so it does not change how the D-15 bar
+was applied in PILOT-03.
 
 ### PR #36 — Phase 85 follow-on CI improvements & acceptance usability (larger change; large-PR failure-mode evidence)
 
@@ -706,3 +716,11 @@ scorecard and no word of the retirement bar was changed.
    Greptile pilot doc.
 
 None of these entries changes the result measured against the bar.
+
+- **2026-11-14, later-found misses updated before Phase 86 PR acceptance (D-14).** PR #48's scorecard now records one
+  later-found miss against BM, Codex and vibe-check: date-dependent boundary-fixture tests added in PR #48, found by
+  CI on `main` and fixed in PR #57 (detail under the PR #48 scorecard). No other pilot PR has a later-found miss
+  beyond those already recorded for PR #36. This does not change either PILOT-03 decision.
+- **2026-11-14, Codex finding on the Phase 86 PR head `6ca643dcf210`.** `codex:6ca643dcf210:a1:F001` (medium: finished
+  Phase 86 plans show the older hand-review entry format and plan 86-01 embeds the first version of the publication-gate
+  scripts). Owner's disposition, verbatim: "record it as non-blocking debt" (owner, 2026-11-14).

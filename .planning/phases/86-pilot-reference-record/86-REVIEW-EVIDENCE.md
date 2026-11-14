@@ -1259,3 +1259,104 @@ Raw output: `codex/<head12>-phase-a1.{prompt.txt,meta.json,last.json,status.json
 **Stopping rule (owner, 2026-11-14):** after iteration 3 only critical and warning findings are fixed; minor items go to the backlog. Not fixed, for the backlog: BM iteration 3 IN-01..IN-06, SA-01, SA-02; iteration 4 IN-01..IN-03, SA-01; iteration 5 IN-01, IN-02; iteration 6 IN-01, IN-02, SA-01; Codex F002 at `17eb05200e48` and F001 at `910e98853c41`; the vibe-check's filtered low notes (the same-hash check in the superseded-entry rule; one sentence in this file's hand-review instructions; the rule restated in six documents).
 
 **Greptile, CI, owner acceptance:** not yet; they run on the pushed head.
+
+## Phase 86 PR #59
+
+### Head 6ca643dcf21084cb7451dc4924ecb5fc7355fcac (first pushed head)
+
+Durable copy of the checkpoint comment posted on PR #59 (https://github.com/thejuran/triggarr/pull/59#issuecomment-6881302561), as posted. After posting: CI finished on this head with every job passing (run 43619801279: lint, test, dependencies, secrets, actionlint, docker, os-scan, browser-e2e, image-smoke, CI ready; CodeQL run 43619633238 success); the owner settled `codex:6ca643dcf210:a1:F001` as non-blocking debt ("record it as non-blocking debt", 2026-11-14); empty blocker and disposition register entries were written and verified for `59:6ca643dcf21084cb7451dc4924ecb5fc7355fcac`. This head was superseded before acceptance by a commit that updates later-found misses in the pilot record (D-14).
+
+<!-- review-checkpoint head=6ca643dcf21084cb7451dc4924ecb5fc7355fcac -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `6ca643dcf21084cb7451dc4924ecb5fc7355fcac` |
+| PR base SHA | `7f6b5d4b567c06ce9a4764b94352366ef008c22b` |
+| Tested SHA (if different from PR head) | same as PR head |
+| Codex inspected head (`inspected_head_sha`) | `6ca643dcf21084cb7451dc4924ecb5fc7355fcac` |
+| Codex inspected base (`inspected_base_sha`) | `7f6b5d4b567c06ce9a4764b94352366ef008c22b` |
+
+Reconciliation: Codex inspected the exact PR head. The BM review (iteration 6) and the required vibe-check (pass 2) ran on `63a5b45b4a33ae84e7a34313d05275812d4d4650`; the two commits after it (`4d49dcfaad46346e09029971de8a3c92a394cb3c`, `6ca643dcf21084cb7451dc4924ecb5fc7355fcac`) add only review evidence, the verification report, the human-verification list and `STATE.md` under `.planning/` (`git diff 63a5b45 6ca643d --stat -- . ':(exclude).planning'` is empty), so every file in BM's and vibe-check's review scope is byte-identical at the PR head.
+
+### Classification
+
+```json
+{"schema":1,"head":"6ca643dcf21084cb7451dc4924ecb5fc7355fcac","classification":"sensitive","classes_present":["sensitive","ordinary-docs"],"rationale":"Range 7f6b5d4..6ca643d. Sensitive: CLAUDE.md and the review-policy documents (docs/review-checkpoint-record.md, docs/review-classification-policy.md, docs/bm-greptile-codex-blueprint.md, docs/buildomator-greptile-pilot.md, docs/ci-reference-baseline-plan.md) are agent instructions and review/acceptance procedure; the phase's publication-gate script and self-test are a safeguard. Ordinary-docs: docs/review-workflow-adoption.md, the .gsd path scrub and .planning/** (pilot record, plans, summaries, review reports, Codex evidence). No application code, tests, CI workflow or dependency change.","supersedes_head":null}
+```
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr PR #59, head `6ca643dcf21084cb7451dc4924ecb5fc7355fcac`, base `7f6b5d4b567c06ce9a4764b94352366ef008c22b`; the review instructions for vibe-check, the adoption guide, the pilot record and the phase's publication gate; whole PR.
+- **Risk:** high — a wrong or ambiguous review instruction changes how every later PR is reviewed, and the edits widen Claude's standing authorization (it starts the required high-risk vibe-check itself on trusted heads). A defect in the publication gate could let a private detail in review evidence be published.
+- **Recommended review:** BM standard + paired Codex, full PR, plus the required vibe-check.
+- **Required evidence:** doc-guard tests and the full suite pass; the publication gate's self-test passes and the gate passes on the committed evidence; green CI.
+- **What this recommendation cannot establish:** that an agent will read the instructions as intended in every future situation; the vibe-check rule is instruction-enforced, GitHub does not check it.
+
+### Vibe-check (RISK-02)
+
+- **Required vibe-check:** risk is high (agent instructions and a safeguard change). Scope: the PR's net change outside planning prose and review evidence (10 files).
+- **Vibe-check status:** ran because risk is high: deep review, two passes, started by Claude after BM and Codex (owner decision, 2026-11-14). Pass 1 at `833a58aa4e2ae09e3c6be43b1bc6b4018f12b595`: one medium finding in the publication gate, fixed at the owner's "Apply all & rerun" (`4e2341eeac4fd2b31dbcc2511d62f883c3629141`, regression case `63a5b45b4a33ae84e7a34313d05275812d4d4650`). Pass 2 at `63a5b45b4a33ae84e7a34313d05275812d4d4650`: nothing reported, both pass-1 records resolved on recheck, vibe-check's own Codex run approved with 0 findings. Report location: summary in `.planning/phases/86-pilot-reference-record/86-REVIEW-EVIDENCE.md` ("Phase 86 PR (local checkpoint before the end-of-phase push)"); the tool's pass state is local and not published. The reviewed files are byte-identical at this PR head (see Reconciliation).
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | explicit `/bm:code-review` at the end of phase execution, then review after fixes (iterations 2-6) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key: `workflow.code_review_depth`; BM workflow `workflows/code-review.md:compute_file_scope` (`--files`) |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-phase-63a5b45b4a33.md` (iteration 6, reviewed head `63a5b45b4a33`); earlier iterations `86-REVIEW.md` and `86-REVIEW-phase-<head12>.md` |
+| Status | complete — iteration 6: 0 critical, 0 warning, 2 info, 1 set aside |
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (trusted PR-URL run; `.status.json` complete; readiness check: "Codex: ok — complete") |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `.planning/phases/86-pilot-reference-record/codex/6ca643dcf210-pr59-a1.{prompt.txt,meta.json,last.json,status.json,pytest.txt}` (local; committed with the next push); `.jsonl` withheld (it failed the publication gate's local user name check) |
+| Review complete | `review_complete: true`, `incomplete_reasons: []`, verdict `findings` |
+| Coverage | as reported: all changed policy and adoption documentation, `CLAUDE.md`, the publication gate and self-test, all 136 changed plans (124 verified programmatically as exact home-path substitutions), the gate's callers and prescribed exception formats, the surrounding trust, fallback and acceptance contracts |
+| Exclusions | planning markdown other than `*-PLAN.md`; raw review transcripts and generated review artifacts under `.planning/`; files outside the working copy; live GitHub configuration |
+| Commands run | as recorded in `.last.json` |
+| Limitations | pytest not rerun in the read-only sandbox (harness evidence: 3282 passed, 1 skipped at this head); the gate and its self-test were not executed (syntax checks passed; the exception-parser discrepancy was reproduced without filesystem writes); live GitHub settings not verified |
+
+Findings:
+
+| Qualified ID | Severity | Location | Reproduced / hypothesis | Title |
+|---|---|---|---|---|
+| `codex:6ca643dcf210:a1:F001` | medium | `.planning/phases/86-pilot-reference-record/86-01-PLAN.md:69` | reproduced | Update executable plans to use the hardened publication-gate contract |
+
+### Greptile
+
+not run on this head (optional).
+
+### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| CI ready | 43619801279 | in progress when this comment was posted (lint, test, dependencies, secrets, actionlint, docker passed; os-scan, browser-e2e, image-smoke running) |
+| CodeQL | 43619633238 | success |
+| Review acceptance | 43619801260 | waiting (owner approval) |
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `codex:6ca643dcf210:a1:F001` | codex | `6ca643dcf21084cb7451dc4924ecb5fc7355fcac` | pending owner decision (proposed: nonblocking_debt) | The finding is accurate: executed Phase 86 plans (86-01, 86-03, 86-04, 86-06, 86-07, 86-10) still show the older hand-review entry format, and 86-01 embeds the first version of both scripts. All six plans are finished (each has a SUMMARY) and are not re-run; the committed scripts are what runs. Same item Codex raised as low at `17eb05200e48` (F002), set aside then under the owner's stopping rule. | n/a |
+| `bm:63a5b45b4a33:IN-01` | bm | `63a5b45b4a33ae84e7a34313d05275812d4d4650` | nonblocking_debt | Self-test pins the superseded-entry rule with one case in one section; behaviour verified correct by 44 reproduction cases. | `63a5b45b4a33ae84e7a34313d05275812d4d4650` |
+| `bm:63a5b45b4a33:IN-02` | bm | `63a5b45b4a33ae84e7a34313d05275812d4d4650` | nonblocking_debt | The superseded skip does not compare hashes; a complete reasoned entry for the current content is still required, so no unreviewed content passes. | `63a5b45b4a33ae84e7a34313d05275812d4d4650` |
+| `bm:63a5b45b4a33:SA-01` | bm | `63a5b45b4a33ae84e7a34313d05275812d4d4650` | nonblocking_debt | An older rejected line keeps blocking after a later accepted re-review; documented and fails closed. | `63a5b45b4a33ae84e7a34313d05275812d4d4650` |
+
+Earlier heads' findings and their fixes are recorded per head in `86-REVIEW-EVIDENCE.md` and the fix reports `86-REVIEW-FIX.md` to `86-REVIEW-FIX-4.md`.
+
+### Incomplete items
+
+- CI ready was still running when this comment was posted; this comment is updated when it finishes.
+- `codex:6ca643dcf210:a1:F001` awaits the owner's disposition.
+- Later-found misses in `86-PILOT-RECORD.md` are updated before acceptance (D-14).
+- Blocker and disposition register entries for this head are written once the F001 disposition is settled.
