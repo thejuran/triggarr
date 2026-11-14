@@ -2,9 +2,11 @@
 
 ## v2.12.1 (2026-11-14)
 
-A security update for the Docker image, plus two small fixes to Refresh counts and the dashboard cards.
+Security updates for the Docker image and its dependencies, plus two small fixes to Refresh counts and the dashboard cards.
 
 * Security:
+
+  * `opentelemetry-api` updated to 1.45.2 (CVE-2026-126360). The v2.12.0 image contained 1.45.1, installed as a dependency of FastAPI.
 
   * The Docker image upgrades `zlib1g` (CVE-2026-76844, CVE-2026-85091). The image build fails if the fixed version is not installed.
 
@@ -18,7 +20,7 @@ A security update for the Docker image, plus two small fixes to Refresh counts a
 
   * The Docker image installs its Python dependencies from the project lockfile with hash checking, so the published image runs the same versions that were tested.
 
-  * Dependency updates: FastAPI 0.162.4, Starlette 1.10.0, APScheduler 3.11.3, python-multipart 0.0.33. FastAPI now depends on `opentelemetry-api`, which v2.12.0 did not include; this release ships 1.45.2, which has the fix for CVE-2026-126360.
+  * Dependency updates in the image: FastAPI 0.162.4 (v2.12.0 shipped 0.158.1), Starlette 1.10.0 (was 1.9.0), python-multipart 0.0.33 (was 0.0.32).
 
 * Upgrade notes:
 
