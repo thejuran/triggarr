@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "ready to execute -- Phase 87 planned (3 plans in 2 waves), execution not started"
-stopped_at: "Phase 87 planned (87-01, 87-02, 87-03); execution not started"
-last_updated: "2026-11-15T22:47:15.000Z"
-last_activity: "2026-11-15 -- Phase 87 planned (3 plans, plan-phase)"
+status: "executing -- Phase 87 (3 plans in 2 waves), 0 of 3 plans executed"
+stopped_at: "Phase 87 execution started; wave 1 (87-01, 87-03) running"
+last_updated: "2026-11-15T22:49:11.000Z"
+last_activity: "2026-11-15 -- Phase 87 execution started"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.14 Reliability, Phase 87 planned, execution next. v2.12.1 is published and running in production.
+**Current focus:** v2.14 Reliability, Phase 87 executing. v2.12.1 is published and running in production.
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 87 (Settings & State-File Safety) — planned, not started
+Phase: 87 (Settings & State-File Safety) — EXECUTING
 Plan: 0 of 3 executed (87-01 and 87-03 in wave 1; 87-02 in wave 2)
-Status: Phase 87 planned; ready to execute
-Last activity: 2026-11-15 — Phase 87 planned (3 plans, plan-phase)
+Status: Phase 87 executing (wave 1 of 2)
+Last activity: 2026-11-15 — Phase 87 execution started
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
