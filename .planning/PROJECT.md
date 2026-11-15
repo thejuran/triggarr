@@ -10,7 +10,7 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.13 CI & Review Workflow closed 2026-11-14. It is a CI and review-process milestone with no v2.13.0 release; its user-facing results shipped in the v2.12.1 patch release on 2026-11-15 (tag on `3cede40`): security updates (`opentelemetry-api` 1.45.2, `zlib1g`), two small fixes, and an image installed from the lockfile. The latest release is v2.12.1; production still runs v2.12.0 (schema v10) until it is redeployed. 3282 Python tests and 613 review/CI script tests passing, ruff clean. 87 phases, 278 plans completed across 19 milestones.
+v2.13 CI & Review Workflow closed 2026-11-14. It is a CI and review-process milestone with no v2.13.0 release; its user-facing results shipped in the v2.12.1 patch release on 2026-11-15 (tag on `3cede40`): security updates (`opentelemetry-api` 1.45.2, `zlib1g`), two small fixes, and an image installed from the lockfile. The latest release is v2.12.1; production runs v2.12.1 (schema v10) since 2026-11-15. 3282 Python tests and 613 review/CI script tests passing, ruff clean. 87 phases, 278 plans completed across 19 milestones.
 
 **Latest milestone delivered (v2.13):**
 - CI tests what we ship: the exact image to be published is started through its real entrypoint, a browser regression suite covers the connection-pill request loop and setup/login, and a release tag must agree with the package and image version. One required `CI ready` gate; a skipped job cannot pass it.
@@ -71,7 +71,7 @@ Agreed in ROADMAP.md; versions and phase numbers are assigned at planning. No mi
 - **Authentication Safety & Responsiveness:** bcrypt off the event loop (999.4), evidence-backed auth-boundary review (999.10).
 - **UI Redesign:** clearer status and actions on every screen and a phone layout, per the mockups in `docs/design/ui-redesign`.
 
-v2.12.1 (2026-11-15) closed the pre-release items: the CHANGELOG states that wheel/sdist are no longer release assets and covers the security fixes, and Dependabot #58 was rolled in. Outstanding: redeploy production to v2.12.1 and walk it through.
+v2.12.1 (2026-11-15) closed the pre-release items: the CHANGELOG states that wheel/sdist are no longer release assets and covers the security fixes, and Dependabot #58 was rolled in. Production was redeployed to v2.12.1 and walked through on 2026-11-15 with no defects.
 
 <details>
 <summary>Shipped milestone: v2.12 Search Correctness & Trustworthy Feedback (2026-10-21)</summary>
