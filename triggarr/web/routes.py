@@ -938,31 +938,46 @@ async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
 async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
 
-    Cleans up the scheduler job, client connection, and state entry.
-    Writes updated config to TOML and redirects to settings page.
+    Reads the current settings and re-checks that the instance still exists
+    under search_lock (D-02), so a concurrent removal of the same instance
+    cannot resurrect it from a stale snapshot. Builds the post-removal
+    settings, writes it to disk, and only after the write succeeds swaps
+    live settings in and cleans up the scheduler job, client connection,
+    state entry and tag cache.
     """
     if app_name not in APP_TYPES:
         return HTMLResponse("Invalid app type", status_code=400)
     if len(instance_name) > 64:
         return HTMLResponse("Instance name too long", status_code=400)
 
-    settings = request.app.state.settings
-    instances = getattr(settings, app_name)
-
-    if instance_name not in instances:
-        return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
-
-    # Acquire search_lock to prevent races with in-flight search jobs
+    # Acquire search_lock to prevent races with in-flight search jobs. The
+    # settings read and existence check happen inside the lock (not before
+    # it) so a concurrent request cannot act on a stale pre-lock snapshot.
     async with request.app.state.search_lock:
-        # Remove instance from settings
-        del instances[instance_name]
+        settings = request.app.state.settings
+        instances = getattr(settings, app_name)
+
+        if instance_name not in instances:
+            return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
+
+        # Build the post-removal settings without touching live state yet.
+        # No re-validation via SettingsModel(**config_dict) is needed here
+        # (unlike add_instance): removing a key cannot create invalid config.
+        updated_instances = dict(instances)
+        del updated_instances[instance_name]
+        new_settings = settings.model_copy(update={app_name: updated_instances})
 
         # Write updated config to TOML (offloaded to thread -- blocking I/O)
         config_path = request.app.state.config_path
-        config_dict = _settings_to_dict(settings)
-        await asyncio.get_running_loop().run_in_executor(
-            None, _atomic_toml_write, config_path, config_dict
-        )
+        try:
+            await asyncio.get_running_loop().run_in_executor(
+                None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
+            )
+        except OSError:
+            return HTMLResponse("Instance was not removed", status_code=500)
+
+        # Only swap live settings in after the write has succeeded
+        request.app.state.settings = new_settings
 
         # Clean up scheduler job
         scheduler = request.app.state.scheduler
