@@ -24,7 +24,7 @@ from loguru import logger
 from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
 from triggarr.log_buffer import LogEntry, log_buffer
-from triggarr.models.config import GeneralConfig, InstanceConfig, Settings
+from triggarr.models.config import APP_TYPES, GeneralConfig, InstanceConfig, Settings
 from triggarr.web.routes import STATIC_DIR, router
 
 
@@ -1869,13 +1869,44 @@ def test_remove_instance_close_failure_still_succeeds(multi_instance_app):
     assert "close boom" in message
 
 
+def test_settings_remove_button_targets_row_error_slot(multi_client, multi_instance_app):
+    """Each instance's Remove button targets a row-local error slot instead of
+    the page body, so a failed removal can show its message on that row
+    without a reload (D-04, D-06).
+    """
+    response = multi_client.get("/settings")
+    assert response.status_code == 200
+    html = response.text
+
+    settings = multi_instance_app.state.settings
+    expected_count = sum(len(getattr(settings, app)) for app in APP_TYPES)
+
+    # Every instance row's Remove button is retargeted off body/outerHTML.
+    assert html.count('hx-target="next .remove-error"') == expected_count
+    assert html.count('hx-target="body"') == 0
+
+    # Every instance row has exactly one row-local error slot, empty on load.
+    assert html.count('class="remove-error') == expected_count
+    assert re.findall(r'<span class="remove-error[^"]*"[^>]*></span>', html).__len__() == expected_count
+
+    # Each slot appears after its Remove button and before the matching </summary>.
+    summary_blocks = re.findall(r"<summary\b.*?</summary>", html, re.DOTALL)
+    assert len(summary_blocks) == expected_count
+    for block in summary_blocks:
+        remove_idx = block.find('hx-target="next .remove-error"')
+        slot_idx = block.find('class="remove-error')
+        assert remove_idx != -1, f"Remove button retarget missing from row: {block}"
+        assert slot_idx != -1, f"remove-error slot missing from row: {block}"
+        assert remove_idx < slot_idx, "error slot must come after the Remove button"
+
+
 def test_no_new_body_swap_html_targets():
-    """SEC-01 defense-in-depth: only ONE place in the codebase uses
-    `hx-target="body"` (the Remove-instance button on settings.html, which is
-    safe because remove_instance returns HX-Redirect). Any future addition of
-    `hx-target="body"` must come with a paired HX-Redirect response or a
-    non-script-bearing partial template, or it will silently break CSP-nonce
-    inheritance on the swapped-in page.
+    """SEC-01 defense-in-depth: no template may use `hx-target="body"` or
+    `hx-target="html"` any more. The settings.html Remove button now targets
+    a row-local slot (Phase 87) instead of the page body. Any future addition
+    of `hx-target="body"`/`"html"` must come with a paired HX-Redirect
+    response or a non-script-bearing partial template, or it will silently
+    break CSP-nonce inheritance on the swapped-in page.
     """
     from pathlib import Path
     matches: list[str] = []
@@ -1884,13 +1915,10 @@ def test_no_new_body_swap_html_targets():
         for line_num, line in enumerate(path.read_text().splitlines(), start=1):
             if 'hx-target="body"' in line or 'hx-target="html"' in line:
                 matches.append(f"{path}:{line_num}")
-    assert len(matches) == 1, (
-        f"Expected exactly 1 hx-target=body/html in templates (settings.html Remove button), "
-        f"found {len(matches)}: {matches}"
-    )
-    assert "settings.html" in matches[0], (
-        f"The single body-target usage must remain on settings.html Remove button; "
-        f"found unexpected location: {matches[0]}"
+    assert len(matches) == 0, (
+        f"No template may use hx-target=body/html (SEC-01: a body swap inherits the old CSP "
+        f"nonce); pair any new one with an HX-Redirect response or a non-script-bearing "
+        f"partial. Found {len(matches)}: {matches}"
     )
 
 
