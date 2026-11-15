@@ -440,17 +440,21 @@ Confirmed by reading `_merge_defaults` (`state.py:171-207`) and the existing pas
 
 **All other claims in this research were verified by reading the current codebase directly** (file paths and line numbers cited throughout) or confirmed against the vendored `htmx.min.js`'s actual shipped source — no training-data-only claims beyond the two flagged above.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact wording of the D-10 state-file warning and the D-07/D-16 log lines.**
+Both questions were resolved during planning (2026-11-15); the selected approach is recorded under each.
+
+1. **Exact wording of the D-10 state-file warning and the D-07/D-16 log lines.** RESOLVED
    - What we know: the required content (file name, kind-found-vs-expected, "queue progress and last-run times were reset," "search history is unaffected," never file contents) is fully specified by D-10; D-07/D-16 require naming app, instance, and system reason, redacted by the existing sink.
    - What's unclear: the precise phrasing is explicitly Claude's Discretion.
    - Recommendation: the planner/executor can finalize wording at implementation time; the illustrative strings in Code Examples above are not locked.
+   - **Resolution:** the plans fix the wording. D-10 (87-03): "State file {path} held {found} where a JSON object was expected; queue progress and last-run times were reset to defaults (search history is unaffected)." plus "A copy was kept at {set_aside} for diagnosis." only when the copy succeeded; `{found}` is a plain type description or, for unparseable files, the exception type and message (never `exc.doc`). D-07 (87-01): "Could not save settings file {path} while removing {app}/{inst}; instance kept: {exc_type}: {exc}" as the only error entry for a failed removal (the writer's own line is suppressed for this caller via `log_failure=False`). D-16 (87-01): "Removed {app}/{inst} but its scheduler job could not be removed: ..." and "Removed {app}/{inst} but closing its connection failed: ...". Rationale: each names exactly what D-07/D-10/D-16 require and nothing from the file or secrets; executors may adjust phrasing only while tests' required substrings still hold.
 
-2. **Whether to add `SettingsModel(**config_dict)` re-validation to the fixed `remove_instance` (Pitfall F).**
+2. **Whether to add `SettingsModel(**config_dict)` re-validation to the fixed `remove_instance` (Pitfall F).** RESOLVED
    - What we know: removal cannot produce invalid config, so it's not required for correctness.
    - What's unclear: whether matching `add_instance`'s shape exactly (for consistency/future-proofing) is worth the extra code.
    - Recommendation: optional; if added, it needs its own explicit test for the (now-reachable) `ValidationError` branch, or that branch is untested dead code.
+   - **Resolution:** not added. 87-01 Task 1 builds the post-removal settings with `settings.model_copy(update={app_name: updated_instances})` and a one-line code comment states why no re-validation is needed. Rationale: deleting a key from an already-validated instances dict cannot produce invalid config, and adding the call would create a `ValidationError` branch that no input can reach, i.e. untested dead code.
 
 ## Environment Availability
 

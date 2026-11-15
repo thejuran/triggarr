@@ -253,7 +253,14 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
   1. When removing an instance fails to save the settings file, the instance keeps its existing settings, schedule and live connection exactly as before the attempt.
   2. When that save fails, the user sees an error stating the instance was not removed, with no internal detail exposed.
   3. When the saved state file holds valid JSON that is not an object (`[]`, `42`, `null`), Triggarr starts with default state and logs a warning instead of crashing.
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
+
+**Wave 1**
+- [ ] 87-01-PLAN.md — instance removal saves the settings file before changing anything live; fixed-wording failure response and a single log entry (CONSIST-01, CONSIST-02)
+- [ ] 87-03-PLAN.md — a state file whose top level is not an object starts with default state, logs a warning and is set aside as one copy (CONSIST-03)
+
+**Wave 2** *(blocked on Wave 1: 87-01)*
+- [ ] 87-02-PLAN.md — the removal error shows on the instance row without a page reload; audit and follow-up records in the maintenance backlog (CONSIST-02)
 
 ### Phase 88: Bounded Upgrade Backups & Telemetry Regression
 **Goal**: Pre-upgrade database backups stay bounded through a crash loop, and the telemetry environment variable can never again crash startup.
