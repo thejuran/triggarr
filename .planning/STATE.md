@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "ready to plan -- v2.14 Reliability roadmap written, Phase 87 not started"
-stopped_at: "v2.14 Reliability roadmap written (Phases 87-92, 24/24 requirements mapped); Phase 87 not started"
-last_updated: "2026-11-15T21:20:00Z"
-last_activity: "2026-11-15 -- v2.14 Reliability roadmap written (Phases 87-92)"
+status: "ready to plan -- Phase 87 context gathered, no plans created yet"
+stopped_at: "Phase 87 context gathered (87-CONTEXT.md); planning not started"
+last_updated: "2026-11-15T21:35:16.698Z"
+last_activity: "2026-11-15 -- Phase 87 context gathered (discuss-phase)"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** v2.14 Reliability, roadmap written, Phase 87 not started. v2.12.1 is published and running in production.
+**Current focus:** v2.14 Reliability, Phase 87 context gathered, planning next. v2.12.1 is published and running in production.
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 87 (Settings & State-File Safety) — not started
+Phase: 87 (Settings & State-File Safety) — context gathered, not planned
 Plan: — (no plans created yet)
-Status: v2.14 Reliability roadmap written; Phase 87 not started
-Last activity: 2026-11-15 — v2.14 Reliability roadmap written (Phases 87-92)
+Status: Phase 87 context gathered (87-CONTEXT.md); ready to plan
+Last activity: 2026-11-15 — Phase 87 context gathered (discuss-phase)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -87,6 +87,7 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 
 ### Decisions
 
+- 2026-11-15 (Phase 87 discuss, owner): a failed removal shows its error on the instance row without a page reload, with fixed plain wording; a reset state file is set aside as one copy (both wrong-shape and truncated cases); other settings routes found unsafe and the Save/Add failure messages are recorded in the maintenance backlog, not fixed here; post-save cleanup failures are logged and the user sees a normal removal. See 87-CONTEXT.md.
 - 2026-11-15 (v2.14 roadmap): 24 requirements mapped to 6 phases (87-92) with 100% coverage, no orphans, no double-mapping. Phase order follows the build order recommended in `.planning/research/SUMMARY.md`; LIFE and DELIV each kept in one phase per the roadmapping instruction; RMINST sequenced after CONSIST for the shared instance-removal route; Phase 92 depends on all five fix phases since it validates them rather than anticipating them.
 - 2026-11-15 (v2.14 start, owner): Reliability scope confirmed as agreed in ROADMAP.md (state/config consistency 999.9, narrowed resource lifecycle 999.13, search-command delivery). Folded in from the backlog: bounding pre-upgrade database backups, a lifecycle for pending searches of a removed Sonarr instance (bugs-005), and SA-12 in reduced form (regression check plus an "unsupported" note; the 2026-11-14 correction showed startup is not affected). The dashboard card re-render/click item was not folded in. Milestone label v2.14, planned release v2.14.0; no v2.13.0 release will exist.
 - 2026-10-21 (v2.13 roadmap amendment, owner-authorized for planning only): added the docs/planning review-classification policy. REVIEW-07/08 (Phase 83) define content-based classification (ordinary docs/planning gets a focused consistency review; agent instructions, workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and technical review; mixed PRs follow their consequential changes; classification recorded against the exact head) and replace blanket "every PR" wording, keeping Codex paired with every BM code-review run. ACCEPT-03 (Phase 85) designs and verifies GitHub-check handling across ordinary-docs, sensitive-docs, mixed and misclassification cases without ad hoc check disabling. Existing protections stay until then; exact-commit owner acceptance stays for every PR. No live settings changed. Now 31 requirements.
@@ -164,13 +165,13 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-15T21:20:00Z
-Stopped at: v2.14 Reliability roadmap written (Phases 87-92, 24/24 requirements mapped); Phase 87 not started
-Resume file: none
+Last session: 2026-11-15T21:35:16.692Z
+Stopped at: Phase 87 context gathered (87-CONTEXT.md); planning not started
+Resume file: .planning/phases/87-settings-state-file-safety/87-CONTEXT.md
 
 ## Operator Next Steps
 
-- v2.14 Reliability roadmap written (Phases 87-92, 24/24 requirements mapped, no orphans); discuss and plan Phase 87 next (`/bm:discuss-phase 87` or `/bm:plan-phase 87`)
+- Phase 87 context gathered ([87-CONTEXT.md](phases/87-settings-state-file-safety/87-CONTEXT.md), 16 decisions); plan it next (`/bm:plan-phase 87`). Work is on branch `phase-87-settings-state-file-safety`, which carries the held `planning/post-v2.12.1` commits
 - Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. The held branch `planning/post-v2.12.1` is pushed with the next substantive push, not on its own (no docs-only PRs)
 - Decide BM SA-01 (pin the uv version CI installs) -- see backlog/MAINTENANCE.md. SA-12 is in v2.14 scope in reduced form (startup is not affected; regression check plus an "unsupported" note)
 - Release follow-ups from v2.12.1: remove the temporary `zlib1g` Dockerfile step once the base image carries the fix; update the `idna` text in docs/ci-negative-demonstrations.md; add the "superseded by PILOT-03" note to the blueprint -- see backlog/MAINTENANCE.md and Deferred Items
