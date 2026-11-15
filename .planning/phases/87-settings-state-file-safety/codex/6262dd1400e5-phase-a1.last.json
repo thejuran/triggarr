@@ -1,0 +1,121 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "6262dd1400e5a92cbf02007fb84934d1538d0f86",
+  "inspected_base_sha": "3cede40099a1f8a5d6db45542e66c650bfa98952",
+  "pr_url": "none",
+  "scope": "Whole net change against the supplied base, with the specified exclusions, plus all three changed Phase 87 PLAN.md files.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects introduced by the scoped changes were identified. Harness evidence reports 3310 passed and 1 skipped on the exact head. The independently executed lock audit passed.",
+  "coverage": [
+    "Inspected every scoped production and test diff, all nine empty .gitkeep deletions, and plans 87-01, 87-02 and 87-03.",
+    "Traced removal write failures, copy-before-swap ordering, concurrent removals, independent cleanup, client closure and success redirects.",
+    "Reviewed state recovery, default merging, legacy migration, startup callers, diagnostic-copy replacement, permissions and failure cleanup.",
+    "Reviewed response escaping, row-local HTMX targeting, CSP guard changes and logging ownership.",
+    "Checked regression-test assertions and plan acceptance, audit and publication instructions; no policy weakening identified.",
+    "Reviewed neighboring settings writers and scheduler behavior. Invalid UTF-8 recovery and neighboring pre-lock snapshots are existing issues explicitly deferred by the plans."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Raw review transcripts and generated artifacts under .planning/**/codex/**, and .planning/**/*.jsonl."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 3cede40099a1f8a5d6db45542e66c650bfa98952",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..6262dd1400e5a92cbf02007fb84934d1538d0f86 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect scoped diff; truncated output was subsequently covered by focused reads."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..6262dd1400e5a92cbf02007fb84934d1538d0f86 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed plans; subsequently reread in bounded sections."
+    },
+    {
+      "command": "git diff --stat 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD",
+      "exit_code": 0,
+      "purpose": "Inventory changes."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- triggarr",
+      "exit_code": 0,
+      "purpose": "Read complete production diff."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt; git diff --name-only 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read harness evidence and enumerate scoped plans."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review removal implementation instructions and acceptance criteria."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review UI instructions and explicit deferrals."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Review web regression tests and CSP guard."
+    },
+    {
+      "command": "sed -n '1,110p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md; sed -n '170,187p' .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Read state plan contracts and remaining UI plan sections."
+    },
+    {
+      "command": "sed -n '129,215p' triggarr/config.py; sed -n '1,208p' triggarr/state.py; sed -n '280,390p' triggarr/state.py",
+      "exit_code": 0,
+      "purpose": "Trace atomic writer, state defaults, migration and recovery."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_state.py tests/test_config.py",
+      "exit_code": 0,
+      "purpose": "Review complete state and config test changes."
+    },
+    {
+      "command": "sed -n '620,780p' triggarr/web/routes.py; sed -n '880,935p' triggarr/web/routes.py; sed -n '1035,1080p' triggarr/web/routes.py; rg -n 'load_state|instance_name not in|settings =|search_lock|clients' triggarr/search/scheduler.py",
+      "exit_code": 0,
+      "purpose": "Trace neighboring writers, removal cleanup and scheduler callers."
+    },
+    {
+      "command": "sed -n '130,215p' triggarr/search/scheduler.py; sed -n '475,528p' triggarr/search/scheduler.py; sed -n '145,182p' triggarr/templates/settings.html; sed -n '340,375p' triggarr/templates/settings.html; sed -n '1050,1145p' tests/test_web.py; sed -n '1475,1549p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Inspect startup integration, scheduler reads, template context and existing test fixtures."
+    },
+    {
+      "command": "sed -n '110,210p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md; sed -n '157,170p' .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Finish plan inspection, including threat models and verification instructions."
+    },
+    {
+      "command": "python3 -B tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Verify writer lock coverage: 8 covered, 0 uncovered."
+    },
+    {
+      "command": "git diff --check 3cede40099a1f8a5d6db45542e66c650bfa98952..6262dd1400e5a92cbf02007fb84934d1538d0f86 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git status --short",
+      "exit_code": 0,
+      "purpose": "Check whitespace and confirm only harness evidence is untracked."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Pytest was not independently rerun in the read-only sandbox; exact-head harness evidence was inspected.",
+    "No browser execution or real filesystem-failure injection was performed.",
+    "Minor test gaps: cleanup-failure tests do not seed the tag cache, and the template render test does not assert hx-swap=\"innerHTML\". The implementation contains the intended behavior."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
