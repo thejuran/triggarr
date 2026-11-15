@@ -1,0 +1,103 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "e568dabefc0de2fd8756c8965f8af473875bb482",
+  "inspected_base_sha": "e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+  "pr_url": "none",
+  "scope": "Full requested base-to-head diff: CHANGELOG.md, pyproject.toml, triggarr/__init__.py, and uv.lock. The separate phase-plan diff was empty.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects identified. Version declarations agree, and the refreshed lockfile is structurally consistent. Exact-head harness evidence reports 3282 passed and 1 skipped.",
+  "coverage": [
+    "Inspected all four changed files; reviewed lockfile semantic changes and programmatically checked all 55 packages' artifact hosts, filenames, hash formats, sizes, and dependency targets.",
+    "Checked version display, changelog rendering and escaping, and existing version/changelog regression assertions.",
+    "Reviewed dependency installation through Docker's locked export and hash-checked installation, image consistency checks, and release version identity enforcement.",
+    "Reviewed relevant startup, configuration dependency usage, browser installation wiring, and image consistency regression tests.",
+    "Confirmed no phase-plan changes and no in-scope CI, acceptance, audit, or publication-policy modifications."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md, except changed *-PLAN.md files, of which there were none",
+    "Files outside the working copy"
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..e568dabefc0de2fd8756c8965f8af473875bb482 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff; large lockfile output was truncated and subsequently inspected through semantic filtering and structured validation."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..e568dabefc0de2fd8756c8965f8af473875bb482 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check changed executor plans; none."
+    },
+    {
+      "command": "git diff --stat e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..e568dabefc0de2fd8756c8965f8af473875bb482",
+      "exit_code": 0,
+      "purpose": "Inventory changed files."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt pyproject.toml Dockerfile .github/workflows/ci.yml .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Read harness evidence, project constraints, dependency installation and publication context."
+    },
+    {
+      "command": "rg --files -g '*test*' -g '*requirements*' -g '*lock*' -g '*.yml' -g '*.sh' -g '*2.12*' -g 'AGENTS.md' -g '!uv.lock' -g '!.planning/**'",
+      "exit_code": 0,
+      "purpose": "Locate relevant tests and surrounding files."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..e568dabefc0de2fd8756c8965f8af473875bb482 -- uv.lock | rg -v '^[ +-]*(\\{ url =|sdist =)'",
+      "exit_code": 0,
+      "purpose": "Inspect every non-artifact lockfile change without truncation."
+    },
+    {
+      "command": "python3 - <<'PY'\nimport subprocess,tomllib,re,urllib.parse,collections\nbase=tomllib.loads(subprocess.check_output(['git','show','e5e158451a0e731dbe6012ee0bf3e6e179b2ee25:uv.lock'],text=True))\nhead=tomllib.load(open('uv.lock','rb'))\nprint('lock headers', {k:v for k,v in head.items() if k!='package'})\nold={(p['name'],p['version']):p for p in base['package']}\nnames={p['name'] for p in head['package']}\nfor p in head['package']:\n artifacts=([p['sdist']] if 'sdist' in p else [])+p.get('wheels',[])\n for a in artifacts:\n  assert urllib.parse.urlparse(a['url']).netloc=='files.pythonhosted.org',a\n  assert re.fullmatch('sha256:[0-9a-f]{64}',a['hash']),a\n  assert a['size']>0\n  filename=urllib.parse.unquote(a['url'].split('/')[-1]).lower().replace('-','_')\n  assert p['name'].replace('-','_')+'_'+p['version'].replace('-','_') in filename,(p['name'],filename)\n for d in p.get('dependencies',[]): assert d['name'] in names,d\n if old.get((p['name'],p['version']))!=p:\n  print(p['name'],p['version'],'artifacts',len(artifacts),'keys',sorted(p))\nprint('Validated all artifact hosts, filenames, hashes, sizes and dependency targets across',len(head['package']),'packages')\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt structured lockfile inspection; shell heredoc temporary-file creation was blocked. Retried successfully without a heredoc."
+    },
+    {
+      "command": "cat tests/test_version.py tests/test_changelog.py tests/test_image_lock_consistency.py tests/test_audit_lock_coverage.py triggarr/__main__.py",
+      "exit_code": 0,
+      "purpose": "Inspect regression assertions and application startup."
+    },
+    {
+      "command": "rg -n '2\\.12\\.0|2\\.12\\.1|1\\.65|playwright|tomli|TomlConfig|uvicorn|releaseIdentityGate' triggarr .github tests/e2e tests/test_github_workflows.py tests/test_config.py tests/test_startup.py entrypoint.sh",
+      "exit_code": 0,
+      "purpose": "Trace changed dependency and version consumers."
+    },
+    {
+      "command": "python3 -c 'import subprocess,tomllib,re,urllib.parse\nbase=tomllib.loads(subprocess.check_output([\"git\",\"show\",\"e5e158451a0e731dbe6012ee0bf3e6e179b2ee25:uv.lock\"],text=True))\nhead=tomllib.load(open(\"uv.lock\",\"rb\"))\nprint(\"headers\",{k:v for k,v in head.items() if k!=\"package\"})\nold={(p[\"name\"],p[\"version\"]):p for p in base[\"package\"]}\nnames={p[\"name\"] for p in head[\"package\"]}\nfor p in head[\"package\"]:\n artifacts=([p[\"sdist\"]] if \"sdist\" in p else [])+p.get(\"wheels\",[])\n for a in artifacts:\n  assert urllib.parse.urlparse(a[\"url\"]).netloc==\"files.pythonhosted.org\"\n  assert re.fullmatch(\"sha256:[0-9a-f]{64}\",a[\"hash\"])\n  assert a[\"size\"]>0\n  filename=urllib.parse.unquote(a[\"url\"].split(\"/\")[-1]).lower().replace(\"-\",\"_\")\n  assert p[\"name\"].replace(\"-\",\"_\")+\"_\"+p[\"version\"].replace(\"-\",\"_\") in filename,(p[\"name\"],filename)\n for d in p.get(\"dependencies\",[]): assert d[\"name\"] in names,d\n if old.get((p[\"name\"],p[\"version\"]))!=p: print(p[\"name\"],p[\"version\"],\"artifacts\",len(artifacts))\nprint(\"All artifact hosts, filenames, hash formats, sizes and dependency targets validated:\",len(head[\"package\"]),\"packages\")'",
+      "exit_code": 0,
+      "purpose": "Successfully parse both complete lockfiles and validate artifact metadata and dependency references."
+    },
+    {
+      "command": "cat triggarr/version.py triggarr/changelog.py .github/scripts/release-policy.cjs",
+      "exit_code": 0,
+      "purpose": "Trace version rendering, changelog security boundaries and release identity checks."
+    },
+    {
+      "command": "git diff --name-only e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..e568dabefc0de2fd8756c8965f8af473875bb482 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Confirm complete in-scope file inventory."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; relied on the supplied exact-head harness evidence.",
+    "Did not build or execute the Docker image, run browser tests, or exercise publication.",
+    "Artifact hashes were checked for structural validity, not verified against downloaded distributions. Historical v2.12.0 image contents and external vulnerability claims were not independently verified.",
+    "Large initial diff output was truncated; complete lockfile coverage used semantic diff inspection and structured artifact validation."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

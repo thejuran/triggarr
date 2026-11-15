@@ -18,6 +18,7 @@ Updated 2026-10-30. Small ongoing work and change-time rules; not a separate dev
   - **IN-01:** when readiness's own `.github/` diff fails (`ciDefinitionsChanged === null`), the blocked Codex detail still says "rerun the inspection-only review, which stops with the CI-independence reason"; a rerun can succeed and never stop, so the hint loops. Branch the detail on `ciDefinitionsChanged` (`.github/scripts/acceptance-readiness.cjs:140-147`, `codexStatusFor`).
   - **IN-02:** `codex-fallback.cjs validate` re-verification reads only `author,isCrossRepository`, so it does not check that PR `#<pr>`'s `headRefOid` equals `--head` or that its author equals `--pr-author`, and its `git diff` runs from the current directory rather than the repository root (`.github/scripts/codex-fallback.cjs:636-660`, `715-717`).
   - **IN-03:** the `.github` CI-definition pathspec is defined three times with no drift test (`.github/scripts/codex-fallback.cjs:12-15`, `.github/scripts/acceptance-readiness.cjs:50`, `tests/codex_review_run.py` `CI_DEFINITION_PATHSPECS`), and the one-line error formatter is duplicated (`codex-fallback.cjs:625-627` `oneLine()`, `acceptance-readiness.cjs:631-632`). Export and reuse both and pin the JS constant against the Python tuple.
+- **Update the `idna` versions in `docs/ci-negative-demonstrations.md` (v2.12.1 release review, BM IN-02 at head `e568dab`, 2026-11-14):** the lockfile-mismatch recipe (around lines 267 and 276) says the lock pins `idna` 3.15; the v2.12.1 lockfile refresh moved it to 3.20. The demonstration still works; only the expected text is stale. The file is an operational procedure (sensitive class), so fix it in a reviewed PR.
 - **Remove the temporary `zlib1g` upgrade step from the Dockerfile (PR #57, BM IN-01 at head `8e3d6b4`, 2026-11-13):** the production stage installs Debian's fixed `zlib1g` (CVE-2026-76844, CVE-2026-85091) and fails the build below `1:1.3.dfsg+really1.3.1-1+deb13u1`, because `python:3.13-slim` had not been rebuilt. Once the base image carries that version the step does nothing but still makes every uncached build depend on Debian's mirrors. Check at the next monthly base-image update and remove it then. Related owner rulings still open: whether `docs/os-scan-policy.md` should list a targeted in-image upgrade as an allowed response to a red scan (BM SA-01, vibe-check architecture), and whether the Codex review runner's entry points should accept an injected clock so tests need not patch it (BM SA-01 at head `4940373`).
 - Revalidate the README screenshot and CI action-runtime tasks in [TODO.md](../../TODO.md). Close already-delivered work rather than repeating it; update only remaining discrepancies.
 - Recheck the old v2.9 Retry-Connection button behavior and bug-report version options; fix confirmed user-facing problems while touching those areas. URL-validation deduplication is optional local cleanup, not its own plan.
@@ -139,6 +140,145 @@ Source: Codex by PR URL on `5a97e1f` (attempts a1/a2, both INCOMPLETE for diff s
 
 ### Dependency rollup follow-ups (BM iteration 13, 2026-10-28)
 
-- **SA-12 (owner call):** FastAPI 0.162 adds opt-in OpenTelemetry auto-configure. If a user's container environment sets `FASTAPI_OTEL_AUTO_CONFIGURE=true` plus an OTLP endpoint (e.g. a stack-wide compose `environment:` block), the web UI now fails at startup with a clear error; unset (the normal case) nothing changes and nothing is exported. Options: accept (current), ignore the variable in triggarr, or document telemetry export as unsupported.
+- **SA-12 (owner call):** FastAPI 0.162 adds opt-in OpenTelemetry auto-configure. If a user's container environment sets `FASTAPI_OTEL_AUTO_CONFIGURE=true` plus an OTLP endpoint (e.g. a stack-wide compose `environment:` block), the web UI now fails at startup with a clear error; unset (the normal case) nothing changes and nothing is exported. Options: accept (current), ignore the variable in triggarr, or document telemetry export as unsupported. **Correction 2026-11-14 (v2.12.1 release review, BM WR-01 at `d06fab3`):** the startup-failure claim is wrong. FastAPI 0.162.0 and 0.162.4 catch the telemetry setup error and log a warning (`fastapi/telemetry/_runtime.py`, "Optional telemetry setup must not prevent application startup"). Checked on the locally built v2.12.1 image with both variables set: the web UI starts and answers requests, logs `FastAPI automatic telemetry configuration failed: ...`, and exports nothing. No owner decision is needed for startup safety; the only open choice is whether to document telemetry export as unsupported.
 - **IN-11:** Starlette 1.10 deprecates its test client on `httpx` in favour of `httpx2`; a future Starlette release may break the auth tests. Tests only.
 - **SA-03 instance:** the uv group jumped FastAPI 26 minor versions in one bump; consider a uv cooldown in `.github/dependabot.yml`.
+
+### Phase 86 review-loop follow-ups (owner stopping rule, 2026-11-14)
+
+Recorded, not fixed, by owner decision ("One more round, then stop", 2026-11-14 -- see
+`86-PILOT-RECORD.md` "Added 2026-11-14, after code review iteration 2"): after that one
+more batched fix round and its fresh BM + Codex re-review, only critical or warning
+findings on the Phase 86 PR get fixed; everything below is a leftover info item, an
+owner-ruling question, or a wording inconsistency, not a defect that blocked the PR.
+Every item below was reproduced and still fails closed (or doesn't matter) at the
+content that was actually merged. Unless noted otherwise, the file is the evidence
+publication gate and its self-test
+(`.planning/phases/86-pilot-reference-record/86-publication-gate.sh`,
+`86-publication-gate-selftest.sh`).
+
+- **BM iteration 3** (source: `86-REVIEW-phase-4066d538e12d.md`):
+  - **IN-01:** a git flag that marks a file "assume unchanged" makes the gate's text
+    search skip it, so a staged private detail in that file would pass. This needs a
+    deliberate, unusual git command first; it isn't something a normal commit triggers.
+  - **IN-02:** two of the gate's own operating rules aren't written down in its
+    comments -- a match inside the evidence file itself can never be excused (the excuse
+    would have to quote the pattern it's excusing), and when a reviewed file changes, the
+    old hand-review entry for it must be replaced, not left beside the new one. Both rules
+    are already enforced in the code; only the explanation is missing. The required
+    vibe-check raised the same gap independently on the Phase 86 PR (filtered as a low
+    note at pass 2, `86-REVIEW-EVIDENCE.md` "Vibe-check (RISK-02)").
+  - **IN-03:** the gate's self-test checks three of its stated hand-review rules (an
+    entry under the wrong heading, a basename-only path, a same-basename different file)
+    for the credential-shape section only, not for the public-infrastructure section that
+    shares the same code.
+  - **IN-04:** the local-user-name check is a plain substring match, so an account whose
+    name is also an ordinary word (for example an "admin" or CI-runner account) would
+    block on ordinary prose; two self-test cases also need `zsh` or fail when run as an
+    administrator account. Portability notes only -- the owner's own account name isn't a
+    common word.
+  - **IN-05:** the instructions don't say whether the automatic high-risk vibe-check
+    still starts once Codex has already ended INCOMPLETE or is still pending.
+  - **IN-06:** the adoption guide reuses the word "automatically" for two different
+    things -- the retired practice of the owner running vibe-check on every "code"-class
+    PR, and the new rule where the agent starts it by itself at a high-risk checkpoint --
+    which could read as the same rule to a new reader.
+  - **SA-01 (needs an owner ruling):** the gate's "public infrastructure" pattern only
+    catches home-directory paths and one private-network product name; it doesn't check
+    private IP address ranges, storage-volume paths, or other forms of the machine's own
+    name (only its short host name). Options: widen the pattern, defer, or accept as is.
+  - **SA-02 (needs an owner ruling):** the gate only scans review-evidence files; other
+    tracked Phase 86 planning files (plans, summaries, context, research, validation) are
+    published with no automated check at all. Options: extend the gate to the whole phase
+    folder, defer, or accept as is.
+- **BM iteration 4** (source: `86-REVIEW-phase-17eb05200e48.md`):
+  - **IN-01:** when the gate blocks because a covered file isn't staged, its message
+    only suggests staging it with `git add -f` -- the wrong direction for a file that
+    should instead be deliberately withheld and moved out of the covered location.
+  - **IN-02:** two short pointer sentences (one in `CLAUDE.md`, one in the CI
+    reference-baseline plan's dated note) describe the high-risk vibe-check rule without
+    repeating the untrusted-head exception; the full rule, which does state the
+    exception, is elsewhere in the same document or is the pointer's own target, so a
+    reader following the pointer isn't actually misled.
+  - **IN-03:** the text doesn't say what happens after an untrusted (bot/fork) head's
+    required vibe-check is recorded "pending" -- what ends that state, or what choices
+    the owner has. See the "conservative reading" item below, which is the related
+    owner-ruling gap this same finding points at.
+  - **SA-01 (needs an owner ruling):** the gate's 32-character-hex credential-shape scan
+    only matches lowercase hex, matching the Codex adversarial-review contract's own
+    definition of the check; an uppercase or mixed-case key of the same length from some
+    other service would still pass. Options: widen the check (and the contract's
+    definition with it), defer, or accept as is.
+- **BM iteration 5** (source: `86-REVIEW-phase-910e98853c41.md`):
+  - **IN-01:** the case-insensitive name matching added in round 4 only folds plain
+    ASCII letters; a local user or host name containing an accented letter, in the other
+    letter case, would stop matching. Portability note only -- both local names on the
+    owner's machine are plain ASCII.
+  - **IN-02:** a file saved in a two-byte-per-character encoding (as some Windows tools
+    write) has a NUL byte between letters, so none of the gate's four pattern checks
+    would match it. Coverage-expansion note only -- everything this workflow writes is
+    UTF-8.
+- **BM iteration 6** (source: `86-REVIEW-phase-63a5b45b4a33.md`):
+  - **IN-01:** the gate's "superseded older entry" rule (an older accepted hand-review
+    line for the same path is skipped rather than blocking) is pinned by only one
+    passing self-test case, in one of its two sections; three related behaviors (the same
+    rule in the other section, an older entry beside a reason-less current-hash line, an
+    older entry with a malformed hash) have no case of their own, so a later edit could
+    loosen them without any self-test failing.
+  - **IN-02 (same-hash check, one-line tightening available):** the "superseded" rule's
+    own header comment says an older entry must carry "a different well-formed sha256",
+    but the code never actually compares the older hash against the current one. The only
+    place this matters is a reason-less line that already carries the *current* hash,
+    next to a complete accepted entry for that same hash -- it now passes where the
+    iteration-5 gate blocked it. No private detail can slip through this way, because a
+    complete, reasoned entry for the exact current content is still required regardless.
+    Fix is one line (`&& o != ENVIRON["H"]` on the comparison), or reword the comment to
+    "any well-formed sha256" instead. The required vibe-check raised the same gap
+    independently on the Phase 86 PR (filtered as a low note at pass 2,
+    `86-REVIEW-EVIDENCE.md` "Vibe-check (RISK-02)").
+  - **SA-01 (needs an owner ruling):** if a file is first recorded "rejected" in the
+    hand-review section, then fixed and re-reviewed as "accepted", the gate keeps
+    blocking until someone manually deletes or rewrites the old rejected line, and the
+    error message doesn't point at that old line as the cause. Options: accept as is (the
+    safest reading), let a rejected line be superseded the same way an accepted one is, or
+    keep the block but name the conflicting line in the message.
+- **Codex, carried to the Phase 86 PR's pushed heads** (dispositioned `nonblocking_debt`
+  by the owner under this same stopping rule; source: `86-REVIEW-EVIDENCE.md` "Phase 86
+  PR #59"):
+  - **`codex:6ca643dcf210:a1:F001`** (medium; same item as Codex F002 at phase-review
+    head `17eb05200e48`): finished Phase 86 plans still show the hand-review-entry
+    wording from before the gate's hand-review format was finalized, and plan 86-01
+    embeds the first version of both gate scripts. The plans are finished and aren't
+    re-run, so this is drift in a historical record, not a live risk. Owner's
+    disposition, verbatim: "record it as non-blocking debt" (2026-11-14).
+  - **`codex:92b9daca2775:a1:F001`** (low; same item as Codex F001 at phase-review head
+    `910e98853c41`): the 2026-10-30 home-path scrub left one literal tilde (`~`) path in
+    the already-executed quick-task plan
+    `.planning/quick/261026-s2v-activate-the-codex-routed-plan-checker-f/261026-s2v-PLAN.md:194`,
+    which a Python subprocess wouldn't expand. The plan is finished and isn't re-run.
+- **The high-risk vibe-check rule is restated in six documents** (source: the required
+  vibe-check's pass-2 filtered low notes, `86-REVIEW-EVIDENCE.md` "Vibe-check
+  (RISK-02)"): who starts the required vibe-check, when, and the untrusted-head exception
+  are each stated in full in six separate places -- `CLAUDE.md`, `docs/review-checkpoint-record.md`,
+  `docs/bm-greptile-codex-blueprint.md`, `86-PILOT-RECORD.md`, `docs/review-workflow-adoption.md`
+  and `docs/ci-reference-baseline-plan.md`. Every copy agrees today, confirmed by this
+  phase's own review loop, but a future edit could update one copy and miss another.
+  Candidate fix: keep one canonical statement of the rule and have the other five point
+  at it instead of restating it.
+- **RISK-02's wording in REQUIREMENTS.md still says "recommends"** (found while filing
+  this backlog, 2026-11-14): `REQUIREMENTS.md`'s RISK-02 requirement text says BM
+  "explicitly recommends an additional vibe-check" at high risk, while the instructions
+  this milestone actually adopted (`CLAUDE.md`, `docs/review-checkpoint-record.md`, per
+  PILOT-03 decision 1) now say the vibe-check is required at high risk, not a
+  recommendation the owner may decline. The owner has not separately ruled on whether to
+  reword RISK-02 itself to match; it is left as originally written pending that decision.
+- **The untrusted-head "conservative reading" was applied without its own owner ruling**
+  (found while filing this backlog, 2026-11-14): fixing BM iteration 3's WR-01 (the
+  automatic high-risk vibe-check had no stated exception for bot/fork/non-owner heads),
+  Claude chose the conservative behavior -- on an untrusted head, record the required
+  vibe-check as "pending" and ask the owner, rather than starting a tool-enabled review
+  inside a checkout of that head. Iteration 4's IN-03 listed this as "the conservative
+  reading the fix report already lists for the owner's confirmation," but the owner's
+  2026-11-14 decisions only ruled on who starts the vibe-check on *trusted* heads
+  ("Claude runs it"); no separate owner confirmation of the untrusted-head fallback
+  itself is on record.

@@ -1,0 +1,125 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "34734550a17a3c0f4c2f80063da0c957622b03b6",
+  "inspected_base_sha": "e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+  "pr_url": "none",
+  "scope": "Full specified branch diff: v2.12.1 release metadata, changelog and dependency lockfile updates, plus changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects found in the four in-scope changed files. Version declarations agree on 2.12.1. No phase plans changed. Harness evidence records 3282 passed and 1 skipped at the inspected head.",
+  "coverage": [
+    "Inspected the entire scoped diff: CHANGELOG.md, pyproject.toml, triggarr/__init__.py and uv.lock.",
+    "Checked changed phase-plan diff; it was empty.",
+    "Reviewed dependency changes, dependency references, platform artifacts and project metadata.",
+    "Checked version display, update comparison and existing version consistency assertions.",
+    "Reviewed Docker lockfile installation, release version identity, image publication permissions and browser CI setup.",
+    "Checked changelog claims against existing refresh handling, dashboard assertions, dependency versions and release configuration.",
+    "Confirmed the harness test evidence identifies the exact inspected head and a successful pytest run.",
+    "Scoped whitespace check passed; checkout remained unchanged."
+  ],
+  "exclusions": [
+    "Planning markdown other than phase plans.",
+    "Generated review artifacts under .planning/**/codex/** and planning JSONL transcripts.",
+    "No external files or other reviewers' approvals were used."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Identify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..34734550a17a3c0f4c2f80063da0c957622b03b6 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect complete scoped diff."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..34734550a17a3c0f4c2f80063da0c957622b03b6 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check changed phase plans."
+    },
+    {
+      "command": "git status --short",
+      "exit_code": 0,
+      "purpose": "Check worktree state."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inspect harness test evidence."
+    },
+    {
+      "command": "cat pyproject.toml Dockerfile .github/workflows/ci.yml .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Review dependency installation and release context."
+    },
+    {
+      "command": "rg --files .github tests scripts | sort",
+      "exit_code": 0,
+      "purpose": "Locate relevant tests and release scripts."
+    },
+    {
+      "command": "rg -n '2\\.12\\.[01]|playwright|pyee|__version__|multipart' triggarr tests scripts .github pyproject.toml Dockerfile",
+      "exit_code": 0,
+      "purpose": "Find version and dependency consumers."
+    },
+    {
+      "command": "cat .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Inspect release workflow without output truncation."
+    },
+    {
+      "command": "sed -n '275,365p' .github/workflows/ci.yml; cat tests/test_version.py triggarr/version.py triggarr/update_check.py",
+      "exit_code": 0,
+      "purpose": "Review browser gate and version behavior."
+    },
+    {
+      "command": "rg -n --glob '*.py' 'playwright|pyee|multipart|skipped record|failure reason|malformed' tests/test_web.py tests/test_search.py tests/e2e triggarr/web/routes.py triggarr/templates/partials/app_card.html",
+      "exit_code": 0,
+      "purpose": "Locate affected integration paths and assertions."
+    },
+    {
+      "command": "git diff --name-status e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..34734550a17a3c0f4c2f80063da0c957622b03b6; sed -n '1,25p' uv.lock; sed -n '1045,1140p' uv.lock",
+      "exit_code": 0,
+      "purpose": "Confirm file inventory and lockfile metadata."
+    },
+    {
+      "command": "cat tests/conftest.py; sed -n '1,100p' tests/e2e/conftest.py; rg -n 'refresh|failure reason|skipped record|detail' tests/test_refresh.py tests/test_dashboard.py triggarr/templates/partials/app_card.html",
+      "exit_code": 2,
+      "purpose": "Inspect test collection; two guessed test paths did not exist and were subsequently located."
+    },
+    {
+      "command": "rg -n 'refresh|malformed' triggarr/search/engine.py; rg -n 'name = \"(apscheduler|starlette|opentelemetry-api)\"' -A2 uv.lock; cat .github/dependabot.yml",
+      "exit_code": 0,
+      "purpose": "Cross-check release claims and dependency update policy."
+    },
+    {
+      "command": "git diff --check e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..34734550a17a3c0f4c2f80063da0c957622b03b6 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Check scoped diff formatting."
+    },
+    {
+      "command": "rg -n 'failure reason|skipped record|detail\\(s\\)|refresh.*malformed|malformed.*refresh' triggarr/templates tests --glob '*.py' --glob '*.html'",
+      "exit_code": 0,
+      "purpose": "Locate actual refresh and dashboard regression assertions."
+    },
+    {
+      "command": "git status --short; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm unchanged checkout and final head."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; relied on the supplied exact-head harness evidence.",
+    "The harness unit-test run excludes browser E2E tests by default. Playwright browser execution, Docker builds and publication were not exercised.",
+    "Upstream package contents, download hashes and CVE claims were not independently verified against external sources.",
+    "An initial broad context read was truncated; focused follow-up reads covered relevant release and test paths."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

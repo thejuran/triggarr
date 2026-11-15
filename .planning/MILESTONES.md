@@ -1,5 +1,22 @@
 # Milestones
 
+## v2.13 CI & Review Workflow (Shipped: 2026-11-14)
+
+**Phases completed:** 6 phases (82-86, including the inserted 85.1), 65 plans. Milestone closed 2026-11-14; **not a versioned release** (package version and production stay at v2.12.0 until the next release is cut). PRs #33–#59, 737 commits, 2026-10-21 → 2026-11-14. 3282 Python tests and 613 review/CI script tests passing, ruff clean. Requirements 31/31.
+
+**Key accomplishments:**
+
+- **CI tests what we ship (Phase 82):** CI starts the exact image it will publish through its real entrypoint, runs a small browser regression suite (connection-pill request loop, setup/login), and rejects a release tag that disagrees with the package or image version. All of it sits behind one required `CI ready` gate that a missing or skipped job cannot pass.
+- **Paired BM + Codex review (Phase 83):** every BM code review (phase execution, quick task, explicit review, review after fixes) is followed by an independent, read-only Codex pass on the same commit; missing, failed or stale Codex evidence is recorded as incomplete, never clean. Each checkpoint records risk and depth, and a written policy classifies PRs by content (ordinary docs, sensitive, code).
+- **Follow-on CI hardening and acceptance usability (Phase 85):** the image installs runtime dependencies from `uv.lock` with hash checking; grouped Dependabot updates; an OS-package scan with a written policy; workflow lint; wheel validation; branch-coverage evidence bound to the exact commit and run; `:main`/`:dev` publishing without repository write permission; an acceptance register that is safe under concurrent PRs, with a readiness check before the owner is asked to approve.
+- **Untrusted PRs (Phase 85.1):** bot and fork PRs can be reviewed by Codex without checking out or running their code, inside a verified disposable container with the grader taken from trusted main.
+- **Plan-checker investigation (Phase 84):** routing only the plan checker to Codex through a narrowly scoped hook was proven to work and fail closed; it was then switched on for this repository only by a separate quick task (261026-s2v, still marked needs review).
+- **Pilot and decisions (Phase 86):** five real PRs ran under the paired workflow, including two user-facing fixes (Refresh counts skips a malformed record instead of disconnecting the instance; dashboard cards group last-cycle reasons by kind). The owner ended routine vibe-check on every code PR in favor of a required vibe-check at high risk only, and an adoption guide for other repositories was written.
+
+**Notes:** Milestone audit result `tech_debt`, no blockers: 31/31 requirements, 6/6 phases verified, 8/8 cross-phase seams wired, 4/4 flows complete ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Owner-accepted limits: the CISHIP-02 pill mutation was not demonstrated on GitHub and tag-triggered publication is unverified until the next release (Phase 82 waivers); Phase 84's blind comparison was invalid (the recovered plans were post-review) and its revise/recheck loop was not exercised; Phase 85's final-head Codex pass stayed incomplete for diff size and was covered by the owner-approved vibe-check fallback; Phase 85.1 closed as an owner exception with its live end-to-end criterion unmet on current Codex models, so bot/fork PRs keep the vibe-check fallback. Known deferred items at close: 1 (see STATE.md Deferred Items) — the CHANGELOG note that wheel/sdist are no longer release assets, due at the next release. Phase directories stay in `.planning/phases/` because published docs link into them.
+
+---
+
 ## v2.12 Search Correctness & Trustworthy Feedback (Shipped: 2026-10-21)
 
 **Phases completed:** 5 phases (77-81), 33 plans. Released as **v2.12.0** (tag on `dbb38fa`; PRs #26–#30). 2023 tests passing, ruff clean. 309 commits, 2026-10-08 → 2026-10-21. Requirements 28/28.

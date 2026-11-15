@@ -1,5 +1,37 @@
 # Changelog
 
+## v2.12.1 (2026-11-14)
+
+Security updates for the Docker image and its dependencies, plus two small fixes to Refresh counts and the dashboard cards.
+
+* Security:
+
+  * `opentelemetry-api` updated to 1.45.2 (CVE-2026-126360). The v2.12.0 image contained 1.45.1, installed as a dependency of FastAPI.
+
+  * The Docker image upgrades `zlib1g` (CVE-2026-76844, CVE-2026-85091). The image build fails if the fixed version is not installed.
+
+* Fixes:
+
+  * Refresh counts no longer marks an instance as disconnected when one record from Radarr, Sonarr or Lidarr is malformed. The bad record is skipped and logged, and the instance stays connected.
+
+  * On a dashboard card with no failed searches, skipped-record and unevaluated rows are no longer labelled as failures: the card says "skipped record(s)" or "detail(s)". A red Failed card always says "failure reason(s)".
+
+* Improvements:
+
+  * The Docker image installs its Python dependencies from the project lockfile with hash checking, so the published image runs the same versions that were tested.
+
+  * Dependency updates in the image: FastAPI 0.162.4 (v2.12.0 shipped 0.158.1), Starlette 1.10.0 (was 1.9.0), python-multipart 0.0.33 (was 0.0.32). Every other library in the image stays at the version v2.12.0 shipped.
+
+* Upgrade notes:
+
+  * Python wheel and sdist files are no longer attached to GitHub releases. The Docker image is the release deliverable.
+
+* Internal:
+
+  * Before publishing, the build pipeline starts the exact image it will publish, runs browser regression tests against it, and rejects a release tag that disagrees with the package version.
+
+  * Image OS-package scanning, workflow linting and grouped dependency updates were added, and `:main`/`:dev` images are published without repository write permission.
+
 ## v2.12.0 (2026-10-21)
 
 Search correctness and trustworthy feedback: Triggarr now searches only what you scoped it to, grades every cycle honestly, survives bad records from your *arr apps, and credits Sonarr grabs to the right search exactly once.

@@ -431,6 +431,40 @@ Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` 
 - Never publish tracked planning text that names private hosts, usernames or credential locations.
 - A docs-only head still needs a fresh Greptile pass and acceptance under the pilot.
 
+## Milestone: v2.13 — CI & Review Workflow
+
+**Shipped:** 2026-11-14
+**Phases:** 6 | **Plans:** 65
+
+### What Was Built
+- CI that starts and exercises the exact image it publishes, browser regressions, release-version identity, one required gate that cannot be passed by a skipped job.
+- Paired BM + Codex review with per-head evidence, risk-based depth, a content-based review classification, and an isolated path for bot/fork PRs.
+- Dependency, image-scan, lint, coverage and permission hardening; a concurrency-safe acceptance register with a readiness check.
+- A five-PR pilot, the owner's decision to keep vibe-check for high risk only, and an adoption guide.
+
+### What Worked
+- Proving each new gate with a deliberately broken case (broken entrypoint, lockfile mismatch, bad workflow expression) showed the gates fail when they should.
+- Fixing the retirement bar for routine vibe-check before looking at pilot results kept the PILOT-03 decision honest.
+- One PR per phase with local fix rounds and a single push kept review budgets and owner approvals low.
+- Owner exceptions were written down with the unmet criterion named (Phase 85.1, Phase 82 waivers), so the audit could count them as waived, not passed.
+
+### What Was Inefficient
+- Review loops ran long: Phase 85 took twelve BM review iterations and Phase 86 several fix rounds; a stopping rule after round two came late.
+- Codex could not complete on the two largest diffs (Phases 85 and 85.1) and needed the fallback; large phases should be reviewed in smaller checkpoints.
+- Parallel-worktree execution produced merge commits that the trusted-origin check refused, forcing a by-PR-URL Codex run.
+- Planning bookkeeping drifted: 20 requirements stayed "Pending" and three verification files stayed `human_needed` after their phases merged, and were only corrected at the milestone audit.
+- CI on main broke for date-driven reasons (a new advisory, tests reading the real clock, base-image findings) and needed its own repair PR (#57).
+
+### Patterns Established
+- Executors and fixers commit directly on the phase branch; no worktree merges.
+- Run the publication gate before committing Codex evidence and withhold raw transcripts.
+- Vibe-check is required at high risk only and starts right after BM + Codex on the same commit, for trusted heads.
+- Update REQUIREMENTS.md and verification status when a phase merges, not at milestone close.
+
+### Key Lessons
+- Tests that read the real clock or live advisory data will fail on a date nobody chose; pin them.
+- A check that cannot run before merge (Phase 85.1's live run) needs an agreed outcome for "it ran and was incomplete" before the phase starts.
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -448,6 +482,7 @@ Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` 
 | v2.5 | 6 | 15 | AIDesigner HTML artifacts as design spec, vanilla JS components |
 | v2.6 | 6 | 16 | Shield scan → hardening phase, TDD auth, in-memory rate limiter |
 | v2.7 | 4 | 8 | Mid-milestone gap-closure phase for deferred requirement, live-data UAT against dev image |
+| v2.13 | 6 | 65 | Process milestone: paired BM + Codex review, one PR per phase, protected owner acceptance, vibe-check at high risk only (v2.8–v2.12 rows were not recorded) |
 
 ### Cumulative Quality
 
@@ -464,6 +499,7 @@ Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` 
 | v2.5 | 668 | ~17,361 | 0 |
 | v2.6 | 805 | ~20,225 | 2 (bcrypt, itsdangerous — necessary for auth) |
 | v2.7 | 857 | ~20,225 source (pure UI port; +5,792 template/CSS) | 0 (Phosphor Icons vendored as static assets, no PyPI dep) |
+| v2.13 | 3282 Python + 613 review/CI script tests | not measured | 0 runtime (dev-only: pytest-cov, Playwright) |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -476,3 +512,4 @@ Replaced the blind integer-cursor search walk (`missing_cursor`/`cutoff_cursor` 
 7. AIDesigner HTML artifacts as binding spec for UI phases prevents design drift (v2.5, v2.6, v2.7)
 8. VALIDATION.md drafts must be refreshed post-execution (v2.7) — classifying requirements as "visual only" at plan time lies about eventual test coverage
 9. Milestone-close `audit-open` catches stale debug/quick-task/UAT artifacts that never got administratively closed (v2.7)
+10. Keep requirement checkboxes and verification status current when a phase merges; the v2.13 audit found 20 requirements still "Pending" after their phases shipped

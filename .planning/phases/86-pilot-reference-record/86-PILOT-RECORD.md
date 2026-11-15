@@ -482,6 +482,10 @@ Per that decision, the wording for the passing tests above was corrected before 
 | Who starts the required high-risk vibe-check (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | Who starts the vibe-check that is required at a high-risk checkpoint? Options offered: "Owner runs it", "Claude runs it after asking", "Claude runs it". | Selected the offered option "Claude runs it" (a selection from the offered options, not the owner's free text): Claude starts vibe-check automatically right after the BM review and the paired Codex pass at a high-risk checkpoint, on the same exact commit, the same way it runs Codex, without asking each time; the owner still decides what to do with its findings. |
 | Review-loop stopping rule for the Phase 86 PR (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | When does the review loop on the Phase 86 PR stop? | Selected the offered option "One more round, then stop" (a selection from the offered options, not the owner's free text): this one batched fix round, then one fresh BM + Codex re-review; after that only critical or warning findings get fixed, and leftover minor wording items go to the backlog. |
 | Consistency edits in the Phase 86 PR (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | About the consistency edits to the classification policy, the blueprint and the Greptile pilot doc: do they stay in the Phase 86 PR? | "keep the extra doc edits in this PR" |
+| Phase 86 PR #59 push (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | Push decision: push `phase-86-pilot-reference-record` and open the Phase 86 PR? | "yes, push and open the PR" |
+| Phase 86 PR #59, head `6ca643dcf210` (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | Disposition of `codex:6ca643dcf210:a1:F001` (medium: finished Phase 86 plans show the older hand-review entry format; plan 86-01 embeds the first version of the gate scripts)? | "record it as non-blocking debt" |
+| Phase 86 PR #59, head `92b9daca2775` (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | Owner acceptance: approve review acceptance for PR #59 at the exact head and run? | "I approve review acceptance for PR #59 at 92b9daca2775d984d0e3e27ce4884caedf1cc0c6, run 43620557671" |
+| Phase 86 PR #59, head `92b9daca2775` (phase-level; not attributable to PR #54 or #55) | 2026-11-14 | Merge: the session reported the PR accepted, all checks passing and ready for the owner to merge | "merge pr 59" (Claude ran the merge under the owner's account at the accepted head; merge commit `e5e158451a0e731dbe6012ee0bf3e6e179b2ee25`) |
 
 ## PILOT-03 recommendation and decisions
 
@@ -724,3 +728,7 @@ None of these entries changes the result measured against the bar.
 - **2026-11-14, Codex finding on the Phase 86 PR head `6ca643dcf210`.** `codex:6ca643dcf210:a1:F001` (medium: finished
   Phase 86 plans show the older hand-review entry format and plan 86-01 embeds the first version of the publication-gate
   scripts). Owner's disposition, verbatim: "record it as non-blocking debt" (owner, 2026-11-14).
+- **2026-11-14, Phase 86 PR #59 accepted and merged.** The owner approved review acceptance at head
+  `92b9daca2775d984d0e3e27ce4884caedf1cc0c6` (run 43620557671) and merged it (merge commit
+  `e5e158451a0e731dbe6012ee0bf3e6e179b2ee25`). The D-14 cutoff for later-found misses against this pilot record's five
+  PRs is now closed.

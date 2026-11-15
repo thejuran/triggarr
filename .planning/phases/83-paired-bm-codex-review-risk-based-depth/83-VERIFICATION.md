@@ -1,8 +1,9 @@
 ---
 phase: 83-paired-bm-codex-review-risk-based-depth
 verified: 2026-10-23T22:15:00Z
-status: human_needed
-score: 17/17 must-haves verified
+status: passed
+score: 17/17 must-haves verified; 3/3 human checks passed (see 83-HUMAN-UAT.md; PR #35 accepted and merged 2026-10-23)
+status_updated: 2026-11-14 (was human_needed; all three human checks are recorded as passed in 83-HUMAN-UAT.md)
 has_blocking_gaps: false
 overrides_applied: 0
 human_verification:
