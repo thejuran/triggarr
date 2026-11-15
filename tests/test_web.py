@@ -1796,6 +1796,79 @@ def test_remove_instance_write_failure_escapes_name(multi_instance_app):
     assert "<b>" not in response.text
 
 
+def test_remove_instance_scheduler_failure_still_completes(multi_instance_app):
+    """Once the settings file is saved, a scheduler.remove_job failure does
+    not stop the removal from completing: the user still sees the normal
+    success response and every other tidy-up step still runs (D-15, D-16).
+    """
+    client_4k = multi_instance_app.state.radarr_clients["4K"]
+    multi_instance_app.state.scheduler.remove_job.side_effect = RuntimeError("job gone")
+
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="ERROR")
+    try:
+        with (
+            TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+            patch("triggarr.web.routes._atomic_toml_write", return_value=None),
+        ):
+            response = tc.post(
+                "/api/instance/remove/radarr/4K",
+                headers={"HX-Request": "true"},
+                follow_redirects=False,
+            )
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 200
+    assert response.headers.get("HX-Redirect", "").endswith("/settings")
+    assert "4K" not in multi_instance_app.state.settings.radarr
+    assert "4K" not in multi_instance_app.state.radarr_clients
+    assert client_4k.close.await_count == 1
+    assert "4K" not in multi_instance_app.state.triggarr_state["radarr"]
+    assert ("radarr", "4K") not in multi_instance_app.state.tag_cache
+
+    assert len(records) == 1
+    message = records[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "job gone" in message
+
+
+def test_remove_instance_close_failure_still_succeeds(multi_instance_app):
+    """Once the settings file is saved, a client.close() failure does not
+    stop the removal from completing: the user still sees the normal
+    success response and the removal is otherwise complete (D-15, D-16).
+    """
+    multi_instance_app.state.radarr_clients["4K"].close = AsyncMock(side_effect=RuntimeError("close boom"))
+
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="ERROR")
+    try:
+        with (
+            TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+            patch("triggarr.web.routes._atomic_toml_write", return_value=None),
+        ):
+            response = tc.post(
+                "/api/instance/remove/radarr/4K",
+                follow_redirects=False,
+            )
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 303
+    assert response.headers.get("location", "").endswith("/settings")
+    assert "4K" not in multi_instance_app.state.settings.radarr
+    assert "4K" not in multi_instance_app.state.radarr_clients
+    assert "4K" not in multi_instance_app.state.triggarr_state["radarr"]
+    assert ("radarr", "4K") not in multi_instance_app.state.tag_cache
+
+    assert len(records) == 1
+    message = records[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "close boom" in message
+
+
 def test_no_new_body_swap_html_targets():
     """SEC-01 defense-in-depth: only ONE place in the codebase uses
     `hx-target="body"` (the Remove-instance button on settings.html, which is
