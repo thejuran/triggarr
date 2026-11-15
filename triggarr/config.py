@@ -126,7 +126,7 @@ def _migrate_v22_to_v23(data: dict) -> dict:
     return result
 
 
-def _atomic_toml_write(path: Path, data: dict) -> None:
+def _atomic_toml_write(path: Path, data: dict, *, log_failure: bool = True) -> None:
     """Write TOML data to a file atomically using tempfile + fsync + rename.
 
     On failure (e.g. serialization error), the temp file is cleaned up
@@ -138,6 +138,14 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
     Args:
         path: Destination file path.
         data: TOML-serializable dict.
+        log_failure: Whether to log the primary "Config write failed" line
+            when the write itself (not the temp-file cleanup) raises
+            OSError. A caller that logs the failure itself with richer
+            context (e.g. the app and instance involved) passes
+            log_failure=False so one failed write yields one error-level
+            log entry overall, not two (D-07). Does not affect the
+            directory-fsync warning, the temp-cleanup error, or the
+            unexpected-error branch, which always log.
     """
     dir_fd = None
     renamed = False
@@ -163,7 +171,8 @@ def _atomic_toml_write(path: Path, data: dict) -> None:
                 exc=exc,
             )
             return
-        logger.error("Config write failed: {path} - {exc}", path=path, exc=exc)
+        if log_failure:
+            logger.error("Config write failed: {path} - {exc}", path=path, exc=exc)
         try:
             os.unlink(tmp_path)
         except FileNotFoundError:

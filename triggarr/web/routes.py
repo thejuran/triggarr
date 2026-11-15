@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import html
 import os
 import re
@@ -934,6 +935,27 @@ async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
 
+def _removal_failed_response(request: Request, instance_name: str) -> HTMLResponse:
+    """Build the fixed D-05 response for a failed instance removal.
+
+    The body never includes the exception, the config path or the
+    exception type (T-87-01) -- only the escaped instance name (T-87-02).
+
+    htmx 2.0.8's default responseHandling never swaps a 4xx/5xx response
+    body regardless of hx-target, so the htmx path must return 200 to
+    reach the row slot (87-02); a direct POST gets an honest non-2xx.
+    Neither path sets HX-Redirect, so no full-page body swap happens here
+    (no stale CSP nonce, SEC-01).
+    """
+    message = (
+        f"'{html.escape(instance_name)}' was not removed: the settings file could not be saved. "
+        "Nothing was changed. Check the Triggarr log for details."
+    )
+    if request.headers.get("HX-Request") == "true":
+        return HTMLResponse(message, status_code=200)
+    return HTMLResponse(message, status_code=500)
+
+
 @router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
 async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
@@ -967,14 +989,32 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         del updated_instances[instance_name]
         new_settings = settings.model_copy(update={app_name: updated_instances})
 
-        # Write updated config to TOML (offloaded to thread -- blocking I/O)
+        # Write updated config to TOML (offloaded to thread -- blocking I/O).
+        # The except branch below logs its own contextual error, so the
+        # writer's generic line is suppressed here to keep one failed
+        # write at exactly one error-level log entry overall (D-07).
         config_path = request.app.state.config_path
         try:
             await asyncio.get_running_loop().run_in_executor(
-                None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
+                None,
+                functools.partial(
+                    _atomic_toml_write,
+                    config_path,
+                    _settings_to_dict(new_settings),
+                    log_failure=False,
+                ),
             )
-        except OSError:
-            return HTMLResponse("Instance was not removed", status_code=500)
+        except OSError as exc:
+            logger.error(
+                "Could not save settings file {path} while removing {app}/{inst}; "
+                "instance kept: {exc_type}: {exc}",
+                path=config_path,
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(exc).__name__,
+                exc=exc,
+            )
+            return _removal_failed_response(request, instance_name)
 
         # Only swap live settings in after the write has succeeded
         request.app.state.settings = new_settings
