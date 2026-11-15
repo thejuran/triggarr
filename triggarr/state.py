@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
@@ -231,12 +232,51 @@ def _recover_from_bad_state_file(state_path: Path, found: str) -> TriggarrState:
     Shared by both broken-file cases (D-09): a non-object JSON root and content
     that could not be parsed as JSON at all. Never reads or logs the file's
     contents -- only the path and a description of what was found.
+
+    Before resetting, sets the bad file aside as a single diagnostic copy next
+    to the original (D-08): copies to a temp file in the same directory via
+    shutil.copy2 (preserves mode bits, so the copy is never wider than the
+    source), then os.replace onto one fixed name, overwriting any previous
+    copy rather than accumulating. If any step fails, the failure is logged
+    and recovery continues regardless -- the copy step must never block
+    startup (D-11).
     """
+    set_aside = state_path.with_name(state_path.name + ".corrupt")
+    copy_succeeded = False
+    tmp: str | None = None
+    try:
+        fd, tmp = tempfile.mkstemp(dir=state_path.parent, prefix=state_path.name + ".corrupt.", suffix=".tmp")
+        os.close(fd)
+        shutil.copy2(state_path, tmp)
+        os.replace(tmp, set_aside)
+        tmp = None
+        copy_succeeded = True
+    except OSError as exc:
+        logger.warning(
+            "Could not set aside the bad state file {path}: {exc}",
+            path=state_path,
+            exc=f"{type(exc).__name__}: {exc}",
+        )
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            except OSError as cleanup_exc:
+                logger.warning(
+                    "Could not clean up temp file {tmp} after set-aside failure: {exc}",
+                    tmp=tmp,
+                    exc=cleanup_exc,
+                )
+
+    extra = f" A copy was kept at {set_aside} for diagnosis." if copy_succeeded else ""
     logger.warning(
         "State file {path} held {found} where a JSON object was expected; queue progress "
-        "and last-run times were reset to defaults (search history is unaffected).",
+        "and last-run times were reset to defaults (search history is unaffected).{extra}",
         path=state_path,
         found=found,
+        extra=extra,
     )
     return _default_state()
 
