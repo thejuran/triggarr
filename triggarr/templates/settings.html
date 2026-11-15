@@ -344,6 +344,17 @@ document.querySelectorAll('[data-stop-propagation]').forEach(function(btn) {
     btn.addEventListener('click', function(e) { e.stopPropagation(); });
 });
 
+// Phase 87 WR-02: empty a row's removal-error slot as soon as a new Remove
+// request starts, so an old message cannot outlive an attempt whose response
+// htmx does not swap (e.g. 401 after the session expired). Delegated listener
+// (htmx events bubble); only clears text, never writes markup.
+document.body.addEventListener('htmx:beforeRequest', function(e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.matches || !elt.matches('summary > button[hx-post]')) return;
+    var slot = elt.parentElement && elt.parentElement.querySelector('.remove-error');
+    if (slot) slot.textContent = '';
+});
+
 // SEC-01 D-05: delegated listener on #apikey-section (parent stays mounted across
 // hx-swap='innerHTML' of partials/security_apikey.html). Captures clicks on all
 // future swapped-in [data-action] buttons.

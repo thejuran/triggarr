@@ -980,6 +980,13 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         instances = getattr(settings, app_name)
 
         if instance_name not in instances:
+            if request.headers.get("HX-Request") == "true":
+                # Already removed elsewhere (another tab, or the concurrent
+                # request this in-lock check exists for). htmx never swaps a
+                # 4xx body, so answer exactly like a successful removal: a
+                # full navigation that drops the stale row (and binds the new
+                # CSP nonce, SEC-01). Nothing is echoed back.
+                return HTMLResponse("", headers={"HX-Redirect": str(request.url_for("settings_page"))})
             return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
 
         # Build the post-removal settings without touching live state yet.
@@ -989,18 +996,34 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         del updated_instances[instance_name]
         new_settings = settings.model_copy(update={app_name: updated_instances})
 
-        # Write updated config to TOML (offloaded to thread -- blocking I/O).
-        # The except branch below logs its own contextual error, so the
-        # writer's generic line is suppressed here to keep one failed
-        # write at exactly one error-level log entry overall (D-07).
+        # Every failure up to and including the write is handled here: live
+        # state has not been touched yet, so the instance is simply kept and
+        # the user gets the fixed D-05 response. Each path logs exactly one
+        # error-level entry overall (D-07).
         config_path = request.app.state.config_path
+        try:
+            config_dict = _settings_to_dict(new_settings)
+        except Exception as exc:  # error boundary: nothing live has been changed yet
+            logger.error(
+                "Could not build the settings data while removing {app}/{inst}; "
+                "instance kept: {exc_type}: {exc}",
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(exc).__name__,
+                exc=exc,
+            )
+            return _removal_failed_response(request, instance_name)
+
+        # Write updated config to TOML (offloaded to thread -- blocking I/O).
+        # The OSError branch below logs its own contextual error, so the
+        # writer's generic line is suppressed (log_failure=False).
         try:
             await asyncio.get_running_loop().run_in_executor(
                 None,
                 functools.partial(
                     _atomic_toml_write,
                     config_path,
-                    _settings_to_dict(new_settings),
+                    config_dict,
                     log_failure=False,
                 ),
             )
@@ -1013,6 +1036,20 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
                 inst=instance_name,
                 exc_type=type(exc).__name__,
                 exc=exc,
+            )
+            return _removal_failed_response(request, instance_name)
+        except Exception as exc:  # error boundary: nothing live has been changed yet
+            # The writer's unexpected-error branch always logs its own
+            # error-level line with the system reason (log_failure does not
+            # cover it), so the app/instance context is added at warning
+            # level to keep this failure at one error-level entry (D-07).
+            logger.warning(
+                "Settings file {path} was not saved while removing {app}/{inst}; "
+                "instance kept ({exc_type}; see the config write error logged just before this)",
+                path=config_path,
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(exc).__name__,
             )
             return _removal_failed_response(request, instance_name)
 
