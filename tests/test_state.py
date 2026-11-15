@@ -634,6 +634,52 @@ def test_state_unreadable_warning_names_reason(tmp_path: Path) -> None:
     assert "PermissionError" in captured
 
 
+@pytest.mark.parametrize("fail_at", ["open", "read"])
+def test_state_unreadable_warning_is_accurate_and_skips_set_aside(tmp_path: Path, fail_at: str) -> None:
+    """A state file that cannot be opened or read is reported as unreadable, not as
+    holding bad content, and no set-aside copy is attempted for it (WR-01).
+
+    Triggarr still starts with default state; the file itself is left untouched.
+    """
+    content = json.dumps({"radarr": {"SENTINEL-CONTENT-c41b": {}}, "sonarr": {}, "search_log": []})
+    state_file = tmp_path / "state.json"
+    state_file.write_text(content)
+
+    if fail_at == "open":
+        failure = patch("builtins.open", side_effect=PermissionError(13, "Permission denied"))
+    else:
+        failure = patch("triggarr.state.json.load", side_effect=OSError(5, "Input/output error"))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with failure:
+            state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+
+    lines = captured.splitlines()
+    assert len(lines) == 1
+    assert str(state_file) in lines[0]
+    assert "could not be opened or read" in lines[0]
+    assert "Permission denied" in lines[0] or "Input/output error" in lines[0]
+    assert "default" in lines[0]
+
+    # Not described as a file that held bad content, and no failed set-aside line.
+    assert "held" not in captured
+    assert "where a JSON object was expected" not in captured
+    assert "set aside" not in captured
+    assert "SENTINEL-CONTENT-c41b" not in captured
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["state.json"]
+    assert state_file.read_text() == content
+
+
 # ---------------------------------------------------------------------------
 # RES-02: last_success field tests
 # ---------------------------------------------------------------------------
