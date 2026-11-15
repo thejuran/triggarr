@@ -4,7 +4,7 @@ milestone: v2.13
 milestone_name: CI & Review Workflow
 status: "Awaiting next milestone -- v2.13 CI & Review Workflow closed 2026-11-14; v2.12.1 patch release published and deployed to production 2026-11-15"
 stopped_at: "v2.12.1 released and deployed 2026-11-15: PR #60 merged as 3cede40, tag v2.12.1, Release run 43758123019; production recreated on the published image (digest 9ef598e7...b59f27) and walked through with no defects. Next: /bm:new-milestone for Reliability"
-last_updated: "2026-11-15T20:39:55Z"
+last_updated: "2026-11-15T20:44:19Z"
 last_activity: "2026-11-15 -- v2.12.1 deployed to production and walked through: version badge, changelog, Refresh counts on both instances, History, Settings, logs, a graded cycle on each instance, logout; no defects"
 progress:
   total_phases: 6
@@ -143,7 +143,7 @@ Resume file: none (no milestone is active; start the next one with `/bm:new-mile
 ## Operator Next Steps
 
 - Start the next milestone, Reliability, with `/bm:new-milestone` (requirements and phase numbers are defined there). The held planning branch `planning/post-phase-86` is pushed with the next substantive push, not on its own (no docs-only PRs)
-- Start the next milestone, Reliability, with `/bm:new-milestone`. Production runs v2.12.1 (deployed and walked through 2026-11-15). Open owner question: the production compose service tracks `:main`, so any later recreate after a merge to main moves production off the released version; decide whether to point it at `:latest` or a version tag. This held branch (`planning/post-v2.12.1`) is pushed with the next substantive push
+- Start the next milestone, Reliability, with `/bm:new-milestone`. Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. This held branch (`planning/post-v2.12.1`) is pushed with the next substantive push
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
 - Release follow-ups from v2.12.1: remove the temporary `zlib1g` Dockerfile step once the base image carries the fix; update the `idna` text in docs/ci-negative-demonstrations.md; add the "superseded by PILOT-03" note to the blueprint -- see backlog/MAINTENANCE.md and Deferred Items
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)
