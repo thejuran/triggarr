@@ -23,7 +23,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - ✅ v2.11 Never-Searched-First Search Queue Priority -- Phase 76 (shipped 2026-06-04) -- [archive](milestones/v2.11-ROADMAP.md)
 - ✅ v2.12 Search Correctness & Trustworthy Feedback -- Phases 77-81 (shipped 2026-10-21) -- [archive](milestones/v2.12-ROADMAP.md)
 - ✅ v2.13 CI & Review Workflow -- Phases 82-86 (shipped 2026-11-14) -- [archive](milestones/v2.13-ROADMAP.md)
-- 🔨 v2.14 Reliability -- phases assigned when the roadmap is written (in progress: defining requirements)
+- 🔨 v2.14 Reliability -- Phases 87-92 (in progress)
 
 ## Phases
 
@@ -232,6 +232,83 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 
 </details>
 
+### 🔨 v2.14 Reliability (Phases 87-92, in progress)
+
+**Goal:** Keep scheduled searching and saved state correct through failed writes, ambiguous network responses, partial startup and shutdown.
+
+- [ ] **Phase 87: Settings & State-File Safety** - A failed settings write during instance removal never corrupts live state, and a non-object state file recovers instead of crashing
+- [ ] **Phase 88: Bounded Upgrade Backups & Telemetry Regression** - Pre-upgrade backups stay capped through a crash loop, and a permanent test pins the telemetry-variable fix
+- [ ] **Phase 89: Startup & Shutdown Resource Cleanup** - A partial startup closes what it opened, and one failed client close never blocks the rest from closing
+- [ ] **Phase 90: Removed-Instance Pending-Search Lifecycle** - A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name
+- [ ] **Phase 91: Search-Command Delivery Confidence** - A timed-out search command is never blindly resent, and an unconfirmed outcome is tracked honestly instead of silently passing or failing
+- [ ] **Phase 92: Built-Image Recovery Demonstration** - CI proves on the real built image that state-file corruption and repeated failed upgrades both recover correctly
+
+**Done when:** targeted write-failure, malformed-state, partial-startup, shutdown and response-loss regressions pass with the existing suite, and an isolated built-image smoke test demonstrates restart/recovery behavior. Residual delivery limitations are recorded explicitly; exactly-once behavior is not claimed without evidence.
+
+### Phase 87: Settings & State-File Safety
+**Goal**: Removing an instance can't corrupt live settings when the disk write fails, and a corrupted-but-valid state file recovers to defaults instead of crashing.
+**Depends on**: Nothing (first phase of this milestone)
+**Requirements**: CONSIST-01, CONSIST-02, CONSIST-03
+**Success Criteria** (what must be TRUE):
+  1. When removing an instance fails to save the settings file, the instance keeps its existing settings, schedule and live connection exactly as before the attempt.
+  2. When that save fails, the user sees an error stating the instance was not removed, with no internal detail exposed.
+  3. When the saved state file holds valid JSON that is not an object (`[]`, `42`, `null`), Triggarr starts with default state and logs a warning instead of crashing.
+**Plans**: TBD
+
+### Phase 88: Bounded Upgrade Backups & Telemetry Regression
+**Goal**: Pre-upgrade database backups stay bounded through a crash loop, and the telemetry environment variable can never again crash startup.
+**Depends on**: Nothing (independent of Phase 87; sequenced second per research as equally small, isolated work)
+**Requirements**: BKUP-01, BKUP-02, TELEM-01, TELEM-02
+**Success Criteria** (what must be TRUE):
+  1. After repeated failed upgrade attempts, only the original pre-upgrade backup plus at most the 3 most recent later backups remain.
+  2. Pruning never removes the original backup or the one just written, orders backups by the timestamp in their names, and a pruning failure is logged without blocking startup.
+  3. An automated test pins that Triggarr starts and serves requests with `FASTAPI_OTEL_AUTO_CONFIGURE` and an OTLP endpoint set in the environment.
+  4. The documentation states plainly that telemetry export is unsupported and nothing is exported.
+**Plans**: TBD
+
+### Phase 89: Startup & Shutdown Resource Cleanup
+**Goal**: A startup that fails partway closes everything it already opened, and a shutdown where one connection fails to close still closes the rest.
+**Depends on**: Nothing (self-contained; sequenced after Phases 87-88 so the reorder-don't-rebuild pattern is proven first)
+**Requirements**: LIFE-01, LIFE-02, LIFE-03
+**Success Criteria** (what must be TRUE):
+  1. When startup fails partway through, Triggarr closes the database and every connection already opened, and the process exits promptly rather than hanging.
+  2. When one *arr connection fails to close at shutdown, the remaining connections and the database still close, and the failure is logged sanitized.
+  3. After a failed startup, the scheduler is not left running.
+**Plans**: TBD
+
+### Phase 90: Removed-Instance Pending-Search Lifecycle
+**Goal**: A removed Sonarr instance's leftover pending searches get a defined, visible end state, and a reused instance name never inherits them.
+**Depends on**: Phase 87 (reuses the settings-write-ordering fix in the same instance-removal route)
+**Requirements**: RMINST-01, RMINST-02, RMINST-03, RMINST-04
+**Success Criteria** (what must be TRUE):
+  1. When a Sonarr instance is removed, its still-pending searches get the final outcome "Instance removed," stay visible in History, and read as distinct from "Legacy."
+  2. "Instance removed" searches no longer count toward the pending-search limit and are never checked or credited again.
+  3. A new instance added under the same name never selects, displays as its own in-progress work, or receives credit for the removed instance's searches.
+  4. Pending searches already orphaned by a removal before this release reach the same "Instance removed" outcome at the next upgrade or startup.
+**Plans**: TBD
+
+### Phase 91: Search-Command Delivery Confidence
+**Goal**: A search command is retried only when it's actually safe, and a command whose outcome is unknown is tracked honestly instead of counted as success or failure.
+**Depends on**: Nothing additional (self-contained; sequenced last among the fixes as the largest blast radius, per research)
+**Requirements**: DELIV-01, DELIV-02, DELIV-03, DELIV-04, DELIV-05, DELIV-06, DELIV-07
+**Success Criteria** (what must be TRUE):
+  1. A search command whose request may have reached the *arr app (the response timed out or the connection dropped after sending) is never automatically resent; a command that provably never left Triggarr is still retried, and read requests keep their existing retry.
+  2. A search command with unknown delivery is recorded as "unconfirmed" — distinct from accepted and failed — in the cycle result and in search history.
+  3. Unconfirmed commands never grade a cycle Failed and never add to the consecutive-failure counter; a cycle containing any unconfirmed command grades Partial at worst.
+  4. The instance card shows how many commands in the last cycle were unconfirmed.
+  5. An item whose search command was unconfirmed counts as attempted for queue ordering, and the documentation states plainly that a duplicate search is made unlikely (not impossible) and that an unconfirmed command may or may not have run.
+**Plans**: TBD
+
+### Phase 92: Built-Image Recovery Demonstration
+**Goal**: CI proves, on the real built image, that Triggarr actually recovers from a corrupted state file and that repeated failed upgrades don't pile up backups.
+**Depends on**: Phases 87, 88, 89, 90, 91 (validates the real fixes; written last so it demonstrates behavior rather than anticipating it)
+**Requirements**: SMOKE-01, SMOKE-02, SMOKE-03
+**Success Criteria** (what must be TRUE):
+  1. The built-image CI check restarts the container with a non-object state file in place and confirms it comes back healthy.
+  2. The built-image CI check simulates repeated failed upgrade attempts and confirms a bounded number of backups remain, with the original still present.
+  3. Each recovery demonstration injects a real fault and fails on a build that lacks the corresponding fix.
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -252,20 +329,12 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 | 85. Follow-on CI Improvements & Acceptance Usability | 19/19 | Complete (merged PR #36; Codex incomplete for size, owner-approved vibe-check fallback; UAT P5 at next release) | 2026-10-28 |
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
-
-## Current milestone: v2.14 Reliability (in progress)
-
-Started 2026-11-15; requirements and phases are being defined. The scope below is the agreed starting point, plus three backlog fold-ins recorded in PROJECT.md.
-
-**Goal:** Keep scheduled searching and saved state correct through failed writes, ambiguous network responses, partial startup and shutdown.
-
-- [ ] **State/config consistency (999.9):** write validated replacement settings before removing an instance from live state. Failed writes must preserve settings, jobs and clients. Recover safely from non-object state JSON (`[]`, `42`, `null`).
-- [ ] **Resource lifecycle (999.13, narrowed):** close resources opened during failed startup; a client-close failure must not prevent other clients or the database from closing. Correct cursor lifetime issues locally if confirmed. No blanket I/O/offloading rewrite.
-- [ ] **Search-command delivery (POST-retry semantics):** prevent blind retries from duplicating an already-accepted search after a response timeout. Distinguish confirmed acceptance from unknown delivery and retain safe read retries; no generic retry framework.
-
-**Done when:** targeted write-failure, malformed-state, partial-startup, shutdown and response-loss regressions pass with the existing suite; an isolated built-image smoke test demonstrates restart/recovery behavior. Record residual delivery limitations explicitly rather than claiming exactly-once behavior without evidence.
-
-**Sequence:** follows CI & Review Workflow. Check current implementation before planning each carried-forward fix. Release version and phase numbers are assigned during milestone planning; no implementation is started by this organization.
+| 87. Settings & State-File Safety | TBD | Not started | - |
+| 88. Bounded Upgrade Backups & Telemetry Regression | TBD | Not started | - |
+| 89. Startup & Shutdown Resource Cleanup | TBD | Not started | - |
+| 90. Removed-Instance Pending-Search Lifecycle | TBD | Not started | - |
+| 91. Search-Command Delivery Confidence | TBD | Not started | - |
+| 92. Built-Image Recovery Demonstration | TBD | Not started | - |
 
 ## Next milestone: Authentication Safety & Responsiveness
 

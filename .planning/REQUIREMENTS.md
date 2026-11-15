@@ -88,16 +88,40 @@ Deferred. Tracked but not in the current roadmap.
 
 ## Traceability
 
-Which phases cover which requirements. Filled in during roadmap creation.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| CONSIST-01 | Phase 87 | Pending |
+| CONSIST-02 | Phase 87 | Pending |
+| CONSIST-03 | Phase 87 | Pending |
+| BKUP-01 | Phase 88 | Pending |
+| BKUP-02 | Phase 88 | Pending |
+| TELEM-01 | Phase 88 | Pending |
+| TELEM-02 | Phase 88 | Pending |
+| LIFE-01 | Phase 89 | Pending |
+| LIFE-02 | Phase 89 | Pending |
+| LIFE-03 | Phase 89 | Pending |
+| RMINST-01 | Phase 90 | Pending |
+| RMINST-02 | Phase 90 | Pending |
+| RMINST-03 | Phase 90 | Pending |
+| RMINST-04 | Phase 90 | Pending |
+| DELIV-01 | Phase 91 | Pending |
+| DELIV-02 | Phase 91 | Pending |
+| DELIV-03 | Phase 91 | Pending |
+| DELIV-04 | Phase 91 | Pending |
+| DELIV-05 | Phase 91 | Pending |
+| DELIV-06 | Phase 91 | Pending |
+| DELIV-07 | Phase 91 | Pending |
+| SMOKE-01 | Phase 92 | Pending |
+| SMOKE-02 | Phase 92 | Pending |
+| SMOKE-03 | Phase 92 | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24 ⚠️ (roadmap not yet written)
+- Mapped to phases: 24
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-11-15*
-*Last updated: 2026-11-15 after initial definition*
+*Last updated: 2026-11-15 after v2.14 roadmap creation (Phases 87-92, 100% coverage)*
