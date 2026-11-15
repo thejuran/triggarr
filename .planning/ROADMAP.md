@@ -260,7 +260,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 - [x] 87-03-PLAN.md — a state file whose top level is not an object starts with default state, logs a warning and is set aside as one copy (CONSIST-03)
 
 **Wave 2** *(blocked on Wave 1: 87-01)*
-- [ ] 87-02-PLAN.md — the removal error shows on the instance row without a page reload; audit and follow-up records in the maintenance backlog (CONSIST-02)
+- [x] 87-02-PLAN.md — the removal error shows on the instance row without a page reload; audit and follow-up records in the maintenance backlog (CONSIST-02)
 
 ### Phase 88: Bounded Upgrade Backups & Telemetry Regression
 **Goal**: Pre-upgrade database backups stay bounded through a crash loop, and the telemetry environment variable can never again crash startup.

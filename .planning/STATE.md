@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "executing -- Phase 87 (3 plans in 2 waves), 2 of 3 plans executed"
-stopped_at: "Phase 87 wave 1 (87-01, 87-03) executed; wave 2 (87-02) running"
-last_updated: "2026-11-15T23:15:40.000Z"
-last_activity: "2026-11-15 -- Phase 87 wave 1 executed (87-01, 87-03)"
+status: "executing -- Phase 87, 3 of 3 plans executed; phase-end review and verification in progress (not pushed)"
+stopped_at: "Phase 87 plans executed (87-01, 87-02, 87-03); phase-end code review and verification next"
+last_updated: "2026-11-15T23:25:42.000Z"
+last_activity: "2026-11-15 -- Phase 87 all 3 plans executed"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 87 (Settings & State-File Safety) — EXECUTING
-Plan: 2 of 3 executed (87-01 and 87-03 in wave 1; 87-02 in wave 2)
-Status: Phase 87 executing (wave 2 of 2)
-Last activity: 2026-11-15 — Phase 87 wave 1 executed (87-01, 87-03)
+Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
+Plan: 3 of 3 executed
+Status: Phase 87 plans executed; phase-end review and verification in progress
+Last activity: 2026-11-15 — Phase 87 all 3 plans executed
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
