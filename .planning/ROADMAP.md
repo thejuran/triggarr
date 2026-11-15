@@ -256,8 +256,8 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
 **Plans**: 3 plans in 2 waves
 
 **Wave 1**
-- [ ] 87-01-PLAN.md — instance removal saves the settings file before changing anything live; fixed-wording failure response and a single log entry (CONSIST-01, CONSIST-02)
-- [ ] 87-03-PLAN.md — a state file whose top level is not an object starts with default state, logs a warning and is set aside as one copy (CONSIST-03)
+- [x] 87-01-PLAN.md — instance removal saves the settings file before changing anything live; fixed-wording failure response and a single log entry (CONSIST-01, CONSIST-02)
+- [x] 87-03-PLAN.md — a state file whose top level is not an object starts with default state, logs a warning and is set aside as one copy (CONSIST-03)
 
 **Wave 2** *(blocked on Wave 1: 87-01)*
 - [ ] 87-02-PLAN.md — the removal error shows on the instance row without a page reload; audit and follow-up records in the maintenance backlog (CONSIST-02)
