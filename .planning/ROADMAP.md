@@ -23,6 +23,7 @@ Triggarr is a single-process automation daemon that cycles through Radarr, Sonar
 - âœ… v2.11 Never-Searched-First Search Queue Priority -- Phase 76 (shipped 2026-06-04) -- [archive](milestones/v2.11-ROADMAP.md)
 - âœ… v2.12 Search Correctness & Trustworthy Feedback -- Phases 77-81 (shipped 2026-10-21) -- [archive](milestones/v2.12-ROADMAP.md)
 - âœ… v2.13 CI & Review Workflow -- Phases 82-86 (shipped 2026-11-14) -- [archive](milestones/v2.13-ROADMAP.md)
+- ðŸ”¨ v2.14 Reliability -- phases assigned when the roadmap is written (in progress: defining requirements)
 
 ## Phases
 
@@ -252,7 +253,9 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 | 85.1. Isolated Codex Review for Untrusted PRs (INSERTED) | 10/10 | Complete as an owner exception (PR #48; live run on PR #52 INCOMPLETE: default Codex model is code-mode-only; vibe-check fallback kept) | 2026-10-30 |
 | 86. Pilot & Reference Record | 10/10 | Complete (merged PR #59; PILOT-01..04 satisfied; routine vibe-check retired in favor of a high-risk-only trigger, FUT-03 not chosen) | 2026-11-14 |
 
-## Next milestone: Reliability
+## Current milestone: v2.14 Reliability (in progress)
+
+Started 2026-11-15; requirements and phases are being defined. The scope below is the agreed starting point, plus three backlog fold-ins recorded in PROJECT.md.
 
 **Goal:** Keep scheduled searching and saved state correct through failed writes, ambiguous network responses, partial startup and shutdown.
 
@@ -264,7 +267,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 
 **Sequence:** follows CI & Review Workflow. Check current implementation before planning each carried-forward fix. Release version and phase numbers are assigned during milestone planning; no implementation is started by this organization.
 
-## Following milestone: Authentication Safety & Responsiveness
+## Next milestone: Authentication Safety & Responsiveness
 
 **Goal:** Keep authentication responsive and close demonstrated boundary defects without redesigning the authentication system.
 
@@ -276,7 +279,7 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) Â
 
 **Sequence:** follows Reliability; release version and phase numbers assigned during planning.
 
-## Later milestone: UI Redesign
+## Following milestone: UI Redesign
 
 **Goal:** Make every screen answer "is it working, and what's next?" at a glance. Do this by removing repeated and unexplained labels, making status and actions clearer, and making the app usable at phone width. Keep the current dark look, the htmx + Tailwind v4 stack and all existing behavior.
 

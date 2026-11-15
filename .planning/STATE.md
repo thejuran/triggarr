@@ -1,27 +1,27 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.13
-milestone_name: CI & Review Workflow
-status: "Awaiting next milestone -- v2.13 CI & Review Workflow closed 2026-11-14; v2.12.1 patch release published and deployed to production 2026-11-15"
-stopped_at: "v2.12.1 released and deployed 2026-11-15: PR #60 merged as 3cede40, tag v2.12.1, Release run 43758123019; production recreated on the published image (digest 9ef598e7...b59f27) and walked through with no defects. Next: /bm:new-milestone for Reliability"
-last_updated: "2026-11-15T20:44:19Z"
-last_activity: "2026-11-15 -- v2.12.1 deployed to production and walked through: version badge, changelog, Refresh counts on both instances, History, Settings, logs, a graded cycle on each instance, logout; no defects"
+milestone: v2.14
+milestone_name: Reliability
+status: "planning -- v2.14 Reliability started 2026-11-15; defining requirements (no phases yet)"
+stopped_at: "Milestone v2.14 Reliability started 2026-11-15: scope confirmed by the owner (three agreed ROADMAP items plus three backlog fold-ins); requirements and roadmap not yet written"
+last_updated: "2026-11-15T20:50:34Z"
+last_activity: "2026-11-15 -- milestone v2.14 Reliability started; defining requirements"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 65
-  completed_plans: 65
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-14)
+See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Between milestones. v2.12.1 is published and running in production. Next milestone is Reliability (not started; `/bm:new-milestone`)
+**Current focus:** v2.14 Reliability, defining requirements. v2.12.1 is published and running in production.
 
 > **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
@@ -29,10 +29,12 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 
 ## Current Position
 
-Phase: 86 (Pilot & Reference Record) — COMPLETE (merged, PR #59 as `e5e1584`); last phase of v2.13
-Plan: 10 of 10 finished
-Status: Awaiting next milestone. v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release.
-Last activity: 2026-11-15 -- v2.12.1 deployed to production and walked through with no defects; record held on the local branch `planning/post-v2.12.1`.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-11-15 — Milestone v2.14 started
+
+Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
 ### v2.13 milestone shape (closed 2026-11-14; kept as the record)
 
@@ -64,6 +66,7 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 
 ### Decisions
 
+- 2026-11-15 (v2.14 start, owner): Reliability scope confirmed as agreed in ROADMAP.md (state/config consistency 999.9, narrowed resource lifecycle 999.13, search-command delivery). Folded in from the backlog: bounding pre-upgrade database backups, a lifecycle for pending searches of a removed Sonarr instance (bugs-005), and SA-12 in reduced form (regression check plus an "unsupported" note; the 2026-11-14 correction showed startup is not affected). The dashboard card re-render/click item was not folded in. Milestone label v2.14, planned release v2.14.0; no v2.13.0 release will exist.
 - 2026-10-21 (v2.13 roadmap amendment, owner-authorized for planning only): added the docs/planning review-classification policy. REVIEW-07/08 (Phase 83) define content-based classification (ordinary docs/planning gets a focused consistency review; agent instructions, workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and technical review; mixed PRs follow their consequential changes; classification recorded against the exact head) and replace blanket "every PR" wording, keeping Codex paired with every BM code-review run. ACCEPT-03 (Phase 85) designs and verifies GitHub-check handling across ordinary-docs, sensitive-docs, mixed and misclassification cases without ad hoc check disabling. Existing protections stay until then; exact-commit owner acceptance stays for every PR. No live settings changed. Now 31 requirements.
 - 2026-10-21 (v2.13 roadmap): 28 requirements mapped to 5 phases (82-86) with 100% coverage, no orphans. REVIEW-01 (BM update) folded into the start of Phase 83 rather than a standalone phase, per the granularity rule against single-requirement phases, while keeping its owner-approval gate as that phase's first explicit success criterion. PLANCHK (84) kept fully independent per owner instruction. CIMAINT + ACCEPT grouped into Phase 85 since both extend the Phase 82 CI baseline and CIMAINT-06 feeds Phase 83's risk-based review.
 - 2026-10-21 (v2.12 closeout): the owner confirmed the review blueprint and the CI reference-baseline plan as written; they form the CI & Review Workflow milestone. No BM settings, CLAUDE.md, CI or acceptance changes until that milestone implements them.
@@ -75,7 +78,7 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 
 ### Pending Todos
 
-- Deferred follow-up: bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). Not Phase 81 scope.
+- Bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). In v2.14 Reliability scope since 2026-11-15.
 
 ### Roadmap Evolution
 
@@ -94,10 +97,9 @@ For v2.13: Phase 83 is the shared substrate for Phase 86 (the paired review work
 
 ### Future Milestones
 
-Organized 2026-10-18 following SeedSyncarr's structure; CI & Review Workflow became the active milestone (v2.13) on 2026-10-21. ROADMAP.md defines two further future milestones below; release versions and phase numbers will be assigned during their planning.
+Organized 2026-10-18 following SeedSyncarr's structure; CI & Review Workflow became the active milestone (v2.13) on 2026-10-21. Reliability became the active milestone (v2.14) on 2026-11-15. ROADMAP.md defines the further future milestones; release versions and phase numbers will be assigned during their planning.
 
-1. **Reliability:** state/config recovery (999.9), narrowed startup/shutdown cleanup (999.13), and ambiguous POST delivery/retry semantics.
-2. **Authentication Safety & Responsiveness:** bcrypt offloading (999.4), evidence-backed auth-boundary review (999.10), and compatibility checks for changed paths.
+1. **Authentication Safety & Responsiveness:** bcrypt offloading (999.4), evidence-backed auth-boundary review (999.10), and compatibility checks for changed paths.
 
 Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal are in [maintenance](backlog/MAINTENANCE.md). [Earlier backlog and closed decisions](backlog/archive/2026-10-18/README.md) are archived rather than carried forward as pending tasks.
 
@@ -136,15 +138,15 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 ## Session Continuity
 
-Last session: 2026-11-15T20:39:55Z
-Stopped at: v2.12.1 published and deployed to production; walkthrough passed
-Resume file: none (no milestone is active; start the next one with `/bm:new-milestone`)
+Last session: 2026-11-15T20:55:00Z
+Stopped at: milestone v2.14 Reliability started; defining requirements
+Resume file: none
 
 ## Operator Next Steps
 
-- Start the next milestone, Reliability, with `/bm:new-milestone` (requirements and phase numbers are defined there). The held planning branch `planning/post-phase-86` is pushed with the next substantive push, not on its own (no docs-only PRs)
-- Start the next milestone, Reliability, with `/bm:new-milestone`. Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. This held branch (`planning/post-v2.12.1`) is pushed with the next substantive push
-- Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
+- Define v2.14 Reliability requirements and the roadmap (in progress, `/bm:new-milestone`); then discuss and plan the first phase
+- Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. The held branch `planning/post-v2.12.1` is pushed with the next substantive push, not on its own (no docs-only PRs)
+- Decide BM SA-01 (pin the uv version CI installs) -- see backlog/MAINTENANCE.md. SA-12 is in v2.14 scope in reduced form (startup is not affected; regression check plus an "unsupported" note)
 - Release follow-ups from v2.12.1: remove the temporary `zlib1g` Dockerfile step once the base image carries the fix; update the `idna` text in docs/ci-negative-demonstrations.md; add the "superseded by PILOT-03" note to the blueprint -- see backlog/MAINTENANCE.md and Deferred Items
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)
 - `.planning/` is excluded locally (`.git/info/exclude`): tracked planning files are carried by Git, new ones need `git add -f`
