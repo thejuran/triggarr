@@ -207,6 +207,40 @@ def _merge_defaults(loaded: dict) -> TriggarrState:
     return defaults
 
 
+def _describe_json_kind(data: object) -> str:
+    """Describe a parsed JSON value's kind in plain words, for warnings (D-10).
+
+    Never includes the value itself -- only its type.
+    """
+    if isinstance(data, bool):
+        return "a true/false value"
+    if isinstance(data, (int, float)):
+        return "a number"
+    if isinstance(data, str):
+        return "a string"
+    if isinstance(data, list):
+        return "a list"
+    if data is None:
+        return "null"
+    return "an unexpected value"
+
+
+def _recover_from_bad_state_file(state_path: Path, found: str) -> TriggarrState:
+    """Reset to default state after a broken state file, logging one D-10 warning.
+
+    Shared by both broken-file cases (D-09): a non-object JSON root and content
+    that could not be parsed as JSON at all. Never reads or logs the file's
+    contents -- only the path and a description of what was found.
+    """
+    logger.warning(
+        "State file {path} held {found} where a JSON object was expected; queue progress "
+        "and last-run times were reset to defaults (search history is unaffected).",
+        path=state_path,
+        found=found,
+    )
+    return _default_state()
+
+
 def load_state(state_path: Path | None = None) -> TriggarrState:
     """Load state from a JSON file.
 
@@ -231,12 +265,12 @@ def load_state(state_path: Path | None = None) -> TriggarrState:
         # type(exc).__name__ + str(exc) names why loading failed (e.g. parser reason
         # and position for JSONDecodeError) without ever touching exc.doc, which holds
         # the raw file contents and must never be logged.
-        logger.warning(
-            "Corrupt state file at {path} -- resetting to defaults: {exc}",
-            path=resolved_state_path,
-            exc=f"{type(exc).__name__}: {exc}",
+        return _recover_from_bad_state_file(
+            resolved_state_path, f"content that could not be read as JSON ({type(exc).__name__}: {exc})"
         )
-        return _default_state()
+
+    if not isinstance(data, dict):
+        return _recover_from_bad_state_file(resolved_state_path, _describe_json_kind(data))
 
     if _is_v22_state_format(data):
         logger.info("Migrating v2.2 state to v2.3 per-instance format")
