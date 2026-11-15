@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "executing -- Phase 87, 3 of 3 plans executed; phase-end review and verification in progress (not pushed)"
-stopped_at: "Phase 87 plans executed (87-01, 87-02, 87-03); phase-end code review and verification next"
-last_updated: "2026-11-15T23:25:42.000Z"
-last_activity: "2026-11-15 -- Phase 87 all 3 plans executed"
+status: "in review -- Phase 87 executed (3 of 3 plans); BM review 2 warnings, Codex no findings, 3 browser checks pending; owner decision pending (not pushed)"
+stopped_at: "Phase 87 executed and reviewed locally at 6262dd14 (BM: 0 critical, 2 warnings; Codex: no findings); verification human_needed (3 browser checks in 87-HUMAN-UAT.md); owner to rule on WR-01/WR-02 before push"
+last_updated: "2026-11-15T23:42:31.000Z"
+last_activity: "2026-11-15 -- Phase 87 reviewed (BM + Codex) and verified (human_needed)"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
 Plan: 3 of 3 executed
-Status: Phase 87 plans executed; phase-end review and verification in progress
-Last activity: 2026-11-15 — Phase 87 all 3 plans executed
+Status: Phase 87 executed, in review — owner decision pending on review warnings; 3 browser checks pending
+Last activity: 2026-11-15 — Phase 87 reviewed (BM + Codex) and verified (human_needed)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
