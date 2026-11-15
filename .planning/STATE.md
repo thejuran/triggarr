@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.13
 milestone_name: CI & Review Workflow
-status: "Awaiting next milestone -- v2.13 CI & Review Workflow closed 2026-11-14 (audit: tech debt accepted by the owner, no blockers); not a versioned release, production stays on v2.12.0"
-stopped_at: "v2.13 closed and archived 2026-11-14. v2.12.1 patch release prepared on the local branch release-v2.12.1 (Dependabot #58 rolled in, version 2.12.1, CHANGELOG entry), not pushed, no tag; local BM and Codex reviews run per head. Next: owner go-ahead to push and open the release PR, then acceptance, merge, and the v2.12.1 tag on the main merge commit"
-last_updated: "2026-11-14T21:02:02Z"
-last_activity: "2026-11-14 -- v2.13 milestone audit and closeout; v2.12.1 patch release prepared locally (owner decision: ship the unreleased fixes as a patch release, not as v2.13.0)"
+status: "Awaiting next milestone -- v2.13 CI & Review Workflow closed 2026-11-14; v2.12.1 patch release published 2026-11-15 (tag on 3cede40); production not yet redeployed"
+stopped_at: "v2.12.1 released 2026-11-15: PR #60 accepted (run 43643665937 attempt 2) and merged as 3cede40, main CI passing, tag v2.12.1 pushed, tag-triggered Release run 43758123019 succeeded, image and GitHub release published. Next: redeploy production to v2.12.1 and walk it through, then /bm:new-milestone for Reliability"
+last_updated: "2026-11-15T20:29:17Z"
+last_activity: "2026-11-15 -- v2.12.1 patch release: PR #60 accepted and merged on the owner's instruction, tagged and published; release record written on the held local branch planning/post-v2.12.1"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -21,9 +21,9 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-14)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Between milestones. v2.13 CI & Review Workflow closed 2026-11-14; next milestone is Reliability (not started; `/bm:new-milestone`)
+**Current focus:** Between milestones. v2.12.1 is published; production redeploy and walkthrough are outstanding. Next milestone is Reliability (not started; `/bm:new-milestone`)
 
-> **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 closed as a milestone on 2026-11-14 without a versioned release; main carries unreleased changes. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
+> **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production still runs v2.12.0 until it is redeployed. v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
 **Published-history note (2026-10-21):** before the first push, this unpushed branch's history was rewritten to remove private infrastructure and credential details from planning text and commit messages. Code, tests and config are byte-identical in every commit (checked commit by commit). Planning docs still cite pre-rewrite hashes; map them as follows: `b35470b` (sandbox build, revision label on `triggarr:phase81-b35470b66f`) → `69f5733`; `a2b8c1c` (full deep review) → `1915a7d`; `d14b71e` → `06519aa`; `9a1d423` (frozen deep-review commit) → `3e19e48`; `363060e` → `c2fb07a`; `b498475` → `91b7992`. The review and live evidence apply unchanged, because the code trees are identical.
 
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 Phase: 86 (Pilot & Reference Record) — COMPLETE (merged, PR #59 as `e5e1584`); last phase of v2.13
 Plan: 10 of 10 finished
 Status: Awaiting next milestone. v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release.
-Last activity: 2026-11-14 -- milestone audit and closeout on the held local branch `planning/post-phase-86`.
+Last activity: 2026-11-15 -- v2.12.1 patch release published (PR #60, tag on `3cede40`); record held on the local branch `planning/post-v2.12.1`.
 
 ### v2.13 milestone shape (closed 2026-11-14; kept as the record)
 
@@ -128,23 +128,23 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 | Kind | Item | Status |
 |------|------|--------|
-| uat | Phase 85 UAT item 5: the next release's CHANGELOG states that Python wheel/sdist are no longer attached as release assets (D-14) | Deferred to the next release |
+| uat | Phase 85 UAT item 5: the next release's CHANGELOG states that Python wheel/sdist are no longer attached as release assets (D-14) | Closed 2026-11-15 by v2.12.1 |
 | follow-up | Add a "superseded by PILOT-03" note to docs/bm-greptile-codex-blueprint.md | Deferred (rides with the next substantive PR) |
 | follow-up | Draft VALIDATION.md files for Phases 83, 85 and 86 (nyquist_compliant false) | Deferred (owner has not asked for them) |
-| follow-up | Tag-triggered publication is unverified until the next authorized release (Phase 82 waiver) | Deferred to the next release |
+| follow-up | Tag-triggered publication is unverified until the next authorized release (Phase 82 waiver) | Closed 2026-11-15: tag-triggered Release run 43758123019 succeeded for v2.12.1 |
 | follow-up | Isolated Codex review for bot/fork PRs is incomplete on current Codex models (Phase 85.1 exception); vibe-check fallback stays | Deferred (reopening tracked in backlog/MAINTENANCE.md) |
 
 ## Session Continuity
 
-Last session: 2026-11-14T21:02:02Z
-Stopped at: v2.13 closed; v2.12.1 patch release prepared locally on `release-v2.12.1` (not pushed)
+Last session: 2026-11-15T20:29:17Z
+Stopped at: v2.12.1 published (PR #60 merged as `3cede40`, tag `v2.12.1`, Release run 43758123019); production not yet redeployed
 Resume file: none (no milestone is active; start the next one with `/bm:new-milestone`)
 
 ## Operator Next Steps
 
 - Start the next milestone, Reliability, with `/bm:new-milestone` (requirements and phase numbers are defined there). The held planning branch `planning/post-phase-86` is pushed with the next substantive push, not on its own (no docs-only PRs)
-- v2.12.1 patch release (owner decision 2026-11-14): local branch `release-v2.12.1` carries Dependabot #58, the version bump and the CHANGELOG entry (which states that wheel/sdist are no longer release assets, closing Phase 85 UAT item 5 once released). Remaining: owner go-ahead to push and open the PR, CI, exact-commit owner acceptance, merge, then the `v2.12.1` tag on the main merge commit that CI ran on (first tag-triggered run of the reworked release pipeline), release text shown to the owner before publishing, deploy and walkthrough
+- Redeploy production to v2.12.1 (`ghcr.io/thejuran/triggarr:v2.12.1`, digest `sha256:9ef598e7...b59f27`) and walk it through: the image is published but production still runs v2.12.0. The release record for PR #60 is in 86-REVIEW-EVIDENCE.md; this held branch (`planning/post-v2.12.1`) is pushed with the next substantive push
 - Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
-- Next release (version decided when it is cut): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule; add an unreleased CHANGELOG section covering the two security fixes from PR #57 (`opentelemetry-api` 1.45.2, `zlib1g` upgrade in the image)
+- Release follow-ups from v2.12.1: remove the temporary `zlib1g` Dockerfile step once the base image carries the fix; update the `idna` text in docs/ci-negative-demonstrations.md; add the "superseded by PILOT-03" note to the blueprint -- see backlog/MAINTENANCE.md and Deferred Items
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)
 - `.planning/` is excluded locally (`.git/info/exclude`): tracked planning files are carried by Git, new ones need `git add -f`

@@ -10,7 +10,7 @@ Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-
 
 ## Current State
 
-v2.13 CI & Review Workflow closed 2026-11-14. It is a CI and review-process milestone and was not cut as a versioned release: the latest release is v2.12.0 (2026-10-21), and production runs v2.12.0 (schema v10). Main carries unreleased changes since v2.12.0 (two small user-facing fixes, dependency and image security updates, lockfile-installed image dependencies). 3282 Python tests and 613 review/CI script tests passing, ruff clean. 87 phases, 278 plans completed across 19 milestones.
+v2.13 CI & Review Workflow closed 2026-11-14. It is a CI and review-process milestone with no v2.13.0 release; its user-facing results shipped in the v2.12.1 patch release on 2026-11-15 (tag on `3cede40`): security updates (`opentelemetry-api` 1.45.2, `zlib1g`), two small fixes, and an image installed from the lockfile. The latest release is v2.12.1; production still runs v2.12.0 (schema v10) until it is redeployed. 3282 Python tests and 613 review/CI script tests passing, ruff clean. 87 phases, 278 plans completed across 19 milestones.
 
 **Latest milestone delivered (v2.13):**
 - CI tests what we ship: the exact image to be published is started through its real entrypoint, a browser regression suite covers the connection-pill request loop and setup/login, and a release tag must agree with the package and image version. One required `CI ready` gate; a skipped job cannot pass it.
@@ -71,7 +71,7 @@ Agreed in ROADMAP.md; versions and phase numbers are assigned at planning. No mi
 - **Authentication Safety & Responsiveness:** bcrypt off the event loop (999.4), evidence-backed auth-boundary review (999.10).
 - **UI Redesign:** clearer status and actions on every screen and a phone layout, per the mockups in `docs/design/ui-redesign`.
 
-Open before the next release (not milestone scope): the CHANGELOG must state that wheel/sdist are no longer release assets and cover the unreleased security fixes; open Dependabot PRs are rolled in per the release rule.
+v2.12.1 (2026-11-15) closed the pre-release items: the CHANGELOG states that wheel/sdist are no longer release assets and covers the security fixes, and Dependabot #58 was rolled in. Outstanding: redeploy production to v2.12.1 and walk it through.
 
 <details>
 <summary>Shipped milestone: v2.12 Search Correctness & Trustworthy Feedback (2026-10-21)</summary>
@@ -299,7 +299,7 @@ Open before the next release (not milestone scope): the CHANGELOG must state tha
 
 ## Context
 
-Closed v2.13 (CI & Review Workflow) on 2026-11-14; latest release is still v2.12.0 (2026-10-21). 3282 Python tests and 613 review/CI script tests passing. 87 phases, 278 plans across 19 milestones. v2.13 added no runtime dependency (dev-only: pytest-cov, Playwright); the image now installs from `uv.lock` with hash checks. Known debt: a temporary `zlib1g` upgrade step in the Dockerfile to remove once the base image carries the fix; tag-triggered publication unverified until the next release. v2.12 added one runtime dependency, `tomlkit` (comment-preserving stable-ID backfill), and database schema v10 (forward-only; see docs/operations/upgrade-sonarr-attribution-v10.md). Earlier: v2.8 shipped 2026-06-01 with 961 tests.
+Closed v2.13 (CI & Review Workflow) on 2026-11-14; latest release is v2.12.1 (2026-11-15), the first release built from the lockfile and the first tag-triggered publication through the reworked pipeline. 3282 Python tests and 613 review/CI script tests passing. 87 phases, 278 plans across 19 milestones. v2.13 added no runtime dependency (dev-only: pytest-cov, Playwright); the image now installs from `uv.lock` with hash checks. Known debt: a temporary `zlib1g` upgrade step in the Dockerfile to remove once the base image carries the fix. The lockfile's runtime libraries were set to the versions the unpinned v2.12.0 image had shipped, so v2.12.1 moved nothing backwards. v2.12 added one runtime dependency, `tomlkit` (comment-preserving stable-ID backfill), and database schema v10 (forward-only; see docs/operations/upgrade-sonarr-attribution-v10.md). Earlier: v2.8 shipped 2026-06-01 with 961 tests.
 Tech stack: Python 3.13, FastAPI, httpx, Pydantic, pydantic-settings, APScheduler, aiosqlite, Jinja2, htmx, Tailwind CSS v4, loguru, ruff, bcrypt, itsdangerous, Phosphor Icons (vendored regular weight).
 Docker: multi-stage build with pytailwindcss builder, python:3.13-slim production, PUID/PGID entrypoint.
 CI/CD: GitHub Actions (pytest, ruff, Docker build validation) with uv caching + GHCR release workflow with BuildKit cache. `:main`/`:dev` tags on main push, `:latest` + version tag on release.
@@ -373,7 +373,7 @@ Known tech debt (v2.12 deferrals in .planning/backlog/MAINTENANCE.md: shared pen
 | One-time attribution cutover; pre-fix pending Sonarr rows frozen as Legacy, old totals kept and labeled, not recomputed (v2.12) | Old attributions can't be corrected retroactively; honesty over rewriting history | ✓ Good — v2.12 |
 | Schema v10 is forward-only; recover by deploying a newer build (v2.12) | An older image against v10 double-counts stats; emergency restore documented, not rehearsed | — Pending (never exercised) |
 | Sonarr v5 identity via per-check episode lookups; held rows never terminal while an identity is unverified (v2.12) | v5 history omits season; never guess, never credit on missing identity, keep verified progress | ✓ Good — v2.12 |
-| CI publishes the exact image it tested, never a rebuild; one required aggregate gate (v2.13) | The published artifact must be the one that passed; a skipped job must not pass the gate | ✓ Good — v2.13; tag-triggered publication unverified until the next release |
+| CI publishes the exact image it tested, never a rebuild; one required aggregate gate (v2.13) | The published artifact must be the one that passed; a skipped job must not pass the gate | ✓ Good — v2.13; tag-triggered publication verified by v2.12.1 (2026-11-15) |
 | Pair every BM code review with an independent read-only Codex pass on the same commit; incomplete is never clean (v2.13) | Independent lanes caught defects the native review missed in v2.12 | ✓ Good — v2.13; Codex cannot complete on very large diffs, fallback needed twice |
 | Review depth by content classification; no docs fast path in CI (v2.13) | Docs-only changes need less review, but agent instructions and workflows are control changes | ✓ Good — v2.13 |
 | End routine vibe-check; require it at high risk only, started automatically on trusted heads (PILOT-03, 2026-11-14) | The retirement bar was fixed before results: across the pilot, vibe-check found no proven defect that BM + Codex missed | — Pending (revisit after more PRs) |
@@ -381,7 +381,7 @@ Known tech debt (v2.12 deferrals in .planning/backlog/MAINTENANCE.md: shared pen
 | Greptile optional; free tier only (2026-10-22) | Cost; Codex covers safeguard inspection | ✓ Good |
 | Keep the vibe-check fallback for bot/fork PRs instead of pinning a Codex model (Phase 85.1 exception, 2026-10-30) | The isolated path is incomplete on current default Codex models; a model pin was not wanted | ⚠️ Revisit when Codex models change |
 | Adopt the Codex-routed plan checker for this repository despite an invalid blind comparison (Phase 84, owner override) | Routing and fail-closed behavior were proven; the comparison input was post-review | — Pending |
-| Python wheel/sdist no longer attached as release assets (D-14, v2.13) | Owner decision 2026-10-26: releases ship the Docker image only | — Pending (CHANGELOG note due at the next release) |
+| Python wheel/sdist no longer attached as release assets (D-14, v2.13) | Owner decision 2026-10-26: releases ship the Docker image only | ✓ Good — stated in the v2.12.1 CHANGELOG; the release has no assets |
 
 ## Evolution
 
@@ -401,4 +401,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-14 after v2.13 milestone*
+*Last updated: 2026-11-15 after the v2.12.1 patch release*

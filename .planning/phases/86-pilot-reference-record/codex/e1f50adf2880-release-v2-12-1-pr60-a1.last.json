@@ -1,0 +1,105 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "e1f50adf28802631854c4432d9754e79145b7b6d",
+  "inspected_base_sha": "e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+  "pr_url": "https://github.com/thejuran/triggarr/pull/60",
+  "scope": "Whole requested PR diff: CHANGELOG.md, pyproject.toml, triggarr/__init__.py, and uv.lock. The separate phase-plan diff was empty.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects identified. Release versions agree at 2.12.1, lockfile dependency references resolve, and existing publication checks remain intact. Harness evidence reports 3282 passed, 1 skipped at the requested head.",
+  "coverage": [
+    "Inspected all four in-scope files. Reviewed the lockfile semantic diff and programmatically checked every changed artifact's URL origin, filename/version correspondence, hash format, and positive size after the initial raw diff output was truncated.",
+    "Checked dependency additions, removals, extras, environment markers, and version changes against project requirements and Docker installation.",
+    "Reviewed version display, changelog parsing and escaping, application startup, configuration parsing references, and existing version/changelog/image-consistency tests.",
+    "Reviewed relevant CI and release workflow integration, including locked installation, image consistency, vulnerability scanning, mandatory gates, browser tests, and publication identity.",
+    "Checked existing regression assertions for malformed refresh records, stale search state, concurrency protection, and dashboard labels as context for the release notes.",
+    "Confirmed that no phase-plan files changed."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    ".planning/**/*.md, except the explicitly requested *-PLAN.md diff",
+    "Unchanged application behavior was examined only as relevant surrounding context."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected head."
+    },
+    {
+      "command": "git cat-file -e e5e158451a0e731dbe6012ee0bf3e6e179b2ee25",
+      "exit_code": 0,
+      "purpose": "Confirm base object exists."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..e1f50adf28802631854c4432d9754e79145b7b6d -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read requested diff; large artifact output was truncated and subsequently inspected structurally."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..e1f50adf28802631854c4432d9754e79145b7b6d -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Check phase-plan changes; none."
+    },
+    {
+      "command": "git diff --stat e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..HEAD",
+      "exit_code": 0,
+      "purpose": "Inventory changes."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt pyproject.toml Dockerfile .github/workflows/ci.yml .github/workflows/release.yml",
+      "exit_code": 0,
+      "purpose": "Read harness evidence, dependencies, build and publication context."
+    },
+    {
+      "command": "rg --files -g '*test*' -g '*workflow*' -g '*lock*' -g '*release*' -g '*requirements*' -g 'AGENTS.md' -g '!uv.lock'",
+      "exit_code": 0,
+      "purpose": "Locate relevant tests and integration files."
+    },
+    {
+      "command": "python3 - <<'PY' [inline TOML lockfile comparison and artifact-validation script] PY",
+      "exit_code": 1,
+      "purpose": "Attempt structural lock inspection; shell could not create a heredoc temporary file in the read-only sandbox."
+    },
+    {
+      "command": "python3 -c '[inline TOML lockfile comparison and artifact-validation script]'",
+      "exit_code": 0,
+      "purpose": "Compare all package metadata, validate changed artifact structures, and check missing dependency targets; script rerun without a heredoc."
+    },
+    {
+      "command": "cat tests/test_version.py tests/test_changelog.py tests/test_image_lock_consistency.py .github/scripts/image_lock_consistency.py",
+      "exit_code": 0,
+      "purpose": "Review regression assertions and image consistency checker."
+    },
+    {
+      "command": "git diff e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..HEAD -- uv.lock | rg -v '^[+-].*(url =|hash =)'",
+      "exit_code": 0,
+      "purpose": "Read complete non-artifact lockfile diff."
+    },
+    {
+      "command": "cat triggarr/version.py triggarr/changelog.py triggarr/__main__.py tests/conftest.py; rg -n 'TomlConfig|settings_customise_sources|tomllib|BaseSettings|uvicorn|refresh_counts|failure reason|skipped record' triggarr/config.py triggarr/web/routes.py triggarr/templates/partials/app_card.html tests/test_refresh_counts.py tests/test_app_cards.py",
+      "exit_code": 0,
+      "purpose": "Trace runtime consumers and relevant test coverage."
+    },
+    {
+      "command": "git diff --name-only e5e158451a0e731dbe6012ee0bf3e6e179b2ee25..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git status --short; sed -n '155,215p' .github/workflows/ci.yml; sed -n '1140,1202p' uv.lock",
+      "exit_code": 0,
+      "purpose": "Confirm scope and worktree status; inspect image checks and project lock metadata."
+    },
+    {
+      "command": "python3 -B -c '[inline AST/TOML version-identity assertions, security-package version inspection, and local venv existence check]'",
+      "exit_code": 0,
+      "purpose": "Verify all three project versions equal 2.12.1; confirm opentelemetry-api 1.45.2 and Starlette 1.10.0."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox. Used the supplied exact-head harness evidence: exit 0, 3282 passed, 1 skipped, 38 warnings.",
+    "The harness unit-test run excludes browser tests unless TRIGGARR_E2E_IMAGE is configured; no independent browser or Docker execution was performed.",
+    "Artifact checks validate lockfile structure, not downloaded package contents or registry authenticity. No external files or network sources were read.",
+    "The assertion that other runtime dependencies match the previously published v2.12.0 image could not be independently verified against that image.",
+    "Inline Python commands are summarized in the command inventory rather than reproducing their full script bodies."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
