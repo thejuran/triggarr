@@ -1016,16 +1016,31 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
             )
             return _removal_failed_response(request, instance_name)
 
-        # Only swap live settings in after the write has succeeded
+        # Once the write has succeeded the removal is real (D-15): every
+        # remaining tidy-up step below runs regardless of whether an
+        # earlier one failed, and each failure is logged independently so
+        # one failing step never leaves another step's cleanup undone
+        # (D-16). The user still sees the normal success response.
         request.app.state.settings = new_settings
 
-        # Clean up scheduler job
+        # Clean up scheduler job (isolated: a failure here must not skip
+        # the client/state/tag-cache cleanup below).
         scheduler = request.app.state.scheduler
         job_id = f"{app_name}_{instance_name}_search"
-        if scheduler.get_job(job_id):
-            scheduler.remove_job(job_id)
+        try:
+            if scheduler.get_job(job_id):
+                scheduler.remove_job(job_id)
+        except Exception as exc:  # error boundary for post-commit cleanup (D-15, D-16)
+            logger.error(
+                "Removed {app}/{inst} but its scheduler job could not be removed: {exc_type}: {exc}",
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(exc).__name__,
+                exc=exc,
+            )
 
-        # Pop client from dict (close deferred to after lock release)
+        # Pop client from dict (close deferred to after lock release). Plain
+        # dict operations -- they cannot raise, so they always run.
         clients_dict = getattr(request.app.state, f"{app_name}_clients", {})
         client = clients_dict.pop(instance_name, None)
 
@@ -1037,9 +1052,20 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         # RES-03 (Pitfall 5): clear the tag cache entry for the removed instance.
         request.app.state.tag_cache.pop((app_name, instance_name), None)
 
-    # Close stale client outside the lock (TCP teardown doesn't need lock protection)
+    # Close stale client outside the lock (TCP teardown doesn't need lock
+    # protection). Isolated in its own try/except: a close failure must not
+    # stop the user from seeing the normal success response (D-15, D-16).
     if client:
-        await client.close()
+        try:
+            await client.close()
+        except Exception as exc:  # error boundary for post-commit cleanup (D-15, D-16)
+            logger.error(
+                "Removed {app}/{inst} but closing its connection failed: {exc_type}: {exc}",
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(exc).__name__,
+                exc=exc,
+            )
 
     settings_url = str(request.url_for("settings_page"))
     if request.headers.get("HX-Request") == "true":
