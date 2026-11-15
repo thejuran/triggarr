@@ -281,6 +281,26 @@ def _recover_from_bad_state_file(state_path: Path, found: str) -> TriggarrState:
     return _default_state()
 
 
+def _start_with_defaults_for_unreadable_state_file(state_path: Path, exc: OSError) -> TriggarrState:
+    """Return default state when the state file could not be opened or read.
+
+    Distinct from _recover_from_bad_state_file: nothing is known about the
+    file's content here (it may be intact), so the warning names the access
+    failure instead of describing bad content, and no set-aside copy is
+    attempted -- the copy would need the same read that just failed. Startup
+    behavior is unchanged: Triggarr continues with defaults and never crashes.
+    The message carries only the path and the system reason, never contents.
+    """
+    logger.warning(
+        "State file {path} could not be opened or read ({reason}); starting with default "
+        "queue progress and last-run times (search history is unaffected). The file was "
+        "left as it is and no copy was made; the next state save will replace it.",
+        path=state_path,
+        reason=f"{type(exc).__name__}: {exc}",
+    )
+    return _default_state()
+
+
 def load_state(state_path: Path | None = None) -> TriggarrState:
     """Load state from a JSON file.
 
@@ -301,13 +321,15 @@ def load_state(state_path: Path | None = None) -> TriggarrState:
     try:
         with open(resolved_state_path, encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
-        # type(exc).__name__ + str(exc) names why loading failed (e.g. parser reason
-        # and position for JSONDecodeError) without ever touching exc.doc, which holds
-        # the raw file contents and must never be logged.
+    except json.JSONDecodeError as exc:
+        # type(exc).__name__ + str(exc) names why parsing failed (parser reason and
+        # position) without ever touching exc.doc, which holds the raw file contents
+        # and must never be logged.
         return _recover_from_bad_state_file(
             resolved_state_path, f"content that could not be read as JSON ({type(exc).__name__}: {exc})"
         )
+    except OSError as exc:
+        return _start_with_defaults_for_unreadable_state_file(resolved_state_path, exc)
 
     if not isinstance(data, dict):
         return _recover_from_bad_state_file(resolved_state_path, _describe_json_kind(data))
