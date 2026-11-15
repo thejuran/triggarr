@@ -1796,6 +1796,229 @@ def test_remove_instance_write_failure_escapes_name(multi_instance_app):
     assert "<b>" not in response.text
 
 
+@pytest.mark.parametrize(
+    ("hx_header", "expected_status"),
+    [(None, 500), ("true", 200)],
+    ids=["plain", "htmx"],
+)
+def test_remove_instance_unexpected_write_error_keeps_live_state(multi_instance_app, hx_header, expected_status):
+    """A non-OSError failure of the settings write is handled like an OSError
+    one: live state is untouched and the fixed D-05 response is returned with
+    no internal detail (WR-02a).
+    """
+    import time
+
+    multi_instance_app.state.tag_cache[("radarr", "4K")] = ([], time.monotonic())
+    original_4k = multi_instance_app.state.settings.radarr["4K"]
+
+    headers = {"HX-Request": hx_header} if hx_header else {}
+    with (
+        TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+        patch(
+            "triggarr.web.routes._atomic_toml_write",
+            side_effect=TypeError("cannot serialize SENTINEL-DETAIL-5d1e at /secret/path/triggarr.toml"),
+        ),
+    ):
+        response = tc.post(
+            "/api/instance/remove/radarr/4K",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+    assert response.status_code == expected_status
+    assert "HX-Redirect" not in response.headers
+    assert "Location" not in response.headers
+    assert response.text == (
+        "'4K' was not removed: the settings file could not be saved. "
+        "Nothing was changed. Check the Triggarr log for details."
+    )
+    assert "TypeError" not in response.text
+    assert "SENTINEL-DETAIL-5d1e" not in response.text
+    assert "Traceback" not in response.text
+
+    assert multi_instance_app.state.settings.radarr["4K"] is original_4k
+    multi_instance_app.state.scheduler.remove_job.assert_not_called()
+    assert "4K" in multi_instance_app.state.radarr_clients
+    multi_instance_app.state.radarr_clients["4K"].close.assert_not_awaited()
+    assert "4K" in multi_instance_app.state.triggarr_state["radarr"]
+    assert ("radarr", "4K") in multi_instance_app.state.tag_cache
+
+
+def test_remove_instance_unexpected_real_write_error_logs_one_error(multi_instance_app):
+    """A non-OSError failure inside the real writer yields exactly one
+    error-level entry overall (D-07): the writer's own unexpected-error line,
+    which names the system reason. The route adds the app and instance at
+    warning level instead of logging a second error (WR-02a).
+    """
+    config_path = multi_instance_app.state.config_path
+    pre_existing = b"placeholder"
+    config_path.write_bytes(pre_existing)
+
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="WARNING")
+    try:
+        with (
+            TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+            patch(
+                "triggarr.config.tomli_w.dump",
+                side_effect=TypeError("Object of type 'object' is not TOML serializable"),
+            ),
+        ):
+            response = tc.post(
+                "/api/instance/remove/radarr/4K",
+                headers={"HX-Request": "true"},
+                follow_redirects=False,
+            )
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 200
+    assert response.text.startswith("'4K' was not removed")
+
+    errors = [r for r in records if r["level"].name == "ERROR"]
+    assert len(errors) == 1
+    assert "not TOML serializable" in errors[0]["message"]
+
+    context_lines = [
+        r["message"]
+        for r in records
+        if r["level"].name == "WARNING" and "radarr" in r["message"] and "4K" in r["message"]
+    ]
+    assert len(context_lines) == 1
+    assert "instance kept" in context_lines[0]
+
+    assert "4K" in multi_instance_app.state.settings.radarr
+    assert list(config_path.parent.glob("*.tmp")) == []
+    assert config_path.read_bytes() == pre_existing
+
+
+def test_remove_instance_settings_build_failure_logs_one_error(multi_instance_app):
+    """A failure while building the post-removal settings data (before the
+    writer runs) is also a failed removal: one error-level entry naming the
+    app, the instance and the reason, and the fixed D-05 response (WR-02a).
+    """
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="ERROR")
+    try:
+        with (
+            TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+            patch("triggarr.web.routes._settings_to_dict", side_effect=ValueError("bad settings shape")),
+            patch("triggarr.web.routes._atomic_toml_write") as writer,
+        ):
+            response = tc.post(
+                "/api/instance/remove/radarr/4K",
+                headers={"HX-Request": "true"},
+                follow_redirects=False,
+            )
+    finally:
+        logger.remove(handler_id)
+
+    assert response.status_code == 200
+    assert response.text.startswith("'4K' was not removed")
+    assert "bad settings shape" not in response.text
+    writer.assert_not_called()
+
+    assert len(records) == 1
+    message = records[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "bad settings shape" in message
+    assert "4K" in multi_instance_app.state.settings.radarr
+
+
+def test_remove_instance_not_found_htmx_redirects_like_success(multi_instance_app):
+    """An htmx removal of an instance that no longer exists (already removed in
+    another tab) answers like a successful removal -- empty 200 + HX-Redirect to
+    the settings page -- so the stale row disappears (WR-02b).
+    """
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/remove/radarr/%3Cb%3E%26gone",
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 200
+    assert response.headers.get("HX-Redirect", "").endswith("/settings")
+    assert response.text == ""
+    assert set(multi_instance_app.state.settings.radarr) == {"Default", "4K"}
+    multi_instance_app.state.scheduler.remove_job.assert_not_called()
+
+
+def test_remove_instance_not_found_plain_keeps_400_and_escapes_name(multi_instance_app):
+    """A direct, non-htmx removal of a missing instance keeps the 400 with the
+    escaped instance name (WR-02b leaves the plain path unchanged).
+    """
+    with TestClient(multi_instance_app) as tc:
+        response = tc.post(
+            "/api/instance/remove/radarr/%3Cb%3E%26gone",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 400
+    assert "HX-Redirect" not in response.headers
+    assert response.text == "Instance '&lt;b&gt;&amp;gone' not found"
+
+
+async def test_remove_instance_concurrent_same_instance_htmx_second_redirects(multi_instance_app):
+    """Two concurrent htmx removals of the same instance: both answer with the
+    success redirect, the instance is removed once and its client is closed
+    exactly once (WR-02b).
+    """
+    client_4k = multi_instance_app.state.radarr_clients["4K"]
+    lock = multi_instance_app.state.search_lock
+    await lock.acquire()
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+    ) as ac:
+        hx = {"HX-Request": "true"}
+        task_a = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K", headers=hx))
+        task_b = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K", headers=hx))
+
+        for _ in range(200):
+            if len(getattr(lock, "_waiters", None) or ()) == 2:
+                break
+            await asyncio.sleep(0)
+        assert len(getattr(lock, "_waiters", None) or ()) == 2, (
+            "both removal requests must be queued on search_lock before it is released"
+        )
+
+        lock.release()
+        response_a, response_b = await asyncio.gather(task_a, task_b)
+
+    for response in (response_a, response_b):
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect", "").endswith("/settings")
+        assert response.text == ""
+    assert "4K" not in multi_instance_app.state.settings.radarr
+    assert client_4k.close.await_count == 1
+
+
+def test_settings_clears_row_error_slot_when_remove_request_starts(multi_client):
+    """The page's nonce'd script empties a row's error slot when a new Remove
+    request starts, so an old failure message cannot outlive a later attempt
+    whose response htmx does not swap (WR-02c). No inline handler is used.
+    """
+    response = multi_client.get("/settings")
+    assert response.status_code == 200
+    html = response.text
+
+    script = re.search(r'<script nonce="[^"]*">(.*?)</script>', html[html.find('class="remove-error') :], re.DOTALL)
+    assert script is not None
+    body = script.group(1)
+    assert "htmx:beforeRequest" in body
+    assert ".remove-error" in body
+    assert "textContent = ''" in body
+
+    # CSP nonce discipline: the instance rows carry no inline event handlers.
+    summary_blocks = re.findall(r"<summary\b.*?</summary>", html, re.DOTALL)
+    assert summary_blocks
+    for block in summary_blocks:
+        assert "hx-on" not in block
+        assert not re.search(r"\son[a-z]+\s*=", block)
+
+
 def test_remove_instance_scheduler_failure_still_completes(multi_instance_app):
     """Once the settings file is saved, a scheduler.remove_job failure does
     not stop the removal from completing: the user still sees the normal
