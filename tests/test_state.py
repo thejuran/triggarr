@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import stat
 from pathlib import Path
 from unittest.mock import patch
 
@@ -454,6 +456,124 @@ def test_state_non_object_warning_names_kind_without_contents(tmp_path: Path) ->
     assert "reset to defaults" in captured
     assert "search history is unaffected" in captured
     assert "SENTINEL-CONTENT-91c2" not in captured
+
+
+# ---------------------------------------------------------------------------
+# Set-aside tests (D-08, D-09, D-11): bad state files are copied aside before
+# being reset to defaults, exactly one copy is kept, and a failed copy never
+# blocks recovery.
+# ---------------------------------------------------------------------------
+
+
+def test_state_bad_file_set_aside_non_object(tmp_path: Path) -> None:
+    """A non-object-root state file is copied to state.json.corrupt before reset (D-08)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[1, 2]")
+
+    load_state(state_file)
+
+    corrupt = tmp_path / "state.json.corrupt"
+    assert corrupt.exists()
+    assert corrupt.read_text() == "[1, 2]"
+
+
+def test_state_bad_file_set_aside_unparseable(tmp_path: Path) -> None:
+    """An unparseable state file gets the same set-aside treatment (D-09)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text('{"radarr":')
+
+    load_state(state_file)
+
+    corrupt = tmp_path / "state.json.corrupt"
+    assert corrupt.exists()
+    assert corrupt.read_text() == '{"radarr":'
+
+
+def test_state_set_aside_keeps_exactly_one_copy(tmp_path: Path) -> None:
+    """A second, different bad file replaces the first set-aside copy (D-08)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[1]")
+    load_state(state_file)
+
+    state_file.write_text("42")
+    load_state(state_file)
+
+    matches = list(tmp_path.glob("state.json.corrupt*"))
+    assert len(matches) == 1
+    assert matches[0].read_text() == "42"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits not applicable on Windows")
+def test_state_set_aside_permissions_not_wider(tmp_path: Path) -> None:
+    """The set-aside copy's permissions are no wider than the source's."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[]")
+    state_file.chmod(0o600)
+
+    load_state(state_file)
+
+    corrupt = tmp_path / "state.json.corrupt"
+    assert stat.S_IMODE(corrupt.stat().st_mode) & ~0o600 == 0
+
+
+@pytest.mark.skipif(os.name == "nt", reason="/dev/fd not available on Windows")
+@pytest.mark.parametrize(
+    "patch_target",
+    [
+        "triggarr.state.tempfile.mkstemp",
+        "triggarr.state.shutil.copy2",
+        "triggarr.state.os.replace",
+    ],
+    ids=["mkstemp", "copy2", "replace"],
+)
+def test_state_set_aside_failure_still_recovers(tmp_path: Path, patch_target: str) -> None:
+    """A failure at any set-aside step still returns default state, with no leftover
+    file and no leaked descriptor (D-11)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[]")
+
+    fd_count_before = len(os.listdir("/dev/fd"))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with patch(patch_target, side_effect=OSError("read-only file system")):
+            state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    fd_count_after = len(os.listdir("/dev/fd"))
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+
+    set_aside_lines = [line for line in captured.splitlines() if "set aside" in line]
+    assert len(set_aside_lines) == 1
+    assert str(state_file) in set_aside_lines[0]
+
+    assert "reset to defaults" in captured
+    assert "was kept" not in captured
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["state.json"]
+    assert fd_count_after == fd_count_before
+
+
+def test_state_set_aside_replace_failure_keeps_previous_copy(tmp_path: Path) -> None:
+    """A failed rename never truncates or half-writes the previous set-aside copy."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[]")
+    corrupt = tmp_path / "state.json.corrupt"
+    corrupt.write_text("OLD")
+
+    with patch("triggarr.state.os.replace", side_effect=OSError("read-only file system")):
+        state = load_state(state_file)
+
+    assert state["radarr"] == {}
+    assert corrupt.read_text() == "OLD"
+    leftover_tmp = list(tmp_path.glob("state.json.corrupt.*.tmp"))
+    assert leftover_tmp == []
 
 
 def test_state_wrong_nested_type_recovers(tmp_path: Path) -> None:
