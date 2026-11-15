@@ -404,20 +404,56 @@ def test_state_empty_file_recovers(tmp_path: Path) -> None:
     assert state["search_log"] == []
 
 
-def test_state_wrong_structure_list_crashes(tmp_path: Path) -> None:
-    """Valid JSON list (not dict) crashes in _is_v22_state_format with AttributeError.
-
-    load_state catches JSONDecodeError and OSError but not AttributeError.
-    A list is valid JSON but wrong structure -- .get() fails on list objects.
-    This is a known gap (not ideal but acceptable for a single-user daemon).
-    When load_state is hardened to handle non-dict roots, convert this test
-    to assert recovery to defaults instead.
-    """
+def test_state_wrong_structure_list_recovers(tmp_path: Path) -> None:
+    """Valid JSON list root recovers to defaults instead of crashing (CONSIST-03)."""
     state_file = tmp_path / "state.json"
     state_file.write_text("[1, 2, 3]")
 
-    with pytest.raises(AttributeError):
-        load_state(state_file)
+    state = load_state(state_file)
+
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["lidarr"] == {}
+    assert state["search_log"] == []
+
+
+@pytest.mark.parametrize("content", ["[]", "42", "null", '"a string"', "true", "1.5"])
+def test_state_non_object_root_recovers(tmp_path: Path, content: str) -> None:
+    """Any valid-JSON non-object root recovers to defaults instead of crashing (CONSIST-03)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(content)
+
+    state = load_state(state_file)
+
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["lidarr"] == {}
+    assert state["search_log"] == []
+
+
+def test_state_non_object_warning_names_kind_without_contents(tmp_path: Path) -> None:
+    """The non-object-root warning names the file, the kind found, the reset, and that
+    search history is unaffected -- but never echoes the file's contents (D-10)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text('["SENTINEL-CONTENT-91c2", 7]')
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+    assert str(state_file) in captured
+    assert "a list" in captured
+    assert "object" in captured
+    assert "reset to defaults" in captured
+    assert "search history is unaffected" in captured
+    assert "SENTINEL-CONTENT-91c2" not in captured
 
 
 def test_state_wrong_nested_type_recovers(tmp_path: Path) -> None:
