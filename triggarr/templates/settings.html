@@ -160,15 +160,16 @@
         {% for inst_name, inst in instances.items() %}
         {% set sanitized = inst_name | replace(' ', '-') | replace('.', '-') %}
         <details open class="bg-triggarr-bg rounded-lg border border-triggarr-border mb-3">
-            <summary class="flex items-center justify-between px-4 py-3 cursor-pointer">
+            <summary class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 cursor-pointer">
                 <span class="font-medium">{{ inst_name }} &mdash; {{ "Enabled" if inst.enabled else "Disabled" }}</span>
                 <button hx-post="{{ request.url_for('remove_instance', app_name=app_name, instance_name=inst_name) }}"
                         hx-confirm="Remove instance '{{ inst_name }}'? This cannot be undone."
-                        hx-target="body" hx-swap="outerHTML"
+                        hx-target="next .remove-error" hx-swap="innerHTML"
                         class="text-red-400 hover:text-red-300 text-sm"
                         type="button" data-stop-propagation>
                     Remove
                 </button>
+                <span class="remove-error w-full text-red-400 text-sm" aria-live="polite"></span>
             </summary>
             <div class="px-4 pb-4">
                 <div class="flex items-center gap-2 mb-3">
