@@ -127,3 +127,14 @@ None - no external service configuration required.
 ---
 *Phase: 87-settings-state-file-safety*
 *Completed: 2026-11-15*
+
+## Self-Check: PASSED
+
+- `triggarr/templates/settings.html` -- FOUND
+- `tests/test_web.py` -- FOUND
+- `.planning/backlog/MAINTENANCE.md` -- FOUND
+- `.planning/phases/87-settings-state-file-safety/87-02-SUMMARY.md` -- FOUND
+- `95176264` (test: failing tests for row-local removal error slot) -- FOUND
+- `76094beb` (feat: show failed-removal message on the instance row) -- FOUND
+- `f0e29d87` (docs: record settings-writer audit and follow-ups) -- FOUND
+- `9ebb7e4` (docs: add plan 02 execution summary) -- FOUND
