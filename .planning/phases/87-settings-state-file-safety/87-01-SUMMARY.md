@@ -166,3 +166,13 @@ None - no external service configuration required.
 ---
 *Phase: 87-settings-state-file-safety*
 *Completed: 2026-11-15*
+
+## Self-Check: PASSED
+
+- `.planning/phases/87-settings-state-file-safety/87-01-SUMMARY.md` -- FOUND
+- `0be5a730` (test: removal write-failure and same-instance race) -- FOUND
+- `2791c75f` (fix: write settings before mutating live state) -- FOUND
+- `599d56b4` (test: removal failure log and message) -- FOUND
+- `95a120ef` (feat: one error log and fixed not-removed message) -- FOUND
+- `6ac79c27` (test: removal tidy-up resilience) -- FOUND
+- `5d021e8a` (fix: keep removal tidy-up steps independent) -- FOUND
