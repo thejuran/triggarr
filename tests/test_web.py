@@ -7,6 +7,7 @@ key preservation, PRG redirect), htmx partials, and search-now validation.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 from httpx import ASGITransport
+from loguru import logger
 
 from tests.conftest import make_settings
 from triggarr.db import init_db, insert_search_entry
@@ -1654,6 +1656,144 @@ async def test_remove_instance_concurrent_same_instance_second_is_not_found(mult
     not_found_response = response_a if response_a.status_code == 400 else response_b
     assert "Instance '4K' not found" in not_found_response.text
     assert client_4k.close.await_count == 1
+
+
+def test_remove_instance_real_write_failure_logs_one_error(multi_instance_app):
+    """A failed real write during removal logs exactly one error-level entry,
+    naming the app, the instance and the system reason; the writer's own
+    "Config write failed" line is suppressed for this caller (D-07).
+    """
+    config_path = multi_instance_app.state.config_path
+    pre_existing = b"placeholder"
+    config_path.write_bytes(pre_existing)
+
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="ERROR")
+    try:
+        with (
+            TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+            patch(
+                "triggarr.config.os.replace",
+                side_effect=OSError(errno.ENOSPC, "No space left on device"),
+            ),
+        ):
+            tc.post(
+                "/api/instance/remove/radarr/4K",
+                headers={"HX-Request": "true"},
+                follow_redirects=False,
+            )
+    finally:
+        logger.remove(handler_id)
+
+    assert len(records) == 1
+    message = records[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "No space left on device" in message
+    assert not any("Config write failed" in r["message"] for r in records)
+    assert "4K" in multi_instance_app.state.settings.radarr
+
+    remaining_tmp = list(config_path.parent.glob("*.tmp"))
+    assert remaining_tmp == []
+    assert config_path.read_bytes() == pre_existing
+
+
+def test_remove_instance_write_failure_htmx_shows_message(multi_instance_app):
+    """A failed save via htmx returns 200 with the fixed D-05 message and no
+    HX-Redirect header, so htmx swaps the message into the row target
+    (D-04, D-05, D-06).
+    """
+    with (
+        TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+        patch(
+            "triggarr.web.routes._atomic_toml_write",
+            side_effect=OSError("disk full: /secret/path/triggarr.toml"),
+        ),
+    ):
+        response = tc.post(
+            "/api/instance/remove/radarr/4K",
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 200
+    assert "HX-Redirect" not in response.headers
+    assert response.text == (
+        "'4K' was not removed: the settings file could not be saved. "
+        "Nothing was changed. Check the Triggarr log for details."
+    )
+
+
+def test_remove_instance_write_failure_plain_returns_500(multi_instance_app):
+    """A failed save via a direct, non-htmx POST returns a non-2xx response
+    carrying the same D-05 wording and no Location header.
+    """
+    with (
+        TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+        patch("triggarr.web.routes._atomic_toml_write", side_effect=OSError("disk full")),
+    ):
+        response = tc.post(
+            "/api/instance/remove/radarr/4K",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 500
+    assert "Location" not in response.headers
+    assert response.text == (
+        "'4K' was not removed: the settings file could not be saved. "
+        "Nothing was changed. Check the Triggarr log for details."
+    )
+
+
+def test_remove_instance_write_failure_no_internal_detail(multi_instance_app):
+    """The failed-removal response never leaks the exception, the config
+    path, or a traceback (T-87-01).
+    """
+    with (
+        TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+        patch(
+            "triggarr.web.routes._atomic_toml_write",
+            side_effect=OSError("disk full: /secret/path/triggarr.toml"),
+        ),
+    ):
+        response = tc.post(
+            "/api/instance/remove/radarr/4K",
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+
+    body = response.text
+    assert "OSError" not in body
+    assert "disk full" not in body
+    assert "/secret/path" not in body
+    assert "triggarr.toml" not in body
+    assert "Traceback" not in body
+    assert str(multi_instance_app.state.config_path) not in body
+
+
+def test_remove_instance_write_failure_escapes_name(multi_instance_app):
+    """The instance name in the D-05 message is html-escaped (T-87-02)."""
+    multi_instance_app.state.settings.radarr["<b>&x"] = InstanceConfig(
+        url="http://radarr-xss:7878",
+        api_key="radarr-xss-key",
+        enabled=True,
+    )
+    multi_instance_app.state.radarr_clients["<b>&x"] = MagicMock(close=AsyncMock())
+    multi_instance_app.state.triggarr_state["radarr"]["<b>&x"] = {"last_run": None, "connected": True}
+
+    with (
+        TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+        patch("triggarr.web.routes._atomic_toml_write", side_effect=OSError("disk full")),
+    ):
+        response = tc.post(
+            "/api/instance/remove/radarr/%3Cb%3E%26x",
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 200
+    assert response.text.startswith("'&lt;b&gt;&amp;x' was not removed")
+    assert "<b>" not in response.text
 
 
 def test_no_new_body_swap_html_targets():

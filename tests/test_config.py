@@ -921,6 +921,31 @@ def test_atomic_toml_write_logs_os_replace_failure(tmp_path: Path) -> None:
         logger.remove(handler_id)
 
 
+def test_atomic_toml_write_log_failure_false_suppresses_primary_line(tmp_path: Path) -> None:
+    """log_failure=False suppresses only the primary 'Config write failed' line (D-07).
+
+    A caller that logs the failure itself with richer context (app, instance,
+    system reason) passes log_failure=False so one failed write yields one
+    error log entry overall, not two.
+    """
+    config_file = tmp_path / "test.toml"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with patch("triggarr.config.os.replace", side_effect=OSError("EROFS")), \
+             pytest.raises(OSError):
+            _atomic_toml_write(config_file, {"k": "v"}, log_failure=False)
+
+        text = sink.getvalue()
+        assert "Config write failed" not in text
+    finally:
+        logger.remove(handler_id)
+
+    remaining = list(tmp_path.glob("*.tmp"))
+    assert remaining == [], f"Temp files should be cleaned up, found: {remaining}"
+
+
 # ---------------------------------------------------------------------------
 # Broken TOML config tests (STATE-01)
 # ---------------------------------------------------------------------------
