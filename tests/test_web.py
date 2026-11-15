@@ -2122,6 +2122,20 @@ def test_settings_remove_button_targets_row_error_slot(multi_client, multi_insta
         assert slot_idx != -1, f"remove-error slot missing from row: {block}"
         assert remove_idx < slot_idx, "error slot must come after the Remove button"
 
+    # IN-01: the slot sits inside <summary>, so it must opt out of the
+    # click-to-toggle like the Remove button does; clicking or selecting the
+    # message must not collapse the instance's <details>.
+    slot_tags = re.findall(r'<span class="remove-error[^>]*>', html)
+    assert len(slot_tags) == expected_count
+    for tag in slot_tags:
+        assert "data-stop-propagation" in tag
+    # stopPropagation alone does not stop a <summary> from toggling when the
+    # clicked element is not itself interactive (checked in headless Chrome), so
+    # the page script must also cancel the click's default action for the slot.
+    script = re.search(r'<script nonce="[^"]*">(.*?)</script>', html[html.find('class="remove-error') :], re.DOTALL)
+    assert script is not None
+    assert re.search(r"remove-error'\)\)\s*e\.preventDefault\(\)", script.group(1))
+
 
 def test_no_new_body_swap_html_targets():
     """SEC-01 defense-in-depth: no template may use `hx-target="body"` or
