@@ -134,3 +134,14 @@ None - no external service configuration required.
 ---
 *Phase: 87-settings-state-file-safety*
 *Completed: 2026-11-15*
+
+## Self-Check: PASSED
+
+- FOUND: triggarr/state.py
+- FOUND: tests/test_state.py
+- FOUND: .planning/phases/87-settings-state-file-safety/87-03-SUMMARY.md
+- FOUND commit: d0e9849f (test: add failing tests for non-object state root)
+- FOUND commit: ead84cb1 (fix: recover from a non-object state file instead of crashing)
+- FOUND commit: 1e50b3d3 (test: add failing tests for state file set-aside)
+- FOUND commit: 921dff94 (feat: keep one diagnostic copy of a bad state file)
+- FOUND commit: d756ee0 (docs: add plan 03 execution summary)
