@@ -508,12 +508,14 @@ def test_state_set_aside_permissions_not_wider(tmp_path: Path) -> None:
     """The set-aside copy's permissions are no wider than the source's."""
     state_file = tmp_path / "state.json"
     state_file.write_text("[]")
-    state_file.chmod(0o600)
+    # 0o640 differs from the 0o600 that tempfile.mkstemp gives the temp copy, so
+    # this only holds if the source's mode is actually carried over to the copy.
+    state_file.chmod(0o640)
 
     load_state(state_file)
 
     corrupt = tmp_path / "state.json.corrupt"
-    assert stat.S_IMODE(corrupt.stat().st_mode) & ~0o600 == 0
+    assert stat.S_IMODE(corrupt.stat().st_mode) == 0o640
 
 
 @pytest.mark.skipif(os.name == "nt", reason="/dev/fd not available on Windows")
