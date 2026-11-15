@@ -1545,6 +1545,117 @@ def test_remove_instance_uses_303_for_non_htmx(multi_instance_app):
     assert response.headers.get("location", "").endswith("/settings")
 
 
+@pytest.mark.parametrize("hx_header", [None, "true"], ids=["plain", "htmx"])
+def test_remove_instance_write_failure_keeps_live_state(multi_instance_app, hx_header):
+    """A failed settings write during removal leaves live settings, the
+    scheduler job, the client registry, the state entry and the tag-cache
+    entry exactly as before the attempt (D-02, D-03).
+    """
+    import time
+
+    multi_instance_app.state.tag_cache[("radarr", "4K")] = ([], time.monotonic())
+    original_4k = multi_instance_app.state.settings.radarr["4K"]
+
+    headers = {"HX-Request": hx_header} if hx_header else {}
+    with (
+        TestClient(multi_instance_app, raise_server_exceptions=False) as tc,
+        patch("triggarr.web.routes._atomic_toml_write", side_effect=OSError("disk full")),
+    ):
+        tc.post(
+            "/api/instance/remove/radarr/4K",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+    assert "4K" in multi_instance_app.state.settings.radarr
+    assert multi_instance_app.state.settings.radarr["4K"] is original_4k
+    multi_instance_app.state.scheduler.remove_job.assert_not_called()
+    assert "4K" in multi_instance_app.state.radarr_clients
+    multi_instance_app.state.radarr_clients["4K"].close.assert_not_awaited()
+    assert "4K" in multi_instance_app.state.triggarr_state["radarr"]
+    assert ("radarr", "4K") in multi_instance_app.state.tag_cache
+
+
+async def test_remove_instance_concurrent_removals_both_persist(multi_instance_app):
+    """Two concurrent removals of different instances both remain removed,
+    live and on disk -- neither request's stale snapshot resurrects the
+    other's removed instance (D-02, T-87-03b).
+    """
+    import tomllib
+
+    settings = multi_instance_app.state.settings
+    settings.radarr["Extra"] = InstanceConfig(
+        url="http://radarr-extra:7878",
+        api_key="radarr-extra-key",
+        enabled=True,
+    )
+    multi_instance_app.state.radarr_clients["Extra"] = MagicMock(close=AsyncMock())
+    multi_instance_app.state.triggarr_state["radarr"]["Extra"] = {"last_run": None, "connected": True}
+
+    lock = multi_instance_app.state.search_lock
+    await lock.acquire()
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+    ) as ac:
+        task_4k = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+        task_extra = asyncio.create_task(ac.post("/api/instance/remove/radarr/Extra"))
+
+        for _ in range(200):
+            if len(getattr(lock, "_waiters", None) or ()) == 2:
+                break
+            await asyncio.sleep(0)
+        assert len(getattr(lock, "_waiters", None) or ()) == 2, (
+            "both removal requests must be queued on search_lock before it is released"
+        )
+
+        lock.release()
+        response_4k, response_extra = await asyncio.gather(task_4k, task_extra)
+
+    assert response_4k.status_code == 303
+    assert response_extra.status_code == 303
+    assert "4K" not in multi_instance_app.state.settings.radarr
+    assert "Extra" not in multi_instance_app.state.settings.radarr
+    assert "Default" in multi_instance_app.state.settings.radarr
+
+    on_disk = tomllib.loads(multi_instance_app.state.config_path.read_text())
+    assert "4K" not in on_disk["radarr"]
+    assert "Extra" not in on_disk["radarr"]
+    assert "Default" in on_disk["radarr"]
+
+
+async def test_remove_instance_concurrent_same_instance_second_is_not_found(multi_instance_app):
+    """Two concurrent removals of the same instance: one succeeds, the other
+    gets the existing not-found 400, and the client is closed exactly once.
+    """
+    client_4k = multi_instance_app.state.radarr_clients["4K"]
+    lock = multi_instance_app.state.search_lock
+    await lock.acquire()
+
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+    ) as ac:
+        task_a = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+        task_b = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+
+        for _ in range(200):
+            if len(getattr(lock, "_waiters", None) or ()) == 2:
+                break
+            await asyncio.sleep(0)
+        assert len(getattr(lock, "_waiters", None) or ()) == 2, (
+            "both removal requests must be queued on search_lock before it is released"
+        )
+
+        lock.release()
+        response_a, response_b = await asyncio.gather(task_a, task_b)
+
+    statuses = sorted([response_a.status_code, response_b.status_code])
+    assert statuses == [303, 400]
+    not_found_response = response_a if response_a.status_code == 400 else response_b
+    assert "Instance '4K' not found" in not_found_response.text
+    assert client_4k.close.await_count == 1
+
+
 def test_no_new_body_swap_html_targets():
     """SEC-01 defense-in-depth: only ONE place in the codebase uses
     `hx-target="body"` (the Remove-instance button on settings.html, which is
