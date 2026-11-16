@@ -139,13 +139,14 @@ def _atomic_toml_write(path: Path, data: dict, *, log_failure: bool = True) -> N
         path: Destination file path.
         data: TOML-serializable dict.
         log_failure: Whether to log the primary "Config write failed" line
-            when the write itself (not the temp-file cleanup) raises
-            OSError. A caller that logs the failure itself with richer
-            context (e.g. the app and instance involved) passes
-            log_failure=False so one failed write yields one error-level
-            log entry overall, not two (D-07). Does not affect the
-            directory-fsync warning, the temp-cleanup error, or the
-            unexpected-error branch, which always log.
+            when the write itself (not the temp-file cleanup) raises --
+            both the OSError line and the "(unexpected error)" line for
+            any other exception. A caller that logs the failure itself
+            with richer context (e.g. the app and instance involved)
+            passes log_failure=False so one failed write yields one
+            error-level log entry overall, not two (D-07). Does not affect
+            the directory-fsync warning or the temp-cleanup error, which
+            always log.
     """
     dir_fd = None
     renamed = False
@@ -185,11 +186,12 @@ def _atomic_toml_write(path: Path, data: dict, *, log_failure: bool = True) -> N
             )
         raise
     except Exception as exc:
-        logger.error(
-            "Config write failed (unexpected error): {path} - {exc}",
-            path=path,
-            exc=exc,
-        )
+        if log_failure:
+            logger.error(
+                "Config write failed (unexpected error): {path} - {exc}",
+                path=path,
+                exc=exc,
+            )
         try:
             os.unlink(tmp_path)
         except FileNotFoundError:

@@ -1005,7 +1005,8 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         # Every failure up to and including the write is handled here: live
         # state has not been touched yet, so the instance is simply kept and
         # the user gets the fixed D-05 response. Each path logs exactly one
-        # error-level entry overall (D-07).
+        # error-level entry, here in the route, naming the app, the instance
+        # and the reason (D-07).
         config_path = request.app.state.config_path
         try:
             config_dict = _settings_to_dict(new_settings)
@@ -1021,8 +1022,12 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
             return _removal_failed_response(request, instance_name)
 
         # Write updated config to TOML (offloaded to thread -- blocking I/O).
-        # The OSError branch below logs its own contextual error, so the
-        # writer's generic line is suppressed (log_failure=False).
+        # The handler below logs the one contextual error for every way the
+        # write can fail -- OSError from the writer, any other exception from
+        # inside it, or the write never starting (run_in_executor itself
+        # raising) -- so the writer's own generic lines are suppressed
+        # (log_failure=False). Exception, not BaseException: cancellation
+        # still propagates.
         try:
             await asyncio.get_running_loop().run_in_executor(
                 None,
@@ -1033,7 +1038,7 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
                     log_failure=False,
                 ),
             )
-        except OSError as exc:
+        except Exception as exc:  # error boundary: nothing live has been changed yet
             logger.error(
                 "Could not save settings file {path} while removing {app}/{inst}; "
                 "instance kept: {exc_type}: {exc}",
@@ -1042,20 +1047,6 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
                 inst=instance_name,
                 exc_type=type(exc).__name__,
                 exc=exc,
-            )
-            return _removal_failed_response(request, instance_name)
-        except Exception as exc:  # error boundary: nothing live has been changed yet
-            # The writer's unexpected-error branch always logs its own
-            # error-level line with the system reason (log_failure does not
-            # cover it), so the app/instance context is added at warning
-            # level to keep this failure at one error-level entry (D-07).
-            logger.warning(
-                "Settings file {path} was not saved while removing {app}/{inst}; "
-                "instance kept ({exc_type}; see the config write error logged just before this)",
-                path=config_path,
-                app=app_name,
-                inst=instance_name,
-                exc_type=type(exc).__name__,
             )
             return _removal_failed_response(request, instance_name)
 
