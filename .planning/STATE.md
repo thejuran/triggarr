@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "ready -- Phase 88 next, discussion not started; Phase 87 landed on main via PR #62 (d7704342)"
-stopped_at: "Phase 87 landed on main 2026-11-16 (PR #62, merge d7704342; review acceptance attempt 2 passed at head 8c683587). Next: /bm:discuss-phase 88"
-last_updated: "2026-11-16T04:54:44.000Z"
-last_activity: "2026-11-16 -- Phase 87 merged (PR #62) after a 4-pass vibe-check deep review, BM iteration 6 and Codex on the PR head"
+status: "ready -- Phase 88 context gathered, planning next; Phase 87 landed on main via PR #62 (d7704342)"
+stopped_at: "Phase 88 context gathered 2026-11-16 (88-CONTEXT.md). Next: /bm:plan-phase 88"
+last_updated: "2026-11-16T04:59:07.000Z"
+last_activity: "2026-11-16 -- Phase 88 discussion complete; context captured in 88-CONTEXT.md"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 88 (Bounded Upgrade Backups & Telemetry Regression) — NEXT, discussion not started
+Phase: 88 (Bounded Upgrade Backups & Telemetry Regression) — context gathered, planning not started
 Plan: 0 plans yet
-Status: ready for /bm:discuss-phase 88. Phase 87 landed on main 2026-11-16 as PR #62 (merge `d7704342`; acceptance passed at head `8c683587`)
-Last activity: 2026-11-16 — Phase 87 merged after a 4-pass vibe-check deep review (3 fixes: `f9186e87`, `9c2fc602`, `88832ef9`), BM iteration 6 and Codex on the PR head (0 findings)
+Status: ready for /bm:plan-phase 88 (context: `.planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-CONTEXT.md`). Phase 87 landed on main 2026-11-16 as PR #62 (merge `d7704342`; acceptance passed at head `8c683587`)
+Last activity: 2026-11-16 — Phase 88 discussion complete (4 areas: post-success backups kept, per-file prune logging, README telemetry note, in-process telemetry test). Before that, Phase 87 merged after a 4-pass vibe-check deep review (3 fixes: `f9186e87`, `9c2fc602`, `88832ef9`), BM iteration 6 and Codex on the PR head (0 findings)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
