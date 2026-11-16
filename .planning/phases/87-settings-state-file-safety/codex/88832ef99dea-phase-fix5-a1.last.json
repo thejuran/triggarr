@@ -1,0 +1,146 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "88832ef99dea96e925301dff0d3103370e3b3783",
+  "inspected_base_sha": "3cede40099a1f8a5d6db45542e66c650bfa98952",
+  "pr_url": "none",
+  "scope": "Full Phase 87 net change against the specified base, including tests, non-excluded planning files, and all three changed phase plans.",
+  "verdict": "no-findings",
+  "summary": "No actionable defects identified. Inspected the entire scoped diff and relevant callers. Harness evidence reports 3336 passed and 1 skipped on the exact head. The lock audit passed; isolated repeated-cancellation checks preserved write outcomes and completed client cleanup.",
+  "coverage": [
+    "Removal write-before-swap ordering, guarded executor submission, abandoned versus claimed writes, cancellation propagation, and cleanup isolation.",
+    "Concurrent removal, addition, and settings saves; settings snapshots and validation under search_lock.",
+    "Client-close completion under cancellation and logging of an independently cancelled close.",
+    "Atomic writer logging defaults, failure suppression, temporary-file cleanup, and post-rename behavior.",
+    "State recovery for non-object JSON, parse failures and unreadable files; diagnostic-copy replacement, permissions, and cleanup failures.",
+    "Row-local htmx error handling, escaping, redirects, CSP nonce preservation, and stale-message clearing.",
+    "All changed regression tests, three changed phase plans, nine deleted empty planning placeholders, and relevant scheduler, middleware, and client code.",
+    "Acceptance and audit safeguards: no in-scope CI or publication-policy weakening identified."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Pre-existing defects outside the requested changes."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected checkout."
+    },
+    {
+      "command": "git cat-file -e 3cede40099a1f8a5d6db45542e66c650bfa98952",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff --stat 3cede40099a1f8a5d6db45542e66c650bfa98952..88832ef99dea96e925301dff0d3103370e3b3783 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inventory scoped changes."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..88832ef99dea96e925301dff0d3103370e3b3783 -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read changed plans; truncated output was subsequently reread in chunks."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Inspect route changes."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- triggarr/config.py triggarr/state.py triggarr/templates/settings.html tests/test_config.py tests/test_state.py",
+      "exit_code": 0,
+      "purpose": "Inspect persistence, template and test changes; truncated portions were reread."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read exact-head harness test evidence."
+    },
+    {
+      "command": "sed -n '1150,1270p' triggarr/web/routes.py; sed -n '634,820p' triggarr/web/routes.py",
+      "exit_code": 0,
+      "purpose": "Inspect removal completion and settings-save context."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- tests/test_config.py tests/test_state.py",
+      "exit_code": 0,
+      "purpose": "Read complete persistence-test changes."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- tests/test_web.py | sed -n '1,420p'",
+      "exit_code": 0,
+      "purpose": "Inspect web regression tests, first chunk."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- tests/test_web.py | sed -n '421,840p'",
+      "exit_code": 0,
+      "purpose": "Inspect failure and executor regression tests."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- tests/test_web.py | sed -n '841,1300p'",
+      "exit_code": 0,
+      "purpose": "Inspect cancellation, cleanup, template and audit tests."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- ':(glob).planning/**/*-PLAN.md' | sed -n '1,230p'",
+      "exit_code": 0,
+      "purpose": "Read first plan chunk."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- ':(glob).planning/**/*-PLAN.md' | sed -n '231,470p'",
+      "exit_code": 0,
+      "purpose": "Read second plan chunk."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- ':(glob).planning/**/*-PLAN.md' | sed -n '471,740p'",
+      "exit_code": 0,
+      "purpose": "Read remaining plan changes."
+    },
+    {
+      "command": "git diff 3cede400..88832ef9 -- .planning ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect remaining scoped planning changes."
+    },
+    {
+      "command": "sed -n '80,208p' triggarr/state.py; sed -n '305,410p' triggarr/state.py; sed -n '145,215p' triggarr/config.py; sed -n '290,325p' triggarr/clients/base.py; rg -n 'load_state|def make_search_job|settings|search_lock|close\\(' triggarr/search/scheduler.py | head -65; rg -n 'middleware|BaseHTTPMiddleware' triggarr/app.py triggarr/web/*.py; rg --files -g '*python*' -g 'pyvenv.cfg' -g 'AGENTS.md' -g 'pyproject.toml' -g 'audit_lock_coverage.py' -g '!uv.lock'",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding persistence, lifecycle and middleware code. The intermediate rg reported that triggarr/app.py does not exist; relevant middleware files were found."
+    },
+    {
+      "command": "sed -n '132,225p' triggarr/search/scheduler.py; sed -n '475,505p' triggarr/search/scheduler.py; sed -n '1,150p' triggarr/web/middleware.py; cat tests/audit_lock_coverage.py; cat pyproject.toml; git status --short; git diff --check 3cede400..88832ef9",
+      "exit_code": 2,
+      "purpose": "Inspect callers, security boundaries, audit and test configuration. Unrestricted diff check reported trailing whitespace in excluded .planning/research/FEATURES.md."
+    },
+    {
+      "command": "python3 -B tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Verify lock audit: 8/8 writer references covered."
+    },
+    {
+      "command": "git diff --check 3cede400..88832ef9 -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md' ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Verify whitespace within review scope."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport ast, asyncio, concurrent.futures\nfrom pathlib import Path\nsource = ast.parse(Path('triggarr/web/routes.py').read_text())\nnames = {'_await_claimed_write', '_close_removed_client'}\nmodule = ast.Module(body=[ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0)] + [n for n in source.body if isinstance(n, ast.AsyncFunctionDef) and n.name in names], type_ignores=[])\nns = {'asyncio': asyncio, 'concurrent': concurrent}\nexec(compile(ast.fix_missing_locations(module), '<review helpers>', 'exec'), ns)\nasync def main():\n    for fail in (False, True):\n        outcome = concurrent.futures.Future()\n        outcome.set_running_or_notify_cancel()\n        task = asyncio.create_task(ns['_await_claimed_write'](outcome))\n        await asyncio.sleep(0)\n        task.cancel()\n        await asyncio.sleep(0)\n        task.cancel()\n        await asyncio.sleep(0)\n        if fail:\n            outcome.set_exception(OSError('disk full'))\n        else:\n            outcome.set_result(None)\n        error, cancelled = await task\n        assert isinstance(cancelled, asyncio.CancelledError)\n        assert isinstance(error, OSError) if fail else error is None\n    class Client:\n        done = False\n        async def close(self):\n            await asyncio.sleep(0.01)\n            self.done = True\n    client = Client()\n    task = asyncio.create_task(ns['_close_removed_client'](client))\n    await asyncio.sleep(0)\n    task.cancel()\n    await asyncio.sleep(0)\n    task.cancel()\n    error, cancelled = await task\n    assert client.done and error is None and isinstance(cancelled, asyncio.CancelledError)\n    print('PASS: repeated cancellation preserves write outcomes and completes client close')\nasyncio.run(main())\nPY",
+      "exit_code": 1,
+      "purpose": "Attempt isolated cancellation checks; shell heredoc temporary-file creation was blocked. Retried without a heredoc."
+    },
+    {
+      "command": "python3 -B -c 'import ast, asyncio, concurrent.futures\nfrom pathlib import Path\nsource = ast.parse(Path(\"triggarr/web/routes.py\").read_text())\nnames = {\"_await_claimed_write\", \"_close_removed_client\"}\nmodule = ast.Module(body=[ast.ImportFrom(module=\"__future__\", names=[ast.alias(name=\"annotations\")], level=0)] + [n for n in source.body if isinstance(n, ast.AsyncFunctionDef) and n.name in names], type_ignores=[])\nns = {\"asyncio\": asyncio, \"concurrent\": concurrent}\nexec(compile(ast.fix_missing_locations(module), \"<review helpers>\", \"exec\"), ns)\nasync def main():\n    for fail in (False, True):\n        outcome = concurrent.futures.Future()\n        outcome.set_running_or_notify_cancel()\n        task = asyncio.create_task(ns[\"_await_claimed_write\"](outcome))\n        await asyncio.sleep(0)\n        task.cancel()\n        await asyncio.sleep(0)\n        task.cancel()\n        await asyncio.sleep(0)\n        if fail:\n            outcome.set_exception(OSError(\"disk full\"))\n        else:\n            outcome.set_result(None)\n        error, cancelled = await task\n        assert isinstance(cancelled, asyncio.CancelledError)\n        assert isinstance(error, OSError) if fail else error is None\n    class Client:\n        done = False\n        async def close(self):\n            await asyncio.sleep(0.01)\n            self.done = True\n    client = Client()\n    task = asyncio.create_task(ns[\"_close_removed_client\"](client))\n    await asyncio.sleep(0)\n    task.cancel()\n    await asyncio.sleep(0)\n    task.cancel()\n    error, cancelled = await task\n    assert client.done and error is None and isinstance(cancelled, asyncio.CancelledError)\n    print(\"PASS: repeated cancellation preserves write outcomes and completes client close\")\nasyncio.run(main())'",
+      "exit_code": 0,
+      "purpose": "Execute source-extracted cancellation helpers without modifying files. All assertions passed; the interpreter also emitted an OSError diagnostic for the intentionally failing shielded future."
+    }
+  ],
+  "findings": [],
+  "limitations": [
+    "Did not independently run pytest in the read-only sandbox; full-suite results come from the supplied exact-head harness evidence.",
+    "Standalone cancellation checks exercised extracted helper functions, not the full application or AnyIO middleware stack; middleware coverage was assessed through source inspection and harness-tested regression tests.",
+    "Browser interaction was not independently exercised; template tests largely assert rendered markup and script text rather than actual browser behavior.",
+    "The initial heredoc check was blocked by sandbox restrictions and successfully rerun using python -c. No files were edited."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

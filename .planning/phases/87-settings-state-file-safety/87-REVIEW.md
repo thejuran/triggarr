@@ -1,9 +1,9 @@
 ---
 phase: 87-settings-state-file-safety
-reviewed: 2026-11-16T02:58:00Z
+reviewed: 2026-11-16T04:27:46Z
 depth: standard
-iteration: 5
-head: e90f8cef
+iteration: 6
+head: 88832ef9
 files_reviewed: 2
 files_reviewed_list:
   - triggarr/web/routes.py
@@ -11,110 +11,115 @@ files_reviewed_list:
 findings:
   critical: 0
   warning: 0
-  info: 1
-  total: 1
+  info: 3
+  total: 3
 status: issues_found
 ---
 
-# Phase 87: Code Review Report (iteration 5, review after the general-only Save fix)
+# Phase 87: Code Review Report (iteration 6, review after the vibe-check cancellation fixes)
 
-**Reviewed:** 2026-11-16T02:58:00Z
+**Reviewed:** 2026-11-16T04:27:46Z
 **Depth:** standard
 **Files Reviewed:** 2
 **Status:** issues_found (info only: no critical, no warning)
-**Head reviewed:** `e90f8cef` (only code change since iteration 4 head `0cb0f12e` is commit `7a92e735`; diff base `821c8922`; phase base `3cede400`)
+**Head reviewed:** `88832ef9` (diff base `70f79434`, which carries the same code as iteration 5 head `e90f8cef` plus docs)
 
-The reports for iterations 1 to 4 (heads `6262dd14`, `f099c6a8`, `615a044a`, `0cb0f12e`) are in git history for this file.
+The reports for iterations 1 to 5 (heads `6262dd14`, `f099c6a8`, `615a044a`, `0cb0f12e`, `e90f8cef`) are in git history for this file.
 
 ## Summary
 
-This is a review of commit `7a92e735` (`git show 7a92e735 -- triggarr tests`) against the code itself. Everything else between `0cb0f12e` and `e90f8cef` is planning markdown (`git diff --stat 0cb0f12e..HEAD -- triggarr tests` shows only the two reviewed files).
+This iteration reviews the three commits from the vibe-check deep review (`git diff 70f79434..88832ef9 -- triggarr tests`), checked against the code itself:
 
-**This iteration has no critical and no warning finding.** Under the owner's stopping rule there is nothing to fix. One info item is listed for the backlog, and two items are set aside for an owner ruling (one new observation about code this commit did not change, one carried from iteration 2).
+- `f9186e87`: `remove_instance` handles cancellation of its settings write. If no worker has claimed the write, it is called off. If a worker has claimed it, the route waits for it through `asyncio.shield` (`_await_claimed_write`) and applies the result to live state before re-raising.
+- `9c2fc602`: `_close_removed_client` finishes the removed client's close even under BaseHTTPMiddleware's level-triggered cancellation.
+- `88832ef9`: a close task that was itself cancelled is reported as an error and logged.
 
-The fix is real. With a removal's settings write in progress, a Save that carries only general settings waits for the lock, then builds its configuration from the settings as they are after the removal. The removed instance is absent from the settings file, live settings, the client registry and the scheduler. The reverse overlap with Add Instance keeps the added instance, in both orders.
+**This iteration has no critical and no warning finding.** Under the owner's stopping rule there is nothing to fix. Three info items are listed for the backlog. The most notable is IN-01: under the production middleware, a cancelled removal's wait loop runs about 4,000 times in 60 ms because anyio re-delivers the cancellation on every turn of the event loop. Nothing is lost or wrong, but it burns CPU until the write and close finish. A one-line fix is suggested and was confirmed by a probe.
+
+The fixes are real. In every cancellation case tested, the settings file and the running app agree afterwards, the lock is released, and the removed client's connection is closed.
 
 ### Fix verification
 
 | Check | Result |
 |---|---|
-| General-only Save queued behind a removal's write does not bring the instance back | Holds. `test_general_settings_save_during_removal_write_does_not_resurrect_removed` (`tests/test_web.py:1755`) passes at head: instance absent from the file, live settings and client registry; its client closed exactly once; no scheduler call for its job. |
-| The test fails on the pre-fix code | Yes. The head test file was run against an exported copy of `7a92e735^`: it fails at `assert "4K" not in on_disk["radarr"]` (the removed instance is back in the file). The neighbouring Add Instance test passes there, as expected. |
-| The same overlap with the settings class reading the app's own settings file, as it does in production | Holds. Tests use a settings file path the settings class does not read; in production they are the same file (see SA-01). Probed with both pointed at one file: the removed instance stays absent from the file, live settings and client registry. |
-| General-only Save queued behind an Add Instance write keeps the added instance | Holds (probed). File and live settings contain all three instances; the id Add Instance generated is the id the Save kept; the state entry exists. |
-| Add Instance queued behind a general-only Save's write | Holds (probed). Both the new general setting and the added instance are in the file and live settings. |
-| Other instances after the overlap | Unchanged (probed): ids, API keys and tags of the remaining instances are the same in the file and live settings; the unchanged instance's client was neither rebuilt nor closed. |
-
-### Review of commit `7a92e735`
-
-| Check | Result |
-|---|---|
-| `_settings_from_form` against the code it replaced | Equivalent. The body (`triggarr/web/routes.py:645-721`) is the old code moved without edits: every general field, the form-key parsing, both instance branches, API-key preservation as a `SecretStr`, id preservation (`current_cfg.id` or a new id), and validation before any write. The only edits are the two rejection exits, which now return `None` instead of the redirect. |
-| Rejection exits | Same response as before. `save_settings` turns `None` into the same 303 redirect (`:741-742`). Probed with an invalid URL and with a validation failure (six instances): 303, live settings object unchanged, no settings file written, one warning each. |
-| Lock released on the early return | Yes. The return is inside `async with` (`:738-742`), which releases on exit. Probed: the lock is free after each rejected Save, and a following Save succeeds. |
-| No gap between the read and the write | Holds. There is no `await` between taking the lock, reading live settings (`:739`), building the configuration (`:740`) and starting the write (`:745`), so no other request can run in between. Every other settings writer takes the same lock. |
-| Anything new under the lock that can block or deadlock | Nothing that waits on another lock or on the network. `validate_arr_url` does no DNS lookup. The helper is synchronous and takes no lock, so it cannot deadlock. Two things that already ran on the event loop now run while the lock is held: the log lines for a rejection, and the settings-file read that building the settings object performs (SA-01). Both are short and were on the event loop before the change. The one user-visible effect is IN-01. |
-| Post-save comparisons use the under-lock snapshot | Correct, and more accurate than before. Client rebuild (`:763`, `:789-795`) and tag-cache invalidation (`:846-858`) compare the new settings with the settings read under the lock (`:739`), so they no longer compare against a snapshot that another request may have replaced. Scheduler handling depends only on the new settings and the client registry. After a removal the instance is in neither, so nothing is recreated for it. |
-| API keys | Handling unchanged. Keys stay `SecretStr` until `_settings_to_dict`; nothing new is logged. |
-| Lock audit | `tests/audit_lock_coverage.py`: covered 8 / 8. |
-
-### New test: reliability
-
-- **Ordering is forced, not timed.** The removal's writer is held on an event; the Save is started only after the writer is running; the test then waits until exactly one request is queued on the lock and asserts that before releasing the writer. If the Save ran without queuing, the test fails rather than passing wrongly.
-- **Cleanup.** The release event is set in `finally`, and the gated writer gives up after 10 seconds, so a failed assertion cannot leave a worker thread waiting.
-- **Waits are condition-based** with a 10 second limit, not fixed sleeps.
-- **Repeat runs:** 15 runs in a row, no failure.
-- It waits on the private `asyncio.Lock._waiters` attribute, like the other overlap tests. That is the existing backlog item IN-03 (fails loudly if the attribute changes; cannot pass wrongly).
-- The scheduler in this fixture is a mock that reports every job as existing, so the test's scheduler assertion proves "no job was rescheduled or added for the removed instance". That is the relevant check for this defect.
+| Cancelled before a worker claims the write | The route sets `write_abandoned` under `write_gate` and re-raises at once (`routes.py:1152-1159`). Nothing is written and nothing live changes. If a worker has already taken the job from the queue but has not reached the gate yet, it finds `write_abandoned` set and returns without writing (`:1133-1135`). |
+| Cancelled after the write is claimed, write succeeds | The route waits for the real outcome (`:1167`). It then applies the removal to settings, scheduler, clients, state and tag cache, closes the client, and re-raises (`:1249-1252`). `test_remove_instance_cancelled_during_write_keeps_file_and_live_state_in_step[True]` confirms that the file and live state agree and the lock is free. |
+| Cancelled after the write is claimed, write fails | The route logs one error, keeps the instance and re-raises (`:1181-1192`). The `[False]` case of the same test confirms that. |
+| `write_outcome` cannot be cancelled underneath the waiter | Holds. The worker calls `set_running_or_notify_cancel()` under the gate before writing (`:1139`). Once that has run, a cancelled `wrap_future` waiter cannot cancel the concurrent future, and `shield` also keeps the waiter itself from being cancelled. So `waiter.exception()` at `:1000` cannot raise `CancelledError`. |
+| Write already finished when the cancellation arrives | Handled. The job is claimed and `write_outcome` is done, so `_await_claimed_write` returns after one turn of the loop. |
+| No `await` between the commit and the close | Holds. The post-commit tidy-up is synchronous, and leaving `async with search_lock` does not suspend. The only remaining place a cancellation can arrive is inside `_close_removed_client`, which absorbs it. |
+| Close finishes under level-triggered cancellation (`9c2fc602`) | Holds. The close runs as its own task. The anyio cancel scope does not track a task created with `asyncio.ensure_future`, so the close is never cancelled with the request. `test_remove_instance_cancelled_through_middleware_stack_still_closes_client` passes. |
+| A cancelled close task is reported as an error (`88832ef9`) | Holds. `closing.cancelled()` returns a `RuntimeError` (`:1035-1036`). The route logs one error naming the app and instance (`:1240-1247`). |
+| Each new test fails without its fix | Yes. The head `tests/test_web.py` was run against exported copies of each parent commit. At `70f79434` all 5 new tests fail. At `f9186e87` the middleware test and both cancelled-close tests fail. At `9c2fc602` the two cancelled-close tests fail. |
+| API keys / logging | No secret is logged. The new log line logs only the exception type and message from `close()`. |
 
 ### Checks run during this review (from the checkout, without writing to it)
 
-- `pytest tests/` (full suite): 3331 passed, 1 skipped.
-- `ruff check triggarr/ tests/`: all checks passed.
+- `pytest tests/` (full suite): 3336 passed, 1 skipped.
+- `pytest tests/test_web.py -k "remove_instance or close_removed"`: 34 passed.
+- `ruff check triggarr/web/routes.py tests/test_web.py`: all checks passed.
 - Convention pack (`verify conventions --check`) on the two files: no findings (not skipped).
-- Head `tests/test_web.py` against an exported copy of `7a92e735^`: the new test fails, for the reason above.
-- A throwaway probe file outside the repo (7 cases, all passed): both orders of Add Instance against a general-only Save, the removal overlap with ids/keys/clients checked, the removal overlap in the production file arrangement, both rejection exits, the lock wait in IN-01, and the form-omission case in SA-01.
+- Throwaway probes in the session scratchpad, not in the repo:
+  - Each new test run against exported copies of `70f79434`, `f9186e87` and `9c2fc602` (results above).
+  - `asyncio.shield` call counts for the cancellation tests, as written at head and with the IN-01 fix applied via monkeypatch (IN-01).
 
-Not verified: nothing was exercised in a browser. `triggarr/config.py`, `triggarr/state.py` and the templates are unchanged since iteration 4 and were not re-reviewed. The items the owner ruled on (the full-form case, request cancellation during a write, the late write in other routes, the two missing tests) were not re-examined.
+Not verified: nothing was exercised against a real uvicorn server or a real client disconnect. Production cancellation was modelled only by the test's three `BaseHTTPMiddleware` layers.
+
+## Owner decisions recorded by the vibe-check review (not re-raised)
+
+| Item | Owner decision | Status at this head |
+|---|---|---|
+| `save_settings`' post-commit close loop is not cancellation-safe (`routes.py:867`, `await c.close()`) | Deferred (pre-existing, outside phase scope) | Unchanged. Not re-examined. |
+| A close task that cancels itself while the request is not cancelled still re-raises `CancelledError` | Deferred (shutdown-only edge) | Unchanged. `shield` turns the inner task's cancellation into a `CancelledError` at `:1028`, which is recorded as the request's own cancellation. `test_remove_instance_cancelled_close_logs_error` currently pins that re-raise (`pytest.raises(asyncio.CancelledError)`). If the deferred item is fixed, that assertion must change too. |
+| Test default executors are not shut down explicitly | Dismissed (asyncio shuts them at loop close) | Not re-raised. |
 
 ## Earlier-iteration dispositions
 
-| Finding | Disposition | Verified | Notes |
-|---|---|---|---|
-| Iteration 4 IN-01: the "write already running" test allows 100 ms for the request to reach the write | Backlog | Yes (entry exists) | Recorded in `.planning/backlog/MAINTENANCE.md`. Test unchanged. |
-| Iteration 4 IN-02: the mock-based test still describes the failure as "the write never starts" | Backlog | Yes (entry exists) | Recorded in `.planning/backlog/MAINTENANCE.md`. Test unchanged. |
-| Codex F001 at `0cb0f12e`: a removal cancelled after its write started lets the write finish without live state being updated | Backlog by owner | Yes (entry exists) | Recorded in `.planning/backlog/MAINTENANCE.md` (fix once for all settings routes). Not re-examined. |
-| Deep-review Warning: a general-only Save overlapping a removal resurrects the removed instance | Fixed in `7a92e735` | Yes | `triggarr/web/routes.py:637-742`. Regression test fails before the fix and passes after; also holds in the production file arrangement. See the tables above. |
+| Finding | Disposition | Notes |
+|---|---|---|
+| Iteration 5 IN-01: a rejected Save waits for the lock | Backlog | Code unchanged in this iteration. |
+| Iteration 5 SA-01 / SA-02 | Awaiting/recorded owner ruling | `triggarr/config.py` and `save_settings` unchanged. Not re-examined. |
+| Codex F001 at `0cb0f12e`: a removal cancelled after its write started leaves live state stale | Fixed for `remove_instance` in `f9186e87` | Verified above. The backlog entry's "fix once for all settings routes" still applies to Save Settings and Add Instance, which this diff does not touch. |
 
 ## Narrative Findings (AI reviewer)
 
 ## Info
 
-### IN-01: A rejected Save now waits for a running search before answering
+### IN-01: Under the production middleware, a cancelled removal busy-loops on the event loop until its write and close finish
 
-**File:** `triggarr/web/routes.py:738-742`
-**Issue:** The URL check and the settings validation moved inside the lock, so a Save that is going to be rejected (invalid instance URL, or settings that fail validation) is answered only once the lock is free. Before `7a92e735` it was answered at once. Measured: with the lock held, the rejected Save was still unanswered after 300 ms and returned its 303 as soon as the lock was released. A Save that succeeds has always waited for the lock, so the only change is how long a rejected one takes while a search cycle or another settings change is running. Nothing is lost or written. This is the same cost as iteration 3 IN-01 for Add Instance, and it is the price of reading settings under the lock.
-**Fix:** None needed for correctness. If the delay matters, check the submitted URLs before taking the lock (that check does not depend on current settings) and keep the build and validation inside it.
+**File:** `triggarr/web/routes.py:996-1003` (`_await_claimed_write`), `triggarr/web/routes.py:1026-1033` (`_close_removed_client`)
+**Issue:** anyio's cancel scope (inside each `BaseHTTPMiddleware`) re-delivers `task.cancel()` on every turn of the event loop until the task leaves the scope. anyio does not know about `asyncio.shield`, so every `await asyncio.shield(...)` in these loops is cancelled on the next turn, and the loop starts another shield at once. Measured in `test_remove_instance_cancelled_through_middleware_stack_still_closes_client`: **4,063 `shield` calls** during a 50 ms write plus a 10 ms close, against 1 to 2 calls when the cancellation arrives once (the plain-asyncio test). The loop yields on each pass, so other requests are still served and the result is correct. However, the event loop runs at full CPU for as long as the write takes to fsync, which can take noticeably longer on NAS storage, and for the close. Only a cancelled removal is affected, which is rare. This is mainly a resource cost, so it is graded Info.
+**Fix:** Also stop anyio from re-delivering, and keep the existing loop for one-off asyncio cancellations:
+```python
+import anyio
+
+async def _await_claimed_write(outcome):
+    waiter = asyncio.wrap_future(outcome)
+    cancelled = None
+    with anyio.CancelScope(shield=True):
+        while not waiter.done():
+            ...  # unchanged loop body
+```
+Do the same in `_close_removed_client`. Probed by wrapping both helpers in `anyio.CancelScope(shield=True)` via monkeypatch: the middleware test drops to 2 `shield` calls, and all 5 new cancellation tests still pass. The first `CancelledError` must still be captured before the shielded scope is entered (it is: the route receives it from `run_in_executor` at `:1151`).
+
+### IN-02: The middleware close test would also pass with a fire-and-forget close
+
+**File:** `tests/test_web.py` (`test_remove_instance_cancelled_through_middleware_stack_still_closes_client`, the `for _ in range(100): if close_done: break` loop after `await request_task`)
+**Issue:** The docstring says the close must finish "before the cancellation propagates". After the request task has ended, the test polls for up to 500 ms for `close_done`. Code that only scheduled the close (`asyncio.create_task(client.close())`) and re-raised at once would therefore pass, although the route would no longer wait for the close. The test does catch the original defect: the plain `await client.close()` is cancelled mid-close and never finishes, so the test fails on `9c2fc602^` as verified above.
+**Fix:** Assert `close_done` immediately after `await request_task`, without the polling loop. At head, `close_done` is already `True` at that point because the route waits for the close.
+
+### IN-03: The final re-raise comment names only the write
+
+**File:** `triggarr/web/routes.py:1249-1251`
+**Issue:** The comment says "The request was cancelled while the write ran". `cancelled` can also come from `_close_removed_client` (`:1238-1239`), when the cancellation arrives during the close. It can also come from a close task cancelling itself, as described in the deferred owner item above. A reader tracing a `CancelledError` from a removal would be misled about where it came from.
+**Fix:** Change the comment to say the request was cancelled while the write or the close was running, and that the removal has been applied and the client closed (or the close failure logged) before the cancellation is let through.
 
 ## Set aside (needs ruling)
 
-### SA-01: In production, a Save whose form leaves an instance out does not delete it; the tests pin the opposite
-
-**Where:** `triggarr/web/routes.py:718` (`SettingsModel(**new_config)`), `triggarr/models/config.py:194-196` and `:227-239`
-**Why excluded:** Not changed by `7a92e735` (the line was moved, not edited) and it predates Phase 87. It concerns the full-form Save behavior the owner has already placed in the backlog, so it is raised as a fact that affects that backlog item rather than as a finding of this iteration.
-**What was observed:** Building the settings object reads the settings file as a second source and merges it underneath the submitted values. In production that file is the app's own settings file (`triggarr/__main__.py:53` and the class default are the same path). Probed with both pointed at one file: a Save whose form carried fields for only one of two Radarr instances left both instances in the file and in live settings. In the test suite the two paths differ, so `test_save_settings_form_removal_invalidates_tag_cache` (`tests/test_web.py:3884`) pins a deletion that production does not perform.
-**Effect if left as is:** For a user, a Save from a stale page keeps an instance that was added elsewhere instead of deleting it, which is the safer outcome. The cost is accuracy: the backlog entry "Settings read before search_lock" describes Save as deleting an instance absent from the form, and the proposed follow-up design is written against that. The same merge is also what carries the sign-in settings through a Save, and it is a file read on the event loop, now inside the lock.
-**Needs:** A ruling from the owner: correct the backlog entry's description and take this into the follow-up design (suggested), or accept as is. No change is suggested for this phase.
-
-### SA-02: A failure closing the directory handle after the file was replaced is reported as a failed save
-
-**Where:** `triggarr/config.py:207-208` (`_atomic_toml_write`, the `finally` that closes the directory handle)
-**Why excluded:** Carried from iteration 2 SA-02. `triggarr/config.py` is unchanged in this iteration and the behavior predates Phase 87. The backlog entry still reads "no owner ruling yet".
-**Effect if left as is:** If closing the directory handle fails after the settings file was already replaced, the writer raises. Remove Instance then tells the user the instance was not removed although the file no longer has it, and Save Settings or Add Instance fail with the file changed and the running app not updated, until a restart. Very unlikely; found by reading, not reproduced.
-**Needs:** A ruling from the owner: fix (treat a close failure after the replace as a warning, like the directory-sync failure next to it), or backlog.
+None. The two deferred items and the dismissed item from the vibe-check review are recorded above as owner decisions and are not counted here.
 
 ---
 
-_Reviewed: 2026-11-16T02:58:00Z_
+_Reviewed: 2026-11-16T04:27:46Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_
