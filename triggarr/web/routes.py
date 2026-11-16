@@ -979,6 +979,33 @@ def _removal_failed_response(request: Request, instance_name: str) -> HTMLRespon
     return HTMLResponse(message, status_code=500)
 
 
+async def _await_claimed_write(
+    outcome: concurrent.futures.Future[None],
+) -> tuple[Exception | None, asyncio.CancelledError | None]:
+    """Wait for a settings write that a worker has already started.
+
+    The write cannot be called off once it is running, so this waits for it
+    to finish even if the request is cancelled meanwhile (the event loop
+    keeps turning: only this request waits). Returns the write's own error
+    (None when it succeeded) and the first cancellation received while
+    waiting, which the caller re-raises once the file and live state agree.
+    """
+    waiter = asyncio.wrap_future(outcome)
+    cancelled: asyncio.CancelledError | None = None
+    while not waiter.done():
+        try:
+            await asyncio.shield(waiter)
+        except asyncio.CancelledError as exc:
+            if cancelled is None:
+                cancelled = exc
+        except Exception:
+            pass  # the write's own error: read from waiter below and returned
+    error = waiter.exception()
+    if error is not None and not isinstance(error, Exception):
+        raise error
+    return error, cancelled
+
+
 @router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
 async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
@@ -1042,8 +1069,13 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         # The code below logs the one contextual error for every way the
         # write can fail -- OSError from the writer, any other exception from
         # inside it, or run_in_executor itself raising -- so the writer's own
-        # generic lines are suppressed (log_failure=False). Exception, not
-        # BaseException: cancellation still propagates.
+        # generic lines are suppressed (log_failure=False).
+        #
+        # Cancelling the request is handled the same way: if the write has
+        # not been claimed it is called off and the cancellation propagates
+        # with nothing changed; if it has, the route waits for it and, when
+        # it succeeded, still applies the removal to live state below before
+        # re-raising the cancellation, so the file and the running app agree.
         #
         # run_in_executor raising does NOT mean the write was never queued.
         # When the OS refuses a new thread ("can't start new thread") the
@@ -1079,23 +1111,30 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
             write_outcome.set_result(None)
 
         write_error: Exception | None = None
+        cancelled: asyncio.CancelledError | None = None
         try:
             await asyncio.get_running_loop().run_in_executor(None, _write_unless_abandoned)
-        except Exception as exc:  # error boundary: nothing live has been changed yet
-            write_error = exc
+        except (Exception, asyncio.CancelledError) as exc:  # error boundary: nothing live has been changed yet
             with write_gate:
                 write_abandoned = True
                 write_already_claimed = write_claimed
+            if isinstance(exc, asyncio.CancelledError):
+                if not write_already_claimed:
+                    # Called off before any worker took it: nothing was
+                    # written and nothing live was changed.
+                    raise
+                cancelled = exc
+            else:
+                write_error = exc
             if write_already_claimed:
                 # A worker took the job before it could be called off: the
                 # write is running or has finished, and its result decides.
                 # (When the writer itself raised, this is that same error.)
-                try:
-                    await asyncio.wrap_future(write_outcome)
-                except Exception as job_exc:
-                    write_error = job_exc
-                else:
-                    write_error = None
+                job_error, late_cancel = await _await_claimed_write(write_outcome)
+                if cancelled is None:
+                    cancelled = late_cancel
+                write_error = job_error
+                if job_error is None and not isinstance(exc, asyncio.CancelledError):
                     logger.warning(
                         "Settings file {path} was saved while removing {app}/{inst}, "
                         "although starting the write reported: {exc_type}: {exc}",
@@ -1115,6 +1154,8 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
                 exc_type=type(write_error).__name__,
                 exc=write_error,
             )
+            if cancelled is not None:
+                raise cancelled
             return _removal_failed_response(request, instance_name)
 
         # Once the write has succeeded the removal is real (D-15): every
@@ -1167,6 +1208,11 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
                 exc_type=type(exc).__name__,
                 exc=exc,
             )
+
+    if cancelled is not None:
+        # The request was cancelled while the write ran; the removal has now
+        # been applied to live state as well, so let the cancellation through.
+        raise cancelled
 
     settings_url = str(request.url_for("settings_page"))
     if request.headers.get("HX-Request") == "true":

@@ -2339,6 +2339,60 @@ async def test_remove_instance_refused_thread_start_with_write_already_running_r
     assert "can't start new thread" in warnings[0]
 
 
+@pytest.mark.parametrize("write_succeeds", [True, False])
+async def test_remove_instance_cancelled_during_write_keeps_file_and_live_state_in_step(
+    multi_instance_app, write_succeeds
+):
+    """The request is cancelled while its settings write is running. The
+    write cannot be called off any more, so the route waits for it and makes
+    live state match what the write actually did before letting the
+    cancellation through: when the write succeeds the instance is gone from
+    the file AND from live settings, clients and state; when it fails, it is
+    kept in both.
+    """
+    app = multi_instance_app
+    config_path = app.state.config_path
+    _atomic_toml_write(config_path, _settings_to_dict(app.state.settings))
+
+    write_started = threading.Event()
+    let_write_finish = threading.Event()
+
+    def gated_writer(*args, **kwargs):
+        write_started.set()
+        assert let_write_finish.wait(10)
+        if not write_succeeds:
+            raise OSError("disk full")
+        return _atomic_toml_write(*args, **kwargs)
+
+    try:
+        with patch("triggarr.web.routes._atomic_toml_write", side_effect=gated_writer):
+            async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                request_task = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+                for _ in range(400):
+                    if write_started.is_set():
+                        break
+                    await asyncio.sleep(0.005)
+                assert write_started.is_set()
+                request_task.cancel()
+                # The route keeps waiting for the running write.
+                for _ in range(10):
+                    await asyncio.sleep(0.005)
+                assert not request_task.done()
+                let_write_finish.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await request_task
+    finally:
+        let_write_finish.set()
+
+    in_file = "4K" in tomllib.loads(config_path.read_text())["radarr"]
+    assert in_file is not write_succeeds
+    assert ("4K" in app.state.settings.radarr) is in_file
+    assert ("4K" in app.state.radarr_clients) is in_file
+    assert ("4K" in app.state.triggarr_state["radarr"]) is in_file
+    # The lock was released: the app is not left wedged.
+    assert not app.state.search_lock.locked()
+
+
 def test_remove_instance_settings_build_failure_logs_one_error(multi_instance_app):
     """A failure while building the post-removal settings data (before the
     writer runs) is also a failed removal: one error-level entry naming the
