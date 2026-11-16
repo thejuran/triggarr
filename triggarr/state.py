@@ -294,7 +294,7 @@ def _start_with_defaults_for_unreadable_state_file(state_path: Path, exc: OSErro
     logger.warning(
         "State file {path} could not be opened or read ({reason}); starting with default "
         "queue progress and last-run times (search history is unaffected). The file was "
-        "left as it is and no copy was made; the next state save will replace it.",
+        "left as it is and no copy was made; the next state save will try to replace it.",
         path=state_path,
         reason=f"{type(exc).__name__}: {exc}",
     )
