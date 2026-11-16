@@ -634,15 +634,14 @@ async def partial_history_results(request: Request) -> HTMLResponse:
     )
 
 
-@router.post("/settings")
-async def save_settings(request: Request) -> RedirectResponse:
-    """Save settings from form data: write TOML, reload, update scheduler."""
-    form = await request.form()
-    current_settings = request.app.state.settings
-    config_path = request.app.state.config_path
-    state_path = request.app.state.state_path
-    scheduler = request.app.state.scheduler
+def _settings_from_form(form, current_settings: SettingsModel) -> SettingsModel | None:
+    """Build and validate the new settings from the settings form.
 
+    ``current_settings`` must be the live settings read under search_lock, so
+    instances preserved from it (general-only saves) reflect any removal or
+    addition that completed while this request waited for the lock.
+    Returns None when the submitted values are rejected (already logged).
+    """
     # Build new config dict from form data
     new_config: dict = {
         "general": {
@@ -680,7 +679,7 @@ async def save_settings(request: Request) -> RedirectResponse:
                 valid, err = validate_arr_url(url)
                 if not valid:
                     logger.warning("{name}/{inst}: URL rejected -- {err}", name=name.title(), inst=inst_name, err=err)
-                    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+                    return None
 
                 submitted_key = fields.get("api_key", "").strip()
                 # Preserve API key when field is empty (keep SecretStr for validation)
@@ -716,16 +715,33 @@ async def save_settings(request: Request) -> RedirectResponse:
 
     # Validate BEFORE writing to disk (QUAL-02)
     try:
-        new_settings = SettingsModel(**new_config)
+        return SettingsModel(**new_config)
     except pydantic.ValidationError as exc:
         logger.warning("Invalid settings rejected: {exc}", exc=exc)
-        return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+        return None
 
-    # Config is valid -- serialize from validated model (SecretStr extraction in _settings_to_dict)
+
+@router.post("/settings")
+async def save_settings(request: Request) -> RedirectResponse:
+    """Save settings from form data: write TOML, reload, update scheduler."""
+    form = await request.form()
+    config_path = request.app.state.config_path
+    state_path = request.app.state.state_path
+    scheduler = request.app.state.scheduler
+
     # Acquire search_lock to prevent races with in-flight search jobs during mutation.
+    # The current-settings read and the new config built from it happen inside the
+    # lock (not before it), so a save that waited on a concurrent removal or addition
+    # cannot write back that request's stale pre-lock snapshot.
     # Collect stale clients to close AFTER releasing the lock (avoid holding lock during TCP teardown).
     clients_to_close: list = []
     async with request.app.state.search_lock:
+        current_settings = request.app.state.settings
+        new_settings = _settings_from_form(form, current_settings)
+        if new_settings is None:
+            return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+
+        # Config is valid -- serialize from validated model (SecretStr extraction in _settings_to_dict)
         await asyncio.get_running_loop().run_in_executor(
             None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
         )

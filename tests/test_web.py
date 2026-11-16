@@ -1752,6 +1752,90 @@ async def test_add_instance_during_removal_write_does_not_resurrect_removed(mult
     assert "Extra" in radarr_state
 
 
+async def test_general_settings_save_during_removal_write_does_not_resurrect_removed(multi_instance_app):
+    """A general-only POST /settings submitted while a removal is still writing
+    the settings file must not bring the removed instance back.
+
+    Sequence: the removal holds search_lock with its writer paused; the
+    settings save (log_level only, so every instance is preserved from the
+    current settings) queues on the lock; the writer is released. Afterwards
+    the removed instance is absent from the settings file, live settings, the
+    client registry and the scheduler.
+    """
+    import threading
+    import tomllib
+
+    from triggarr.config import _atomic_toml_write as real_atomic_write
+
+    settings = multi_instance_app.state.settings
+    settings.radarr["4K"] = settings.radarr["4K"].model_copy(update={"enabled": True})
+
+    writer_started = threading.Event()
+    release_writer = threading.Event()
+    write_count = 0
+
+    def gated_atomic_write(path, data, **kwargs):
+        nonlocal write_count
+        write_count += 1
+        if write_count == 1:
+            writer_started.set()
+            if not release_writer.wait(10):
+                raise RuntimeError("test gate timed out")
+        return real_atomic_write(path, data, **kwargs)
+
+    client_4k = multi_instance_app.state.radarr_clients["4K"]
+    scheduler = multi_instance_app.state.scheduler
+    lock = multi_instance_app.state.search_lock
+
+    try:
+        with patch("triggarr.web.routes._atomic_toml_write", side_effect=gated_atomic_write):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+            ) as ac:
+                removal = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+                for _ in range(2000):
+                    if writer_started.is_set():
+                        break
+                    await asyncio.sleep(0.005)
+                assert writer_started.is_set(), "the removal's settings write must be in progress"
+                assert "4K" in multi_instance_app.state.settings.radarr
+
+                save = asyncio.create_task(ac.post("/settings", data={"log_level": "info"}))
+                for _ in range(2000):
+                    if len(getattr(lock, "_waiters", None) or ()) == 1:
+                        break
+                    await asyncio.sleep(0.005)
+                assert len(getattr(lock, "_waiters", None) or ()) == 1, (
+                    "the settings save must be queued on search_lock behind the removal"
+                )
+                assert not save.done()
+
+                release_writer.set()
+                removal_response, save_response = await asyncio.gather(removal, save)
+    finally:
+        release_writer.set()
+
+    assert removal_response.status_code == 303
+    assert save_response.status_code == 303
+
+    on_disk = tomllib.loads(multi_instance_app.state.config_path.read_text())
+    assert "4K" not in on_disk["radarr"]
+    assert "Default" in on_disk["radarr"]
+
+    live = multi_instance_app.state.settings.radarr
+    assert "4K" not in live
+    assert "Default" in live
+    assert multi_instance_app.state.settings.general.log_level == "info"
+
+    assert "4K" not in multi_instance_app.state.radarr_clients
+    assert client_4k.close.await_count == 1
+
+    scheduled_ids = [c.args[0] for c in scheduler.reschedule_job.call_args_list] + [
+        c.kwargs.get("id") for c in scheduler.add_job.call_args_list
+    ]
+    assert "radarr_4K_search" not in scheduled_ids
+
+
 async def test_add_instance_duplicate_check_uses_settings_current_under_lock(multi_instance_app):
     """Two overlapping Add Instance requests for the same name: the duplicate
     check runs against the settings current once the lock is held, so exactly
