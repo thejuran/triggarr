@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "in review -- Phase 87 executed (3 of 3 plans); deep review closed (3 passes, approved with owner decisions); fix commit 7a92e735 BM + Codex contract pass in progress (not pushed)"
-stopped_at: "Phase 87 deep review (vibe-check) closed 2026-11-15 after 3 passes: the one code Warning (general-only Save during a removal, introduced by this phase) fixed in 7a92e735 and confirmed by the bugs lane and Codex; owner decisions at close-out: record-keeping Warning dismissed (record corrected in 9648de06), cancellation Needs-verification item and the bad-URL test gap deferred to the maintenance backlog. Report: .turingmind/REVIEW.md (not tracked). Still owed before push: BM review + paired Codex contract pass covering 7a92e735, /bm:secure-phase 87, goal verification on the final code, browser checks on the final code (1-2 passed at f099c6a8 only), screen-reader check"
-last_updated: "2026-11-16T02:45:21.000Z"
-last_activity: "2026-11-15 -- Phase 87 deep review closed (3 passes); owner decisions recorded"
+status: "in review -- Phase 87 executed (3 of 3 plans); reviewed locally at e90f8cef (BM iteration 5: no critical or warning; Codex: 1 medium, the known cancellation gap); owner decision pending (not pushed)"
+stopped_at: "Phase 87 reviewed locally at e90f8cef: BM iteration 5 has 0 critical, 0 warning, 1 info, 2 set aside; Codex contract pass complete with 1 medium finding F001 (removal cancelled mid-save; the same gap the owner sent to the backlog at 0cb0f12e -- disposition for this head not yet confirmed). Deep review (vibe-check) closed with owner decisions. Still owed before push: owner disposition of Codex F001 at this head and a ruling on the directory-handle item, /bm:secure-phase 87, goal verification on the final code, browser checks on the final code (1-2 passed at f099c6a8 only), screen-reader check"
+last_updated: "2026-11-16T02:57:00.000Z"
+last_activity: "2026-11-15 -- Phase 87 BM iteration 5 + Codex contract pass at e90f8cef"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
 Plan: 3 of 3 executed
-Status: Phase 87 executed, in review — deep review closed; fix commit 7a92e735 needs BM + Codex contract pass before push
-Last activity: 2026-11-15 — Phase 87 deep review closed (3 passes); owner decisions recorded
+Status: Phase 87 executed, in review — reviewed locally at e90f8cef; owner decision pending on Codex F001 at this head
+Last activity: 2026-11-15 — Phase 87 BM iteration 5 + Codex contract pass at e90f8cef
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
