@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "in review -- Phase 87 executed (3 of 3 plans), fix rounds 1-3 applied and reviewed locally at 0cb0f12e; security check and end-of-phase push next (not pushed)"
-stopped_at: "Phase 87 reviewed locally at 0cb0f12e (BM iteration 4: 0 critical, 0 warning, 2 info; Codex: complete, 1 medium finding F001, owner disposition 2026-11-15: backlog); browser checks 1 and 2 passed at f099c6a8, screen-reader check pending; next: /bm:secure-phase 87, /deep-review offer, then the end-of-phase push and PR"
-last_updated: "2026-11-16T00:50:40.000Z"
-last_activity: "2026-11-15 -- Phase 87 fix round 3 reviewed (BM + Codex)"
+status: "in review -- Phase 87 executed (3 of 3 plans); deep review in progress: pass 1 regression fixed in 7a92e735, pass 2 has open rows; that fix commit still needs a BM + Codex contract pass (not pushed)"
+stopped_at: "Phase 87 deep review (vibe-check) pass 2 at 7a92e735: the pass 1 Warning (general-only Save during a removal brings the instance back, introduced by this phase) is fixed in 7a92e735 and confirmed by the bugs lane and Codex; open rows: record-keeping Warning (addressed by this commit), a Medium test gap (invalid instance URL on Save), the cancellation Needs-verification item (owner backlog decision not yet recorded in the tool). Commit 7a92e735 has not had the BM review + paired Codex contract pass. Browser checks 1-2 passed at f099c6a8 only; screen-reader check pending; /bm:secure-phase 87 not run"
+last_updated: "2026-11-16T02:06:59.000Z"
+last_activity: "2026-11-15 -- Phase 87 deep review pass 2; Save Settings general-only regression fixed (7a92e735)"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
 Plan: 3 of 3 executed
-Status: Phase 87 executed, in review — fix rounds 1-3 reviewed locally; security check and end-of-phase push next
-Last activity: 2026-11-15 — Phase 87 fix round 3 reviewed (BM + Codex)
+Status: Phase 87 executed, in review — deep review pass 2 at 7a92e735; fix commit needs BM + Codex contract pass before push
+Last activity: 2026-11-15 — Phase 87 deep review pass 2; Save Settings general-only regression fixed (7a92e735)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
@@ -87,6 +87,7 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 
 ### Decisions
 
+- 2026-11-15 (Phase 87 deep review, owner): the general-only Save Settings case is fixed in Phase 87 after all (`7a92e735`), superseding "Save Settings stays in the backlog" for that case only. Reason: the deep review showed this phase introduced it (a general-only Save overlapping a removal kept the instance removed at `3cede400` and brought it back at `821c8922`); the earlier statement that the phase did not create or widen the Save Settings problem was true only for a Save carrying instance fields, the one case tested at the time. The full-form stale-page case stays in the maintenance backlog.
 - 2026-11-15 (Phase 87 review, owner): fix round 1 for the first review's warnings; Codex F001 at `f099c6a8` (Add Instance during a removal save) fixed in Phase 87; Save Settings' stale-snapshot behavior stays in the maintenance backlog (it predates the phase; proposed design recorded there); stopping rule after fix round 2: only critical or warning findings are fixed, minor items go to the backlog; Codex F001 at `0cb0f12e` (removal cancelled mid-save) goes to the backlog, to be fixed once for all settings routes. See 87-REVIEW.md, 87-REVIEW-FIX.md and `.planning/backlog/MAINTENANCE.md`.
 - 2026-11-15 (Phase 87 discuss, owner): a failed removal shows its error on the instance row without a page reload, with fixed plain wording; a reset state file is set aside as one copy (both wrong-shape and truncated cases); other settings routes found unsafe and the Save/Add failure messages are recorded in the maintenance backlog, not fixed here; post-save cleanup failures are logged and the user sees a normal removal. See 87-CONTEXT.md.
 - 2026-11-15 (v2.14 roadmap): 24 requirements mapped to 6 phases (87-92) with 100% coverage, no orphans, no double-mapping. Phase order follows the build order recommended in `.planning/research/SUMMARY.md`; LIFE and DELIV each kept in one phase per the roadmapping instruction; RMINST sequenced after CONSIST for the shared instance-removal route; Phase 92 depends on all five fix phases since it validates them rather than anticipating them.
