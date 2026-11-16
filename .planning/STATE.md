@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "in review -- Phase 87 executed (3 of 3 plans), fix round 1 applied; iteration 2 review: BM 1 warning, Codex 1 medium finding; owner decision pending (not pushed)"
-stopped_at: "Phase 87 fix round 1 reviewed locally at f099c6a8 (BM iteration 2: 0 critical, 1 warning, 1 info; Codex: complete, 1 medium finding F001 -- Add Instance during a removal save can bring the removed instance back); browser checks 1 and 2 passed, screen-reader check pending; owner to rule on F001 scope before push"
-last_updated: "2026-11-16T00:08:56.000Z"
-last_activity: "2026-11-15 -- Phase 87 fix round 1 reviewed (BM + Codex); browser checks 1-2 passed"
+status: "in review -- Phase 87 executed (3 of 3 plans), fix rounds 1-3 applied; iteration 4 review: BM no critical or warning, Codex 1 medium finding; owner decision pending (not pushed)"
+stopped_at: "Phase 87 fix round 3 reviewed locally at 0cb0f12e (BM iteration 4: 0 critical, 0 warning, 2 info; Codex: complete, 1 medium finding F001 -- a removal cancelled mid-save leaves file and running app out of step until restart); Save Settings stale-snapshot item kept in the backlog by the owner; browser checks 1 and 2 passed at f099c6a8, screen-reader check pending; owner to disposition Codex F001 before push"
+last_updated: "2026-11-16T00:49:14.000Z"
+last_activity: "2026-11-15 -- Phase 87 fix round 3 reviewed (BM + Codex)"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
 Plan: 3 of 3 executed
-Status: Phase 87 executed, in review — fix round 1 applied; owner decision pending on Codex F001 and BM iteration 2 WR-01
-Last activity: 2026-11-15 — Phase 87 fix round 1 reviewed (BM + Codex); browser checks 1-2 passed
+Status: Phase 87 executed, in review — fix rounds 1-3 applied; owner decision pending on Codex F001 (cancellation during a removal save)
+Last activity: 2026-11-15 — Phase 87 fix round 3 reviewed (BM + Codex)
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
