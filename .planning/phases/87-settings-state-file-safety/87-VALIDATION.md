@@ -84,7 +84,7 @@ All CONSIST-01/02/03 behaviors have automated verification. These browser-only c
 |----------|-----------|----------|--------|
 | Failed-removal message appears on the clicked row in a real browser, no reload, unsaved edits kept | htmx swap behavior in a live browser | 87-HUMAN-UAT #1 | passed 2026-11-15 |
 | Clicking the error message leaves the instance open | `<summary>` toggle is browser behavior | 87-HUMAN-UAT #2 | passed 2026-11-15 |
-| Screen reader announces the failed-removal message | needs assistive technology | 87-HUMAN-UAT #3 | pending |
+| Screen reader announces the failed-removal message | needs assistive technology | 87-HUMAN-UAT #3 | passed 2026-11-15 (owner, VoiceOver) |
 
 ---
 
