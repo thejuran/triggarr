@@ -42,7 +42,7 @@ from triggarr.auth import (
     verify_password,
 )
 from triggarr.changelog import read_changelog
-from triggarr.clients.base import Tag
+from triggarr.clients.base import ArrClient, Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
@@ -1006,6 +1006,37 @@ async def _await_claimed_write(
     return error, cancelled
 
 
+async def _close_removed_client(client: ArrClient) -> tuple[Exception | None, asyncio.CancelledError | None]:
+    """Close a removed instance's client, finishing even if the request is cancelled.
+
+    The removal is already committed when this runs, so the close must not be
+    abandoned. Under Starlette's BaseHTTPMiddleware the request runs inside
+    anyio cancel scopes, which re-deliver a cancellation at every await until
+    the request returns, so a plain ``await client.close()`` after an
+    absorbed cancellation would itself be cancelled and leak the connection.
+    The close runs as its own task and is waited for through a shield, the
+    same way _await_claimed_write waits for the write. Returns the close's
+    own error (None when it succeeded) and the first cancellation received
+    while waiting, which the caller re-raises.
+    """
+    closing = asyncio.ensure_future(client.close())
+    cancelled: asyncio.CancelledError | None = None
+    while not closing.done():
+        try:
+            await asyncio.shield(closing)
+        except asyncio.CancelledError as exc:
+            if cancelled is None:
+                cancelled = exc
+        except Exception:
+            pass  # the close's own error: read from closing below and returned
+    if closing.cancelled():
+        return None, cancelled
+    error = closing.exception()
+    if error is not None and not isinstance(error, Exception):
+        raise error
+    return error, cancelled
+
+
 @router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
 async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
@@ -1195,18 +1226,21 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         request.app.state.tag_cache.pop((app_name, instance_name), None)
 
     # Close stale client outside the lock (TCP teardown doesn't need lock
-    # protection). Isolated in its own try/except: a close failure must not
+    # protection). Its failure is logged, not raised: a close failure must not
     # stop the user from seeing the normal success response (D-15, D-16).
+    # The close completes even if the request is cancelled meanwhile; that
+    # cancellation is then re-raised below like one received during the write.
     if client:
-        try:
-            await client.close()
-        except Exception as exc:  # error boundary for post-commit cleanup (D-15, D-16)
+        close_error, close_cancel = await _close_removed_client(client)
+        if cancelled is None:
+            cancelled = close_cancel
+        if close_error is not None:
             logger.error(
                 "Removed {app}/{inst} but closing its connection failed: {exc_type}: {exc}",
                 app=app_name,
                 inst=instance_name,
-                exc_type=type(exc).__name__,
-                exc=exc,
+                exc_type=type(close_error).__name__,
+                exc=close_error,
             )
 
     if cancelled is not None:

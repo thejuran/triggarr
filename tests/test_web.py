@@ -2393,6 +2393,76 @@ async def test_remove_instance_cancelled_during_write_keeps_file_and_live_state_
     assert not app.state.search_lock.locked()
 
 
+async def test_remove_instance_cancelled_through_middleware_stack_still_closes_client(multi_instance_app):
+    """Production wraps every request in three BaseHTTPMiddleware layers, whose
+    anyio cancel scopes re-deliver a cancellation at every await until the
+    request returns. A request cancelled while its (successful) settings write
+    runs must still finish closing the removed instance's client before the
+    cancellation propagates, so its connection is not leaked.
+    """
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class Passthrough(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            return await call_next(request)
+
+    app = multi_instance_app
+    for _ in range(3):
+        app.add_middleware(Passthrough)
+    config_path = app.state.config_path
+    _atomic_toml_write(config_path, _settings_to_dict(app.state.settings))
+
+    client = app.state.radarr_clients["4K"]
+    real_close = client.close
+    close_started = False
+    close_done = False
+
+    async def slow_close():
+        nonlocal close_started, close_done
+        close_started = True
+        await asyncio.sleep(0.01)
+        await real_close()
+        close_done = True
+
+    client.close = slow_close
+
+    write_started = threading.Event()
+    let_write_finish = threading.Event()
+
+    def gated_writer(*args, **kwargs):
+        write_started.set()
+        assert let_write_finish.wait(10)
+        return _atomic_toml_write(*args, **kwargs)
+
+    try:
+        with patch("triggarr.web.routes._atomic_toml_write", side_effect=gated_writer):
+            async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                request_task = asyncio.create_task(ac.post("/api/instance/remove/radarr/4K"))
+                for _ in range(400):
+                    if write_started.is_set():
+                        break
+                    await asyncio.sleep(0.005)
+                assert write_started.is_set()
+                request_task.cancel()
+                await asyncio.sleep(0.05)
+                let_write_finish.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await request_task
+                for _ in range(100):
+                    if close_done:
+                        break
+                    await asyncio.sleep(0.005)
+    finally:
+        let_write_finish.set()
+
+    assert "4K" not in tomllib.loads(config_path.read_text())["radarr"]
+    assert "4K" not in app.state.settings.radarr
+    assert "4K" not in app.state.radarr_clients
+    assert close_started
+    assert close_done
+    assert not app.state.search_lock.locked()
+
+
 def test_remove_instance_settings_build_failure_logs_one_error(multi_instance_app):
     """A failure while building the post-removal settings data (before the
     writer runs) is also a failed removal: one error-level entry naming the
