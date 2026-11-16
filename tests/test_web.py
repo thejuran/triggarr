@@ -1967,9 +1967,10 @@ def test_remove_instance_unexpected_write_error_keeps_live_state(multi_instance_
 
 def test_remove_instance_unexpected_real_write_error_logs_one_error(multi_instance_app):
     """A non-OSError failure inside the real writer yields exactly one
-    error-level entry overall (D-07): the writer's own unexpected-error line,
-    which names the system reason. The route adds the app and instance at
-    warning level instead of logging a second error (WR-02a).
+    error-level entry overall (D-07), logged by the route and naming the app,
+    the instance and the system reason. The writer's own unexpected-error
+    line is suppressed for this caller and no separate warning line carries
+    the context (iteration 2 WR-01 / SA-01).
     """
     config_path = multi_instance_app.state.config_path
     pre_existing = b"placeholder"
@@ -1998,19 +1999,79 @@ def test_remove_instance_unexpected_real_write_error_logs_one_error(multi_instan
 
     errors = [r for r in records if r["level"].name == "ERROR"]
     assert len(errors) == 1
-    assert "not TOML serializable" in errors[0]["message"]
+    message = errors[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "not TOML serializable" in message
+    assert not any("Config write failed" in r["message"] for r in records)
 
-    context_lines = [
-        r["message"]
-        for r in records
-        if r["level"].name == "WARNING" and "radarr" in r["message"] and "4K" in r["message"]
-    ]
-    assert len(context_lines) == 1
-    assert "instance kept" in context_lines[0]
+    # The whole failure is that one entry: no adjacent warning line.
+    assert [r["message"] for r in records if r["level"].name == "WARNING"] == []
 
     assert "4K" in multi_instance_app.state.settings.radarr
     assert list(config_path.parent.glob("*.tmp")) == []
     assert config_path.read_bytes() == pre_existing
+
+
+@pytest.mark.parametrize(
+    ("hx_header", "expected_status"),
+    [(None, 500), ("true", 200)],
+    ids=["plain", "htmx"],
+)
+async def test_remove_instance_write_never_starts_logs_one_error(multi_instance_app, hx_header, expected_status):
+    """When the settings write never starts (run_in_executor itself raises,
+    e.g. the host thread limit is reached), the removal still fails cleanly:
+    exactly one error-level entry naming the app, the instance and the
+    reason, the fixed D-05 response, and live state untouched (iteration 2
+    WR-01).
+    """
+    original_4k = multi_instance_app.state.settings.radarr["4K"]
+    headers = {"HX-Request": hx_header} if hx_header else {}
+
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="WARNING")
+    try:
+        with (
+            patch.object(
+                asyncio.get_running_loop(),
+                "run_in_executor",
+                side_effect=RuntimeError("can't start new thread"),
+            ),
+            patch("triggarr.web.routes._atomic_toml_write") as writer,
+        ):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+            ) as ac:
+                response = await ac.post("/api/instance/remove/radarr/4K", headers=headers)
+    finally:
+        logger.remove(handler_id)
+
+    writer.assert_not_called()
+
+    assert response.status_code == expected_status
+    assert "HX-Redirect" not in response.headers
+    assert "Location" not in response.headers
+    assert response.text == (
+        "'4K' was not removed: the settings file could not be saved. "
+        "Nothing was changed. Check the Triggarr log for details."
+    )
+    assert "RuntimeError" not in response.text
+    assert "new thread" not in response.text
+
+    errors = [r for r in records if r["level"].name == "ERROR"]
+    assert len(errors) == 1
+    message = errors[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "can't start new thread" in message
+    # Nothing points at a log entry that does not exist.
+    assert [r["message"] for r in records if r["level"].name == "WARNING"] == []
+
+    assert multi_instance_app.state.settings.radarr["4K"] is original_4k
+    multi_instance_app.state.scheduler.remove_job.assert_not_called()
+    assert "4K" in multi_instance_app.state.radarr_clients
+    multi_instance_app.state.radarr_clients["4K"].close.assert_not_awaited()
+    assert "4K" in multi_instance_app.state.triggarr_state["radarr"]
 
 
 def test_remove_instance_settings_build_failure_logs_one_error(multi_instance_app):
