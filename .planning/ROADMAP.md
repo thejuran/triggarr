@@ -271,7 +271,13 @@ Full phase details: [milestones/v2.13-ROADMAP.md](milestones/v2.13-ROADMAP.md) �
   2. Pruning never removes the original backup or the one just written, orders backups by the timestamp in their names, and a pruning failure is logged without blocking startup.
   3. An automated test pins that Triggarr starts and serves requests with `FASTAPI_OTEL_AUTO_CONFIGURE` and an OTLP endpoint set in the environment.
   4. The documentation states plainly that telemetry export is unsupported and nothing is exported.
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
+
+**Wave 1**
+- [ ] 88-01-PLAN.md — repeated failed upgrades keep the original backup plus the 3 most recent retry copies, chosen by the timestamp in the name; a pruning failure is logged as a warning and never blocks startup (BKUP-01, BKUP-02)
+
+**Wave 2** *(blocked on Wave 1: 88-01)*
+- [ ] 88-02-PLAN.md — a permanent test pins that startup and /health survive the telemetry variables, and the README states telemetry export is unsupported (TELEM-01, TELEM-02)
 
 ### Phase 89: Startup & Shutdown Resource Cleanup
 **Goal**: A startup that fails partway closes everything it already opened, and a shutdown where one connection fails to close still closes the rest.

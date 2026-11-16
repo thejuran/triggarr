@@ -19,7 +19,7 @@ created: 2026-11-16
 |----------|-------|
 | **Framework** | pytest + pytest-asyncio (`asyncio_mode = "auto"`) |
 | **Config file** | `pyproject.toml` (`[tool.pytest.ini_options]`) |
-| **Quick run command** | `uv run pytest tests/test_db.py -x -q` (BKUP) / `uv run pytest <telemetry test file> -x -q` (TELEM) |
+| **Quick run command** | `uv run pytest tests/test_db.py -x -q` (BKUP) / `uv run pytest tests/test_telemetry.py -x -q` (TELEM) |
 | **Full suite command** | `uv run pytest tests/ -x -q && uv run ruff check triggarr/ tests/` |
 | **Estimated runtime** | ~60 seconds |
 
@@ -38,10 +38,10 @@ created: 2026-11-16
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD (planner fills) | — | — | BKUP-01 | T-88 (wrong-file delete) | At most canonical + 3 timestamped backups for `current` after 5+ failed attempts | unit | `uv run pytest tests/test_db.py -k backup -x -q` | ❌ W0 | ⬜ pending |
-| TBD (planner fills) | — | — | BKUP-02 | T-88 (wrong-file delete) | Canonical and just-written never deleted; filename-stamp order; unlink `OSError` logged, startup continues; strict regex gate | unit | `uv run pytest tests/test_db.py -k backup -x -q` | ❌ W0 | ⬜ pending |
-| TBD (planner fills) | — | — | TELEM-01 | — | Startup + `/health` 200 with `FASTAPI_OTEL_AUTO_CONFIGURE` and OTLP endpoint set; must use `with TestClient(app)` (real ASGI lifespan), env set before `FastAPI(...)` | integration | `uv run pytest <telemetry test> -x -q` | ❌ W0 | ⬜ pending |
-| TBD (planner fills) | — | — | TELEM-02 | — | README states telemetry export unsupported, nothing exported | source assertion | `grep -n -i "telemetry" README.md` | ✅ | ⬜ pending |
+| 88-01-01 | 01 | 1 | BKUP-01 | T-88-01, T-88-02, T-88-03, T-88-04 | Canonical + at most 3 timestamped backups for `current` after 5 failed attempts; 5 fail + 1 success leaves 4 files; filename-stamp order; just-written kept; other versions and non-matching names untouched; one INFO line per deletion | unit (TDD) | `uv run pytest tests/test_db.py -x -q -k "backup or prune"` | ❌ W0 (created in task RED step) | ⬜ pending |
+| 88-01-02 | 01 | 1 | BKUP-02 | T-88-05, T-88-06 | `OSError` on listing or unlink logs one WARNING (path + exception type), other deletions continue even when the first deletion fails, no exception escapes, migration still applies | unit (TDD) | `uv run pytest tests/test_db.py -q -k "prune or pruning" && uv run ruff check triggarr/db.py tests/test_db.py` (full suite once at plan completion) | ❌ W0 (created in task RED step) | ⬜ pending |
+| 88-02-01 | 02 | 2 | TELEM-01 | T-88-07, T-88-08 | Startup + `/health` 200 with `FASTAPI_OTEL_AUTO_CONFIGURE` and `OTEL_EXPORTER_OTLP_ENDPOINT` set; `with TestClient(app)`; env set before `FastAPI(...)`; uncommitted negative control recorded (regression pin, RED cannot fail) | integration | `uv run pytest tests/test_telemetry.py -x -q` | ❌ W0 (new file) | ⬜ pending |
+| 88-02-02 | 02 | 2 | TELEM-02 | T-88-09 | README states telemetry export is unsupported, nothing exported, placed after the startup env-var paragraph | source assertion | `grep -n "does not support OpenTelemetry export" README.md` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -50,7 +50,7 @@ created: 2026-11-16
 ## Wave 0 Requirements
 
 - [ ] `tests/test_db.py` — new tests for BKUP-01/BKUP-02 (reuse `_init_test_db`, `tests/migration_faults.py`)
-- [ ] Telemetry regression test (new `tests/test_telemetry.py` or section in an existing file) for TELEM-01
+- [ ] Telemetry regression test `tests/test_telemetry.py` (new file) for TELEM-01
 
 *No framework install needed — pytest, pytest-asyncio and `fastapi.testclient.TestClient` already present.*
 

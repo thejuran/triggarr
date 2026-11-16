@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.14
 milestone_name: Reliability
-status: "ready -- Phase 88 context gathered, planning next; Phase 87 landed on main via PR #62 (d7704342)"
-stopped_at: "Phase 88 context gathered 2026-11-16 (88-CONTEXT.md). Next: /bm:plan-phase 88"
-last_updated: "2026-11-16T04:59:07.000Z"
-last_activity: "2026-11-16 -- Phase 88 discussion complete; context captured in 88-CONTEXT.md"
+status: planning
+stopped_at: "Phase 88 planned (2 plans, 2 waves); execution not started"
+last_updated: "2026-11-16T05:30:08.000Z"
+last_activity: "2026-11-16 — Phase 88 planned: 2 plans in 2 waves (88-01 bounded backups, BKUP-01/02; 88-02 telemetry regression test + README note, TELEM-01/02); plan checker passed on revision 2"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 1
-  total_plans: 3
+  total_plans: 5
   completed_plans: 3
-  percent: 17
+  percent: 14
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15)
 
 ## Current Position
 
-Phase: 88 (Bounded Upgrade Backups & Telemetry Regression) — context gathered, planning not started
-Plan: 0 plans yet
-Status: ready for /bm:plan-phase 88 (context: `.planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-CONTEXT.md`). Phase 87 landed on main 2026-11-16 as PR #62 (merge `d7704342`; acceptance passed at head `8c683587`)
-Last activity: 2026-11-16 — Phase 88 discussion complete (4 areas: post-success backups kept, per-file prune logging, README telemetry note, in-process telemetry test). Before that, Phase 87 merged after a 4-pass vibe-check deep review (3 fixes: `f9186e87`, `9c2fc602`, `88832ef9`), BM iteration 6 and Codex on the PR head (0 findings)
+Phase: 88 (Bounded Upgrade Backups & Telemetry Regression) — planned, execution not started
+Plan: 0 of 2 executed (88-01 Wave 1; 88-02 Wave 2, after 88-01)
+Status: ready for /bm:execute-phase 88 (plans: `.planning/phases/88-bounded-upgrade-backups-telemetry-regression/88-0{1,2}-PLAN.md`). Phase 87 landed on main 2026-11-16 as PR #62 (merge `d7704342`; acceptance passed at head `8c683587`)
+Last activity: 2026-11-16 — Phase 88 planned: 2 plans in 2 waves (88-01 bounded backups, BKUP-01/02; 88-02 telemetry regression test + README note, TELEM-01/02); plan checker passed on revision 2
 
 Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
 
