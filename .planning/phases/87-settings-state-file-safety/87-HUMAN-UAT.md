@@ -3,7 +3,7 @@ status: partial
 phase: 87-settings-state-file-safety
 source: [87-VERIFICATION.md]
 started: 2026-11-15T23:42:31Z
-updated: 2026-11-16T00:08:56Z
+updated: 2026-11-16T03:23:00Z
 ---
 
 ## Current Test
@@ -22,7 +22,7 @@ result: passed (2026-11-15, same run, after fix-round commit 92ddc3a1). Clicking
 
 ### 3. Screen-reader announcement
 expected: With a screen reader running, a failed removal's message is announced without moving focus to the row.
-result: [pending]
+result: [pending] — owner VoiceOver check still needed. Supporting evidence (2026-11-15, Claude via Playwright, local app at 29711fec, settings folder read-only): after a failed removal of one instance, the fixed sentence appeared in its own accessibility-tree node on that instance's row only, keyboard focus stayed on that row's Remove button, the request returned 200, no console errors, one error log entry. The slot carries `aria-live="polite"` in the template, but the browser tool cannot show live-region attributes or whether anything is spoken. The sentence also becomes part of the instance header's accessible name, so a screen reader that later lands on the header reads it there too.
 
 ## Summary
 
