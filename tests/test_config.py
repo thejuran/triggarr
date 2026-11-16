@@ -921,6 +921,87 @@ def test_atomic_toml_write_logs_os_replace_failure(tmp_path: Path) -> None:
         logger.remove(handler_id)
 
 
+def test_atomic_toml_write_log_failure_false_suppresses_primary_line(tmp_path: Path) -> None:
+    """log_failure=False suppresses the primary 'Config write failed' line (D-07).
+
+    A caller that logs the failure itself with richer context (app, instance,
+    system reason) passes log_failure=False so one failed write yields one
+    error log entry overall, not two. This test covers the OSError path;
+    log_failure=False also suppresses the 'Config write failed (unexpected
+    error)' line, which
+    test_atomic_toml_write_log_failure_false_suppresses_unexpected_error_line
+    covers. The directory-fsync warning and the temp-file cleanup error are
+    never suppressed.
+    """
+    config_file = tmp_path / "test.toml"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with patch("triggarr.config.os.replace", side_effect=OSError("EROFS")), \
+             pytest.raises(OSError):
+            _atomic_toml_write(config_file, {"k": "v"}, log_failure=False)
+
+        text = sink.getvalue()
+        assert "Config write failed" not in text
+    finally:
+        logger.remove(handler_id)
+
+    remaining = list(tmp_path.glob("*.tmp"))
+    assert remaining == [], f"Temp files should be cleaned up, found: {remaining}"
+
+
+def test_atomic_toml_write_logs_unexpected_error_by_default(tmp_path: Path) -> None:
+    """With the default log_failure=True, a non-OSError failure inside the
+    writer logs the 'Config write failed (unexpected error)' line with the
+    path and the reason before re-raising.
+    """
+    config_file = tmp_path / "test.toml"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")), \
+             pytest.raises(TypeError):
+            _atomic_toml_write(config_file, {"k": "v"})
+
+        assert sink.getvalue() == f"Config write failed (unexpected error): {config_file} - bad data\n"
+    finally:
+        logger.remove(handler_id)
+
+
+def test_atomic_toml_write_log_failure_false_suppresses_unexpected_error_line(tmp_path: Path) -> None:
+    """log_failure=False also suppresses the unexpected-error line (D-07).
+
+    A caller that logs the failure itself with richer context must get one
+    error-level entry overall on the non-OSError path too. The error is still
+    re-raised, the temp file is still cleaned up, and a failed cleanup is
+    still logged.
+    """
+    config_file = tmp_path / "test.toml"
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="ERROR")
+    try:
+        with patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")), \
+             pytest.raises(TypeError):
+            _atomic_toml_write(config_file, {"k": "v"}, log_failure=False)
+
+        assert sink.getvalue() == ""
+        assert list(tmp_path.glob("*.tmp")) == []
+
+        with patch("triggarr.config.tomli_w.dump", side_effect=TypeError("bad data")), \
+             patch("triggarr.config.os.unlink", side_effect=PermissionError("denied")), \
+             pytest.raises(TypeError):
+            _atomic_toml_write(config_file, {"k": "v"}, log_failure=False)
+
+        text = sink.getvalue()
+        assert "Config write failed" not in text
+        assert "Failed to clean up temp file" in text
+    finally:
+        logger.remove(handler_id)
+
+
 # ---------------------------------------------------------------------------
 # Broken TOML config tests (STATE-01)
 # ---------------------------------------------------------------------------

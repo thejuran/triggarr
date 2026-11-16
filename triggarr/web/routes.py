@@ -8,12 +8,14 @@ and partial endpoints for htmx fragment updates.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import html
 import os
 import re
 import secrets
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -40,7 +42,7 @@ from triggarr.auth import (
     verify_password,
 )
 from triggarr.changelog import read_changelog
-from triggarr.clients.base import Tag
+from triggarr.clients.base import ArrClient, Tag
 from triggarr.clients.lidarr import LidarrClient
 from triggarr.clients.radarr import RadarrClient
 from triggarr.clients.sonarr import SonarrClient
@@ -632,15 +634,14 @@ async def partial_history_results(request: Request) -> HTMLResponse:
     )
 
 
-@router.post("/settings")
-async def save_settings(request: Request) -> RedirectResponse:
-    """Save settings from form data: write TOML, reload, update scheduler."""
-    form = await request.form()
-    current_settings = request.app.state.settings
-    config_path = request.app.state.config_path
-    state_path = request.app.state.state_path
-    scheduler = request.app.state.scheduler
+def _settings_from_form(form, current_settings: SettingsModel) -> SettingsModel | None:
+    """Build and validate the new settings from the settings form.
 
+    ``current_settings`` must be the live settings read under search_lock, so
+    instances preserved from it (general-only saves) reflect any removal or
+    addition that completed while this request waited for the lock.
+    Returns None when the submitted values are rejected (already logged).
+    """
     # Build new config dict from form data
     new_config: dict = {
         "general": {
@@ -678,7 +679,7 @@ async def save_settings(request: Request) -> RedirectResponse:
                 valid, err = validate_arr_url(url)
                 if not valid:
                     logger.warning("{name}/{inst}: URL rejected -- {err}", name=name.title(), inst=inst_name, err=err)
-                    return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+                    return None
 
                 submitted_key = fields.get("api_key", "").strip()
                 # Preserve API key when field is empty (keep SecretStr for validation)
@@ -714,16 +715,33 @@ async def save_settings(request: Request) -> RedirectResponse:
 
     # Validate BEFORE writing to disk (QUAL-02)
     try:
-        new_settings = SettingsModel(**new_config)
+        return SettingsModel(**new_config)
     except pydantic.ValidationError as exc:
         logger.warning("Invalid settings rejected: {exc}", exc=exc)
-        return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+        return None
 
-    # Config is valid -- serialize from validated model (SecretStr extraction in _settings_to_dict)
+
+@router.post("/settings")
+async def save_settings(request: Request) -> RedirectResponse:
+    """Save settings from form data: write TOML, reload, update scheduler."""
+    form = await request.form()
+    config_path = request.app.state.config_path
+    state_path = request.app.state.state_path
+    scheduler = request.app.state.scheduler
+
     # Acquire search_lock to prevent races with in-flight search jobs during mutation.
+    # The current-settings read and the new config built from it happen inside the
+    # lock (not before it), so a save that waited on a concurrent removal or addition
+    # cannot write back that request's stale pre-lock snapshot.
     # Collect stale clients to close AFTER releasing the lock (avoid holding lock during TCP teardown).
     clients_to_close: list = []
     async with request.app.state.search_lock:
+        current_settings = request.app.state.settings
+        new_settings = _settings_from_form(form, current_settings)
+        if new_settings is None:
+            return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
+
+        # Config is valid -- serialize from validated model (SecretStr extraction in _settings_to_dict)
         await asyncio.get_running_loop().run_in_executor(
             None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
         )
@@ -898,28 +916,34 @@ async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
     if not valid:
         return HTMLResponse(err, status_code=400)
 
-    settings = request.app.state.settings
-    instances = getattr(settings, app_name)
-
-    if instance_name in instances:
-        return HTMLResponse(f"Instance '{html.escape(instance_name)}' already exists", status_code=400)
-    if len(instances) >= 5:
-        return HTMLResponse("Maximum 5 instances per app type", status_code=400)
-
-    # Build new config dict, add instance, and validate before mutating live state
-    config_path = request.app.state.config_path
-    config_dict = _settings_to_dict(settings)
-    config_dict[app_name][instance_name] = InstanceConfig().model_dump()
-    config_dict[app_name][instance_name]["api_key"] = ""
-    config_dict[app_name][instance_name]["id"] = new_instance_id()
-    try:
-        new_settings = SettingsModel(**config_dict)
-    except pydantic.ValidationError as exc:
-        logger.warning("Invalid settings rejected on add_instance: {exc}", exc=exc)
-        return HTMLResponse("Validation error: invalid configuration", status_code=400)
-
-    # Acquire search_lock to prevent races with in-flight search jobs
+    # Acquire search_lock to prevent races with in-flight search jobs. The
+    # settings read, the duplicate/limit checks, the build and the validation
+    # all happen inside the lock (not before it): a request that waited here
+    # while another one changed settings (e.g. a removal still writing the
+    # file) must build from the settings current now, not from a stale
+    # pre-lock snapshot that would bring a removed instance back.
     async with request.app.state.search_lock:
+        settings = request.app.state.settings
+        instances = getattr(settings, app_name)
+
+        if instance_name in instances:
+            return HTMLResponse(f"Instance '{html.escape(instance_name)}' already exists", status_code=400)
+        if len(instances) >= 5:
+            return HTMLResponse("Maximum 5 instances per app type", status_code=400)
+
+        # Build new config dict, add instance, and validate before writing
+        # to disk or mutating live state
+        config_path = request.app.state.config_path
+        config_dict = _settings_to_dict(settings)
+        config_dict[app_name][instance_name] = InstanceConfig().model_dump()
+        config_dict[app_name][instance_name]["api_key"] = ""
+        config_dict[app_name][instance_name]["id"] = new_instance_id()
+        try:
+            new_settings = SettingsModel(**config_dict)
+        except pydantic.ValidationError as exc:
+            logger.warning("Invalid settings rejected on add_instance: {exc}", exc=exc)
+            return HTMLResponse("Validation error: invalid configuration", status_code=400)
+
         # Serialize from validated model to guarantee SecretStr extraction
         await asyncio.get_running_loop().run_in_executor(
             None, _atomic_toml_write, config_path, _settings_to_dict(new_settings)
@@ -934,43 +958,265 @@ async def add_instance(request: Request) -> HTMLResponse | RedirectResponse:
     return RedirectResponse(url=request.url_for("settings_page"), status_code=303)
 
 
+def _removal_failed_response(request: Request, instance_name: str) -> HTMLResponse:
+    """Build the fixed D-05 response for a failed instance removal.
+
+    The body never includes the exception, the config path or the
+    exception type (T-87-01) -- only the escaped instance name (T-87-02).
+
+    htmx 2.0.8's default responseHandling never swaps a 4xx/5xx response
+    body regardless of hx-target, so the htmx path must return 200 to
+    reach the row slot (87-02); a direct POST gets an honest non-2xx.
+    Neither path sets HX-Redirect, so no full-page body swap happens here
+    (no stale CSP nonce, SEC-01).
+    """
+    message = (
+        f"'{html.escape(instance_name)}' was not removed: the settings file could not be saved. "
+        "Nothing was changed. Check the Triggarr log for details."
+    )
+    if request.headers.get("HX-Request") == "true":
+        return HTMLResponse(message, status_code=200)
+    return HTMLResponse(message, status_code=500)
+
+
+async def _await_claimed_write(
+    outcome: concurrent.futures.Future[None],
+) -> tuple[Exception | None, asyncio.CancelledError | None]:
+    """Wait for a settings write that a worker has already started.
+
+    The write cannot be called off once it is running, so this waits for it
+    to finish even if the request is cancelled meanwhile (the event loop
+    keeps turning: only this request waits). Returns the write's own error
+    (None when it succeeded) and the first cancellation received while
+    waiting, which the caller re-raises once the file and live state agree.
+    """
+    waiter = asyncio.wrap_future(outcome)
+    cancelled: asyncio.CancelledError | None = None
+    while not waiter.done():
+        try:
+            await asyncio.shield(waiter)
+        except asyncio.CancelledError as exc:
+            if cancelled is None:
+                cancelled = exc
+        except Exception:
+            pass  # the write's own error: read from waiter below and returned
+    error = waiter.exception()
+    if error is not None and not isinstance(error, Exception):
+        raise error
+    return error, cancelled
+
+
+async def _close_removed_client(client: ArrClient) -> tuple[Exception | None, asyncio.CancelledError | None]:
+    """Close a removed instance's client, finishing even if the request is cancelled.
+
+    The removal is already committed when this runs, so the close must not be
+    abandoned. Under Starlette's BaseHTTPMiddleware the request runs inside
+    anyio cancel scopes, which re-deliver a cancellation at every await until
+    the request returns, so a plain ``await client.close()`` after an
+    absorbed cancellation would itself be cancelled and leak the connection.
+    The close runs as its own task and is waited for through a shield, the
+    same way _await_claimed_write waits for the write. Returns the close's
+    own error (None only when it succeeded) and the first cancellation
+    received while waiting, which the caller re-raises. If the close task
+    itself was cancelled before it finished (e.g. a shutdown cancelling all
+    tasks), that is returned as an error too, so the caller logs it instead
+    of treating a close that never completed as a successful one.
+    """
+    closing = asyncio.ensure_future(client.close())
+    cancelled: asyncio.CancelledError | None = None
+    while not closing.done():
+        try:
+            await asyncio.shield(closing)
+        except asyncio.CancelledError as exc:
+            if cancelled is None:
+                cancelled = exc
+        except Exception:
+            pass  # the close's own error: read from closing below and returned
+    if closing.cancelled():
+        return RuntimeError("the close was cancelled before it finished"), cancelled
+    error = closing.exception()
+    if error is not None and not isinstance(error, Exception):
+        raise error
+    return error, cancelled
+
+
 @router.post("/api/instance/remove/{app_name}/{instance_name}", response_model=None)
 async def remove_instance(request: Request, app_name: str, instance_name: str) -> HTMLResponse | RedirectResponse:
     """Remove an instance from an app type.
 
-    Cleans up the scheduler job, client connection, and state entry.
-    Writes updated config to TOML and redirects to settings page.
+    Reads the current settings and re-checks that the instance still exists
+    under search_lock (D-02), so a concurrent removal of the same instance
+    cannot resurrect it from a stale snapshot. Builds the post-removal
+    settings, writes it to disk, and only after the write succeeds swaps
+    live settings in and cleans up the scheduler job, client connection,
+    state entry and tag cache.
     """
     if app_name not in APP_TYPES:
         return HTMLResponse("Invalid app type", status_code=400)
     if len(instance_name) > 64:
         return HTMLResponse("Instance name too long", status_code=400)
 
-    settings = request.app.state.settings
-    instances = getattr(settings, app_name)
-
-    if instance_name not in instances:
-        return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
-
-    # Acquire search_lock to prevent races with in-flight search jobs
+    # Acquire search_lock to prevent races with in-flight search jobs. The
+    # settings read and existence check happen inside the lock (not before
+    # it) so a concurrent request cannot act on a stale pre-lock snapshot.
     async with request.app.state.search_lock:
-        # Remove instance from settings
-        del instances[instance_name]
+        settings = request.app.state.settings
+        instances = getattr(settings, app_name)
 
-        # Write updated config to TOML (offloaded to thread -- blocking I/O)
+        if instance_name not in instances:
+            if request.headers.get("HX-Request") == "true":
+                # Already removed elsewhere (another tab, or the concurrent
+                # request this in-lock check exists for). htmx never swaps a
+                # 4xx body, so answer exactly like a successful removal: a
+                # full navigation that drops the stale row (and binds the new
+                # CSP nonce, SEC-01). Nothing is echoed back.
+                return HTMLResponse("", headers={"HX-Redirect": str(request.url_for("settings_page"))})
+            return HTMLResponse(f"Instance '{html.escape(instance_name)}' not found", status_code=400)
+
+        # Build the post-removal settings without touching live state yet.
+        # No re-validation via SettingsModel(**config_dict) is needed here
+        # (unlike add_instance): removing a key cannot create invalid config.
+        updated_instances = dict(instances)
+        del updated_instances[instance_name]
+        new_settings = settings.model_copy(update={app_name: updated_instances})
+
+        # Every failure up to and including the write is handled here: live
+        # state has not been touched yet, so the instance is simply kept and
+        # the user gets the fixed D-05 response. Each path logs exactly one
+        # error-level entry, here in the route, naming the app, the instance
+        # and the reason (D-07).
         config_path = request.app.state.config_path
-        config_dict = _settings_to_dict(settings)
-        await asyncio.get_running_loop().run_in_executor(
-            None, _atomic_toml_write, config_path, config_dict
-        )
+        try:
+            config_dict = _settings_to_dict(new_settings)
+        except Exception as exc:  # error boundary: nothing live has been changed yet
+            logger.error(
+                "Could not build the settings data while removing {app}/{inst}; "
+                "instance kept: {exc_type}: {exc}",
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(exc).__name__,
+                exc=exc,
+            )
+            return _removal_failed_response(request, instance_name)
 
-        # Clean up scheduler job
+        # Write updated config to TOML (offloaded to thread -- blocking I/O).
+        # The code below logs the one contextual error for every way the
+        # write can fail -- OSError from the writer, any other exception from
+        # inside it, or run_in_executor itself raising -- so the writer's own
+        # generic lines are suppressed (log_failure=False).
+        #
+        # Cancelling the request is handled the same way: if the write has
+        # not been claimed it is called off and the cancellation propagates
+        # with nothing changed; if it has, the route waits for it and, when
+        # it succeeded, still applies the removal to live state below before
+        # re-raising the cancellation, so the file and the running app agree.
+        #
+        # run_in_executor raising does NOT mean the write was never queued.
+        # When the OS refuses a new thread ("can't start new thread") the
+        # thread pool has already queued the job, and a worker would run it
+        # later -- after the user was told nothing changed. So the job goes
+        # through _write_unless_abandoned: once this route has given up on
+        # the write, the job does nothing. write_gate makes that decision
+        # atomic. It is only ever held for a flag check or flip, never
+        # across the write, so taking it here cannot stall the event loop.
+        # Either the handler sets write_abandoned first and the job returns
+        # without writing, or the job sets write_claimed first and the
+        # handler knows the write is running or finished and waits for its
+        # real result (write_outcome) instead of guessing.
+        write_gate = threading.Lock()
+        write_abandoned = False
+        write_claimed = False
+        write_outcome: concurrent.futures.Future[None] = concurrent.futures.Future()
+
+        def _write_unless_abandoned() -> None:
+            nonlocal write_claimed
+            with write_gate:
+                if write_abandoned:
+                    return
+                write_claimed = True
+                # Mark the outcome as running so a cancelled waiter cannot
+                # cancel it out from under set_result/set_exception below.
+                write_outcome.set_running_or_notify_cancel()
+            try:
+                _atomic_toml_write(config_path, config_dict, log_failure=False)
+            except BaseException as exc:  # recorded for the route, then re-raised unchanged
+                write_outcome.set_exception(exc)
+                raise
+            write_outcome.set_result(None)
+
+        write_error: Exception | None = None
+        cancelled: asyncio.CancelledError | None = None
+        try:
+            await asyncio.get_running_loop().run_in_executor(None, _write_unless_abandoned)
+        except (Exception, asyncio.CancelledError) as exc:  # error boundary: nothing live has been changed yet
+            with write_gate:
+                write_abandoned = True
+                write_already_claimed = write_claimed
+            if isinstance(exc, asyncio.CancelledError):
+                if not write_already_claimed:
+                    # Called off before any worker took it: nothing was
+                    # written and nothing live was changed.
+                    raise
+                cancelled = exc
+            else:
+                write_error = exc
+            if write_already_claimed:
+                # A worker took the job before it could be called off: the
+                # write is running or has finished, and its result decides.
+                # (When the writer itself raised, this is that same error.)
+                job_error, late_cancel = await _await_claimed_write(write_outcome)
+                if cancelled is None:
+                    cancelled = late_cancel
+                write_error = job_error
+                if job_error is None and not isinstance(exc, asyncio.CancelledError):
+                    logger.warning(
+                        "Settings file {path} was saved while removing {app}/{inst}, "
+                        "although starting the write reported: {exc_type}: {exc}",
+                        path=config_path,
+                        app=app_name,
+                        inst=instance_name,
+                        exc_type=type(exc).__name__,
+                        exc=exc,
+                    )
+        if write_error is not None:
+            logger.error(
+                "Could not save settings file {path} while removing {app}/{inst}; "
+                "instance kept: {exc_type}: {exc}",
+                path=config_path,
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(write_error).__name__,
+                exc=write_error,
+            )
+            if cancelled is not None:
+                raise cancelled
+            return _removal_failed_response(request, instance_name)
+
+        # Once the write has succeeded the removal is real (D-15): every
+        # remaining tidy-up step below runs regardless of whether an
+        # earlier one failed, and each failure is logged independently so
+        # one failing step never leaves another step's cleanup undone
+        # (D-16). The user still sees the normal success response.
+        request.app.state.settings = new_settings
+
+        # Clean up scheduler job (isolated: a failure here must not skip
+        # the client/state/tag-cache cleanup below).
         scheduler = request.app.state.scheduler
         job_id = f"{app_name}_{instance_name}_search"
-        if scheduler.get_job(job_id):
-            scheduler.remove_job(job_id)
+        try:
+            if scheduler.get_job(job_id):
+                scheduler.remove_job(job_id)
+        except Exception as exc:  # error boundary for post-commit cleanup (D-15, D-16)
+            logger.error(
+                "Removed {app}/{inst} but its scheduler job could not be removed: {exc_type}: {exc}",
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(exc).__name__,
+                exc=exc,
+            )
 
-        # Pop client from dict (close deferred to after lock release)
+        # Pop client from dict (close deferred to after lock release). Plain
+        # dict operations -- they cannot raise, so they always run.
         clients_dict = getattr(request.app.state, f"{app_name}_clients", {})
         client = clients_dict.pop(instance_name, None)
 
@@ -982,9 +1228,28 @@ async def remove_instance(request: Request, app_name: str, instance_name: str) -
         # RES-03 (Pitfall 5): clear the tag cache entry for the removed instance.
         request.app.state.tag_cache.pop((app_name, instance_name), None)
 
-    # Close stale client outside the lock (TCP teardown doesn't need lock protection)
+    # Close stale client outside the lock (TCP teardown doesn't need lock
+    # protection). Its failure is logged, not raised: a close failure must not
+    # stop the user from seeing the normal success response (D-15, D-16).
+    # The close completes even if the request is cancelled meanwhile; that
+    # cancellation is then re-raised below like one received during the write.
     if client:
-        await client.close()
+        close_error, close_cancel = await _close_removed_client(client)
+        if cancelled is None:
+            cancelled = close_cancel
+        if close_error is not None:
+            logger.error(
+                "Removed {app}/{inst} but closing its connection failed: {exc_type}: {exc}",
+                app=app_name,
+                inst=instance_name,
+                exc_type=type(close_error).__name__,
+                exc=close_error,
+            )
+
+    if cancelled is not None:
+        # The request was cancelled while the write ran; the removal has now
+        # been applied to live state as well, so let the cancellation through.
+        raise cancelled
 
     settings_url = str(request.url_for("settings_page"))
     if request.headers.get("HX-Request") == "true":

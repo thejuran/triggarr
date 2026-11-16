@@ -1,0 +1,157 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "0cb0f12eb3273dea4b4c281d66ef18ff0c4d914d",
+  "inspected_base_sha": "3cede40099a1f8a5d6db45542e66c650bfa98952",
+  "pr_url": "none",
+  "scope": "Full net change against the confirmed base, excluding the specified planning artifacts, plus all three changed Phase 87 plan files.",
+  "verdict": "findings",
+  "summary": "One reproduced cancellation defect remains: a running removal write can outlive its request and leave persisted settings inconsistent with live state. Harness evidence reports 3330 passed and 1 skipped at the inspected head.",
+  "coverage": [
+    "Inspected every in-scope code, template, test, plan, and .gitkeep change.",
+    "Traced removal ordering, executor submission failures, already-running writes, cancellation, cleanup failures, duplicate removals, and concurrent additions.",
+    "Reviewed state recovery, diagnostic-copy replacement and permissions, failed-copy cleanup, unreadable-file warnings, and startup callers.",
+    "Reviewed response escaping, authentication and origin middleware, CSP nonce handling, row-local error rendering, and log redaction.",
+    "Reviewed regression assertions and plan acceptance instructions; no CI or publication-policy changes were present.",
+    "Ran the lock-coverage audit: 8 of 8 writer references covered.",
+    "Confirmed the final working tree contains only the harness-provided untracked evidence directory."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Raw review transcripts and generated review artifacts under .planning/**/codex/**.",
+    ".planning/**/*.jsonl.",
+    "Pre-existing deferred save_settings snapshot behavior and invalid-UTF-8 state-file handling were considered as context, not reported as new defects."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Confirm inspected checkout."
+    },
+    {
+      "command": "git cat-file -e 3cede40099a1f8a5d6db45542e66c650bfa98952",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..0cb0f12eb3273dea4b4c281d66ef18ff0c4d914d -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Inspect full code scope; truncated output was subsequently read in smaller sections."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..0cb0f12eb3273dea4b4c281d66ef18ff0c4d914d -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Inspect changed plans; truncated sections were subsequently read separately."
+    },
+    {
+      "command": "git diff --stat 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD",
+      "exit_code": 0,
+      "purpose": "Inventory changes."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- triggarr",
+      "exit_code": 0,
+      "purpose": "Inspect production changes without truncation."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness test evidence and verify its commit."
+    },
+    {
+      "command": "sed -n '1550,1890p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Review failure and concurrency tests."
+    },
+    {
+      "command": "sed -n '1891,2220p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Review error handling and executor tests."
+    },
+    {
+      "command": "sed -n '2221,2525p' tests/test_web.py; git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_web.py | tail -75",
+      "exit_code": 0,
+      "purpose": "Review remaining web tests and changed security assertion."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review removal plan; reread truncated portion below."
+    },
+    {
+      "command": "sed -n '1,135p' .planning/phases/87-settings-state-file-safety/87-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete removal-plan inspection."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review UI and audit plan."
+    },
+    {
+      "command": "sed -n '1,90p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md; sed -n '135,155p' .planning/phases/87-settings-state-file-safety/87-01-PLAN.md; sed -n '1,210p' triggarr/state.py; sed -n '129,220p' triggarr/config.py",
+      "exit_code": 0,
+      "purpose": "Review plan requirements and persistence helpers."
+    },
+    {
+      "command": "sed -n '615,765p' triggarr/web/routes.py; sed -n '875,945p' triggarr/web/routes.py; sed -n '1120,1170p' triggarr/web/routes.py; rg -n 'load_state|CancelledError|wait_for|cancel\\(' triggarr/search/scheduler.py triggarr/web triggarr/startup.py; rg --files -g '*python*' -g 'pyvenv.cfg' -g 'AGENTS.md' -g 'pyproject.toml' -g 'uv.lock'",
+      "exit_code": 0,
+      "purpose": "Trace neighboring routes, cancellation handling, and environment."
+    },
+    {
+      "command": "sed -n '90,220p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete state-recovery plan inspection."
+    },
+    {
+      "command": "ls -d .venv; sed -n '110,210p' triggarr/state.py; sed -n '470,505p' triggarr/search/scheduler.py; sed -n '1,115p' pyproject.toml; git diff --name-only 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Complete surrounding-code inspection and confirm scope inventory."
+    },
+    {
+      "command": ".venv/bin/python -B - <<'PY' [cancellation probe reproduced in F001] PY",
+      "exit_code": 1,
+      "purpose": "Initial probe invocation; shell rejected its here-document temporary file before Python ran."
+    },
+    {
+      "command": ".venv/bin/python -B -c [full cancellation probe provided in F001.reproduction_command]",
+      "exit_code": 0,
+      "purpose": "Execute actual removal route with a gated in-memory writer and reproduce cancellation inconsistency without filesystem writes."
+    },
+    {
+      "command": "rg -n 'middleware|CSRF|csrf|auth|cancel|timeout' triggarr/__main__.py triggarr/web/middleware.py triggarr/logging.py; sed -n '1,180p' triggarr/web/middleware.py; sed -n '300,355p' triggarr/state.py; nl -ba triggarr/web/routes.py | sed -n '1055,1090p'; .venv/bin/python -B tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Trace security boundaries, confirm finding location, and run lock audit."
+    },
+    {
+      "command": "git diff --check 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git status --short; rg -n 'def create_redacting_sink|redact|logger.add' triggarr/logging.py; sed -n '130,165p' triggarr/templates/settings.html; sed -n '310,385p' triggarr/templates/settings.html",
+      "exit_code": 0,
+      "purpose": "Check whitespace, workspace status, logging, and template context."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Cancellation releases the lock while a removal write can still commit",
+      "file": "triggarr/web/routes.py",
+      "line_start": 1065,
+      "line_end": 1078,
+      "trigger": "The removal request task is cancelled after its executor worker starts writing, such as server cancellation during a slow filesystem operation.",
+      "execution_path": "remove_instance awaits run_in_executor. CancelledError bypasses except Exception, so the handler exits search_lock without waiting for write_outcome or applying new_settings. Cancelling the asyncio waiter cannot stop an already-running thread. The worker subsequently completes _atomic_toml_write, but settings replacement and scheduler/client/state cleanup are never reached. Cancellation during the fallback wrap_future await has the same problem.",
+      "consequence": "The persisted configuration removes an instance that remains active in memory. The released lock also permits a later settings write to overlap the abandoned writer and be overwritten by its stale snapshot.",
+      "evidence": "A probe invoking the actual route with a gated writer printed: 'lock released while writer running: True', 'persisted instances: [\\'Keep\\']', and 'live instances: [\\'Keep\\', \\'Remove\\']'. The probe asserted the mismatch. Existing tests cover submission refusal and a claimed write after refusal, but never cancel the request during either await.",
+      "suggested_fix": "Handle cancellation as part of the write transaction: abandon an unclaimed job under write_gate; for a claimed job, retain search_lock until its outcome is known and reconcile live state after a successful write before propagating cancellation. Protect that reconciliation against repeated cancellation. Add gated cancellation tests for both the ordinary executor await and the submission-error fallback, including a competing settings writer.",
+      "reproduced": true,
+      "reproduction_command": ".venv/bin/python -B -c \"import asyncio, threading\nfrom pathlib import Path\nfrom types import SimpleNamespace\nfrom unittest.mock import AsyncMock, MagicMock, patch\nfrom triggarr.models.config import Settings, InstanceConfig\nfrom triggarr.web.routes import remove_instance\n\nasync def main():\n    started, release, finished = threading.Event(), threading.Event(), threading.Event()\n    persisted = {}\n    def writer(path, data, **kwargs):\n        started.set()\n        assert release.wait(5)\n        persisted.update(data)\n        finished.set()\n    state = SimpleNamespace(settings=Settings(radarr={'Keep': InstanceConfig(), 'Remove': InstanceConfig()}), search_lock=asyncio.Lock(), config_path=Path('unused.toml'), scheduler=MagicMock(), radarr_clients={'Remove': MagicMock(close=AsyncMock())}, triggarr_state={'radarr': {'Remove': {}}}, tag_cache={})\n    request = SimpleNamespace(app=SimpleNamespace(state=state), headers={})\n    with patch('triggarr.web.routes._atomic_toml_write', writer):\n        task = asyncio.create_task(remove_instance(request, 'radarr', 'Remove'))\n        while not started.is_set():\n            await asyncio.sleep(.001)\n        task.cancel()\n        try:\n            await task\n        except asyncio.CancelledError:\n            pass\n        print('lock released while writer running:', not state.search_lock.locked())\n        release.set()\n        while not finished.is_set():\n            await asyncio.sleep(.001)\n        print('persisted instances:', sorted(persisted['radarr']))\n        print('live instances:', sorted(state.settings.radarr))\n        assert 'Remove' not in persisted['radarr'] and 'Remove' in state.settings.radarr\nasyncio.run(main())\"",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently rerun pytest because the sandbox is read-only and the suite requires temporary files. Read the harness evidence for the exact inspected head: 3330 passed, 1 skipped, exit 0.",
+    "Cancellation was reproduced against the actual route with an in-memory writer substitute; no disk mutation or end-to-end server cancellation was performed.",
+    "Browser behavior was inspected through templates and regression tests, without a live browser run.",
+    "The initial reproduction invocation failed because here-documents required a temporary file; the equivalent -c invocation completed successfully."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

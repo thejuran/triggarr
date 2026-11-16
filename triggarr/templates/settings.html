@@ -160,15 +160,16 @@
         {% for inst_name, inst in instances.items() %}
         {% set sanitized = inst_name | replace(' ', '-') | replace('.', '-') %}
         <details open class="bg-triggarr-bg rounded-lg border border-triggarr-border mb-3">
-            <summary class="flex items-center justify-between px-4 py-3 cursor-pointer">
+            <summary class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 cursor-pointer">
                 <span class="font-medium">{{ inst_name }} &mdash; {{ "Enabled" if inst.enabled else "Disabled" }}</span>
                 <button hx-post="{{ request.url_for('remove_instance', app_name=app_name, instance_name=inst_name) }}"
                         hx-confirm="Remove instance '{{ inst_name }}'? This cannot be undone."
-                        hx-target="body" hx-swap="outerHTML"
+                        hx-target="next .remove-error" hx-swap="innerHTML"
                         class="text-red-400 hover:text-red-300 text-sm"
                         type="button" data-stop-propagation>
                     Remove
                 </button>
+                <span class="remove-error w-full text-red-400 text-sm" aria-live="polite" data-stop-propagation></span>
             </summary>
             <div class="px-4 pb-4">
                 <div class="flex items-center gap-2 mb-3">
@@ -339,8 +340,25 @@ if (authMethodSelect) {
 }
 
 // SEC-01 D-05: remove-button event.stopPropagation (replaces inline onclick on remove buttons).
+// The removal-error slot also carries the attribute; it is not an interactive
+// element, so the <summary> would still toggle on a click unless the click's
+// default action is cancelled too (Phase 87 IN-01).
 document.querySelectorAll('[data-stop-propagation]').forEach(function(btn) {
-    btn.addEventListener('click', function(e) { e.stopPropagation(); });
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (btn.classList.contains('remove-error')) e.preventDefault();
+    });
+});
+
+// Phase 87 WR-02: empty a row's removal-error slot as soon as a new Remove
+// request starts, so an old message cannot outlive an attempt whose response
+// htmx does not swap (e.g. 401 after the session expired). Delegated listener
+// (htmx events bubble); only clears text, never writes markup.
+document.body.addEventListener('htmx:beforeRequest', function(e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.matches || !elt.matches('summary > button[hx-post]')) return;
+    var slot = elt.parentElement && elt.parentElement.querySelector('.remove-error');
+    if (slot) slot.textContent = '';
 });
 
 // SEC-01 D-05: delegated listener on #apikey-section (parent stays mounted across

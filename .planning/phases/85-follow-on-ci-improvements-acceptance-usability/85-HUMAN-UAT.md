@@ -1,5 +1,5 @@
 ---
-status: partial
+status: complete
 phase: 85-follow-on-ci-improvements-acceptance-usability
 source: [85-VERIFICATION.md]
 started: 2026-10-27T22:31:35Z
@@ -8,7 +8,7 @@ updated: 2026-10-27T22:31:35Z
 
 ## Current Test
 
-[awaiting the next release: item 5 (CHANGELOG wording, D-14). Item 7 is recorded as Codex INCOMPLETE with the owner-approved vibe-check fallback, counted under issues, not passed]
+[none: all tests have recorded results. Item 7 is recorded as Codex INCOMPLETE with the owner-approved vibe-check fallback, counted under issues, not passed]
 
 ## Tests
 
@@ -30,7 +30,7 @@ result: pass (2026-10-28) — Dependabot ran on the config merge (3 'Dependabot 
 
 ### 5. P5 — Next release's CHANGELOG entry states Python wheel/sdist are no longer attached as release assets (D-14/CIMAINT-05).
 expected: CHANGELOG wording matches the owner-recorded decision.
-result: pending — only checkable at the next release: its CHANGELOG entry must state Python wheel/sdist are no longer attached (D-14). Not added now because the in-app changelog parser reads CHANGELOG.md by version.
+result: pass (2026-11-15) — the v2.12.1 CHANGELOG entry (released 2026-11-15, tag on `3cede40`) states under Upgrade notes: "Python wheel and sdist files are no longer attached to GitHub releases. The Docker image is the release deliverable." The v2.12.1 GitHub release has no assets.
 
 ### 6. P6 — CIMAINT-01/CIMAINT-04 negative demonstration on the phase PR (85-18 recipes): push the prepared patch with owner go-ahead, confirm the docker-job lockfile-mismatch failure and the actionlint failure on GitHub, then revert and re-review the restored head.
 expected: Both failures reproduce on GitHub exactly as locally reproduced in this verification (docker 'version mismatch: idna lock 3.15 image 3.4'; actionlint 'property "missing" is not defined in object type {} [expression]'); CI ready fails; no Release run. Restore push reverts cleanly, fresh CI/BM/Codex review follows on the restored head.
@@ -47,9 +47,9 @@ result: pass (2026-10-28, owner go-ahead) — both variables migrated and verifi
 ## Summary
 
 total: 8
-passed: 6
+passed: 7
 issues: 1
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 

@@ -1564,3 +1564,111 @@ Not run on this head (local checkpoint, not pushed). Local equivalents on this h
 
 - CI, Greptile (optional) and the browser tests have not run on any head yet: nothing is pushed.
 - Tag-triggered publication is unverified until the `v2.12.1` tag is pushed.
+
+## PR #60 (Release v2.12.1): pushed head
+
+Durable copy of the per-head checkpoint comment on PR #60 (issuecomment-6884562015), as last updated before acceptance.
+
+<!-- review-checkpoint head=e1f50adf28802631854c4432d9754e79145b7b6d -->
+
+### Commit identities
+
+| Field | Value |
+|---|---|
+| PR head SHA | `e1f50adf28802631854c4432d9754e79145b7b6d` |
+| PR base SHA | `e5e158451a0e731dbe6012ee0bf3e6e179b2ee25` |
+| Reviewed head SHA (BM and Codex) | `e1f50adf28802631854c4432d9754e79145b7b6d` (this head, reviewed after the push); the earlier local head `e568dabefc0de2fd8756c8965f8af473875bb482` was also reviewed |
+| Base SHA | `e5e158451a0e731dbe6012ee0bf3e6e179b2ee25` (rule: `git merge-base origin/main HEAD`) |
+| Tested SHA (local) | `e568dabefc0de2fd8756c8965f8af473875bb482`; CI tests the PR head |
+| Codex inspected head (`inspected_head_sha`) | `e1f50adf28802631854c4432d9754e79145b7b6d` |
+| Codex inspected base (`inspected_base_sha`) | `e5e158451a0e731dbe6012ee0bf3e6e179b2ee25` |
+
+Reconciliation: all fields match for this head. Updated after the push: BM and Codex were re-run on this exact head because evidence from `e568dabefc0d` does not count for it. This head is `e568dabefc0d` plus one commit that touches only files under `.planning/`; the four in-scope files are identical on both heads (confirmed by the BM review of this head).
+
+### Classification
+
+```json
+{"schema":1,"head":"e1f50adf28802631854c4432d9754e79145b7b6d","classification":"code","classes_present":["code","ordinary-docs"],"rationale":"uv.lock (dependencies), pyproject.toml and triggarr/__init__.py (version), CHANGELOG.md (shipped in the image and rendered in-app) are code class. The rest is ordinary-docs planning: the v2.13 milestone audit and closeout files, state and backlog notes, and review evidence. No agent instructions, workflows, hooks, permissions, acceptance or release policy, or plan files changed.","supersedes_head":"9edabeb90dc5ed51ebb784dcd38bc520818f25eb"}
+```
+
+### Risk note (RISK-01)
+
+- **Scope:** thejuran/triggarr, local branch `release-v2.12.1`, head `e568dabefc0de2fd8756c8965f8af473875bb482` against base `e5e158451a0e731dbe6012ee0bf3e6e179b2ee25`; whole-branch review. Affected behavior: the Python libraries installed in the published image, the displayed version, and the in-app changelog.
+- **Risk:** moderate. No application code changes. Failure scenarios: a dependency combination that misbehaves at runtime in a way tests miss (mitigated: the image's library set equals production's v2.12.0 set except fastapi 0.158.1 to 0.162.4, starlette 1.9.0 to 1.10.0, python-multipart 0.0.32 to 0.0.33, opentelemetry-api 1.45.1 to 1.45.2); a version mismatch that fails the release-identity gate (version tests pass); a wrong changelog statement shown to users (three rounds of corrections). Separate from the diff: this will be the first tag-triggered publication since the CI rework (Phase 82 waiver).
+- **Recommended review:** BM standard on the whole diff, paired Codex; no specialist focus.
+- **Required evidence:** full test suite, lint, dependency audit, a local image build with its package list compared against the published v2.12.0 image, a startup check of the built image; on the PR, CI including image-smoke and browser-e2e; after release, the tag-triggered Release run and a deployed walkthrough.
+- **What this recommendation cannot establish:** runtime behavior behind a reverse proxy and at shutdown with fastapi 0.162.4 and starlette 1.10.0 in production; that the CVE identifiers match external advisory databases (taken from the repository's own records); that tag-triggered publication works.
+
+### Vibe-check (RISK-02)
+
+- Risk below high: no vibe-check required or recommended.
+- **Vibe-check status:** not run because risk is below high. The owner also declined the `/deep-review` offer before the push ("skip deep-review, push and open the pr", 2026-11-14).
+
+### BM review
+
+| Field | Value |
+|---|---|
+| Path | review after fixes (explicit review of a non-phase change; the `bm:bm-code-reviewer` agent was started directly with an explicit file list so `86-REVIEW.md` was not overwritten) |
+| Requested depth | `standard` |
+| Actual depth | `standard` |
+| Large-scope warning | not printed |
+| Responsible files | `.planning/config.json` key `workflow.code_review_depth` (`standard`) |
+| Report location | `.planning/phases/86-pilot-reference-record/86-REVIEW-release-e1f50adf2880.md` (this head; held locally until the next planning commit). Previous head: `86-REVIEW-release-e568dabefc0d.md` |
+| Status | complete: 0 critical, 0 warning, 3 info |
+
+### Codex
+
+| Field | Value |
+|---|---|
+| Status | complete (trusted mode; `.status.json` complete; no audited input changed, so no `.base-status.json`) |
+| Fallback | none |
+| Attempts | 1 |
+| Raw output paths | `.prompt.txt`, `.meta.json`, `.last.json`, `.status.json`, `.pytest.txt` under `.planning/phases/86-pilot-reference-record/codex/e1f50adf2880-release-v2-12-1-pr60-a1` (this head, run by PR URL; held locally until the next planning commit); the previous head's files are `e568dabefc0d-release-v2-12-1-a1`. The `.jsonl` event stream is withheld for all four heads: the first head's stream records a local username in command output |
+| Review complete | `review_complete: true`, `incomplete_reasons: []` (report schema v2) |
+| Coverage, exclusions, commands, limitations | As reported in `.last.json` for this head: all four changed files inspected; planning markdown and review artifacts excluded by rule; pytest not rerun in the sandbox (harness evidence: 3282 passed, 1 skipped on this head); image build, browser tests and publication not exercised; v2.12.0 image contents and vulnerability claims not independently verified |
+
+Findings: none.
+
+### Greptile
+
+Not run on this head (optional since 2026-10-22).
+
+### CI
+
+| Required check | Run ID | Result |
+|---|---|---|
+| CI ready (test, lint, docker, secrets, dependencies, image-smoke, browser-e2e, os-scan, actionlint) | 43643666039 | success, every job |
+| CodeQL | 43643662874 | success |
+| Review acceptance | 43643665937 attempt 1 | waiting for the owner's decision |
+
+Readiness check (`acceptance-readiness.cjs --pr 60`): "Ready to request approval". Register entries `60:e1f50adf28802631854c4432d9754e79145b7b6d` written and verified (no open blockers; no Greptile findings to dispose).
+
+### Dispositions
+
+| Qualified ID | Source | Head | Decision | Evidence | Verified SHA |
+|---|---|---|---|---|---|
+| `bm:d06fab3521ca:WR-01` | bm | `d06fab3521ca` | fixed | False startup-failure note removed; image started with both variables set | `34734550a17a` |
+| `bm:d06fab3521ca:IN-01` | bm | `d06fab3521ca` | fixed | Superseded by `bm:34734550a17a:WR-01` | `9edabeb90dc5` |
+| `bm:d06fab3521ca:IN-02..IN-04` | bm | `d06fab3521ca` | fixed | Changelog reworded; confirmed fixed by the next BM review | `34734550a17a` |
+| `bm:34734550a17a:WR-01` | bm | `34734550a17a` | fixed | Published v2.12.0 image inspected; changelog states it contained 1.45.1 | `9edabeb90dc5` |
+| `bm:9edabeb90dc5:WR-01` | bm | `9edabeb90dc5` | fixed | Lockfile refreshed (owner decision B); image package lists diffed | `e568dabefc0d` |
+| `bm:e568dabefc0d:IN-01` (repeated as `bm:e1f50adf2880:IN-01`) | bm | `e568dabefc0d` | nonblocking_debt | "Every other library" is loose for `opentelemetry-api` (disclosed under Security in the same entry) and the base image's pip; left as written under the stopping rule | n/a |
+| `bm:e568dabefc0d:IN-02` | bm | `e568dabefc0d` | nonblocking_debt | `docs/ci-negative-demonstrations.md` still names `idna` 3.15 (now 3.20); the demonstration still works; filed in backlog/MAINTENANCE.md | n/a |
+| `bm:e568dabefc0d:IN-03` | bm | `e568dabefc0d` | nonblocking_debt | Process note carried from every round: the `v2.12.1` tag goes on the main merge commit that push CI ran on | n/a |
+
+### Incomplete items
+
+None at merge (see "PR #60 acceptance, merge and release" below).
+
+## PR #60 acceptance, merge and release
+
+- **Acceptance:** owner approved in the CLI, verbatim: "Approve review acceptance for PR #60 at e1f50adf28802631854c4432d9754e79145b7b6d, run 43643665937". Attempt 1 failed after submission ("No blocker register entry for PR 60 at e1f50ad..."): the run had been created at push time (2026-11-14T21:35:53Z), before the register entries were written (2026-11-14T23:30:44Z), and the job reads the register as of run creation. Cause: Claude presented the pending run without first re-running the workflow after writing the register. The workflow was re-run (attempt 2, same head) and the owner approved again, verbatim: "Approve review acceptance for PR #60 at e1f50adf28802631854c4432d9754e79145b7b6d, run 43643665937 attempt 2". Attempt 2 passed.
+- **Merge:** on the owner's standing instruction for this PR ("merge pr when acceptance passes"), merged with `gh pr merge 60 --merge --match-head-commit e1f50adf28802631854c4432d9754e79145b7b6d` as `3cede40099a1f8a5d6db45542e66c650bfa98952` (2026-11-15T20:19:21Z).
+- **Main CI:** run 43757412046 on `3cede40`, success, every job. Post-merge Release run 43758024756 (publishes `:main`), success.
+- **Tag:** on the owner's instruction ("tag v2.12.1 after merge and main CI passes"), annotated tag `v2.12.1` created on `3cede40` and pushed.
+- **Tag-triggered Release run:** 43758123019, success (preflight, release, github-release). This is the first tag-triggered publication since the Phase 82 CI rework; it closes the Phase 82 CISHIP-03 limitation ("actual tag-triggered publication remains unverified until the next authorized release").
+- **Published:** `ghcr.io/thejuran/triggarr:v2.12.1`, `:latest` and `:main` share digest `sha256:9ef598e7b7834f8418e825b9977dc87feff9cfd1e29eaffe1378618086b59f27` (the tested image, not a rebuild). The published image's Python package list differs from `v2.12.0`'s only in fastapi 0.162.4, starlette 1.10.0, python-multipart 0.0.33, opentelemetry-api 1.45.2, pip and triggarr 2.12.1; `zlib1g` is `1:1.3.dfsg+really1.3.1-1+deb13u1`. No wheel or sdist is attached to the release.
+- **Release text:** the workflow created the GitHub release with auto-generated notes (a PR list). Claude replaced the body with the v2.12.1 CHANGELOG entry the owner had been shown as the final release text, plus the compare link. The title is the workflow's default, "Triggarr v2.12.1".
+- **Dependabot:** PR #58 closed (superseded); no open alerts.
+- **Production deploy and walkthrough (2026-11-15):** the production compose service (tag `:main`) was pulled and recreated; the running image's RepoDigest is `sha256:9ef598e7b7834f8418e825b9977dc87feff9cfd1e29eaffe1378618086b59f27`, the published v2.12.1 digest (before: a 2026-10-21 build of 2.12.0 with fastapi 0.158.1 and opentelemetry-api 1.45.1). Walkthrough in a browser, owner signed in: version badge v2.12.1 with no update pill; in-app changelog shows the v2.12.1 entry; Refresh counts returned success on both instances and both stayed connected; History and its filter work; Settings loads with masked keys; log viewer shows a clean startup; a cycle on each instance was graded success (Radarr 1 accepted, Sonarr 2 accepted, 0 failed); logout works and a protected page redirects to login. Console errors 0; no 4xx/5xx responses. Not exercised: the relabelled card reason rows (no card had reason rows) and the login-form keyboard path. Observation: inline code in the changelog is shown with literal backticks.
+- BM report and Codex files for the pushed head (`86-REVIEW-release-e1f50adf2880.md`, `codex/e1f50adf2880-release-v2-12-1-pr60-a1.*`) are added with this record; the `.jsonl` stream is withheld.

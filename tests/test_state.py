@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import stat
 from pathlib import Path
 from unittest.mock import patch
 
@@ -404,20 +406,176 @@ def test_state_empty_file_recovers(tmp_path: Path) -> None:
     assert state["search_log"] == []
 
 
-def test_state_wrong_structure_list_crashes(tmp_path: Path) -> None:
-    """Valid JSON list (not dict) crashes in _is_v22_state_format with AttributeError.
-
-    load_state catches JSONDecodeError and OSError but not AttributeError.
-    A list is valid JSON but wrong structure -- .get() fails on list objects.
-    This is a known gap (not ideal but acceptable for a single-user daemon).
-    When load_state is hardened to handle non-dict roots, convert this test
-    to assert recovery to defaults instead.
-    """
+def test_state_wrong_structure_list_recovers(tmp_path: Path) -> None:
+    """Valid JSON list root recovers to defaults instead of crashing (CONSIST-03)."""
     state_file = tmp_path / "state.json"
     state_file.write_text("[1, 2, 3]")
 
-    with pytest.raises(AttributeError):
-        load_state(state_file)
+    state = load_state(state_file)
+
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["lidarr"] == {}
+    assert state["search_log"] == []
+
+
+@pytest.mark.parametrize("content", ["[]", "42", "null", '"a string"', "true", "1.5"])
+def test_state_non_object_root_recovers(tmp_path: Path, content: str) -> None:
+    """Any valid-JSON non-object root recovers to defaults instead of crashing (CONSIST-03)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text(content)
+
+    state = load_state(state_file)
+
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["lidarr"] == {}
+    assert state["search_log"] == []
+
+
+def test_state_non_object_warning_names_kind_without_contents(tmp_path: Path) -> None:
+    """The non-object-root warning names the file, the kind found, the reset, and that
+    search history is unaffected -- but never echoes the file's contents (D-10)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text('["SENTINEL-CONTENT-91c2", 7]')
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+    assert str(state_file) in captured
+    assert "a list" in captured
+    assert "object" in captured
+    assert "reset to defaults" in captured
+    assert "search history is unaffected" in captured
+    assert "SENTINEL-CONTENT-91c2" not in captured
+
+
+# ---------------------------------------------------------------------------
+# Set-aside tests (D-08, D-09, D-11): bad state files are copied aside before
+# being reset to defaults, exactly one copy is kept, and a failed copy never
+# blocks recovery.
+# ---------------------------------------------------------------------------
+
+
+def test_state_bad_file_set_aside_non_object(tmp_path: Path) -> None:
+    """A non-object-root state file is copied to state.json.corrupt before reset (D-08)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[1, 2]")
+
+    load_state(state_file)
+
+    corrupt = tmp_path / "state.json.corrupt"
+    assert corrupt.exists()
+    assert corrupt.read_text() == "[1, 2]"
+
+
+def test_state_bad_file_set_aside_unparseable(tmp_path: Path) -> None:
+    """An unparseable state file gets the same set-aside treatment (D-09)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text('{"radarr":')
+
+    load_state(state_file)
+
+    corrupt = tmp_path / "state.json.corrupt"
+    assert corrupt.exists()
+    assert corrupt.read_text() == '{"radarr":'
+
+
+def test_state_set_aside_keeps_exactly_one_copy(tmp_path: Path) -> None:
+    """A second, different bad file replaces the first set-aside copy (D-08)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[1]")
+    load_state(state_file)
+
+    state_file.write_text("42")
+    load_state(state_file)
+
+    matches = list(tmp_path.glob("state.json.corrupt*"))
+    assert len(matches) == 1
+    assert matches[0].read_text() == "42"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits not applicable on Windows")
+def test_state_set_aside_permissions_not_wider(tmp_path: Path) -> None:
+    """The set-aside copy's permissions are no wider than the source's."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[]")
+    # 0o640 differs from the 0o600 that tempfile.mkstemp gives the temp copy, so
+    # this only holds if the source's mode is actually carried over to the copy.
+    state_file.chmod(0o640)
+
+    load_state(state_file)
+
+    corrupt = tmp_path / "state.json.corrupt"
+    assert stat.S_IMODE(corrupt.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name == "nt", reason="/dev/fd not available on Windows")
+@pytest.mark.parametrize(
+    "patch_target",
+    [
+        "triggarr.state.tempfile.mkstemp",
+        "triggarr.state.shutil.copy2",
+        "triggarr.state.os.replace",
+    ],
+    ids=["mkstemp", "copy2", "replace"],
+)
+def test_state_set_aside_failure_still_recovers(tmp_path: Path, patch_target: str) -> None:
+    """A failure at any set-aside step still returns default state, with no leftover
+    file and no leaked descriptor (D-11)."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[]")
+
+    fd_count_before = len(os.listdir("/dev/fd"))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with patch(patch_target, side_effect=OSError("read-only file system")):
+            state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    fd_count_after = len(os.listdir("/dev/fd"))
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+
+    set_aside_lines = [line for line in captured.splitlines() if "set aside" in line]
+    assert len(set_aside_lines) == 1
+    assert str(state_file) in set_aside_lines[0]
+
+    assert "reset to defaults" in captured
+    assert "was kept" not in captured
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["state.json"]
+    assert fd_count_after == fd_count_before
+
+
+def test_state_set_aside_replace_failure_keeps_previous_copy(tmp_path: Path) -> None:
+    """A failed rename never truncates or half-writes the previous set-aside copy."""
+    state_file = tmp_path / "state.json"
+    state_file.write_text("[]")
+    corrupt = tmp_path / "state.json.corrupt"
+    corrupt.write_text("OLD")
+
+    with patch("triggarr.state.os.replace", side_effect=OSError("read-only file system")):
+        state = load_state(state_file)
+
+    assert state["radarr"] == {}
+    assert corrupt.read_text() == "OLD"
+    leftover_tmp = list(tmp_path.glob("state.json.corrupt.*.tmp"))
+    assert leftover_tmp == []
 
 
 def test_state_wrong_nested_type_recovers(tmp_path: Path) -> None:
@@ -476,6 +634,73 @@ def test_state_unreadable_warning_names_reason(tmp_path: Path) -> None:
     assert state["sonarr"] == {}
     assert state["search_log"] == []
     assert "PermissionError" in captured
+
+
+@pytest.mark.parametrize("fail_at", ["open", "read"])
+def test_state_unreadable_warning_is_accurate_and_skips_set_aside(tmp_path: Path, fail_at: str) -> None:
+    """A state file that cannot be opened or read is reported as unreadable, not as
+    holding bad content, and no set-aside copy is attempted for it (WR-01).
+
+    Triggarr still starts with default state; the file itself is left untouched.
+    """
+    content = json.dumps({"radarr": {"SENTINEL-CONTENT-c41b": {}}, "sonarr": {}, "search_log": []})
+    state_file = tmp_path / "state.json"
+    state_file.write_text(content)
+
+    if fail_at == "open":
+        failure = patch("builtins.open", side_effect=PermissionError(13, "Permission denied"))
+    else:
+        failure = patch("triggarr.state.json.load", side_effect=OSError(5, "Input/output error"))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with failure:
+            state = load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert state["radarr"] == {}
+    assert state["sonarr"] == {}
+    assert state["search_log"] == []
+
+    lines = captured.splitlines()
+    assert len(lines) == 1
+    assert str(state_file) in lines[0]
+    assert "could not be opened or read" in lines[0]
+    assert "Permission denied" in lines[0] or "Input/output error" in lines[0]
+    assert "default" in lines[0]
+
+    # Not described as a file that held bad content, and no failed set-aside line.
+    assert "held" not in captured
+    assert "where a JSON object was expected" not in captured
+    assert "set aside" not in captured
+    assert "SENTINEL-CONTENT-c41b" not in captured
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["state.json"]
+    assert state_file.read_text() == content
+
+
+def test_state_unreadable_warning_does_not_promise_replacement(tmp_path: Path) -> None:
+    """The unreadable-state-file warning says the next save will try to replace
+    the file, not that it will: the replace can itself fail, e.g. when the path
+    is a directory or the volume is read-only (iteration 2 IN-01).
+    """
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"radarr": {}, "sonarr": {}, "search_log": []}))
+
+    sink = io.StringIO()
+    handler_id = logger.add(sink, format="{message}", level="WARNING")
+    try:
+        with patch("builtins.open", side_effect=IsADirectoryError(21, "Is a directory")):
+            load_state(state_file)
+    finally:
+        logger.remove(handler_id)
+
+    captured = sink.getvalue()
+    assert "the next state save will try to replace it" in captured
+    assert "will replace" not in captured
 
 
 # ---------------------------------------------------------------------------

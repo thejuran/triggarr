@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
@@ -207,6 +208,99 @@ def _merge_defaults(loaded: dict) -> TriggarrState:
     return defaults
 
 
+def _describe_json_kind(data: object) -> str:
+    """Describe a parsed JSON value's kind in plain words, for warnings (D-10).
+
+    Never includes the value itself -- only its type.
+    """
+    if isinstance(data, bool):
+        return "a true/false value"
+    if isinstance(data, (int, float)):
+        return "a number"
+    if isinstance(data, str):
+        return "a string"
+    if isinstance(data, list):
+        return "a list"
+    if data is None:
+        return "null"
+    return "an unexpected value"
+
+
+def _recover_from_bad_state_file(state_path: Path, found: str) -> TriggarrState:
+    """Reset to default state after a broken state file, logging one D-10 warning.
+
+    Shared by both broken-file cases (D-09): a non-object JSON root and content
+    that could not be parsed as JSON at all. Never reads or logs the file's
+    contents -- only the path and a description of what was found.
+
+    Before resetting, sets the bad file aside as a single diagnostic copy next
+    to the original (D-08): copies to a temp file in the same directory via
+    shutil.copy2 (preserves mode bits, so the copy is never wider than the
+    source), then os.replace onto one fixed name, overwriting any previous
+    copy rather than accumulating. If any step fails, the failure is logged
+    and recovery continues regardless -- the copy step must never block
+    startup (D-11).
+    """
+    set_aside = state_path.with_name(state_path.name + ".corrupt")
+    copy_succeeded = False
+    tmp: str | None = None
+    try:
+        fd, tmp = tempfile.mkstemp(dir=state_path.parent, prefix=state_path.name + ".corrupt.", suffix=".tmp")
+        os.close(fd)
+        shutil.copy2(state_path, tmp)
+        os.replace(tmp, set_aside)
+        tmp = None
+        copy_succeeded = True
+    except OSError as exc:
+        logger.warning(
+            "Could not set aside the bad state file {path}: {exc}",
+            path=state_path,
+            exc=f"{type(exc).__name__}: {exc}",
+        )
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            except OSError as cleanup_exc:
+                logger.warning(
+                    "Could not clean up temp file {tmp} after set-aside failure: {exc}",
+                    tmp=tmp,
+                    exc=cleanup_exc,
+                )
+
+    extra = f" A copy was kept at {set_aside} for diagnosis." if copy_succeeded else ""
+    logger.warning(
+        "State file {path} held {found} where a JSON object was expected; queue progress "
+        "and last-run times were reset to defaults (search history is unaffected).{extra}",
+        path=state_path,
+        found=found,
+        extra=extra,
+    )
+    return _default_state()
+
+
+def _start_with_defaults_for_unreadable_state_file(state_path: Path, exc: OSError) -> TriggarrState:
+    """Return default state when the state file could not be opened or read.
+
+    Distinct from _recover_from_bad_state_file: nothing is known about the
+    file's content here (it may be intact), so the warning names the access
+    failure instead of describing bad content, and no set-aside copy is
+    attempted -- the copy would need the same read that just failed. Startup
+    behavior is unchanged: Triggarr continues with defaults and never crashes.
+    The message carries only the path and the system reason, never contents.
+    """
+    logger.warning(
+        "State file {path} could not be opened or read ({reason}); starting with default "
+        "queue progress and last-run times (search history is unaffected). The file was "
+        "left as it is and no copy was made; the next state save will try to replace it.",
+        path=state_path,
+        reason=f"{type(exc).__name__}: {exc}",
+    )
+    return _default_state()
+
+
 def load_state(state_path: Path | None = None) -> TriggarrState:
     """Load state from a JSON file.
 
@@ -227,16 +321,18 @@ def load_state(state_path: Path | None = None) -> TriggarrState:
     try:
         with open(resolved_state_path, encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
-        # type(exc).__name__ + str(exc) names why loading failed (e.g. parser reason
-        # and position for JSONDecodeError) without ever touching exc.doc, which holds
-        # the raw file contents and must never be logged.
-        logger.warning(
-            "Corrupt state file at {path} -- resetting to defaults: {exc}",
-            path=resolved_state_path,
-            exc=f"{type(exc).__name__}: {exc}",
+    except json.JSONDecodeError as exc:
+        # type(exc).__name__ + str(exc) names why parsing failed (parser reason and
+        # position) without ever touching exc.doc, which holds the raw file contents
+        # and must never be logged.
+        return _recover_from_bad_state_file(
+            resolved_state_path, f"content that could not be read as JSON ({type(exc).__name__}: {exc})"
         )
-        return _default_state()
+    except OSError as exc:
+        return _start_with_defaults_for_unreadable_state_file(resolved_state_path, exc)
+
+    if not isinstance(data, dict):
+        return _recover_from_bad_state_file(resolved_state_path, _describe_json_kind(data))
 
     if _is_v22_state_format(data):
         logger.info("Migrating v2.2 state to v2.3 per-instance format")

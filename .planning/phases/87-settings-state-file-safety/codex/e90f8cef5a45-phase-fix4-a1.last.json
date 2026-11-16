@@ -1,0 +1,148 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "e90f8cef5a45de476fd0491bcaed4ad6a78b90ff",
+  "inspected_base_sha": "3cede40099a1f8a5d6db45542e66c650bfa98952",
+  "pr_url": "none (local checkpoint, not pushed)",
+  "scope": "Full net change between the specified commits, with the requested exclusions, plus all three changed Phase 87 PLAN.md files.",
+  "verdict": "findings",
+  "summary": "One reproduced cancellation defect remains: a running removal write can outlive search_lock and leave persisted configuration inconsistent with live settings. Harness evidence reports 3331 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "Inspected all seven changed application/template/test files and nine deleted .gitkeep files in the filtered diff.",
+    "Inspected 87-01-PLAN.md, 87-02-PLAN.md and 87-03-PLAN.md, including executor instructions, acceptance criteria and threat models.",
+    "Traced removal write ordering, executor submission failures, cancellation, concurrent removals/additions/settings saves, cleanup failures and missing-instance redirects.",
+    "Reviewed config logging ownership, state recovery and diagnostic-copy permissions, replacement and cleanup paths.",
+    "Reviewed response escaping, CSP-compatible row updates, error clearing and regression-test assertions.",
+    "Checked state startup and scheduler callers; ran the lock audit successfully: 8 covered references, 0 uncovered.",
+    "Read exact-head harness pytest evidence; independently reproduced the cancellation defect using the actual route function with an in-memory writer."
+  ],
+  "exclusions": [
+    ".planning/**/codex/**",
+    ".planning/**/*.jsonl",
+    "Planning markdown other than the explicitly included changed *-PLAN.md files.",
+    "Generated review artifacts and other reviewers' conclusions."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 3cede40099a1f8a5d6db45542e66c650bfa98952",
+      "exit_code": 0,
+      "purpose": "Confirm base exists."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..e90f8cef5a45de476fd0491bcaed4ad6a78b90ff -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read full filtered diff; truncated display was supplemented by focused reads."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..e90f8cef5a45de476fd0491bcaed4ad6a78b90ff -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read plan diff; supplemented by complete individual plan reads."
+    },
+    {
+      "command": "git diff --stat 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD; cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Inventory changes and read harness evidence."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- triggarr",
+      "exit_code": 0,
+      "purpose": "Inspect production changes."
+    },
+    {
+      "command": "sed -n '630,820p' triggarr/web/routes.py; sed -n '1,210p' triggarr/state.py; sed -n '130,218p' triggarr/config.py; git diff 3cede400..HEAD -- triggarr/templates/settings.html",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding settings, state, atomic-write and template code."
+    },
+    {
+      "command": "sed -n '1550,1900p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Inspect failure-preservation and concurrency tests."
+    },
+    {
+      "command": "sed -n '1900,2260p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Inspect response, logging and thread-start-failure tests."
+    },
+    {
+      "command": "sed -n '2260,2610p' tests/test_web.py; git diff 3cede400..HEAD -- tests/test_web.py | tail -55",
+      "exit_code": 0,
+      "purpose": "Inspect running-worker, cleanup and template tests, including changed security guard."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect complete removal plan."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect complete UI and audit plan."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Inspect complete state-recovery plan."
+    },
+    {
+      "command": "sed -n '145,208p' triggarr/config.py; sed -n '1125,1185p' triggarr/web/routes.py; rg -n 'load_state|make_search_job|CancelledError|timeout_graceful' triggarr/search/scheduler.py triggarr/main.py; git diff --name-only 3cede400..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git diff --name-only 3cede400..HEAD -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Verify scope inventory and surrounding commit/cleanup paths. The embedded rg reported missing triggarr/main.py; scheduler results were available."
+    },
+    {
+      "command": "python3 -B - <<'PY'\nimport ast, asyncio, concurrent.futures, threading\nfrom pathlib import Path\nfrom types import SimpleNamespace as NS\nsource = ast.parse(Path('triggarr/web/routes.py').read_text())\nfn = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'remove_instance')\nfn.decorator_list = []\nmodule = ast.Module(body=[ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0), fn], type_ignores=[])\nstarted, release = threading.Event(), threading.Event()\ndisk = {}\ndef writer(path, data, **kwargs):\n    started.set()\n    assert release.wait(5)\n    disk.update(data)\nclass Settings:\n    def __init__(self, radarr): self.radarr = radarr\n    def model_copy(self, update): return Settings(update['radarr'])\nns = dict(asyncio=asyncio, concurrent=concurrent, threading=threading, APP_TYPES=['radarr'], _settings_to_dict=lambda s: dict(radarr=dict(s.radarr)), _atomic_toml_write=writer)\nexec(compile(ast.fix_missing_locations(module), '<review-route>', 'exec'), ns)\nasync def main():\n    state = NS(settings=Settings({'4K': 1}), search_lock=asyncio.Lock(), config_path='unused')\n    request = NS(app=NS(state=state), headers={})\n    task = asyncio.create_task(ns['remove_instance'](request, 'radarr', '4K'))\n    while not started.is_set(): await asyncio.sleep(.001)\n    task.cancel()\n    try: await task\n    except asyncio.CancelledError: pass\n    print('lock released before writer finishes:', not state.search_lock.locked())\n    release.set()\n    await asyncio.get_running_loop().shutdown_default_executor()\n    print('persisted instances:', disk['radarr'])\n    print('live instances:', state.settings.radarr)\n    assert '4K' not in disk['radarr'] and '4K' in state.settings.radarr\nasyncio.run(main())\nPY",
+      "exit_code": 1,
+      "purpose": "Initial reproduction attempt; shell could not create its heredoc temporary file in the read-only sandbox."
+    },
+    {
+      "command": "python3 -B -c 'import ast, asyncio, concurrent.futures, threading\nfrom pathlib import Path\nfrom types import SimpleNamespace as NS\nsource = ast.parse(Path(\"triggarr/web/routes.py\").read_text())\nfn = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef) and n.name == \"remove_instance\")\nfn.decorator_list = []\nmodule = ast.Module(body=[ast.ImportFrom(module=\"__future__\", names=[ast.alias(name=\"annotations\")], level=0), fn], type_ignores=[])\nstarted, release = threading.Event(), threading.Event()\ndisk = {}\ndef writer(path, data, **kwargs):\n    started.set()\n    assert release.wait(5)\n    disk.update(data)\nclass Settings:\n    def __init__(self, radarr): self.radarr = radarr\n    def model_copy(self, update): return Settings(update[\"radarr\"])\nns = dict(asyncio=asyncio, concurrent=concurrent, threading=threading, APP_TYPES=[\"radarr\"], _settings_to_dict=lambda s: dict(radarr=dict(s.radarr)), _atomic_toml_write=writer)\nexec(compile(ast.fix_missing_locations(module), \"<review-route>\", \"exec\"), ns)\nasync def main():\n    state = NS(settings=Settings({\"4K\": 1}), search_lock=asyncio.Lock(), config_path=\"unused\")\n    request = NS(app=NS(state=state), headers={})\n    task = asyncio.create_task(ns[\"remove_instance\"](request, \"radarr\", \"4K\"))\n    while not started.is_set(): await asyncio.sleep(.001)\n    task.cancel()\n    try: await task\n    except asyncio.CancelledError: pass\n    print(\"lock released before writer finishes:\", not state.search_lock.locked())\n    release.set()\n    await asyncio.get_running_loop().shutdown_default_executor()\n    print(\"persisted instances:\", disk[\"radarr\"])\n    print(\"live instances:\", state.settings.radarr)\n    assert \"4K\" not in disk[\"radarr\"] and \"4K\" in state.settings.radarr\nasyncio.run(main())'",
+      "exit_code": 0,
+      "purpose": "Reproduce cancellation using the actual route AST, real executor and lock, with in-memory persistence."
+    },
+    {
+      "command": "sed -n '132,222p' triggarr/search/scheduler.py; sed -n '470,510p' triggarr/search/scheduler.py; sed -n '300,400p' triggarr/state.py; sed -n '1,150p' tests/audit_lock_coverage.py; nl -ba triggarr/web/routes.py | sed -n '1070,1130p'; git status --short",
+      "exit_code": 0,
+      "purpose": "Trace callers, inspect audit limitations, locate finding and confirm working-copy status."
+    },
+    {
+      "command": "python3 -B tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Run static lock audit: 8/8 covered, 0 uncovered."
+    },
+    {
+      "command": "git diff 3cede400..HEAD -- tests/test_config.py tests/test_state.py",
+      "exit_code": 0,
+      "purpose": "Finish complete inspection of config and state test changes."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "Cancellation releases the lock while the removal write continues",
+      "file": "triggarr/web/routes.py",
+      "line_start": 1082,
+      "line_end": 1094,
+      "trigger": "The removal request task is cancelled after an executor worker claims the write, including while awaiting write_outcome after a thread-start failure.",
+      "execution_path": "CancelledError bypasses both except Exception handlers. Exiting the async-with releases search_lock without waiting for the worker, setting abandonment or applying the successful write to live settings. Cancelling the asyncio future cannot stop an already-running executor job.",
+      "consequence": "The worker can persist removal while the instance remains live with its scheduler/client/state entries. Another settings writer can acquire the released lock and race with the older write, allowing stale configuration to overwrite a later update.",
+      "evidence": "The actual remove_instance function was extracted and executed with a gated in-memory writer and real asyncio executor. After cancellation, output was: 'lock released before writer finishes: True', 'persisted instances: {}', 'live instances: {\"4K\": 1}'. Existing tests exercise submission failures and running-worker recovery but never cancel the request. The lexical lock audit still passes because it cannot establish worker lifetime.",
+      "suggested_fix": "Handle cancellation explicitly across submission and outcome waiting. Abandon an unclaimed job under write_gate; for a claimed job, retain lock ownership until its result is known and finish the corresponding live-state commit/cleanup before propagating cancellation. Add gated cancellation tests asserting writer completion precedes lock release and persisted/live state agree, including the thread-start-error fallback.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'import ast, asyncio, concurrent.futures, threading\nfrom pathlib import Path\nfrom types import SimpleNamespace as NS\nsource = ast.parse(Path(\"triggarr/web/routes.py\").read_text())\nfn = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef) and n.name == \"remove_instance\")\nfn.decorator_list = []\nmodule = ast.Module(body=[ast.ImportFrom(module=\"__future__\", names=[ast.alias(name=\"annotations\")], level=0), fn], type_ignores=[])\nstarted, release = threading.Event(), threading.Event()\ndisk = {}\ndef writer(path, data, **kwargs):\n    started.set()\n    assert release.wait(5)\n    disk.update(data)\nclass Settings:\n    def __init__(self, radarr): self.radarr = radarr\n    def model_copy(self, update): return Settings(update[\"radarr\"])\nns = dict(asyncio=asyncio, concurrent=concurrent, threading=threading, APP_TYPES=[\"radarr\"], _settings_to_dict=lambda s: dict(radarr=dict(s.radarr)), _atomic_toml_write=writer)\nexec(compile(ast.fix_missing_locations(module), \"<review-route>\", \"exec\"), ns)\nasync def main():\n    state = NS(settings=Settings({\"4K\": 1}), search_lock=asyncio.Lock(), config_path=\"unused\")\n    request = NS(app=NS(state=state), headers={})\n    task = asyncio.create_task(ns[\"remove_instance\"](request, \"radarr\", \"4K\"))\n    while not started.is_set(): await asyncio.sleep(.001)\n    task.cancel()\n    try: await task\n    except asyncio.CancelledError: pass\n    print(\"lock released before writer finishes:\", not state.search_lock.locked())\n    release.set()\n    await asyncio.get_running_loop().shutdown_default_executor()\n    print(\"persisted instances:\", disk[\"radarr\"])\n    print(\"live instances:\", state.settings.radarr)\n    assert \"4K\" not in disk[\"radarr\"] and \"4K\" in state.settings.radarr\nasyncio.run(main())'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Did not independently run pytest because the sandbox is read-only and these tests require temporary files. Used the harness's exact-head evidence: exit 0, 3331 passed, 1 skipped.",
+    "Cancellation reproduction uses the actual route function with an in-memory writer and minimal settings/request doubles; it does not reproduce cancellation through a deployed HTTP server or write real TOML.",
+    "No browser execution was performed; UI behavior was reviewed through template code and render-test assertions.",
+    "Initial combined output was truncated; focused file reads completed coverage. The failed heredoc probe was rerun successfully without temporary files.",
+    "Review skills outside the working copy were not read, consistent with the user's filesystem restriction."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}

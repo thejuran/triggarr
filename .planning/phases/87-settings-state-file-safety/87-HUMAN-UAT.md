@@ -1,0 +1,36 @@
+---
+status: complete
+phase: 87-settings-state-file-safety
+source: [87-VERIFICATION.md]
+started: 2026-11-15T23:42:31Z
+updated: 2026-11-16T03:40:00Z
+---
+
+## Current Test
+
+[all tests passed]
+
+## Tests
+
+### 1. Failed removal shows its message on the instance row
+expected: With a removal that fails to save, the fixed "was not removed" sentence appears inside the clicked instance's own row with no full-page reload; unsaved edits in other rows and the Add Instance form are still present; clicking Remove again on that row replaces the message; reloading the page clears it.
+result: passed (2026-11-15, run by Claude in a real browser via Playwright against a local copy of the app at code head f099c6a8, settings folder made read-only to force the failed save). The fixed sentence appeared on the clicked row only, the other row's slot stayed empty, the page did not reload, an unsaved URL edit on another row and an unsaved Add Instance name were both still present, a second Remove click on the same row left exactly one message, and each failed attempt wrote exactly one error log entry. Also exercised: Remove on a row whose instance had already been removed by another request reloaded the Settings page with that row gone; a normal removal with the folder writable again reloaded with the row gone; no browser console errors or warnings. Not exercised: a retry that ends in a session-expired response.
+
+### 2. Clicking or selecting the error message
+expected: Selecting or reading the message does not collapse the instance's section (code review IN-01: the message sits inside the row's summary without click isolation, so a click currently toggles the row).
+result: passed (2026-11-15, same run, after fix-round commit 92ddc3a1). Clicking the message left the instance section open.
+
+### 3. Screen-reader announcement
+expected: With a screen reader running, a failed removal's message is announced without moving focus to the row.
+result: passed (2026-11-15, owner with VoiceOver in Safari against the local app at 29711fec, settings folder read-only: "voiceover works"). Supporting evidence (2026-11-15, Claude via Playwright, local app at 29711fec, settings folder read-only): after a failed removal of one instance, the fixed sentence appeared in its own accessibility-tree node on that instance's row only, keyboard focus stayed on that row's Remove button, the request returned 200, no console errors, one error log entry. The slot carries `aria-live="polite"` in the template, but the browser tool cannot show live-region attributes or whether anything is spoken. The sentence also becomes part of the instance header's accessible name, so a screen reader that later lands on the header reads it there too.
+
+## Summary
+
+total: 3
+passed: 3
+issues: 0
+pending: 0
+skipped: 0
+blocked: 0
+
+## Gaps

@@ -1,38 +1,61 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.13
-milestone_name: CI & Review Workflow
-status: "Awaiting next milestone -- v2.13 CI & Review Workflow closed 2026-11-14 (audit: tech debt accepted by the owner, no blockers); not a versioned release, production stays on v2.12.0"
-stopped_at: "v2.13 closed and archived 2026-11-14. v2.12.1 patch release prepared on the local branch release-v2.12.1 (Dependabot #58 rolled in, version 2.12.1, CHANGELOG entry), not pushed, no tag; local BM and Codex reviews run per head. Next: owner go-ahead to push and open the release PR, then acceptance, merge, and the v2.12.1 tag on the main merge commit"
-last_updated: "2026-11-14T21:02:02Z"
-last_activity: "2026-11-14 -- v2.13 milestone audit and closeout; v2.12.1 patch release prepared locally (owner decision: ship the unreleased fixes as a patch release, not as v2.13.0)"
+milestone: v2.14
+milestone_name: Reliability
+status: "in review -- Phase 87 executed (3 of 3 plans); reviewed locally at e90f8cef (BM iteration 5: no critical or warning; Codex: 1 medium, the known cancellation gap); owner decision pending (not pushed)"
+stopped_at: "Phase 87 reviewed locally at e90f8cef: BM iteration 5 has 0 critical, 0 warning, 1 info, 2 set aside; Codex contract pass complete with 1 medium finding F001 (removal cancelled mid-save; the same gap the owner sent to the backlog at 0cb0f12e -- disposition for this head not yet confirmed). Deep review (vibe-check) closed with owner decisions. Still owed before push: owner disposition of Codex F001 at this head and a ruling on the directory-handle item, /bm:secure-phase 87, goal verification on the final code, browser checks on the final code (1-2 passed at f099c6a8 only), screen-reader check"
+last_updated: "2026-11-16T02:57:00.000Z"
+last_activity: "2026-11-15 -- Phase 87 BM iteration 5 + Codex contract pass at e90f8cef"
 progress:
   total_phases: 6
-  completed_phases: 6
-  total_plans: 65
-  completed_plans: 65
-  percent: 100
+  completed_phases: 0
+  total_plans: 3
+  completed_plans: 3
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-14)
+See: .planning/PROJECT.md (updated 2026-11-15)
 
 **Core value:** Reliably trigger searches in Radarr, Sonarr, and Lidarr for missing and upgrade-eligible media on a schedule, with closed-loop feedback — without exposing credentials or expanding attack surface.
-**Current focus:** Between milestones. v2.13 CI & Review Workflow closed 2026-11-14; next milestone is Reliability (not started; `/bm:new-milestone`)
+**Current focus:** v2.14 Reliability, Phase 87 executing. v2.12.1 is published and running in production.
 
-> **Releases:** latest release v2.12.0 (2026-10-21, tag on `dbb38fa`); production runs v2.12.0. v2.13 closed as a milestone on 2026-11-14 without a versioned release; main carries unreleased changes. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
+> **Releases:** latest release v2.12.1 (2026-11-15, tag on `3cede40`, PR #60): security updates, the Refresh-counts and card-label fixes, lockfile-installed image dependencies. Production runs v2.12.1 since 2026-11-15 (deployed and walked through the same day; the compose service tracks the `:main` tag). v2.13 closed as a milestone on 2026-11-14; its work shipped to users in v2.12.1, there is no v2.13.0 release. Earlier release notes are archived in [STATE history](milestones/STATE-history-through-v2.12.md).
 
 **Published-history note (2026-10-21):** before the first push, this unpushed branch's history was rewritten to remove private infrastructure and credential details from planning text and commit messages. Code, tests and config are byte-identical in every commit (checked commit by commit). Planning docs still cite pre-rewrite hashes; map them as follows: `b35470b` (sandbox build, revision label on `triggarr:phase81-b35470b66f`) → `69f5733`; `a2b8c1c` (full deep review) → `1915a7d`; `d14b71e` → `06519aa`; `9a1d423` (frozen deep-review commit) → `3e19e48`; `363060e` → `c2fb07a`; `b498475` → `91b7992`. The review and live evidence apply unchanged, because the code trees are identical.
 
 ## Current Position
 
-Phase: 86 (Pilot & Reference Record) — COMPLETE (merged, PR #59 as `e5e1584`); last phase of v2.13
-Plan: 10 of 10 finished
-Status: Awaiting next milestone. v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release.
-Last activity: 2026-11-14 -- milestone audit and closeout on the held local branch `planning/post-phase-86`.
+Phase: 87 (Settings & State-File Safety) — EXECUTED, IN REVIEW
+Plan: 3 of 3 executed
+Status: Phase 87 executed, in review — reviewed locally at e90f8cef; owner decision pending on Codex F001 at this head
+Last activity: 2026-11-15 — Phase 87 BM iteration 5 + Codex contract pass at e90f8cef
+
+Previous milestone: v2.13 CI & Review Workflow closed 2026-11-14: 6 phases (82, 83, 84, 85, 85.1, 86; last phase 86 merged as PR #59, `e5e1584`), 65 plans, 31/31 requirements. Milestone audit result `tech_debt` with no blockers; the owner accepted the debt ([audit](milestones/v2.13-MILESTONE-AUDIT.md)). Archives: [roadmap](milestones/v2.13-ROADMAP.md), [requirements](milestones/v2.13-REQUIREMENTS.md). No git tag: v2.13 was not cut as a release; its results shipped in v2.12.1, which was deployed to production and walked through with no defects on 2026-11-15.
+
+### v2.14 milestone shape (Phases 87-92; roadmap written 2026-11-15)
+
+Six phases derived from this milestone's 24 requirements (CONSIST, LIFE, DELIV, BKUP, RMINST, TELEM, SMOKE), continuing phase numbering from v2.13's Phase 86 (starts at 87, not reset to 1). Phase order follows the build order recommended in `.planning/research/SUMMARY.md` (2026-11-15): smallest/most-isolated fixes first, then the two higher-blast-radius items, then the cross-cutting smoke-test extension last. LIFE stays in one phase per the roadmapping instruction (startup and shutdown are two sides of one function); DELIV stays in one phase per the roadmapping instruction (the retry-safety fix and the new "unconfirmed" bucket are one change); RMINST is sequenced after CONSIST because both touch the same instance-removal route. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention; no phase directories created at roadmap time.
+
+| Phase | Goal | Requirements | Depends on |
+|-------|------|--------------|------------|
+| 87 — Settings & State-File Safety | A failed settings write during instance removal never corrupts live state; a non-object state file recovers instead of crashing | CONSIST-01..03 | — (first phase) |
+| 88 — Bounded Upgrade Backups & Telemetry Regression | Pre-upgrade backups stay capped through a crash loop; a permanent test pins the already-fixed telemetry variable | BKUP-01..02, TELEM-01..02 | — (independent; batched with 87 as equally small, isolated work) |
+| 89 — Startup & Shutdown Resource Cleanup | A partial startup closes what it opened; one failed client close never blocks the rest from closing | LIFE-01..03 | — (self-contained; sequenced after 87-88 so the reorder pattern is proven first) |
+| 90 — Removed-Instance Pending-Search Lifecycle | A removed Sonarr instance's leftover pending searches get a defined "Instance removed" outcome, never credited to a reused name | RMINST-01..04 | Phase 87 (same instance-removal route) |
+| 91 — Search-Command Delivery Confidence | A timed-out search command is never blindly resent; an unconfirmed outcome is tracked honestly | DELIV-01..07 | — (self-contained; sequenced last as the largest blast radius) |
+| 92 — Built-Image Recovery Demonstration | CI proves on the real built image that state-file corruption and repeated failed upgrades both recover correctly | SMOKE-01..03 | Phases 87-91 (validates the real fixes, written last) |
+
+**Key v2.14 Phasing Rationale**
+
+- Phases 87-88 go first because both are small, fully independent, reorder-not-rebuild fixes already proven correct elsewhere in the same files — establishing the pattern before it's applied to busier code.
+- Phase 90 is sequenced after Phase 87 because it's a genuine dependency: both touch the same `remove_instance` route.
+- Phases 89 and 91 are each self-contained but carry the most risk (shared code, more existing tests to keep passing), so they land later — not because they're bigger, but because nothing forces them earlier.
+- Phase 92 is last by design: it should validate real fixes, not anticipate them.
+- The aiosqlite cursor-lifetime concern named in the earlier roadmap wording was not found by research; SUMMARY.md treats it as closed/not-applicable, and it is not carried into any v2.14 phase unless something surfaces during execution.
 
 ### v2.13 milestone shape (closed 2026-11-14; kept as the record)
 
@@ -64,6 +87,12 @@ Per-plan metrics through v2.12 are archived in [STATE history](milestones/STATE-
 
 ### Decisions
 
+- 2026-11-15 (Phase 87 deep review close-out, owner): dismissed the record-keeping Warning (planning record corrected in `9648de06`); deferred the cancelled-removal Needs-verification item and the missing bad-instance-URL Save test to the maintenance backlog.
+- 2026-11-15 (Phase 87 deep review, owner): the general-only Save Settings case is fixed in Phase 87 after all (`7a92e735`), superseding "Save Settings stays in the backlog" for that case only. Reason: the deep review showed this phase introduced it (a general-only Save overlapping a removal kept the instance removed at `3cede400` and brought it back at `821c8922`); the earlier statement that the phase did not create or widen the Save Settings problem was true only for a Save carrying instance fields, the one case tested at the time. The full-form stale-page case stays in the maintenance backlog.
+- 2026-11-15 (Phase 87 review, owner): fix round 1 for the first review's warnings; Codex F001 at `f099c6a8` (Add Instance during a removal save) fixed in Phase 87; Save Settings' stale-snapshot behavior stays in the maintenance backlog (it predates the phase; proposed design recorded there); stopping rule after fix round 2: only critical or warning findings are fixed, minor items go to the backlog; Codex F001 at `0cb0f12e` (removal cancelled mid-save) goes to the backlog, to be fixed once for all settings routes. See 87-REVIEW.md, 87-REVIEW-FIX.md and `.planning/backlog/MAINTENANCE.md`.
+- 2026-11-15 (Phase 87 discuss, owner): a failed removal shows its error on the instance row without a page reload, with fixed plain wording; a reset state file is set aside as one copy (both wrong-shape and truncated cases); other settings routes found unsafe and the Save/Add failure messages are recorded in the maintenance backlog, not fixed here; post-save cleanup failures are logged and the user sees a normal removal. See 87-CONTEXT.md.
+- 2026-11-15 (v2.14 roadmap): 24 requirements mapped to 6 phases (87-92) with 100% coverage, no orphans, no double-mapping. Phase order follows the build order recommended in `.planning/research/SUMMARY.md`; LIFE and DELIV each kept in one phase per the roadmapping instruction; RMINST sequenced after CONSIST for the shared instance-removal route; Phase 92 depends on all five fix phases since it validates them rather than anticipating them.
+- 2026-11-15 (v2.14 start, owner): Reliability scope confirmed as agreed in ROADMAP.md (state/config consistency 999.9, narrowed resource lifecycle 999.13, search-command delivery). Folded in from the backlog: bounding pre-upgrade database backups, a lifecycle for pending searches of a removed Sonarr instance (bugs-005), and SA-12 in reduced form (regression check plus an "unsupported" note; the 2026-11-14 correction showed startup is not affected). The dashboard card re-render/click item was not folded in. Milestone label v2.14, planned release v2.14.0; no v2.13.0 release will exist.
 - 2026-10-21 (v2.13 roadmap amendment, owner-authorized for planning only): added the docs/planning review-classification policy. REVIEW-07/08 (Phase 83) define content-based classification (ordinary docs/planning gets a focused consistency review; agent instructions, workflows, hooks, permissions, acceptance/release policy and operational procedures need a risk assessment and technical review; mixed PRs follow their consequential changes; classification recorded against the exact head) and replace blanket "every PR" wording, keeping Codex paired with every BM code-review run. ACCEPT-03 (Phase 85) designs and verifies GitHub-check handling across ordinary-docs, sensitive-docs, mixed and misclassification cases without ad hoc check disabling. Existing protections stay until then; exact-commit owner acceptance stays for every PR. No live settings changed. Now 31 requirements.
 - 2026-10-21 (v2.13 roadmap): 28 requirements mapped to 5 phases (82-86) with 100% coverage, no orphans. REVIEW-01 (BM update) folded into the start of Phase 83 rather than a standalone phase, per the granularity rule against single-requirement phases, while keeping its owner-approval gate as that phase's first explicit success criterion. PLANCHK (84) kept fully independent per owner instruction. CIMAINT + ACCEPT grouped into Phase 85 since both extend the Phase 82 CI baseline and CIMAINT-06 feeds Phase 83's risk-based review.
 - 2026-10-21 (v2.12 closeout): the owner confirmed the review blueprint and the CI reference-baseline plan as written; they form the CI & Review Workflow milestone. No BM settings, CLAUDE.md, CI or acceptance changes until that milestone implements them.
@@ -75,7 +104,7 @@ Full decision log in PROJECT.md Key Decisions table. v2.12 phasing decisions are
 
 ### Pending Todos
 
-- Deferred follow-up: bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). Not Phase 81 scope.
+- Bound/prune timestamped pre-migration DB backups (Plan 81-03 keeps the first backup and timestamps later ones with no cleanup, so a startup crash-loop on a failing upgrade accumulates copies). In v2.14 Reliability scope since 2026-11-15; now Phase 88 (BKUP-01/02).
 
 ### Roadmap Evolution
 
@@ -83,9 +112,13 @@ Earlier entries (v2.8-v2.12) are archived in [STATE history](milestones/STATE-hi
 
 v2.13 roadmap created 2026-10-21 from the owner-confirmed review blueprint (`docs/bm-greptile-codex-blueprint.md`) and CI reference-baseline plan (`docs/ci-reference-baseline-plan.md`). 28 requirements across 5 phases (82-86, continuing from v2.12's Phase 81 — not reset to 1). 100% coverage, no orphans, no double-mapping. Phase order follows binding owner sequencing constraints (recorded in REQUIREMENTS.md and above): CISHIP first; REVIEW-01's BM-update gate folded into the start of the review-pairing phase; PLANCHK kept fully separate so it cannot block or bundle into review-pairing or CI phases; CIMAINT+ACCEPT grouped as baseline-extension work; PILOT last. Phase 81's `.planning/phases/` directory is explicitly preserved (not cleared) because PLANCHK-03's blind comparison needs the original plan inputs. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention.
 
+v2.14 roadmap created 2026-11-15 from the owner-confirmed scope in PROJECT.md and the build order recommended in `.planning/research/SUMMARY.md` (2026-11-15). 24 requirements across 6 phases (87-92, continuing from v2.13's Phase 86 — not reset to 1). 100% coverage, no orphans, no double-mapping. LIFE and DELIV each kept in one phase per the roadmapping instruction; RMINST sequenced after CONSIST for the shared instance-removal route; the built-image smoke-test phase (92) depends on all five fix phases. Flat phase layout (`.planning/phases/<N>-<slug>/`) per the v2.7+ convention; no phase directories created yet.
+
 ### Cross-cutting thread
 
 For v2.13: Phase 83 is the shared substrate for Phase 86 (the paired review workflow Pilot exercises); Phase 82 is the shared substrate Phase 85 extends (CI baseline → follow-on CI improvements). Phase 84 (PLANCHK) is deliberately cross-cutting to nothing — it is isolated by owner instruction and touches no other v2.13 phase's deliverables.
+
+For v2.14: Phase 87 is the shared substrate for Phase 90 (both touch the instance-removal route); Phases 87-91 together are the shared substrate for Phase 92 (the built-image smoke test demonstrates their fixes, not its own new behavior).
 
 ### Blockers/Concerns
 
@@ -94,10 +127,9 @@ For v2.13: Phase 83 is the shared substrate for Phase 86 (the paired review work
 
 ### Future Milestones
 
-Organized 2026-10-18 following SeedSyncarr's structure; CI & Review Workflow became the active milestone (v2.13) on 2026-10-21. ROADMAP.md defines two further future milestones below; release versions and phase numbers will be assigned during their planning.
+Organized 2026-10-18 following SeedSyncarr's structure; CI & Review Workflow became the active milestone (v2.13) on 2026-10-21. Reliability became the active milestone (v2.14) on 2026-11-15. ROADMAP.md defines the further future milestones; release versions and phase numbers will be assigned during their planning.
 
-1. **Reliability:** state/config recovery (999.9), narrowed startup/shutdown cleanup (999.13), and ambiguous POST delivery/retry semantics.
-2. **Authentication Safety & Responsiveness:** bcrypt offloading (999.4), evidence-backed auth-boundary review (999.10), and compatibility checks for changed paths.
+1. **Authentication Safety & Responsiveness:** bcrypt offloading (999.4), evidence-backed auth-boundary review (999.10), and compatibility checks for changed paths.
 
 Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal are in [maintenance](backlog/MAINTENANCE.md). [Earlier backlog and closed decisions](backlog/archive/2026-10-18/README.md) are archived rather than carried forward as pending tasks.
 
@@ -114,13 +146,13 @@ Routine maintenance and the after-v2.12 owner-confirmed review-workflow proposal
 
 - `docs/bm-greptile-codex-blueprint.md` -- v2.13 review-pairing source of truth (owner-confirmed 2026-10-21, as written)
 - `docs/ci-reference-baseline-plan.md` -- v2.13 CI-baseline source of truth (owner-confirmed 2026-10-21, as written)
+- `.planning/research/SUMMARY.md` -- v2.14 Reliability research (completed 2026-11-15); current for v2.14, defect confirmations and build-order rationale
 - `docs/superpowers/specs/2026-10-08-search-correctness-design.md` -- v2.12 design spec
 - `docs/superpowers/specs/2026-06-02-recovery-counts-config-design.md` -- v2.10 design spec
 - `docs/superpowers/specs/2026-06-02-launch-hardening-design.md` -- v2.9 design spec
 - `.planning/milestones/v2.9-ROADMAP.md` -- archived v2.9 roadmap
 - `.planning/milestones/v2.8-ROADMAP.md` -- archived v2.8 roadmap
 - `.planning/codebase/CONCERNS.md` -- v2.8 source audit (2026-05-25); file:line pointers
-- **Note:** `.planning/research/SUMMARY.md` is STALE (prior milestone) — v2.12 skipped research because the approved design spec resolved all technical decisions against the live codebase. Do NOT treat that SUMMARY.md as current research for v2.12 or v2.13.
 
 ## Deferred Items
 
@@ -128,23 +160,23 @@ Items acknowledged and deferred at milestone close on 2026-11-14:
 
 | Kind | Item | Status |
 |------|------|--------|
-| uat | Phase 85 UAT item 5: the next release's CHANGELOG states that Python wheel/sdist are no longer attached as release assets (D-14) | Deferred to the next release |
+| uat | Phase 85 UAT item 5: the next release's CHANGELOG states that Python wheel/sdist are no longer attached as release assets (D-14) | Closed 2026-11-15 by v2.12.1 |
 | follow-up | Add a "superseded by PILOT-03" note to docs/bm-greptile-codex-blueprint.md | Deferred (rides with the next substantive PR) |
 | follow-up | Draft VALIDATION.md files for Phases 83, 85 and 86 (nyquist_compliant false) | Deferred (owner has not asked for them) |
-| follow-up | Tag-triggered publication is unverified until the next authorized release (Phase 82 waiver) | Deferred to the next release |
+| follow-up | Tag-triggered publication is unverified until the next authorized release (Phase 82 waiver) | Closed 2026-11-15: tag-triggered Release run 43758123019 succeeded for v2.12.1 |
 | follow-up | Isolated Codex review for bot/fork PRs is incomplete on current Codex models (Phase 85.1 exception); vibe-check fallback stays | Deferred (reopening tracked in backlog/MAINTENANCE.md) |
 
 ## Session Continuity
 
-Last session: 2026-11-14T21:02:02Z
-Stopped at: v2.13 closed; v2.12.1 patch release prepared locally on `release-v2.12.1` (not pushed)
-Resume file: none (no milestone is active; start the next one with `/bm:new-milestone`)
+Last session: 2026-11-15T21:35:16.692Z
+Stopped at: Phase 87 context gathered (87-CONTEXT.md); planning not started
+Resume file: .planning/phases/87-settings-state-file-safety/87-CONTEXT.md
 
 ## Operator Next Steps
 
-- Start the next milestone, Reliability, with `/bm:new-milestone` (requirements and phase numbers are defined there). The held planning branch `planning/post-phase-86` is pushed with the next substantive push, not on its own (no docs-only PRs)
-- v2.12.1 patch release (owner decision 2026-11-14): local branch `release-v2.12.1` carries Dependabot #58, the version bump and the CHANGELOG entry (which states that wheel/sdist are no longer release assets, closing Phase 85 UAT item 5 once released). Remaining: owner go-ahead to push and open the PR, CI, exact-commit owner acceptance, merge, then the `v2.12.1` tag on the main merge commit that CI ran on (first tag-triggered run of the reworked release pipeline), release text shown to the owner before publishing, deploy and walkthrough
-- Decide BM SA-01 (pin the uv version CI installs) and SA-12 (FastAPI opt-in OpenTelemetry auto-configure can fail startup if a user sets it) -- see backlog/MAINTENANCE.md
-- Next release (version decided when it is cut): CHANGELOG states wheels/sdists are no longer attached (Phase 85 UAT P5); roll in open Dependabot alerts/PRs per the release rule; add an unreleased CHANGELOG section covering the two security fixes from PR #57 (`opentelemetry-api` 1.45.2, `zlib1g` upgrade in the image)
+- Phase 87 is planned (3 plans in 2 waves: 87-01 and 87-03 first, then 87-02; plan check ran 3 rounds, no blockers); execute it next (`/bm:execute-phase 87`). Work is on branch `phase-87-settings-state-file-safety`, which carries the held `planning/post-v2.12.1` commits
+- Production runs v2.12.1 (deployed and walked through 2026-11-15). The production compose service tracks the `:main` tag on purpose (owner, 2026-11-15: "main is fine"), so a later recreate after a merge to main runs main, not the last release. The held branch `planning/post-v2.12.1` is pushed with the next substantive push, not on its own (no docs-only PRs)
+- Decide BM SA-01 (pin the uv version CI installs) -- see backlog/MAINTENANCE.md. SA-12 is in v2.14 scope in reduced form (startup is not affected; regression check plus an "unsupported" note)
+- Release follow-ups from v2.12.1: remove the temporary `zlib1g` Dockerfile step once the base image carries the fix; update the `idna` text in docs/ci-negative-demonstrations.md; add the "superseded by PILOT-03" note to the blueprint -- see backlog/MAINTENANCE.md and Deferred Items
 - Follow-up carried from v2.12: "Refresh counts" vs scheduled cycles on a malformed record -- owner decided 2026-10-30 to align (skip per record); delivered as a Phase 86 pilot PR (86-CONTEXT D-02)
 - `.planning/` is excluded locally (`.git/info/exclude`): tracked planning files are carried by Git, new ones need `git add -f`
