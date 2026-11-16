@@ -1016,8 +1016,11 @@ async def _close_removed_client(client: ArrClient) -> tuple[Exception | None, as
     absorbed cancellation would itself be cancelled and leak the connection.
     The close runs as its own task and is waited for through a shield, the
     same way _await_claimed_write waits for the write. Returns the close's
-    own error (None when it succeeded) and the first cancellation received
-    while waiting, which the caller re-raises.
+    own error (None only when it succeeded) and the first cancellation
+    received while waiting, which the caller re-raises. If the close task
+    itself was cancelled before it finished (e.g. a shutdown cancelling all
+    tasks), that is returned as an error too, so the caller logs it instead
+    of treating a close that never completed as a successful one.
     """
     closing = asyncio.ensure_future(client.close())
     cancelled: asyncio.CancelledError | None = None
@@ -1030,7 +1033,7 @@ async def _close_removed_client(client: ArrClient) -> tuple[Exception | None, as
         except Exception:
             pass  # the close's own error: read from closing below and returned
     if closing.cancelled():
-        return None, cancelled
+        return RuntimeError("the close was cancelled before it finished"), cancelled
     error = closing.exception()
     if error is not None and not isinstance(error, Exception):
         raise error

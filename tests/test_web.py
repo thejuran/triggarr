@@ -2663,6 +2663,48 @@ def test_remove_instance_close_failure_still_succeeds(multi_instance_app):
     assert "close boom" in message
 
 
+async def test_close_removed_client_reports_cancelled_close_as_error():
+    """A close task that is itself cancelled before it finishes is never
+    reported as a successful close: the helper returns an error for it.
+    """
+    from triggarr.web.routes import _close_removed_client
+
+    client = MagicMock()
+    client.close = AsyncMock(side_effect=asyncio.CancelledError())
+
+    error, _cancelled = await _close_removed_client(client)
+
+    assert isinstance(error, Exception)
+    assert "cancelled" in str(error)
+
+
+async def test_remove_instance_cancelled_close_logs_error(multi_instance_app):
+    """When the removed instance's close task is cancelled before it finishes,
+    remove_instance logs one error-level entry naming the app and instance,
+    so a close that never completed is never silent.
+    """
+    multi_instance_app.state.radarr_clients["4K"].close = AsyncMock(side_effect=asyncio.CancelledError())
+
+    records: list = []
+    handler_id = logger.add(lambda m: records.append(m.record), level="ERROR")
+    try:
+        with patch("triggarr.web.routes._atomic_toml_write", return_value=None):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=multi_instance_app), base_url="http://test"
+            ) as ac:
+                with pytest.raises(asyncio.CancelledError):
+                    await ac.post("/api/instance/remove/radarr/4K")
+    finally:
+        logger.remove(handler_id)
+
+    assert "4K" not in multi_instance_app.state.radarr_clients
+    assert len(records) == 1
+    message = records[0]["message"]
+    assert "radarr" in message
+    assert "4K" in message
+    assert "cancelled" in message
+
+
 def test_settings_remove_button_targets_row_error_slot(multi_client, multi_instance_app):
     """Each instance's Remove button targets a row-local error slot instead of
     the page body, so a failed removal can show its message on that row
