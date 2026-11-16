@@ -210,3 +210,75 @@ Recommendation: A, because it is the only one that also closes the stale-tab cas
 _Fixed: 2026-11-15 (round 2)_
 _Fixer: Claude (bm-code-fixer)_
 _Iteration: 2_
+
+---
+
+# Fix round 3
+
+**Fixed at:** 2026-11-16T00:34:27Z
+**Source review:** `.planning/phases/87-settings-state-file-safety/87-REVIEW.md` (iteration 3, head reviewed `615a044a`)
+**Fix round base:** `ac5f01fe`, committed directly on `phase-87-settings-state-file-safety`
+
+**Summary:**
+- Findings in scope (owner-approved): 2 (iteration 3 WR-01, IN-02)
+- Fixed: 2
+- Skipped: 0
+- Rejected: 0
+- Out of scope, untouched: every other route (iteration 3 SA-01), `triggarr/config.py`, `triggarr/state.py`, templates, SA-02, IN-01
+
+**Checks after the last code commit (`82931b9a`):**
+- `uv run pytest tests/ -x -q`: 3330 passed, 1 skipped (before this round: 3327 passed, 1 skipped)
+- `uv run ruff check triggarr/ tests/`: All checks passed
+- `uv run python tests/audit_lock_coverage.py`: `covered: 8 / 8, uncovered: 0`
+- The three new tests plus the existing mock-based never-starts test, run 10 times in a row: 5 passed each time, no failure.
+
+## Item 1: iteration 3 WR-01, a removal write the route gave up on still ran later
+
+**Status:** fixed: requires human verification (concurrency logic; the tests below exercise both orderings, but the reasoning should be confirmed by review)
+**Files modified:** `triggarr/web/routes.py`, `tests/test_web.py`
+**Commits:** `b2c95594` (failing tests), `beff1f34` (fix)
+
+**What changed (`remove_instance` only):**
+- The settings write is now submitted as a small nested function, `_write_unless_abandoned`, instead of the writer directly. A flag (`write_abandoned`) set by the failure handler makes a job that has not started yet return without writing.
+- A small `threading.Lock` (`write_gate`) shared by the job and the handler makes the decision atomic. It is held only to check or flip a flag, never while the file is being written, so the handler cannot stall the event loop on it. Exactly one of two things happens:
+  1. The handler sets `write_abandoned` first. The job, whenever a worker later picks it up, sees the flag and does nothing. This is the refused-thread-start case from the review's reproduction.
+  2. The job sets `write_claimed` first. The write is then running or already finished and cannot be called off. The handler does not guess: it waits for the job's real result through a `concurrent.futures.Future` wrapped with `asyncio.wrap_future` (a non-blocking await, no extra thread needed) and reports that result. If the write failed, the removal fails as before. If the write succeeded, the removal is real and completes normally.
+- Case 2 covers two situations. When the writer itself raised, the job has already finished and the awaited result is that same exception, so behavior is identical to before. The other is the window the review called optional: the thread start is refused, but a worker that was busy at that moment frees up and takes the queued job before the error reaches the route. Before this fix (and with a plain flag) the route would answer "not removed" while the file lost the instance. Now the answer matches the file.
+- Logging: still exactly one error-level entry naming the app, the instance and the reason on every failed removal, with the same wording. One new warning exists for the rare case-2 success: "Settings file ... was saved while removing app/instance, although starting the write reported: ...", so the refused thread start is not swallowed silently.
+- Unchanged: both response bodies, live state untouched on failure, `log_failure=False`, `Exception` (not `BaseException`) in the handler so `CancelledError` still propagates.
+- The comment above the write no longer says "the write never starting"; it now explains that the pool queues the job before trying to start a thread.
+- Imports: `threading` and `concurrent.futures` added; `functools` removed because the `functools.partial` around the writer was its only use in the file.
+
+**Tests added (`tests/test_web.py`):**
+- `test_remove_instance_refused_thread_start_does_not_write_later` (plain and htmx): real loop, a real default executor and the real writer. `threading.Thread.start` is patched to refuse exactly one start of the executor's thread; `run_in_executor` is not mocked. After the failed removal a later use of the same executor succeeds. Asserts the fixed response, the settings file byte-for-byte unchanged and still containing the instance, no temp file, live settings and connections untouched, exactly one log entry at warning level or above (the error naming app, instance and reason), and nothing logged as removed. Fails on the pre-fix code because the settings file loses the instance.
+- `test_remove_instance_refused_thread_start_with_write_already_running_reports_the_write`: one worker is busy, the thread start is refused only after that worker has taken the queued write and is in the middle of it. Asserts the request does not answer while the write is running, the event loop keeps running meanwhile, and once the write finishes the removal is reported as a success with the file and the running app in agreement, no error entry and one warning. Fails on the pre-fix code, which answered "not removed" at once.
+- The existing mock-based `test_remove_instance_write_never_starts_logs_one_error` is unchanged and passes. No existing test was changed, weakened or removed.
+
+**Lock audit:** `tests/audit_lock_coverage.py` and `tests/test_audit_lock_coverage.py` were not changed. The writer reference inside the nested function is still lexically inside `async with request.app.state.search_lock:`, so the audit counts it as before (8 / 8).
+
+**Residual window:** none between the job and the failure handler; the lock closes it. What remains, unchanged from before and outside this item:
+- A cancelled request (client disconnect, shutdown) is not treated as "given up": `CancelledError` is deliberately not caught, so a write that is queued or running when the request is cancelled still completes while live state is not updated. This was already true before this round.
+- In case 2 the route holds `search_lock` until the running write finishes, exactly as it does for any normal write.
+
+## Item 2: iteration 3 IN-02, stale test docstring
+
+**Status:** fixed (docstring only)
+**Files modified:** `tests/test_config.py`
+**Commit:** `82931b9a`
+
+The docstring of `test_atomic_toml_write_log_failure_false_suppresses_primary_line` no longer says "only the primary line". It now says this test covers the `OSError` path, that `log_failure=False` also suppresses the unexpected-error line (covered by the neighboring test), and that the directory-fsync warning and the temp-file cleanup error are never suppressed. No code or assertion changed.
+
+## Noticed, not changed (out of scope)
+
+- The same late-write mechanism exists in `save_settings`, `add_instance` and the auth routes (iteration 3 SA-01, recorded for the backlog). The nested-function pattern used here could become a shared helper for all writers.
+- Request cancellation during a settings write (see "Residual window" above) applies to every settings writer, not only removal.
+- SA-02 (a failure closing the directory handle after the file was replaced is reported as "not removed") is untouched; `triggarr/config.py` was not changed.
+- `test_remove_instance_write_never_starts_logs_one_error` keeps its name and docstring ("the write never starts"). That is accurate for its mock, which queues nothing, but not for the real failure; the new tests cover the real one.
+- The frontmatter at the top of this file still describes round 1.
+- No review of these commits has been run. The BM review and the paired Codex pass on the new head are still to do.
+
+---
+
+_Fixed: 2026-11-16T00:34:27Z (round 3)_
+_Fixer: Claude (bm-code-fixer)_
+_Iteration: 3_
