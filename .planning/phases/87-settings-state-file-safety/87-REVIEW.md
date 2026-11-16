@@ -1,155 +1,162 @@
 ---
 phase: 87-settings-state-file-safety
-reviewed: 2026-11-15T23:28:54Z
+reviewed: 2026-11-16T00:04:17Z
 depth: standard
-files_reviewed: 7
+iteration: 2
+head: f099c6a8
+files_reviewed: 5
 files_reviewed_list:
-  - triggarr/config.py
   - triggarr/state.py
   - triggarr/web/routes.py
   - triggarr/templates/settings.html
-  - tests/test_config.py
   - tests/test_state.py
   - tests/test_web.py
 findings:
   critical: 0
-  warning: 2
-  info: 4
-  total: 6
+  warning: 1
+  info: 1
+  total: 2
 status: issues_found
 ---
 
-# Phase 87: Code Review Report
+# Phase 87: Code Review Report (iteration 2, review after fixes)
 
-**Reviewed:** 2026-11-15T23:28:54Z
+**Reviewed:** 2026-11-16T00:04:17Z
 **Depth:** standard
-**Files Reviewed:** 7
+**Files Reviewed:** 5 (`triggarr/config.py` read for context only; it was not changed in the fix round)
 **Status:** issues_found
-**Head reviewed:** `6262dd14` (diff base `633def80`)
+**Head reviewed:** `f099c6a8` (fix-round diff base `3bc9a610`)
+
+The iteration 1 report (head `6262dd14`) is in git history for this file.
 
 ## Summary
 
-Scope was the Phase 87 diff (`git diff 633def80..HEAD`) plus the code it touches: `remove_instance` and `_removal_failed_response` in `routes.py`, `_atomic_toml_write(log_failure=...)` in `config.py`, the `load_state` non-object guard and `_recover_from_bad_state_file` in `state.py`, and the Remove button's row slot in `settings.html`.
+This is a review of the fix round (`git diff 3bc9a610..HEAD -- triggarr tests`) against the code itself, not against `87-REVIEW-FIX.md`.
 
-The core ordering fix is sound. `remove_instance` now reads settings and re-checks existence inside `search_lock`, builds the post-removal settings on a copy, writes, and only then swaps live settings and tidies up. I traced the failed-write path and found no way for it to change live settings, the scheduler job, the client registry, the state entry or the tag cache. The D-05 response carries only the escaped instance name. The non-object guard sits at the single `load_state` entry point as the research recommended.
+All four fixed findings (WR-01, WR-02, IN-01, IN-02) hold up. No blocker was found. Live state still cannot change on any failed-save path: in `remove_instance`, the first write to anything live is `request.app.state.settings = new_settings` at `triggarr/web/routes.py:1061`, and every failure exit (the settings-build guard, the `OSError` branch, the new `except Exception` branch, the not-found return) leaves the function before that line. Everything before it works on copies.
 
-No blocker was found. Two warnings and four info items follow. Both warnings are cases where the new behavior tells the user or the log something that is not true, or tells them nothing.
+One new warning: the widened `except Exception` has a path on which the log holds no error-level entry and no system reason, and the line it does write points at an entry that does not exist. One new info item on the wording of the new unreadable-state-file warning.
+
+What was checked for the fix-round diff, with the result:
+
+| Check | Result |
+|---|---|
+| Nothing live mutated before the write succeeds | Holds (see above) |
+| No internal detail in responses | Holds. Every failure exit returns `_removal_failed_response`, whose body is the fixed D-05 sentence plus the escaped name. The htmx not-found answer has an empty body. |
+| `CancelledError` not swallowed | Holds. Both new handlers catch `Exception`; `asyncio.CancelledError` is a `BaseException` on the supported Python versions (3.11+) and propagates. |
+| Log count per D-07 | Holds on three of four paths; fails on one (WR-01 below). The fixer's own open point about the content of the single error entry is SA-01. |
+| htmx not-found redirect | Sound. Target is the fixed `settings_page` URL (no user input in it), app type and name length are validated first, nothing is echoed, nothing is mutated. The bundled htmx handles `HX-Redirect` before any swap. |
+| CSP nonce discipline, no inline handlers | Holds. The new lines are inside the existing `<script nonce>` block; no `on*=` or `hx-on` attribute was added. |
+| No unescaped user content | Holds. The listener writes only `textContent = ''`. The swapped message is built with `html.escape`. |
+| `htmx:beforeRequest` listener scope | Holds by reading. The selector `summary > button[hx-post]` matches only the Remove buttons on this page (the tag inputs use `hx-get`, the connection pill is a `div`, the API-key regeneration goes through `htmx.ajax`). It clears only the slot under the clicked button's own `<summary>`. The bundled htmx sets `detail.elt` on every event and fires `htmx:beforeRequest` only after the confirmation is accepted, so cancelling the confirmation leaves the message in place. |
+| `preventDefault` side effects | Holds by reading. It runs only when the clicked element is the `.remove-error` span, which contains text only. The Remove button's handler is unchanged. Keyboard toggling fires the click on the `<summary>` itself, so the span's listener does not run. |
+| New unreadable-state-file path | One warning line, path and system reason only, no contents, no set-aside attempt, default state returned. Wording issue in IN-01. |
 
 Checks run during this review:
 
 - `uv run ruff check triggarr/ tests/`: all checks passed.
-- `uv run pytest tests/test_state.py tests/test_config.py tests/test_web.py -x -q`: 324 passed.
-- Convention pack (`verify conventions --check`) on the seven files: no findings (not skipped).
-- `load_state` edge cases were reproduced in a temp directory outside the repo (results cited in WR-01, IN-02 and SA-01).
+- `uv run pytest tests/test_state.py tests/test_web.py -x -q`: 213 passed. The full suite was not re-run by this review.
+- Convention pack (`verify conventions --check`) on the five files: no findings (not skipped).
+- A throwaway probe outside the repo reproduced WR-01 (output quoted there).
 
-Not verified: the row-slot swap was not exercised in a real browser. The htmx behavior described below is from reading the bundled `htmx.min.js` (2.0.8, default `responseHandling`) and the template.
+Not verified: nothing in `settings.html` was exercised in a browser by this review. The script behavior above is from reading the template and the bundled `htmx.min.js`. The tests for the new script lines match text in the page source; they do not run the script. The fix report records a partial headless-Chrome check without htmx loaded, and no real click-through of a failed removal followed by a retry.
+
+## Iteration 1 dispositions
+
+| Finding | Disposition | Verified | Notes |
+|---|---|---|---|
+| WR-01 unreadable state file reported as bad content | Fixed (wording only, as scoped) | Yes | `load_state` handles `OSError` separately (`triggarr/state.py:331-332`); one accurate warning, no set-aside attempt. The overwrite behavior is unchanged and is SA-03 (backlog). See IN-01 for one inaccurate clause. |
+| WR-02 (a) non-`OSError` write failure showed nothing | Fixed | Yes | `triggarr/web/routes.py:1041-1054` returns the fixed message; live state untouched. Logging gap on one path: WR-01 below. |
+| WR-02 (b) htmx not-found showed nothing | Fixed | Yes | `triggarr/web/routes.py:983-989` answers like a success (`HX-Redirect`); a plain POST keeps the escaped 400. |
+| WR-02 (c) stale message could stay on the row | Fixed | Yes, by reading; not in a browser | `triggarr/templates/settings.html:357-362`. |
+| IN-01 clicking the message collapsed the instance | Fixed | Yes, by reading; not in a browser | `triggarr/templates/settings.html:172`, `:346-351`. |
+| IN-02 permissions test could not fail | Fixed | Yes | Source set to `0o640`, equality asserted (`tests/test_state.py:513-518`). |
+| IN-03 tests depend on `asyncio.Lock._waiters` | Backlog (owner) | n/a | One more test of the same shape was added (`tests/test_web.py:1982-1987`). Same failure mode (fails loudly, never passes falsely); not made worse in kind. |
+| IN-04 `mkstemp` outside the writer's `try` | Backlog (owner) | n/a | `triggarr/config.py` unchanged. |
+| SA-01 non-UTF-8 or deeply nested state file crashes startup | Backlog (owner) | n/a | Unchanged by the fix round. |
+| SA-02 add/save can bring back a removed instance | Backlog (already recorded) | n/a | Unchanged by the fix round. |
+| SA-03 unreadable state file is overwritten on next save | Backlog (owner) | n/a | Unchanged by the fix round; the new warning now tells the user it will happen. |
 
 ## Narrative Findings (AI reviewer)
 
 ## Warnings
 
-### WR-01: A state file that cannot be opened is reported as holding bad content, then reset with no copy kept
+### WR-01: When the settings write never starts, the log has no error entry and no reason, and points at a line that is not there
 
-**File:** `triggarr/state.py:304-310` (message built at `:274-280`)
-**Issue:** The `except (json.JSONDecodeError, OSError)` branch sends both cases through `_recover_from_bad_state_file` with the text "content that could not be read as JSON (...)". For an `OSError` the file's content was never read at all. Reproduced with a valid state file set to mode `000`; the log reads:
+**File:** `triggarr/web/routes.py:1041-1054` (comment at `:999-1002`)
+**Issue:** The new `except Exception` branch assumes every non-`OSError` failure comes from inside `_atomic_toml_write`, whose unexpected-error branch logs its own error line. So the route logs only a warning, leaves out the exception message, and says "see the config write error logged just before this".
+
+That assumption does not hold when `run_in_executor` itself raises before the writer runs. The realistic cases are `RuntimeError: can't start new thread` (host or container thread limit reached) and `RuntimeError: cannot schedule new futures after shutdown`. Reproduced with a probe that makes `run_in_executor` raise `RuntimeError("can't start new thread")`. The whole log for the request was:
 
 ```
-Could not set aside the bad state file .../state.json: PermissionError: [Errno 13] Permission denied
-State file .../state.json held content that could not be read as JSON (PermissionError: [Errno 13] Permission denied: ...) where a JSON object was expected; queue progress and last-run times were reset to defaults ...
+WARNING  Settings file .../triggarr.toml was not saved while removing radarr/4K; instance kept (RuntimeError; see the config write error logged just before this)
 ```
 
-Two effects:
+Effects:
 
-1. The warning states the file "held" the wrong kind of data. The file may be intact; the real cause is a permission or I/O problem. D-10 asks the warning to name "the kind of data found versus expected", and here nothing was found.
-2. The set-aside copy fails for the same reason the read failed, so no copy exists. The next `save_state` then replaces the possibly intact file with defaults (`os.replace` needs only directory permission). Resetting on `OSError` predates this phase, but the D-08 "set aside first" promise does not hold on this path, and the only trace is the misleading line above.
+1. D-07 is not met on this path: there is no error-level entry and the system reason is not recorded anywhere. Only the exception's type name survives.
+2. The user is told "Check the Triggarr log for details", and the log sends them to an entry that does not exist.
+3. The comment at `:999-1002` ("Each path logs exactly one error-level entry overall") is not true for this path.
 
-**Fix:** Split the handler so the two causes get accurate wording, and keep the D-10 structure for the parse case only:
+The response and live state are correct on this path; the defect is in the log only. The path is narrow (it needs thread exhaustion or a shutdown race), which is why this is a warning.
+
+`test_remove_instance_unexpected_write_error_keeps_live_state` (`tests/test_web.py:1804-1844`) exercises this same shape (the writer is replaced by a mock that logs nothing) but asserts nothing about the log, so it does not catch it.
+
+**Fix:** Record whether the writer was entered, and log accordingly. This stays inside `routes.py`:
 
 ```python
+writer_entered = False
+
+def _write() -> None:
+    nonlocal writer_entered
+    writer_entered = True
+    _atomic_toml_write(config_path, config_dict, log_failure=False)
+
 try:
-    with open(resolved_state_path, encoding="utf-8") as f:
-        data = json.load(f)
-except json.JSONDecodeError as exc:
-    return _recover_from_bad_state_file(
-        resolved_state_path, f"content that could not be read as JSON ({type(exc).__name__}: {exc})"
-    )
+    await asyncio.get_running_loop().run_in_executor(None, _write)
 except OSError as exc:
-    return _recover_from_unreadable_state_file(resolved_state_path, exc)
-```
-
-where the unreadable variant logs "State file {path} could not be opened ({reason}); starting with default queue progress and last-run times. The file was left in place and will be replaced on the next save." Whether an unreadable file should be overwritten at all is a product question; see SA-03.
-
-### WR-02: On htmx, every removal failure other than a failed save still shows the user nothing, and can leave an untrue message on the row
-
-**File:** `triggarr/web/routes.py:983`, `:1007`; `triggarr/templates/settings.html:165-172`
-**Issue:** The row slot only receives content on a 2xx response, because htmx 2.0.8's default `responseHandling` does not swap 4xx/5xx. `_removal_failed_response` returns 200 for that reason, but only the `except OSError` branch uses it. The other failure exits are still non-2xx with no `HX-Retarget`/200 handling:
-
-- `:983` returns 400 "Instance '...' not found". This is the normal result when the instance was already removed in another tab or by the concurrent request the new in-lock check is designed for. The page shows nothing and the stale row stays.
-- `:1007` catches `OSError` only. `_atomic_toml_write` has a separate `except Exception` branch (`config.py:187-203`) that re-raises non-`OSError` failures (for example a serialization error from `tomli_w`). That propagates as a bare 500. Live state is untouched, so this is safe, but the user again sees nothing, which is the silent failure D-04 set out to remove.
-
-There is a second effect from D-06. After one failed save the row shows "'X' was not removed ... Nothing was changed." If the retry then ends in any of the non-swapped responses above (or a 401 after the session expired), that message stays on screen although it no longer describes what happened. In the "already removed elsewhere" case it is false.
-
-**Fix:** Route the htmx case of these exits through the same 200-into-the-slot mechanism with wording that fits each cause, and widen the save boundary:
-
-```python
+    ...  # unchanged
 except Exception as exc:  # error boundary: nothing live has been changed yet
-    logger.error(...)      # as today; the writer already logs the non-OSError case
+    if writer_entered:
+        logger.warning(...)  # as today: the writer already logged the one error
+    else:
+        logger.error(
+            "Could not save settings file {path} while removing {app}/{inst}; "
+            "instance kept: {exc_type}: {exc}",
+            path=config_path, app=app_name, inst=instance_name,
+            exc_type=type(exc).__name__, exc=exc,
+        )
     return _removal_failed_response(request, instance_name)
 ```
 
-For not-found on htmx, return 200 with a short escaped message such as "'X' no longer exists. Reload the page." (or an `HX-Redirect` to the settings page, which also clears the stale row). Add tests for both. If widening the `except` is not wanted, at minimum clear or replace the slot on any non-2xx response.
+Add a test that makes `run_in_executor` raise and asserts exactly one error-level entry naming the app, the instance and the reason. The smaller alternative is to add `{exc}` to the existing warning and drop the "logged just before this" clause; that keeps the reason but still leaves this path without an error-level entry.
 
 ## Info
 
-### IN-01: The error slot sits inside `<summary>`, so clicking the message collapses the instance
+### IN-01: The unreadable-state-file warning promises the next save will replace the file, which is not always true
 
-**File:** `triggarr/templates/settings.html:172`
-**Issue:** The `remove-error` span is a child of `<summary>` and, unlike the Remove button, has no `data-stop-propagation`. Clicking the message, or starting to select its text to copy it, toggles the `<details>` and hides the instance's fields.
-**Fix:** Add `data-stop-propagation` to the span (the handler at `:343-345` already covers any element with that attribute), or move the span just after `</summary>`; `hx-target="next .remove-error"` still resolves there.
-
-### IN-02: `test_state_set_aside_permissions_not_wider` cannot fail
-
-**File:** `tests/test_state.py:505-516`
-**Issue:** The source is set to `0600` and the test asserts the copy has no bits beyond `0600`. `tempfile.mkstemp` always creates the temp file as `0600`, so the assertion holds even if `shutil.copy2` were replaced by a content-only copy. The real behavior is "copy takes the source's mode": a `0644` source produced a `0644` copy when I ran it. That meets the "at least as restrictive as the state file" discretion item, but the test does not pin it.
-**Fix:** Use a source mode that differs from the `mkstemp` default and assert equality, for example `chmod(0o640)` then `assert stat.S_IMODE(corrupt.stat().st_mode) == 0o640`.
-
-### IN-03: Concurrency tests depend on a private `asyncio.Lock` attribute
-
-**File:** `tests/test_web.py:1603-1609`, `:1640-1646`
-**Issue:** Both tests poll `lock._waiters` to know when the two requests are queued. This is a CPython implementation detail. If it changes, the tests fail on the "must be queued" assertion rather than pass falsely, so the risk is breakage on a Python upgrade, not a false green.
-**Fix:** Acceptable as is. A version-independent alternative is to patch `_atomic_toml_write` with a function that blocks on a `threading.Event` for the first caller, which holds the lock from inside the route without touching lock internals.
-
-### IN-04: `_atomic_toml_write` does not log or guard a failure to create the temp file
-
-**File:** `triggarr/config.py:152`
-**Issue:** Pre-existing, but the docstring extended in this phase describes when "Config write failed" is logged. `tempfile.mkstemp` runs before the `try`, so the most likely real-world failures (read-only volume, directory not writable, no space) raise without the writer logging anything, whatever `log_failure` is. `remove_instance` is unaffected because it logs in its own `except OSError`. `save_settings` and `add_instance` rely on the writer's line and get none on this path.
-**Fix:** Move the `mkstemp` call inside the `try` (with `tmp_path = None` beforehand and a guard on the cleanup), or note the exception in the docstring. Belongs with the D-14 follow-up rather than this phase.
+**File:** `triggarr/state.py:294-298`
+**Issue:** The new warning ends "the next state save will replace it". That is true for the reproduced case (a file with no read permission). It is false when the path cannot be replaced, most plainly when `state.json` is a directory: `open` raises `IsADirectoryError` (an `OSError`), this warning is logged, and every later `save_state` then fails on `os.replace`. Docker creates a directory when a single-file bind mount points at a path that does not exist on the host, so this is reachable, though only by mounting the state file on its own rather than the config directory. The same holds on a read-only volume.
+**Fix:** Say what will be attempted rather than what will happen, for example "the next state save will try to replace it".
 
 ## Set aside (needs ruling)
 
-### SA-01: A state file that is not valid UTF-8, or is very deeply nested, still crashes startup
+### SA-01: On a non-`OSError` failure inside the writer, the one error entry does not name the app or instance
 
-**Where:** `triggarr/state.py:301-304`
-**Why excluded:** CONSIST-03 covers valid JSON that is not an object. The non-UTF-8 case is already recorded in `.planning/backlog/MAINTENANCE.md` (line 15) as an owner decision, not scheduled.
-**Effect if left as is:** Triggarr fails to start until someone deletes the file by hand. Disk corruption usually produces arbitrary bytes rather than tidy JSON, so non-UTF-8 is a likely form of the "truncated/unparseable" case that D-09 says gets one recovery behavior. Not yet recorded: a file of deeply nested brackets (reproduced with 200,000 `[`) raises `RecursionError`, which is also uncaught.
-**Needs:** Ruling: in scope / defer / accept. The fix is small: catch `(json.JSONDecodeError, UnicodeDecodeError, RecursionError)` on the bad-content path, with one regression test each. If deferred, add the `RecursionError` case to the existing backlog note.
+**Where:** `triggarr/web/routes.py:1041-1053`, `triggarr/config.py:187-192`
+**Why excluded:** Raised by the fixer as open point 1 in `87-REVIEW-FIX.md`. Closing it needs `log_failure=False` to also cover the writer's unexpected-error branch, which is a change to `triggarr/config.py`, and the owner kept that file out of the fix round.
+**Effect if left as is:** D-07 asks for one error-level entry naming the app, the instance and the system reason. On this path the error entry names the settings file and the reason; the app and instance are in a separate warning line written right after it. Someone filtering the log to errors only sees a failed settings write with no indication it was a removal or which instance. Nothing is lost at the default log level.
+**Needs:** Ruling: accept as is / approve the small `config.py` change. If approved, it also simplifies the WR-01 fix above (the route would log the single error on every path).
 
-### SA-02: Add Instance and Save Settings can still bring back an instance that was just removed
+### SA-02: A failure closing the directory handle after the settings file was already replaced is reported as "not removed"
 
-**Where:** `triggarr/web/routes.py:902` vs `:923` (`add_instance`), `:640` vs `:727` (`save_settings`)
-**Why excluded:** D-13 says other writers are recorded, not fixed. Already recorded in `.planning/backlog/MAINTENANCE.md` (line 16).
-**Effect if left as is:** If an add or a save is waiting on the lock while a removal completes, it writes its older snapshot and the removed instance reappears in settings with no scheduler job or client until the next save or restart. It needs two overlapping requests, so it is unlikely for a single user. Note that the `remove_instance` docstring's claim ("cannot resurrect it from a stale snapshot") is true only for removal against removal.
-**Needs:** Ruling: defer (as recorded) / schedule. Phase 90 reuses this route, so it may be a natural place.
-
-### SA-03: Whether an unreadable (as opposed to corrupt) state file should be overwritten
-
-**Where:** `triggarr/state.py:304-310`
-**Why excluded:** Resetting to defaults on `OSError` predates this phase; WR-01 covers only the inaccurate wording added here.
-**Effect if left as is:** A temporary permission or I/O problem at startup discards queue progress and last-run times, and no copy is kept because the copy fails the same way. Search history is unaffected. The cost is repeat searches of items already searched, not lost data the user entered.
-**Needs:** Ruling: accept (startup always continues, per D-11's spirit) / defer / treat as a startup error.
+**Where:** `triggarr/config.py:204-206` (unchanged this phase), reached from `triggarr/web/routes.py:1030-1040`
+**Why excluded:** `triggarr/config.py` is outside this iteration's file list and the code predates Phase 87. Noted because the brief asks whether live state and disk can disagree on a failed-save path.
+**Effect if left as is:** If `os.close(dir_fd)` in the writer's `finally` raises after the rename succeeded, the route treats it as a failed save: the user is told nothing was changed and live state keeps the instance, but the file on disk no longer has it, so it disappears at the next restart. Live state itself is not changed on this path. A failing `close` on a directory handle is very unlikely in practice; this was found by reading, not reproduced.
+**Needs:** Ruling: accept / defer to the backlog next to IN-04 (same function).
 
 ---
 
-_Reviewed: 2026-11-15T23:28:54Z_
+_Reviewed: 2026-11-16T00:04:17Z_
 _Reviewer: Claude (bm-code-reviewer)_
 _Depth: standard_

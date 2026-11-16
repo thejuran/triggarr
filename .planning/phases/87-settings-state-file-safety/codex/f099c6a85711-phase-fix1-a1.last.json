@@ -1,0 +1,178 @@
+{
+  "schema_version": "2",
+  "inspected_head_sha": "f099c6a857117176b878215696a60f55bfb88d7d",
+  "inspected_base_sha": "3cede40099a1f8a5d6db45542e66c650bfa98952",
+  "pr_url": "none",
+  "scope": "Full requested net code/test diff, non-excluded planning files, and all three changed Phase 87 PLAN.md files.",
+  "verdict": "findings",
+  "summary": "One reproduced concurrency regression: adding an instance during a removal's settings write can resurrect the removed instance without its runtime client. Harness evidence reports 3320 passed and 1 skipped on the inspected head.",
+  "coverage": [
+    "Inspected all changes in triggarr/config.py, triggarr/state.py, triggarr/web/routes.py, triggarr/templates/settings.html, and their three changed test files.",
+    "Inspected all three Phase 87 plan files and nine empty .gitkeep deletions.",
+    "Traced removal write failures, logging, escaping, cleanup, duplicate requests, and interactions with add_instance and save_settings.",
+    "Reviewed state recovery, migration, diagnostic-copy replacement, permissions, cleanup failures, and startup callers.",
+    "Reviewed htmx response/target contracts, error clearing, CSP conventions, and regression-test assertions.",
+    "Checked scope for CI, audit, acceptance, and publication-policy changes; the body-swap guard is strengthened.",
+    "Ran the lock audit: 8 of 8 writer references covered.",
+    "Compared base and head using an in-memory execution of the actual extracted route functions."
+  ],
+  "exclusions": [
+    "Planning markdown other than changed *-PLAN.md files.",
+    "Generated review artifacts under .planning/**/codex/** and .planning/**/*.jsonl.",
+    "Files outside the working copy."
+  ],
+  "commands_run": [
+    {
+      "command": "git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Verify inspected head."
+    },
+    {
+      "command": "git cat-file -e 3cede40099a1f8a5d6db45542e66c650bfa98952",
+      "exit_code": 0,
+      "purpose": "Verify base exists."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..f099c6a857117176b878215696a60f55bfb88d7d -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'",
+      "exit_code": 0,
+      "purpose": "Read scoped diff; truncated output was subsequently inspected in smaller sections."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..f099c6a857117176b878215696a60f55bfb88d7d -- ':(glob).planning/**/*-PLAN.md'",
+      "exit_code": 0,
+      "purpose": "Read plan diff; subsequently reread files in smaller sections."
+    },
+    {
+      "command": "git diff --stat 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD",
+      "exit_code": 0,
+      "purpose": "Inventory changes."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- triggarr",
+      "exit_code": 0,
+      "purpose": "Inspect complete production diff."
+    },
+    {
+      "command": "cat .codex-review-evidence/pytest.txt",
+      "exit_code": 0,
+      "purpose": "Read harness evidence tied to the inspected head."
+    },
+    {
+      "command": "sed -n '1540,1870p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Inspect removal regression tests."
+    },
+    {
+      "command": "sed -n '1870,2170p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Inspect remaining removal and template tests."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-01-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review removal implementation instructions and acceptance criteria."
+    },
+    {
+      "command": "cat .planning/phases/87-settings-state-file-safety/87-02-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review UI instructions and explicitly deferred risks."
+    },
+    {
+      "command": "sed -n '1,100p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Review state-recovery plan."
+    },
+    {
+      "command": "sed -n '430,640p' triggarr/web/routes.py; sed -n '860,936p' triggarr/web/routes.py; sed -n '129,215p' triggarr/config.py",
+      "exit_code": 0,
+      "purpose": "Inspect surrounding routes, add-instance ordering, and atomic writer."
+    },
+    {
+      "command": "sed -n '170,210p' .planning/phases/87-settings-state-file-safety/87-02-PLAN.md; sed -n '1,40p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md; sed -n '100,220p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Complete plan inspection."
+    },
+    {
+      "command": "sed -n '1,208p' triggarr/state.py; sed -n '300,430p' triggarr/state.py; sed -n '635,800p' triggarr/web/routes.py; rg -n 'load_state|settings =|search_lock|clients.*get' triggarr/search/scheduler.py; rg --files -g '*python*' -g 'pyproject.toml' -g 'AGENTS.md' -g '*htmx*'; git status --short",
+      "exit_code": 0,
+      "purpose": "Trace state handling and competing settings writers; inspect workspace status."
+    },
+    {
+      "command": "python3 -B -c 'import pytest; import triggarr.web.routes; print(\"imports available\")'",
+      "exit_code": 1,
+      "purpose": "Check local test capability; pytest is unavailable."
+    },
+    {
+      "command": "sed -n '1,110p' triggarr/state.py; sed -n '155,175p' .planning/phases/87-settings-state-file-safety/87-02-PLAN.md; sed -n '145,210p' triggarr/search/scheduler.py; sed -n '470,510p' triggarr/search/scheduler.py; sed -n '1054,1145p' tests/test_web.py",
+      "exit_code": 0,
+      "purpose": "Inspect state types, deferred concurrency risk, scheduler callers, and fixtures."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_config.py tests/test_state.py",
+      "exit_code": 0,
+      "purpose": "Inspect complete config and state test diffs."
+    },
+    {
+      "command": "python3 -B - <<'PY' [inline AST-based base/head concurrency reproduction] PY",
+      "exit_code": 1,
+      "purpose": "Initial reproduction attempt; shell could not create a here-document temporary file. Retried using -c."
+    },
+    {
+      "command": "git diff 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- tests/test_web.py | tail -55; nl -ba triggarr/web/routes.py | sed -n '985,1030p'; sed -n '1,130p' tests/audit_lock_coverage.py; sed -n '570,640p' tests/test_state.py",
+      "exit_code": 0,
+      "purpose": "Check final test diff, finding location, audit semantics, and existing state assertions."
+    },
+    {
+      "command": "python3 -B -c [inline AST-based base/head concurrency reproduction; full executable script in F001.reproduction_command]",
+      "exit_code": 0,
+      "purpose": "Reproduce resurrection at head and demonstrate its absence for the same sequence at base."
+    },
+    {
+      "command": "python3 -B tests/audit_lock_coverage.py",
+      "exit_code": 0,
+      "purpose": "Verify writer lock coverage: 8 covered, 0 uncovered."
+    },
+    {
+      "command": "git diff --name-status 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- . ':(exclude,glob).planning/**/codex/**' ':(exclude,glob).planning/**/*.jsonl' ':(exclude,glob).planning/**/*.md'; git diff --name-status 3cede40099a1f8a5d6db45542e66c650bfa98952..HEAD -- ':(glob).planning/**/*-PLAN.md'; rg -n 'create_redacting_sink|def collect_secrets|redact' triggarr/logging.py; rg -n 'api/instance|csrf|CSRF|HX-Request' triggarr/auth/middleware.py; sed -n '130,180p' triggarr/templates/settings.html; sed -n '1080,1120p' triggarr/web/routes.py; git rev-parse HEAD",
+      "exit_code": 0,
+      "purpose": "Reconcile coverage, inspect security context, and recheck head. Middleware lookup used a nonexistent path (rg exit 2); corrected below."
+    },
+    {
+      "command": "rg --files triggarr | rg 'middleware|auth'; sed -n '1,50p' triggarr/logging.py; sed -n '125,170p' triggarr/logging.py; sed -n '40,100p' .planning/phases/87-settings-state-file-safety/87-03-PLAN.md",
+      "exit_code": 0,
+      "purpose": "Locate middleware, inspect redaction, and finish plan context."
+    },
+    {
+      "command": "rg -n 'csrf|CSRF|HX-Request|POST|AuthMiddleware' triggarr/web/middleware.py; sed -n '305,355p' triggarr/templates/settings.html; git status --short",
+      "exit_code": 0,
+      "purpose": "Check middleware boundaries, script context, and unchanged workspace."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "medium",
+      "title": "An add during the removal write resurrects the removed instance",
+      "file": "triggarr/web/routes.py",
+      "line_start": 995,
+      "line_end": 997,
+      "trigger": "Remove an instance, then submit Add Instance from another tab while the removal's executor write is still running.",
+      "execution_path": "remove_instance now keeps the old live Settings object intact while awaiting its write. add_instance reads that object and builds new_settings before acquiring search_lock (lines 901–922), so its snapshot includes the instance being removed. Removal then commits and deletes the client, scheduler job, and state entry. The queued add subsequently writes and installs its stale snapshot, restoring the removed instance.",
+      "consequence": "Both requests report success, but the removed instance reappears in live and persisted settings without its runtime client or scheduler job. Restarting can reactivate it.",
+      "evidence": "Executed the actual AST-extracted add_instance/remove_instance functions with controlled writer timing and lightweight dependency stubs. Base produced statuses [303, 303], live/persisted ['Default', 'Extra']; head produced statuses [303, 303], live/persisted ['4K', 'Default', 'Extra'], with the removed client absent. Unlike the previously possible pre-lock race acknowledged by plan 87-02, this sequence starts Add after removal already owns the lock and begins writing. Existing concurrency tests pair only removals and therefore miss it.",
+      "suggested_fix": "Keep write-before-swap, but move add_instance's settings read, validation, and replacement construction inside search_lock. Review save_settings for the same stale-snapshot interaction. Add a regression test that pauses the removal writer, starts Add Instance, releases the writer, and asserts the removed instance remains absent from disk, settings, and runtime registries.",
+      "reproduced": true,
+      "reproduction_command": "python3 -B -c 'import ast, asyncio, copy, functools, html, subprocess, threading\nfrom types import SimpleNamespace as NS\nfrom unittest.mock import Mock, AsyncMock\nclass Settings:\n    def __init__(self, **values): self.__dict__.update(values)\n    def model_copy(self, *, update): return Settings(**(self.__dict__ | update))\nclass Instance:\n    def model_dump(self): return {}\nclass Response:\n    def __init__(self, *args, status_code=200, **kwargs): self.status_code=status_code\nasync def check(rev):\n    source = subprocess.check_output([\"git\",\"show\",rev+\":triggarr/web/routes.py\"], text=True)\n    nodes = [n for n in ast.parse(source).body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name in (\"add_instance\",\"remove_instance\",\"_removal_failed_response\")]\n    for n in nodes: n.decorator_list=[]\n    started, release = threading.Event(), threading.Event()\n    writes=[]\n    def writer(path, data, **kwargs):\n        if not writes:\n            started.set()\n            if not release.wait(5): raise RuntimeError(\"gate timed out\")\n        writes.append(copy.deepcopy(data))\n    env=dict(asyncio=asyncio,functools=functools,html=html,APP_TYPES=(\"radarr\",\"sonarr\",\"lidarr\"),SettingsModel=Settings,InstanceConfig=Instance,new_instance_id=lambda:\"new-id\",validate_instance_name=lambda name:(True,\"\"),_settings_to_dict=lambda s:copy.deepcopy(s.__dict__),_atomic_toml_write=writer,_default_instance_state=dict,HTMLResponse=Response,RedirectResponse=Response,logger=Mock(),pydantic=NS(ValidationError=ValueError))\n    exec(compile(\"from __future__ import annotations\\n\"+ast.unparse(ast.Module(body=nodes,type_ignores=[])), \"<actual route functions>\", \"exec\"),env)\n    state=NS(settings=Settings(radarr={\"Default\":{},\"4K\":{}},sonarr={},lidarr={}),search_lock=asyncio.Lock(),config_path=\"unused\",scheduler=Mock(),radarr_clients={\"4K\":NS(close=AsyncMock())},triggarr_state={\"radarr\":{\"4K\":{}}},tag_cache={})\n    class Request:\n        app=NS(state=state)\n        headers={}\n        async def form(self): return {\"app_name\":\"radarr\",\"instance_name\":\"Extra\"}\n        def url_for(self, name): return \"/settings\"\n    removal=asyncio.create_task(env[\"remove_instance\"](Request(),\"radarr\",\"4K\"))\n    while not started.is_set(): await asyncio.sleep(0)\n    addition=asyncio.create_task(env[\"add_instance\"](Request()))\n    for _ in range(1000):\n        if state.search_lock._waiters: break\n        await asyncio.sleep(0)\n    assert state.search_lock._waiters\n    release.set()\n    results=await asyncio.gather(removal,addition)\n    print(rev, \"statuses\", [r.status_code for r in results], \"live\", sorted(state.settings.radarr), \"persisted\", sorted(writes[-1][\"radarr\"]), \"clients\", sorted(state.radarr_clients))\nasyncio.run(check(\"3cede40099a1f8a5d6db45542e66c650bfa98952\"))\nasyncio.run(check(\"HEAD\"))'",
+      "hypothesis": null
+    }
+  ],
+  "limitations": [
+    "Could not run pytest locally: the available Python lacks pytest, and the workspace is read-only. Used harness evidence for the exact inspected head.",
+    "The concurrency reproduction executes actual route bodies with stubbed settings, response, scheduler, and writer dependencies; it is not a full ASGI or filesystem integration test.",
+    "No live-browser execution was performed; UI behavior was reviewed through template code, response contracts, and test assertions.",
+    "Initial combined outputs were truncated; affected sections were reread in smaller commands.",
+    "Long inline reproduction commands are identified by purpose in commands_run; F001 contains the executable reproduction script."
+  ],
+  "review_complete": true,
+  "incomplete_reasons": []
+}
